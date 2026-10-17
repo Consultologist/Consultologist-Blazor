@@ -58,8 +58,7 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
             sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorFormatsCatalog.Catalog,
-            EditorFormatsCatalog.AcceptedWith25);
+            EditorFormatsCatalog.Catalog);
     }
 
     private static IReadOnlyList<string> Formats(WorkflowPackagePublishRequest request) =>

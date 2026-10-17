@@ -43,11 +43,15 @@ public static class V25Fixtures
 public class WorkflowV25ManifestModelTests
 {
     [Fact]
-    public void TwentyFive_IsStillRefused_UntilA4()
+    public void AWholeV24Shape_IsRefusedByName_At25()
     {
-        // The inert rule: A1–A3 ship shapes; A4 wires and bumps.
-        Assert.DoesNotContain(25, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.Contains(V25Fixtures.Errors(V25Fixtures.Base()), e => e.Contains("specVersion 25 is not supported"));
+        // The inert rule held A1–A4 (shapes, then wiring behind the unchanged
+        // set); A5 (#1018) accepts 25, so the v24 fixture re-versioned is no
+        // longer "not supported" — it is refused key by key (design § 10).
+        Assert.Contains(25, WorkflowPackageValidator.AcceptedSpecVersions);
+        var errors = V25Fixtures.Errors(V25Fixtures.Base());
+        Assert.DoesNotContain(errors, e => e.Contains("is not supported"));
+        Assert.Contains(errors, e => e.Contains("is retired at specVersion 25"));
     }
 
     [Fact]

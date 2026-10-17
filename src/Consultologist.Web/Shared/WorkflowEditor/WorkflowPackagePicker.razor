@@ -78,10 +78,10 @@
     // listed but unselectable. Unknown spec = selectable — the pin resolver
     // remains the runtime authority.
     //
-    // Mirrored by hand because Consultologist.Web references no project: the
-    // client assembly cannot see WorkflowPackageStore.SupportedSpecVersions.
-    // internal so SpecVersionMirrorTests can prove the mirror still matches —
-    // the test project references both, which is why nothing here needs a fetch.
+    // Mirrored by hand so the client never fetches it (the engine's constant
+    // lives in the Api project, which the client does not reference). internal
+    // so SpecVersionMirrorTests can prove the mirror still matches — the test
+    // project references both.
     internal const int MinSupportedSpecVersion = 5;
 
     [Parameter] public bool Disabled { get; set; }

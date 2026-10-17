@@ -1,33 +1,40 @@
 using System.Text.Json.Nodes;
+using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 
 namespace Consultologist.Api.Tests;
 
 /// <summary>
 /// A 25-shaped package (package-format-v25-design.md) and the fixture
-/// catalogue of A1's five formats. Validation goes through the A4 seam that
-/// accepts 25 for the call; the public entry still refuses 25 until A5.
+/// catalogue of A1's five formats. Validation goes through the public entry
+/// (25 is accepted since A5 #1018; the A4 seam carried these tests before).
 /// </summary>
 public static class V25Package
 {
-    public static readonly IReadOnlyCollection<int> Accepting25 =
-        WorkflowPackageValidator.AcceptedSpecVersions.Append(25).ToList();
-
-    public static WorkflowFormatCatalog Catalog()
-    {
-        var files = new Dictionary<string, string>(StringComparer.Ordinal)
+    /// <summary>The fixture catalogue as files — what the conformance suite ships as conformance/format-catalog.json (A5 #1018).</summary>
+    public static (string IndexJson, Dictionary<string, string> Files) CatalogFiles() =>
+        (WorkflowFormatCatalogIndexTests.Example, new Dictionary<string, string>(StringComparer.Ordinal)
         {
             ["formats/prose.json"] = FormatFixtures.Prose,
             ["formats/classification.json"] = FormatFixtures.Classification,
             ["formats/concept_list.json"] = FormatFixtures.ConceptList,
             ["formats/rendered.json"] = FormatFixtures.Rendered,
             ["formats/terms_subset.json"] = FormatFixtures.TermsSubset,
-        };
-        var index = WorkflowFormatCatalogIndexTests.Read(WorkflowFormatCatalogIndexTests.Example);
+        });
+
+    public static WorkflowFormatCatalog BuildCatalog(string indexJson, IReadOnlyDictionary<string, string> files)
+    {
         var errors = new List<string>();
-        var catalog = WorkflowFormatCatalog.Build(index, path => files.GetValueOrDefault(path), errors);
+        Assert.True(WorkflowFormatCatalogIndexJson.TryRead(indexJson, "Format catalogue", errors, out var index), string.Join(" | ", errors));
+        var catalog = WorkflowFormatCatalog.Build(index!, path => files.GetValueOrDefault(path), errors);
         Assert.Empty(errors);
         return catalog!;
+    }
+
+    public static WorkflowFormatCatalog Catalog()
+    {
+        var (index, files) = CatalogFiles();
+        return BuildCatalog(index, files);
     }
 
     /// <summary>
@@ -97,7 +104,7 @@ public static class V25Package
     }
 
     public static WorkflowPackageValidator.ValidationResult Validate((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle, WorkflowFormatCatalog? catalog) =>
-        WorkflowPackageValidator.Validate(bundle.Manifest, bundle.Files, TestOutputContracts.CatalogSchemas, null, catalog, Accepting25);
+        WorkflowPackageValidator.Validate(bundle.Manifest, bundle.Files, TestOutputContracts.CatalogSchemas, null, catalog);
 
     public static List<string> Errors((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
         Validate(bundle, Catalog()).Errors;
@@ -128,14 +135,23 @@ public class WorkflowV25Tests
     }
 
     [Fact]
-    public void ThePublicEntry_StillRefuses25_UntilA5()
+    public void ThePublicEntry_Accepts25_AndTheStoreRunsIt()
     {
+        // A5 (#1018): the two ceilings meet at 25 — the shape every gate flip
+        // has had (WorkflowV24GateTests). The store's gate is the manifest read
+        // under SupportedSpecVersions, which threw for 25 until now.
+        Assert.Contains(25, WorkflowPackageValidator.AcceptedSpecVersions);
+        Assert.Contains(25, WorkflowPackageStore.SupportedSpecVersions);
+
         var (manifest, files) = V25Package.Minimal();
-
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
-        Assert.Contains(result.Errors, e => e.Contains("specVersion 25 is not supported"));
-        Assert.DoesNotContain(25, WorkflowPackageValidator.AcceptedSpecVersions);
+        var json = System.Text.Json.JsonSerializer.Serialize(manifest, V25Fixtures.Wire);
+        var read = WorkflowPackageManifestJson.Read(json, "test/minimal@v1", WorkflowPackageStore.SupportedSpecVersions);
+        Assert.Equal(25, read.SpecVersion);
+        Assert.Throws<WorkflowPackageSpecVersionException>(() =>
+            WorkflowPackageManifestJson.Read(json.Replace("\"specVersion\": 25", "\"specVersion\": 26"), "test/minimal@v1", WorkflowPackageStore.SupportedSpecVersions));
     }
 
     [Fact]
@@ -687,6 +703,41 @@ public class WorkflowV25TemplateTests
 
         files["macros/closing.md"] = "Closing: {{ node.scope.content }}.";
         Assert.True(V25Package.Validate((manifest, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((manifest, files))));
+    }
+
+    [Fact]
+    public void ADuplicateMacroId_IsRefusedBySentence_NotByTheProbeThrowing()
+    {
+        // A5 #1018: the conformance export found the render probe adding the
+        // same macro id twice to its scope object and throwing.
+        var (manifest, files) = Minimal();
+        var twice = manifest with { Macros = manifest.Macros!.Concat(manifest.Macros!).ToList() };
+
+        Assert.Contains("Duplicate macro id 'closing'.", V25Package.Errors((twice, files)));
+    }
+
+    [Fact]
+    public void Reproducible_IsRefusedOnARenderOrAnOperation_At25()
+    {
+        // A5 #1018: the ≤24 twins (a template, a check may not claim it) in the
+        // format's words — rendered and computed producers are deterministic by
+        // construction; attested and custom nodes may still claim it.
+        var (manifest, files) = Minimal();
+
+        var onProse = V25Package.WithNode(manifest, "assessment", n => n with { Reproducible = true });
+        Assert.True(V25Package.Validate((onProse, files), V25Package.Catalog()).IsValid, string.Join(" | ", V25Package.Errors((onProse, files))));
+
+        var onComputed = V25Package.WithNode(manifest, "coverage", n => n with { Reproducible = true });
+        Assert.Contains("Node 'coverage' declares reproducible, but format 'terms_subset' is computed and deterministic by construction; the claim is not its to make.", V25Package.Errors((onComputed, files)));
+
+        var withRender = manifest with
+        {
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("summary", "prompts/summary.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("summary", "Summary", Prompt: "summary", Format: "rendered", Reproducible: true)).ToList(),
+        };
+        withRender = V25Package.WithNode(withRender, "all", n => n with { Aggregate = n.Aggregate!.Append("node.summary").ToList() });
+        var renderFiles = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/summary.md"] = "Summary of {{ node.assessment.content }}." };
+        Assert.Contains("Node 'summary' declares reproducible, but format 'rendered' is rendered and deterministic by construction; the claim is not its to make.", V25Package.Errors((withRender, renderFiles)));
     }
 
     [Fact]

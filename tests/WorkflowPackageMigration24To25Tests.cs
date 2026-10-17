@@ -453,6 +453,63 @@ public class WorkflowPackageMigration24To25Tests
     }
 
     [Fact]
+    public void AHyphenatedPromptId_IsRenamed_OnEveryNodeThatNamesIt()
+    {
+        // A5 (#1018): prompt ids are snake_case at 25 (#1037); a 24 package with
+        // hyphenated prompt ids — every fixture before 24 — must migrate into a
+        // package the 25 validator accepts.
+        var result = MigrateReshaped(root =>
+        {
+            root["prompts"]!.AsArray().OfType<JsonObject>().Single(p => p["id"]!.GetValue<string>() == "extract")["id"] = "extract-concepts";
+            root["nodes"]!.AsArray().OfType<JsonObject>().Single(n => n["id"]!.GetValue<string>() == "extract-patient-concepts")["prompt"] = "extract-concepts";
+        });
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Refusals));
+        var root = Root(result);
+        Assert.Contains(root["prompts"]!.AsArray().OfType<JsonObject>(), p => p["id"]!.GetValue<string>() == "extract_concepts");
+        Assert.DoesNotContain(root["prompts"]!.AsArray().OfType<JsonObject>(), p => p["id"]!.GetValue<string>().Contains('-'));
+        Assert.Equal("extract_concepts", Node(root, "extract_patient_concepts")["prompt"]!.GetValue<string>());
+        Assert.Contains("Prompt 'extract-concepts' renamed 'extract_concepts' (a 25 prompt id is snake_case), on every node that names it.", result.Notices);
+        Assert.DoesNotContain(WorkflowPackageValidator.Validate(V24Package.Manifest(result.ManifestJson), result.Files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog()).Errors,
+            e => e.Contains("snake_case"));
+    }
+
+    [Fact]
+    public void APromptIdRenameThatCollides_IsRefused()
+    {
+        var result = MigrateReshaped(root =>
+            root["prompts"]!.AsArray().Add(new JsonObject { ["id"] = "raw-note", ["file"] = "prompts/raw_note.md", ["variables"] = new JsonArray() }));
+
+        Assert.Contains("Prompt 'raw-note' renamed 'raw_note' collides with another prompt; rename one, then upgrade.", result.Refusals);
+    }
+
+    [Fact]
+    public void TheStringFormResult_BecomesTheOneDeliverable()
+    {
+        // A5 (#1018): the ≤6 sugar (`result: "node:<x>"`, still accepted at 24)
+        // is a one-entry deliverables at 25 — id the node's snake_cased, label
+        // the node's; it was refused with "migrate to 24 first" before.
+        var result = MigrateReshaped(root =>
+        {
+            root.Remove("results");
+            root["result"] = "node:assemble";
+            // the slot the assessment prompt carried has no deliverable to be a slot of
+            var files = root["nodes"]!.AsArray().OfType<JsonObject>().Single(n => n["id"]!.GetValue<string>() == "assessment");
+            files.Remove("macros");
+        }, files => files["prompts/assessment.md"] = "Assess {{ notes }}.\nProblems:\n{{ problems }}\nScope: {{ scope_value }}\nStandard: {{ standard }}\nPlan: {{ plan }}");
+
+        Assert.True(result.Succeeded, string.Join(" | ", result.Refusals));
+        var root = Root(result);
+        Assert.Null(root["result"]);
+        Assert.Null(root["results"]);
+        var deliverable = Assert.Single(root["deliverables"]!.AsArray()).AsObject();
+        Assert.Equal("assemble", deliverable["id"]!.GetValue<string>());
+        Assert.Equal("node.assemble", deliverable["node"]!.GetValue<string>());
+        Assert.Equal("Assemble", deliverable["label"]!.GetValue<string>());
+        Assert.Contains("result 'node:assemble' is now the deliverable 'assemble' (the string form is retired at 25).", result.Notices);
+    }
+
+    [Fact]
     public void ARemainingPrelude_IsRefused()
     {
         var result = MigrateReshaped(root => root["preludes"] = new JsonObject { ["guidance"] = "prompts/_guidance.md" });

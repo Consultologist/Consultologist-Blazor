@@ -98,7 +98,8 @@ would otherwise have carried it (#397).
   (Milestone 28, specVersion 23: one macro type with a second — node —
   attachment site, absorbing preludes; the data model, prelude migration,
   renderer seam, and the v23/v24 phasing),
-  [package format v25 design](customizable-workflow/package-format-v25-design.md)
+  [package format v25 design](customizable-workflow/package-format-v25-design.md) — the normative
+  text is the registry's [package-format-v25.md](../external/consultologist-package-format/package-format-v25.md)
   (Milestone 29, specVersion 25, revision 2: templates reference the package by
   object with derived edges; formats with a producer class and the catalogue in
   the agents registry replacing contracts, schemas and node kinds; snippets read,

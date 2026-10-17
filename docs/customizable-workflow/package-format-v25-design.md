@@ -300,7 +300,7 @@ named here so the word is reserved. A `text` format validates nothing and carrie
   its ≤24 home, `output`, is refused at 25; refused by name below 25. Judged on the reply
   before anything composes (§ 6 step 3): a blank reply on a text format, an empty top-level
   array on an array format; a rendered or computed node takes none. The registry's
-  `package-format-v25.md` gains the key at A5.)*
+  `package-format-v25.md` gained the key at A5, 2026-10-16.)*
 - **Refused by name at ≥ 25:** `kind`, `values`, `op`, `of`, `in`, `failWith`,
   `output`/`schema`, `bindings`.
 
@@ -620,7 +620,8 @@ across every record ever written, and stay; the provenance document may say "the
 - **Inputs pane:** the object-form slot's fields as today's object fields.
 
 *(C1 #1007, 2026-10-14 — the node pane's picker and the Formats pane are built, gated on
-`EffectiveSpecVersion >= 25` and inert until A5 moves the editor's version constants.
+`EffectiveSpecVersion >= 25` and inert until A5 moves the editor's version constants — moved
+2026-10-16 (#1018): `NewestSpecVersion` and `RunnableSpecVersion` are 25, the panes are live.
 Decisions: an existing node's format **may be re-picked**, and a re-pick **resets `with` and
 `onInvalid`** — they belong to the old format; the pane re-renders the new entry's fields
 and the desk names what is then missing. `onInvalid` offers all three words, `retry`
@@ -768,7 +769,16 @@ notice per rewrite, refusals that apply nothing) the editor applies the import d
 the migrated package replaces the session's content, is held in this browser with its notice,
 publishes as a new version of the same package and is discarded by reloading the registry's
 version. The toolbar still offers only the ceilings (A5 moves them); the seam takes 25 and the
-tests drive it. Decisions: library rewriter + replaced package; internal seam; the four
+tests drive it. *(A5 #1018, 2026-10-16: moved — the toolbar offers one button, "Upgrade to
+specVersion 25", to any package below 25. Below 24 it chains: the 24 rung is staged exactly as
+before — the prelude→node-macro migration when crossing 23 — the effective package is composed
+and the rewriter runs over it; one publish, one notice naming both steps. A refusal from either
+step is said in the toolbar and leaves the package as loaded, the staged rung reverted.
+`MigratableSpecVersion` is gone; the seam was the door. Two rewriter gaps closed with it: a
+hyphenated **prompt** id is renamed, on every node that names it (every pre-24 fixture carried
+one and migrated into a package the validator refused); the string-form `result` of a v5/v6
+package becomes the one-entry `deliverables` instead of the "migrate to 24 first" refusal.)*
+Decisions: library rewriter + replaced package; internal seam; the four
 canonical concept-source stamps ride their snake_case twins so a renamed canonical node renders
 the same concept-context bytes. Byte identity, handled: a concept node bound with no renderer
 rendered as bullets at 24 and reads `node.x.content | concept_bullets` at 25 (a bare `.content` would
@@ -810,9 +820,9 @@ grammar and validation PRs.
 **The bump is the last sub-issue (2026-10-13).** A4 (#999) wires the validator at ≥ 25 behind the
 unchanged accepted set; A5 (#1018) flips `AcceptedSpecVersions`, `SupportedSpecVersions` and the
 editor's two mirrors together, lists v25 in the registry and exports its schema and vectors —
-after B7 (the engine runs 25) and C6 (the editor migrates 24 → 25), because the editor's upgrade
-button only rewrites the number, the format catalogue does not exist before B1/B2, and the
-registry's `supported` list mirrors the engine's run set. *(2026-10-15: and after the `ns:id`
+after B7 (the engine runs 25) and C6 (the editor migrates 24 → 25), because, until C6, the editor's
+upgrade button only rewrote the number, the format catalogue does not exist before B1/B2, and the
+registry's `supported` list mirrors the engine's run set. *(2026-10-16: done — § 17.)* *(2026-10-15: and after the `ns:id`
 retirement — #1037 format, #1038 engine, #1039 editor (§ 16) — a format change that must land
 before the bump freezes 25.)*
 
@@ -951,6 +961,39 @@ folder index's field and the ≤24 item member, and a node's JSON output beside 
 `MacroTexts` source maps) keep their names. The mechanics sentence names `{{ macro.<id>.content }}`.
 Registry: spec PR #31; provenance@v2026.10.5 (doc-only). Landed before A5 so the exported conformance
 vectors pin the final spelling. The dated notes above keep `.text` as the history they record.)*
+
+## 17. The bump (#1018 A5, 2026-10-16)
+
+The last sub-issue landed as planned: `AcceptedSpecVersions` and `SupportedSpecVersions` += 25
+together, the editor's two mirrors to 25 (§ 13, § 14 notes), the registry listing v25 at
+package-format **v2026.10.5** with its generated schema and vectors (registry PR #32). Four things
+beyond the number, found in planning and done:
+
+- **The generated v25 schema spelled the ≤24 forms** the validator refuses (`^(snippet|input):.+$`,
+  `^node:.+$`, a hyphen in the format id, no snake_case on prompt ids) and still required the
+  prompt's retired `variables`; published as it was it would have rejected every valid 25
+  manifest. Every fix is gated ≥ 25; v5–v24 stay byte-identical.
+- **The vectors need a format catalogue** (prose, classification, concept_list, rendered,
+  terms_subset are catalogue formats). The suite ships `conformance/format-catalog.json` — the
+  test fixture catalogue, the `catalog-schemas.json` precedent — which the export writes and
+  the replay and the registry's publish script and CI read.
+- **"Minimal is the previous version plus a line" cannot hold at 25**: the v24 minimal uses
+  `output`, `bindings`, `variables`, `preludes`, `data`, `results`, all refused. The baseline is
+  the v24 minimal — its prelude already a node macro, as the 23 editor leaves it — through
+  `WorkflowPackageMigration24To25` (`v25-minimal-is-the-migrated-v24-minimal`), beside the
+  design's minimal and a rich case. 172 vectors at 25 (167 refusals, one per sentence), ten
+  below-25 gates under `v24/`, 120 `SHAPE_BLIND` entries with their reasons.
+- **The editor's one button chains** (§ 14 note) — and two rewriter gaps closed with it
+  (prompt-id rename; the string-form `result`).
+
+Also with the bump: `reproducible` is refused on a rendered or computed format (the ≤24
+template/check twins had no 25 counterpart); the render probe no longer throws on a duplicate
+macro id (the export found it); the registry's `invalid-unknown-input-type` v9 case is
+`…-at-v9` so ids are unique suite-wide. **Follow-up, not A5:** the migrated minimal is valid
+with warnings — the rewrite spells a concept-list read as `node.x.content | concept_bullets`
+and the walker warns on every `.content` read of a shaped format regardless of the pipe;
+suppressing the warning when the read goes through a renderer pipe (C4 blesses it) is a
+validator refinement. Prod runs 25 with engine release v2026.10.5.
 
 ## Deferred, by name
 

@@ -53,8 +53,7 @@ public class TemplatesV25FormSlotTests : ClientRenderTestContext
             sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorFormatsCatalog.Catalog,
-            EditorFormatsCatalog.AcceptedWith25);
+            EditorFormatsCatalog.Catalog);
     }
 
     private static JsonElement Input(WorkflowPackagePublishRequest request, string id) =>

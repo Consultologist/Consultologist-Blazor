@@ -28,7 +28,7 @@ public static partial class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
@@ -85,9 +85,10 @@ public static partial class WorkflowPackageValidator
     /// </param>
     /// <param name="formats">
     /// v25 (#999): the format catalogue the engine loaded — needed to resolve a
-    /// node's catalogue format id (prose, classification, …). Null until B2
-    /// passes the loaded one; a 25 package naming a catalogue format is then
-    /// refused by a sentence naming the missing catalogue, never silently.
+    /// node's catalogue format id (prose, classification, …). The store and the
+    /// publisher pass the loaded one (B2 #1001); a 25 package naming a catalogue
+    /// format with none loaded is refused by a sentence naming the missing
+    /// catalogue, never silently.
     /// </param>
     public static ValidationResult Validate(
         WorkflowPackageManifest manifest,
@@ -98,9 +99,9 @@ public static partial class WorkflowPackageValidator
         Validate(manifest, files, catalogSchemas, stampedContracts, formats, AcceptedSpecVersions);
 
     /// <summary>
-    /// The seam the v25 tests use while 25 is wired but not yet accepted (A4,
-    /// #999): <paramref name="accepted"/> replaces <see cref="AcceptedSpecVersions"/>
-    /// for this call only. The bump (A5) adds 25 to the real set.
+    /// <paramref name="accepted"/> replaces <see cref="AcceptedSpecVersions"/> for
+    /// this call only — the refusal-sentence tests use it (and the v25 tests did,
+    /// while 25 was wired but not yet accepted; A5 #1018 added it to the real set).
     /// </summary>
     internal static ValidationResult Validate(
         WorkflowPackageManifest manifest,

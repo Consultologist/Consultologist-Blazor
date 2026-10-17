@@ -12,9 +12,10 @@ namespace Consultologist.Web.Tests;
 /// v25 C6 (#1012, design § 14): the editor's upgrade from 24 to 25 — the library's
 /// rewrite applied the import door's way (the migrated package replaces the session's
 /// content, is held in this browser, publishes as a new version of the same package,
-/// and a discard reloads the registry's), with one notice naming every rewrite. The
-/// toolbar still offers no 25 button (A5 moves the ceilings); the tests drive the
-/// internal seam.
+/// and a discard reloads the registry's), with one notice naming every rewrite. A5
+/// (#1018) moved the ceilings: the toolbar offers the one button, "Upgrade to
+/// specVersion 25", and below 24 it chains the staged 24 rung (the prelude migration)
+/// into the rewrite.
 /// </summary>
 public class TemplatesV25MigrationTests : ClientRenderTestContext
 {
@@ -28,7 +29,9 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
 
     private static async Task UpgradeTo25Async(IRenderedComponent<Templates> page)
     {
-        await page.InvokeAsync(() => page.Instance.UpgradeSpecVersionTo(Templates.MigratableSpecVersion));
+        await page.InvokeAsync(() => page.FindAll("fluent-button")
+            .First(button => button.TextContent.Trim() == $"Upgrade to specVersion {Templates.NewestSpecVersion}")
+            .Click());
         page.Render();
     }
 
@@ -66,18 +69,62 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
             sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorFormatsCatalog.Catalog,
-            EditorFormatsCatalog.AcceptedWith25);
+            EditorFormatsCatalog.Catalog);
     }
 
     [Fact]
-    public void TheToolbar_OffersNoButtonTo25_WhileTheCeilingsHoldAt24()
+    public void TheToolbar_OffersTheOneButtonTo25()
     {
         var page = RenderEditor();
 
-        Assert.DoesNotContain(UpgradeButtons(page), b => b.Contains("25"));
+        Assert.Equal(new[] { "Upgrade to specVersion 25" }, UpgradeButtons(page));
         Assert.Contains("Data", Groups(page));
         Assert.DoesNotContain("Snippets", Groups(page));
+    }
+
+    [Fact]
+    public async Task AChainedUpgrade_FromSeven_StagesTwentyFourThenMigrates()
+    {
+        // A5 (#1018): below 24 the one button stages the 24 rung (the prelude
+        // migration of #963) into the pending shapes, composes, and migrates what
+        // it composed — one publish, one notice naming both steps.
+        var page = RenderEditor(EditorFixtures.V7Preludes());
+
+        await UpgradeTo25Async(page);
+
+        var notice = page.Find(".migration-notice").TextContent;
+        Assert.Contains("Migrated to specVersion 25. Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
+        Assert.Contains("upgraded 7 → 25", page.Markup);
+        Assert.Contains("Snippets", Groups(page));
+        Assert.DoesNotContain("Preludes", Groups(page));
+        Assert.Empty(UpgradeButtons(page));
+    }
+
+    [Fact]
+    public async Task AMigratorRefusal_AfterTheStagedRung_RevertsIt()
+    {
+        // The rewriter refuses a node rename that collides. By then the 24 rung
+        // was staged and the preludes migrated into pending shapes — all of it
+        // comes back: nothing pending, the Preludes group as loaded, the button
+        // still offered, the refusal said in the toolbar.
+        var fixture = EditorFixtures.V7Preludes();
+        var twin = fixture with
+        {
+            Manifest = JsonDocument.Parse(fixture.Manifest.GetRawText().Replace(
+                "\"nodes\": [",
+                "\"nodes\": [ { \"id\": \"draft_section\", \"label\": \"Twin\", \"prompt\": \"draft-section\", \"bindings\": { \"section_name\": \"item:name\", \"consult_draft\": \"input:consult_draft\" }, \"forEach\": \"data:standards\" },")).RootElement.Clone(),
+        };
+        var page = RenderEditor(twin);
+        Assert.Contains("Preludes", Groups(page));
+
+        await UpgradeTo25Async(page);
+
+        Assert.Contains("Node 'draft-section' renamed 'draft_section' collides with another node; rename one, then upgrade.", page.Find(".upgrade-refusal").TextContent);
+        Assert.Empty(page.FindAll(".migration-notice"));
+        Assert.Contains("Preludes", Groups(page));
+        Assert.DoesNotContain("Snippets", Groups(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 25" }, UpgradeButtons(page));
+        Assert.DoesNotContain("●", page.Markup);
     }
 
     [Fact]

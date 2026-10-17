@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using Consultologist.Api.Workflow;
 
@@ -18,7 +19,7 @@ namespace Consultologist.Api.Tests;
 /// a generator, and regenerating on every CI run would be a slow way to write
 /// files nobody reads.
 /// </summary>
-public class ConformanceFixtureExport
+public partial class ConformanceFixtureExport
 {
     private sealed record Case(
         string Id,
@@ -211,7 +212,9 @@ public class ConformanceFixtureExport
                     Fields: new List<WorkflowFieldSpec> { new("age", "Age") })).ToList() });
 
         // § 4 structured inputs — shape rules at 9.
-        Invalid("invalid-unknown-input-type", 9,
+        // (A5 #1018: the id was "invalid-unknown-input-type" — the v8 case's — until
+        // the suite required ids unique across versions.)
+        Invalid("invalid-unknown-input-type-at-v9", 9,
             "A type name outside the v9 vocabulary.",
             V9Fixtures.WithInput(new WorkflowInputSpec("stamp", "Timestamp", Required: false, Type: "timestamp")));
         Invalid("invalid-array-without-items", 9,
@@ -1202,7 +1205,59 @@ public class ConformanceFixtureExport
                 "A macro carrying an item token attached to a deliverable — assembly has no fan item to fill it.", itemTokenOnResult, itemTokenOnResultFiles);
         }
 
+        // ----- v25 (#1018): the object-template format — ConformanceFixtureExport.V25.cs -----
+        AddV25Cases(cases);
+
         return cases;
+    }
+
+    /// <summary>
+    /// A5 (#1018): the manifest as the registry publishes it. At 25 a prompt has
+    /// no variables (the model's non-null list would serialise as an empty
+    /// array, which the closed v25 schema refuses); below 25 the record is the
+    /// payload, so the published bytes do not move.
+    /// </summary>
+    private static object ManifestPayload(Case testCase)
+    {
+        if (testCase.SpecVersion < 25)
+        {
+            return testCase.Manifest;
+        }
+
+        var root = JsonSerializer.SerializeToNode(testCase.Manifest, Json)!.AsObject();
+        foreach (var prompt in (root["prompts"] as JsonArray ?? new JsonArray()).OfType<JsonObject>())
+        {
+            if (prompt["variables"] is JsonArray { Count: 0 })
+            {
+                prompt.Remove("variables");
+            }
+        }
+
+        return root;
+    }
+
+    [Fact]
+    public void EveryCaseId_IsUnique()
+    {
+        // The registry's validate.yml keys SHAPE_BLIND by id across the whole
+        // suite, and one file per id: a duplicate would silently overwrite.
+        var ids = Cases().Select(c => c.Id).ToList();
+        Assert.Equal(ids.Count, ids.Distinct(StringComparer.Ordinal).Count());
+    }
+
+    [Fact]
+    public void TheMigratedBaseline_StartsFromAValid24Package_AndMigrates()
+    {
+        // The v25 migrated-minimal vector is only the migration's promise if
+        // what goes in is a valid 24 package.
+        var (manifest, files) = V24MinimalWithoutPreludes();
+        var at24 = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas);
+        Assert.True(at24.IsValid, string.Join(" | ", at24.Errors));
+
+        var (migrated, migratedFiles) = MigratedV24Minimal();
+        var at25 = WorkflowPackageValidator.Validate(migrated, migratedFiles, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.True(at25.IsValid, string.Join(" | ", at25.Errors));
+        Assert.Equal(25, migrated.SpecVersion);
     }
 
     /// <summary>The classifier's answer bound into the first prompt node, so a case about the node's own rules is refused for that rule alone.</summary>
@@ -1291,11 +1346,15 @@ public class ConformanceFixtureExport
         }
 
         var index = new List<object>();
+        // A5 (#1018): a 25 case resolves its catalogue formats against the
+        // fixture catalogue the suite ships (conformance/format-catalog.json);
+        // below 25 the argument is never read.
+        var formats = V25Package.Catalog();
 
         foreach (var testCase in Cases())
         {
             var result = WorkflowPackageValidator.Validate(
-                testCase.Manifest, testCase.Files, TestOutputContracts.CatalogSchemas);
+                testCase.Manifest, testCase.Files, TestOutputContracts.CatalogSchemas, null, formats);
 
             // Cases about one format live under that format; a case about the
             // ACCEPTED SET itself belongs to no version — filing it under v3
@@ -1318,7 +1377,7 @@ public class ConformanceFixtureExport
                     errors = result.Errors,
                     warnings = result.Warnings
                 },
-                manifest = testCase.Manifest,
+                manifest = ManifestPayload(testCase),
                 files = testCase.Files,
             };
 
@@ -1328,6 +1387,9 @@ public class ConformanceFixtureExport
 
         File.WriteAllText(Path.Combine(outDir!, "catalog-schemas.json"),
             JsonSerializer.Serialize(TestOutputContracts.CatalogSchemas, Json));
+        var (catalogIndex, catalogFiles) = V25Package.CatalogFiles();
+        File.WriteAllText(Path.Combine(outDir!, "format-catalog.json"),
+            JsonSerializer.Serialize(new { index = catalogIndex, files = catalogFiles }, Json));
         File.WriteAllText(Path.Combine(outDir!, "index.json"),
             JsonSerializer.Serialize(new { cases = index }, Json));
     }

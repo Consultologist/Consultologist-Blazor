@@ -21,6 +21,14 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 {
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
 
+    public EditorPublishRoundTripTests()
+    {
+        // A5 (#1018): the one upgrade is the 24→25 rewrite — the migrator maps
+        // schemas through the catalogue schemas, the desk at 25 resolves formats.
+        WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
+        WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
+    }
+
     private async Task<ServerWorkflow.WorkflowPackageValidator.ValidationResult> PublishAndValidateAsync(
         Func<IRenderedComponent<Templates>, Task> edit,
         bool v7 = true)
@@ -59,7 +67,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var files = sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
 
         return (
-            ServerWorkflow.WorkflowPackageValidator.Validate(manifest, files, new Dictionary<string, string>(StringComparer.Ordinal)),
+            ServerWorkflow.WorkflowPackageValidator.Validate(manifest, files, new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog),
             sent);
     }
 
@@ -596,14 +604,15 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("requires specVersion 8", page.Markup, StringComparison.Ordinal);
         // #430: the hint names the one rung on offer — 12 since #623.
-        Assert.Contains("Upgrade to specVersion 24", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 25", page.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
-    public async Task TheSameFieldsWithAPendingUpgrade_AreAccepted()
+    public async Task TheSameFieldsWithAnUpgrade_AreAccepted()
     {
         // The other half, and the whole issue: the identical edit, published
-        // with the migration pending, is a manifest the registry accepts.
+        // with the upgrade (since A5 #1018 the 25 rewrite, which composes the
+        // pending edit in), is a manifest the registry accepts.
         var (result, sent) = await PublishAndCaptureAsync(async page =>
         {
             Navigate(page, "Inputs");
@@ -617,8 +626,9 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
-        // #430: the one offered rung was 9; #500 made it 10; #566, 11; #623, 12.
-        Assert.Equal(24, root.GetProperty("specVersion").GetInt32());
+        // #430: the one offered rung was 9; #500 made it 10; #566, 11; #623, 12; #1018, 25.
+        Assert.Equal(25, root.GetProperty("specVersion").GetInt32());
+        Assert.Equal("enum", root.GetProperty("inputs")[1].GetProperty("type").GetString());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 
@@ -634,7 +644,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
 
         var page = Render<Templates>();
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
 
         Assert.DoesNotContain("Upgrade to specVersion", page.Markup, StringComparison.Ordinal);
     }
@@ -649,7 +659,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var page = Render<Templates>();
 
-        Assert.Contains("Upgrade to specVersion 24", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 25", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 11", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 10", page.Markup, StringComparison.Ordinal);
     }
@@ -662,31 +672,32 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     [Fact]
     public void TheRungsOffered_AreTheOneRungThatRuns()
     {
-        // #971 closed the gap again: 24 publishes AND runs, so the two ceilings
-        // meet and the second rung retires — one button, naming 24, whatever
-        // version is loaded. (#970 reopened it; the engine half closed it.)
+        // #971 closed the gap again: 24 published AND ran; #1018 moved both
+        // ceilings to 25 together, so there is still one button — naming 25,
+        // the rewrite — whatever version is loaded.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
-        Assert.Equal(new[] { "Upgrade to specVersion 24" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 25" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
-        Assert.Equal(new[] { "Upgrade to specVersion 24" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 25" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V11());
-        Assert.Equal(new[] { "Upgrade to specVersion 24" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 25" }, UpgradeButtons(Render<Templates>()));
     }
 
     [Fact]
-    public void AStagedBumpToTheNewest_SaysNothing_TheCeilingsMeet()
+    public void AnUpgradeToTheNewest_SaysNothing_TheCeilingsMeet()
     {
-        // #971 closed the gap: 24 runs, so a staged bump to the newest ceiling
-        // publishes into no gap and says nothing — and still hides every upgrade
-        // button (the CanUpgradeTo clause).
+        // #971 closed the gap: 24 ran; #1018 moved both ceilings to 25, so the
+        // upgrade to the newest (the rewrite) publishes into no gap and says
+        // nothing — and still hides every upgrade button (upgradedFrom).
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V10Nested());
         var page = Render<Templates>();
         UpgradeTo(page, Templates.NewestSpecVersion);
 
         Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
         Assert.Empty(UpgradeButtons(page));
+        Assert.Contains("upgraded 10 → 25", page.Markup, StringComparison.Ordinal);
         Assert.Equal(Templates.NewestSpecVersion, Templates.RunnableSpecVersion);
     }
 
@@ -702,7 +713,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
                 new ClientWorkflow.WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.09.1", "acct-1234567890ab@v2026.09.1"),
                 Array.Empty<string>()));
         var page = Render<Templates>();
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
 
         var success = page.FindAll(".fluent-messagebar-message").Select(bar => bar.TextContent.Trim())
@@ -711,87 +722,81 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     }
 
     [Theory]
-    [InlineData(7, 24)]
-    [InlineData(8, 24)]
-    [InlineData(9, 24)]
-    [InlineData(10, 24)]
-    [InlineData(11, 24)]
-    public async Task AnUpgradeAlone_ChangesOnlyTheSpecVersion(int from, int to)
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    [InlineData(10)]
+    [InlineData(11)]
+    public async Task AnUpgradeAlone_IsTheMigration(int from)
     {
-        // The proving migration, in the editor: package-format-v8.md's own
-        // argument is that changing specVersion and nothing else is what makes
-        // a migration provable — any difference afterwards is the engine.
-        // #429 proved every rung; #430 collapsed the offer to one button, so
-        // the reachable rungs are the ones to 9 (v9's own migration adds
-        // exactly the tags key, asserted below).
+        // Through 24 the proving migration was the version line alone (v8's own
+        // argument: change specVersion and nothing else, and any difference
+        // afterwards is the engine's); #429 proved every rung, #430 collapsed
+        // the offer to one button. A5 (#1018) made that button the 25 rewrite,
+        // proved row by row in the library's suite — here it is proved by the
+        // shape it leaves: the retired keys gone, the replacements present, ids
+        // snake_case, the package valid at 25, and the notice saying so. Below
+        // 24 the editor chains the staged 24 rung first (tags arrive with it).
         var fixture = from == 7 ? EditorFixtures.V7() : from == 8 ? EditorFixtures.V8() : from == 9 ? EditorFixtures.V9Structured() : from == 10 ? EditorFixtures.V10Nested() : EditorFixtures.V11();
+        // The notice goes with the publish (nothing is pending after it), so it is read before.
+        string? notice = null;
         var (result, sent) = await PublishAndCaptureAsync(
-            page => { UpgradeTo(page, to); return Task.CompletedTask; },
+            page => { UpgradeTo(page, Templates.NewestSpecVersion); notice = page.Find(".migration-notice").TextContent; return Task.CompletedTask; },
             fixture);
 
         var before = JsonDocument.Parse(fixture.Manifest.GetRawText()).RootElement;
         var after = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
         Assert.Equal(from, before.GetProperty("specVersion").GetInt32());
-        Assert.Equal(to, after.GetProperty("specVersion").GetInt32());
+        Assert.Equal(25, after.GetProperty("specVersion").GetInt32());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
-        // Every other top-level property unchanged. Compared semantically
-        // rather than byte for byte: composing re-serializes through JsonNode,
-        // which normalises the whitespace of the whole document. Harmless, but
-        // it means an upgrade rewrites formatting it did not mean to touch.
-        static string Canonical(JsonElement value) =>
-            JsonSerializer.Serialize(JsonDocument.Parse(value.GetRawText()).RootElement);
-
-        foreach (var property in before.EnumerateObject().Where(p => p.Name != "specVersion"))
+        Assert.True(after.TryGetProperty("deliverables", out _));
+        Assert.Equal(JsonValueKind.Array, after.GetProperty("tags").ValueKind);
+        foreach (var retired in new[] { "results", "result", "data", "schemas", "preludes" })
         {
-            Assert.Equal(
-                Canonical(property.Value),
-                Canonical(after.GetProperty(property.Name)));
+            Assert.False(after.TryGetProperty(retired, out _), retired);
         }
 
-        // #453: the v9 rung adds exactly one more key — an empty tags array,
-        // which v9 requires — and nothing else. Below 9, and from 9 upward
-        // (#492: the v10 migration is the version line alone), no key appears.
-        var added = after.EnumerateObject().Select(p => p.Name).Except(before.EnumerateObject().Select(p => p.Name)).ToList();
-        if (to >= 9 && from < 9)
+        foreach (var node in after.GetProperty("nodes").EnumerateArray())
         {
-            Assert.Equal(new[] { "tags" }, added);
-            Assert.Equal(JsonValueKind.Array, after.GetProperty("tags").ValueKind);
-            Assert.Equal(0, after.GetProperty("tags").GetArrayLength());
+            Assert.DoesNotContain('-', node.GetProperty("id").GetString()!);
+            foreach (var retired in new[] { "bindings", "output", "kind" })
+            {
+                Assert.False(node.TryGetProperty(retired, out _), retired);
+            }
         }
-        else
-        {
-            Assert.Empty(added);
-        }
+
+        Assert.Contains("Migrated to specVersion 25.", notice);
+        Assert.Contains("results is now deliverables", notice);
     }
 
     [Fact]
-    public async Task AnUpgradeOfAPackageWithPreludes_ChangesExactlyThePreludeKeys()
+    public async Task AnUpgradeOfAPackageWithPreludes_MigratesThemThroughTwentyFour()
     {
-        // #963: the one migration beyond the version line and v9's tags — a
-        // prelude becomes a library macro composed first on its prompt's nodes.
-        // Everything else is unchanged; the keys that move are exactly these.
+        // #963: a prelude becomes a library macro composed first on its prompt's
+        // nodes — the staged 23 step. A5 (#1018): the one upgrade chains that
+        // step into the 25 rewrite, where a macro placed on no output and read
+        // prompt-side only becomes a snippet the prompt reads inline.
         var fixture = EditorFixtures.V7Preludes();
+        string? notice = null;
         var (result, sent) = await PublishAndCaptureAsync(
-            page => { UpgradeTo(page, 24); return Task.CompletedTask; },
+            page => { UpgradeTo(page, Templates.NewestSpecVersion); notice = page.Find(".migration-notice").TextContent; return Task.CompletedTask; },
             fixture);
 
-        var before = JsonDocument.Parse(fixture.Manifest.GetRawText()).RootElement;
         var after = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
-        static string Canonical(JsonElement value) => JsonSerializer.Serialize(JsonDocument.Parse(value.GetRawText()).RootElement);
-        foreach (var property in before.EnumerateObject().Where(p => p.Name is not ("specVersion" or "preludes" or "prompts" or "nodes")))
-        {
-            Assert.Equal(Canonical(property.Value), Canonical(after.GetProperty(property.Name)));
-        }
-
         Assert.False(after.TryGetProperty("preludes", out _));
-        Assert.Equal(new[] { "macros", "tags" }, after.EnumerateObject().Select(p => p.Name).Except(before.EnumerateObject().Select(p => p.Name)).Order().ToList());
         Assert.False(after.GetProperty("prompts")[0].TryGetProperty("prelude", out _));
-        Assert.Equal("guidance", after.GetProperty("nodes")[0].GetProperty("macros")[0].GetString());
-        Assert.Equal("Use short SNOMED search terms.", sent.Files["macros/guidance.md"]);
+        Assert.False(after.TryGetProperty("macros", out _));
+        Assert.Equal("snippets/guidance.md", after.GetProperty("snippets").GetProperty("guidance").GetString());
+        Assert.Equal("Use short SNOMED search terms.", sent.Files["snippets/guidance.md"]);
+        Assert.StartsWith("{{ snippet.guidance.content }}", sent.Files["prompts/draft-section.md"]);
+        Assert.DoesNotContain(sent.Files.Keys, path => path.StartsWith("preludes/", StringComparison.Ordinal));
+
+        Assert.Contains("Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
+        Assert.Contains("Prelude 'unused' is used by no prompt and was dropped.", notice);
     }
 
     /// <summary>
@@ -833,7 +838,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
     }
 
     [Fact]
-    public async Task AV6ForkUpgraded_CanDeclareAnInputAndPublishItAsV8()
+    public async Task AV6ForkUpgraded_CanDeclareAnInputAndPublishItAt25()
     {
         // End to end through the real server validator: adopting a newer
         // format's features is what #347 was for, and until this the author had
@@ -850,10 +855,12 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
         // #430: the one offered rung was 9 (and the migration adds tags);
-        // #500 made it 10; #566, 11; #623, 12.
-        Assert.Equal(24, root.GetProperty("specVersion").GetInt32());
+        // #500 made it 10; #566, 11; #623, 12; #1018, 25 — the string-form
+        // result of a v6 package becomes the one-entry deliverables.
+        Assert.Equal(25, root.GetProperty("specVersion").GetInt32());
         Assert.Equal(0, root.GetProperty("tags").GetArrayLength());
         Assert.Equal("consult_draft", root.GetProperty("inputs")[0].GetProperty("id").GetString());
+        Assert.Equal("node.assemble_note", root.GetProperty("deliverables")[0].GetProperty("node").GetString());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
 

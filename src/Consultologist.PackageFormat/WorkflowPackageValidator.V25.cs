@@ -450,6 +450,14 @@ public static partial class WorkflowPackageValidator
                 errors.Add($"Node '{node.Id}' declares failIfEmpty, but format '{format.Id}' is {spec.Producer} and has no reply to judge.");
             }
 
+            // A5 #1018: the ≤24 twins (a template, a check) in the format's
+            // words — a render and an operation are deterministic by
+            // construction, so the claim is not theirs to make.
+            if (node.Reproducible != null && spec.Producer is WorkflowFormatProducers.Rendered or WorkflowFormatProducers.Computed)
+            {
+                errors.Add($"Node '{node.Id}' declares reproducible, but format '{format.Id}' is {spec.Producer} and deterministic by construction; the claim is not its to make.");
+            }
+
             nodes[node.Id] = new NodeAt25(node, format, fan, folder);
         }
 
@@ -949,7 +957,9 @@ public static partial class WorkflowPackageValidator
         var macro = new ScriptObject();
         foreach (var m in manifest.Macros ?? new List<WorkflowMacroSpec>())
         {
-            macro.Add(m.Id, new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["content"] = "placeholder", ["prompt"] = "placeholder" });
+            // A duplicate id is refused by sentence above; the probe must not
+            // throw on it (A5 #1018 — found by the conformance export).
+            macro[m.Id] = new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["content"] = "placeholder", ["prompt"] = "placeholder" };
         }
 
         var run = new ScriptObject();

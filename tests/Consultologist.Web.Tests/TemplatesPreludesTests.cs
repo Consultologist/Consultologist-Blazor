@@ -17,6 +17,10 @@ public class TemplatesPreludesTests : ClientRenderTestContext
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
+        // A5 (#1018): the one upgrade is the 24→25 rewrite; the migrator maps schemas
+        // through the catalogue schemas and the desk at 25 resolves formats.
+        WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
+        WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
         return Render<Templates>();
     }
 
@@ -44,7 +48,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         var manifest = JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
             sent!.Manifest.GetRawText(), new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
         return Consultologist.PackageFormat.WorkflowPackageValidator.Validate(
-            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal));
+            manifest, sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal), new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog);
     }
 
     private static JsonElement Manifest(WorkflowPackagePublishRequest request) =>
@@ -91,7 +95,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         Navigate(page, "+ Prelude");
 
         Assert.Contains("A prelude publishes only as a node macro from specVersion 23.", page.Find(".prelude-retired").TextContent);
-        Assert.Contains("Upgrade to specVersion 24", page.Find(".prelude-retired").TextContent);
+        Assert.Contains("Upgrade to specVersion 25", page.Find(".prelude-retired").TextContent);
         Assert.Empty(page.FindAll("fluent-text-field[placeholder='snomed_tool_guidance']"));
         Assert.DoesNotContain(page.FindAll("fluent-button"), button => button.TextContent.Contains("Create prelude"));
         // Nothing pending: Publish has nothing to send.
@@ -214,36 +218,39 @@ public class TemplatesPreludesTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void UpgradingPast23_MigratesPreludesToNodeMacros_ByteForByte()
+    public void UpgradingPast23_MigratesPreludesToNodeMacros_ThenOnToSnippetsAt25()
     {
+        // #963 made the 23 step; A5 (#1018) chains it into the 25 rewrite, where
+        // a macro placed on no output becomes a snippet the prompt reads inline.
+        // (The byte-for-byte 24 composition — the bare macro first — is proved by
+        // MigratingOnDemandAt23_KeepsThePreludeAheadOfExistingNodeMacros.)
         var page = RenderEditor(EditorFixtures.V7Preludes());
         CapturePublish();
 
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
 
-        // Said once, up front: where guidance went, and that unused was dropped.
+        // Said once, up front: the 24 step, then every 25 rewrite.
         var notice = page.Find(".migration-notice").TextContent;
-        Assert.Contains("'guidance' → macro 'guidance' before 'draft-section'", notice);
+        Assert.Contains("Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
         Assert.Contains("Prelude 'unused' is used by no prompt and was dropped.", notice);
-        // The Preludes group retires with its last prelude; the macro is in the library.
+        Assert.Contains("now the snippet 'guidance'", notice);
+        // The Preludes group retires with its last prelude; guidance is a snippet now.
         Assert.DoesNotContain("Preludes", NavGroups(page));
+        Assert.Contains("Snippets", NavGroups(page));
         Assert.Contains(page.FindAll("button.editor-nav__item"), button => button.TextContent.Contains("guidance"));
 
         Publish(page);
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         var manifest = Manifest(sent!);
+        Assert.Equal(25, manifest.GetProperty("specVersion").GetInt32());
         Assert.False(manifest.TryGetProperty("preludes", out _));
-        Assert.False(Prompt(sent!, "draft-section").TryGetProperty("prelude", out _));
-        var macro = manifest.GetProperty("macros").EnumerateArray().Single();
-        Assert.Equal("guidance", macro.GetProperty("id").GetString());
-        Assert.Equal("macros/guidance.md", macro.GetProperty("file").GetString());
-        // The bare form, first: before, always — the prelude's exact composition.
-        Assert.Equal("guidance", Node(sent!, "draft-section").GetProperty("macros").EnumerateArray().Single().GetString());
-        // The text moved to macros/ (the publish door accepts no preludes/ path).
-        Assert.Equal("Use short SNOMED search terms.", sent!.Files["macros/guidance.md"]);
-        Assert.DoesNotContain("preludes/guidance.md", sent.Files.Keys);
-        Assert.DoesNotContain("preludes/unused.md", sent.Files.Keys);
+        Assert.False(manifest.TryGetProperty("macros", out _));
+        Assert.False(Prompt(sent!, "draft_section").TryGetProperty("prelude", out _));
+        Assert.Equal("snippets/guidance.md", manifest.GetProperty("snippets").GetProperty("guidance").GetString());
+        Assert.Equal("Use short SNOMED search terms.", sent!.Files["snippets/guidance.md"]);
+        Assert.StartsWith("{{ snippet.guidance.content }}", sent.Files["prompts/draft-section.md"]);
+        Assert.DoesNotContain(sent.Files.Keys, path => path.StartsWith("preludes/", StringComparison.Ordinal));
         var result = Validated();
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
@@ -276,11 +283,11 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         var page = RenderEditor(PreludesAt(7, declareGuidanceMacro: true));
         CapturePublish();
 
-        UpgradeTo(page, 24);
+        UpgradeTo(page, Templates.NewestSpecVersion);
 
         Assert.Contains("Prelude 'guidance' has the id of a declared macro; rename one, then upgrade.", page.Find(".upgrade-refusal").TextContent);
         // Nothing staged: the rung is still on offer, the preludes untouched.
-        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Upgrade to specVersion 24"));
+        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Upgrade to specVersion 25"));
         Assert.Contains("Preludes", NavGroups(page));
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);

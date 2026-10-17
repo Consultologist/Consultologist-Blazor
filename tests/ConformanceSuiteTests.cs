@@ -34,6 +34,9 @@ public class ConformanceSuiteTests
         WorkflowPackageManifest Manifest,
         Dictionary<string, string> Files);
 
+    /// <summary>A5 (#1018): the format catalogue a 25 case resolves its node formats against — the suite ships it beside catalog-schemas.json.</summary>
+    private sealed record FormatCatalogFile(string Index, Dictionary<string, string> Files);
+
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     private static string SuiteDirectory()
@@ -70,8 +73,11 @@ public class ConformanceSuiteTests
 
         var catalogSchemas = JsonSerializer.Deserialize<Dictionary<string, string>>(
             File.ReadAllText(Path.Combine(suite, "catalog-schemas.json")), Json)!;
+        var formatCatalog = JsonSerializer.Deserialize<FormatCatalogFile>(
+            File.ReadAllText(Path.Combine(suite, "format-catalog.json")), Json)!;
+        var formats = V25Package.BuildCatalog(formatCatalog.Index, formatCatalog.Files);
 
-        var result = WorkflowPackageValidator.Validate(testCase.Manifest, testCase.Files, catalogSchemas);
+        var result = WorkflowPackageValidator.Validate(testCase.Manifest, testCase.Files, catalogSchemas, null, formats);
 
         // The description is in the message on purpose: a failure here is read
         // by whoever changed a rule, and "invalid-values-without-enum" alone

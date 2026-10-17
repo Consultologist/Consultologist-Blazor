@@ -28,10 +28,6 @@
          probe and the accepted-set sentence. -->
     <InternalsVisibleTo Include="Consultologist.Api" />
     <InternalsVisibleTo Include="Consultologist.Api.Tests" />
-    <InternalsVisibleTo Include="Consultologist.Web" />
-    <!-- v25 (C1 #1007): the editor round-trip tests validate a 25 compose through
-         the accepted: seam while 25 is wired but not yet accepted. -->
-    <InternalsVisibleTo Include="Consultologist.Web.Tests" />
   </ItemGroup>
 
 </Project>

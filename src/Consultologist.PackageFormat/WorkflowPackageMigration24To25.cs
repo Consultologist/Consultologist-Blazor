@@ -64,7 +64,7 @@ public static class WorkflowPackageMigration24To25
             return Refused(manifestJson, files, $"The package is already at specVersion {manifest.SpecVersion}.");
         }
 
-        if (manifest.SpecVersion < 23 || (manifest.Result is not null && manifest.Results is null))
+        if (manifest.SpecVersion < 23)
         {
             return Refused(manifestJson, files, $"Migrate to specVersion 24 first (the package is at {manifest.SpecVersion}).");
         }
@@ -152,6 +152,8 @@ public static class WorkflowPackageMigration24To25
 
     private static void RenameIds(JsonObject root, WorkflowPackageManifest manifest, Dictionary<string, string> files, List<string> notices, List<string> refusals)
     {
+        RenamePromptIds(root, manifest, notices, refusals);
+
         var nodeIds = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).Select(n => n.Id).ToList();
         var renames = new Dictionary<string, string>(StringComparer.Ordinal);
 
@@ -244,6 +246,11 @@ public static class WorkflowPackageMigration24To25
             }
         }
 
+        if (Str(root, "result") is { } singleResult)
+        {
+            Set(root, "result", Node(singleResult));
+        }
+
         foreach (var result in Array(root, "results").OfType<JsonObject>())
         {
             foreach (var key in new[] { "node", "check" })
@@ -282,6 +289,62 @@ public static class WorkflowPackageMigration24To25
         }
 
         RenameTableKeys(root, manifest, files, notices, refusals);
+    }
+
+    /// <summary>
+    /// A5 (#1018): prompt ids are snake_case at 25 too (#1037) — the rewrite
+    /// renames a hyphenated prompt id and every node that names it. The
+    /// prompt's FILE keeps its name; only the id is a Scriban-facing identifier.
+    /// </summary>
+    private static void RenamePromptIds(JsonObject root, WorkflowPackageManifest manifest, List<string> notices, List<string> refusals)
+    {
+        var promptIds = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.Id).ToList();
+        var renames = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var id in promptIds.Where(id => !WorkflowDeclaredIds.IsValid(id)))
+        {
+            var renamed = id.Replace('-', '_');
+
+            if (!WorkflowDeclaredIds.IsValid(renamed))
+            {
+                refusals.Add($"Prompt id '{id}' cannot be made snake_case by replacing hyphens; rename it, then upgrade.");
+                continue;
+            }
+
+            if (promptIds.Contains(renamed, StringComparer.Ordinal) || renames.ContainsValue(renamed))
+            {
+                refusals.Add($"Prompt '{id}' renamed '{renamed}' collides with another prompt; rename one, then upgrade.");
+                continue;
+            }
+
+            renames[id] = renamed;
+        }
+
+        if (refusals.Count > 0 || renames.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var prompt in Array(root, "prompts").OfType<JsonObject>())
+        {
+            if (Str(prompt, "id") is { } id && renames.TryGetValue(id, out var to))
+            {
+                Set(prompt, "id", to);
+            }
+        }
+
+        foreach (var node in Array(root, "nodes").OfType<JsonObject>())
+        {
+            if (Str(node, "prompt") is { } prompt && renames.TryGetValue(prompt, out var to))
+            {
+                Set(node, "prompt", to);
+            }
+        }
+
+        foreach (var (from, to) in renames)
+        {
+            notices.Add($"Prompt '{from}' renamed '{to}' (a 25 prompt id is snake_case), on every node that names it.");
+        }
     }
 
     /// <summary>Data keys (snippet ids at 25) and schema keys (format ids at 25) must be snake_case too.</summary>
@@ -852,13 +915,25 @@ public static class WorkflowPackageMigration24To25
     private static IReadOnlySet<string> RewriteDeliverables(JsonObject root, WorkflowPackageManifest manifest, List<string> notices)
     {
         var slots = new HashSet<string>(StringComparer.Ordinal);
+        var nodesById = Array(root, "nodes").OfType<JsonObject>().Where(n => Str(n, "id") is not null).ToDictionary(n => Str(n, "id")!, StringComparer.Ordinal);
         var results = Get(root, "results") as JsonArray;
         if (results is null)
         {
+            // A5 (#1018): the ≤6 sugar — one deliverable as a string — becomes
+            // the one-entry list; its id is the node's, snake_cased, its label
+            // the node's label.
+            if (Str(root, "result") is { } single && single.StartsWith(NodePrefix, StringComparison.Ordinal))
+            {
+                var nodeId = single[NodePrefix.Length..];
+                var id = nodeId.Replace('-', '_');
+                var label = nodesById.TryGetValue(nodeId, out var target) ? Str(target, "label") ?? nodeId : nodeId;
+                Remove(root, "result");
+                Set(root, "deliverables", new JsonArray(new JsonObject { ["id"] = id, ["node"] = NodeRef(single), ["label"] = label }));
+                notices.Add($"result '{single}' is now the deliverable '{id}' (the string form is retired at 25).");
+            }
+
             return slots;
         }
-
-        var nodesById = Array(root, "nodes").OfType<JsonObject>().Where(n => Str(n, "id") is not null).ToDictionary(n => Str(n, "id")!, StringComparer.Ordinal);
 
         foreach (var result in results.OfType<JsonObject>())
         {
