@@ -142,6 +142,8 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
 
         Assert.Equal(before + "\n{{ node.extract.content | concept_context }}", EditorText(page));
         Assert.Contains("Reads:", page.Find(".template-reads").TextContent);
+        // #1058: the pipe types the read — no "the JSON renders as text" warning under it.
+        Assert.Empty(page.FindAll(".node-reads__warning"));
         // The palette resets after an insert.
         Assert.Equal("", page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").GetAttribute("current-value") ?? "");
 
@@ -150,6 +152,21 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         Assert.EndsWith("{{ node.extract.content | concept_context }}", sent!.Files[Assessment]);
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void ARenderer_IsOfferedOnlyForAConceptListNodesText()
+    {
+        // #1058: the validator refuses a renderer pipe on any other format, so the
+        // palette offers the renderer select only where it can apply.
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+
+        page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").Change("{{ node.scope.content }}");
+        Assert.Empty(page.FindAll("fluent-select[aria-label='Renderer for the reference']"));
+
+        page.Find($"fluent-select[aria-label='Reference to insert into {Assessment}']").Change("{{ node.extract.content }}");
+        Assert.Single(page.FindAll("fluent-select[aria-label='Renderer for the reference']"));
     }
 
     [Fact]

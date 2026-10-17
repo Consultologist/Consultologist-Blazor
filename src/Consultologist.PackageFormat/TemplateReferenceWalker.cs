@@ -16,8 +16,12 @@ namespace Consultologist.PackageFormat;
 /// path is static and steps into the element. Loop, <c>with</c> and
 /// <c>capture</c> variables are typed from what they bind, so the closed sets
 /// hold inside a folder iteration too. Reads inside a branch count the same.
-/// Pipes and functions are opaque here; the strict render probe stays the
-/// second net.
+/// Pipes and functions are opaque here, except the renderer pipes (§ 1,
+/// #1058): a renderer renders the <c>.content</c> of a node of its format, and
+/// an operand the walk can type is judged against that — another format, a
+/// <c>.value</c>, an input's or a snippet's text is refused with the remedy;
+/// what the walk cannot type (an assigned or loop variable, a nested
+/// expression) is left to the strict render probe, the second net.
 /// </summary>
 public static partial class TemplateReferenceWalker
 {
@@ -130,8 +134,18 @@ public static partial class TemplateReferenceWalker
     /// <summary><c>run</c> or <c>profile</c>, awaiting a fact name.</summary>
     private sealed record FactsTarget(string Object) : Target;
 
-    /// <summary>A typed value (null shape = untyped, members pass).</summary>
-    private sealed record ShapeTarget(TemplateValueShape? Shape) : Target;
+    /// <summary>
+    /// A typed value (null shape = untyped, members pass). Not sealed: a node's
+    /// <c>.content</c> and <c>.value</c> are shapes that remember whose they
+    /// are (#1058, the renderer pipes); every shape pattern matches them.
+    /// </summary>
+    private record ShapeTarget(TemplateValueShape? Shape) : Target;
+
+    /// <summary>#1058: <c>node.&lt;id&gt;.content</c> — a text that remembers its node; <c>Path</c> is the chain up to the node ("node.extract"), as the sentences spell it.</summary>
+    private sealed record NodeContentTarget(string Path, TemplateNodeShape Node) : ShapeTarget(TemplateValueShape.Text);
+
+    /// <summary>#1058: <c>node.&lt;id&gt;.value</c> — a typed value that remembers it is a node's parsed output.</summary>
+    private sealed record NodeValueTarget(string Path, TemplateValueShape Value) : ShapeTarget(Value);
 
     /// <summary>A Scriban builtin, a function result, anything the walker does not check.</summary>
     private sealed record OpaqueTarget : Target;
@@ -139,8 +153,24 @@ public static partial class TemplateReferenceWalker
     /// <summary>A chain already refused; further steps stay silent.</summary>
     private sealed record RefusedTarget : Target;
 
-    /// <summary>How a chain is used: as a value, as something iterated or piped (a folder is fine), or as a `with` object (a bare node, snippet, macro or item is fine).</summary>
-    private enum ChainUse { Value, Iterable, With }
+    /// <summary>
+    /// How a chain is used: as a value; as something iterated or piped on (a
+    /// folder is fine); as a `with` object (a bare node, snippet, macro or item
+    /// is fine); or (#1058) as the operand of a renderer pipe, judged against
+    /// the format the pipe renders. A parameter rather than a field so a
+    /// nested resolution (an index expression, a function argument) carries
+    /// its own use and nothing leaks.
+    /// </summary>
+    private readonly record struct ChainUse(ChainUseKind Kind, string? Pipe = null)
+    {
+        public static readonly ChainUse Value = new(ChainUseKind.Value);
+        public static readonly ChainUse Iterable = new(ChainUseKind.Iterable);
+        public static readonly ChainUse With = new(ChainUseKind.With);
+
+        public static ChainUse Rendered(string pipe) => new(ChainUseKind.Rendered, pipe);
+    }
+
+    private enum ChainUseKind { Value, Iterable, With, Rendered }
 
     private static readonly Target Opaque = new OpaqueTarget();
     private static readonly Target Refused = new RefusedTarget();
@@ -484,27 +514,44 @@ public static partial class TemplateReferenceWalker
 
         public override void Visit(ScriptPipeCall node)
         {
-            // The piped value may be a folder (snippet.sections | array.size).
-            ResolveExpression(node.From, ChainUse.Iterable);
+            // Scriban parses `x | r` with To = a call of r, and `x | r | g` with
+            // To = Pipe(From: call of r, To: call of g) — the destination is the
+            // inner From, and the rest is piped on.
+            var (destination, rest) = node.To is ScriptPipeCall chained ? (chained.From, chained.To) : (node.To, null);
+            var call = destination as ScriptFunctionCall;
+            var pipeTarget = call?.Target ?? destination;
 
-            // A renderer pipe (§ 1: {{ node.x.content | concept_context }}) is the closed
-            // set the engine provides — opaque here, checked when it renders (C4 #1010;
-            // before this it was refused as an unknown root). Anything else is walked.
-            var pipeTarget = node.To is ScriptFunctionCall call ? call.Target : node.To;
-
-            if (pipeTarget is ScriptVariable pipe && TemplatePipes.All.Contains(pipe.Name))
+            // #1058: a renderer pipe (§ 1: {{ node.x.content | concept_context }}) is the
+            // closed set the engine provides, and each renders the text of a node of ONE
+            // format — the operand is judged in Finalize under Rendered (C4 #1010 had
+            // accepted the pipes as opaque; before that they were refused as an unknown
+            // root). A literal cannot be a node's text and is not flattenable, so it is
+            // named here.
+            if (pipeTarget is ScriptVariable pipe && TemplatePipes.FormatOf(pipe.Name) is not null)
             {
-                if (node.To is ScriptFunctionCall pipeCall)
+                if (node.From is ScriptLiteral)
                 {
-                    foreach (var argument in pipeCall.Arguments)
+                    Errors.Add(NotANodesText(Describe(node.From), pipe.Name));
+                }
+                else
+                {
+                    ResolveExpression(node.From, ChainUse.Rendered(pipe.Name));
+                }
+
+                if (call is not null)
+                {
+                    foreach (var argument in call.Arguments)
                     {
                         ResolveExpression(argument, ChainUse.Iterable);
                     }
                 }
 
+                VisitNode(rest);
                 return;
             }
 
+            // Anything else: the piped value may be a folder (snippet.sections | array.size).
+            ResolveExpression(node.From, ChainUse.Iterable);
             VisitNode(node.To);
         }
 
@@ -934,14 +981,10 @@ public static partial class TemplateReferenceWalker
         {
             if (name == TemplateMembers.Content)
             {
+                // Recorded before any judgement: a refused pipe still names its edge.
+                // The bare-read warning is Finalize's (#1058) — it knows the use.
                 _refs.ReadNode(node.Id, content: true, value: false);
-
-                if (node.Shape.HasValue)
-                {
-                    _refs.Warnings.Add($"{_subject} reads {before}.content of format '{node.Shape.Format}' ({node.Shape.Type}); the JSON renders as text — read {before}.value for the fields.");
-                }
-
-                return new ShapeTarget(TemplateValueShape.Text);
+                return new NodeContentTarget(before, node.Shape);
             }
 
             if (name == TemplateMembers.Value)
@@ -953,7 +996,7 @@ public static partial class TemplateReferenceWalker
                 }
 
                 _refs.ReadNode(node.Id, content: false, value: true);
-                return new ShapeTarget(node.Shape.Type == WorkflowInputTypes.Enum && node.Shape.Schema is null
+                return new NodeValueTarget(before, node.Shape.Type == WorkflowInputTypes.Enum && node.Shape.Schema is null
                     ? new TemplateValueShape(WorkflowInputTypes.Enum, null, null, node.Shape.Values)
                     : TemplateValueShape.FromSchema(node.Shape.Schema));
             }
@@ -1100,9 +1143,22 @@ public static partial class TemplateReferenceWalker
             }
         }
 
-        /// <summary>A chain's last word: a node needs .content or .value, a snippet or macro a member, a folder a loop.</summary>
+        /// <summary>A chain's last word: a node needs .content or .value, a snippet or macro a member, a folder a loop; a renderer pipe's operand is judged against the pipe (#1058).</summary>
         private Target Finalize(Target target, string walked, ChainUse use)
         {
+            if (use.Kind == ChainUseKind.Rendered)
+            {
+                return FinalizeRendered(target, walked, use.Pipe!);
+            }
+
+            // #1058: a shaped node's text read bare — the JSON renders as text. (The
+            // operand of a renderer pipe is judged above instead; a chain that steps
+            // past .content is refused by the step and not also warned about.)
+            if (target is NodeContentTarget { Node.HasValue: true } content)
+            {
+                _refs.Warnings.Add($"{_subject} reads {content.Path}.content of format '{content.Node.Format}' ({content.Node.Type}); the JSON renders as text — read {content.Path}.value for the fields.");
+            }
+
             if (use == ChainUse.With && target is NodeTarget or SnippetTarget or MacroTarget or ItemTarget or FactsTarget)
             {
                 return target;
@@ -1138,6 +1194,50 @@ public static partial class TemplateReferenceWalker
                     return target;
             }
         }
+
+        /// <summary>
+        /// #1058: the operand of a renderer pipe — a node's text of the pipe's
+        /// format passes silently; anything else the walk can type is refused
+        /// with the remedy; what it cannot type (an assigned or loop variable,
+        /// a builtin's result, a nested expression) is judged when it renders
+        /// (TemplateRenderer.ApplyPipe), as before.
+        /// </summary>
+        private Target FinalizeRendered(Target target, string walked, string pipe)
+        {
+            var format = TemplatePipes.FormatOf(pipe)!;
+
+            switch (target)
+            {
+                case RefusedTarget:
+                    return Refused;
+
+                case NodeContentTarget content when string.Equals(content.Node.Format, format, StringComparison.Ordinal):
+                    return content;
+
+                case NodeContentTarget { Node.HasValue: false } content:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but format '{content.Node.Format}' is text; {pipe} renders a {format} node's text (node.<id>.content).");
+                    return Refused;
+
+                case NodeContentTarget content:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but format '{content.Node.Format}' ({content.Node.Type}) is not {format}; {pipe} renders a {format} node's text (node.<id>.content).");
+                    return Refused;
+
+                case NodeValueTarget value:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}; a renderer pipe renders a node's text — pipe {value.Path}.content.");
+                    return Refused;
+
+                case ShapeTarget { Shape: { } }:
+                case FolderTarget:
+                    Errors.Add(NotANodesText(walked, pipe));
+                    return Refused;
+
+                default:
+                    return Finalize(target, walked, ChainUse.Value);
+            }
+        }
+
+        private string NotANodesText(string what, string pipe) =>
+            $"{_subject} pipes {what} through {pipe}; a renderer pipe renders a node's text (node.<id>.content).";
 
         /// <summary>What a loop variable is bound to, from the iterated expression.</summary>
         private Target ElementOf(ScriptExpression? iterator)

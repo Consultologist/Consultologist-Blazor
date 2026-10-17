@@ -60,11 +60,16 @@ member is a publish refusal naming it.
 | `run` | `.date`, `.job`, `.package`, `.host` | the run facts, as the v11 `{{run:…}}` tokens gave them (A4, #999, 2026-10-13) |
 | `profile` | `.name`, `.signature` | the profile facts, as the v11/v12 `{{profile:…}}` tokens gave them; a `profile.signature` read signs, and a deliverable is signed once |
 
-**Renderers are pipes.** `{{ node.extract.content | concept_context }}` is the attested,
-byte-stable rendering a binding's `as: concept-context` gave; the closed renderer set is
-unchanged. A loop over `node.extract.value.concepts` is the package's own rendering. Both
-are allowed; a bare `.content` read of a structured format renders the JSON and the validator
-warns.
+**Renderers are pipes, and the pipes are typed (#1058).** `{{ node.extract.content |
+concept_context }}` is the attested, byte-stable rendering a binding's `as: concept-context`
+gave; the closed renderer set is unchanged. A renderer renders the `.content` of a
+`concept_list` node and only that: the text of a node of another format, a node's `.value`, an
+input's, a snippet's, an item's or a macro's text, a folder or a literal piped through a
+renderer is refused by name at publish (and at job start, the same walk); an operand the walk
+cannot type (an assigned or loop variable, a nested expression) is judged when it renders. A
+loop over `node.extract.value.concepts` is the package's own rendering. Both are allowed; a
+bare `.content` read of a structured format renders the JSON and the validator warns — the
+same read through a renderer pipe does not.
 
 **Everything is a template.** Snippets render (§ 4), macro text renders (§ 5), prompts
 render. The revision-1 "data files are not templates" rule and its post-render pass are gone:
@@ -720,7 +725,8 @@ walker's warnings word for word and an early word when a reference does not reso
 aggregator keeps its ordered sources. **Text panes** (prompt, snippet, folder item, macro): the
 palette offers the objects a template may read — grouped, an object format's fields from its
 schema, arrays and folders as loops, the fan item only where the reading node fans, never a
-slot read from a macro's own text — with a renderer pipe for a node's text, and **appends** the
+slot read from a macro's own text — with a renderer pipe for a concept_list node's text (#1058:
+the only format a renderer renders), and **appends** the
 reference on its own line (decision: no cursor helper; insertion at the cursor is the code
 editor rung's); the Variables form, the plain-text toggle and the slot hint are ≤24; a reads
 line and the warnings sit under the palette. **Compose:** a new prompt is its id and file (no
@@ -1021,7 +1027,17 @@ macro id (the export found it); the registry's `invalid-unknown-input-type` v9 c
 with warnings — the rewrite spells a concept-list read as `node.x.content | concept_bullets`
 and the walker warns on every `.content` read of a shaped format regardless of the pipe;
 suppressing the warning when the read goes through a renderer pipe (C4 blesses it) is a
-validator refinement. Prod runs 25 with engine release v2026.10.5.
+validator refinement. Prod runs 25 with engine release v2026.10.5. *(2026-10-17: done — #1058
+typed the pipes rather than suppressing the warning: `TemplatePipes.Specs` names the format
+each renderer renders, a node's `.content`/`.value` reads carry their node to the chain's last
+word, and a renderer pipe's operand is judged there — a concept_list node's text passes with no
+warning, anything else the walk can type is refused by name (before this, `node.prose.content |
+concept_bullets` published cleanly and failed inside a live consult), anything it cannot is
+judged when it renders. The migrated minimal is warning-free; package-format v2026.10.7 carries
+the re-exported vectors and three new refusals; the editor's palette offers the renderer select
+only on a concept_list node's read and its pane counts "problems in this text" rather than
+"references that do not resolve". The grammar tidy-up — a pipe takes the node,
+`{{ node.x | concept_context }}` — is #1059, for v26.)*
 
 *(#1046, 2026-10-17 — an input is not a "slot". The word named two things: the macro the model places
 (the ≤24 `[[slot:<id>]]` marker, `slot: true`, the record kind, `WorkflowSlotMarker`, `ConsultSlotFiller`, the
