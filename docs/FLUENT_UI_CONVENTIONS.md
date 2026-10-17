@@ -42,7 +42,7 @@ buttons carry an `aria-label` (and usually a `Title`).
   `fluent-button[…]`.
 - **`FluentButton.OnClick` is a component callback, not the DOM `@onclick`** — the
   `@onclick:preventDefault`/`@onclick:stopPropagation` modifiers don't apply to it. Inside a
-  `<summary>` or a slot `<label>`, wrap the button in a `<span @onclick:preventDefault
+  `<summary>` or an input `<label>`, wrap the button in a `<span @onclick:preventDefault
   @onclick:stopPropagation>` so the click doesn't toggle the `<details>` or activate the label
   (the label-activation gotcha, #510/#534). bUnit cannot show label activation — verify live.
 - **Design tokens / accent** are set once via `<FluentDesignTheme CustomColor="#0078d4">`

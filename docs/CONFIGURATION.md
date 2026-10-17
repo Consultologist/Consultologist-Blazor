@@ -358,10 +358,10 @@ starts a normal consult job from the email body and any `.txt`/`.md`
 attachments (`source: email`), and replies on completion with a no-PHI
 `/history/{jobId}` deep link.
 
-Attachments fill the pinned package's declared input slots (#210): a
-filename stem claims the slot it names (outranking the body for it),
+Attachments fill the pinned package's declared inputs (#210): a
+filename stem claims the input it names (outranking the body for it),
 the body takes `consult_draft` if still free, and one leftover file
-fills one leftover slot. Caps are code constants, not settings — 256 KB
+fills one leftover input. Caps are code constants, not settings — 256 KB
 per body, and since #237 10 MB per attachment with 20 MB across all of
 them, matching the app door.
 
