@@ -243,6 +243,9 @@ internal static class PackageFormatSchema
             Remove(properties, "variables");
             Remove(properties, "prelude");
             Remove(properties, "raw");
+            // A5 (#1018): the model's non-null list made variables REQUIRED;
+            // at 25 the member is gone from the wire, so it leaves required too.
+            item["required"] = new JsonArray(item["required"]!.AsArray().Select(r => r!.GetValue<string>()).Where(r => r != "variables").Select(r => (JsonNode?)JsonValue.Create(r)).ToArray());
             // A5 (#1018, after #1037): a prompt id is snake_case at 25.
             Object(properties, "id")["pattern"] = DeclaredId;
             Close(item);

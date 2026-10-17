@@ -295,6 +295,7 @@ public class PackageFormatSchemaTests
             Assert.False(prompt.ContainsKey(retired), retired);
         }
         Assert.Equal("^[a-z][a-z0-9_]*$", prompt["id"]!["pattern"]!.GetValue<string>());
+        Assert.Equal(new[] { "id", "file" }, properties["prompts"]!["items"]!["required"]!.AsArray().Select(r => r!.GetValue<string>()));
         Assert.Equal("^[a-z][a-z0-9_]*$", properties["snippets"]!["propertyNames"]!["pattern"]!.GetValue<string>());
         Assert.Equal("^node\\.[a-z][a-z0-9_]*$", properties["deliverables"]!["items"]!["properties"]!["node"]!["pattern"]!.GetValue<string>());
 
