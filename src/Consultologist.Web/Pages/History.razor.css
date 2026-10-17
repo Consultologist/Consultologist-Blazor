@@ -207,7 +207,7 @@
 	font-weight: 400;
 }
 
-/* #428: a slot read from several documents lists them in the order supplied. */
+/* #428: an input read from several documents lists them in the order supplied. */
 .provenance-documents {
 	margin: 0;
 	padding-left: 1.1rem;

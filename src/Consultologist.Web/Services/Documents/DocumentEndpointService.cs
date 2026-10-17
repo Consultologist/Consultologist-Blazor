@@ -41,7 +41,7 @@ public interface IDocumentEndpointService
     /// #615: a OneDrive/SharePoint sharing link becomes the document — the
     /// server retrieves it as the signed-in clinician (on-behalf-of) and
     /// runs the same parser an upload does. The outcome carries the item's
-    /// bytes and name so the slot holds exactly what an upload would.
+    /// bytes and name so the input holds exactly what an upload would.
     /// </summary>
     Task<LinkDocumentOutcome> ExtractFromLinkAsync(string url);
 }

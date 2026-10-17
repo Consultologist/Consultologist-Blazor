@@ -14,7 +14,7 @@ namespace Consultologist.Web.Services.Provenance;
 /// </summary>
 public static class RerunComparison
 {
-    /// <summary>The origin kind the server stamps on every effective slot of a rerun.</summary>
+    /// <summary>The origin kind the server stamps on every effective input of a rerun.</summary>
     public const string OriginKind = "rerun";
 
     public const string Same = "same";
@@ -24,7 +24,7 @@ public static class RerunComparison
     public const string NotOnSource = "not on the source run";
 
     /// <summary>
-    /// The run this record replays — the job-level field since #582, the slot
+    /// The run this record replays — the job-level field since #582, the input
     /// origins for #549-era reruns; null for an ordinary run.
     /// </summary>
     public static string? SourceJobIdOf(ConsultGenerationJobResponse detail) =>

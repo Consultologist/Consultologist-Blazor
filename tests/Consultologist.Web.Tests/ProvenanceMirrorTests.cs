@@ -6,8 +6,8 @@ namespace Consultologist.Web.Tests;
 
 /// <summary>
 /// #428: the request's document map and the response's origin map are
-/// hand-mirrored on the client, and this layer changed both shapes — slot →
-/// list of documents, slot → list of origins. This project references both
+/// hand-mirrored on the client, and this layer changed both shapes — input →
+/// list of documents, input → list of origins. This project references both
 /// assemblies, which is what makes the mirror provable (the pattern of
 /// ConsultInputValueMirrorTests).
 /// </summary>
@@ -40,7 +40,7 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
-    public void TwoOriginsForOneSlot_ReachTheClientInOrder()
+    public void TwoOriginsForOneInput_ReachTheClientInOrder()
     {
         var response = new ApiModels.ConsultGenerationJobResponse(
             "job-1", "user-1", "Completed", 1, 1, 0,
@@ -201,7 +201,7 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
-    public void TwoDocumentsForOneSlot_ReachTheServerInOrder()
+    public void TwoDocumentsForOneInput_ReachTheServerInOrder()
     {
         var request = new WebAI.ConsultGenerationRequest(
             null,

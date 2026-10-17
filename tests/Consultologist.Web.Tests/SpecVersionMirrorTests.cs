@@ -159,8 +159,8 @@ public class SpecVersionMirrorTests
     [Fact]
     public void TheClientsExpectedContent_AreTheServers()
     {
-        // v13 (#728): the content channels the setup form labels a slot with —
-        // a channel the server knows and the client does not is a slot the form
+        // v13 (#728): the content channels the setup form labels an input with —
+        // a channel the server knows and the client does not is an input the form
         // cannot mark. The list and the version gate are both mirrored.
         Assert.Equal(
             WorkflowExpectedContent.All,

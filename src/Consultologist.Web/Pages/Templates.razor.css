@@ -352,7 +352,7 @@ fluent-button.node-field__button::part(control) {
 	margin: 0.25rem 0 0;
 }
 
-/* The v7 declared sections: one row per input slot or deliverable (#218). */
+/* The v7 declared sections: one row per input or deliverable (#218). */
 .declared-list {
 	list-style: none;
 	margin: 0.5rem 0 0;

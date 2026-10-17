@@ -1,5 +1,5 @@
 @* #540: "Load from a form response…" — the form-level sibling of the
-   per-slot PreviousRunPicker (#510's inline-disclosure idiom; no dialog
+   per-input PreviousRunPicker (#510's inline-disclosure idiom; no dialog
    infrastructure exists). Held responses newest first; a discarded one is
    listed and not choosable, saying "values deleted MMM d, yyyy" (spike
    § 4.2's exact wording). Choosing fetches the values and hands them to
@@ -9,11 +9,11 @@
 @inject IFormsIntakeEndpointService FormsService
 
 <span class="form-picker" @onclick:stopPropagation="true">
-    @* Wrapper span carries the preventDefault the slot label needs; FluentButton's
+    @* Wrapper span carries the preventDefault the input label needs; FluentButton's
        OnClick can't (this picker lives inside the input's <label>). *@
     @* #893: a FluentMenu flyout (keyboard nav + Escape/Tab dismissal + focus for free).
        UseMenuService="false" renders it inline; Open is driven from the trigger so it
-       stays bUnit-driveable. The wrapper span keeps the slot-label preventDefault. *@
+       stays bUnit-driveable. The wrapper span keeps the input-label preventDefault. *@
     <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
         <FluentButton Id="@triggerId"
                       Appearance="Appearance.Stealth"

@@ -40,14 +40,14 @@
 
     /// <summary>
     /// The package's declared input ids (specVersion 7). Empty falls back to
-    /// the frozen consult_draft slot, which is v5/v6's whole vocabulary.
+    /// the frozen consult_draft input, which is v5/v6's whole vocabulary.
     /// </summary>
     [Parameter] public IReadOnlyList<string> Inputs { get; set; } = Array.Empty<string>();
     [Parameter] public EventCallback<WorkflowNodeSummary.BindingChange> OnChanged { get; set; }
 
     // The valid source space for one node; a nonempty current value is always
     // included so an unrecognized source still displays truthfully — which is
-    // also what shows a binding left pointing at a removed input slot.
+    // also what shows a binding left pointing at a removed input.
     internal static IEnumerable<string> SourceOptions(
         IReadOnlyList<WorkflowManifestReader.NodeView> nodes,
         IReadOnlyList<string> scalars,

@@ -109,7 +109,7 @@ public record PublicContractView(string? AgentName);
 
 public record WorkflowPackageBlockResponse(string Id, string Name);
 
-/// <summary>One declared input slot — the setup form renders a field per entry.</summary>
+/// <summary>One declared input — the setup form renders a field per entry.</summary>
 public record WorkflowPackageInputResponse(
     string Id,
     string Label,
@@ -126,8 +126,8 @@ public record WorkflowPackageInputResponse(
     IReadOnlyList<WorkflowPackageFieldResponse>? Fields = null,
     // v13 (#728): the declared content channel — transcript or form. Null before 13.
     string? ExpectedContent = null,
-    // v14 (#729): a union slot's accepted types, in try order (Type is the
-    // primary/first arm the setup form renders). Null for a single-type slot.
+    // v14 (#729): a union input's accepted types, in try order (Type is the
+    // primary/first arm the setup form renders). Null for a single-type input.
     IReadOnlyList<string>? Types = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.WorkflowPackageFieldResponse.</summary>
@@ -218,7 +218,7 @@ public static class WorkflowInputTypes
 
 /// <summary>
 /// Mirrors Consultologist.PackageFormat.WorkflowExpectedContent (v13, #728):
-/// the declared content channel a slot expects. Pinned against the server's in
+/// the declared content channel an input expects. Pinned against the server's in
 /// SpecVersionMirrorTests.
 /// </summary>
 public static class WorkflowExpectedContent
@@ -241,11 +241,11 @@ public static class WorkflowExpectedContent
         specVersion >= 17 ? All : specVersion >= 16 ? V16Channels : specVersion >= 13 ? V13Channels : Array.Empty<string>();
 
     /// <summary>
-    /// v25 C5 (#1011): the channels one slot may declare — the validator's
+    /// v25 C5 (#1011): the channels one input may declare — the validator's
     /// channel/type rule (WorkflowPackageValidator.ValidateInput) as the list the
-    /// editor offers. A union slot takes none; text and an array of text take
+    /// editor offers. A union input takes none; text and an array of text take
     /// every channel of the version; a scalar (enum, boolean, number, date)
-    /// takes form; an object takes form from 25 (§ 9: a form slot may be an
+    /// takes form; an object takes form from 25 (§ 9: a form input may be an
     /// object with declared fields); an array of anything else takes none.
     /// </summary>
     public static IReadOnlyList<string> ChannelsFor(WorkflowManifestReader.InputView input, int specVersion)
@@ -278,7 +278,7 @@ public static class WorkflowExpectedContent
         return new[] { Form };
     }
 
-    /// <summary>Whether this slot, at this version, may declare the channel.</summary>
+    /// <summary>Whether this input, at this version, may declare the channel.</summary>
     public static bool TakesChannel(WorkflowManifestReader.InputView input, string? channel, int specVersion) =>
         string.IsNullOrEmpty(channel) || ChannelsFor(input, specVersion).Contains(channel, StringComparer.Ordinal);
 }

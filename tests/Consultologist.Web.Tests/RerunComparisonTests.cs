@@ -142,7 +142,7 @@ public class RerunComparisonTests
     public void TheJobLevelField_WinsOverTheOrigins()
     {
         // #582: RerunOf is authoritative when present; #549-era reruns still
-        // resolve through their slot origins.
+        // resolve through their input origins.
         var stamped = Job(inputOrigins: new Dictionary<string, IReadOnlyList<ConsultInputOrigin>>
         {
             ["consult_draft"] = new[] { new ConsultInputOrigin("rerun", SourceJobId: "origin-source") }

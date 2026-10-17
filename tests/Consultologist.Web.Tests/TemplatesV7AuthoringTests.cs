@@ -43,7 +43,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void InputsPane_RendersOneRowPerDeclaredSlot()
+    public void InputsPane_RendersOneRowPerDeclaredInput()
     {
         var page = RenderEditor();
         Navigate(page, "Inputs");
@@ -52,7 +52,7 @@ public class TemplatesV7AuthoringTests : ClientRenderTestContext
         Assert.Equal(2, rows.Count);
         Assert.Equal("consult_draft", rows[0].QuerySelector("input.declared-row__id")!.GetAttribute("value"));
         Assert.Equal("prior_notes", rows[1].QuerySelector("input.declared-row__id")!.GetAttribute("value"));
-        // The optional slot's checkbox is unchecked.
+        // The optional input's checkbox is unchecked.
         Assert.False(rows[1].QuerySelector("input[type=checkbox]")!.HasAttribute("checked"));
     }
 

@@ -23,7 +23,7 @@ public interface IAIEndpointService
         string? workflowPackage = null,
         DateTimeOffset? scheduledAtUtc = null,
         IReadOnlyDictionary<string, IReadOnlyList<InputFilePayload>>? files = null,
-        // #510: slots filled from previous runs — references the server resolves.
+        // #510: inputs filled from previous runs — references the server resolves.
         IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>? refs = null,
         // #540: per filled input, the held form response its value came from —
         // an assertion beside the value, verified by the server at start.
@@ -475,17 +475,17 @@ public record ConsultGenerationRequest(
     // boolean for boolean. A bare string still means text, so the v7 shape is
     // unchanged for every package that declares no types.
     Dictionary<string, ConsultInputValue>? Inputs = null,
-    // #238: a slot filled by documents instead of text. The server extracts
+    // #238: an input filled by documents instead of text. The server extracts
     // them at job start, so origin is observed rather than asserted.
     //
-    // v9 (#428): a slot maps to its documents in the order supplied; one
-    // document is a one-element list. Only a slot declared an array of text
+    // v9 (#428): an input maps to its documents in the order supplied; one
+    // document is a one-element list. Only an input declared an array of text
     // takes several (package-format-v9-design.md § 7). The setup form still
-    // attaches one per slot — the picker is #429's.
+    // attaches one per input — the picker is #429's.
     Dictionary<string, List<InputFilePayload>>? InputFiles = null,
-    // #510: a slot filled from the account's own previous runs — one
+    // #510: an input filled from the account's own previous runs — one
     // deliverable per element; the server copies the text at start and
-    // records the origin. A slot appears in one map only.
+    // records the origin. An input appears in one map only.
     Dictionary<string, List<ConsultInputRef>>? InputRefs = null,
     // #540: mirrors the Api's InputFormRefs — per filled input, the held
     // form response its value was loaded from, an assertion BESIDE the
@@ -494,7 +494,7 @@ public record ConsultGenerationRequest(
     // v12 § 3 (#621): mirrors the API record's trailing member — the ids
     // whose value deviates from the manifest default.
     Dictionary<string, bool>? MacroChoices = null,
-    // #613/#671: mirrors the API record's trailing member — the file slots
+    // #613/#671: mirrors the API record's trailing member — the file inputs
     // whose supplied documents are transcripts. The setup form does not send
     // it (the SPA has no transcript intake); the Zoom satellite, a separate
     // client, is what populates it. Kept here so the mirror stays faithful.

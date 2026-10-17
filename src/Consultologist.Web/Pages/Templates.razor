@@ -1203,103 +1203,103 @@
                         <ul class="declared-list">
                             @foreach (var input in EffectiveInputs)
                             {
-                                var slot = input;
+                                var declared = input;
                                 <li class="declared-row">
                                     <input class="node-field__input declared-row__id"
-                                           value="@slot.Id"
-                                           @onchange="args => RenameInputAsync(slot, args.Value?.ToString())"
-                                           aria-label="@($"Id for input {slot.Id}")" />
+                                           value="@declared.Id"
+                                           @onchange="args => RenameInputAsync(declared, args.Value?.ToString())"
+                                           aria-label="@($"Id for input {declared.Id}")" />
                                     <input class="node-field__input"
-                                           value="@slot.Label"
-                                           @onchange="args => RelabelInputAsync(slot, args.Value?.ToString())"
-                                           aria-label="@($"Label for input {slot.Id}")" />
+                                           value="@declared.Label"
+                                           @onchange="args => RelabelInputAsync(declared, args.Value?.ToString())"
+                                           aria-label="@($"Label for input {declared.Id}")" />
                                     <label class="declared-row__required">
                                         <input type="checkbox"
-                                               checked="@slot.Required"
-                                               @onchange="args => SetInputRequiredAsync(slot, args.Value is true)"
-                                               aria-label="@($"Required for input {slot.Id}")" />
+                                               checked="@declared.Required"
+                                               @onchange="args => SetInputRequiredAsync(declared, args.Value is true)"
+                                               aria-label="@($"Required for input {declared.Id}")" />
                                         required
                                     </label>
                                     @* v8: the declared type decides the intake control and
                                        what a condition can read. v9 (#429): a number, an
                                        object of fields, an array of elements. *@
                                     <FluentSelect TOption="string" class="node-field__input declared-row__type"
-                                            Value="@WorkflowInputTypes.Of(slot)"
-                                            ValueChanged="@(v => RetypeInputAsync(slot, v))"
-                                            aria-label="@($"Type for input {slot.Id}")">
+                                            Value="@WorkflowInputTypes.Of(declared)"
+                                            ValueChanged="@(v => RetypeInputAsync(declared, v))"
+                                            aria-label="@($"Type for input {declared.Id}")">
                                         @* A type the vocabulary does not know is shown as
                                            itself rather than as "text". *@
-                                        @if (!WorkflowInputTypes.All.Contains(WorkflowInputTypes.Of(slot)))
+                                        @if (!WorkflowInputTypes.All.Contains(WorkflowInputTypes.Of(declared)))
                                         {
-                                            <FluentOption TOption="string" Value="@WorkflowInputTypes.Of(slot)">@WorkflowInputTypes.Of(slot)</FluentOption>
+                                            <FluentOption TOption="string" Value="@WorkflowInputTypes.Of(declared)">@WorkflowInputTypes.Of(declared)</FluentOption>
                                         }
                                         @foreach (var type in WorkflowInputTypes.All)
                                         {
                                             <FluentOption TOption="string" Value="@type">@type</FluentOption>
                                         }
                                     </FluentSelect>
-                                    @if (WorkflowInputTypes.Of(slot) == WorkflowInputTypes.Array)
+                                    @if (WorkflowInputTypes.Of(declared) == WorkflowInputTypes.Array)
                                     {
                                         @* Explicit initialisation: an array says what its
                                            entries are, or the desk refuses the publish. *@
                                         <FluentSelect TOption="string" class="node-field__input declared-row__items"
-                                                Value="@(slot.Items?.Type ?? string.Empty)"
-                                                ValueChanged="@(v => SetInputItemsAsync(slot, v))"
-                                                aria-label="@($"Items for input {slot.Id}")">
-                                            @if (slot.Items is null)
+                                                Value="@(declared.Items?.Type ?? string.Empty)"
+                                                ValueChanged="@(v => SetInputItemsAsync(declared, v))"
+                                                aria-label="@($"Items for input {declared.Id}")">
+                                            @if (declared.Items is null)
                                             {
                                                 <FluentOption TOption="string" Value="">entries of…</FluentOption>
                                             }
-                                            else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(slot.Items.Type))
+                                            else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(declared.Items.Type))
                                             {
-                                                <FluentOption TOption="string" Value="@slot.Items.Type">@slot.Items.Type</FluentOption>
+                                                <FluentOption TOption="string" Value="@declared.Items.Type">@declared.Items.Type</FluentOption>
                                             }
                                             @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                             {
                                                 <FluentOption TOption="string" Value="@element">@element</FluentOption>
                                             }
                                         </FluentSelect>
-                                        @if (slot.Items?.Type == WorkflowInputTypes.Array)
+                                        @if (declared.Items?.Type == WorkflowInputTypes.Array)
                                         {
                                             @* v10 (#498): an array of arrays says what the inner
                                                entries are, and if those are structure the editor
                                                draws itself again beneath, to any depth. *@
                                             <FluentSelect TOption="string" class="node-field__input declared-row__inner-items"
-                                                    Value="@(slot.Items.Items?.Type ?? string.Empty)"
-                                                    ValueChanged="@(v => SetElementTypeAsync(InnerElementPath(slot.Id), v))"
-                                                    aria-label="@($"Inner items for input {slot.Id}")">
-                                                @if (slot.Items.Items is null)
+                                                    Value="@(declared.Items.Items?.Type ?? string.Empty)"
+                                                    ValueChanged="@(v => SetElementTypeAsync(InnerElementPath(declared.Id), v))"
+                                                    aria-label="@($"Inner items for input {declared.Id}")">
+                                                @if (declared.Items.Items is null)
                                                 {
                                                     <FluentOption TOption="string" Value="">entries of entries of…</FluentOption>
                                                 }
-                                                else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(slot.Items.Items.Type))
+                                                else if (!WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion).Contains(declared.Items.Items.Type))
                                                 {
-                                                    <FluentOption TOption="string" Value="@slot.Items.Items.Type">@slot.Items.Items.Type</FluentOption>
+                                                    <FluentOption TOption="string" Value="@declared.Items.Items.Type">@declared.Items.Items.Type</FluentOption>
                                                 }
                                                 @foreach (var element in WorkflowInputTypes.ElementTypesFor(EffectiveSpecVersion))
                                                 {
                                                     <FluentOption TOption="string" Value="@element">@element</FluentOption>
                                                 }
                                             </FluentSelect>
-                                            @ElementChildren(new ElementScope(InnerElementPath(slot.Id), slot.Items.Items))
+                                            @ElementChildren(new ElementScope(InnerElementPath(declared.Id), declared.Items.Items))
                                         }
                                     }
                                     @* #745: the content channel (#728/#730/#673). Version-gated —
                                        ForSpecVersion is empty below 13, gains image at 16, ambient-note
-                                       at 17. C5 (#1011): offered only where the slot's type takes the
+                                       at 17. C5 (#1011): offered only where the declared's type takes the
                                        channel (the validator's rule — form on an object from 25); a
                                        loaded value the list no longer offers still shows as itself. *@
-                                    @{ var channels = WorkflowExpectedContent.ChannelsFor(slot, EffectiveSpecVersion); }
-                                    @if (channels.Count > 0 || !string.IsNullOrEmpty(slot.ExpectedContent))
+                                    @{ var channels = WorkflowExpectedContent.ChannelsFor(declared, EffectiveSpecVersion); }
+                                    @if (channels.Count > 0 || !string.IsNullOrEmpty(declared.ExpectedContent))
                                     {
                                         <FluentSelect TOption="string" class="node-field__input declared-row__channel"
-                                                Value="@(slot.ExpectedContent ?? string.Empty)"
-                                                ValueChanged="@(v => SetExpectedContentAsync(slot, v))"
-                                                aria-label="@($"Content channel for input {slot.Id}")">
+                                                Value="@(declared.ExpectedContent ?? string.Empty)"
+                                                ValueChanged="@(v => SetExpectedContentAsync(declared, v))"
+                                                aria-label="@($"Content channel for input {declared.Id}")">
                                             <FluentOption TOption="string" Value="">— no channel —</FluentOption>
-                                            @if (!string.IsNullOrEmpty(slot.ExpectedContent) && !channels.Contains(slot.ExpectedContent))
+                                            @if (!string.IsNullOrEmpty(declared.ExpectedContent) && !channels.Contains(declared.ExpectedContent))
                                             {
-                                                <FluentOption TOption="string" Value="@slot.ExpectedContent">@slot.ExpectedContent</FluentOption>
+                                                <FluentOption TOption="string" Value="@declared.ExpectedContent">@declared.ExpectedContent</FluentOption>
                                             }
                                             @foreach (var channel in channels)
                                             {
@@ -1309,15 +1309,15 @@
                                     }
                                     <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove input"
                                                   aria-label="Remove input"
-                                                  Disabled="@(EffectiveInputs.Count == 1 || ConditionLock(slot) != null)"
+                                                  Disabled="@(EffectiveInputs.Count == 1 || ConditionLock(declared) != null)"
                                                   IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                  @onclick="() => RemoveInputAsync(slot)" />
+                                                  @onclick="() => RemoveInputAsync(declared)" />
                                 </li>
 
-                                @if (WorkflowInputTypes.DeclaresValues(slot))
+                                @if (WorkflowInputTypes.DeclaresValues(declared))
                                 {
                                     <li class="declared-row__values">
-                                        @foreach (var value in slot.Values ?? Array.Empty<string>())
+                                        @foreach (var value in declared.Values ?? Array.Empty<string>())
                                         {
                                             var declaredValue = value;
                                             <span class="input-field__chip" data-enum-value="@declaredValue">
@@ -1325,18 +1325,18 @@
                                                 <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove value"
                                                               aria-label="@($"Remove value {declaredValue}")"
                                                               IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                              @onclick="() => RemoveEnumValueAsync(slot, declaredValue)" />
+                                                              @onclick="() => RemoveEnumValueAsync(declared, declaredValue)" />
                                             </span>
                                         }
                                         <input class="node-field__input" placeholder="follow_up"
-                                               @onchange="args => AddEnumValueAsync(slot, args.Value?.ToString())"
-                                               aria-label="@($"Add a value to {slot.Id}")" />
+                                               @onchange="args => AddEnumValueAsync(declared, args.Value?.ToString())"
+                                               aria-label="@($"Add a value to {declared.Id}")" />
                                     </li>
                                 }
 
-                                @if (WorkflowInputTypes.DeclaresObject(slot))
+                                @if (WorkflowInputTypes.DeclaresObject(declared))
                                 {
-                                    @FieldsEditor(new FieldsScope(slot.Id, slot.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()))
+                                    @FieldsEditor(new FieldsScope(declared.Id, declared.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()))
                                 }
 
                                 @* #745: a union type (#729) — the primary type above is the first arm;
@@ -1346,7 +1346,7 @@
                                 {
                                     <li class="declared-row__union">
                                         <span class="muted-text">also accepts:</span>
-                                        @foreach (var arm in UnionExtraArms(slot))
+                                        @foreach (var arm in UnionExtraArms(declared))
                                         {
                                             var armValue = arm;
                                             <span class="input-field__chip" data-union-arm="@armValue">
@@ -1354,13 +1354,13 @@
                                                 <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove type"
                                                               aria-label="@($"Remove type {armValue}")"
                                                               IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                              @onclick="() => RemoveTypeArmAsync(slot, armValue)" />
+                                                              @onclick="() => RemoveTypeArmAsync(declared, armValue)" />
                                             </span>
                                         }
                                         <FluentSelect TOption="string" class="node-field__input declared-row__add-arm"
                                                 Value=""
-                                                ValueChanged="@(v => AddTypeArmAsync(slot, v))"
-                                                aria-label="@($"Add an accepted type to {slot.Id}")">
+                                                ValueChanged="@(v => AddTypeArmAsync(declared, v))"
+                                                aria-label="@($"Add an accepted type to {declared.Id}")">
                                             <FluentOption TOption="string" Value="">add a type…</FluentOption>
                                             @foreach (var type in WorkflowInputTypes.All)
                                             {
@@ -1370,7 +1370,7 @@
                                     </li>
                                 }
 
-                                @if (ConditionLock(slot) is { } lockedBy)
+                                @if (ConditionLock(declared) is { } lockedBy)
                                 {
                                     <li class="declared-row__note"><span class="muted-text">@lockedBy</span></li>
                                 }
@@ -6402,7 +6402,7 @@
         new("^[a-z][a-z0-9_]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     // What binding source lists offer. Empty for v5/v6, where the editor falls
-    // back to the frozen consult_draft slot.
+    // back to the frozen consult_draft input.
     private IReadOnlyList<string> DeclaredInputIds =>
         EffectiveInputs.Select(input => input.Id).ToList();
 
@@ -6575,7 +6575,7 @@
             .Where(input => string.IsNullOrWhiteSpace(input.Label))
             .Select(input => $"Input '{input.Id}' has no label."));
 
-        // A binding left pointing at a slot that no longer exists is the
+        // A binding left pointing at an input that no longer exists is the
         // failure mode renaming was built to avoid; catch the manual case too.
         var declared = inputs.Select(input => input.Id).ToHashSet(StringComparer.Ordinal);
 
@@ -7322,7 +7322,7 @@
     /// <summary>
     /// C5 (#1011): the validator's content-channel sentences for one input — the
     /// version gate, a union, an unknown channel, transcript / image / ambient-note
-    /// on a slot that is not text or an array of text, form on an object below 25 or
+    /// on an input that is not text or an array of text, form on an object below 25 or
     /// on an array of objects, and form on an object with no fields at 25.
     /// </summary>
     private IEnumerable<string> ChannelErrors(WorkflowManifestReader.InputView input)
@@ -7336,7 +7336,7 @@
 
         if (input.Types is { Count: > 1 })
         {
-            yield return $"Input '{input.Id}' declares expectedContent on a union type; a content channel is only for a single-type slot.";
+            yield return $"Input '{input.Id}' declares expectedContent on a union type; a content channel is only for a single-type input.";
             yield break;
         }
 
@@ -7357,13 +7357,13 @@
         }
         else if (content == WorkflowExpectedContent.Transcript && !textual)
         {
-            yield return $"Input '{input.Id}' declares expectedContent 'transcript', which is only for a text slot or an array of text.";
+            yield return $"Input '{input.Id}' declares expectedContent 'transcript', which is only for a text input or an array of text.";
         }
         else if (content == WorkflowExpectedContent.Form
             && ((type == WorkflowInputTypes.Object && EffectiveSpecVersion < 25)
                 || (type == WorkflowInputTypes.Array && elementType == WorkflowInputTypes.Object)))
         {
-            yield return $"Input '{input.Id}' declares expectedContent 'form', which a slot of type '{type}' cannot be filled from.";
+            yield return $"Input '{input.Id}' declares expectedContent 'form', which an input of type '{type}' cannot be filled from.";
         }
         else if (content == WorkflowExpectedContent.Form && type == WorkflowInputTypes.Object && input.Fields is not { Count: > 0 })
         {
@@ -7371,11 +7371,11 @@
         }
         else if (content == WorkflowExpectedContent.Image && !textual)
         {
-            yield return $"Input '{input.Id}' declares expectedContent 'image', which is only for a text slot or an array of text.";
+            yield return $"Input '{input.Id}' declares expectedContent 'image', which is only for a text input or an array of text.";
         }
         else if (content == WorkflowExpectedContent.AmbientNote && !textual)
         {
-            yield return $"Input '{input.Id}' declares expectedContent 'ambient-note', which is only for a text slot or an array of text.";
+            yield return $"Input '{input.Id}' declares expectedContent 'ambient-note', which is only for a text input or an array of text.";
         }
     }
 
@@ -7979,7 +7979,7 @@
         await CommitDeclarationAsync();
     }
 
-    // Renaming a slot re-points every binding that read it: leaving them on the
+    // Renaming an input re-points every binding that read it: leaving them on the
     // old id would publish a package the validator rejects as an undeclared
     // input, and the author would have to find each one by hand.
     private async Task RenameInputAsync(WorkflowManifestReader.InputView input, string? value)
@@ -8059,7 +8059,7 @@
     }
 
     /// <summary>
-    /// Retyping a slot. Leaving enum/boolean while a condition reads it is
+    /// Retyping an input. Leaving enum/boolean while a condition reads it is
     /// refused for the same reason removal is: only those two can be tested.
     /// </summary>
     private async Task RetypeInputAsync(WorkflowManifestReader.InputView input, string? value)
@@ -8104,7 +8104,7 @@
                 Items = keepsItems ? inputs[index].Items : null,
                 Fields = keepsFields ? inputs[index].Fields ?? new List<WorkflowManifestReader.FieldView>() : null,
                 // #745: the primary type IS the union's first arm — keep them in
-                // step so retyping a union slot does not desync the composed set.
+                // step so retyping a union input does not desync the composed set.
                 Types = inputs[index].Types is { Count: > 1 } arms
                     ? new[] { type }.Concat(arms.Skip(1)).ToList()
                     : inputs[index].Types
