@@ -237,4 +237,142 @@ public class TemplatesV25DeliverablesPaneTests : ClientRenderTestContext
         ShowNode(page, "assessment");
         Assert.Equal(2, page.FindAll(".node-when-editor .condition-clause").Count);
     }
+
+    // ----- #1081: layout and focus -----
+
+    private static string Normalised(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+
+    private static string SelectedNav(IRenderedComponent<Templates> page) =>
+        page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim();
+
+    [Fact]
+    public void TheFocusKey_OpensThePane_AndMarksTheCard()
+    {
+        var page = RenderEditor();
+        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "results:consult";
+        page.Render();
+
+        Assert.Equal("Deliverables", SelectedNav(page));
+        Assert.NotNull(page.Find("li.deliverable-card.deliverable-card--focused input[aria-label='Id for deliverable consult']"));
+    }
+
+    [Fact]
+    public void TheMacroPanesDeliverableRow_LandsOnTheCard()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        page.Find(".macro-where [data-instance-deliverable='consult'] .macro-instance__owner").Click();
+
+        Assert.Equal("results:consult", Services.GetRequiredService<WorkflowEditorSession>().SelectedKey);
+        Assert.Equal("Deliverables", SelectedNav(page));
+        Assert.NotNull(page.Find("li.deliverable-card.deliverable-card--focused[data-deliverable='consult']"));
+    }
+
+    [Fact]
+    public void AnAggregatorsPane_LinksToItsDeliverable()
+    {
+        var page = RenderEditor();
+        ShowNode(page, "all");
+
+        var link = page.Find(".node-delivers button");
+        Assert.Equal("Consultation note", link.TextContent.Trim());
+        link.Click();
+
+        Assert.NotNull(page.Find("li.deliverable-card.deliverable-card--focused[data-deliverable='consult']"));
+        // A section node delivers nothing itself.
+        ShowNode(page, "assessment");
+        Assert.Empty(page.FindAll(".node-delivers"));
+    }
+
+    [Fact]
+    public void TheCard_HasAHeaderStrip_AndRemoveInItsActions()
+    {
+        var page = RenderEditor();
+        Navigate(page, "Deliverables");
+
+        Assert.Equal("Consultation note", page.Find(".deliverable-card__title").TextContent.Trim());
+        var identity = Normalised(page.Find(".deliverable-card .pane-identity").TextContent);
+        Assert.Contains("id consult", identity);
+        Assert.Contains("delivered as consult-<job>.pdf", identity);
+        var remove = page.Find(".deliverable-card .pane-header__actions fluent-button[aria-label='Remove deliverable']");
+        Assert.True(remove.HasAttribute("disabled"));
+        // The editable fields stay.
+        Assert.NotNull(page.Find("input[aria-label='Id for deliverable consult']"));
+        Assert.NotNull(page.Find("input[aria-label='Label for deliverable consult']"));
+        Assert.NotNull(page.Find("fluent-select[aria-label='Node for deliverable consult']"));
+    }
+
+    [Fact]
+    public void TheNodeSelect_HasALinkToTheAggregator()
+    {
+        var page = RenderEditor();
+        Navigate(page, "Deliverables");
+
+        page.Find("fluent-button[aria-label='Open node all']").Click();
+
+        Assert.Equal("Everything", SelectedNav(page));
+    }
+
+    [Fact]
+    public void AMacroRow_LeadsWithItsLabel_AsALink()
+    {
+        var page = RenderEditor();
+        Navigate(page, "Deliverables");
+
+        var label = page.Find("[data-v11-for='consult'] .result-macro__label");
+        Assert.Equal("Closing", label.TextContent.Trim());
+        Assert.Equal("Edit macro closing", label.GetAttribute("aria-label"));
+        Assert.Empty(label.QuerySelectorAll("code"));
+        Assert.Equal("attach a macro…", page.Find("fluent-select[aria-label='Append macro to deliverable consult'] fluent-option").TextContent.Trim());
+
+        label.Click();
+
+        Assert.Equal("closing", SelectedNav(page));
+    }
+
+    [Fact]
+    public void ComposedAs_ListsTheOrder_WithGatesAndLinks()
+    {
+        var page = RenderEditor();
+        Navigate(page, "Deliverables");
+
+        Assert.Equal("Composed as: Closing when input.kind == \"new\" → Assessment → Section notes", Normalised(page.Find(".deliverable-composed").TextContent));
+
+        page.FindAll(".deliverable-composed button").First(b => b.TextContent.Trim() == "Assessment").Click();
+        Assert.Equal("Assessment", SelectedNav(page));
+    }
+
+    [Fact]
+    public void ComposedAs_EndsWithAppendedMacros_ThenTheSignature()
+    {
+        var package = EditorFixtures.V25();
+        var root = JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        var deliverable = root["deliverables"]!.AsArray()[0]!.AsObject();
+        deliverable["signature"] = true;
+        deliverable["macros"]!.AsArray().Add(new JsonObject { ["id"] = "tool_note", ["at"] = "append" });
+        var page = RenderEditor(package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() });
+        Navigate(page, "Deliverables");
+
+        Assert.Equal("Composed as: Closing when input.kind == \"new\" → Assessment → Section notes → Tool note → signature", Normalised(page.Find(".deliverable-composed").TextContent));
+    }
+
+    [Fact]
+    public void TheHelpExpander_IsAtThePanesFoot_At25Only()
+    {
+        var page = RenderEditor();
+        Navigate(page, "Deliverables");
+
+        var help = page.Find("details.pane-help");
+        Assert.Contains("How deliverables work", help.TextContent);
+        Assert.Contains("Delivered as", help.TextContent);
+        Assert.True(page.Markup.IndexOf("New deliverable id", StringComparison.Ordinal) < page.Markup.IndexOf("How deliverables work", StringComparison.Ordinal));
+
+        var below = RenderEditor(EditorFixtures.V12());
+        Navigate(below, "Deliverables");
+        Assert.Empty(below.FindAll("details.pane-help"));
+        Assert.Empty(below.FindAll(".deliverable-card__header"));
+        Assert.Empty(below.FindAll(".deliverable-composed"));
+    }
 }
