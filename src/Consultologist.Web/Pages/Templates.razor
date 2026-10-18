@@ -2667,7 +2667,33 @@
                                                     aria-label="@($"Instruction for macro {macro.Id}")" />
                                 </label>
                                 @ReferencePalette(InstructionPaletteTarget(macro))
-                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).content }}</code> where it is read inline (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence — say where the content goes, and do not read <code>macro.@(macro.Id).content</code> here: the instruction renders, so that read would put the text in the prompt, and the mechanics sentence names the read. Required at specVersion 25.</p>
+                                @* #1071: what the model is told where {{ macro.<id>.prompt }} is read — the
+                                   instruction rendered over the token scope, then the format's mechanics
+                                   sentence, exactly as the engine composes it (TemplatePreviewScope.MacroPrompt). *@
+                                var (promptPreview, promptPreviewIsError) = MacroPromptPreview(macro);
+                                var readInline = PackageWalk?.Templates.Any(t => t.References.MacroPrompts.Contains(macro.Id)) ?? false;
+                                var selfRead = PackageWalk?.Templates.Any(t => t.Kind == PF.TemplateKind.Instruction && t.Id == macro.Id && t.References.MacroContents.Contains(macro.Id)) ?? false;
+                                <div class="macro-prompt-preview" aria-label="@($"What the model is told for macro {macro.Id}")">
+                                    <span class="muted-text">What the model is told</span>
+                                    @if (string.IsNullOrWhiteSpace(MacroInstruction(macro)))
+                                    {
+                                        <p class="muted-text macro-prompt-preview__text">No instruction yet.</p>
+                                    }
+                                    else
+                                    {
+                                        <pre class="plain-preview macro-prompt-preview__text @(promptPreviewIsError ? "editor-warning" : null)">@promptPreview</pre>
+                                    }
+                                    @if (!readInline)
+                                    {
+                                        <p class="muted-text macro-prompt-preview__note">Read inline by nothing yet — placed instances do not use the instruction.</p>
+                                    }
+                                    @if (selfRead)
+                                    {
+                                        @* The validator's warning (#1067), word for word. *@
+                                        <p class="muted-text node-reads__warning">Macro '@macro.Id' instruction reads macro.@(macro.Id).content; an instruction renders where macro.@(macro.Id).prompt is read, so that read puts the macro's text in the prompt — say where the content goes, the mechanics sentence names the read.</p>
+                                    }
+                                </div>
+                                <p class="muted-text">Tells the model when and where to write the content; what it sees is above — the instruction rendered, then the format's sentence naming the read <code>{{ macro.@(macro.Id).content }}</code>. Required at specVersion 25.</p>
                             }
                             @{
                                 @* #936: which deliverables this macro is attached to — used by the
@@ -4455,6 +4481,57 @@
     // instance. Null below 25 or when the composed manifest does not read.
     private int walkTick;
     private (int Tick, WorkflowFormatsView? Catalogue, PF.WorkflowDerivedEdges.Walk? Walk) walkCache = (-1, null, null);
+
+    // #1071: the token scope the panes preview over (TemplatePreviewScope),
+    // memoised like the walk; null when the composed manifest does not read.
+    private (int Tick, WorkflowFormatsView? Catalogue, PF.TemplateRenderScope? Scope) previewScopeCache = (-1, null, null);
+
+    private PF.TemplateRenderScope? PreviewScope
+    {
+        get
+        {
+            if (!At25 || content == null)
+            {
+                return null;
+            }
+
+            if (previewScopeCache.Tick != walkTick || !ReferenceEquals(previewScopeCache.Catalogue, formatsCatalog))
+            {
+                PF.TemplateRenderScope? scope = null;
+                try
+                {
+                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+                    scope = PF.TemplatePreviewScope.Tokens(manifest, AssembleFiles(), EditorPackageWalk.CatalogFrom(formatsCatalog));
+                }
+                catch (Exception ex) when (ex is not OutOfMemoryException)
+                {
+                    scope = null;
+                }
+
+                previewScopeCache = (walkTick, formatsCatalog, scope);
+            }
+
+            return previewScopeCache.Scope;
+        }
+    }
+
+    /// <summary>#1071: what the model is told where macro.&lt;id&gt;.prompt is read — or the renderer's own sentence when the instruction does not render.</summary>
+    private (string Text, bool IsError) MacroPromptPreview(WorkflowManifestReader.MacroView macro)
+    {
+        if (PreviewScope is not { } scope)
+        {
+            return ("The package does not read yet — fix the publish refusals to preview.", true);
+        }
+
+        try
+        {
+            return (PF.TemplatePreviewScope.MacroPrompt(macro.Id, scope), false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return (ex.Message, true);
+        }
+    }
 
     private PF.WorkflowDerivedEdges.Walk? PackageWalk
     {

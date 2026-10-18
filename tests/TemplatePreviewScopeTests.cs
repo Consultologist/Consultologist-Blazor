@@ -1,0 +1,78 @@
+using Consultologist.PackageFormat;
+
+namespace Consultologist.Api.Tests;
+
+/// <summary>
+/// #1071: the editor's preview scope — every run value a token naming its read,
+/// the package's own texts rendered for real — and the one line the macro pane
+/// shows: what the model is told where macro.&lt;id&gt;.prompt is read.
+/// </summary>
+public class TemplatePreviewScopeTests
+{
+    private static TemplateRenderScope Scope((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
+        TemplatePreviewScope.Tokens(bundle.Manifest, bundle.Files, V25Package.Catalog());
+
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithInstruction(string instruction)
+    {
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = instruction }).ToList() };
+        return (manifest, files);
+    }
+
+    [Fact]
+    public void TheMacroPrompt_IsTheInstruction_ThenTheMechanicsSentence()
+    {
+        var prompt = TemplatePreviewScope.MacroPrompt("closing", Scope(V25Package.Minimal()));
+
+        Assert.Equal(WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed."), prompt);
+    }
+
+    [Fact]
+    public void AReadTheRunWouldSupply_RendersAsItsToken()
+    {
+        var prompt = TemplatePreviewScope.MacroPrompt("closing", Scope(WithInstruction(
+            "For {{ input.notes }} / {{ input.kind }} / {{ node.extract.content }} / {{ node.scope.value }} / {{ profile.name }} / {{ run.date }}.")));
+
+        const string expected = "For ⟨input.notes⟩ / ⟨input.kind⟩ / ⟨node.extract.content⟩ / ⟨node.scope.value⟩ / ⟨profile.name⟩ / ⟨run.date⟩.";
+        Assert.True(prompt.StartsWith(expected, StringComparison.Ordinal), prompt);
+    }
+
+    [Fact]
+    public void AStructuredRead_RendersThePathsToken()
+    {
+        var prompt = TemplatePreviewScope.MacroPrompt("closing", Scope(WithInstruction(
+            "{{ for c in node.extract.value.concepts }}[{{ c }}]{{ end }} {{ node.extract.content | concept_bullets }}")));
+
+        Assert.StartsWith("[⟨node.extract.value.concepts[0]⟩] ⟨concept_bullets of node.extract.content⟩", prompt);
+    }
+
+    [Fact]
+    public void ThePackagesOwnTexts_RenderForReal()
+    {
+        var prompt = TemplatePreviewScope.MacroPrompt("closing", Scope(WithInstruction("{{ snippet.standards.content }} {{ macro.closing.content }}")));
+
+        // The self-read renders the macro's text — the trap #1067 warns about, visible.
+        Assert.StartsWith("Follow the local standards. Closing: ⟨profile.name⟩.", prompt);
+    }
+
+    [Fact]
+    public void AnInstructionThatDoesNotRender_ThrowsTheRenderersSentence()
+    {
+        var ex = Assert.ThrowsAny<Exception>(() => TemplatePreviewScope.MacroPrompt("closing", Scope(WithInstruction("{{ if }}"))));
+
+        Assert.Contains("does not parse", ex.Message);
+    }
+
+    [Fact]
+    public void EveryTemplateOfTheMinimalPackage_RendersOverTheScope()
+    {
+        var bundle = V25Package.Minimal();
+        var scope = Scope(bundle);
+
+        foreach (var (path, text) in bundle.Files.Where(f => f.Key.EndsWith(".md", StringComparison.Ordinal)))
+        {
+            var rendered = TemplateRenderer.Render($"'{path}'", text, scope, TemplatePreviewScope.Pipes);
+            Assert.False(string.IsNullOrWhiteSpace(rendered), path);
+        }
+    }
+}

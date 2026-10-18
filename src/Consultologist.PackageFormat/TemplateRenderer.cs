@@ -44,7 +44,13 @@ public static class TemplatePipes
 /// format type that says what <c>.value</c> parses to, and the concept source
 /// the engine stamps when a pipe renders its concepts (null when none).
 /// </summary>
-public sealed record TemplateNodeOutput(string Text, string Type, string? ConceptSource = null);
+public sealed record TemplateNodeOutput(
+    string Text,
+    string Type,
+    string? ConceptSource = null,
+    // #1071: what .value parses when it is not the text — the editor's preview
+    // scope keeps .content a token and .value a carrier; a run leaves it null.
+    string? ValueJson = null);
 
 /// <summary>One item of a snippet folder: id, name and its template text (rendered when read).</summary>
 public sealed record TemplateFolderItem(string Id, string Name, string Text);
@@ -380,7 +386,7 @@ public static class TemplateRenderer
 
         try
         {
-            parsed = JsonNode.Parse(output.Text);
+            parsed = JsonNode.Parse(output.ValueJson ?? output.Text);
         }
         catch (JsonException ex)
         {
