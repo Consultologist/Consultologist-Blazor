@@ -405,6 +405,41 @@ fluent-button.node-field__button::part(control) {
 	}
 }
 
+/* #1081: the card's header — the label as its title, the identity strip, Remove
+   as a header action — and the "Composed as" order line. */
+.deliverable-card__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.deliverable-card__title {
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 600;
+}
+
+.deliverable-composed {
+	margin: 0;
+}
+
+.deliverable-composed__list {
+	display: inline;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.deliverable-composed__list li {
+	display: inline;
+}
+
+.deliverable-composed__when {
+	font-size: 0.8rem;
+	color: var(--consultologist-text-muted);
+}
+
 /* #1081: an aggregator node's "Delivers →" line, its deliverables as chips. */
 .node-delivers {
 	margin: 0 0 0.5rem;
