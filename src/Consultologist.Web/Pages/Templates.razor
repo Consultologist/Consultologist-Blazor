@@ -1454,9 +1454,11 @@
                                             @if (ConditionOperands.Count == 0)
                                         {
                                             <span class="muted-text">
-                                                @(EffectiveSpecVersion >= 9
-                                                    ? "Always produced. Declare an enum, boolean, number, date, object or array input to make it conditional."
-                                                    : "Always produced. Declare an enum or boolean input to make it conditional.")
+                                                @(At25
+                                                    ? "Always produced. Declare an input (enum, boolean, number, date, object or array) or an enum-format node to make it conditional."
+                                                    : EffectiveSpecVersion >= 9
+                                                        ? "Always produced. Declare an enum, boolean, number, date, object or array input to make it conditional."
+                                                        : "Always produced. Declare an enum or boolean input to make it conditional.")
                                             </span>
                                         }
                                         else
@@ -1624,13 +1626,15 @@
                                                         ValueChanged="@(v => SetResultCheckAsync(deliverable, v))"
                                                         aria-label="@($"Check for deliverable {deliverable.Id}")">
                                                     <FluentOption TOption="string" Value="">— no check —</FluentOption>
-                                                    @foreach (var checkNode in EffectiveNodes.Where(n => n.IsCheck))
+                                                    @* #1079: at 25 a check is a node of a computed format (kind is
+                                                       retired), spelled node.<id> and shown by its label; below 25 the
+                                                       check-kind nodes by id, as before. *@
+                                                    @foreach (var checkNode in EffectiveNodes.Where(ComputedLike))
                                                     {
-                                                        <FluentOption TOption="string" Value="@NodeRef(checkNode.Id)">@checkNode.Id</FluentOption>
+                                                        <FluentOption TOption="string" Value="@NodeRef(checkNode.Id)">@(At25 ? checkNode.Label : checkNode.Id)</FluentOption>
                                                     }
                                                     @if (deliverable.Check is { } authoredCheck
-                                                        && (!authoredCheck.StartsWith("node:", StringComparison.Ordinal)
-                                                            || EffectiveNodes.All(n => !n.IsCheck || $"node:{n.Id}" != authoredCheck)))
+                                                        && EffectiveNodes.Where(ComputedLike).All(n => NodeRef(n.Id) != authoredCheck))
                                                     {
                                                         <FluentOption TOption="string" Value="@authoredCheck">@authoredCheck</FluentOption>
                                                     }
@@ -4505,6 +4509,9 @@
 
     private string ItemNoun => At25 ? "Snippet" : "Standard";
 
+    /// <summary>#1079: the pane's refusals use the registry's noun — "Deliverable" at 25, "Result" below.</summary>
+    private string DeliverableNoun => At25 ? "Deliverable" : "Result";
+
     // v25 (#1008): the engine's walk over the effective package, memoised on the
     // pending tick (bumped by every committed change) and the catalogue
     // instance. Null below 25 or when the composed manifest does not read.
@@ -5848,6 +5855,16 @@
             ? node.Aggregate == null && node.Format != null && FormatOptions.FirstOrDefault(f => f.Id == node.Format)?.Type == "enum"
             : node.IsClassifier;
 
+    /// <summary>
+    /// #1079: a node a deliverable may name as its check — kind "check" below 25;
+    /// at 25 a scalar node whose format is computed (the registry's "a check is a
+    /// node of a computed format (terms_subset)").
+    /// </summary>
+    private bool ComputedLike(WorkflowManifestReader.NodeView node) =>
+        At25
+            ? node.Aggregate == null && node.Format != null && FormatOptions.FirstOrDefault(f => f.Id == node.Format)?.Computed == true
+            : node.IsCheck;
+
     private IReadOnlyList<string>? ClassifierValues(WorkflowManifestReader.NodeView node) =>
         At25
             ? node.With is { } with && with.TryGetValue("values", out var values) && values.ValueKind == JsonValueKind.Array
@@ -7039,7 +7056,7 @@
 
         foreach (var duplicate in results.GroupBy(result => result.Id).Where(group => group.Count() > 1))
         {
-            errors.Add($"Duplicate result id '{duplicate.Key}'.");
+            errors.Add($"Duplicate {DeliverableNoun.ToLowerInvariant()} id '{duplicate.Key}'.");
         }
 
         // v10 (#498): a classifier a condition reads cannot be removed —
@@ -9845,13 +9862,13 @@
 
         if (!DeclaredIdPattern.IsMatch(id))
         {
-            declaredError = $"Result id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            declaredError = $"{DeliverableNoun} id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
             return;
         }
 
         if (EffectiveResults.Any(result => result.Id == id))
         {
-            declaredError = $"Duplicate result id '{id}'.";
+            declaredError = $"Duplicate {DeliverableNoun.ToLowerInvariant()} id '{id}'.";
             return;
         }
 
@@ -9886,13 +9903,13 @@
 
         if (!DeclaredIdPattern.IsMatch(id))
         {
-            declaredError = $"Result id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            declaredError = $"{DeliverableNoun} id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
             return;
         }
 
         if (EffectiveResults.Any(existing => existing.Id == id))
         {
-            declaredError = $"Duplicate result id '{id}'.";
+            declaredError = $"Duplicate {DeliverableNoun.ToLowerInvariant()} id '{id}'.";
             return;
         }
 
@@ -9913,7 +9930,7 @@
 
         if (label.Length == 0)
         {
-            declaredError = $"Result '{result.Id}' has no label.";
+            declaredError = $"{DeliverableNoun} '{result.Id}' has no label.";
             return;
         }
 
