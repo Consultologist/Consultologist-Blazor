@@ -276,6 +276,19 @@ public class ConsultNodeSchedulerTests
         Assert.False(ConsultNodeScheduler.InstanceReady(GatedByMacro, null, nodes, Outputs()));
         Assert.True(ConsultNodeScheduler.InstanceReady(GatedByMacro, null, nodes, Outputs("scope")));
     }
+
+    [Fact]
+    public void AReaderOfAnAggregator_WaitsOnIt_ThroughTheSameOutputs()
+    {
+        // #1065: the aggregator completes into outputs under its plain id.
+        var all = new ConsultNodeDescriptor("all", "Everything", Aggregate: new[] { "node.assessment" });
+        var letter = new ConsultNodeDescriptor("letter", "Letter", Format: "prose", Reads: new[] { "all" });
+        var nodesById = new[] { all, letter }.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+        Assert.Equal(new[] { "all" }, ConsultNodeScheduler.NodeDependencies(letter));
+        Assert.False(ConsultNodeScheduler.InstanceReady(letter, null, nodesById, Outputs()));
+        Assert.True(ConsultNodeScheduler.InstanceReady(letter, null, nodesById, Outputs("all")));
+    }
 }
 
 public class ProvenanceHashTests

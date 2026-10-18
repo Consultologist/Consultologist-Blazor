@@ -542,6 +542,114 @@ public class WorkflowV25Tests
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
         Assert.Empty(result.Warnings);
     }
+
+    // ----- #1065: a template may read an aggregator's composed text -----
+
+    /// <summary>A letter node reading the note aggregator's text, its own aggregator and deliverable — the two-documents shape.</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithLetter((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle, string letterPrompt = "Letter from:\n{{ node.all.content }}")
+    {
+        var manifest = bundle.Manifest with
+        {
+            Prompts = bundle.Manifest.Prompts!.Append(new WorkflowPromptSpec("letter", "prompts/letter.md", new List<string>())).ToList(),
+            Nodes = bundle.Manifest.Nodes!
+                .Append(new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose"))
+                .Append(new WorkflowNodeSpec("letter_all", "Letter, assembled", Aggregate: new List<string> { "node.letter" }))
+                .ToList(),
+            Deliverables = bundle.Manifest.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node.letter_all", "Letter")).ToList(),
+        };
+        var files = new Dictionary<string, string>(bundle.Files, StringComparer.Ordinal) { ["prompts/letter.md"] = letterPrompt };
+        return (manifest, files);
+    }
+
+    [Fact]
+    public void APrompt_ReadingAnAggregatorsText_IsValid_AndTheReadIsItsFanSource()
+    {
+        // letter reaches section_notes (the fan) only through all's composed text.
+        var result = V25Package.Validate(WithLetter(V25Package.Minimal()), V25Package.Catalog());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void AnAggregatorsValue_IsRefused_ByName()
+    {
+        Assert.Contains("Prompt 'letter' reads node.all.value, but node 'all' aggregates — its composed text has no value; read node.all.content.",
+            V25Package.Errors(WithLetter(V25Package.Minimal(), "{{ node.all.value }}")));
+    }
+
+    [Fact]
+    public void ARendererPipe_OnAnAggregator_IsRefused_ByName()
+    {
+        Assert.Contains("Prompt 'letter' pipes node.all.content through concept_bullets, but node.all aggregates; concept_bullets renders a concept_list node's text (node.<id>.content).",
+            V25Package.Errors(WithLetter(V25Package.Minimal(), "{{ node.all.content | concept_bullets }}")));
+    }
+
+    [Fact]
+    public void ANode_ReadingTheAggregatorThatAggregatesIt_IsACycle()
+    {
+        var bundle = V25Package.WithPrompt(V25Package.Minimal(), "assessment", "{{ node.all.content }} {{ input.notes }}");
+
+        Assert.Contains(V25Package.Errors(bundle), e => e.StartsWith("nodes contain a cycle involving:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnAggregator_MayNotDeclareForEach()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        manifest = V25Package.WithNode(manifest, "all", n => n with { ForEach = "snippet.sections" });
+
+        Assert.Contains("Node 'all' aggregates and must not declare forEach; an aggregator is structural.", V25Package.Errors((manifest, files)));
+    }
+
+    [Theory]
+    [InlineData("node")]
+    [InlineData("instance")]
+    [InlineData("deliverable")]
+    public void AWhen_ReadingAnAggregator_IsRefused_ByName(string site)
+    {
+        var (manifest, files) = WithLetter(V25Package.Minimal());
+        const string when = "node.all.content != \"\"";
+        string subject;
+        switch (site)
+        {
+            case "node":
+                manifest = V25Package.WithNode(manifest, "letter", n => n with { When = when });
+                subject = "Node 'letter' condition";
+                break;
+            case "instance":
+                manifest = V25Package.WithNode(manifest, "letter", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After, When: when) } });
+                subject = "Node 'letter' macro 'closing' condition";
+                break;
+            default:
+                manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d.Id == "letter" ? d with { When = when } : d).ToList() };
+                subject = "Deliverable 'letter' condition";
+                break;
+        }
+
+        Assert.Contains($"{subject} reads node.all, which aggregates; a condition decides before the sections compose — read a scalar node.", V25Package.Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void ADeliverableMacrosText_MayReadAnAggregator()
+    {
+        // The sentence "a deliverable macro reads scalar nodes and aggregators" is now
+        // true. A fresh macro: closing is also placed on assessment, which all
+        // aggregates — reading all from it would be a cycle, rightly refused.
+        var (manifest, files) = WithLetter(V25Package.Minimal());
+        manifest = manifest with
+        {
+            Macros = manifest.Macros!.Append(new WorkflowMacroSpec("sign_off", "Sign-off", "macros/sign_off.md", Instruction: "x")).ToList(),
+            Deliverables = manifest.Deliverables!.Select(d => d.Id == "letter"
+                ? d with { Macros = new List<WorkflowDeliverableMacroSpec> { new("sign_off", At: WorkflowDeliverableMacroSpec.Append) } }
+                : d).ToList(),
+        };
+        files["macros/sign_off.md"] = "Signed, with the note in view: {{ node.all.content }}";
+
+        var result = V25Package.Validate((manifest, files), V25Package.Catalog());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+    }
 }
 
 /// <summary>A4 PR 2: templates walked, edges derived, macros placed and read, the graph, the probe, deliverables, reachability.</summary>

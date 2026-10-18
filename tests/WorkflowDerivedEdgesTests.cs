@@ -248,6 +248,27 @@ public class WorkflowDerivedEdgesTests
         Assert.Equal(new[] { "closing", "inline", "viacondition", "viaplaced" }, walk.MacrosReached(Array.Empty<string>()).Order());
         Assert.Contains("orphan", walk.MacrosReached(new[] { "orphan" }));   // a deliverable instance is a root too
     }
+
+    [Fact]
+    public void AnAggregatorRead_IsAnEdge_ForTheStarter()
+    {
+        // #1065: the letter waits on all; all's own sources join in WorkflowNodeClosure, not here.
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with
+        {
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("letter", "prompts/letter.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!
+                .Append(new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose"))
+                .Append(new WorkflowNodeSpec("letter_all", "Letter, assembled", Aggregate: new List<string> { "node.letter" }))
+                .ToList(),
+            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node.letter_all", "Letter")).ToList(),
+        };
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["prompts/letter.md"] = "Letter from:\n{{ node.all.content }}" };
+
+        Assert.Equal(new List<string>(), V25Package.Errors((manifest, files)));
+        Assert.Equal(new[] { "all" }, Derive((manifest, files))["letter"].Order());
+        Assert.Empty(Derive((manifest, files))["all"]);
+    }
 }
 
 /// <summary>Design § 5.3: the mechanics sentence is a constant of the format, pinned to the registry's published text.</summary>

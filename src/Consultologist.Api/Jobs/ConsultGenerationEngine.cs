@@ -1498,7 +1498,10 @@ internal static class ConsultNodeScheduler
     /// <summary>
     /// A scalar node is ready when every node: dependency completed; a forEach
     /// instance additionally requires same-collection dependencies item-aligned
-    /// (the validator guarantees no aggregate or cross-collection edges exist).
+    /// (the validator guarantees no cross-collection edges exist). #1065: a
+    /// template read of an aggregator is an ordinary dependency — the aggregator
+    /// completes into the same outputs map the pass it composes, and a when never
+    /// reads one, so the deciding stage's closure needs no aggregate sources.
     /// </summary>
     public static bool InstanceReady(
         ConsultNodeDescriptor node,

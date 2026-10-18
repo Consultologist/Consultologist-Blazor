@@ -131,4 +131,24 @@ public class V25RenderTests
         Assert.Equal(new TemplateRunFacts("2026-10-13", "0123abcd", "p@v1", ""), ConsultRenderPayload.RunFactsFor(new DateTime(2026, 10, 13, 14, 5, 0, DateTimeKind.Utc), "0123abcd-ffff", "p@v1", null));
         Assert.Equal(new TemplateProfileFacts("", "Dr X"), ConsultRenderPayload.ProfileFactsFor(null, new ConsultSignatureSnapshot("s", "Dr X", "2026-10-01")));
     }
+
+    [Fact]
+    public void APrompt_RendersTheAggregatorsComposedText()
+    {
+        // #1065: node.<agg>.content is the stored composed sections, keyed by the plain id.
+        var package = V25JobStartTests.Package(
+            m => m with
+            {
+                Prompts = m.Prompts!.Append(new WorkflowPromptSpec("letter", "prompts/letter.md", new List<string>())).ToList(),
+                Nodes = m.Nodes!
+                    .Append(new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose"))
+                    .Append(new WorkflowNodeSpec("letter_all", "Letter, assembled", Aggregate: new List<string> { "node.letter" }))
+                    .ToList(),
+                Deliverables = m.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node.letter_all", "Letter")).ToList(),
+            },
+            f => new Dictionary<string, string>(f, StringComparer.Ordinal) { ["prompts/letter.md"] = "Letter from:\n{{ node.all.content }}" });
+        var input = Input("letter", "letter", new Dictionary<string, string> { ["all"] = "## HPI\n\nHistory.\n\n## Plan\n\nPlan." });
+
+        Assert.Equal("Letter from:\n## HPI\n\nHistory.\n\n## Plan\n\nPlan.", ConsultRenderPayload.RenderAt25(input, package, package.SourceFiles!["prompts/letter.md"]));
+    }
 }

@@ -70,9 +70,16 @@ public static partial class WorkflowPackageValidator
         var nodes = ValidateNodesAt25(manifest, localFormats, catalog, snippets, inputsById, errors);
         ValidateMacroLibraryAt25(manifest, files, errors);
 
+        // #1065: an aggregator is a node a template may read — its composed text
+        // (node.<id>.content), no value, no renderer — so it joins the map beside
+        // the formatted nodes; its own declarations stay structural.
         var nodeShapes = nodes.Values
             .Where(n => n.Format is not null)
             .ToDictionary(n => n.Node.Id, n => new TemplateNodeShape(n.Format!.Id, n.Format.Spec.Type, n.Format.Spec.Schema, EnumValuesAt25(n, inputsById)), StringComparer.Ordinal);
+        foreach (var aggregator in nodes.Values.Where(n => n.IsAggregator))
+        {
+            nodeShapes[aggregator.Node.Id] = TemplateNodeShape.Aggregator();
+        }
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
 
         TemplateReferenceContext ContextFor(TemplateFan? fan) => new(
@@ -93,7 +100,7 @@ public static partial class WorkflowPackageValidator
         var edges = DeriveEdgesAt25(manifest, nodes, walk, errors);
         ValidateFanEdgesAt25(nodes, edges, errors);
 
-        ValidateConditionsAt25(walk, errors);
+        ValidateConditionsAt25(walk, nodes.Values.Where(n => n.IsAggregator).Select(n => n.Node.Id).ToHashSet(StringComparer.Ordinal), errors);
         ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
         ValidateReferenceGraphAt25(walked, snippets, errors);
         RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors);
@@ -345,7 +352,7 @@ public static partial class WorkflowPackageValidator
 
             if (node.Aggregate is { Count: > 0 })
             {
-                foreach (var (name, present) in new[] { ("format", node.Format != null), ("prompt", node.Prompt != null), ("with", node.With != null), ("onInvalid", node.OnInvalid != null) })
+                foreach (var (name, present) in new[] { ("format", node.Format != null), ("prompt", node.Prompt != null), ("with", node.With != null), ("onInvalid", node.OnInvalid != null), ("forEach", node.ForEach != null) })
                 {
                     if (present)
                     {
@@ -695,8 +702,19 @@ public static partial class WorkflowPackageValidator
     /// against the wrong value. A folder item's when reads inputs only, so the
     /// folder's size is known at job start.
     /// </summary>
-    private static void ValidateConditionsAt25(WorkflowDerivedEdges.Walk walk, List<string> errors)
+    private static void ValidateConditionsAt25(WorkflowDerivedEdges.Walk walk, IReadOnlySet<string> aggregatorIds, List<string> errors)
     {
+        // #1065: a template may read an aggregator's composed text; a when may not —
+        // the deciding stage runs the whens' closure before the sections compose,
+        // and that closure does not pull an aggregator's sources along.
+        foreach (var condition in walk.Conditions.Where(c => c.Site != WorkflowDerivedEdges.ConditionSite.FolderItem && c.Walk.IsValid))
+        {
+            foreach (var id in condition.Walk.References.Nodes.Keys.Where(aggregatorIds.Contains).Order(StringComparer.Ordinal))
+            {
+                errors.Add($"{condition.Subject} reads node.{id}, which aggregates; a condition decides before the sections compose — read a scalar node.");
+            }
+        }
+
         foreach (var condition in walk.Conditions.Where(c => c.Site == WorkflowDerivedEdges.ConditionSite.FolderItem && c.Walk.IsValid))
         {
             var refs = condition.Walk.References;
@@ -948,6 +966,12 @@ public static partial class WorkflowPackageValidator
                 ? TemplateValueShape.Text
                 : TemplateValueShape.FromSchema(n.Format.Spec.Schema);
             node.Add(n.Node.Id, new ScriptObject { ["content"] = "placeholder", ["value"] = ProbeFromShape(shape) });
+        }
+
+        // #1065: an aggregator probes as text alone — the walker refused .value already.
+        foreach (var n in nodes.Values.Where(n => n.IsAggregator))
+        {
+            node.Add(n.Node.Id, new ScriptObject { ["content"] = "placeholder" });
         }
 
         var snippet = new ScriptObject();

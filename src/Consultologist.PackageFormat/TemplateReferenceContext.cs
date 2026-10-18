@@ -49,10 +49,16 @@ public sealed record TemplateNodeShape(
     JsonNode? Schema = null,
     // #1037: an enum format's answer set (the format's own values, or the node's
     // with.values) — what a condition's `node.x.value == "v"` is typed against.
-    IReadOnlyList<string>? Values = null)
+    IReadOnlyList<string>? Values = null,
+    // #1065: an aggregator as a template sees it — its composed sections as text,
+    // no value, no format (the empty Format never equals a renderer pipe's).
+    bool Aggregates = false)
 {
     /// <summary>Whether <c>node.&lt;id&gt;.value</c> exists: every type but text parses.</summary>
     public bool HasValue => Type != WorkflowInputTypes.Text;
+
+    /// <summary>#1065: the shape of an aggregator node — <c>.content</c> is its composed text; <c>.value</c> and a renderer pipe are refused by name.</summary>
+    public static TemplateNodeShape Aggregator() => new(string.Empty, WorkflowInputTypes.Text, Aggregates: true);
 }
 
 /// <summary>What the template's node fans over — null when it does not fan.</summary>
