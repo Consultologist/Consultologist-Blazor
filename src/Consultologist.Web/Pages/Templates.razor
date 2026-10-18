@@ -1486,7 +1486,10 @@
                                             @foreach (var (macroEntry, macroIndex) in resultMacros.Select((m, i) => (m, i)))
                                             {
                                                 var macroId = macroEntry.Id;
-                                                <div class="result-macro">
+                                                // #1080: the identity at 25 is (id, at) — a macro holding both placements
+                                                // names its placement in the row's labels, so the two rows stay distinct.
+                                                var placementSuffix = resultMacros.Count(e => e.Id == macroId) > 1 ? $" ({macroEntry.At})" : string.Empty;
+                                                <div class="result-macro" data-entry-at="@(macroEntry.At ?? "")">
                                                 <span class="result-macro-row">
                                                     <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
                                                                   Title="@($"Edit macro {macroId}")"
@@ -1500,7 +1503,7 @@
                                                         <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
                                                                 Value="@(macroEntry.At ?? "")"
                                                                 ValueChanged="@(v => SetDeliverableMacroAtAsync(deliverable, macroIndex, v))"
-                                                                aria-label="@($"Placement for macro {macroId} in deliverable {deliverable.Id}")">
+                                                                aria-label="@($"Placement for macro {macroId} in deliverable {deliverable.Id}{placementSuffix}")">
                                                             @if (macroEntry.At == null)
                                                             {
                                                                 <FluentOption TOption="string" Value="">choose a placement…</FluentOption>
@@ -1577,16 +1580,19 @@
                                                 }
                                                 </div>
                                             }
-                                            @if (EffectiveMacros.Any(m => resultMacros.All(e => e.Id != m.Id)))
+                                            @{ var attachableMacros = DeliverableAttachableMacros(resultMacros); }
+                                            @if (attachableMacros.Count > 0)
                                             {
+                                                @* #1080: at 25 a macro is offered while one of its two placements is free,
+                                                   the option naming the one left ("closing — append"); below 25 once. *@
                                                 <FluentSelect TOption="string" class="binding-row__select result-macro-append"
                                                         Value=""
                                                         ValueChanged="@(v => AppendResultMacroAsync(deliverable, v))"
                                                         aria-label="@($"Append macro to deliverable {deliverable.Id}")">
                                                     <FluentOption TOption="string" Value="">append macro…</FluentOption>
-                                                    @foreach (var candidateMacro in EffectiveMacros.Where(m => resultMacros.All(e => e.Id != m.Id)))
+                                                    @foreach (var (candidateMacro, freeIdentity) in attachableMacros)
                                                     {
-                                                        <FluentOption TOption="string" Value="@candidateMacro.Id">@candidateMacro.Id</FluentOption>
+                                                        <FluentOption TOption="string" Value="@candidateMacro.Id">@FreeIdentityText(candidateMacro.Id, freeIdentity)</FluentOption>
                                                     }
                                                 </FluentSelect>
                                             }
@@ -2860,8 +2866,10 @@
                                 var inlineReaders = MacroInlineReaders(macro.Id);
                                 var textReaders = MacroTextReaders(macro.Id);
                                 var attachableNodes = MacroAttachableNodes(macro.Id);
+                                // #1080: a deliverable is offered while one of the macro's two placements on it is free.
                                 var attachableDeliverables = EffectiveResults
-                                    .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(m => m.Id != macro.Id))
+                                    .Select(r => (Result: r, Free: DeliverableFreeIdentity(r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>(), macro.Id)))
+                                    .Where(pair => pair.Free != null)
                                     .ToList();
                                 var placedOn = MacroPlacedOn(macro.Id);
                                 <div class="macro-where" aria-label="@($"Where macro {macro.Id} goes")">
@@ -2888,9 +2896,9 @@
                                                     ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
                                                     aria-label="@($"Attach macro {macro.Id} to a deliverable")">
                                                 <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
-                                                @foreach (var candidateDeliverable in attachableDeliverables)
+                                                @foreach (var (candidateDeliverable, freeIdentity) in attachableDeliverables)
                                                 {
-                                                    <FluentOption TOption="string" Value="@candidateDeliverable.Id">@candidateDeliverable.Label</FluentOption>
+                                                    <FluentOption TOption="string" Value="@candidateDeliverable.Id">@FreeIdentityText(candidateDeliverable.Label, freeIdentity)</FluentOption>
                                                 }
                                             </FluentSelect>
                                         }
@@ -2948,36 +2956,50 @@
                                             </div>
                                         }
                                     }
-                                    @foreach (var hostResult in EffectiveResults.Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id)))
+                                    @foreach (var hostResult in EffectiveResults)
                                     {
-                                        var instanceResult = hostResult;
-                                        var deliverableInstance = instanceResult.Macros!.First(m => m.Id == macro.Id);
-                                        <div class="result-macro macro-instance" data-instance-deliverable="@instanceResult.Id">
-                                            <span class="result-macro-row">
-                                                <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner"
-                                                              Title="@($"deliverable '{instanceResult.Id}' — edit on the Deliverables pane")"
-                                                              aria-label="@($"Open the Deliverables pane for {instanceResult.Id}")"
-                                                              @onclick="() => Select(ResultsKey)">@instanceResult.Label</FluentButton>
-                                                <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
-                                                        Value="@(deliverableInstance.At ?? "")"
-                                                        ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, DeliverableEntryIndex(instanceResult, macro.Id), v))"
-                                                        aria-label="@($"Placement for macro {macro.Id} in deliverable {instanceResult.Id}")">
-                                                    @if (deliverableInstance.At == null)
-                                                    {
-                                                        <FluentOption TOption="string" Value="">choose a placement…</FluentOption>
-                                                    }
-                                                    <FluentOption TOption="string" Value="prepend">prepend</FluentOption>
-                                                    <FluentOption TOption="string" Value="append">append</FluentOption>
-                                                </FluentSelect>
-                                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {instanceResult.Id}")"
-                                                              aria-label="@($"Detach macro {macro.Id} from deliverable {instanceResult.Id}")"
-                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                              @onclick="() => RemoveResultMacroAsync(instanceResult, DeliverableEntryIndex(instanceResult, macro.Id))" />
-                                            </span>
-                                            <span class="result-macro-when">
-                                                @ConditionField(("Gated when", MacroWhenTarget(instanceResult, deliverableInstance), "Always produced"))
-                                            </span>
-                                        </div>
+                                        var hostEntries = hostResult.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
+                                        for (var hostIndex = 0; hostIndex < hostEntries.Count; hostIndex++)
+                                        {
+                                            if (hostEntries[hostIndex].Id != macro.Id)
+                                            {
+                                                continue;
+                                            }
+
+                                            // #1080: one row per entry — the identity at 25 is (id, at), so a
+                                            // deliverable may carry the macro prepended and appended; the index
+                                            // drives the Deliverables pane's handlers.
+                                            var instanceResult = hostResult;
+                                            var instanceIndex = hostIndex;
+                                            var deliverableInstance = hostEntries[instanceIndex];
+                                            var instanceSuffix = hostEntries.Count(e => e.Id == macro.Id) > 1 ? $" ({deliverableInstance.At})" : string.Empty;
+                                            <div class="result-macro macro-instance" data-instance-deliverable="@instanceResult.Id" data-instance-at="@(deliverableInstance.At ?? "")">
+                                                <span class="result-macro-row">
+                                                    <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner"
+                                                                  Title="@($"deliverable '{instanceResult.Id}' — edit on the Deliverables pane")"
+                                                                  aria-label="@($"Open the Deliverables pane for {instanceResult.Id}")"
+                                                                  @onclick="() => Select(ResultsKey)">@instanceResult.Label</FluentButton>
+                                                    <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
+                                                            Value="@(deliverableInstance.At ?? "")"
+                                                            ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, instanceIndex, v))"
+                                                            aria-label="@($"Placement for macro {macro.Id} in deliverable {instanceResult.Id}{instanceSuffix}")">
+                                                        @if (deliverableInstance.At == null)
+                                                        {
+                                                            <FluentOption TOption="string" Value="">choose a placement…</FluentOption>
+                                                        }
+                                                        <FluentOption TOption="string" Value="prepend">prepend</FluentOption>
+                                                        <FluentOption TOption="string" Value="append">append</FluentOption>
+                                                    </FluentSelect>
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {instanceResult.Id}")"
+                                                                  aria-label="@($"Detach macro {macro.Id} from deliverable {instanceResult.Id}{instanceSuffix}")"
+                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                  @onclick="() => RemoveResultMacroAsync(instanceResult, instanceIndex)" />
+                                                </span>
+                                                <span class="result-macro-when">
+                                                    @ConditionField(("Gated when", MacroWhenTarget(instanceResult, instanceIndex), "Always produced"))
+                                                </span>
+                                            </div>
+                                        }
                                     }
                                     @if (inlineReaders.Count > 0)
                                     {
