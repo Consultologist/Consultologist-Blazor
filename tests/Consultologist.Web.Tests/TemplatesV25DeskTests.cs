@@ -296,4 +296,19 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
 
         Assert.Contains("Format 'medication_list' is type 'object' and must declare a schema (every object format carries its shape; the engine validates replies against it).", Refusals(page));
     }
+
+    [Fact]
+    public void TheDesk_AcceptsAPromptReadingAnAggregatorsText()
+    {
+        // #1065: the palette offers {{ node.<id>.content }} for every node; an aggregator's is now a valid read.
+        var refusals = PublishRefusals(Reshaped(root =>
+        {
+            root["prompts"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "letter", "file": "prompts/letter.md" }"""));
+            root["nodes"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "letter", "label": "Letter", "prompt": "letter", "format": "prose" }"""));
+            root["nodes"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "letter_all", "label": "Letter, assembled", "aggregate": ["node.letter"] }"""));
+            root["deliverables"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "letter", "node": "node.letter_all", "label": "Letter" }"""));
+        }, ("prompts/letter.md", "Letter from:\n{{ node.all.content }}")));
+
+        Assert.Empty(refusals);
+    }
 }

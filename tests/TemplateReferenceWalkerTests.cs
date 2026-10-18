@@ -45,6 +45,7 @@ public static class TemplateFixtures
         ["scope"] = new("classification", "enum"),
         ["coverage"] = new("terms_subset", "object", TermsSubsetSchema),
         ["meds"] = new("medication_list", "object", JsonNode.Parse("""{ "type": "object", "properties": { "medications": { "type": "array", "items": { "type": "string" } } } }""")),
+        ["all"] = TemplateNodeShape.Aggregator(), // #1065
     };
 
     public static TemplateReferenceContext Context(TemplateFan? fan = null) => new(
@@ -70,6 +71,7 @@ public static class TemplateFixtures
         var refs = Walk(template, fan);
         Assert.Contains(refs.Errors, e => e.StartsWith("Prompt 'p' ", StringComparison.Ordinal) && e.Contains(sentence));
     }
+
 }
 
 public class TemplateReferenceWalkerTests
@@ -471,6 +473,8 @@ public class TemplateReferenceWalkerTests
     [InlineData("{{ node.assessment.output }}", "reads node.assessment.output, which is not a member (node.<id> has .content and .value)")]
     [InlineData("{{ node.assessment.value }}", "reads node.assessment.value, but format 'prose' is text and has no value; read node.assessment.content")]
     [InlineData("{{ node.letter.value }}", "reads node.letter.value, but format 'rendered' is text and has no value")]
+    [InlineData("{{ node.all.value }}", "reads node.all.value, but node 'all' aggregates — its composed text has no value; read node.all.content")]
+    [InlineData("{{ node.all.content | concept_bullets }}", "pipes node.all.content through concept_bullets, but node.all aggregates; concept_bullets renders a concept_list node's text (node.<id>.content).")]
     [InlineData("{{ node.extract.value.terms }}", "reads field 'terms' of 'node.extract.value', which it does not declare (fields: concepts)")]
     [InlineData("{{ node.extract.value.concepts.term }}", "reads field 'term' of 'node.extract.value.concepts', which is an array of object, not an object")]
     [InlineData("{{ node.scope.value.label }}", "reads field 'label' of 'node.scope.value', which is an enum, not an object")]
@@ -569,5 +573,27 @@ public class TemplateReferenceWalkerTests
         var refs = TemplateReferenceWalker.Walk("Snippet 'standards'", "{{ node.nope.content }}", TemplateFixtures.Context());
 
         Assert.All(refs.Errors, e => Assert.StartsWith("Snippet 'standards' ", e));
+    }
+
+    // ----- #1065: an aggregator's composed text is readable -----
+
+    [Fact]
+    public void AnAggregatorsText_IsReadable_AsAnEdge_WithoutAWarning()
+    {
+        var refs = TemplateFixtures.Ok("Letter from:\n{{ node.all.content }}");
+
+        Assert.Equal(new[] { "all" }, refs.Edges);
+        Assert.Equal(new TemplateNodeRead(true, false), refs.Nodes["all"]);
+        Assert.Empty(refs.Warnings);
+    }
+
+    [Fact]
+    public void ARendererPipe_OnAnAggregator_IsRefused_AndTheEdgeIsStillRecorded()
+    {
+        var refs = TemplateFixtures.Walk("{{ node.all.content | concept_bullets }}");
+
+        Assert.Contains("all", refs.Edges);
+        Assert.Equal(new TemplateNodeRead(true, false), refs.Nodes["all"]);
+        Assert.Single(refs.Errors);
     }
 }
