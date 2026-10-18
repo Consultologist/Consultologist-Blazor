@@ -236,9 +236,16 @@ declared sections:
   its gate; the node-placed instances noted with links); *Checks* — signed, and
   the check (at 25 a node of a computed format, `node.<id>`; `kind: check`
   below). The pane's refusals use the registry's noun — *Deliverable* at 25,
-  *Result* below (#1079). A package still on the string `result` form (≤24) is
-  offered a conversion seeded with id `consult`, which is the sugar's own id —
-  so delivery filenames (`{resultId}-{jobId8}.pdf`) do not move.
+  *Result* below (#1079). At 25 each card carries a header (the label as its
+  title, `id · delivered as <id>-<job>.pdf`, Remove), an "open" link to the
+  aggregator's pane, macro rows led by the macro's label, a read-only
+  *Composed as* order line (prepended macros → sections → appended macros →
+  signature) and a "How deliverables work" expander at the pane's foot; a
+  deliverable's own key `results:<id>` focuses its card, reached from the macro
+  pane's rows and an aggregator node's "Delivers →" line (#1081). A package
+  still on the string `result` form (≤24) is offered a conversion seeded with
+  id `consult`, which is the sugar's own id — so delivery filenames
+  (`{resultId}-{jobId8}.pdf`) do not move.
 
 Both panes are hidden for v5/v6, whose single input and string result were
 never authored surfaces.
