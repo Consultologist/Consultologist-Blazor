@@ -186,11 +186,11 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     // ----- the macro pane: Instances -----
 
     [Fact]
-    public void TheMacroPane_ShowsWhereItGoes_AsChipsThatOpenTheOwner()
+    public void TheMacroPane_ListsItsInstances_AsRows_PickersFirst()
     {
-        // #1072: one section in the snippet pane's idiom — placed on (chips to the
-        // owner, the attach pickers at the row's end), read inline by, read as text
-        // by; the owner panes edit the instances.
+        // #1077 (reversing #1072's chips): Placed on is the attach pickers first,
+        // then one editable row per instance — the owner's row (placement, fan item,
+        // remove, the condition builder) led by a link to the owner; no chips.
         var page = RenderEditor();
         Navigate(page, "closing");
 
@@ -198,34 +198,111 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".macro-instances"));
         var where = page.Find(".macro-where");
         Assert.Contains("Placed on", where.TextContent);
-        Assert.Equal(new[] { "after 'Assessment'", "prepend to 'Consultation note'" },
-            where.QuerySelectorAll("ul.macro-placed li").Select(li => li.TextContent.Trim()));
-        Assert.Empty(where.QuerySelectorAll("fluent-select[aria-label^='Placement for macro closing']"));
-        Assert.Empty(where.QuerySelectorAll("fluent-button[aria-label='Remove macro closing from assessment']"));
-        Assert.Empty(where.QuerySelectorAll("fluent-button[aria-label^='Add a condition for']"));
-        Assert.NotNull(where.QuerySelector("fluent-select[aria-label='Attach macro closing to a node']"));
+        Assert.Empty(where.QuerySelectorAll("ul.macro-placed"));
         Assert.DoesNotContain("Not placed anywhere", where.TextContent);
         Assert.Empty(where.QuerySelectorAll(".macro-where__empty"));
+
+        // The pickers precede the rows.
+        var markup = where.OuterHtml;
+        Assert.True(markup.IndexOf("Attach macro closing to a node", StringComparison.Ordinal) < markup.IndexOf("macro-instance", StringComparison.Ordinal));
+
+        var onNode = where.QuerySelector("[data-instance-node='assessment']")!;
+        Assert.Equal("Assessment", onNode.QuerySelector(".macro-instance__owner")!.TextContent.Trim());
+        Assert.Contains("node 'assessment'", onNode.QuerySelector(".macro-instance__owner")!.GetAttribute("title"));
+        Assert.Equal("after", onNode.QuerySelector("fluent-select[aria-label='Placement for macro closing on assessment']")!.GetAttribute("current-value"));
+        Assert.Equal(new[] { "before", "after" }, OptionValues(page, "fluent-select[aria-label='Placement for macro closing on assessment']"));
+        Assert.Contains("after the node's output", onNode.TextContent);
+        Assert.DoesNotContain("this node's output", onNode.TextContent);
+        Assert.NotNull(onNode.QuerySelector("fluent-button[aria-label='Remove macro closing from assessment']"));
+        Assert.NotNull(onNode.QuerySelector("fluent-button[aria-label='Add a condition for assessment macro closing']"));
+        // No reorder on the macro pane — the order belongs to the node's list.
+        Assert.Empty(onNode.QuerySelectorAll(".node-macro-up"));
+
+        var onDeliverable = where.QuerySelector("[data-instance-deliverable='consult']")!;
+        Assert.Equal("Consultation note", onDeliverable.QuerySelector(".macro-instance__owner")!.TextContent.Trim());
+        var at = onDeliverable.QuerySelector("fluent-select[aria-label='Placement for macro closing in deliverable consult']")!;
+        Assert.Equal("prepend", at.GetAttribute("current-value"));
+        Assert.Equal(new[] { "prepend", "append" }, OptionValues(page, "fluent-select[aria-label='Placement for macro closing in deliverable consult']"));
+        Assert.NotNull(onDeliverable.QuerySelector("fluent-button[aria-label='Detach macro closing from deliverable consult']"));
+        // The loaded gate shows its builder.
+        Assert.Equal("kind", onDeliverable.QuerySelector("fluent-select[aria-label^='Condition operand for consult macro closing']")!.GetAttribute("current-value"));
 
         // No ≤24 controls: no slot, no sources, no optional/default, no placeholder tokens.
         Assert.Empty(page.FindAll(".result-macro-foritem"));
         Assert.Empty(page.FindAll(".macro-optional"));
         Assert.Empty(page.FindAll(".macro-placeholders"));
         Assert.DoesNotContain("slot (the model places it)", page.Markup);
-
-        where.QuerySelectorAll("ul.macro-placed button.snippet-readers__row").First().Click();
-        Assert.Equal("Assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
     }
 
     [Fact]
-    public void ADeliverableChip_OpensTheDeliverablesPane()
+    public void AFanItemInstance_ShowsItsItem_OnTheMacroPane()
+    {
+        var page = RenderEditor();
+        Navigate(page, "tool_note");
+
+        var onNode = page.Find(".macro-where [data-instance-node='section_notes']");
+        Assert.Equal("before", onNode.QuerySelector("fluent-select[aria-label='Placement for macro tool_note on section_notes']")!.GetAttribute("current-value"));
+        Assert.Equal("hpi", onNode.QuerySelector("fluent-select[aria-label='Fan item for macro tool_note on section_notes']")!.GetAttribute("current-value"));
+        // assessment reads tool_note inline but carries no instance of it: no row.
+        Assert.Empty(page.FindAll(".macro-where [data-instance-node='assessment']"));
+    }
+
+    [Fact]
+    public void ANodeRowsLink_OpensTheNodePane()
     {
         var page = RenderEditor();
         Navigate(page, "closing");
 
-        page.Find(".macro-where ul.macro-placed").QuerySelectorAll("button.snippet-readers__row").Last().Click();
+        page.Find(".macro-where [data-instance-node='assessment'] .macro-instance__owner").Click();
+
+        Assert.Equal("Assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
+    }
+
+    [Fact]
+    public void ADeliverableRowsLink_OpensTheDeliverablesPane()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        page.Find(".macro-where [data-instance-deliverable='consult'] .macro-instance__owner").Click();
 
         Assert.Equal("Deliverables", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
+    }
+
+    [Fact]
+    public void EditingAnInstance_OnTheMacroPane_WritesTheManifest()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "closing");
+
+        page.Find(".macro-where fluent-select[aria-label='Placement for macro closing on assessment']").Change("before");
+        page.Find(".macro-where fluent-select[aria-label='Placement for macro closing in deliverable consult']").Change("append");
+        Publish(page);
+
+        var manifest = Manifest(sent!);
+        // Bare = before: the format's own default, written as the string form.
+        var onNode = Node(manifest, "assessment").GetProperty("macros")[0];
+        Assert.Equal(JsonValueKind.String, onNode.ValueKind);
+        Assert.Equal("closing", onNode.GetString());
+        var consult = manifest.GetProperty("deliverables").EnumerateArray().First(d => d.GetProperty("id").GetString() == "consult");
+        Assert.Equal("append", consult.GetProperty("macros")[0].GetProperty("at").GetString());
+    }
+
+    [Fact]
+    public void RemovingANodeInstance_FromTheMacroPane_LeavesTheNodesList()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "closing");
+
+        page.Find(".macro-where fluent-button[aria-label='Remove macro closing from assessment']").Click();
+
+        Assert.Empty(page.FindAll(".macro-where [data-instance-node='assessment']"));
+        Assert.NotNull(page.Find(".macro-where [data-instance-deliverable='consult']"));
+        Publish(page);
+
+        Assert.False(Node(Manifest(sent!), "assessment").TryGetProperty("macros", out _));
     }
 
     [Fact]
@@ -246,7 +323,10 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.DoesNotContain("all", nodes);
 
         page.Find("fluent-select[aria-label='Attach macro tool_note to a node']").Change("assessment");
-        Assert.Contains("before 'Assessment'", page.Find(".macro-where ul.macro-placed").TextContent);
+        // The row appears at once, before (the format's default).
+        var row = page.Find(".macro-where [data-instance-node='assessment']");
+        Assert.Equal("before", row.QuerySelector("fluent-select[aria-label='Placement for macro tool_note on assessment']")!.GetAttribute("current-value"));
+        Assert.Contains("before the node's output", row.TextContent);
         Publish(page);
 
         var macros = Node(Manifest(sent!), "assessment").GetProperty("macros").EnumerateArray().ToList();
@@ -271,7 +351,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void RemovingANodeInstance_OnTheNodePane_DropsItsChip()
+    public void RemovingANodeInstance_OnTheNodePane_DropsItsRow()
     {
         var page = RenderEditor();
         CapturePublish();
@@ -279,7 +359,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         page.Find("fluent-button[aria-label='Remove macro closing from assessment']").Click();
 
         Navigate(page, "closing");
-        Assert.DoesNotContain("after 'Assessment'", page.Find(".macro-where").TextContent);
+        Assert.Empty(page.FindAll(".macro-where [data-instance-node='assessment']"));
         Publish(page);
 
         Assert.False(Node(Manifest(sent!), "assessment").TryGetProperty("macros", out _));
@@ -291,14 +371,12 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "closing");
 
-        // #1073: the button sits in the header; its reach is the tooltip and the
-        // sentence under Where it goes.
+        // #1073: the button sits in the header; its reach is the tooltip. #1077: the
+        // rows under Placed on are the reach — the sentence that named it is gone.
         var remove = page.Find(".pane-header__actions").QuerySelectorAll("fluent-button").First(b => b.TextContent.Contains("Remove macro"));
         Assert.Contains("node 'assessment'", remove.GetAttribute("title"));
         Assert.Contains("deliverable 'consult'", remove.GetAttribute("title"));
-        var reach = page.Find(".macro-where__reach").TextContent;
-        Assert.Contains("node 'assessment'", reach);
-        Assert.Contains("deliverable 'consult'", reach);
+        Assert.Empty(page.FindAll(".macro-where__reach"));
     }
 
     // ----- #1073: the pane's layout -----
