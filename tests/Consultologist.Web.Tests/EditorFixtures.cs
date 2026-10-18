@@ -32,6 +32,21 @@ public static class EditorFixtures
     }
 
     /// <summary>
+    /// The fixture as the Functions worker serialized it before #1066's second
+    /// half: the camelCase manifest read into the WorkflowPackageManifest record
+    /// and written back with System.Text.Json's defaults — every member of the
+    /// record, PascalCase, and a null for each trailing optional the manifest
+    /// never had, so "Results": null sits beside "Deliverables": [ … ]. What an
+    /// engine before that change sends; kept as the tolerance fixture after it.
+    /// </summary>
+    public static WorkflowPackageContentResponse AsWorkerSerialized(WorkflowPackageContentResponse fixture)
+    {
+        var record = JsonSerializer.Deserialize<Consultologist.PackageFormat.WorkflowPackageManifest>(
+            fixture.Manifest.GetRawText(), Consultologist.PackageFormat.WorkflowPackageManifestJson.ReadOptions)!;
+        return fixture with { Manifest = JsonSerializer.SerializeToElement(record) };
+    }
+
+    /// <summary>
     /// A repo-owned package loaded into the editor — what the picker gives you
     /// when you select `general` to look at it. Rewrites the embedded manifest
     /// name as well as the record's, the way V8() rewrites specVersion in both:
