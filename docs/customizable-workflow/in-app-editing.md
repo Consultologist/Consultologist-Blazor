@@ -229,17 +229,22 @@ declared sections:
   **cascades into every binding that read it**, because the alternative is
   publishing a package the validator rejects for an undeclared input while the
   author hunts down bindings the editor could already identify.
-- **Documents** — one row per declared deliverable: id, label, and an
-  **aggregator-only** node picker (v7 requires each result to name its own
-  aggregator). A package still on the string `result` form is offered a
-  conversion seeded with id `consult`, which is the sugar's own id — so
-  delivery filenames (`{resultId}-{jobId8}.pdf`) do not move.
+- **Deliverables** — one card per declared deliverable: id, label, and an
+  **aggregator-only** node picker (every deliverable names its own aggregator);
+  *Produced when* (a condition on an input or, at 25, an enum-format node);
+  *Macros* (at 25 prepend / append around the aggregator's sections, each with
+  its gate; the node-placed instances noted with links); *Checks* — signed, and
+  the check (at 25 a node of a computed format, `node.<id>`; `kind: check`
+  below). The pane's refusals use the registry's noun — *Deliverable* at 25,
+  *Result* below (#1079). A package still on the string `result` form (≤24) is
+  offered a conversion seeded with id `consult`, which is the sugar's own id —
+  so delivery filenames (`{resultId}-{jobId8}.pdf`) do not move.
 
 Both panes are hidden for v5/v6, whose single input and string result were
 never authored surfaces.
 
 Publish pre-checks the author-facing half of the server's v7 rules (id grammar,
-duplicates, blank labels, non-aggregator nodes, two documents sharing an
+duplicates, blank labels, non-aggregator nodes, two deliverables sharing an
 aggregator, bindings to undeclared inputs), wording them as the server does.
 The server remains the authority — this only moves the failure off the step
 that mints an immutable version.
