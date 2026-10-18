@@ -2667,7 +2667,7 @@
                                                     aria-label="@($"Instruction for macro {macro.Id}")" />
                                 </label>
                                 @ReferencePalette(InstructionPaletteTarget(macro))
-                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).content }}</code> where it is read inline (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence. Required at specVersion 25.</p>
+                                <p class="muted-text">Tells the model when to write <code>{{ macro.@(macro.Id).content }}</code> where it is read inline (<code>{{ macro.@(macro.Id).prompt }}</code>); the reply renders it. A Scriban template, rendered where it is read, ahead of the format's mechanics sentence — say where the content goes, and do not read <code>macro.@(macro.Id).content</code> here: the instruction renders, so that read would put the text in the prompt, and the mechanics sentence names the read. Required at specVersion 25.</p>
                             }
                             @{
                                 @* #936: which deliverables this macro is attached to — used by the

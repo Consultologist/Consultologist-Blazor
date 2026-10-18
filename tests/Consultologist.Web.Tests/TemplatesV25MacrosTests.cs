@@ -597,6 +597,9 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
             "Deliverable 'consult' macro 'nope' is not a declared macro." };
         yield return new object[] { "unused macro", new Action<System.Text.Json.Nodes.JsonObject>(root => root["macros"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "spare", "label": "Spare", "file": "macros/closing.md", "instruction": "Never." }"""))),
             "Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.content / macro.spare.prompt." };
+        // #1067: the instruction's own read is not a use — the refusal reaches the desk.
+        yield return new object[] { "macro read only by its own instruction", new Action<System.Text.Json.Nodes.JsonObject>(root => root["macros"]!.AsArray().Add(System.Text.Json.Nodes.JsonNode.Parse("""{ "id": "spare", "label": "Spare", "file": "macros/closing.md", "instruction": "Write {{ macro.spare.content }} once." }"""))),
+            "Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.content / macro.spare.prompt." };
     }
 
     [Theory]

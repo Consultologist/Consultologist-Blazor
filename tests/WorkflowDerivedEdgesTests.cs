@@ -210,6 +210,44 @@ public class WorkflowDerivedEdgesTests
         Assert.Empty(edges["assessment"]);
         Assert.Empty(edges["coverage"]);
     }
+
+
+    [Fact]
+    public void MacrosReached_RootsAtPromptsFanItemsInstancesAndConditions_NotAtUnplacedTexts()
+    {
+        // #1067: closing is placed (assessment, after); inline is read through the
+        // hpi fan item; viaplaced is read by closing's text; viacondition by a
+        // when; unreached is read only by its own instruction and by orphan's
+        // text, and orphan by nobody.
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with
+        {
+            Macros = manifest.Macros!.Concat(new[]
+            {
+                new WorkflowMacroSpec("inline", "Inline", "macros/inline.md", Instruction: "Write it after the history."),
+                new WorkflowMacroSpec("viaplaced", "Via placed", "macros/viaplaced.md", Instruction: "x"),
+                new WorkflowMacroSpec("viacondition", "Via condition", "macros/viacondition.md", Instruction: "x"),
+                new WorkflowMacroSpec("unreached", "Unreached", "macros/unreached.md", Instruction: "Write {{ macro.unreached.content }} last."),
+                new WorkflowMacroSpec("orphan", "Orphan", "macros/orphan.md", Instruction: "x"),
+            }).ToList(),
+        };
+        manifest = V25Package.WithNode(manifest, "scope", n => n with { When = "(macro.viacondition.content | string.size) > 0" });
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["snippets/sections/hpi.md"] = "History. {{ macro.inline.prompt }}",
+            ["macros/closing.md"] = "Closing: {{ macro.viaplaced.content }}",
+            ["macros/inline.md"] = "Inline.",
+            ["macros/viaplaced.md"] = "Via placed.",
+            ["macros/viacondition.md"] = "Via condition.",
+            ["macros/unreached.md"] = "Unreached.",
+            ["macros/orphan.md"] = "Orphan reads {{ macro.unreached.content }}",
+        };
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        Assert.Equal(new[] { "closing", "inline", "viacondition", "viaplaced" }, walk.MacrosReached(Array.Empty<string>()).Order());
+        Assert.Contains("orphan", walk.MacrosReached(new[] { "orphan" }));   // a deliverable instance is a root too
+    }
 }
 
 /// <summary>Design § 5.3: the mechanics sentence is a constant of the format, pinned to the registry's published text.</summary>
