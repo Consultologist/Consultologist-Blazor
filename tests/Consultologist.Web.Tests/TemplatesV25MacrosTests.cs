@@ -646,8 +646,11 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
 
         var picker = page.Find("fluent-select[aria-label='Append macro to deliverable consult']");
         var offered = picker.QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value")).ToList();
-        Assert.DoesNotContain("closing", offered);
+        // #1080: closing is prepended, so its append identity is still free — offered by name.
+        Assert.Contains("closing", offered);
+        Assert.Equal("closing — append", picker.QuerySelectorAll("fluent-option").First(o => o.GetAttribute("value") == "closing").TextContent.Trim());
         Assert.Contains("tool_note", offered);
+        Assert.Equal("tool_note", picker.QuerySelectorAll("fluent-option").First(o => o.GetAttribute("value") == "tool_note").TextContent.Trim());
         picker.Change("tool_note");
 
         var placement = page.Find("fluent-select[aria-label='Placement for macro tool_note in deliverable consult']");
@@ -673,6 +676,117 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.False(macros[1].TryGetProperty("slot", out _));
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    // ----- #1080: the identity at 25 is (id, at) -----
+
+    private static WorkflowPackageContentResponse V25WithClosingPrependedAndAppended() =>
+        Reshaped(root => DeliverableObject(root)["macros"] = System.Text.Json.Nodes.JsonNode.Parse(
+            """[ { "id": "closing", "at": "prepend", "when": "input.kind == \"new\"" }, { "id": "closing", "at": "append" } ]"""));
+
+    [Fact]
+    public void BothIdentities_Load_AsTwoRows_EditedApart()
+    {
+        var page = RenderEditor(V25WithClosingPrependedAndAppended());
+        CapturePublish();
+        Navigate(page, DeliverablesPane);
+
+        var rows = page.FindAll("[data-v11-for='consult'] .result-macro");
+        Assert.Equal(2, rows.Count);
+        Assert.Equal("prepend", page.Find("fluent-select[aria-label='Placement for macro closing in deliverable consult (prepend)']").GetAttribute("current-value"));
+        Assert.Equal("append", page.Find("fluent-select[aria-label='Placement for macro closing in deliverable consult (append)']").GetAttribute("current-value"));
+        // The prepend row carries the loaded gate; the append row's gate rests.
+        Assert.Equal("kind", page.Find("fluent-select[aria-label^='Condition operand for consult macro closing prepend']").GetAttribute("current-value"));
+        page.Find("fluent-button[aria-label='Add a condition for consult macro closing append']").Click();
+        page.Find("fluent-select[aria-label^='Condition operand for consult macro closing append']").Change("kind");
+        page.Find("fluent-select[aria-label^='Condition value for consult macro closing append']").Change("follow_up");
+        Publish(page);
+
+        var macros = Deliverable(Manifest(sent!)).GetProperty("macros").EnumerateArray().ToList();
+        Assert.Equal(2, macros.Count);
+        Assert.Equal("input.kind == \"new\"", macros[0].GetProperty("when").GetString());
+        Assert.Equal("append", macros[1].GetProperty("at").GetString());
+        Assert.Equal("input.kind == \"follow_up\"", macros[1].GetProperty("when").GetString());
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void RemovingOneIdentity_LeavesTheOther()
+    {
+        var page = RenderEditor(V25WithClosingPrependedAndAppended());
+        CapturePublish();
+        Navigate(page, DeliverablesPane);
+
+        page.Find("fluent-button[aria-label='Remove macro 2']").Click();
+
+        Assert.Single(page.FindAll("[data-v11-for='consult'] .result-macro"));
+        Assert.Equal("prepend", page.Find("fluent-select[aria-label='Placement for macro closing in deliverable consult']").GetAttribute("current-value"));
+        Publish(page);
+        var macros = Deliverable(Manifest(sent!)).GetProperty("macros").EnumerateArray().ToList();
+        Assert.Single(macros);
+        Assert.Equal("prepend", macros[0].GetProperty("at").GetString());
+    }
+
+    [Fact]
+    public void AppendingTheSecondIdentity_IsBornAtTheFreePlacement()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, DeliverablesPane);
+
+        page.Find("fluent-select[aria-label='Append macro to deliverable consult']").Change("closing");
+
+        var born = page.Find("fluent-select[aria-label='Placement for macro closing in deliverable consult (append)']");
+        Assert.Equal("append", born.GetAttribute("current-value"));
+        Assert.DoesNotContain("choose a placement…", born.TextContent);
+        // Both identities taken: closing leaves the picker; tool_note stays.
+        var offered = OptionValues(page, "fluent-select[aria-label='Append macro to deliverable consult']");
+        Assert.DoesNotContain("closing", offered);
+        Assert.Contains("tool_note", offered);
+        Publish(page);
+
+        var macros = Deliverable(Manifest(sent!)).GetProperty("macros").EnumerateArray().ToList();
+        Assert.Equal(2, macros.Count);
+        Assert.Equal("closing", macros[1].GetProperty("id").GetString());
+        Assert.Equal("append", macros[1].GetProperty("at").GetString());
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void AnUnplacedEntry_BlocksASecondOfTheSameId()
+    {
+        var page = RenderEditor();
+        Navigate(page, DeliverablesPane);
+
+        page.Find("fluent-select[aria-label='Append macro to deliverable consult']").Change("tool_note");
+
+        // tool_note waits unplaced; a second would be "placed twice ()" — not offered until placed.
+        Assert.DoesNotContain("tool_note", OptionValues(page, "fluent-select[aria-label='Append macro to deliverable consult']"));
+        page.Find("fluent-select[aria-label='Placement for macro tool_note in deliverable consult']").Change("prepend");
+        Assert.Contains("tool_note", OptionValues(page, "fluent-select[aria-label='Append macro to deliverable consult']"));
+    }
+
+    [Fact]
+    public void TheMacroPane_ShowsOneDeliverableRowPerIdentity()
+    {
+        var page = RenderEditor(V25WithClosingPrependedAndAppended());
+        Navigate(page, "closing");
+
+        var rows = page.FindAll(".macro-where [data-instance-deliverable='consult']");
+        Assert.Equal(new[] { "prepend", "append" }, rows.Select(r => r.GetAttribute("data-instance-at")));
+        // Both identities taken: the attach picker offers no deliverable.
+        Assert.Empty(page.FindAll("fluent-select[aria-label='Attach macro closing to a deliverable']"));
+
+        page.Find("fluent-button[aria-label='Detach macro closing from deliverable consult (append)']").Click();
+
+        var left = page.FindAll(".macro-where [data-instance-deliverable='consult']");
+        Assert.Single(left);
+        Assert.Equal("prepend", left[0].GetAttribute("data-instance-at"));
+        // And the deliverable is offered again, for the placement left free.
+        var attach = page.Find("fluent-select[aria-label='Attach macro closing to a deliverable']");
+        Assert.Equal("Consultation note — append", attach.QuerySelectorAll("fluent-option").Last().TextContent.Trim());
     }
 
     [Fact]
