@@ -514,29 +514,24 @@ fluent-button.node-field__button::part(control) {
 	margin: 0;
 }
 
-/* #1072: the macro pane's "Where it goes" — chips that open the owner, the
-   attach pickers at the row's end; the rows read like the snippet pane's. */
+/* #1077 (was #1072): the macro pane's "Where it goes" — the attach pickers
+   first, then one .result-macro row per instance (the owner panes' rows, led by
+   a link to the owner); the read rows are chips like the snippet pane's. */
 .macro-where {
 	display: flex;
 	flex-direction: column;
 	gap: 0.4rem;
 }
 
-.macro-where__row {
+.macro-where__add {
 	display: flex;
 	flex-wrap: wrap;
-	align-items: center;
 	gap: 0.25rem 0.5rem;
 }
 
-.macro-where__row ul.snippet-readers {
-	margin: 0;
-}
-
-.macro-where__add {
-	display: inline-flex;
-	flex-wrap: wrap;
-	gap: 0.25rem 0.5rem;
+/* #1077: the row's link is the owner's label, not an id — no monospace. */
+.macro-instance__owner {
+	font-family: inherit;
 }
 
 .macro-where p.muted-text {
