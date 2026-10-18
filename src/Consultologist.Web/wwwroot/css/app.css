@@ -1248,3 +1248,16 @@ details.insert-reference > summary {
 .template-reads {
 	font-size: 0.8rem;
 }
+
+/* #1071: the macro pane's "what the model is told" preview — the engine's text, wrapped. */
+.macro-prompt-preview {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.5rem 0;
+}
+
+.macro-prompt-preview__text {
+    white-space: pre-wrap;
+    margin: 0;
+}
