@@ -679,4 +679,84 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
     }
+
+    // ----- #1071: what the model is told -----
+
+    private static string PromptPreview(IRenderedComponent<Templates> page, string macroId) =>
+        page.Find($"[aria-label='What the model is told for macro {macroId}'] .macro-prompt-preview__text").TextContent;
+
+    [Fact]
+    public void TheMacroPane_ShowsWhatTheModelIsTold_ForAnInlineMacro()
+    {
+        // tool_note is read inline by prompts/assessment.md: the preview is the
+        // instruction rendered, then the mechanics sentence — the engine's bytes.
+        var page = RenderEditor();
+        Navigate(page, "tool_note");
+
+        Assert.Equal(PF.WorkflowMacroMechanics.Prompt("tool_note", "Note the tools used when a procedure is described."), PromptPreview(page, "tool_note"));
+        Assert.Empty(page.FindAll(".macro-prompt-preview__note"));
+    }
+
+    [Fact]
+    public void TheMacroPane_ShowsWhatTheModelIsTold_ForAPlacedOnlyMacro_WithTheNote()
+    {
+        // closing is placed (after assessment, prepended to consult) and read inline by nothing.
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        Assert.Equal(PF.WorkflowMacroMechanics.Prompt("closing", "Add a closing line if the plan changed."), PromptPreview(page, "closing"));
+        Assert.Contains("Read inline by nothing yet — placed instances do not use the instruction.", page.Find(".macro-prompt-preview__note").TextContent);
+    }
+
+    [Fact]
+    public void EditingTheInstruction_UpdatesWhatTheModelIsTold_WithTokensForTheRunsValues()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        page.Find("fluent-text-area[aria-label='Instruction for macro closing']").Change("Close for {{ profile.name }} after {{ node.assessment.content }}.");
+
+        Assert.StartsWith("Close for ⟨profile.name⟩ after ⟨node.assessment.content⟩.", PromptPreview(page, "closing"));
+    }
+
+    [Fact]
+    public void ASelfRead_ShowsTheMacrosTextInThePreview_AndTheWarning()
+    {
+        // The #1067 trap made visible: the text lands in the prompt, and the validator's sentence sits beside it.
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        page.Find("fluent-text-area[aria-label='Instruction for macro closing']").Change("Write {{ macro.closing.content }} last.");
+
+        Assert.StartsWith("Write Closing: ⟨profile.name⟩. last.", PromptPreview(page, "closing"));
+        Assert.Contains(
+            "Macro 'closing' instruction reads macro.closing.content; an instruction renders where macro.closing.prompt is read, so that read puts the macro's text in the prompt — say where the content goes, the mechanics sentence names the read.",
+            page.Find(".macro-prompt-preview .node-reads__warning").TextContent);
+    }
+
+    [Fact]
+    public void AnInstructionThatDoesNotRender_ShowsTheRenderersSentence()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        page.Find("fluent-text-area[aria-label='Instruction for macro closing']").Change("{{ if }}");
+
+        var preview = page.Find("[aria-label='What the model is told for macro closing'] .macro-prompt-preview__text");
+        Assert.Contains("editor-warning", preview.ClassName);
+        Assert.Contains("does not parse", preview.TextContent);
+    }
+
+    [Fact]
+    public void ABlankInstruction_SaysSo()
+    {
+        var page = RenderEditor();
+        Navigate(page, "+ Macro");
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("signature_line");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+        Navigate(page, "signature_line");
+
+        Assert.Equal("No instruction yet.", PromptPreview(page, "signature_line").Trim());
+    }
+
 }
