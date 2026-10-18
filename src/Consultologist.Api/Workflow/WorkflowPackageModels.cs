@@ -163,18 +163,35 @@ public sealed record WorkflowPackageResponse(
 public sealed record WorkflowPackageMacroResponse(string Id, string Label, bool Default);
 
 /// <summary>
-/// The pin-resolved package's full editable content: the typed manifest (the
-/// binding-value converter round-trips it) plus every source file the store
-/// downloaded — prompts (incl. preludes), schemas, and data files including each
-/// collection's index.json. The editor's load half of the load→edit→publish
-/// round-tripping contract (docs/customizable-workflow/in-app-editing.md).
+/// The pin-resolved package's full editable content: the manifest plus every
+/// source file the store downloaded — prompts (incl. preludes), schemas, and data
+/// files including each collection's index.json. The editor's load half of the
+/// load→edit→publish round-tripping contract
+/// (docs/customizable-workflow/in-app-editing.md).
+///
+/// #1066: the manifest crosses the wire as its canonical JSON — camelCase, no
+/// null members (WorkflowPackageManifestJson.WriteOptions), the shape its
+/// sources and the registry have — rather than as the record the worker's
+/// default serializer would write (every member, PascalCase, <c>"Results": null</c>
+/// beside <c>"Deliverables"</c> at 25, which the editor's reader tripped on).
+/// The envelope around it stays the worker's. Build one with <see cref="For"/>.
 /// </summary>
 public sealed record WorkflowPackageContentResponse(
     string Name,
     string Version,
     int SpecVersion,
-    WorkflowPackageManifest Manifest,
-    IReadOnlyDictionary<string, string> Files);
+    JsonElement Manifest,
+    IReadOnlyDictionary<string, string> Files)
+{
+    /// <summary>The response for a resolved manifest and its files; the manifest serialized once, canonically.</summary>
+    public static WorkflowPackageContentResponse For(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files) =>
+        new(
+            manifest.Name,
+            manifest.Version,
+            manifest.SpecVersion,
+            JsonSerializer.SerializeToElement(manifest, WorkflowPackageManifestJson.WriteOptions),
+            files);
+}
 
 /// <summary>
 /// The publish half of the editor's round-tripping contract: the manifest and

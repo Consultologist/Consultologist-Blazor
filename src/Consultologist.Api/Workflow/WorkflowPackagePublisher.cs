@@ -32,15 +32,6 @@ public sealed class WorkflowPackagePublisher
 {
     private const int MaxPublishAttempts = 3;
 
-    // Registry manifests are written camelCase and without null members, matching
-    // the repo package sources; the store reads case-insensitively either way.
-    private static readonly JsonSerializerOptions ManifestJsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = true
-    };
-
     private readonly IWorkflowPackageStore _packageStore;
     private readonly IWorkflowPackageRegistryWriter _writer;
     private readonly IAccountSettingsStore _settingsStore;
@@ -243,7 +234,7 @@ public sealed class WorkflowPackagePublisher
                     accountKind,
                     name,
                     stamped.Version,
-                    JsonSerializer.Serialize(stamped, ManifestJsonOptions),
+                    JsonSerializer.Serialize(stamped, WorkflowPackageManifestJson.WriteOptions),
                     cancellationToken);
                 break;
             }
