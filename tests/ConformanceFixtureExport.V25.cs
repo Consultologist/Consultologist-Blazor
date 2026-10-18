@@ -157,6 +157,34 @@ public partial class ConformanceFixtureExport
                 rich);
         }
 
+        {
+            // #1065: a template may read an aggregator's composed text — the letter
+            // node reads the note aggregator (the two-documents shape); its own
+            // aggregator and deliverable keep the fan rule satisfied through the read.
+            var letter = Files(Manifest(m, x => x with
+            {
+                Prompts = x.Prompts!.Append(new WorkflowPromptSpec("letter", "prompts/letter.md", new List<string>())).ToList(),
+                Nodes = x.Nodes!
+                    .Append(new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose"))
+                    .Append(new WorkflowNodeSpec("letter_all", "Letter, assembled", Aggregate: new List<string> { "node.letter" }))
+                    .ToList(),
+                Deliverables = x.Deliverables!.Append(new WorkflowDeliverableSpec("letter", "node.letter_all", "Letter")).ToList(),
+            }), fs => fs["prompts/letter.md"] = "Letter from:\n{{ node.all.content }}");
+            (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) LetterPrompt(string text) => Files(letter, fs => fs["prompts/letter.md"] = text);
+
+            Valid("v25-prompt-reads-an-aggregator",
+                "A letter node reading the note aggregator's composed text (node.all.content), its own aggregator and deliverable — the two-documents shape; the read is the edge that reaches the fan.",
+                letter);
+            Invalid("invalid-aggregator-read-as-a-value", "An aggregator's .value — its composed text is no format's output and has no value (the .content read beside it keeps the deliverable's fan edge, so the case names one rule).",
+                LetterPrompt("{{ node.all.content }} {{ node.all.value }}"));
+            Invalid("invalid-aggregator-read-through-a-renderer-pipe", "An aggregator's text through a renderer pipe — a renderer renders a concept_list node's text.",
+                LetterPrompt("{{ node.all.content | concept_bullets }}"));
+            Invalid("invalid-aggregator-declares-for-each", "An aggregator declaring forEach — an aggregator is structural.",
+                Node(m, "all", n => n with { ForEach = "snippet.sections" }));
+            Invalid("invalid-condition-reads-an-aggregator", "A node's when reading an aggregator's text — a condition decides before the sections compose.",
+                Node(letter, "letter", n => n with { When = "node.all.content != \"\"" }));
+        }
+
         Valid("v25-structured-content-read-warns",
             "A prompt reading node.<id>.content of an object format — valid, with the warning that the JSON renders as text and .value has the fields.",
             P("{{ snippet.standards.content }} {{ input.notes }} {{ node.extract.content }}"));
