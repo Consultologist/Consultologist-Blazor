@@ -2637,14 +2637,26 @@
                     else if (SelectedMacro() is { } macro)
                     {
                         <WorkflowEditorPane Title="@macro.Label"
-                                            EditorExtra="@(At25 ? InsertReferencePalette((macro.File, null, true)) : null)"
+                                            EditorExtra="@(At25 ? MacroTextExtra(macro) : null)"
+                                            Footer="@(At25 ? MacroHelp : null)"
                                             IdentityId="@macro.Id"
                                             IdentityFile="@macro.File"
                                             EditLabel="Macro text"
                                             Text="@GetText(macro.File)"
                                             Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
                                             TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
-                            @PaneDiscardButton(macro.File, MacroCanDiscard(macro), () => RevertMacroEdits(macro.File, macro.Id))
+                            <HeaderActions>
+                                @PaneDiscardButton(macro.File, MacroCanDiscard(macro), () => RevertMacroEdits(macro.File, macro.Id))
+                                @if (At25 && (AddedMacroForFile(macro.File) != null || EffectiveSpecVersion >= 11))
+                                {
+                                    @* #1073: Remove sits in the header, as the snippet pane's does; its reach is the
+                                       tooltip here and a sentence under "Where it goes". *@
+                                    <FluentButton Appearance="Appearance.Outline"
+                                                  title="@MacroRemovalReach(macro)"
+                                                  @onclick="() => RemoveMacroFromPaneAsync(macro)">Remove macro</FluentButton>
+                                }
+                            </HeaderActions>
+                            <ChildContent>
                             @* #946: the macro's display label — an editable manifest field (macros[].label). *@
                             <label class="node-field">
                                 <span>label</span>
@@ -2659,9 +2671,9 @@
                                    where {{ macro.<id>.prompt }} is read, ahead of the format's mechanics sentence.
                                    #1044: a Scriban template, rendered where it is read — the palette inserts
                                    into it as into any text. *@
-                                <label class="node-field macro-instruction-field">
+                                <label class="input-field macro-instruction-field">
                                     <span>instruction</span>
-                                    <FluentTextArea class="macro-instruction" Rows="3"
+                                    <FluentTextArea class="macro-instruction" Rows="4"
                                                     Value="@MacroInstruction(macro)"
                                                     ValueChanged="@(v => SetMacroInstructionAsync(macro.Id, v))"
                                                     aria-label="@($"Instruction for macro {macro.Id}")" />
@@ -2928,6 +2940,10 @@
                                     {
                                         <p class="muted-text macro-where__empty">Not used yet — place it on a node or a deliverable, or read <code>{{ macro.@(macro.Id).prompt }}</code> where it goes; the registry refuses an unused macro.</p>
                                     }
+                                    else if (placements.Count > 0)
+                                    {
+                                        <p class="muted-text macro-where__reach">Remove macro (in the header) removes its instances on @string.Join(", ", MacroPlacedOn(macro.Id)).</p>
+                                    }
                                     @if (formatsCatalog is null)
                                     {
                                         <p class="muted-text">The format catalogue is unavailable, so reads from prompts on catalogue formats are not listed.</p>
@@ -2939,7 +2955,7 @@
                                "Remove node" — so the "Attached to" reach is visible at the point
                                of removal. A pending (just-added) macro can always go; a declared
                                one at v11+ (its references strip in the same publish). *@
-                            @if (AddedMacroForFile(macro.File) != null || EffectiveSpecVersion >= 11)
+                            @if (!At25 && (AddedMacroForFile(macro.File) != null || EffectiveSpecVersion >= 11))
                             {
                                 <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
                                               IconStart="@(new Icons.Regular.Size20.Dismiss())"
@@ -2973,11 +2989,7 @@
                                     }
                                 </div>
                             }
-                            @if (At25)
-                            {
-                                <p class="muted-text macro-objects">A Scriban template: it may read <code>input.&lt;id&gt;</code>, <code>node.&lt;id&gt;.content</code> / <code>.value</code>, <code>snippet.&lt;id&gt;.content</code>, <code>macro.&lt;id&gt;.content</code>, <code>run.&lt;fact&gt;</code> and <code>profile.&lt;fact&gt;</code>; never <code>macro.&lt;id&gt;.prompt</code> — placed text instructs no model.</p>
-                            }
-                            else
+                            @if (!At25)
                             {
                             <div class="macro-placeholders">
                                 <span class="muted-text">
@@ -3018,6 +3030,7 @@
                                 </ul>
                             </div>
                             }
+                            </ChildContent>
                         </WorkflowEditorPane>
                     }
                     else
@@ -4841,11 +4854,12 @@
     /// that is no file): its name for the labels, the choices it offers, its walk (reads and
     /// warnings), and how the picked snippet is appended.
     /// </summary>
-    private sealed record PaletteTarget(string Name, IReadOnlyList<ReferenceChoice> Choices, PF.WorkflowDerivedEdges.WalkedTemplate? Walked, Func<string, Task> Append);
+    private sealed record PaletteTarget(string Name, IReadOnlyList<ReferenceChoice> Choices, PF.WorkflowDerivedEdges.WalkedTemplate? Walked, Func<string, Task> Append, string Noun = "the text");
 
     /// <summary>A file's palette target: the choices for its text, its walk, appended through the text editor.</summary>
     private PaletteTarget FilePaletteTarget(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText) =>
-        new(file, ReferenceChoices(file, fanNode, isMacroText), TemplateWalkOf(file), snippet => OnTextChangedAsync(file, Appended(GetText(file), snippet)));
+        new(file, ReferenceChoices(file, fanNode, isMacroText), TemplateWalkOf(file), snippet => OnTextChangedAsync(file, Appended(GetText(file), snippet)),
+            isMacroText ? "the macro text" : file.StartsWith("prompts/", StringComparison.Ordinal) ? "the prompt" : "the snippet");
 
     /// <summary>
     /// #1044: a macro's instruction as a palette target — the choices a snippet gets (never the
@@ -4857,7 +4871,8 @@
             $"instruction of macro {macro.Id}",
             ReferenceChoices(macro.File, null, isMacroText: false),
             PackageWalk?.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Instruction && t.Id == macro.Id),
-            snippet => SetMacroInstructionAsync(macro.Id, Appended(MacroInstruction(macro) ?? string.Empty, snippet)));
+            snippet => SetMacroInstructionAsync(macro.Id, Appended(MacroInstruction(macro) ?? string.Empty, snippet)),
+            "the instruction");
 
     private static string Appended(string text, string snippet) =>
         text.Length == 0 ? snippet : text.EndsWith('\n') ? text + snippet : text + "\n" + snippet;
@@ -4886,6 +4901,25 @@
     private RenderFragment<(string File, WorkflowManifestReader.NodeView? FanNode, bool IsMacroText)> InsertReferencePalette => spec =>
         ReferencePalette(FilePaletteTarget(spec.File, spec.FanNode, spec.IsMacroText));
 
+    /// <summary>#1073: the macro text's one sentence and its palette — right above the "Macro text" editor.</summary>
+    private RenderFragment MacroTextExtra(WorkflowManifestReader.MacroView macro) => @<text>
+        <p class="muted-text macro-text-help">Macro text — a Scriban template rendered where it is read (<code>macro.@(macro.Id).content</code>) or composed around an output; it never reads <code>macro.@(macro.Id).prompt</code>.</p>
+        @InsertReferencePalette((macro.File, null, true))
+    </text>;
+
+    /// <summary>#1073: the pane's foot — how macros work, folded; one place for what the field sentences leave out.</summary>
+    private RenderFragment MacroHelp => @<details class="pane-help">
+        <summary>How macros work</summary>
+        <dl class="pane-help__list">
+            <dt>Placed</dt>
+            <dd>An instance on a node (before or after its output, per fan item when it fans) or on a deliverable (prepend or append); the engine composes the text around the output. Edit instances on the node pane or the Deliverables pane.</dd>
+            <dt>Read inline</dt>
+            <dd>A prompt or snippet reads <code>{{ macro.&lt;id&gt;.prompt }}</code> where the macro goes: the model is told the instruction, then the format's mechanics sentence naming <code>{{ macro.&lt;id&gt;.content }}</code>, and the reply renders that read. The instruction says when and where — it never reads the macro's own content.</dd>
+            <dt>The text</dt>
+            <dd>A Scriban template over what a prompt reads — inputs, nodes, snippets, other macros' content, run and profile facts — never <code>macro.&lt;id&gt;.prompt</code>. The registry refuses a macro placed nowhere and read nowhere.</dd>
+        </dl>
+    </details>;
+
     /// <summary>The palette over any target (#1044): a file's text, or a macro's instruction.</summary>
     private RenderFragment<PaletteTarget> ReferencePalette => target => @<text>
         @{
@@ -4894,7 +4928,7 @@
             var walked = target.Walked;
         }
         <details class="insert-reference">
-            <summary>+ reference</summary>
+            <summary>+ reference into @target.Noun</summary>
             <div class="insert-reference__row">
                 <FluentSelect TOption="string" class="binding-row__select insert-reference__pick"
                         Value="@(insertPick ?? "")"
@@ -6063,6 +6097,10 @@
 
         await CommitDeclarationAsync();
     }
+
+    /// <summary>#1073: the Remove macro button's tooltip — what removing takes with it.</summary>
+    private string MacroRemovalReach(WorkflowManifestReader.MacroView macro) =>
+        MacroPlacedOn(macro.Id) is { Count: > 0 } placedOn ? $"Removes its instances on {string.Join(", ", placedOn)}." : "Removes the macro.";
 
     /// <summary>v25 (C3 #1009): where a macro is placed — the nodes and deliverables carrying an instance of it.</summary>
     private IReadOnlyList<string> MacroPlacedOn(string macroId) =>

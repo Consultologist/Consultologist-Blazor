@@ -470,6 +470,50 @@ fluent-button.node-field__button::part(control) {
 	margin: 0.25rem 0;
 }
 
+/* #1073: the macro pane's fields read like the snippet pane's — a label on its
+   own row, the instruction a full-width field, the help folded at the foot. */
+.node-field {
+	display: flex;
+	align-items: center;
+	gap: 0.4rem;
+	font-size: 0.8rem;
+	color: var(--consultologist-text-muted);
+}
+
+::deep .macro-instruction-field fluent-text-area::part(control) {
+	min-height: 5rem;
+}
+
+::deep .macro-text-help {
+	margin: 0 0 0.35rem;
+}
+
+.pane-help {
+	margin: 0.75rem 0 0.25rem;
+	font-size: 0.85rem;
+}
+
+.pane-help > summary {
+	cursor: pointer;
+	user-select: none;
+	color: var(--consultologist-text-muted);
+}
+
+.pane-help__list {
+	margin: 0.4rem 0;
+	display: grid;
+	grid-template-columns: max-content 1fr;
+	gap: 0.2rem 0.75rem;
+}
+
+.pane-help__list dt {
+	font-weight: 600;
+}
+
+.pane-help__list dd {
+	margin: 0;
+}
+
 /* #1072: the macro pane's "Where it goes" — chips that open the owner, the
    attach pickers at the row's end; the rows read like the snippet pane's. */
 .macro-where {
