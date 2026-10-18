@@ -31,6 +31,24 @@ public static class WorkflowPackageManifestJson
     };
 
     /// <summary>
+    /// How a manifest is WRITTEN, in one place too: camelCase and without null
+    /// members, matching the repo package sources — the registry (the publisher
+    /// stamps and writes with these) and the content and ingest responses the
+    /// editor loads (#1066). Before, those responses went through the Functions
+    /// worker's default serializer, which writes every member of the record,
+    /// PascalCase, with a null for each trailing optional the manifest never
+    /// had — <c>"Results": null</c> beside <c>"Deliverables": [ … ]</c> at 25 —
+    /// and the editor's reader stopped at the null. A manifest on the wire now
+    /// has the shape its sources have; the store reads either case-insensitively.
+    /// </summary>
+    public static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        WriteIndented = true
+    };
+
+    /// <summary>
     /// Read a manifest the way the engine must: the version first, then the
     /// shape. The order is the whole point (#416) and it lives here rather than
     /// at the call site because nothing constructs WorkflowPackageStore outside

@@ -481,4 +481,65 @@ public class ManifestReaderTests
         Assert.True(nodes[0].IsResult);
         Assert.False(nodes[1].IsResult);
     }
+
+    // ----- #1066: a null-valued key is an absent key -----
+    // The Functions worker serializes every member of the manifest record, so a
+    // 25 manifest arrives as "Results": null beside "Deliverables": [ … ]. A
+    // lookup that stopped at the null read no deliverables, and the editor
+    // offered to "convert" a package that had a list — rewriting it on publish.
+
+    [Fact]
+    public void ReadResults_ReadsDeliverables_WhenTheWorkerWroteResultsNull()
+    {
+        var results = WorkflowManifestReader.ReadResults(Parse("""
+            { "Result": null, "Results": null,
+              "Deliverables": [ { "Id": "consult", "Node": "node.all", "Label": "Consultation note", "Macros": [ { "id": "test", "at": "append" } ] } ] }
+            """));
+
+        var consult = Assert.Single(results);
+        Assert.Equal("consult", consult.Id);
+        Assert.Equal("node.all", consult.Node);
+        Assert.Equal("append", Assert.Single(consult.Macros!).At);
+
+        var camel = WorkflowManifestReader.ReadResults(Parse("""
+            { "results": null, "deliverables": [ { "id": "consult", "node": "node.all", "label": "Note" } ] }
+            """));
+        Assert.Equal("consult", Assert.Single(camel).Id);
+    }
+
+    [Fact]
+    public void ReadNodes_MarksTheDeliverable_WhenResultsIsNull_At25()
+    {
+        var nodes = WorkflowManifestReader.ReadNodes(Parse("""
+            { "Result": null, "Results": null,
+              "Deliverables": [ { "Id": "consult", "Node": "node.all", "Label": "Note" } ],
+              "Nodes": [ { "Id": "all", "Label": "All", "Aggregate": ["node.a"] }, { "Id": "a", "Label": "A", "Prompt": "a", "Format": "prose" } ] }
+            """));
+
+        Assert.True(nodes[0].IsResult);
+        Assert.False(nodes[1].IsResult);
+    }
+
+    [Fact]
+    public void ANullKey_ReadsAsAbsent_InEitherCasing()
+    {
+        Assert.Null(WorkflowManifestReader.ReadResultRef(Parse("""{ "Result": null }""")));
+        Assert.Null(WorkflowManifestReader.ReadResultRef(Parse("""{ "result": null }""")));
+        Assert.Null(WorkflowManifestReader.ReadTags(Parse("""{ "Tags": null }""")));
+        Assert.Empty(WorkflowManifestReader.ReadMacros(Parse("""{ "Macros": null }""")));
+
+        // A null in one casing does not hide a value in the other.
+        Assert.Equal("node.all", WorkflowManifestReader.ReadResultRef(Parse("""{ "Result": null, "result": "node.all" }""")));
+    }
+
+    [Fact]
+    public void ReadInputs_RequiredStaysTrue_ForANullRequired()
+    {
+        // The default was already "absent means required"; a null now reads
+        // as absent rather than as "not false", which is the same answer.
+        var input = Assert.Single(WorkflowManifestReader.ReadInputs(
+            Parse("""{ "Inputs": [ { "Id": "notes", "Label": "Notes", "Required": null } ] }""")));
+
+        Assert.True(input.Required);
+    }
 }

@@ -83,9 +83,13 @@ before resolution. Repo-owned names (`general`) remain open to all.
 
 - `GET WorkflowPackages/Current/Content` — new endpoint (keeping the hot `Current`
   lean): the pin-resolved package's full editable content as
-  `(Name, Version, SpecVersion, Manifest (typed; the binding-value converter
-  round-trips), Files (path→content: prompts incl. preludes, schemas, and data
-  files incl. each collection's index.json))`. Prerequisite store change:
+  `(Name, Version, SpecVersion, Manifest, Files (path→content: prompts incl.
+  preludes, schemas, and data files incl. each collection's index.json))`.
+  Since #1066 the `Manifest` is the manifest's canonical JSON — camelCase, no
+  null members (`WorkflowPackageManifestJson.WriteOptions`, the registry's
+  shape) — inside the worker's PascalCase envelope; before, the worker
+  serialized the typed record with every member, and at 25 `"Results": null`
+  beside `"Deliverables"` made the editor's reader see no deliverables. Prerequisite store change:
   `WorkflowPackage` retains the downloaded file dict as `SourceFiles` (today
   `LoadPromptsAsync` discards it after validation).
 - `POST WorkflowPackages/Publish` — request mirrors the content response

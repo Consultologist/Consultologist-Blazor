@@ -88,7 +88,7 @@ public sealed class WorkflowPackageIngestor
 
         findings.AddRange(WorkflowPackageValidator.Validate(manifest, files, catalogSchemas).Errors);
 
-        var content = new WorkflowPackageContentResponse(manifest.Name, manifest.Version, manifest.SpecVersion, manifest, files);
+        var content = WorkflowPackageContentResponse.For(manifest, files);
         return new WorkflowPackageIngestResult(content, findings, null);
     }
 }

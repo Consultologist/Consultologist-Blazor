@@ -612,6 +612,8 @@ public static class WorkflowManifestReader
         var results = new List<ResultView>();
 
         // v25 (A3 #998): results[] is spelled deliverables[] — the same record shape.
+        // #1066: the worker writes the off-version key as null; TryGetProperty
+        // reads a null as absent, so the second key is reached.
         if ((!TryGetProperty(manifest, "results", out var array) && !TryGetProperty(manifest, "deliverables", out array)) || array.ValueKind != JsonValueKind.Array)
         {
             return results;
@@ -668,6 +670,7 @@ public static class WorkflowManifestReader
         var ids = new HashSet<string>(StringComparer.Ordinal);
 
         // v25 (A3 #998): results[] is spelled deliverables[] — the same shape.
+        // #1066: a null-valued results key (the worker's shape at 25) is absent.
         if ((TryGetProperty(manifest, "results", out var results) || TryGetProperty(manifest, "deliverables", out results))
             && results.ValueKind == JsonValueKind.Array)
         {
@@ -706,16 +709,25 @@ public static class WorkflowManifestReader
     /// serializer (the Functions worker default writes PascalCase; repo manifest
     /// sources are camelCase) — the reader accepts either, like the server's own
     /// case-insensitive parsing does.
+    ///
+    /// #1066: a key whose value is JSON null is an ABSENT key. The worker's
+    /// default serializer writes every member of the manifest record, so a
+    /// trailing optional the manifest never had arrives as <c>"Results": null</c>
+    /// beside <c>"Deliverables": [ … ]</c> — and a lookup that stopped at the
+    /// first key it found read no deliverables at all. The record's own writer
+    /// omits nulls (WorkflowPackageManifestJson.WriteOptions), and JsonNode, which
+    /// compose reads through, maps a JSON null to C# null too; this makes the
+    /// three agree. A null in one casing does not stop the search in the other.
     /// </summary>
     private static bool TryGetProperty(JsonElement element, string camelName, out JsonElement value)
     {
-        if (element.TryGetProperty(camelName, out value))
+        if (element.TryGetProperty(camelName, out value) && value.ValueKind != JsonValueKind.Null)
         {
             return true;
         }
 
         var pascalName = char.ToUpperInvariant(camelName[0]) + camelName[1..];
-        return element.TryGetProperty(pascalName, out value);
+        return element.TryGetProperty(pascalName, out value) && value.ValueKind != JsonValueKind.Null;
     }
 
     private static string? ReadString(JsonElement element, string property) =>

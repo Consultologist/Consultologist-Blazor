@@ -399,10 +399,7 @@ public sealed class WorkflowPackages
         var response = req.CreateResponse(HttpStatusCode.OK);
         FunctionCors.Apply(req, response);
         await response.WriteAsJsonAsync(
-            new WorkflowPackageContentResponse(
-                package.Manifest.Name,
-                package.Manifest.Version,
-                package.Manifest.SpecVersion,
+            WorkflowPackageContentResponse.For(
                 package.Manifest,
                 package.SourceFiles ?? new Dictionary<string, string>(StringComparer.Ordinal)),
             cancellationToken);
