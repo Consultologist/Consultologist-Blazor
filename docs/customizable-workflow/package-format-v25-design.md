@@ -708,6 +708,8 @@ registry doc's `when` examples spell `input:<id>`, but the condition grammar tak
 input id (`kind == new`) — the fixture and the builder use the bare form; the doc is to be
 corrected.)*
 
+*(#1071, 2026-10-18, Milestone 31 — the macro pane shows **what the model is told**: under the instruction, `{{ macro.<id>.prompt }}` rendered through the library's own `TemplateRenderer` over `TemplatePreviewScope` — every run value a token naming its read (`⟨input.notes⟩`, `⟨node.extract.content⟩`, `⟨profile.name⟩`), the package's snippets and macro texts rendered for real — so the pane shows the engine's bytes: the instruction rendered, then the mechanics sentence; the renderer's own sentence when it does not render; a note when nothing reads the macro inline; the #1067 self-read warning word for word, live from the walk. The editor's first template render — the text previews stay Markdown.)*
+
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
 text or an instruction — offering a snippet's choices, never the macro's own members), its
