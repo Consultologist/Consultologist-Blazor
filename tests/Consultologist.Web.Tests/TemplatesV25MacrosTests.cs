@@ -291,9 +291,79 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "closing");
 
-        var remove = page.FindAll("fluent-button").First(b => b.TextContent.Contains("Remove macro"));
-        Assert.Contains("node 'assessment'", remove.TextContent);
-        Assert.Contains("deliverable 'consult'", remove.TextContent);
+        // #1073: the button sits in the header; its reach is the tooltip and the
+        // sentence under Where it goes.
+        var remove = page.Find(".pane-header__actions").QuerySelectorAll("fluent-button").First(b => b.TextContent.Contains("Remove macro"));
+        Assert.Contains("node 'assessment'", remove.GetAttribute("title"));
+        Assert.Contains("deliverable 'consult'", remove.GetAttribute("title"));
+        var reach = page.Find(".macro-where__reach").TextContent;
+        Assert.Contains("node 'assessment'", reach);
+        Assert.Contains("deliverable 'consult'", reach);
+    }
+
+    // ----- #1073: the pane's layout -----
+
+    [Fact]
+    public void TheMacroPane_IsOrdered_FieldsThenWhereThenText_WithRemoveInTheHeader()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+        var markup = page.Markup;
+
+        int At(string marker) { var i = markup.IndexOf(marker, StringComparison.Ordinal); Assert.True(i >= 0, marker); return i; }
+        var instruction = At("aria-label=\"Instruction for macro closing\"");
+        var instructionPalette = At("Reference to insert into instruction of macro closing");
+        var preview = At("class=\"macro-prompt-preview\"");
+        var where = At("class=\"macro-where\"");
+        var textPalette = At("Reference to insert into macros/closing.md");
+        var editor = At("<span>Macro text</span>");
+        var help = At("class=\"pane-help\"");
+        Assert.True(instruction < instructionPalette && instructionPalette < preview && preview < where && where < textPalette && textPalette < editor && editor < help,
+            $"order: instruction {instruction}, its palette {instructionPalette}, preview {preview}, where {where}, text palette {textPalette}, editor {editor}, help {help}");
+
+        // Remove macro is a header action and nowhere else.
+        Assert.Contains(page.Find(".pane-header__actions").QuerySelectorAll("fluent-button"), b => b.TextContent.Contains("Remove macro"));
+        Assert.DoesNotContain(page.Find(".editor-pane").QuerySelectorAll(".pane-header__actions ~ * fluent-button"), b => b.TextContent.Contains("Remove macro"));
+        Assert.Empty(page.FindAll(".macro-objects"));
+    }
+
+    [Fact]
+    public void TheInstruction_IsAFullWidthField()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        var field = page.Find("fluent-text-area[aria-label='Instruction for macro closing']").ParentElement!;
+        Assert.Equal("label", field.TagName.ToLowerInvariant());
+        Assert.Contains("input-field", field.ClassName);
+    }
+
+    [Fact]
+    public void ThePalettes_NameTheirTargets()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        Assert.Equal(new[] { "+ reference into the instruction", "+ reference into the macro text" },
+            page.FindAll("details.insert-reference > summary").Select(s => s.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void TheHelp_IsOneSentencePerField_AndTheRestInTheExpander()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        Assert.Single(page.FindAll(".macro-text-help"));
+        Assert.DoesNotContain("placed text instructs no model", page.Markup);
+        var help = page.Find("details.pane-help");
+        Assert.Contains("How macros work", help.QuerySelector("summary")!.TextContent);
+        Assert.Contains("Read inline", help.TextContent);
+        Assert.Contains("mechanics sentence", help.TextContent);
+        // The footer renders after the editor split; the snippet pane has none.
+        Assert.True(page.Markup.IndexOf("class=\"pane-split\"", StringComparison.Ordinal) < page.Markup.IndexOf("class=\"pane-footer\"", StringComparison.Ordinal));
+        Navigate(page, "standards");
+        Assert.Empty(page.FindAll(".pane-footer"));
     }
 
     // ----- the macro pane: Read at -----

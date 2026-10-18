@@ -85,6 +85,12 @@
     </div>
 </div>
 
+@* #1073: what belongs under the editor — a pane's "how this works" expander. *@
+@if (Footer != null)
+{
+    <div class="pane-footer">@Footer</div>
+}
+
 @code {
     [Parameter] public string Title { get; set; } = string.Empty;
     // #949: false renders the pane without its header (ChildContent + the
@@ -108,5 +114,8 @@
 
     /// <summary>v25 (C4 #1010): controls rendered above the editor — the host's insert-reference palette and reads line.</summary>
     [Parameter] public RenderFragment? EditorExtra { get; set; }
+
+    /// <summary>#1073: rendered after the editor/preview split — the pane's "how this works" expander, or nothing.</summary>
+    [Parameter] public RenderFragment? Footer { get; set; }
     [Parameter] public EventCallback<string> TextChanged { get; set; }
 }
