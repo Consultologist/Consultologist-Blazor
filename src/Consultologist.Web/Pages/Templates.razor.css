@@ -383,6 +383,69 @@ fluent-button.node-field__button::part(control) {
 	gap: 0.5rem;
 }
 
+/* #1081: a card reached by its own key (results:<id>) takes focus — which
+   scrolls it into view — and flashes once; the focus ring itself stays off. */
+.deliverable-card:focus {
+	outline: none;
+}
+
+.deliverable-card--focused {
+	animation: deliverable-card-flash 1.6s ease-out 1;
+}
+
+@keyframes deliverable-card-flash {
+	from {
+		outline: 2px solid var(--consultologist-accent, #0078d4);
+		outline-offset: 2px;
+	}
+
+	to {
+		outline: 2px solid transparent;
+		outline-offset: 2px;
+	}
+}
+
+/* #1081: the card's header — the label as its title, the identity strip, Remove
+   as a header action — and the "Composed as" order line. */
+.deliverable-card__header {
+	display: flex;
+	align-items: flex-start;
+	justify-content: space-between;
+	gap: 1rem;
+}
+
+.deliverable-card__title {
+	margin: 0;
+	font-size: 0.95rem;
+	font-weight: 600;
+}
+
+.deliverable-composed {
+	margin: 0;
+}
+
+.deliverable-composed__list {
+	display: inline;
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.deliverable-composed__list li {
+	display: inline;
+}
+
+.deliverable-composed__when {
+	font-size: 0.8rem;
+	color: var(--consultologist-text-muted);
+}
+
+/* #1081: an aggregator node's "Delivers →" line, its deliverables as chips. */
+.node-delivers {
+	margin: 0 0 0.5rem;
+	font-size: 0.85rem;
+}
+
 .deliverable-section {
 	display: flex;
 	flex-direction: column;

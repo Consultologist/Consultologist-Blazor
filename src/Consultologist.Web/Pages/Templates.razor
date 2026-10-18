@@ -357,7 +357,7 @@
                             <span>Inputs</span>
                         </button>
                         <button type="button"
-                                class="editor-nav__item @(selectedKey == ResultsKey ? "editor-nav__item--selected" : "")"
+                                class="editor-nav__item @(OnDeliverablesPane ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(ResultsKey)">
                             @* #1079: the dot follows the pane's Discard — an edit or a draft on a deliverable's own condition. *@
                             <span class="editor-nav__dot">@(DeliverablesCanDiscard ? "●" : "")</span>
@@ -1389,7 +1389,7 @@
                             <p class="editor-warning">@declaredError</p>
                         }
                     }
-                    else if (selectedKey == ResultsKey)
+                    else if (OnDeliverablesPane)
                     {
                         <div class="pane-header">
                             <div>
@@ -1417,7 +1417,32 @@
                                 @foreach (var result in EffectiveResults)
                                 {
                                     var deliverable = result;
-                                    <li class="deliverable-card">
+                                    @* #1081: focusable — a results:<id> key scrolls to and flashes this card. *@
+                                    <li class="deliverable-card @(FocusedDeliverableId == deliverable.Id ? "deliverable-card--focused" : "")"
+                                        tabindex="-1" data-deliverable="@deliverable.Id" @ref="_cardRefs[deliverable.Id]">
+                                        @if (At25)
+                                        {
+                                            @* #1081: the card's header in the pane-identity idiom — the label as its
+                                               title, id · the delivered file's name greyed, Remove as a header action.
+                                               The one delivered file today is the email reply's PDF, {id}-{job}.pdf. *@
+                                            <div class="deliverable-card__header">
+                                                <div>
+                                                    <h4 class="deliverable-card__title">@(string.IsNullOrWhiteSpace(deliverable.Label) ? deliverable.Id : deliverable.Label)</h4>
+                                                    <p class="pane-identity muted-text">
+                                                        <span class="pane-identity__item">id <code>@deliverable.Id</code></span>
+                                                        <span class="pane-identity__sep"> · </span>
+                                                        <span class="pane-identity__item">delivered as <code>@(deliverable.Id)-&lt;job&gt;.pdf</code></span>
+                                                    </p>
+                                                </div>
+                                                <div class="pane-header__actions">
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit" Title="Remove deliverable"
+                                                                  aria-label="Remove deliverable"
+                                                                  Disabled="@(EffectiveResults.Count == 1)"
+                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                  @onclick="() => RemoveResultAsync(deliverable)">Remove deliverable</FluentButton>
+                                                </div>
+                                            </div>
+                                        }
                                         <div class="deliverable-card__head">
                                         <input class="node-field__input declared-row__id"
                                                value="@deliverable.Id"
@@ -1436,11 +1461,23 @@
                                                 <FluentOption TOption="string" Value="@NodeRef(candidate.Id)">@candidate.Label</FluentOption>
                                             }
                                         </FluentSelect>
-                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove deliverable"
-                                                      aria-label="Remove deliverable"
-                                                      Disabled="@(EffectiveResults.Count == 1)"
-                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                      @onclick="() => RemoveResultAsync(deliverable)" />
+                                        @if (At25)
+                                        {
+                                            @* #1081: the aggregator's pane is a click away, as the macro rows' owners are. *@
+                                            var aggregatorId = NodeIdOf(deliverable.Node);
+                                            <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner deliverable-card__node-link"
+                                                          Title="@($"node '{aggregatorId}' — edit on the node's pane")"
+                                                          aria-label="@($"Open node {aggregatorId}")"
+                                                          @onclick="() => Select(NodeKeyPrefix + aggregatorId)">open</FluentButton>
+                                        }
+                                        else
+                                        {
+                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove deliverable"
+                                                          aria-label="Remove deliverable"
+                                                          Disabled="@(EffectiveResults.Count == 1)"
+                                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                          @onclick="() => RemoveResultAsync(deliverable)" />
+                                        }
                                         </div>
 
                                         @* v8: when this deliverable is produced. Three controls
@@ -1480,7 +1517,7 @@
                                             <span class="deliverable-section__head">@(At25 ? "Macros" : "Appended content")</span>
                                             @if (At25)
                                             {
-                                                <p class="muted-text">Document scope: prepended before the sections or appended after them, each always or when its condition holds. A macro placed around a node's output lives on that node's pane.</p>
+                                                <p class="muted-text">Prepended before the sections or appended after them, each always or when its condition holds.</p>
                                             }
                                             @{ var resultMacros = deliverable.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>(); }
                                             @foreach (var (macroEntry, macroIndex) in resultMacros.Select((m, i) => (m, i)))
@@ -1491,10 +1528,21 @@
                                                 var placementSuffix = resultMacros.Count(e => e.Id == macroId) > 1 ? $" ({macroEntry.At})" : string.Empty;
                                                 <div class="result-macro" data-entry-at="@(macroEntry.At ?? "")">
                                                 <span class="result-macro-row">
-                                                    <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
-                                                                  Title="@($"Edit macro {macroId}")"
-                                                                  aria-label="@($"Edit macro {macroId}")"
-                                                                  @onclick="() => SelectMacro(macroId)"><code>@macroId</code></FluentButton>
+                                                    @if (At25)
+                                                    {
+                                                        @* #1081: the row leads with the macro's label as a link to its pane (the #1077 idiom), the id in the tooltip. *@
+                                                        <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner result-macro__label"
+                                                                      Title="@($"macro '{macroId}' — edit on its pane")"
+                                                                      aria-label="@($"Edit macro {macroId}")"
+                                                                      @onclick="() => SelectMacro(macroId)">@MacroLabel(macroId)</FluentButton>
+                                                    }
+                                                    else
+                                                    {
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="result-macro__id"
+                                                                      Title="@($"Edit macro {macroId}")"
+                                                                      aria-label="@($"Edit macro {macroId}")"
+                                                                      @onclick="() => SelectMacro(macroId)"><code>@macroId</code></FluentButton>
+                                                    }
                                                     @if (At25)
                                                     {
                                                         @* v25 (C3 #1009): document scope only — prepend | append; a row
@@ -1580,6 +1628,40 @@
                                                 }
                                                 </div>
                                             }
+                                            @if (At25)
+                                            {
+                                                @* #1081: what the engine composes, in order — prepended macros, the
+                                                   aggregator's sections, appended macros, the signature — each a link,
+                                                   a gated item carrying its condition. *@
+                                                var composition = DeliverableComposition(deliverable);
+                                                <div class="muted-text deliverable-composed" aria-label="@($"Composition of deliverable {deliverable.Id}")">
+                                                    Composed as:
+                                                    <ol class="deliverable-composed__list">
+                                                        @for (var partIndex = 0; partIndex < composition.Count; partIndex++)
+                                                        {
+                                                            var part = composition[partIndex];
+                                                            <li>
+                                                                @if (part.Key is { } partKey)
+                                                                {
+                                                                    <button type="button" class="snippet-readers__row" title="@part.Title" @onclick="() => Select(partKey)">@part.Text</button>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span>@part.Text</span>
+                                                                }
+                                                                @if (part.When is { } partWhen)
+                                                                {
+                                                                    <span class="deliverable-composed__when"> when @partWhen</span>
+                                                                }
+                                                                @if (partIndex < composition.Count - 1)
+                                                                {
+                                                                    <span class="deliverable-composed__sep"> → </span>
+                                                                }
+                                                            </li>
+                                                        }
+                                                    </ol>
+                                                </div>
+                                            }
                                             @{ var attachableMacros = DeliverableAttachableMacros(resultMacros); }
                                             @if (attachableMacros.Count > 0)
                                             {
@@ -1589,7 +1671,7 @@
                                                         Value=""
                                                         ValueChanged="@(v => AppendResultMacroAsync(deliverable, v))"
                                                         aria-label="@($"Append macro to deliverable {deliverable.Id}")">
-                                                    <FluentOption TOption="string" Value="">append macro…</FluentOption>
+                                                    <FluentOption TOption="string" Value="">@(At25 ? "attach a macro…" : "append macro…")</FluentOption>
                                                     @foreach (var (candidateMacro, freeIdentity) in attachableMacros)
                                                     {
                                                         <FluentOption TOption="string" Value="@candidateMacro.Id">@FreeIdentityText(candidateMacro.Id, freeIdentity)</FluentOption>
@@ -1663,6 +1745,10 @@
                         @if (!string.IsNullOrEmpty(declaredError))
                         {
                             <p class="editor-warning">@declaredError</p>
+                        }
+                        @if (At25)
+                        {
+                            @DeliverablesHelp
                         }
                     }
                     else if (selectedKey == GraphKey)
@@ -2027,6 +2113,19 @@
                                 @PaneDiscardButton(NodeKeyFor(selectedNode.Id), NodeCanDiscard(selectedNode), () => RevertNodeEdits(selectedNode.Id, selectedNode.Prompt))
                             </div>
                         </div>
+                        @* #1081: an aggregator's pane names the deliverable(s) it feeds, each a link
+                           to its card — the Deliverables pane's "Also placed on nodes" idiom, reversed. *@
+                        @if (At25 && EffectiveResults.Where(r => NodeIdOf(r.Node) == selectedNode.Id).ToList() is { Count: > 0 } delivers)
+                        {
+                            <p class="muted-text node-delivers">
+                                Delivers →
+                                @for (var deliversIndex = 0; deliversIndex < delivers.Count; deliversIndex++)
+                                {
+                                    var delivered = delivers[deliversIndex];
+                                    <button type="button" class="snippet-readers__row" title="@($"deliverable '{delivered.Id}' — open its card")" @onclick="() => Select(ResultsKeyFor(delivered.Id))">@delivered.Label</button>@(deliversIndex < delivers.Count - 1 ? "," : "")
+                                }
+                            </p>
+                        }
                         @* #952: the node's gate — its "Produced when" — leads the pane, right after
                            the header, resting quietly as "Always run" when ungated (#936 ConditionField).
                            A classifier always runs to make its decision, so it carries none. *@
@@ -2978,7 +3077,7 @@
                                                     <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner"
                                                                   Title="@($"deliverable '{instanceResult.Id}' — edit on the Deliverables pane")"
                                                                   aria-label="@($"Open the Deliverables pane for {instanceResult.Id}")"
-                                                                  @onclick="() => Select(ResultsKey)">@instanceResult.Label</FluentButton>
+                                                                  @onclick="() => Select(ResultsKeyFor(instanceResult.Id))">@instanceResult.Label</FluentButton>
                                                     <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
                                                             Value="@(deliverableInstance.At ?? "")"
                                                             ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, instanceIndex, v))"
@@ -3747,6 +3846,9 @@
     // #746: the output-contract schemas pane (view + remove an unused one).
     private const string SchemasKey = "schemas";
     private const string ResultsKey = "results";
+    // #1081: a deliverable's own key — the Deliverables pane with that card focused
+    // (scrolled to and flashed); the pane's state (discard, dot) stays on ResultsKey.
+    private const string ResultsKeyPrefix = "results:";
     private const string NewKeyPrefix = "new:";
     private const string AddCollectionKey = "add-collection";
     private const string AddScalarKey = "add-scalar";
@@ -4477,6 +4579,9 @@
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
             && EffectiveNodes.Any(n => NodeKeyFor(n.Id) == key))
+        // #1081: a deliverable's focus key, while the deliverable exists.
+        || (key.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal)
+            && EffectiveResults.Any(r => ResultsKeyFor(r.Id) == key))
         // #571/#747: a removed declared macro or prelude's file is still
         // published, so the Files clause would keep its pane alive — exclude
         // them explicitly.
@@ -5008,6 +5113,63 @@
         <p class="muted-text macro-text-help">Macro text — a Scriban template rendered where it is read (<code>macro.@(macro.Id).content</code>) or composed around an output; it never reads <code>macro.@(macro.Id).prompt</code>.</p>
         @InsertReferencePalette((macro.File, null, true))
     </text>;
+
+    /// <summary>#1081: a macro's label for the Deliverables pane's rows, the id when it has none.</summary>
+    private string MacroLabel(string macroId) =>
+        EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } macro && !string.IsNullOrWhiteSpace(macro.Label) ? macro.Label : macroId;
+
+    /// <summary>One part of a deliverable's composition: its text, the pane it opens (null for the signature), its gate's text, and a tooltip.</summary>
+    private sealed record CompositionPart(string Text, string? Key, string? When, string Title);
+
+    /// <summary>
+    /// #1081: the order the engine composes a deliverable — the prepended entries, the
+    /// aggregator's sources (each section), the appended entries, then the signature when
+    /// signed; an entry still unplaced is listed last, marked. Each part links to its pane.
+    /// </summary>
+    private IReadOnlyList<CompositionPart> DeliverableComposition(WorkflowManifestReader.ResultView result)
+    {
+        var parts = new List<CompositionPart>();
+        var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
+
+        CompositionPart MacroPart(WorkflowManifestReader.ResultMacroView entry, string suffix) =>
+            new(MacroLabel(entry.Id) + suffix, EffectiveMacros.FirstOrDefault(m => m.Id == entry.Id)?.File, entry.When, $"macro '{entry.Id}' — edit on its pane");
+
+        parts.AddRange(entries.Where(e => e.At == PF.WorkflowDeliverableMacroSpec.Prepend).Select(e => MacroPart(e, string.Empty)));
+
+        foreach (var source in DeliverableAggregateSources(result))
+        {
+            var sourceId = NodeIdOf(source);
+            var sourceNode = EffectiveNodes.FirstOrDefault(n => n.Id == sourceId);
+            parts.Add(new CompositionPart(sourceNode?.Label ?? sourceId, NodeKeyPrefix + sourceId, sourceNode?.When, $"node '{sourceId}' — its section"));
+        }
+
+        parts.AddRange(entries.Where(e => e.At == PF.WorkflowDeliverableMacroSpec.Append).Select(e => MacroPart(e, string.Empty)));
+
+        if (result.Signature == true)
+        {
+            parts.Add(new CompositionPart("signature", null, null, "the profile's signature block"));
+        }
+
+        parts.AddRange(entries.Where(e => e.At == null).Select(e => MacroPart(e, " (unplaced)")));
+        return parts;
+    }
+
+    /// <summary>#1081: the Deliverables pane's foot — how deliverables work, folded.</summary>
+    private RenderFragment DeliverablesHelp => @<details class="pane-help">
+        <summary>How deliverables work</summary>
+        <dl class="pane-help__list">
+            <dt>Names its aggregator</dt>
+            <dd>A deliverable is one aggregator node's composed sections, delivered under the deliverable's id; two deliverables never share an aggregator.</dd>
+            <dt>Macros</dt>
+            <dd>Prepended before the sections or appended after them, each always or when its gate holds; a macro placed around a node's output composes inside that node's section and lives on the node's pane.</dd>
+            <dt>Signed</dt>
+            <dd>Appends the profile's signature block after everything else.</dd>
+            <dt>Check</dt>
+            <dd>A node of a computed format gates delivery — the deliverable is withheld when the check fails.</dd>
+            <dt>Delivered as</dt>
+            <dd>The email reply's encrypted PDF, <code>&lt;id&gt;-&lt;job&gt;.pdf</code>, when a delivery password is set; otherwise the reply carries a link.</dd>
+        </dl>
+    </details>;
 
     /// <summary>#1073: the pane's foot — how macros work, folded; one place for what the field sentences leave out.</summary>
     private RenderFragment MacroHelp => @<details class="pane-help">
@@ -11228,11 +11390,39 @@
         || VariableAddCount > 0 || VariableRemovalCount > 0
         || inputsEdit != null || resultsEdit != null;
 
+    private static string ResultsKeyFor(string deliverableId) => ResultsKeyPrefix + deliverableId;
+
+    /// <summary>#1081: the Deliverables pane is open — as a whole, or focused on one card.</summary>
+    private bool OnDeliverablesPane =>
+        selectedKey == ResultsKey || (selectedKey?.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal) ?? false);
+
+    /// <summary>#1081: the deliverable a results:&lt;id&gt; key focuses, or null on the plain pane.</summary>
+    private string? FocusedDeliverableId =>
+        selectedKey is { } key && key.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal) ? key[ResultsKeyPrefix.Length..] : null;
+
+    // #1081: the card to focus after the next render (focus scrolls it into view), and the cards' references.
+    private string? _focusDeliverable;
+    private readonly Dictionary<string, ElementReference> _cardRefs = new(StringComparer.Ordinal);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusDeliverable is { } focus)
+        {
+            _focusDeliverable = null;
+            if (_cardRefs.TryGetValue(focus, out var card))
+            {
+                await card.FocusAsync();
+            }
+        }
+    }
+
     private void Select(string key)
     {
         selectedKey = key;
         // #812: leaving a pane disarms its pending per-pane discard.
         paneDiscardArmedKey = null;
+        // #1081: a deliverable's key focuses its card once the pane has rendered.
+        _focusDeliverable = key.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal) ? key[ResultsKeyPrefix.Length..] : null;
 
         if (key == GraphKey && diagramText == null)
         {
