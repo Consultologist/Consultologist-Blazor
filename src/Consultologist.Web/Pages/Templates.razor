@@ -2844,60 +2844,136 @@
                             }
                             else
                             {
-                                @* #1072: where the macro goes, in the snippet pane's idiom — chips that open
-                                   the owner (the node pane and the Deliverables pane edit the instances), the
-                                   attach pickers at the row's end, the inline readers and the text readers from
-                                   the walk; one "not used yet" state when every row is empty. "Placed only" and
-                                   "inline only" are normal states. *@
-                                var placements = MacroPlacements(macro.Id);
+                                @* #1077 (was #1072): where the macro goes — Placed on as the attach pickers
+                                   first (a fixed element that does not jump as instances come and go), then one
+                                   editable row per instance mirroring the owner's row on the node pane's and the
+                                   Deliverables pane's own handlers, each led by a link to the owner (its label,
+                                   as the sidebar names it); reordering among a node's siblings stays on the node
+                                   pane. Read inline by and Read as text by from the walk, as chips — a read is
+                                   not edited from the macro's side. One "not used yet" state when every row is
+                                   empty; "placed only" and "inline only" are normal states. *@
                                 var inlineReaders = MacroInlineReaders(macro.Id);
                                 var textReaders = MacroTextReaders(macro.Id);
                                 var attachableNodes = MacroAttachableNodes(macro.Id);
                                 var attachableDeliverables = EffectiveResults
                                     .Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(m => m.Id != macro.Id))
                                     .ToList();
+                                var placedOn = MacroPlacedOn(macro.Id);
                                 <div class="macro-where" aria-label="@($"Where macro {macro.Id} goes")">
                                     <span class="macro-attachments__head">Where it goes</span>
                                     <p class="muted-text">Placed on</p>
-                                    <div class="macro-where__row">
-                                        @if (placements.Count > 0)
+                                    <div class="macro-where__add">
+                                        @if (attachableNodes.Count > 0)
                                         {
-                                            <ul class="snippet-readers macro-placed" aria-label="@($"Placed on for macro {macro.Id}")">
-                                                @foreach (var placement in placements)
+                                            <FluentSelect TOption="string" class="binding-row__select macro-attach-node"
+                                                    Value=""
+                                                    ValueChanged="@(v => AttachNodeMacroAsync(v, macro.Id))"
+                                                    aria-label="@($"Attach macro {macro.Id} to a node")">
+                                                <FluentOption TOption="string" Value="">attach to a node…</FluentOption>
+                                                @foreach (var candidateNode in attachableNodes)
                                                 {
-                                                    <li><button type="button" class="snippet-readers__row" title="@placement.Title" @onclick="() => Select(placement.Key)">@placement.Text</button></li>
+                                                    <FluentOption TOption="string" Value="@candidateNode.Id">@candidateNode.Id</FluentOption>
                                                 }
-                                            </ul>
+                                            </FluentSelect>
                                         }
-                                        <span class="macro-where__add">
-                                            @if (attachableNodes.Count > 0)
-                                            {
-                                                <FluentSelect TOption="string" class="binding-row__select macro-attach-node"
-                                                        Value=""
-                                                        ValueChanged="@(v => AttachNodeMacroAsync(v, macro.Id))"
-                                                        aria-label="@($"Attach macro {macro.Id} to a node")">
-                                                    <FluentOption TOption="string" Value="">attach to a node…</FluentOption>
-                                                    @foreach (var candidateNode in attachableNodes)
-                                                    {
-                                                        <FluentOption TOption="string" Value="@candidateNode.Id">@candidateNode.Id</FluentOption>
-                                                    }
-                                                </FluentSelect>
-                                            }
-                                            @if (attachableDeliverables.Count > 0)
-                                            {
-                                                <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
-                                                        Value=""
-                                                        ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
-                                                        aria-label="@($"Attach macro {macro.Id} to a deliverable")">
-                                                    <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
-                                                    @foreach (var candidateDeliverable in attachableDeliverables)
-                                                    {
-                                                        <FluentOption TOption="string" Value="@candidateDeliverable.Id">@candidateDeliverable.Label</FluentOption>
-                                                    }
-                                                </FluentSelect>
-                                            }
-                                        </span>
+                                        @if (attachableDeliverables.Count > 0)
+                                        {
+                                            <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
+                                                    Value=""
+                                                    ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
+                                                    aria-label="@($"Attach macro {macro.Id} to a deliverable")">
+                                                <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
+                                                @foreach (var candidateDeliverable in attachableDeliverables)
+                                                {
+                                                    <FluentOption TOption="string" Value="@candidateDeliverable.Id">@candidateDeliverable.Label</FluentOption>
+                                                }
+                                            </FluentSelect>
+                                        }
                                     </div>
+                                    @foreach (var hostNode in EffectiveNodes)
+                                    {
+                                        var hostMacros = EffectiveNodeMacros(hostNode);
+                                        for (var hostIndex = 0; hostIndex < hostMacros.Count; hostIndex++)
+                                        {
+                                            if (hostMacros[hostIndex].Id != macro.Id)
+                                            {
+                                                continue;
+                                            }
+
+                                            // One row per instance: a node carrying the macro before and after, or
+                                            // per fan item, lists each; the index drives the node pane's handlers.
+                                            var instanceIndex = hostIndex;
+                                            var instance = hostMacros[instanceIndex];
+                                            var instanceNode = hostNode;
+                                            <div class="result-macro macro-instance" data-instance-node="@instanceNode.Id">
+                                                <span class="result-macro-row">
+                                                    <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner"
+                                                                  Title="@($"node '{instanceNode.Id}' — edit on the node's pane")"
+                                                                  aria-label="@($"Open node {instanceNode.Id}")"
+                                                                  @onclick="() => Select(NodeKeyPrefix + instanceNode.Id)">@instanceNode.Label</FluentButton>
+                                                    <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
+                                                            Value="@(instance.IsAfter ? "after" : "before")"
+                                                            ValueChanged="@(v => SetNodeMacroPlacementAsync(instanceNode.Id, instanceIndex, v))"
+                                                            aria-label="@($"Placement for macro {macro.Id} on {instanceNode.Id}")">
+                                                        <FluentOption TOption="string" Value="before">before the node's output</FluentOption>
+                                                        <FluentOption TOption="string" Value="after">after the node's output</FluentOption>
+                                                    </FluentSelect>
+                                                    @if (NodeFanItems(instanceNode) is { Count: > 0 } instanceFanItems)
+                                                    {
+                                                        <FluentSelect TOption="string" class="binding-row__select node-macro-foritem"
+                                                                Value="@(instance.ForItem ?? "")"
+                                                                ValueChanged="@(v => SetNodeMacroForItemAsync(instanceNode.Id, instanceIndex, v))"
+                                                                aria-label="@($"Fan item for macro {macro.Id} on {instanceNode.Id}")">
+                                                            <FluentOption TOption="string" Value="">— every item —</FluentOption>
+                                                            @foreach (var fanItem in instanceFanItems)
+                                                            {
+                                                                <FluentOption TOption="string" Value="@fanItem.Id">@StandardName(fanItem)</FluentOption>
+                                                            }
+                                                        </FluentSelect>
+                                                    }
+                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach"
+                                                                  Title="@($"Remove from {instanceNode.Id}")"
+                                                                  aria-label="@($"Remove macro {macro.Id} from {instanceNode.Id}")"
+                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                  @onclick="() => RemoveNodeMacroAsync(instanceNode.Id, instanceIndex)" />
+                                                </span>
+                                                <span class="result-macro-when">
+                                                    @ConditionField(("Applies when", NodeMacroWhenTarget(instanceNode, instanceIndex), "Always"))
+                                                </span>
+                                            </div>
+                                        }
+                                    }
+                                    @foreach (var hostResult in EffectiveResults.Where(r => (r.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Any(m => m.Id == macro.Id)))
+                                    {
+                                        var instanceResult = hostResult;
+                                        var deliverableInstance = instanceResult.Macros!.First(m => m.Id == macro.Id);
+                                        <div class="result-macro macro-instance" data-instance-deliverable="@instanceResult.Id">
+                                            <span class="result-macro-row">
+                                                <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner"
+                                                              Title="@($"deliverable '{instanceResult.Id}' — edit on the Deliverables pane")"
+                                                              aria-label="@($"Open the Deliverables pane for {instanceResult.Id}")"
+                                                              @onclick="() => Select(ResultsKey)">@instanceResult.Label</FluentButton>
+                                                <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
+                                                        Value="@(deliverableInstance.At ?? "")"
+                                                        ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, macro.Id, v))"
+                                                        aria-label="@($"Placement for macro {macro.Id} in deliverable {instanceResult.Id}")">
+                                                    @if (deliverableInstance.At == null)
+                                                    {
+                                                        <FluentOption TOption="string" Value="">choose a placement…</FluentOption>
+                                                    }
+                                                    <FluentOption TOption="string" Value="prepend">prepend</FluentOption>
+                                                    <FluentOption TOption="string" Value="append">append</FluentOption>
+                                                </FluentSelect>
+                                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {instanceResult.Id}")"
+                                                              aria-label="@($"Detach macro {macro.Id} from deliverable {instanceResult.Id}")"
+                                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                              @onclick="() => RemoveResultMacroAsync(instanceResult, macro.Id)" />
+                                            </span>
+                                            <span class="result-macro-when">
+                                                @ConditionField(("Gated when", MacroWhenTarget(instanceResult, deliverableInstance), "Always produced"))
+                                            </span>
+                                        </div>
+                                    }
                                     @if (inlineReaders.Count > 0)
                                     {
                                         <p class="muted-text">Read inline by</p>
@@ -2936,13 +3012,9 @@
                                             }
                                         </ul>
                                     }
-                                    @if (placements.Count == 0 && inlineReaders.Count == 0 && textReaders.Count == 0)
+                                    @if (placedOn.Count == 0 && inlineReaders.Count == 0 && textReaders.Count == 0)
                                     {
                                         <p class="muted-text macro-where__empty">Not used yet — place it on a node or a deliverable, or read <code>{{ macro.@(macro.Id).prompt }}</code> where it goes; the registry refuses an unused macro.</p>
-                                    }
-                                    else if (placements.Count > 0)
-                                    {
-                                        <p class="muted-text macro-where__reach">Remove macro (in the header) removes its instances on @string.Join(", ", MacroPlacedOn(macro.Id)).</p>
                                     }
                                     @if (formatsCatalog is null)
                                     {
@@ -6150,36 +6222,6 @@
         }
 
         return readers;
-    }
-
-    /// <summary>One place a macro is placed, as a chip: the text ("after 'Assessment'"), the owner pane's key, and the identity for the tooltip.</summary>
-    private sealed record MacroPlacement(string Text, string Key, string Title);
-
-    /// <summary>#1072: the macro's instances as chips that open their owner — node instances (before/after the node's output, for an item) then deliverable instances (prepend/append).</summary>
-    private IReadOnlyList<MacroPlacement> MacroPlacements(string macroId)
-    {
-        var placements = new List<MacroPlacement>();
-
-        foreach (var node in EffectiveNodes)
-        {
-            foreach (var instance in EffectiveNodeMacros(node).Where(e => e.Id == macroId))
-            {
-                var side = instance.IsAfter ? "after" : "before";
-                var forItem = instance.ForItem is { } item ? $" for item {item}" : string.Empty;
-                placements.Add(new MacroPlacement($"{side} '{node.Label}'{forItem}", NodeKeyPrefix + node.Id, $"{side} node '{node.Id}'{forItem} — edit on the node's pane"));
-            }
-        }
-
-        foreach (var result in EffectiveResults)
-        {
-            foreach (var instance in (result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Where(e => e.Id == macroId))
-            {
-                var text = instance.At is { } at ? $"{at} to '{result.Label}'" : $"placement to choose for '{result.Label}'";
-                placements.Add(new MacroPlacement(text, ResultsKey, $"deliverable '{result.Id}' — edit on the Deliverables pane"));
-            }
-        }
-
-        return placements;
     }
 
     // v12 § 3 (#621): pending optional/default edits on DECLARED macros,
