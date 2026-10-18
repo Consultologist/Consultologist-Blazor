@@ -710,6 +710,8 @@ corrected.)*
 
 *(#1071, 2026-10-18, Milestone 31 — the macro pane shows **what the model is told**: under the instruction, `{{ macro.<id>.prompt }}` rendered through the library's own `TemplateRenderer` over `TemplatePreviewScope` — every run value a token naming its read (`⟨input.notes⟩`, `⟨node.extract.content⟩`, `⟨profile.name⟩`), the package's snippets and macro texts rendered for real — so the pane shows the engine's bytes: the instruction rendered, then the mechanics sentence; the renderer's own sentence when it does not render; a note when nothing reads the macro inline; the #1067 self-read warning word for word, live from the walk. The editor's first template render — the text previews stay Markdown.)*
 
+*(#1072, 2026-10-18, Milestone 31 — the macro pane's **Where it goes**, in the snippet pane's idiom: *Placed on* as chips that open the owner (`after 'Assessment'`, `prepend to 'Consultation note'`; the node pane and the Deliverables pane edit the instances), the attach pickers at the row's end; *Read inline by* and *Read as text by* from the walk; one "Not used yet" line only when every row is empty — "placed only" and "inline only" are normal states. The Instances rows' duplicate controls and "Not placed anywhere" / "Not read by any template" are gone.)*
+
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
 text or an instruction — offering a snippet's choices, never the macro's own members), its

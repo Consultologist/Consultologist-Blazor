@@ -186,35 +186,46 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     // ----- the macro pane: Instances -----
 
     [Fact]
-    public void TheMacroPane_ListsItsInstances_OnNodesAndDeliverables_WithTheirControls()
+    public void TheMacroPane_ShowsWhereItGoes_AsChipsThatOpenTheOwner()
     {
+        // #1072: one section in the snippet pane's idiom — placed on (chips to the
+        // owner, the attach pickers at the row's end), read inline by, read as text
+        // by; the owner panes edit the instances.
         var page = RenderEditor();
         Navigate(page, "closing");
 
         Assert.Empty(page.FindAll(".macro-attachments"));
-        var instances = page.Find(".macro-instances");
-        Assert.Contains("Instances", instances.TextContent);
-
-        var onNode = instances.QuerySelector("[data-instance-node='assessment']")!;
-        Assert.Equal("after", onNode.QuerySelector("fluent-select[aria-label='Placement for macro closing on assessment']")!.GetAttribute("current-value"));
-        Assert.Equal(new[] { "before", "after" }, OptionValues(page, "fluent-select[aria-label='Placement for macro closing on assessment']"));
-        Assert.Contains("after this node's output", onNode.TextContent);
-        Assert.NotNull(onNode.QuerySelector("fluent-button[aria-label='Remove macro closing from assessment']"));
-        Assert.NotNull(onNode.QuerySelector("fluent-button[aria-label='Add a condition for assessment macro closing']"));
-
-        var onDeliverable = instances.QuerySelector("[data-instance-deliverable='consult']")!;
-        var at = onDeliverable.QuerySelector("fluent-select[aria-label='Placement for macro closing in deliverable consult']")!;
-        Assert.Equal("prepend", at.GetAttribute("current-value"));
-        Assert.Equal(new[] { "prepend", "append" }, OptionValues(page, "fluent-select[aria-label='Placement for macro closing in deliverable consult']"));
-        Assert.NotNull(onDeliverable.QuerySelector("fluent-button[aria-label='Detach macro closing from deliverable consult']"));
-        // The loaded gate shows its builder.
-        Assert.Equal("kind", onDeliverable.QuerySelector("fluent-select[aria-label^='Condition operand for consult macro closing']")!.GetAttribute("current-value"));
+        Assert.Empty(page.FindAll(".macro-instances"));
+        var where = page.Find(".macro-where");
+        Assert.Contains("Placed on", where.TextContent);
+        Assert.Equal(new[] { "after 'Assessment'", "prepend to 'Consultation note'" },
+            where.QuerySelectorAll("ul.macro-placed li").Select(li => li.TextContent.Trim()));
+        Assert.Empty(where.QuerySelectorAll("fluent-select[aria-label^='Placement for macro closing']"));
+        Assert.Empty(where.QuerySelectorAll("fluent-button[aria-label='Remove macro closing from assessment']"));
+        Assert.Empty(where.QuerySelectorAll("fluent-button[aria-label^='Add a condition for']"));
+        Assert.NotNull(where.QuerySelector("fluent-select[aria-label='Attach macro closing to a node']"));
+        Assert.DoesNotContain("Not placed anywhere", where.TextContent);
+        Assert.Empty(where.QuerySelectorAll(".macro-where__empty"));
 
         // No ≤24 controls: no slot, no sources, no optional/default, no placeholder tokens.
         Assert.Empty(page.FindAll(".result-macro-foritem"));
         Assert.Empty(page.FindAll(".macro-optional"));
         Assert.Empty(page.FindAll(".macro-placeholders"));
         Assert.DoesNotContain("slot (the model places it)", page.Markup);
+
+        where.QuerySelectorAll("ul.macro-placed button.snippet-readers__row").First().Click();
+        Assert.Equal("Assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
+    }
+
+    [Fact]
+    public void ADeliverableChip_OpensTheDeliverablesPane()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        page.Find(".macro-where ul.macro-placed").QuerySelectorAll("button.snippet-readers__row").Last().Click();
+
+        Assert.Equal("Deliverables", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
     }
 
     [Fact]
@@ -235,7 +246,7 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.DoesNotContain("all", nodes);
 
         page.Find("fluent-select[aria-label='Attach macro tool_note to a node']").Change("assessment");
-        Assert.NotNull(page.Find(".macro-instances [data-instance-node='assessment']"));
+        Assert.Contains("before 'Assessment'", page.Find(".macro-where ul.macro-placed").TextContent);
         Publish(page);
 
         var macros = Node(Manifest(sent!), "assessment").GetProperty("macros").EnumerateArray().ToList();
@@ -260,14 +271,15 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void RemovingANodeInstance_FromTheMacroPane_LeavesTheNodesList()
+    public void RemovingANodeInstance_OnTheNodePane_DropsItsChip()
     {
         var page = RenderEditor();
         CapturePublish();
-        Navigate(page, "closing");
-
+        ShowNode(page, "assessment");
         page.Find("fluent-button[aria-label='Remove macro closing from assessment']").Click();
-        Assert.Empty(page.FindAll("[data-instance-node='assessment']"));
+
+        Navigate(page, "closing");
+        Assert.DoesNotContain("after 'Assessment'", page.Find(".macro-where").TextContent);
         Publish(page);
 
         Assert.False(Node(Manifest(sent!), "assessment").TryGetProperty("macros", out _));
@@ -293,26 +305,50 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Navigate(page, "tool_note");
 
         var readers = page.Find("ul.macro-readers[aria-label='Readers of tool_note']");
-        Assert.Equal(new[] { "Prompt 'assessment' — macro.tool_note.prompt (inline)" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        Assert.Equal(new[] { "Prompt 'assessment'" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        Assert.Contains("Read inline by", page.Find(".macro-where").TextContent);
 
         page.Find("ul.macro-readers button.snippet-readers__row").Click();
         Assert.Equal("assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
     }
 
     [Fact]
-    public void AMacroReadNowhere_SaysSo_AndATextReadIsNamedAsText()
+    public void APlacedOnlyMacro_ShowsNoReadRows_AndNoWarning()
     {
+        // closing is placed and read by nothing: "placed only" is a normal state.
         var page = RenderEditor();
         Navigate(page, "closing");
-        Assert.Contains("Not read by any template", page.Find(".editor-pane").TextContent);
 
-        // Read as text from the standards snippet.
+        var where = page.Find(".macro-where");
+        Assert.Empty(where.QuerySelectorAll("ul.macro-readers"));
+        Assert.Empty(where.QuerySelectorAll("ul.macro-text-readers"));
+        Assert.Empty(where.QuerySelectorAll(".macro-where__empty"));
+        Assert.DoesNotContain("Not read by any template", where.TextContent);
+    }
+
+    [Fact]
+    public void ATextRead_IsListedUnderReadAsTextBy()
+    {
+        var page = RenderEditor();
         Navigate(page, "standards");
         page.Find(".editor-pane fluent-text-area").Change("Follow the local standards. {{ macro.closing.content }}");
         Navigate(page, "closing");
 
-        var readers = page.Find("ul.macro-readers[aria-label='Readers of closing']");
-        Assert.Equal(new[] { "Snippet 'standards' — macro.closing.content" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        var readers = page.Find("ul.macro-text-readers[aria-label='Text readers of closing']");
+        Assert.Equal(new[] { "Snippet 'standards'" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        Assert.Empty(page.FindAll("ul.macro-readers"));
+    }
+
+    [Fact]
+    public void AMacroPlacedNowhereAndReadNowhere_SaysNotUsedYet()
+    {
+        var page = RenderEditor();
+        Navigate(page, "+ Macro");
+        page.Find("fluent-text-field[placeholder='closing_paragraph']").Change("signature_line");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create macro")).Click();
+        Navigate(page, "signature_line");
+
+        Assert.Contains("Not used yet", page.Find(".macro-where .macro-where__empty").TextContent);
     }
 
     // ----- the node pane: one Macros section -----
@@ -653,8 +689,9 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
     [Fact]
     public void TheMacroWhenBuilder_OffersTheEnumFormatNode_WithItsValues()
     {
+        // #1072: an instance is edited on its owner's pane — the node pane carries the builder.
         var page = RenderEditor();
-        Navigate(page, "closing");
+        ShowNode(page, "assessment");
 
         page.Find("fluent-button[aria-label='Add a condition for assessment macro closing']").Click();
         var operands = OptionValues(page, "fluent-select[aria-label^='Condition operand for assessment macro closing']");
