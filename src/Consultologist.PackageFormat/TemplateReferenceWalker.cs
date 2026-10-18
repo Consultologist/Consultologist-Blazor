@@ -989,6 +989,13 @@ public static partial class TemplateReferenceWalker
 
             if (name == TemplateMembers.Value)
             {
+                if (node.Shape.Aggregates)
+                {
+                    // #1065: an aggregator's text is its composed sections — nothing parses it.
+                    Errors.Add($"{_subject} reads {before}.value, but node '{node.Id}' aggregates — its composed text has no value; read {before}.content.");
+                    return Refused;
+                }
+
                 if (!node.Shape.HasValue)
                 {
                     Errors.Add($"{_subject} reads {before}.value, but format '{node.Shape.Format}' is text and has no value; read {before}.content.");
@@ -1213,6 +1220,11 @@ public static partial class TemplateReferenceWalker
 
                 case NodeContentTarget content when string.Equals(content.Node.Format, format, StringComparison.Ordinal):
                     return content;
+
+                case NodeContentTarget { Node.Aggregates: true } content:
+                    // #1065: composed sections are no format's text.
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but {content.Path} aggregates; {pipe} renders a {format} node's text (node.<id>.content).");
+                    return Refused;
 
                 case NodeContentTarget { Node.HasValue: false } content:
                     Errors.Add($"{_subject} pipes {walked} through {pipe}, but format '{content.Node.Format}' is text; {pipe} renders a {format} node's text (node.<id>.content).");

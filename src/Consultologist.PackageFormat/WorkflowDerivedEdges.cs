@@ -725,6 +725,11 @@ public static class WorkflowDerivedEdges
             {
                 shapes[node.Id] = new TemplateNodeShape(id, spec.Type, spec.Schema);
             }
+            else if (node.Aggregate is { Count: > 0 })
+            {
+                // #1065: an aggregator's composed text is readable (node.<id>.content).
+                shapes[node.Id] = TemplateNodeShape.Aggregator();
+            }
         }
 
         var snippetIds = content.Scalars.Keys.ToHashSet(StringComparer.Ordinal);
