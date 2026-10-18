@@ -430,6 +430,118 @@ public class WorkflowV25Tests
 
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
+
+
+    // ----- #1067: a use is a read from a template the run renders -----
+    // Before, the unused-macro rule read every walked template — an unplaced
+    // macro's own instruction and text included — so a macro whose instruction
+    // read its own content was "used" by itself and the refusal never fired.
+
+    private const string SpareRefused = "Macro 'spare' is declared but never placed or read; place it on a node or a deliverable, or read macro.spare.content / macro.spare.prompt.";
+
+    private static string SelfReadWarning(string id) =>
+        $"Macro '{id}' instruction reads macro.{id}.content; an instruction renders where macro.{id}.prompt is read, so that read puts the macro's text in the prompt — say where the content goes, the mechanics sentence names the read.";
+
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithSpare((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle, string instruction, string text = "Nothing.")
+    {
+        var manifest = bundle.Manifest with { Macros = bundle.Manifest.Macros!.Append(new WorkflowMacroSpec("spare", "Spare", "macros/spare.md", Instruction: instruction)).ToList() };
+        var files = new Dictionary<string, string>(bundle.Files, StringComparer.Ordinal) { ["macros/spare.md"] = text };
+        return (manifest, files);
+    }
+
+    [Fact]
+    public void AMacro_ReadOnlyByItsOwnInstruction_IsRefused_AndTheSelfReadWarned()
+    {
+        var bundle = WithSpare(V25Package.Minimal(), "Write {{ macro.spare.content }} once, as the last line.");
+        var result = V25Package.Validate(bundle, V25Package.Catalog());
+
+        Assert.Contains(SpareRefused, result.Errors);
+        Assert.Contains(SelfReadWarning("spare"), result.Warnings);
+    }
+
+    [Fact]
+    public void AMacro_ReadOnlyByAnUnplacedMacrosText_IsRefused()
+    {
+        // other is unplaced and unread; its text reads spare — neither renders.
+        var bundle = WithSpare(V25Package.Minimal(), "x");
+        var manifest = bundle.Manifest with { Macros = bundle.Manifest.Macros!.Append(new WorkflowMacroSpec("other", "Other", "macros/other.md", Instruction: "x")).ToList() };
+        bundle.Files["macros/other.md"] = "Other says: {{ macro.spare.content }}";
+
+        var errors = V25Package.Errors((manifest, bundle.Files));
+
+        Assert.Contains(SpareRefused, errors);
+        Assert.Contains("Macro 'other' is declared but never placed or read; place it on a node or a deliverable, or read macro.other.content / macro.other.prompt.", errors);
+    }
+
+    [Fact]
+    public void AMacro_ReadOnlyByASnippetNothingReads_IsRefused()
+    {
+        var bundle = WithSpare(V25Package.Minimal(), "x");
+        var manifest = bundle.Manifest with { Snippets = new Dictionary<string, string>(bundle.Manifest.Snippets!) { ["orphan"] = "snippets/orphan.md" } };
+        bundle.Files["snippets/orphan.md"] = "Nobody reads me: {{ macro.spare.content }}";
+
+        Assert.Contains(SpareRefused, V25Package.Errors((manifest, bundle.Files)));
+    }
+
+    [Fact]
+    public void AMacro_ReadByAPlacedMacrosText_IsUsed()
+    {
+        // closing is placed on assessment; its text reads spare — spare renders.
+        var bundle = WithSpare(V25Package.Minimal(), "x");
+        bundle.Files["macros/closing.md"] = "Closing: {{ macro.spare.content }}";
+
+        Assert.Equal(new List<string>(), V25Package.Errors(bundle));
+    }
+
+    [Fact]
+    public void AMacro_ReadByAnInlineMacrosTextOrInstruction_IsUsed()
+    {
+        // closing is read inline through the snippet the prompt reads; its
+        // instruction reads spare's prompt and its text reads spare's content.
+        var bundle = WithSpare(V25Package.Minimal(), "Spare goes last.");
+        var manifest = V25Package.WithNode(bundle.Manifest, "assessment", n => n with { Macros = null });
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m.Id == "closing" ? m with { Instruction = "Close; {{ macro.spare.prompt }}" } : m).ToList() };
+        bundle.Files["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}";
+
+        Assert.Equal(new List<string>(), V25Package.Errors((manifest, bundle.Files)));
+    }
+
+    [Fact]
+    public void AMacro_ReadByACondition_IsUsed()
+    {
+        var bundle = WithSpare(V25Package.Minimal(), "x");
+        var manifest = V25Package.WithNode(bundle.Manifest, "assessment", n => n with { When = "(macro.spare.content | string.size) > 0" });
+
+        Assert.DoesNotContain(SpareRefused, V25Package.Errors((manifest, bundle.Files)));
+    }
+
+    [Fact]
+    public void APlacedMacro_WhoseInstructionReadsItsOwnContent_IsWarned_NotRefused()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        manifest = manifest with { Macros = manifest.Macros!.Select(m => m with { Instruction = "If the plan changed, write {{ macro.closing.content }} at the end." }).ToList() };
+
+        var result = V25Package.Validate((manifest, files), V25Package.Catalog());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Equal(new[] { SelfReadWarning("closing") }, result.Warnings);
+    }
+
+    [Fact]
+    public void AnInstruction_ReadingAnotherMacrosContent_IsNotWarned()
+    {
+        // closing's instruction is reached (read inline through the snippet) and
+        // reads spare's content — spare is used, and nothing is warned: the
+        // warning is about an instruction reading ITS OWN content.
+        var bundle = WithSpare(V25Package.Minimal(), "x");
+        var manifest = bundle.Manifest with { Macros = bundle.Manifest.Macros!.Select(m => m.Id == "closing" ? m with { Instruction = "Close with {{ macro.spare.content }} in mind." } : m).ToList() };
+        bundle.Files["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}";
+
+        var result = V25Package.Validate((manifest, bundle.Files), V25Package.Catalog());
+
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Empty(result.Warnings);
+    }
 }
 
 /// <summary>A4 PR 2: templates walked, edges derived, macros placed and read, the graph, the probe, deliverables, reachability.</summary>

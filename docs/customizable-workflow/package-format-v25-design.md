@@ -1050,6 +1050,8 @@ only on a concept_list node's read and its pane counts "problems in this text" r
 "references that do not resolve". The grammar tidy-up — a pipe takes the node,
 `{{ node.x | concept_context }}` — is #1059, for v26.)*
 
+*(2026-10-17, #1067: the unused-macro rule counts only what a run renders — `Walk.MacrosReached`: every node's prompt and the folder items it fans, every instance's text, every condition, closed over snippets, macro texts and inline instructions and fills. Before, `used` was built from every walked template, so an unplaced macro whose instruction read its own `.content` was "used" by itself and the refusal never fired (`acct-…/test/general3@v2026.10.3` published with `test` unplaced). An instruction that reads its own `.content` is now warned: the instruction renders where `.prompt` is read, so that read puts the macro's text in the prompt — the mechanics sentence names the read. package-format v2026.10.8 carries two new refusals and one valid-with-warning vector.)*
+
 *(#1046, 2026-10-17 — an input is not a "slot". The word named two things: the macro the model places
 (the ≤24 `[[slot:<id>]]` marker, `slot: true`, the record kind, `WorkflowSlotMarker`, `ConsultSlotFiller`, the
 v20 sentences, the editor's slot-instruction UI — all unchanged) and an *input* on the Create page (`ScalarSlot`,

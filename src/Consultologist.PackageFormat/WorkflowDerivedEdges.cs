@@ -69,7 +69,7 @@ public static class WorkflowDerivedEdges
             _folders = folders.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         }
 
-        /// <summary>Every template walked: prompts (Id = the node id), snippets (Id = the snippet id or folder/item), macro texts (Id = the macro id).</summary>
+        /// <summary>Every template walked: prompts (Id = the node id), snippets (Id = the snippet id or folder/item), macro texts and — #1044 — macro instructions (Id = the macro id). Walked whether or not a run reaches them; <see cref="MacrosReached"/> is the reachable view.</summary>
         public IReadOnlyList<WalkedTemplate> Templates { get; }
 
         /// <summary>Each node's <c>with</c> walked against its format's parameters — only nodes whose format declares parameters.</summary>
@@ -168,6 +168,79 @@ public static class WorkflowDerivedEdges
             var edges = new HashSet<string>(StringComparer.Ordinal);
             VisitKey((TemplateKind.Macro, macroId), new HashSet<(TemplateKind, string)>(), refs => edges.UnionWith(refs.Edges));
             return edges;
+        }
+
+        /// <summary>
+        /// #1067: the macro ids a run renders — placed on a node or a deliverable,
+        /// or read as <c>.content</c> / <c>.prompt</c> from a template the run
+        /// reaches. The roots are what the engine renders: every node's prompt and
+        /// the folder items it fans, every instance's text (node and deliverable),
+        /// every condition; the closure is <see cref="Visit"/>'s (snippets, folder
+        /// items, macro texts, the instructions of inline macros) plus each inline
+        /// macro's own text (its fill), as <see cref="EdgesOf"/> closes. An unplaced
+        /// macro's own instruction or text, and a snippet nothing reads, are not
+        /// roots — what they read does not count. Before this the validator's
+        /// unused-macro rule read every walked template, so a macro whose
+        /// instruction read its own content was "used" by itself and the refusal
+        /// never fired.
+        /// </summary>
+        public IReadOnlySet<string> MacrosReached(IEnumerable<string> deliverableInstanceMacroIds)
+        {
+            var reached = new HashSet<string>(StringComparer.Ordinal);
+            var seen = new HashSet<(TemplateKind, string)>();
+            var slots = new HashSet<string>(StringComparer.Ordinal);
+
+            void Take(TemplateReferences refs)
+            {
+                reached.UnionWith(refs.MacroContents);
+                reached.UnionWith(refs.MacroPrompts);
+                slots.UnionWith(refs.MacroPrompts);
+            }
+
+            foreach (var nodeId in _nodes.Keys.Order(StringComparer.Ordinal))
+            {
+                if (_byKey.TryGetValue((TemplateKind.Prompt, nodeId), out var prompt))
+                {
+                    Visit(prompt, seen, Take);
+
+                    foreach (var item in FanItemsReadBy(nodeId, prompt, null))
+                    {
+                        VisitKey((TemplateKind.Snippet, item), seen, Take);
+                    }
+                }
+
+                foreach (var instance in _nodes[nodeId].Node.Macros ?? new List<WorkflowNodeMacroSpec>())
+                {
+                    reached.Add(instance.Id);
+                    VisitKey((TemplateKind.Macro, instance.Id), seen, Take);
+                }
+            }
+
+            foreach (var id in deliverableInstanceMacroIds)
+            {
+                reached.Add(id);
+                VisitKey((TemplateKind.Macro, id), seen, Take);
+            }
+
+            foreach (var condition in Conditions)
+            {
+                Visit(condition.Walk.References, seen, Take);
+            }
+
+            // An inline macro's fill is its text, rendered into the reply — what
+            // that text reads is reached too; visit until no new slot.
+            var pending = new Queue<string>(slots);
+            while (pending.TryDequeue(out var slot))
+            {
+                var before = slots.Count;
+                VisitKey((TemplateKind.Macro, slot), seen, Take);
+                foreach (var added in slots.Skip(before))
+                {
+                    pending.Enqueue(added);
+                }
+            }
+
+            return reached;
         }
 
         /// <summary>#1037: the node ids a deliverable's own when and its instances' whens read, closed over the texts they read.</summary>

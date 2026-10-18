@@ -390,6 +390,16 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-duplicate-macro-id", "Two macros with one id.", Manifest(m, x => x with { Macros = x.Macros!.Concat(x.Macros!).ToList() }));
         Invalid("invalid-macro-never-placed-or-read", "A declared macro that no node, deliverable or template uses.",
             Files(Manifest(m, x => x with { Macros = x.Macros!.Append(new WorkflowMacroSpec("unused", "Unused", "macros/unused.md", Instruction: "x")).ToList() }), fs => fs["macros/unused.md"] = "Nothing."));
+        // #1067: a use is a read from a template the run renders, or a placement — not
+        // a read from any walked template. An unplaced macro's own instruction and
+        // text are not reached, so what they read does not count.
+        Invalid("invalid-macro-read-only-by-its-own-instruction", "An unplaced macro whose only reader is its own instruction — the instruction renders only where macro.<id>.prompt is read, so nothing renders it; the self-read is also warned.",
+            Files(Manifest(m, x => x with { Macros = x.Macros!.Append(new WorkflowMacroSpec("spare", "Spare", "macros/spare.md", Instruction: "Write {{ macro.spare.content }} once, as the last line of the note.")).ToList() }), fs => fs["macros/spare.md"] = "Spare."));
+        Invalid("invalid-macro-read-only-by-an-unplaced-macros-text", "A macro read only by the text of a macro nothing places or reads — neither renders, both are refused.",
+            Files(Manifest(m, x => x with { Macros = x.Macros!.Concat(new[] { new WorkflowMacroSpec("spare", "Spare", "macros/spare.md", Instruction: "x"), new WorkflowMacroSpec("other", "Other", "macros/other.md", Instruction: "x") }).ToList() }),
+                fs => { fs["macros/spare.md"] = "Spare."; fs["macros/other.md"] = "Other says: {{ macro.spare.content }}"; }));
+        Valid("valid-macro-instruction-reads-its-own-content", "A placed macro whose instruction reads its own content — valid, and warned: the instruction renders where macro.<id>.prompt is read, so the read puts the text in the prompt; the mechanics sentence names the read.",
+            Macro(m, mc => mc with { Instruction = "If the plan changed, write {{ macro.closing.content }} at the end." }));
         Invalid("invalid-node-instance-undeclared", "A node instance naming a macro the package does not declare.",
             Node(m, "assessment", n => n with { Macros = n.Macros!.Append(new WorkflowNodeMacroSpec("ghost", At: WorkflowNodeMacroSpec.After)).ToList() }));
         Invalid("invalid-node-instance-at-unknown", "A node instance placed somewhere other than before or after.",
