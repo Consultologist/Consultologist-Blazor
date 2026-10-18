@@ -1499,7 +1499,7 @@
                                                            (the registry refuses an at-less instance). *@
                                                         <FluentSelect TOption="string" class="binding-row__select result-macro-placement"
                                                                 Value="@(macroEntry.At ?? "")"
-                                                                ValueChanged="@(v => SetDeliverableMacroAtAsync(deliverable, macroId, v))"
+                                                                ValueChanged="@(v => SetDeliverableMacroAtAsync(deliverable, macroIndex, v))"
                                                                 aria-label="@($"Placement for macro {macroId} in deliverable {deliverable.Id}")">
                                                             @if (macroEntry.At == null)
                                                             {
@@ -1555,16 +1555,16 @@
                                                                   aria-label="@($"Move macro {macroIndex + 1} up")"
                                                                   Disabled="@(macroIndex == 0)"
                                                                   IconStart="@(new Icons.Regular.Size20.ArrowUp())"
-                                                                  @onclick="() => MoveResultMacroAsync(deliverable, macroId, -1)" />
+                                                                  @onclick="() => MoveResultMacroAsync(deliverable, macroIndex, -1)" />
                                                     <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-down" Title="Move down"
                                                                   aria-label="@($"Move macro {macroIndex + 1} down")"
                                                                   Disabled="@(macroIndex == resultMacros.Count - 1)"
                                                                   IconStart="@(new Icons.Regular.Size20.ArrowDown())"
-                                                                  @onclick="() => MoveResultMacroAsync(deliverable, macroId, 1)" />
+                                                                  @onclick="() => MoveResultMacroAsync(deliverable, macroIndex, 1)" />
                                                     <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-remove" Title="Remove macro"
                                                                   aria-label="@($"Remove macro {macroIndex + 1}")"
                                                                   IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                                  @onclick="() => RemoveResultMacroAsync(deliverable, macroId)" />
+                                                                  @onclick="() => RemoveResultMacroAsync(deliverable, macroIndex)" />
                                                 </span>
                                                 @if (EffectiveSpecVersion >= 12)
                                                 {
@@ -1572,7 +1572,7 @@
                                                        line beneath the control row — so the rows stay aligned and
                                                        the condition builder has room to expand. *@
                                                     <span class="result-macro-when">
-                                                        @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroEntry), "Always produced"))
+                                                        @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroIndex), "Always produced"))
                                                     </span>
                                                 }
                                                 </div>
@@ -2960,7 +2960,7 @@
                                                               @onclick="() => Select(ResultsKey)">@instanceResult.Label</FluentButton>
                                                 <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
                                                         Value="@(deliverableInstance.At ?? "")"
-                                                        ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, macro.Id, v))"
+                                                        ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, DeliverableEntryIndex(instanceResult, macro.Id), v))"
                                                         aria-label="@($"Placement for macro {macro.Id} in deliverable {instanceResult.Id}")">
                                                     @if (deliverableInstance.At == null)
                                                     {
@@ -2972,7 +2972,7 @@
                                                 <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button result-macro-detach" Title="@($"Detach from {instanceResult.Id}")"
                                                               aria-label="@($"Detach macro {macro.Id} from deliverable {instanceResult.Id}")"
                                                               IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                              @onclick="() => RemoveResultMacroAsync(instanceResult, macro.Id)" />
+                                                              @onclick="() => RemoveResultMacroAsync(instanceResult, DeliverableEntryIndex(instanceResult, macro.Id))" />
                                             </span>
                                             <span class="result-macro-when">
                                                 @ConditionField(("Gated when", MacroWhenTarget(instanceResult, deliverableInstance), "Always produced"))
@@ -6168,25 +6168,62 @@
         await PendingChangedAsync();
     }
 
-    /// <summary>v25 (C3 #1009): a deliverable instance's placement — prepend | append; Before/After/ForItem/Slot never ride a 25 entry.</summary>
-    private async Task SetDeliverableMacroAtAsync(WorkflowManifestReader.ResultView result, string macroId, string? at)
+    /// <summary>
+    /// v25 (C3 #1009): a deliverable instance's placement — prepend | append; Before/After/ForItem/Slot never ride a 25 entry.
+    /// #1080: addressed by the entry's index — the identity at 25 is (id, at), so one macro may hold two entries on a deliverable.
+    /// </summary>
+    private async Task SetDeliverableMacroAtAsync(WorkflowManifestReader.ResultView result, int entryIndex, string? at)
     {
         var results = MutableResults();
         var index = results.FindIndex(existing => existing.Id == result.Id);
 
-        if (index >= 0 && results[index].Macros is { } entries)
+        if (index >= 0 && results[index].Macros is { } entries && entryIndex >= 0 && entryIndex < entries.Count)
         {
             var chosen = at is PF.WorkflowDeliverableMacroSpec.Prepend or PF.WorkflowDeliverableMacroSpec.Append ? at : null;
-            results[index] = results[index] with
-            {
-                Macros = entries.Select(e => e.Id == macroId
-                    ? e with { At = chosen, Before = null, After = null, ForItem = null, Slot = null }
-                    : e).ToList()
-            };
+            var list = entries.ToList();
+            list[entryIndex] = list[entryIndex] with { At = chosen, Before = null, After = null, ForItem = null, Slot = null };
+            results[index] = results[index] with { Macros = list };
         }
 
         await CommitDeclarationAsync();
     }
+
+    /// <summary>#1080: the index of a deliverable's first entry for a macro — the ≤24 identity (the id alone), or -1.</summary>
+    private static int DeliverableEntryIndex(WorkflowManifestReader.ResultView result, string macroId) =>
+        (result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).ToList().FindIndex(e => e.Id == macroId);
+
+    /// <summary>
+    /// #1080: at 25 the placement a macro may still take on a deliverable — "both" when it holds none,
+    /// the free one of prepend | append when it holds the other, null when it holds both or an
+    /// unplaced (at-less) entry, which a second of the same id would make "placed twice ()".
+    /// </summary>
+    private static string? DeliverableFreeIdentity(IReadOnlyList<WorkflowManifestReader.ResultMacroView> entries, string macroId)
+    {
+        var mine = entries.Where(e => e.Id == macroId).ToList();
+        if (mine.Count == 0)
+        {
+            return "both";
+        }
+
+        if (mine.Any(e => e.At == null))
+        {
+            return null;
+        }
+
+        var hasPrepend = mine.Any(e => e.At == PF.WorkflowDeliverableMacroSpec.Prepend);
+        var hasAppend = mine.Any(e => e.At == PF.WorkflowDeliverableMacroSpec.Append);
+        return hasPrepend && hasAppend ? null : hasPrepend ? PF.WorkflowDeliverableMacroSpec.Append : PF.WorkflowDeliverableMacroSpec.Prepend;
+    }
+
+    /// <summary>#1080: the macros a deliverable's picker offers — at 25 any with a free identity; below, any it does not list.</summary>
+    private IReadOnlyList<(WorkflowManifestReader.MacroView Macro, string? Free)> DeliverableAttachableMacros(IReadOnlyList<WorkflowManifestReader.ResultMacroView> entries) =>
+        At25
+            ? EffectiveMacros.Select(m => (m, DeliverableFreeIdentity(entries, m.Id))).Where(pair => pair.Item2 != null).ToList()
+            : EffectiveMacros.Where(m => entries.All(e => e.Id != m.Id)).Select(m => (m, (string?)"both")).ToList();
+
+    /// <summary>#1080: a picker option's text — the id, and the one placement left when the other is taken.</summary>
+    private static string FreeIdentityText(string name, string? free) =>
+        free is null or "both" ? name : $"{name} — {free}";
 
     /// <summary>#1073: the Remove macro button's tooltip — what removing takes with it.</summary>
     private string MacroRemovalReach(WorkflowManifestReader.MacroView macro) =>
@@ -7255,7 +7292,7 @@
                 var aggregator = EffectiveNodes.FirstOrDefault(n => n.Id == NodeIdOf(result.Node));
                 var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
 
-                foreach (var entry in entries)
+                foreach (var (entry, entryIndex) in entries.Select((e, i) => (e, i)))
                 {
                     if (entry.Before != null && entry.After != null)
                     {
@@ -7309,7 +7346,7 @@
                         }
                     }
 
-                    if (conditionDrafts.TryGetValue($"{result.Id}\n{entry.Id}", out var entryDraft) && IsUnwritable(entryDraft))
+                    if (conditionDrafts.TryGetValue($"{result.Id}\n{entryIndex}", out var entryDraft) && IsUnwritable(entryDraft))
                     {
                         errors.Add(ConditionBuilderModel.IsComplete(entryDraft)
                             ? $"Deliverable '{result.Id}' macro '{entry.Id}' condition has a clause the format cannot read; finish it or remove it."
@@ -9361,20 +9398,33 @@
             }
         });
 
-    /// <summary>v12 § 14 (#621): a macro entry's when — the longer key, the entry's own write.</summary>
-    private ConditionTarget MacroWhenTarget(WorkflowManifestReader.ResultView result, WorkflowManifestReader.ResultMacroView entry) =>
-        new($"{result.Id}\n{entry.Id}", $"{result.Id} macro {entry.Id}", entry.When, text =>
+    /// <summary>
+    /// v12 § 14 (#621): a macro entry's when — the longer key, the entry's own write. #1080: keyed by the
+    /// entry's index (the identity at 25 is (id, at)); the subject carries the placement when the macro
+    /// holds two entries on the deliverable, so the builder's labels stay distinct.
+    /// </summary>
+    private ConditionTarget MacroWhenTarget(WorkflowManifestReader.ResultView result, int entryIndex)
+    {
+        var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
+        var entry = entries[entryIndex];
+        var twice = entries.Count(e => e.Id == entry.Id) > 1;
+        var subject = twice ? $"{result.Id} macro {entry.Id} {entry.At}" : $"{result.Id} macro {entry.Id}";
+        return new($"{result.Id}\n{entryIndex}", subject, entry.When, text =>
         {
             var results = MutableResults();
             var index = results.FindIndex(existing => existing.Id == result.Id);
-            if (index >= 0 && results[index].Macros is { } entries)
+            if (index >= 0 && results[index].Macros is { } current && entryIndex < current.Count)
             {
-                results[index] = results[index] with
-                {
-                    Macros = entries.Select(e => e.Id == entry.Id ? e with { When = text } : e).ToList()
-                };
+                var list = current.ToList();
+                list[entryIndex] = list[entryIndex] with { When = text };
+                results[index] = results[index] with { Macros = list };
             }
         });
+    }
+
+    /// <summary>The ≤24 call: the entry's first index — below 25 the identity is the id alone.</summary>
+    private ConditionTarget MacroWhenTarget(WorkflowManifestReader.ResultView result, WorkflowManifestReader.ResultMacroView entry) =>
+        MacroWhenTarget(result, Math.Max(0, DeliverableEntryIndex(result, entry.Id)));
 
     // #966: the deliverables whose aggregator aggregates this node — where an
     // output macro anchored to it can live. Pending aggregate edits count, as
@@ -9986,13 +10036,19 @@
         var results = MutableResults();
         var index = results.FindIndex(existing => existing.Id == result.Id);
 
-        if (index >= 0 && (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).All(e => e.Id != macroId))
+        if (index >= 0)
         {
-            // Appending creates the bare v11 entry; placement and when are
-            // authored on the row afterwards.
-            var list = (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).ToList();
-            list.Add(new WorkflowManifestReader.ResultMacroView(macroId));
-            results[index] = results[index] with { Macros = list };
+            var entries = results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
+            // #1080: at 25 a macro may hold both placements on a deliverable — a second entry is
+            // born at the one left free; the first is born unplaced (the bare entry, placement
+            // and when authored on the row afterwards), as below 25 where the id is the identity.
+            var free = At25 ? DeliverableFreeIdentity(entries, macroId) : entries.All(e => e.Id != macroId) ? "both" : null;
+            if (free != null)
+            {
+                var list = entries.ToList();
+                list.Add(free == "both" ? new WorkflowManifestReader.ResultMacroView(macroId) : new WorkflowManifestReader.ResultMacroView(macroId, At: free));
+                results[index] = results[index] with { Macros = list };
+            }
         }
 
         await CommitDeclarationAsync();
@@ -10121,21 +10177,28 @@
         await CommitDeclarationAsync();
     }
 
-    private async Task RemoveResultMacroAsync(WorkflowManifestReader.ResultView result, string macroId)
+    /// <summary>#1080: remove one entry by its index — one identity of a macro that may hold two at 25.</summary>
+    private async Task RemoveResultMacroAsync(WorkflowManifestReader.ResultView result, int entryIndex)
     {
         var results = MutableResults();
         var index = results.FindIndex(existing => existing.Id == result.Id);
 
-        if (index >= 0)
+        if (index >= 0 && results[index].Macros is { } entries && entryIndex >= 0 && entryIndex < entries.Count)
         {
-            var list = (results[index].Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>()).Where(e => e.Id != macroId).ToList();
+            var list = entries.ToList();
+            list.RemoveAt(entryIndex);
             results[index] = results[index] with { Macros = list.Count == 0 ? null : list };
         }
 
         await CommitDeclarationAsync();
     }
 
-    private async Task MoveResultMacroAsync(WorkflowManifestReader.ResultView result, string macroId, int delta)
+    /// <summary>The ≤24 call: the macro's first entry — below 25 the identity is the id alone.</summary>
+    private Task RemoveResultMacroAsync(WorkflowManifestReader.ResultView result, string macroId) =>
+        RemoveResultMacroAsync(result, DeliverableEntryIndex(result, macroId));
+
+    /// <summary>#1080: move one entry by its index, as the node side does.</summary>
+    private async Task MoveResultMacroAsync(WorkflowManifestReader.ResultView result, int entryIndex, int delta)
     {
         var results = MutableResults();
         var index = results.FindIndex(existing => existing.Id == result.Id);
@@ -10143,12 +10206,11 @@
         if (index >= 0 && results[index].Macros is { } current)
         {
             var list = current.ToList();
-            var from = list.FindIndex(e => e.Id == macroId);
-            var to = from + delta;
+            var to = entryIndex + delta;
 
-            if (from >= 0 && to >= 0 && to < list.Count)
+            if (entryIndex >= 0 && entryIndex < list.Count && to >= 0 && to < list.Count)
             {
-                (list[from], list[to]) = (list[to], list[from]);
+                (list[entryIndex], list[to]) = (list[to], list[entryIndex]);
                 results[index] = results[index] with { Macros = list };
             }
         }
