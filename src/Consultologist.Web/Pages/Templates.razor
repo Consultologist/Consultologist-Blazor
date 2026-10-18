@@ -357,7 +357,7 @@
                             <span>Inputs</span>
                         </button>
                         <button type="button"
-                                class="editor-nav__item @(selectedKey == ResultsKey ? "editor-nav__item--selected" : "")"
+                                class="editor-nav__item @(OnDeliverablesPane ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(ResultsKey)">
                             @* #1079: the dot follows the pane's Discard — an edit or a draft on a deliverable's own condition. *@
                             <span class="editor-nav__dot">@(DeliverablesCanDiscard ? "●" : "")</span>
@@ -1389,7 +1389,7 @@
                             <p class="editor-warning">@declaredError</p>
                         }
                     }
-                    else if (selectedKey == ResultsKey)
+                    else if (OnDeliverablesPane)
                     {
                         <div class="pane-header">
                             <div>
@@ -1417,7 +1417,9 @@
                                 @foreach (var result in EffectiveResults)
                                 {
                                     var deliverable = result;
-                                    <li class="deliverable-card">
+                                    @* #1081: focusable — a results:<id> key scrolls to and flashes this card. *@
+                                    <li class="deliverable-card @(FocusedDeliverableId == deliverable.Id ? "deliverable-card--focused" : "")"
+                                        tabindex="-1" data-deliverable="@deliverable.Id" @ref="_cardRefs[deliverable.Id]">
                                         <div class="deliverable-card__head">
                                         <input class="node-field__input declared-row__id"
                                                value="@deliverable.Id"
@@ -2027,6 +2029,19 @@
                                 @PaneDiscardButton(NodeKeyFor(selectedNode.Id), NodeCanDiscard(selectedNode), () => RevertNodeEdits(selectedNode.Id, selectedNode.Prompt))
                             </div>
                         </div>
+                        @* #1081: an aggregator's pane names the deliverable(s) it feeds, each a link
+                           to its card — the Deliverables pane's "Also placed on nodes" idiom, reversed. *@
+                        @if (At25 && EffectiveResults.Where(r => NodeIdOf(r.Node) == selectedNode.Id).ToList() is { Count: > 0 } delivers)
+                        {
+                            <p class="muted-text node-delivers">
+                                Delivers →
+                                @for (var deliversIndex = 0; deliversIndex < delivers.Count; deliversIndex++)
+                                {
+                                    var delivered = delivers[deliversIndex];
+                                    <button type="button" class="snippet-readers__row" title="@($"deliverable '{delivered.Id}' — open its card")" @onclick="() => Select(ResultsKeyFor(delivered.Id))">@delivered.Label</button>@(deliversIndex < delivers.Count - 1 ? "," : "")
+                                }
+                            </p>
+                        }
                         @* #952: the node's gate — its "Produced when" — leads the pane, right after
                            the header, resting quietly as "Always run" when ungated (#936 ConditionField).
                            A classifier always runs to make its decision, so it carries none. *@
@@ -2978,7 +2993,7 @@
                                                     <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner"
                                                                   Title="@($"deliverable '{instanceResult.Id}' — edit on the Deliverables pane")"
                                                                   aria-label="@($"Open the Deliverables pane for {instanceResult.Id}")"
-                                                                  @onclick="() => Select(ResultsKey)">@instanceResult.Label</FluentButton>
+                                                                  @onclick="() => Select(ResultsKeyFor(instanceResult.Id))">@instanceResult.Label</FluentButton>
                                                     <FluentSelect TOption="string" class="binding-row__select macro-instance-at"
                                                             Value="@(deliverableInstance.At ?? "")"
                                                             ValueChanged="@(v => SetDeliverableMacroAtAsync(instanceResult, instanceIndex, v))"
@@ -3747,6 +3762,9 @@
     // #746: the output-contract schemas pane (view + remove an unused one).
     private const string SchemasKey = "schemas";
     private const string ResultsKey = "results";
+    // #1081: a deliverable's own key — the Deliverables pane with that card focused
+    // (scrolled to and flashed); the pane's state (discard, dot) stays on ResultsKey.
+    private const string ResultsKeyPrefix = "results:";
     private const string NewKeyPrefix = "new:";
     private const string AddCollectionKey = "add-collection";
     private const string AddScalarKey = "add-scalar";
@@ -4477,6 +4495,9 @@
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
             && EffectiveNodes.Any(n => NodeKeyFor(n.Id) == key))
+        // #1081: a deliverable's focus key, while the deliverable exists.
+        || (key.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal)
+            && EffectiveResults.Any(r => ResultsKeyFor(r.Id) == key))
         // #571/#747: a removed declared macro or prelude's file is still
         // published, so the Files clause would keep its pane alive — exclude
         // them explicitly.
@@ -11228,11 +11249,39 @@
         || VariableAddCount > 0 || VariableRemovalCount > 0
         || inputsEdit != null || resultsEdit != null;
 
+    private static string ResultsKeyFor(string deliverableId) => ResultsKeyPrefix + deliverableId;
+
+    /// <summary>#1081: the Deliverables pane is open — as a whole, or focused on one card.</summary>
+    private bool OnDeliverablesPane =>
+        selectedKey == ResultsKey || (selectedKey?.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal) ?? false);
+
+    /// <summary>#1081: the deliverable a results:&lt;id&gt; key focuses, or null on the plain pane.</summary>
+    private string? FocusedDeliverableId =>
+        selectedKey is { } key && key.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal) ? key[ResultsKeyPrefix.Length..] : null;
+
+    // #1081: the card to focus after the next render (focus scrolls it into view), and the cards' references.
+    private string? _focusDeliverable;
+    private readonly Dictionary<string, ElementReference> _cardRefs = new(StringComparer.Ordinal);
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusDeliverable is { } focus)
+        {
+            _focusDeliverable = null;
+            if (_cardRefs.TryGetValue(focus, out var card))
+            {
+                await card.FocusAsync();
+            }
+        }
+    }
+
     private void Select(string key)
     {
         selectedKey = key;
         // #812: leaving a pane disarms its pending per-pane discard.
         paneDiscardArmedKey = null;
+        // #1081: a deliverable's key focuses its card once the pane has rendered.
+        _focusDeliverable = key.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal) ? key[ResultsKeyPrefix.Length..] : null;
 
         if (key == GraphKey && diagramText == null)
         {
