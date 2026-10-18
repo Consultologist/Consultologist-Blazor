@@ -470,6 +470,35 @@ fluent-button.node-field__button::part(control) {
 	margin: 0.25rem 0;
 }
 
+/* #1072: the macro pane's "Where it goes" — chips that open the owner, the
+   attach pickers at the row's end; the rows read like the snippet pane's. */
+.macro-where {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.macro-where__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.25rem 0.5rem;
+}
+
+.macro-where__row ul.snippet-readers {
+	margin: 0;
+}
+
+.macro-where__add {
+	display: inline-flex;
+	flex-wrap: wrap;
+	gap: 0.25rem 0.5rem;
+}
+
+.macro-where p.muted-text {
+	margin: 0;
+}
+
 .macro-attachments__head {
 	font-size: 0.72rem;
 	font-weight: 600;
