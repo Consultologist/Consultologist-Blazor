@@ -731,12 +731,25 @@ public static partial class WorkflowPackageValidator
         List<string> warnings)
     {
         var declared = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
-        var used = new HashSet<string>(StringComparer.Ordinal);
 
-        foreach (var template in walk.Templates)
+        // #1067: a use is a read from a template the run renders, or a placement
+        // (Walk.MacrosReached) — not a read from any walked template. An unplaced
+        // macro's own instruction reads its content in the ordinary way of saying
+        // where it goes, and counting that read made the refusal below unreachable.
+        var used = new HashSet<string>(
+            walk.MacrosReached(manifest.EffectiveDeliverables.SelectMany(d => d.Macros ?? new List<WorkflowDeliverableMacroSpec>()).Select(e => e.Id)),
+            StringComparer.Ordinal);
+
+        // #1067: an instruction that reads its own content. The instruction is a
+        // template rendered where macro.<id>.prompt is read, so the read puts the
+        // macro's TEXT in the prompt — right before the mechanics sentence that
+        // names the read the model is to write. Warned, not refused: the text still
+        // runs, and three published packages carried it when this landed.
+        foreach (var instruction in walk.Templates
+            .Where(t => t.Kind == TemplateKind.Instruction && t.References.MacroContents.Contains(t.Id))
+            .OrderBy(t => t.Id, StringComparer.Ordinal))
         {
-            used.UnionWith(template.References.MacroContents);
-            used.UnionWith(template.References.MacroPrompts);
+            warnings.Add($"Macro '{instruction.Id}' instruction reads macro.{instruction.Id}.content; an instruction renders where macro.{instruction.Id}.prompt is read, so that read puts the macro's text in the prompt — say where the content goes, the mechanics sentence names the read.");
         }
 
         // The .prompt reads a node's template reaches — its prompt, every
