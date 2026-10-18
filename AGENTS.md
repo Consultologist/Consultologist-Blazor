@@ -84,6 +84,15 @@ while anonymous objects keep their declared casing (`new { error = … }` →
 on refusal. Scripts should read both (`d.get("Text") or d.get("text")`);
 `scripts/show-extraction.sh` and `scripts/verify-rate-limit.sh` do.
 
+The worker also writes **every member of a record, nulls included**, so a
+typed manifest came back as `"Results": null` beside `"Deliverables": […]`
+and the editor's reader, stopping at the first key it found, read no
+deliverables (#1066). The content and ingest responses now carry the
+manifest as its canonical camelCase JSON without nulls
+(`WorkflowPackageContentResponse.For`), one camelCase island inside the
+PascalCase envelope; the Web reader treats a null-valued key as absent either
+way.
+
 ### A test file may hold more than one class
 
 *Symptom: `CS0103: The name '_field' does not exist in the current context`
