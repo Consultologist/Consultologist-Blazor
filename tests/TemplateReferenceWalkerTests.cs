@@ -212,6 +212,71 @@ public class TemplateReferenceWalkerTests
         Assert.Contains(refs.Warnings, w => w.Contains("reads node.extract.content of format 'concept_list'"));
     }
 
+    // ----- #1098: which pipe rendered which node -----
+    // The walk records an ACCEPTED rendering as (node, pipe) — the editor's "Used by"
+    // rows on a renderer's pane. A refused pipe records its edge and no rendering;
+    // an operand the walk cannot type records nothing (judged when it renders).
+
+    [Fact]
+    public void ARendererPipe_OnAConceptListNodesText_IsRecorded_AsRenderingThatNode()
+    {
+        var refs = TemplateFixtures.Ok("{{ node.extract.content | concept_context }} {{ node.extract.content | concept_bullets }} {{ node.extract.content | concept_context }}");
+
+        Assert.Equal(
+            new[] { new TemplateRenderedRead("extract", "concept_bullets"), new TemplateRenderedRead("extract", "concept_context") },
+            refs.Rendered.OrderBy(r => r.Pipe, StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public void ARefusedRendererPipe_RecordsTheEdge_ButNoRendering()
+    {
+        var refs = TemplateFixtures.Walk("{{ node.assessment.content | concept_bullets }}");
+
+        Assert.Contains("assessment", refs.Edges);
+        Assert.Empty(refs.Rendered);
+    }
+
+    [Fact]
+    public void ARendererPipe_InsideWith_IsRecorded_AgainstTheNode()
+    {
+        var refs = TemplateFixtures.Ok("{{ with node.extract }}{{ content | concept_bullets }}{{ end }}");
+
+        Assert.Equal(new TemplateRenderedRead("extract", "concept_bullets"), Assert.Single(refs.Rendered));
+    }
+
+    [Fact]
+    public void ARendererPipe_InTheCallForm_IsRecorded()
+    {
+        var refs = TemplateFixtures.Ok("{{ node.extract.content | concept_bullets() }}");
+
+        Assert.Equal(new TemplateRenderedRead("extract", "concept_bullets"), Assert.Single(refs.Rendered));
+    }
+
+    [Fact]
+    public void AChainedRendererPipe_IsRecordedOnce_AndTheRestRecordsNothing()
+    {
+        var refs = TemplateFixtures.Ok("{{ node.extract.content | concept_bullets | string.upcase }}");
+
+        Assert.Equal(new TemplateRenderedRead("extract", "concept_bullets"), Assert.Single(refs.Rendered));
+    }
+
+    [Fact]
+    public void ARendererPipe_AfterAnotherPipe_RecordsNoRendering()
+    {
+        // The operand is a builtin's result: untyped, so judged when it renders — not here.
+        var refs = TemplateFixtures.Ok("{{ node.extract.content | string.upcase | concept_bullets }}");
+
+        Assert.Empty(refs.Rendered);
+    }
+
+    [Fact]
+    public void ABareContentRead_RecordsNoRendering()
+    {
+        var refs = TemplateFixtures.Walk("{{ node.extract.content }} {{ node.assessment.content }} {{ node.extract.value.concepts | array.size }}");
+
+        Assert.Empty(refs.Rendered);
+    }
+
     [Fact]
     public void NonRendererPipes_AreUnchanged() =>
         Assert.Empty(TemplateFixtures.Ok("{{ snippet.sections | array.size }} {{ input.notes | string.upcase }} {{ node.assessment.content | string.truncate 10 }}").Warnings);

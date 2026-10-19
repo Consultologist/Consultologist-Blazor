@@ -4,8 +4,10 @@ namespace Consultologist.PackageFormat;
 /// What one template reads and depends on (package-format-v25-design.md § 2),
 /// derived from its syntax tree: the inputs, snippets, macros and item members
 /// it reads; the nodes it reads — the template's **edges**; the macros whose
-/// <c>.prompt</c> it reads — its inline macros; and the sentences that refuse
-/// it. Edges inside a conditional branch count the same: conservative, stated.
+/// <c>.prompt</c> it reads — its inline macros; the renderer pipes that rendered
+/// a node's text — <see cref="Rendered"/>, for the editor's "Used by" rows (#1098);
+/// and the sentences that refuse it. Edges inside a conditional branch count the
+/// same: conservative, stated.
 /// </summary>
 public sealed record TemplateReferences(
     IReadOnlySet<string> Inputs,
@@ -18,6 +20,7 @@ public sealed record TemplateReferences(
     IReadOnlySet<string> ItemMembers,
     IReadOnlySet<string> RunFacts,
     IReadOnlySet<string> ProfileFacts,
+    IReadOnlySet<TemplateRenderedRead> Rendered,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Warnings)
 {
@@ -34,6 +37,15 @@ public sealed record TemplateNodeRead(bool ReadsContent, bool ReadsValue)
         new(ReadsContent || other.ReadsContent, ReadsValue || other.ReadsValue);
 }
 
+/// <summary>
+/// #1098: one renderer pipe applied to one node's text — <c>node.&lt;Node&gt;.content | &lt;Pipe&gt;</c> —
+/// recorded only when the walk accepts the operand (a refused pipe names its edge, not its
+/// rendering; an operand the walk cannot type is judged when it renders and records nothing).
+/// The validator and the engine read nothing from it; the editor lists a renderer's "Used by"
+/// rows from it. The set is unordered.
+/// </summary>
+public sealed record TemplateRenderedRead(string Node, string Pipe);
+
 /// <summary>Gathers a template's references while the walker runs; <see cref="ToReferences"/> freezes them.</summary>
 internal sealed class TemplateReferenceCollector
 {
@@ -47,6 +59,7 @@ internal sealed class TemplateReferenceCollector
     private readonly HashSet<string> _itemMembers = new(StringComparer.Ordinal);
     private readonly HashSet<string> _runFacts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _profileFacts = new(StringComparer.Ordinal);
+    private readonly HashSet<TemplateRenderedRead> _rendered = new();
 
     public List<string> Errors { get; } = new();
 
@@ -76,7 +89,9 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadProfileFact(string member) => _profileFacts.Add(member);
 
+    public void ReadRendered(string node, string pipe) => _rendered.Add(new TemplateRenderedRead(node, pipe));
+
     public TemplateReferences ToReferences() => new(
         _inputs, _nodes, _snippets, _snippetFolders, _macroContents, _macroPrompts, _macroFolders, _itemMembers,
-        _runFacts, _profileFacts, Errors, Warnings);
+        _runFacts, _profileFacts, _rendered, Errors, Warnings);
 }

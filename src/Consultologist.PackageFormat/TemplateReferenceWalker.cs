@@ -141,8 +141,8 @@ public static partial class TemplateReferenceWalker
     /// </summary>
     private record ShapeTarget(TemplateValueShape? Shape) : Target;
 
-    /// <summary>#1058: <c>node.&lt;id&gt;.content</c> — a text that remembers its node; <c>Path</c> is the chain up to the node ("node.extract"), as the sentences spell it.</summary>
-    private sealed record NodeContentTarget(string Path, TemplateNodeShape Node) : ShapeTarget(TemplateValueShape.Text);
+    /// <summary>#1058: <c>node.&lt;id&gt;.content</c> — a text that remembers its node; <c>Path</c> is the chain up to the node ("node.extract"), as the sentences spell it; <c>Id</c> is the node's id, for the rendering record (#1098).</summary>
+    private sealed record NodeContentTarget(string Path, string Id, TemplateNodeShape Node) : ShapeTarget(TemplateValueShape.Text);
 
     /// <summary>#1058: <c>node.&lt;id&gt;.value</c> — a typed value that remembers it is a node's parsed output.</summary>
     private sealed record NodeValueTarget(string Path, TemplateValueShape Value) : ShapeTarget(Value);
@@ -984,7 +984,7 @@ public static partial class TemplateReferenceWalker
                 // Recorded before any judgement: a refused pipe still names its edge.
                 // The bare-read warning is Finalize's (#1058) — it knows the use.
                 _refs.ReadNode(node.Id, content: true, value: false);
-                return new NodeContentTarget(before, node.Shape);
+                return new NodeContentTarget(before, node.Id, node.Shape);
             }
 
             if (name == TemplateMembers.Value)
@@ -1219,6 +1219,8 @@ public static partial class TemplateReferenceWalker
                     return Refused;
 
                 case NodeContentTarget content when string.Equals(content.Node.Format, format, StringComparison.Ordinal):
+                    // #1098: the accepted rendering — the editor's "Used by" row for the pipe.
+                    _refs.ReadRendered(content.Id, pipe);
                     return content;
 
                 case NodeContentTarget { Node.Aggregates: true } content:
