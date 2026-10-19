@@ -826,3 +826,23 @@ fluent-button.package-tag__button::part(control) {
 .fields-sample__note {
 	margin: 0.25rem 0 0;
 }
+
+/* #1098: a renderer's pane — the spelling lines and the "Used by" rows. */
+.renderer-spelling {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	margin: 0;
+}
+
+.renderer-spelling__none,
+.renderer-users__empty {
+	margin: 0;
+}
+
+.renderer-users {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
