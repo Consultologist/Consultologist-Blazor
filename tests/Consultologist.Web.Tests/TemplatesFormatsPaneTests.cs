@@ -89,7 +89,8 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         Assert.Contains("Formats", groups);
         Assert.DoesNotContain("Schemas", groups);
         // C2 (#1008): the Data group is the Snippets group at 25.
-        Assert.Equal(new[] { "Workflow", "Nodes", "Prompts", "Macros", "Formats", "Snippets" }, groups);
+        // #1098: Renderers follows Formats — a renderer is a format's rendering.
+        Assert.Equal(new[] { "Workflow", "Nodes", "Prompts", "Macros", "Formats", "Renderers", "Snippets" }, groups);
     }
 
     [Fact]
