@@ -642,6 +642,9 @@ across every record ever written, and stay; the provenance document may say "the
 - **Snippets pane** (was Data): `+ Snippet`, `+ Snippet folder`; a folder item's `when`.
 - **Formats pane** (new): the package's custom format files (schema editor), and the
   catalogue entries read-only with their detail line (§ 3.8).
+- **Renderers group** (#1098): the engine's renderer pipes as read-only entries after
+  Formats — each pane names the format it renders, the spelling to insert, and who pipes
+  what through it (from the walk's `Rendered`).
 - **Deliverables pane** (#985): prepend / append with applies-when, the one-line note for
   node-placed instances, the two-way picker exclusion (#983).
 - **Inputs pane:** the object-form input's fields as today's object fields.
@@ -721,6 +724,23 @@ corrected.)*
 *(#1080, 2026-10-18, Milestone 31 — the editor learns the registry's **(id, at) identity** for a deliverable instance: the Deliverables pane's placement, remove, move and gate handlers address an entry by its index, as the node side's do (the id-keyed calls stay as thin wrappers for the ≤24 surfaces, where the id is the identity); a gate's key is the index and its subject carries the placement when the macro holds two entries, so the builder's labels stay distinct; the append picker offers a macro while one of its two placements is free, naming the one left ("closing — append"), and the second entry is born at it (a first is born unplaced, as before; an unplaced entry blocks a second of the same id, which would be "placed twice ()"); the macro pane's deliverable rows are one per entry, its attach picker offering a deliverable while a placement is free. Two loaded identities used to show as two rows that edited, removed and gated each other. Next: #1081 layout and focus.)*
 
 *(#1081, 2026-10-18, Milestone 31 — the Deliverables pane's **layout and focus** at 25, closing the Deliverables pane walk (#1079 facts, #1080 identity, #1081 layout): a deliverable's own key `results:<id>` opens the pane with that card focused — the card is focusable, focus scrolls it into view, a one-shot flash marks it — reached from the macro pane's deliverable rows and from an aggregator node's new "Delivers →" line; each card carries a header in the pane-identity idiom (the label as its title, `id consult · delivered as consult-<job>.pdf` — the one delivered file is the email reply's encrypted PDF — and Remove as a header action), an "open" link beside the node select to the aggregator's pane, macro rows led by the macro's label as a link (the id in the tooltip), the picker reading "attach a macro…", one sentence of section help, a read-only **Composed as** line in the engine's order — prepended macros → the aggregator's sections → appended macros → signature, each part a link, a gated part carrying its condition, an unplaced entry marked — and "How deliverables work" folded at the pane's foot. The ≤24 card is untouched. One pane with focusable cards, not a sidebar item per deliverable: a deliverable is few per package and the Inputs pane is the sibling idiom.)*
+
+*(#1098, 2026-10-19, Milestone 31 — a **Renderers** nav group at 25, after Formats: the engine's
+renderer pipes (`TemplatePipes.All` — `concept_context`, `concept_bullets`, both over a
+`concept_list` node's text, #1058) as read-only entries keyed `renderer:<name>`, nothing to add,
+edit or discard, since a renderer is defined in code and not in the manifest or the catalogue.
+A renderer's pane carries the header strip (`renders concept_list · the engine's`), one sentence
+on what the pipe produces, the **spelling** to insert — one line per node of that format, the
+node's label a link and a Copy button whose label flips to "Copied ✓", or the generic
+`{{ node.<id>.content | <pipe> }}` with a sentence when no node produces the format —
+**Used by** rows, one per (template, node) piping the node through the pipe, the template's
+subject and the node's label each a link, or the empty sentence, and "How renderers work"
+folded at the foot. The rows come from a library addition without a spec bump: the walk now
+records an accepted rendering as `TemplateReferences.Rendered` — a set of
+`TemplateRenderedRead(node, pipe)`, filled in `FinalizeRendered`'s accept case alone, so a
+refused pipe keeps its edge and records no rendering and an untyped operand records nothing;
+the validator and the engine read nothing from it. #1059 (v26) moves the spelling to
+`{{ node.<id> | pipe }}`; the line follows the spec version. A ≤24 package shows no group.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's

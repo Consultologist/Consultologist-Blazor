@@ -521,6 +521,20 @@
                             <span class="editor-nav__dot">@(FormatsCanDiscard ? "●" : "")</span>
                             <span>Formats</span>
                         </button>
+                        @* #1098: Renderers — the engine's renderer pipes (TemplatePipes.All), each a
+                           read-only entry: a pipe is defined in code, not in the manifest or the
+                           catalogue, so there is nothing to add, edit or discard here. *@
+                        <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.PaintBrush())" /> Renderers</span>
+                        @foreach (var rendererPipe in PF.TemplatePipes.All)
+                        {
+                            var rendererKey = RendererKeyFor(rendererPipe);
+                            <button type="button"
+                                    class="editor-nav__item @(selectedKey == rendererKey ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(rendererKey)">
+                                <span class="editor-nav__dot"></span>
+                                <span>@rendererPipe</span>
+                            </button>
+                        }
                     }
                     else
                     {
@@ -1104,6 +1118,90 @@
                                 </div>
                             }
                         }
+                    }
+                    else if (SelectedRendererName is { } rendererName)
+                    {
+                        @* #1098: a renderer's pane — read-only. What the pipe renders, the spelling to
+                           insert (one per node of the format it renders, else the generic one), and
+                           "Used by": every template piping a node through it, from the walk's Rendered. *@
+                        var rendererFormat = PF.TemplatePipes.FormatOf(rendererName) ?? PF.WorkflowFormatIds.ConceptList;
+                        var rendererNodes = EffectiveNodes.Where(n => n.Format == rendererFormat).ToList();
+                        var rendererUsers = RendererUsers(rendererName);
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@rendererName</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">renders <code>@rendererFormat</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">the engine's</span>
+                                </p>
+                            </div>
+                        </div>
+                        <p class="muted-text">@RendererSentence(rendererName)</p>
+                        <span class="node-section__head">Spelling</span>
+                        @if (rendererNodes.Count > 0)
+                        {
+                            @foreach (var rendererNode in rendererNodes)
+                            {
+                                var spellingNode = rendererNode;
+                                var spelling = RendererSpelling(spellingNode.Id, rendererName);
+                                <p class="renderer-spelling" data-renderer-node="@spellingNode.Id">
+                                    <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-spelling__node"
+                                                  Title="@($"node '{spellingNode.Id}' — edit on the node's pane")"
+                                                  aria-label="@($"Open node {spellingNode.Id}")"
+                                                  @onclick="() => Select(NodeKeyPrefix + spellingNode.Id)">@NodeLabelOrId(spellingNode)</FluentButton>
+                                    <code>@spelling</code>
+                                    <FluentButton Appearance="Appearance.Stealth" Class="renderer-spelling__copy"
+                                                  aria-label="@($"Copy the spelling for node {spellingNode.Id}")"
+                                                  @onclick="() => CopySpellingAsync(spelling)">@CopySpellingLabel(spelling)</FluentButton>
+                                </p>
+                            }
+                        }
+                        else
+                        {
+                            var genericSpelling = RendererSpelling("<id>", rendererName);
+                            <p class="renderer-spelling" data-renderer-node="">
+                                <code>@genericSpelling</code>
+                                <FluentButton Appearance="Appearance.Stealth" Class="renderer-spelling__copy"
+                                              aria-label="Copy the generic spelling"
+                                              @onclick="() => CopySpellingAsync(genericSpelling)">@CopySpellingLabel(genericSpelling)</FluentButton>
+                            </p>
+                            <p class="muted-text renderer-spelling__none">No node produces <code>@rendererFormat</code> yet; give one that format on its card and the spelling names it here.</p>
+                        }
+                        <span class="node-section__head">Used by</span>
+                        @if (rendererUsers.Count > 0)
+                        {
+                            <div class="renderer-users" aria-label="@($"Templates using {rendererName}")">
+                                @foreach (var user in rendererUsers)
+                                {
+                                    var rendererUser = user;
+                                    <div class="result-macro renderer-user" data-renderer-user-node="@rendererUser.NodeId">
+                                        <span class="result-macro-row">
+                                            @if (rendererUser.TemplateKey is { } templateKey)
+                                            {
+                                                <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-user__template"
+                                                              Title="@($"{rendererUser.Subject} — edit on its pane")"
+                                                              @onclick="() => Select(templateKey)">@rendererUser.Subject</FluentButton>
+                                            }
+                                            else
+                                            {
+                                                <span class="renderer-user__template">@rendererUser.Subject</span>
+                                            }
+                                            <span class="muted-text">renders</span>
+                                            <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-user__node"
+                                                          Title="@($"node '{rendererUser.NodeId}' — edit on the node's pane")"
+                                                          aria-label="@($"Open node {rendererUser.NodeId}")"
+                                                          @onclick="() => Select(NodeKeyPrefix + rendererUser.NodeId)">@rendererUser.NodeLabel</FluentButton>
+                                        </span>
+                                    </div>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="muted-text renderer-users__empty">No template pipes a node through <code>@rendererName</code> yet. The palette's renderer select on a <code>@rendererFormat</code> read inserts it.</p>
+                        }
+                        @RenderersHelp
                     }
                     else if (selectedKey == SchemasKey)
                     {
@@ -3849,6 +3947,8 @@
     // #1081: a deliverable's own key — the Deliverables pane with that card focused
     // (scrolled to and flashed); the pane's state (discard, dot) stays on ResultsKey.
     private const string ResultsKeyPrefix = "results:";
+    // #1098: a renderer pipe's read-only pane — the engine's closed set (TemplatePipes.All), at 25.
+    private const string RendererKeyPrefix = "renderer:";
     private const string NewKeyPrefix = "new:";
     private const string AddCollectionKey = "add-collection";
     private const string AddScalarKey = "add-scalar";
@@ -4582,6 +4682,10 @@
         // #1081: a deliverable's focus key, while the deliverable exists.
         || (key.StartsWith(ResultsKeyPrefix, StringComparison.Ordinal)
             && EffectiveResults.Any(r => ResultsKeyFor(r.Id) == key))
+        // #1098: a renderer's pane, at 25 alone — the engine's closed set.
+        || (key.StartsWith(RendererKeyPrefix, StringComparison.Ordinal)
+            && EffectiveSpecVersion >= 25
+            && PF.TemplatePipes.All.Contains(key[RendererKeyPrefix.Length..]))
         // #571/#747: a removed declared macro or prelude's file is still
         // published, so the Files clause would keep its pane alive — exclude
         // them explicitly.
@@ -5183,6 +5287,101 @@
             <dd>A Scriban template over what a prompt reads — inputs, nodes, snippets, other macros' content, run and profile facts — never <code>macro.&lt;id&gt;.prompt</code>. The registry refuses a macro placed nowhere and read nowhere.</dd>
         </dl>
     </details>;
+
+    /// <summary>#1098: the renderer pane's foot.</summary>
+    private RenderFragment RenderersHelp => @<details class="pane-help">
+        <summary>How renderers work</summary>
+        <dl class="pane-help__list">
+            <dt>A pipe, not a format</dt>
+            <dd>A renderer turns a node's text into the string the model reads — <code>{{ node.&lt;id&gt;.content | concept_context }}</code> — where a prompt, snippet or macro reads it. The node's format stays what it is.</dd>
+            <dt>Typed</dt>
+            <dd>Only the text of a node whose format the renderer renders may be piped through it; a node of another format, an aggregator's sections or a <code>.value</code> is refused by name, and the edge to the node stays recorded (#1058).</dd>
+            <dt>The engine's</dt>
+            <dd>The set of renderers is defined in the engine, not in a package or the catalogue, so nothing is added, edited or removed here. The palette's renderer select on a matching read inserts the spelling.</dd>
+            <dt>Preview</dt>
+            <dd>A pane's rendered preview shows a pipe as a token — <code>⟨concept_bullets of node.&lt;id&gt;.content⟩</code> — the rendering itself is the engine's at run time.</dd>
+        </dl>
+    </details>;
+
+    /// <summary>#1098: what a renderer pipe produces — the engine's own words (TemplatePipes), kept here since a spec carries no description.</summary>
+    private static string RendererSentence(string pipe) => pipe switch
+    {
+        PF.TemplatePipes.ConceptContext => "The attested, byte-stable context rendering a binding's as: concept-context gave: the node's concepts as the context block the model reads.",
+        PF.TemplatePipes.ConceptBullets => "The bullet rendering a binding's as: concept-bullets gave: one bullet per concept.",
+        _ => $"Renders a {PF.TemplatePipes.FormatOf(pipe)} node's text."
+    };
+
+    /// <summary>#1098: the spelling to insert — the 25 form; #1059 (v26) moves it to <c>node.&lt;id&gt; | pipe</c>.</summary>
+    private static string RendererSpelling(string nodeId, string pipe) => $"{{{{ node.{nodeId}.content | {pipe} }}}}";
+
+    private static string NodeLabelOrId(WorkflowManifestReader.NodeView node) =>
+        string.IsNullOrWhiteSpace(node.Label) ? node.Id : node.Label;
+
+    private sealed record RendererUser(string Subject, string? TemplateKey, string NodeId, string NodeLabel);
+
+    /// <summary>#1098: every template piping a node through the pipe, from the walk's Rendered — one row per (template, node), ordered (the set is not).</summary>
+    private IReadOnlyList<RendererUser> RendererUsers(string pipe)
+    {
+        var users = new List<RendererUser>();
+
+        if (PackageWalk is { } walk)
+        {
+            foreach (var template in walk.Templates)
+            {
+                if (template.Kind == PF.TemplateKind.Instruction)
+                {
+                    continue;
+                }
+
+                foreach (var rendered in template.References.Rendered)
+                {
+                    if (rendered.Pipe == pipe)
+                    {
+                        var node = EffectiveNodes.FirstOrDefault(n => n.Id == rendered.Node);
+                        users.Add(new RendererUser(template.Subject, PaneKeyOf(template), rendered.Node, node is null ? rendered.Node : NodeLabelOrId(node)));
+                    }
+                }
+            }
+        }
+
+        return users
+            .OrderBy(u => u.Subject, StringComparer.Ordinal)
+            .ThenBy(u => u.NodeId, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    // #1098: the spelling Copy button's transient label — "Copied ✓" / "Copy failed" on
+    // the spelling that was clicked alone (the Consults page's idiom, #768).
+    private string? copySpellingTarget;
+    private string? copySpellingFeedback;
+    private int copySpellingToken;
+
+    private string CopySpellingLabel(string spelling) =>
+        copySpellingTarget == spelling && copySpellingFeedback is { } feedback ? feedback : "Copy";
+
+    private async Task CopySpellingAsync(string spelling)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", spelling);
+            copySpellingFeedback = "Copied ✓";
+        }
+        catch (Exception)
+        {
+            copySpellingFeedback = "Copy failed";
+        }
+
+        copySpellingTarget = spelling;
+        var token = ++copySpellingToken;
+        await Task.Delay(TimeSpan.FromSeconds(2));
+
+        if (token == copySpellingToken)
+        {
+            copySpellingFeedback = null;
+            copySpellingTarget = null;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
 
     /// <summary>The palette over any target (#1044): a file's text, or a macro's instruction.</summary>
     private RenderFragment<PaletteTarget> ReferencePalette => target => @<text>
@@ -11391,6 +11590,12 @@
         || inputsEdit != null || resultsEdit != null;
 
     private static string ResultsKeyFor(string deliverableId) => ResultsKeyPrefix + deliverableId;
+
+    private static string RendererKeyFor(string pipe) => RendererKeyPrefix + pipe;
+
+    /// <summary>#1098: the renderer pipe a renderer:&lt;name&gt; key opens, or null.</summary>
+    private string? SelectedRendererName =>
+        selectedKey is { } key && key.StartsWith(RendererKeyPrefix, StringComparison.Ordinal) ? key[RendererKeyPrefix.Length..] : null;
 
     /// <summary>#1081: the Deliverables pane is open — as a whole, or focused on one card.</summary>
     private bool OnDeliverablesPane =>

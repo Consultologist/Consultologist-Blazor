@@ -246,6 +246,11 @@ declared sections:
   still on the string `result` form (≤24) is offered a conversion seeded with
   id `consult`, which is the sugar's own id — so delivery filenames
   (`{resultId}-{jobId8}.pdf`) do not move.
+- **Renderers** (#1098, 25 only) — the engine's renderer pipes as read-only
+  entries after Formats, one pane each: the format it renders, the spelling
+  to insert per node of that format (with a Copy button), and "Used by" —
+  every prompt, snippet or macro piping a node through it, the template and
+  the node each a link. Nothing is authored there: the set is the engine's.
 
 Both panes are hidden for v5/v6, whose single input and string result were
 never authored surfaces.
