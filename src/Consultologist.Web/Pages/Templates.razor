@@ -801,6 +801,7 @@
                     {
                         <WorkflowEditorPane Title="@scalar.Id"
                                             EditorExtra="@(At25 ? InsertReferencePalette((scalar.Path, null, false)) : null)"
+                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(scalar.Path, $"Snippet '{scalar.Id}'", GetText(scalar.Path))) : null)"
                                             Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? "— new, unpublished" : string.Empty)"
                                             IdentityId="@scalar.Id"
                                             IdentityFile="@scalar.Path"
@@ -859,6 +860,7 @@
                     {
                         <WorkflowEditorPane Title="@addedItem.Name"
                                             EditorExtra="@(At25 ? InsertReferencePalette((AddedPath(addedItem), null, false)) : null)"
+                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(AddedPath(addedItem), $"Snippet '{addedItem.Collection}/{addedItem.Id}'", addedItem.Content)) : null)"
                                             Subtitle="— new, unpublished"
                                             IdentityId="@addedItem.Id"
                                             IdentityFile="@AddedPath(addedItem)"
@@ -2603,6 +2605,7 @@
                     {
                         <WorkflowEditorPane Title="@StandardName(standard)"
                                             EditorExtra="@(At25 ? InsertReferencePalette((standard.File, null, false)) : null)"
+                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(standard.File, $"Snippet '{FolderOfItem(standard.File)}/{standard.Id}'", GetText(standard.File))) : null)"
                                             IdentityId="@standard.Id"
                                             IdentityFile="@standard.File"
                                             EditLabel="@ItemNoun"
@@ -2644,6 +2647,7 @@
                     {
                         <WorkflowEditorPane Title="@prompt.Id"
                                             EditorExtra="@(At25 ? InsertReferencePalette((prompt.File, FanningReaderOf(prompt.Id), false)) : null)"
+                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(prompt.File, $"Prompt '{prompt.Id}'", GetText(prompt.File))) : null)"
                                             IdentityId="@prompt.Id"
                                             IdentityFile="@prompt.File"
                                             EditLabel="Prompt text"
@@ -4801,6 +4805,63 @@
         }
     }
 
+    // ----- #1095: the text panes' rendered preview — what a reader gets -----
+
+    /// <summary>What a text pane previews: its file (the walk's key), the subject the renderer names when the file is not walked, and the text as edited.</summary>
+    private sealed record RenderedPreviewTarget(string File, string FallbackSubject, string Text);
+
+    // The author's preview choices (input id → the enum value previewed with) — NOT pending
+    // state: never bumps walkTick, never in the draft, no pending dot, no undo entry. They
+    // survive pane switches and apply to every template reading the same enum; cleared on a
+    // package load (ProjectLoadedContent), not on a discard. Never auto-picked.
+    private readonly Dictionary<string, string> previewInputPicks = new(StringComparer.Ordinal);
+
+    /// <summary>The top-level enum inputs a walked template reads — one select each (an enum field inside an object input stays its token).</summary>
+    private IReadOnlyList<WorkflowManifestReader.InputView> PreviewEnumInputsOf(PF.WorkflowDerivedEdges.WalkedTemplate? walked) =>
+        walked is null
+            ? Array.Empty<WorkflowManifestReader.InputView>()
+            : EffectiveInputs
+                .Where(i => walked.References.Inputs.Contains(i.Id)
+                    && WorkflowInputTypes.Of(i) == WorkflowInputTypes.Enum
+                    && i.Values is { Count: > 0 })
+                .OrderBy(i => i.Id, StringComparer.Ordinal)
+                .ToList();
+
+    /// <summary>The token scope with the picks applied: a picked enum is its value — a string, as the run materialises an enum — so a comparison against it decides.</summary>
+    private static PF.TemplateRenderScope PickedScope(PF.TemplateRenderScope scope, IReadOnlyList<KeyValuePair<string, string>> picks)
+    {
+        if (picks.Count == 0)
+        {
+            return scope;
+        }
+
+        var inputs = new Dictionary<string, string>(scope.Inputs, StringComparer.Ordinal);
+        foreach (var (id, value) in picks)
+        {
+            inputs[id] = value;
+        }
+
+        return scope with { Inputs = inputs };
+    }
+
+    /// <summary>What a reader gets — the text rendered over the token scope with the picks applied; the renderer's own sentence when it does not render (MacroPromptPreview's shape).</summary>
+    private (string Text, bool IsError) RenderedPreviewOf(string subject, string text, IReadOnlyList<KeyValuePair<string, string>> picks)
+    {
+        if (PreviewScope is not { } scope)
+        {
+            return ("The package does not read yet — fix the publish refusals to preview.", true);
+        }
+
+        try
+        {
+            return (PF.TemplateRenderer.Render(subject, text, PickedScope(scope, picks), PF.TemplatePreviewScope.Pipes), false);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return (ex.Message, true);
+        }
+    }
+
     private PF.WorkflowDerivedEdges.Walk? PackageWalk
     {
         get
@@ -4898,6 +4959,14 @@
         if (EffectiveMacros.FirstOrDefault(m => m.File == file) is { } macro)
         {
             return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Macro && t.Id == macro.Id);
+        }
+
+        // #1095: a pending folder item is walked under <folder>/<id> (AssembleFiles writes its
+        // file, ComposeIndexJson lists it) but PaneKeyOf gives its Key, not its path — match the path.
+        if (addedItems.FirstOrDefault(a => AddedPath(a) == file) is { } added)
+        {
+            var addedKey = PF.WorkflowDerivedEdges.SnippetItemKey(added.Collection, added.Id);
+            return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Snippet && t.Id == addedKey);
         }
 
         return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Snippet && PaneKeyOf(t) == file);
@@ -5211,6 +5280,55 @@
     /// </summary>
     private RenderFragment<(string File, WorkflowManifestReader.NodeView? FanNode, bool IsMacroText)> InsertReferencePalette => spec =>
         ReferencePalette(FilePaletteTarget(spec.File, spec.FanNode, spec.IsMacroText));
+
+    /// <summary>
+    /// #1095: a text pane's preview at 25 — "What a reader gets": a select per top-level enum
+    /// input the template reads (unchosen by default; a comparison against the unchosen token
+    /// is false, and a note says so), then the text rendered through the engine's renderer
+    /// over the token scope — run values as tokens, the package's own texts for real, a macro's
+    /// .prompt as its instruction and the mechanics sentence — or the renderer's own sentence.
+    /// </summary>
+    private RenderFragment<RenderedPreviewTarget> RenderedPreview => target => @<text>
+        @{
+            var walked = TemplateWalkOf(target.File);
+            var subject = walked?.Subject ?? target.FallbackSubject;
+            var enums = PreviewEnumInputsOf(walked);
+            // A stale pick (the enum's values edited since) applies nothing.
+            var picks = enums
+                .Where(e => previewInputPicks.TryGetValue(e.Id, out var picked) && e.Values!.Contains(picked, StringComparer.Ordinal))
+                .Select(e => KeyValuePair.Create(e.Id, previewInputPicks[e.Id]))
+                .ToList();
+            var (rendered, renderedIsError) = RenderedPreviewOf(subject, target.Text, picks);
+        }
+        <span class="muted-text">What a reader gets</span>
+        @if (enums.Count > 0)
+        {
+            <div class="rendered-preview__controls">
+                @foreach (var enumInput in enums)
+                {
+                    var pickInput = enumInput;
+                    <label class="rendered-preview__control">
+                        <span class="muted-text">preview with <code>input.@pickInput.Id</code> =</span>
+                        <FluentSelect TOption="string" class="binding-row__select rendered-preview__pick"
+                                Value="@(previewInputPicks.GetValueOrDefault(pickInput.Id) ?? "")"
+                                ValueChanged="@(v => { if (string.IsNullOrEmpty(v)) { previewInputPicks.Remove(pickInput.Id); } else { previewInputPicks[pickInput.Id] = v; } })"
+                                aria-label="@($"Preview with input.{pickInput.Id}")">
+                            <FluentOption TOption="string" Value="">— unchosen —</FluentOption>
+                            @foreach (var enumValue in pickInput.Values!)
+                            {
+                                <FluentOption TOption="string" Value="@enumValue">@enumValue</FluentOption>
+                            }
+                        </FluentSelect>
+                    </label>
+                }
+            </div>
+            @if (enums.Any(e => picks.All(p => p.Key != e.Id)))
+            {
+                <p class="muted-text rendered-preview__note">An unchosen enum renders as its token, so a comparison against it is false — choose a value to see that branch.</p>
+            }
+        }
+        <pre class="plain-preview rendered-preview__text @(renderedIsError ? "editor-warning" : null)" aria-label="@($"Rendered preview of {subject}")">@rendered</pre>
+    </text>;
 
     /// <summary>#1073: the macro text's one sentence and its palette — right above the "Macro text" editor.</summary>
     private RenderFragment MacroTextExtra(WorkflowManifestReader.MacroView macro) => @<text>
@@ -12041,6 +12159,7 @@
     private void ProjectLoadedContent()
     {
         walkTick++;
+        previewInputPicks.Clear(); // #1095: a preview choice belongs to the loaded package.
         prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
         nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
         collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);

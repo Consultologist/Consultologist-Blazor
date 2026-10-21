@@ -711,7 +711,7 @@ registry doc's `when` examples spell `input:<id>`, but the condition grammar tak
 input id (`kind == new`) — the fixture and the builder use the bare form; the doc is to be
 corrected.)*
 
-*(#1071, 2026-10-18, Milestone 31 — the macro pane shows **what the model is told**: under the instruction, `{{ macro.<id>.prompt }}` rendered through the library's own `TemplateRenderer` over `TemplatePreviewScope` — every run value a token naming its read (`⟨input.notes⟩`, `⟨node.extract.content⟩`, `⟨profile.name⟩`), the package's snippets and macro texts rendered for real — so the pane shows the engine's bytes: the instruction rendered, then the mechanics sentence; the renderer's own sentence when it does not render; a note when nothing reads the macro inline; the #1067 self-read warning word for word, live from the walk. The editor's first template render — the text previews stay Markdown.)*
+*(#1071, 2026-10-18, Milestone 31 — the macro pane shows **what the model is told**: under the instruction, `{{ macro.<id>.prompt }}` rendered through the library's own `TemplateRenderer` over `TemplatePreviewScope` — every run value a token naming its read (`⟨input.notes⟩`, `⟨node.extract.content⟩`, `⟨profile.name⟩`), the package's snippets and macro texts rendered for real — so the pane shows the engine's bytes: the instruction rendered, then the mechanics sentence; the renderer's own sentence when it does not render; a note when nothing reads the macro inline; the #1067 self-read warning word for word, live from the walk. The editor's first template render — the text previews stayed Markdown until #1095.)*
 
 *(#1072, 2026-10-18, Milestone 31 — the macro pane's **Where it goes**, in the snippet pane's idiom: *Placed on* as chips that open the owner (`after 'Assessment'`, `prepend to 'Consultation note'`; the node pane and the Deliverables pane edit the instances), the attach pickers at the row's end; *Read inline by* and *Read as text by* from the walk; one "Not used yet" line only when every row is empty — "placed only" and "inline only" are normal states. The Instances rows' duplicate controls and "Not placed anywhere" / "Not read by any template" are gone.)*
 
@@ -741,6 +741,22 @@ records an accepted rendering as `TemplateReferences.Rendered` — a set of
 refused pipe keeps its edge and records no rendering and an untyped operand records nothing;
 the validator and the engine read nothing from it. #1059 (v26) moves the spelling to
 `{{ node.<id> | pipe }}`; the line follows the spec version. A ≤24 package shows no group.)*
+
+*(#1095, 2026-10-20, Milestone 31 — the snippet, folder-item, added-item and prompt panes preview **what a
+reader gets**: the preview half renders the text through the library's `TemplateRenderer` over
+`TemplatePreviewScope` (#1071's scope, reused as intended) — run values as tokens, the package's snippets
+and macro texts for real, a macro's `.prompt` as its instruction and the mechanics sentence, a pipe as
+`⟨concept_bullets of node.<id>.content⟩` — as plain text, the bytes a reader gets, in the Markdown
+preview's place (`WorkflowEditorPane` gained a `Preview` slot; a raw prompt keeps its verbatim preview and
+a ≤24 pane keeps Markdown); the renderer's own sentence, marked, when the text does not render. Above it,
+one select per **top-level enum input the template reads** — "preview with `input.kind` =" — unchosen by
+default: a comparison against the unchosen token is false, and a note says so; a chosen value is
+substituted into the scope's inputs (an enum materialises as a string, so `{{ if input.kind == "new" }}`
+decides). A pick is the author's preview choice, not pending state: no draft, no dot, no undo; it applies
+to every pane reading that enum and clears on a package load. An enum field inside an object input stays
+its token. `TemplateWalkOf` now finds a pending folder item's walk by its path (the palette had lost it).
+Left for follow-ups: the node pane's inline prompt editor (same shell, one attribute, with the fanning
+node known there) and "preview as item" on a fanned prompt's pane.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's

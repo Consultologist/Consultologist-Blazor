@@ -69,11 +69,16 @@
     <div class="pane-preview">
         @* #837: a raw prompt is sent verbatim (no Scriban), so preview it
            verbatim too — Markdown rendering would misrepresent what runs.
-           Every other pane leaves Raw false and keeps the Markdown preview. *@
+           #1095: a host that renders its text itself passes Preview, which
+           takes the Markdown preview's place; every other pane keeps it. *@
         @if (Raw)
         {
             <span class="muted-text">Plain text (verbatim)</span>
             <pre class="plain-preview">@Text</pre>
+        }
+        else if (Preview != null)
+        {
+            @Preview
         }
         else
         {
@@ -117,5 +122,8 @@
 
     /// <summary>#1073: rendered after the editor/preview split — the pane's "how this works" expander, or nothing.</summary>
     [Parameter] public RenderFragment? Footer { get; set; }
+
+    /// <summary>#1095: when set (and the text is not Raw), rendered in the Markdown preview's place — the host's rendered preview, bringing its own label, controls and text. Null keeps the Markdown preview.</summary>
+    [Parameter] public RenderFragment? Preview { get; set; }
     [Parameter] public EventCallback<string> TextChanged { get; set; }
 }

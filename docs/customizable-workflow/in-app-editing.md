@@ -246,6 +246,13 @@ declared sections:
   still on the string `result` form (≤24) is offered a conversion seeded with
   id `consult`, which is the sugar's own id — so delivery filenames
   (`{resultId}-{jobId8}.pdf`) do not move.
+- **Rendered previews** (#1095, 25 only) — the snippet, folder-item and
+  prompt panes preview *what a reader gets*: the text rendered over the
+  library's token scope (run values as `⟨input.notes⟩` tokens, snippets and
+  macro texts for real, a macro's `.prompt` as its instruction plus the
+  mechanics sentence), with a "preview with `input.<enum>` =" select for each
+  top-level enum input the template reads, unchosen by default. A raw prompt
+  keeps its verbatim preview.
 - **Renderers** (#1098, 25 only) — the engine's renderer pipes as read-only
   entries after Formats, one pane each: the format it renders, the spelling
   to insert per node of that format (with a Copy button), and "Used by" —
