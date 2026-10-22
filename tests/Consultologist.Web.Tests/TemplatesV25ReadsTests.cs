@@ -210,9 +210,9 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         var page = RenderEditor(package with { Manifest = JsonDocument.Parse(manifest).RootElement.Clone() });
 
         Navigate(page, "tool_note");
-        var readers = page.Find("ul.macro-readers[aria-label='Readers of tool_note']");
+        var readers = page.Find(".template-read-rows[aria-label='Readers of tool_note']");
         Assert.Contains("Prompt 'assess'", readers.TextContent);
-        readers.QuerySelector("button")!.Click();
+        readers.QuerySelector(".template-read-row__reader")!.Click();
 
         Assert.Equal("assess", Selected(page));
     }
