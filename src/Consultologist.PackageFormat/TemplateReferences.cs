@@ -21,6 +21,7 @@ public sealed record TemplateReferences(
     IReadOnlySet<string> RunFacts,
     IReadOnlySet<string> ProfileFacts,
     IReadOnlySet<TemplateRenderedRead> Rendered,
+    IReadOnlyList<TemplateReadOccurrence> Occurrences,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Warnings)
 {
@@ -46,6 +47,20 @@ public sealed record TemplateNodeRead(bool ReadsContent, bool ReadsValue)
 /// </summary>
 public sealed record TemplateRenderedRead(string Node, string Pipe);
 
+/// <summary>
+/// #1088: one read as written — a statement that is one plain object chain
+/// (<c>{{ macro.x.prompt }}</c>, <c>{{ snippet.y.content }}</c>, <c>{{ node.z.value }}</c>) — with
+/// where it sits and the <c>if</c> around it. <see cref="Member"/> is the chain's words joined with
+/// dots; <c>[Start, End)</c> is the whole <c>{{ … }}</c> block in the text. <see cref="Guard"/> is
+/// the nearest enclosing <c>if</c>'s condition as written (null when none);
+/// <see cref="GuardCanonical"/> says that <c>if</c> is the read's own parent, has no <c>else</c>,
+/// is not an else-if and holds only this read plus whitespace — the shape the editor's row
+/// rewrites — and <c>[GuardStart, GuardEnd)</c> is the whole <c>{{ if … }}…{{ end }}</c> block
+/// (−1 when unguarded). The validator and the engine read nothing from it; the editor's read
+/// rows set a read's guard from it. In text order.
+/// </summary>
+public sealed record TemplateReadOccurrence(string Member, int Start, int End, string? Guard, bool GuardCanonical, int GuardStart, int GuardEnd);
+
 /// <summary>Gathers a template's references while the walker runs; <see cref="ToReferences"/> freezes them.</summary>
 internal sealed class TemplateReferenceCollector
 {
@@ -60,6 +75,7 @@ internal sealed class TemplateReferenceCollector
     private readonly HashSet<string> _runFacts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _profileFacts = new(StringComparer.Ordinal);
     private readonly HashSet<TemplateRenderedRead> _rendered = new();
+    private readonly List<TemplateReadOccurrence> _occurrences = new();
 
     public List<string> Errors { get; } = new();
 
@@ -91,7 +107,9 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadRendered(string node, string pipe) => _rendered.Add(new TemplateRenderedRead(node, pipe));
 
+    public void ReadOccurrence(TemplateReadOccurrence occurrence) => _occurrences.Add(occurrence);
+
     public TemplateReferences ToReferences() => new(
         _inputs, _nodes, _snippets, _snippetFolders, _macroContents, _macroPrompts, _macroFolders, _itemMembers,
-        _runFacts, _profileFacts, _rendered, Errors, Warnings);
+        _runFacts, _profileFacts, _rendered, _occurrences, Errors, Warnings);
 }

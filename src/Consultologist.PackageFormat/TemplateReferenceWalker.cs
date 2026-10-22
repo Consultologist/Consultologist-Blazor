@@ -56,7 +56,7 @@ public static partial class TemplateReferenceWalker
             return collector.ToReferences();
         }
 
-        var visitor = new Visitor(subject, context, collector);
+        var visitor = new Visitor(subject, context, collector, text: templateText);
         visitor.Visit(template.Page);
         return collector.ToReferences();
     }
@@ -184,13 +184,171 @@ public static partial class TemplateReferenceWalker
         private readonly List<Dictionary<string, Target>> _scopes = new() { new Dictionary<string, Target>(StringComparer.Ordinal) };
         private readonly List<(Target Target, string Text)> _withTargets = new();
         private readonly bool _condition;
+        private readonly string _text;
 
-        public Visitor(string subject, TemplateReferenceContext context, TemplateReferenceCollector refs, bool condition = false)
+        public Visitor(string subject, TemplateReferenceContext context, TemplateReferenceCollector refs, bool condition = false, string text = "")
         {
             _subject = subject;
             _context = context;
             _refs = refs;
             _condition = condition;
+            _text = text;
+        }
+
+        // ----- #1088: read occurrences and the if around them --------------------
+
+        /// <summary>
+        /// A statement that is one plain object chain is a read occurrence: its block's
+        /// span, and the nearest enclosing <c>if</c> — its condition as written, whether
+        /// the shape is the canonical one the editor rewrites, and the guard block's span.
+        /// </summary>
+        private void RecordOccurrence(ScriptExpressionStatement node)
+        {
+            if (!TryFlatten(node.Expression, out var root, out var segments, out _) || segments.Any(s => s is not MemberSegment))
+            {
+                return;
+            }
+
+            var member = root + string.Concat(segments.Cast<MemberSegment>().Select(s => "." + s.Name));
+            var (start, end) = BlockSpan(node);
+            var guard = NearestIf(node);
+
+            if (guard is null)
+            {
+                _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, null, false, -1, -1));
+                return;
+            }
+
+            var condition = guard.Condition is { } c ? Slice(c).Trim() : string.Empty;
+            var (guardStart, guardEnd) = GuardSpan(guard);
+            _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, condition, IsCanonical(guard, node), guardStart, guardEnd));
+        }
+
+        private static ScriptIfStatement? NearestIf(ScriptNode node)
+        {
+            for (var parent = node.Parent; parent is not null; parent = parent.Parent)
+            {
+                if (parent is ScriptIfStatement enclosing)
+                {
+                    return enclosing;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// The canonical shape: the if's own body holds this read and nothing else but the
+        /// delimiters (Scriban keeps <c>{{</c> / <c>}}</c> and <c>end</c> as statements), no
+        /// else, not an else-if, whitespace-only prose allowed.
+        /// </summary>
+        private static bool IsCanonical(ScriptIfStatement guard, ScriptExpressionStatement read) =>
+            guard.Else is null
+            && !guard.IsElseIf
+            && guard.Then is { } then
+            && then.Statements.Any(s => ReferenceEquals(s, read))
+            && then.Statements.All(s => ReferenceEquals(s, read)
+                || s is ScriptEscapeStatement or ScriptEndStatement
+                || (s is ScriptRawStatement raw && string.IsNullOrWhiteSpace(raw.Text.ToString())));
+
+        private string Slice(ScriptNode node) =>
+            node.Span.End.Offset >= node.Span.Start.Offset && node.Span.End.Offset < _text.Length
+                ? _text[node.Span.Start.Offset..(node.Span.End.Offset + 1)]
+                : string.Empty;
+
+        /// <summary>The whole <c>{{ … }}</c> block around a node whose span may exclude the delimiters and the whitespace markers.</summary>
+        private (int Start, int End) BlockSpan(ScriptNode node)
+        {
+            var start = Math.Clamp(node.Span.Start.Offset, 0, _text.Length);
+            var end = Math.Clamp(node.Span.End.Offset + 1, start, _text.Length);
+            return (WidenToOpen(start), WidenToClose(end));
+        }
+
+        private int WidenToOpen(int start)
+        {
+            if (start >= 2 && _text[start - 2] == '{' && _text[start - 1] == '{')
+            {
+                return start - 2;
+            }
+
+            var s = start;
+
+            while (s > 0 && IsSlack(_text[s - 1]))
+            {
+                s--;
+            }
+
+            return s >= 2 && _text[s - 2] == '{' && _text[s - 1] == '{' ? s - 2 : start;
+        }
+
+        private int WidenToClose(int end)
+        {
+            if (end >= 2 && _text[end - 2] == '}' && _text[end - 1] == '}')
+            {
+                return end;
+            }
+
+            var e = end;
+
+            while (e < _text.Length && IsSlack(_text[e]))
+            {
+                e++;
+            }
+
+            return e + 1 < _text.Length && _text[e] == '}' && _text[e + 1] == '}' ? e + 2 : end;
+        }
+
+        private static bool IsSlack(char c) => c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '~' || c == '-';
+
+        /// <summary>The whole <c>{{ if … }}…{{ end }}</c> block: the if's span widened to its delimiters, then to the <c>end</c> block's close when the span stops short of it.</summary>
+        private (int Start, int End) GuardSpan(ScriptIfStatement guard)
+        {
+            var (start, end) = BlockSpan(guard);
+
+            if (EndsWithEndBlock(end))
+            {
+                return (start, end);
+            }
+
+            // Scan forward for the next {{ end }} block (markers and slack allowed).
+            var from = Math.Max(end, start);
+
+            while (from < _text.Length)
+            {
+                var open = _text.IndexOf("{{", from, StringComparison.Ordinal);
+
+                if (open < 0)
+                {
+                    break;
+                }
+
+                var close = _text.IndexOf("}}", open + 2, StringComparison.Ordinal);
+
+                if (close < 0)
+                {
+                    break;
+                }
+
+                if (_text[(open + 2)..close].Trim(' ', '\t', '\r', '\n', '~', '-') == "end")
+                {
+                    return (start, close + 2);
+                }
+
+                from = close + 2;
+            }
+
+            return (start, end);
+        }
+
+        private bool EndsWithEndBlock(int end)
+        {
+            if (end < 2 || _text[end - 2] != '}' || _text[end - 1] != '}')
+            {
+                return false;
+            }
+
+            var open = _text.LastIndexOf("{{", end - 2, StringComparison.Ordinal);
+            return open >= 0 && _text[(open + 2)..(end - 2)].Trim(' ', '\t', '\r', '\n', '~', '-') == "end";
         }
 
         // ----- #1037: condition mode — comparisons typed -----------------------
@@ -506,6 +664,11 @@ public static partial class TemplateReferenceWalker
             }
 
             base.Visit(node);
+
+            if (!_condition)
+            {
+                RecordOccurrence(node);
+            }
         }
 
         public override void Visit(ScriptNamedArgument node) => ResolveExpression(node.Value, ChainUse.Iterable);
