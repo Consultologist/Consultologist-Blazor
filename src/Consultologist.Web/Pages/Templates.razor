@@ -5240,6 +5240,27 @@
     /// <summary>The member a branch's macro read takes: inline (.prompt) in a prompt or snippet, the text (.content) in a macro's text.</summary>
     private static string BranchMemberFor(string file) => file.StartsWith("macros/", StringComparison.Ordinal) ? "content" : "prompt";
 
+    /// <summary>
+    /// #1093: a branch's closed choices in the rows' own spelling — the package's macros
+    /// (the member by the reader), then its scalar snippets (.content; a folder item is not
+    /// a direct read at 25 — #1116); a snippet's own branches leave itself out (a self-read
+    /// is a cycle). The select has no groups, so the kind prefixes each label.
+    /// </summary>
+    private IReadOnlyList<(string Value, string Label)> BranchOptions(string file)
+    {
+        var member = BranchMemberFor(file);
+        var options = EffectiveMacros
+            .Select(m => ($"macro.{m.Id}.{member}", $"Macro '{MacroLabel(m.Id)}'"))
+            .ToList();
+
+        options.AddRange(EffectiveScalars
+            .Where(s => s.Path != file)
+            .OrderBy(s => s.Id, StringComparer.Ordinal)
+            .Select(s => ($"snippet.{s.Id}.content", $"Snippet '{s.Id}'")));
+
+        return options;
+    }
+
     /// <summary>The table's branches in the declared order — one per value, then the else — with the block's reads placed.</summary>
     private static IReadOnlyList<PF.TemplateBranch> TableBranches(PF.TemplateBranchBlock block, IReadOnlyList<string> values) =>
         values.Select(v => new PF.TemplateBranch(v, block.Branches.FirstOrDefault(b => b.Literal == v)?.Member))
@@ -5270,6 +5291,13 @@
         if (member.StartsWith("macro.", StringComparison.Ordinal) && member.LastIndexOf('.') is var dot && dot > "macro.".Length)
         {
             return $"Macro '{MacroLabel(member["macro.".Length..dot])}'";
+        }
+
+        // #1093: a scalar snippet read in a branch.
+        if (member.StartsWith("snippet.", StringComparison.Ordinal) && member.EndsWith(".content", StringComparison.Ordinal)
+            && member["snippet.".Length..^".content".Length] is { Length: > 0 } snippetId && !snippetId.Contains('.'))
+        {
+            return $"Snippet '{snippetId}'";
         }
 
         return member;
@@ -5313,7 +5341,7 @@
         }
         @if (spec.File is { } file && editable)
         {
-            var member = BranchMemberFor(file);
+            var options = BranchOptions(file);
             <div class="branch-table" aria-label="@($"Case over {block.Subject} in {spec.Subject}")">
                 <span class="muted-text">by <code>@block.Subject</code></span>
                 @foreach (var branch in branches)
@@ -5329,12 +5357,12 @@
                                       ValueChanged="@(v => SetBranchAsync(file, block, values, current.Literal, v))"
                                       aria-label="@aria">
                             <FluentOption TOption="string" Value="">nothing</FluentOption>
-                            @foreach (var macro in EffectiveMacros)
+                            @foreach (var choice in options)
                             {
-                                var option = $"macro.{macro.Id}.{member}";
-                                <FluentOption TOption="string" Value="@option">@MacroLabel(macro.Id)</FluentOption>
+                                var option = choice;
+                                <FluentOption TOption="string" Value="@option.Value">@option.Label</FluentOption>
                             }
-                            @if (current.Member is { } written && !EffectiveMacros.Any(m => $"macro.{m.Id}.{member}" == written))
+                            @if (current.Member is { } written && !options.Any(o => o.Value == written))
                             {
                                 <FluentOption TOption="string" Value="@written">as written: @written</FluentOption>
                             }
