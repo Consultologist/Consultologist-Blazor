@@ -90,8 +90,9 @@ public class TemplatesV25BranchTableTests : ClientRenderTestContext
         Assert.Equal("macro.tool_note.prompt", kindRow.QuerySelector(Pick("new"))!.GetAttribute("current-value"));
         Assert.Equal("macro.closing.prompt", kindRow.QuerySelector(Pick("follow_up"))!.GetAttribute("current-value"));
         Assert.Equal("", kindRow.QuerySelector(Otherwise())!.GetAttribute("current-value") ?? "");
+        // #1093: both readable kinds, prefixed by kind in the rows' own spelling.
         Assert.Equal(
-            new[] { "nothing", "Closing", "Tool note" },
+            new[] { "nothing", "Macro 'Closing'", "Macro 'Tool note'", "Snippet 'standards'" },
             kindRow.QuerySelector(Pick("new"))!.QuerySelectorAll("fluent-option").Select(o => o.TextContent.Trim()));
         Assert.Equal(Written, kindRow.QuerySelector(Line())!.TextContent.Trim());
 
@@ -225,5 +226,71 @@ public class TemplatesV25BranchTableTests : ClientRenderTestContext
         var pick = page.Find(Pick("new"));
         Assert.Equal("macro.closing.content", pick.GetAttribute("current-value"));
         Assert.Contains("as written: macro.closing.content", pick.TextContent);
+    }
+
+    // ----- #1093: branches choosing snippets -----
+
+    private const string Standards = "{{ snippet.standards.content }}";
+    private const string SnippetCase = "{{~ case input.kind ~}}{{~ when \"new\" ~}}" + ToolNote + "{{~ when \"follow_up\" ~}}" + Standards + "{{~ end ~}}";
+    private static string SnippetPrompt => Original.Replace(ToolNote, SnippetCase);
+
+    [Fact]
+    public void ABranchChoosingASnippet_LoadsAndWrites_AndTheRegistryAccepts()
+    {
+        var page = RenderEditor(WithFile(File, SnippetPrompt));
+        CapturePublish();
+        Navigate(page, "assessment");
+
+        Assert.Equal("snippet.standards.content", page.Find(Pick("follow_up")).GetAttribute("current-value"));
+
+        page.Find(Pick("new")).Change("snippet.standards.content");
+
+        Assert.Equal(Original.Replace(ToolNote, "{{~ case input.kind ~}}{{~ when \"new\" ~}}" + Standards + "{{~ when \"follow_up\" ~}}" + Standards + "{{~ end ~}}"), EditorText(page));
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+        Assert.True(sent is not null, string.Join(" | ", page.FindAll(".fluent-messagebar-message li").Select(item => item.TextContent.Trim())));
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void TheSnippetPanesReadByRow_ShowsTheTable_AndRewritesTheReadersFile()
+    {
+        var page = RenderEditor(WithFile(File, SnippetPrompt));
+        Navigate(page, "standards");
+
+        var row = page.Find(".template-read-rows[aria-label='Readers of standards'] .template-read-row[data-read-reader=\"Prompt 'assessment'\"]");
+        Assert.Equal("snippet.standards.content", row.QuerySelector(Pick("follow_up", where: "Prompt 'assessment'"))!.GetAttribute("current-value"));
+        // The snippet's own Reads list (it reads nothing) carries no table.
+        Assert.Empty(page.FindAll(".template-read-rows[aria-label='Reads of snippets/standards.md'] .branch-table"));
+
+        page.Find(Pick("follow_up", where: "Prompt 'assessment'")).Change("macro.closing.prompt");
+        Navigate(page, "assessment");
+
+        Assert.Contains("{{~ when \"follow_up\" ~}}" + Closing, EditorText(page));
+    }
+
+    [Fact]
+    public void TheNodePane_NamesASnippetBranch()
+    {
+        var page = RenderEditor(WithFile(File, SnippetPrompt));
+        ShowNode(page, "assessment");
+
+        var row = page.Find(Row("Reads of assessment", "input.kind"));
+        Assert.Contains("follow_up → Snippet 'standards'", row.TextContent);
+    }
+
+    [Fact]
+    public void AScalarSnippetsOwnBranches_OfferEveryOtherSource()
+    {
+        var page = RenderEditor(WithFile("snippets/standards.md", "{{~ case input.kind ~}}{{~ when \"new\" ~}}" + Closing + "{{~ end ~}}"));
+        Navigate(page, "standards");
+
+        var pick = page.Find(Pick("new", where: "snippets/standards.md"));
+        Assert.Equal("macro.closing.prompt", pick.GetAttribute("current-value"));
+        // A snippet may hold an inline read, so the macros take .prompt; no self-read; no other scalar in the fixture.
+        Assert.Equal(
+            new[] { "nothing", "Macro 'Closing'", "Macro 'Tool note'" },
+            pick.QuerySelectorAll("fluent-option").Select(o => o.TextContent.Trim()));
     }
 }

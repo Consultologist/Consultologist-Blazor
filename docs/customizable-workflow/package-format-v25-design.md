@@ -850,7 +850,16 @@ rows show the whole table (the rewrite targets the reader's file); the node pane
 non-canonical case is read-only ("edit in the text"). The table loads an existing block — creating one stays in the text
 (or the palette). Follow-ups: the `if … else` "otherwise" control on a #1088 row (the block fact already covers it; filed
 on request), a registry warning for a `when` literal outside the enum's values (a package-format matter), and #1093's
-snippets in the dropdown.)*
+snippets in the dropdown (done by #1093).)*
+
+*(#1093, 2026-10-22, Milestone 31 — **a case branch may choose a snippet**. The branch dropdown is one closed list over
+both readable kinds, prefixed by kind in the rows' own spelling (the select has no groups): the package's macros
+(`Macro 'Closing'` — `.prompt` in a prompt or snippet, which may hold an inline read, `.content` in a macro text), then
+its scalar snippets (`Snippet 'standards'` — `.content`); a snippet's own branches leave itself out (a self-read is a
+cycle); a hand-written member outside the list still shows "as written". A folder item is not a direct read at 25 (the
+walker refuses `snippet.<folder>.<item>`; #1116 proposes it for v26). The snippet pane's "Read by" row shows the whole
+table when the snippet sits in a branch (since #1091); the node pane's sentence names a snippet branch. The `if … else`
+"otherwise" control stays the unfiled follow-up.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
