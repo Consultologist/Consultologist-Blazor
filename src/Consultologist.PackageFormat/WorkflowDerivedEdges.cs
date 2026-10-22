@@ -29,6 +29,14 @@ public static class WorkflowDerivedEdges
     /// <summary>A template walked: who it is, what it read, and its text and context for the render probe.</summary>
     public sealed record WalkedTemplate(TemplateKind Kind, string Id, string Subject, string Text, TemplateReferences References, TemplateReferenceContext Context);
 
+    /// <summary>
+    /// #1087: one place a node's prompt reaches <c>macro.&lt;Macro&gt;.prompt</c> — the
+    /// template holding the read (the prompt itself, a snippet or folder item, a macro
+    /// text, an instruction) and, when the holder is reached only through a fan item's
+    /// own closure, that item's id.
+    /// </summary>
+    public sealed record PromptReadSite(string Macro, TemplateKind HolderKind, string HolderId, string HolderSubject, string? FanItem);
+
     /// <summary>#1037: where a <c>when</c> sits.</summary>
     public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem }
 
@@ -323,6 +331,54 @@ public static class WorkflowDerivedEdges
             }
 
             return reads;
+        }
+
+        /// <summary>
+        /// #1087: the same closure as <see cref="PromptReadsOf"/>, with the holder of each
+        /// read — which template the <c>macro.&lt;id&gt;.prompt</c> read sits in, in walk
+        /// order. The prompt's own closure first (a holder it reaches is credited once,
+        /// with no fan item: every instance renders it); then each fan item's closure
+        /// beyond it, credited to that item — a holder several items reach yields one
+        /// site per item. The editor's node pane names where a read lives from this.
+        /// </summary>
+        public IReadOnlyList<PromptReadSite> PromptReadSitesOf(string nodeId)
+        {
+            var sites = new List<PromptReadSite>();
+
+            if (!_byKey.TryGetValue((TemplateKind.Prompt, nodeId), out var prompt))
+            {
+                return sites;
+            }
+
+            var holders = new Dictionary<TemplateReferences, WalkedTemplate>(ReferenceEqualityComparer.Instance);
+
+            foreach (var template in Templates)
+            {
+                holders.TryAdd(template.References, template);
+            }
+
+            Action<TemplateReferences> TakeAs(string? fanItem) => refs =>
+            {
+                if (holders.TryGetValue(refs, out var holder))
+                {
+                    foreach (var macro in refs.MacroPrompts)
+                    {
+                        sites.Add(new PromptReadSite(macro, holder.Kind, holder.Id, holder.Subject, fanItem));
+                    }
+                }
+            };
+
+            var seen = new HashSet<(TemplateKind, string)>();
+            Visit(prompt, seen, TakeAs(null));
+
+            foreach (var item in FanItemsReadBy(nodeId, prompt, null))
+            {
+                var slash = item.IndexOf('/');
+                var itemId = slash < 0 ? item : item[(slash + 1)..];
+                VisitKey((TemplateKind.Snippet, item), new HashSet<(TemplateKind, string)>(seen), TakeAs(itemId));
+            }
+
+            return sites;
         }
 
         /// <summary>
