@@ -4890,9 +4890,18 @@
                     continue;
                 }
 
+                var member = folder ? $"snippet.{id}" : $"snippet.{id}.content";
                 var row = folder
-                    ? ReaderRowOf(template, $"snippet.{id}", null) with { Note = "iterates its items" }
-                    : ReaderRowOf(template, $"snippet.{id}.content", null);
+                    ? ReaderRowOf(template, member, null) with { Note = "iterates its items" }
+                    : ReaderRowOf(template, member, null);
+
+                // #1092: a scalar read's guard, editable from the snippet's side — the rewrite targets the reader's file.
+                var sites = folder ? new List<PF.TemplateReadOccurrence>() : template.References.Occurrences.Where(o => o.Member == member).ToList();
+
+                if (sites.Count > 0)
+                {
+                    row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites)) };
+                }
 
                 if (seen.Add((row.Label, row.Key)))
                 {
@@ -5001,24 +5010,27 @@
     {
         var rows = new List<TemplateReadRow>();
 
+        // #1088/#1092: every read kind's guard — the {{~ if ~}} around the read's one
+        // occurrence, editable when the pane edits the owning file, a sentence otherwise.
+        TemplateReadRow Guarded(TemplateReadRow row)
+        {
+            var sites = references.Occurrences.Where(o => o.Member == row.Member).ToList();
+            return sites.Count == 0 ? row : row with { Below = ReadGuardBelow((file, subject ?? "the text", row.Member, sites)) };
+        }
+
         foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
         {
-            // #1088: the guard around the read, editable when the pane edits the owning file.
-            var member = $"macro.{macro}.prompt";
-            var sites = references.Occurrences.Where(o => o.Member == member).ToList();
-            rows.Add(new TemplateReadRow(
-                $"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, member, "inline", null,
-                Below: sites.Count == 0 ? null : ReadGuardBelow((file, subject ?? "the text", member, sites))));
+            rows.Add(Guarded(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.prompt", "inline", null)));
         }
 
         foreach (var macro in references.MacroContents.Order(StringComparer.Ordinal))
         {
-            rows.Add(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.content", null, null));
+            rows.Add(Guarded(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.content", null, null)));
         }
 
         foreach (var snippet in references.Snippets.Order(StringComparer.Ordinal))
         {
-            rows.Add(new TemplateReadRow($"Snippet '{snippet}'", ScalarPath(snippet), $"snippet.{snippet}.content", null, null));
+            rows.Add(Guarded(new TemplateReadRow($"Snippet '{snippet}'", ScalarPath(snippet), $"snippet.{snippet}.content", null, null)));
         }
 
         foreach (var folder in references.SnippetFolders.Order(StringComparer.Ordinal))
@@ -5040,12 +5052,12 @@
 
             if (read.ReadsContent)
             {
-                rows.Add(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.content", null, null));
+                rows.Add(Guarded(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.content", null, null)));
             }
 
             if (read.ReadsValue)
             {
-                rows.Add(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.value", null, null));
+                rows.Add(Guarded(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.value", null, null)));
             }
         }
 
@@ -7090,10 +7102,8 @@
 
                 var row = ReaderRowOf(template, member, qualifier);
 
-                // #1088: a .prompt read's guard, editable from the macro's side — the rewrite targets the reader's file.
-                var sites = member.EndsWith(".prompt", StringComparison.Ordinal)
-                    ? template.References.Occurrences.Where(o => o.Member == member).ToList()
-                    : new List<PF.TemplateReadOccurrence>();
+                // #1088/#1092: the read's guard, editable from the macro's side — the rewrite targets the reader's file.
+                var sites = template.References.Occurrences.Where(o => o.Member == member).ToList();
 
                 if (sites.Count > 0)
                 {

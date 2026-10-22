@@ -819,8 +819,18 @@ places, the guard owns no whitespace — replacing a canonical guard's whole blo
 the bare read; a hand-written guard normalises on its first edit; the line written sits under the builder. A non-canonical
 guard, or a member read more than once in the text, is read-only ("edit in the text"); an instruction's reads, the node
 pane's Reads section and its Inline macros (per holder) show the guard as a sentence. The rewrite is an ordinary pending
-text edit — Undo, Discard, the dot, publish. Only `.prompt` rows carry the builder here; #1092 flips the filter for the
-other read kinds. The gate as data is v26's (#1089, #1090): the canonical shape is what the data form replaces.)*
+text edit — Undo, Discard, the dot, publish. Only `.prompt` rows carried the builder at first; #1092 flipped the filter for
+the other read kinds (done). The gate as data is v26's (#1089, #1090): the canonical shape is what the data form replaces.)*
+
+*(#1092, 2026-10-22, Milestone 31 — **one mechanism, every read kind**: #1088's "Included when" builder and the line it
+writes on every read kind the format admits — `macro.<id>.prompt` / `.content`, `snippet.<id>.content`,
+`node.<id>.content` / `.value` — on the reading pane's Reads rows (the walker's per-occurrence fact is member-agnostic, so
+the editor's filter is all that changed), on the snippet pane's "Read by" rows for a scalar's readers and on the macro
+pane's "Read by" `.content` rows (the rewrite targets the reader's file either way); the node pane's Reads section stays
+read-only. Inputs, the fan item, run and profile facts and a folder iteration carry no builder — nothing to wrap, or not
+an occurrence (a `for`, a pipe, a member past `.value`). A folder item's **direct** read `snippet.<folder>.<item>.content`
+is not a 25 read kind — the walker refuses the chain, a folder is iterated — so it is out of scope here; #1116 proposes it
+as a v26 direct read (Milestone 30). The readers-disagree sentence waits for #1094's source-level gate.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's

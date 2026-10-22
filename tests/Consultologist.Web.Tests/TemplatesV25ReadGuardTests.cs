@@ -219,4 +219,116 @@ public class TemplatesV25ReadGuardTests : ClientRenderTestContext
         Assert.Contains("input.kind == \"new\"", row.TextContent);
         Assert.Empty(row.QuerySelectorAll("fluent-button[aria-label^='Add a condition']"));
     }
+
+    // ----- #1092: every read kind -----
+
+    private const string SnippetRead = "{{ snippet.standards.content }}";
+    private const string GuardedAssessment = "Assess.\n{{~ if input.kind == \"new\" ~}}" + SnippetRead + "{{~ end ~}}\n{{ input.notes }}";
+
+    private static string Row(string list, string member) => $".template-read-rows[aria-label=\"{list}\"] .template-read-row[data-read-member='{member}']";
+
+    [Fact]
+    public void ASnippetRead_OnThePromptPane_CarriesTheBuilder_AndIsWrapped()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "assessment");
+        const string subject = "snippet.standards.content in prompts/assessment.md";
+        var original = EditorFixtures.V25().Files["prompts/assessment.md"];
+
+        page.Find(AddGuard(subject)).Click();
+        page.Find(Operand(subject)).Change("kind");
+        page.Find(Value(subject)).Change("new");
+
+        Assert.Equal(original.Replace(SnippetRead, "{{~ if input.kind == \"new\" ~}}" + SnippetRead + "{{~ end ~}}"), EditorText(page));
+        Assert.Contains(Read, EditorText(page));
+        Assert.Equal("{{~ if input.kind == \"new\" ~}}" + SnippetRead + "{{~ end ~}}", page.Find(Writes(subject)).TextContent.Trim());
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+        Assert.NotNull(sent);
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void AMacroContentRead_CarriesTheBuilder_OnTheReadersPane_AndOnTheMacroPane()
+    {
+        var page = RenderEditor(WithFile("snippets/standards.md", "Follow the local standards. {{ macro.tool_note.content }}"));
+        Navigate(page, "standards");
+
+        Assert.NotNull(page.Find(Row("Reads of snippets/standards.md", "macro.tool_note.content")).QuerySelector(AddGuard("macro.tool_note.content in snippets/standards.md")));
+
+        Navigate(page, "tool_note");
+        const string subject = "macro.tool_note.content in Snippet 'standards'";
+        var row = page.Find(".template-read-rows[aria-label='Readers of tool_note'] .template-read-row[data-read-reader=\"Snippet 'standards'\"]");
+        Assert.Equal("macro.tool_note.content", row.QuerySelector(".template-read-row__member")!.TextContent.Trim());
+        row.QuerySelector(AddGuard(subject))!.Click();
+        page.Find(Operand(subject)).Change("kind");
+        page.Find(Value(subject)).Change("follow_up");
+
+        Navigate(page, "standards");
+        Assert.Equal("Follow the local standards. {{~ if input.kind == \"follow_up\" ~}}{{ macro.tool_note.content }}{{~ end ~}}", EditorText(page));
+    }
+
+    [Fact]
+    public void ANodeRead_CarriesTheBuilder()
+    {
+        var page = RenderEditor(WithFile("prompts/scope.md", "Is this in scope? {{ node.meds.value }}"));
+        Navigate(page, "scope");
+        const string subject = "node.meds.value in prompts/scope.md";
+
+        var row = page.Find(Row("Reads of prompts/scope.md", "node.meds.value"));
+        Assert.Equal("Node 'Medications'", row.GetAttribute("data-read-reader"));
+        row.QuerySelector(AddGuard(subject))!.Click();
+        page.Find(Operand(subject)).Change("kind");
+        page.Find(Value(subject)).Change("new");
+
+        Assert.Equal("Is this in scope? {{~ if input.kind == \"new\" ~}}{{ node.meds.value }}{{~ end ~}}", EditorText(page));
+    }
+
+    [Fact]
+    public void TheSnippetPanesReadByRow_CarriesTheBuilder_AndRewritesTheReadersFile()
+    {
+        var page = RenderEditor(WithFile("prompts/assessment.md", GuardedAssessment));
+        Navigate(page, "standards");
+        const string subject = "snippet.standards.content in Prompt 'assessment'";
+
+        var row = page.Find(".template-read-rows[aria-label='Readers of standards'] .template-read-row[data-read-reader=\"Prompt 'assessment'\"]");
+        Assert.Equal("kind", row.QuerySelector(Operand(subject))!.GetAttribute("current-value"));
+        Assert.Equal("new", row.QuerySelector(Value(subject))!.GetAttribute("current-value"));
+
+        page.Find(Value(subject)).Change("follow_up");
+        Navigate(page, "assessment");
+
+        Assert.Equal("Assess.\n{{~ if input.kind == \"follow_up\" ~}}" + SnippetRead + "{{~ end ~}}\n{{ input.notes }}", EditorText(page));
+    }
+
+    [Fact]
+    public void TheNodePanesReadsSection_ShowsASnippetReadsGuard_ReadOnly()
+    {
+        var page = RenderEditor(WithFile("prompts/assessment.md", GuardedAssessment));
+        ShowNode(page, "assessment");
+
+        var row = page.Find(Row("Reads of assessment", "snippet.standards.content"));
+        Assert.Contains("included when", row.TextContent);
+        Assert.Contains("input.kind == \"new\"", row.TextContent);
+        Assert.Empty(row.QuerySelectorAll("fluent-select"));
+    }
+
+    [Fact]
+    public void AnInputRead_AFactRead_AndAFolderIteration_CarryNoBuilder()
+    {
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+        Assert.Empty(page.FindAll(AddGuard("input.notes in prompts/assessment.md")));
+        Assert.Empty(page.Find(Row("Reads of prompts/assessment.md", "input.notes")).QuerySelectorAll(".template-read-row__below"));
+
+        Navigate(page, "closing");
+        Assert.Empty(page.Find(Row("Reads of macros/closing.md", "profile.name")).QuerySelectorAll(".template-read-row__below"));
+
+        var looping = RenderEditor(WithFile("prompts/scope.md", "{{ for s in snippet.sections }}{{ s.content }}{{ end }}"));
+        Navigate(looping, "scope");
+        Assert.Empty(looping.Find(Row("Reads of prompts/scope.md", "snippet.sections")).QuerySelectorAll(".template-read-row__below"));
+        Assert.Empty(looping.FindAll("fluent-button[aria-label^='Add a condition for']"));
+    }
 }
