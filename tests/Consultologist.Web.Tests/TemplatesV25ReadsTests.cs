@@ -43,8 +43,12 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
     private static IReadOnlyList<string> Heads(IRenderedComponent<Templates> page) =>
         page.FindAll(".node-section__head").Select(h => h.TextContent.Trim()).ToList();
 
+    // #1086: the node pane's Reads section is the shared descriptive rows — the members read, in order.
     private static IReadOnlyList<string> Reads(IRenderedComponent<Templates> page, string nodeId) =>
-        page.Find($"ul.node-reads[aria-label='Reads of {nodeId}']").QuerySelectorAll("li").Select(li => li.TextContent.Trim()).ToList();
+        page.Find($".template-read-rows[aria-label='Reads of {nodeId}']").QuerySelectorAll(".template-read-row").Select(row => row.GetAttribute("data-read-member") ?? "").ToList();
+
+    private static void ClickRead(IRenderedComponent<Templates> page, string nodeId, string member) =>
+        page.Find($".template-read-rows[aria-label='Reads of {nodeId}'] .template-read-row[data-read-member='{member}'] .template-read-row__reader").Click();
 
     private static WorkflowPackageContentResponse WithFile(string path, string text)
     {
@@ -65,9 +69,14 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".add-variable"));
         Assert.Empty(page.FindAll(".binding-row"));
 
+        // #1086: grouped by kind — macros, snippets, inputs, nodes — the thing read by its label.
         Assert.Equal(
-            new[] { "input.intake", "input.notes", "node.extract.value", "node.meds.value", "snippet.standards.content", "macro.tool_note.prompt (inline)" },
+            new[] { "macro.tool_note.prompt", "snippet.standards.content", "input.intake", "input.notes", "node.extract.value", "node.meds.value" },
             Reads(page, "assessment"));
+        Assert.Equal(
+            new[] { "Macro 'Tool note'", "Snippet 'standards'", "Input 'Intake form'", "Input 'Referral notes'", "Node 'Extract concepts'", "Node 'Medications'" },
+            page.Find(".template-read-rows[aria-label='Reads of assessment']").QuerySelectorAll(".template-read-row").Select(row => row.GetAttribute("data-read-reader")));
+        Assert.Contains("(inline)", page.Find(".template-read-rows[aria-label='Reads of assessment'] .template-read-row[data-read-member='macro.tool_note.prompt']").TextContent);
     }
 
     [Fact]
@@ -76,15 +85,15 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         var page = RenderEditor();
         ShowNode(page, "assessment");
 
-        page.FindAll("ul.node-reads button").First(b => b.TextContent.Trim() == "node.extract.value").Click();
+        ClickRead(page, "assessment", "node.extract.value");
         Assert.Equal("Extract concepts", Selected(page));
 
         ShowNode(page, "assessment");
-        page.FindAll("ul.node-reads button").First(b => b.TextContent.Trim() == "snippet.standards.content").Click();
+        ClickRead(page, "assessment", "snippet.standards.content");
         Assert.Equal("standards", Selected(page));
 
         ShowNode(page, "assessment");
-        page.FindAll("ul.node-reads button").First(b => b.TextContent.Trim() == "input.notes").Click();
+        ClickRead(page, "assessment", "input.notes");
         Assert.Equal("Inputs", Selected(page));
     }
 
@@ -94,9 +103,10 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         var page = RenderEditor();
         ShowNode(page, "section_notes");
 
-        var rows = page.Find("ul.node-reads[aria-label='Reads of section_notes']").QuerySelectorAll("li").ToList();
-        Assert.Equal(new[] { "item.content — the fan item", "item.name — the fan item" }, rows.Select(li => li.TextContent.Trim()));
-        Assert.All(rows, li => Assert.NotNull(li.QuerySelector("span.snippet-readers__row")));
+        var rows = page.Find(".template-read-rows[aria-label='Reads of section_notes']").QuerySelectorAll(".template-read-row").ToList();
+        Assert.Equal(new[] { "item.content", "item.name" }, rows.Select(row => row.GetAttribute("data-read-member")));
+        Assert.Equal(new[] { "Fan item", "Fan item" }, rows.Select(row => row.GetAttribute("data-read-reader")));
+        Assert.All(rows, row => Assert.NotNull(row.QuerySelector("span.template-read-row__reader")));
     }
 
     [Fact]
@@ -106,7 +116,8 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
         ShowNode(page, "coverage");
 
         Assert.Contains("Reads", Heads(page));
-        Assert.Equal(new[] { "with: node.extract.value" }, Reads(page, "coverage"));
+        Assert.Equal(new[] { "node.extract.value" }, Reads(page, "coverage"));
+        Assert.Contains("a parameter", page.Find(".template-read-rows[aria-label='Reads of coverage']").TextContent);
     }
 
     [Fact]

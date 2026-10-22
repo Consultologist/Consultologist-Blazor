@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
@@ -141,7 +142,7 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
         page.Find($"fluent-button[aria-label='Insert reference into {Assessment}']").Click();
 
         Assert.Equal(before + "\n{{ node.extract.content | concept_context }}", EditorText(page));
-        Assert.Contains("Reads:", page.Find(".template-reads").TextContent);
+        Assert.Contains("Reads", page.Find(".template-reads").TextContent);
         // #1058: the pipe types the read — no "the JSON renders as text" warning under it.
         Assert.Empty(page.FindAll(".node-reads__warning"));
         // The palette resets after an insert.
@@ -210,16 +211,115 @@ public class TemplatesV25PaletteTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheReadsLine_NamesTheTemplatesReads_AndItsWarning()
+    public void TheReadsRows_NameTheTemplatesReads_GroupedByKind_AndItsWarning()
     {
         var page = RenderEditor();
         Navigate(page, "assessment");
 
+        // #1086: the comma-joined line is rows — macros, snippets, inputs, nodes — the thing read by its label, the member as the text spells it.
+        Assert.Equal("Reads", page.Find(".template-reads").TextContent.Trim());
+        var rows = page.Find(".template-read-rows[aria-label='Reads of prompts/assessment.md']").QuerySelectorAll(".template-read-row").ToList();
         Assert.Equal(
-            "Reads: input.intake, input.notes, node.extract.value, node.meds.value, snippet.standards.content, macro.tool_note.prompt (inline)",
-            page.Find(".template-reads").TextContent.Trim());
+            new[] { "Macro 'Tool note'", "Snippet 'standards'", "Input 'Intake form'", "Input 'Referral notes'", "Node 'Extract concepts'", "Node 'Medications'" },
+            rows.Select(row => row.GetAttribute("data-read-reader")));
+        Assert.Equal(
+            new[] { "macro.tool_note.prompt", "snippet.standards.content", "input.intake", "input.notes", "node.extract.value", "node.meds.value" },
+            rows.Select(row => row.GetAttribute("data-read-member")));
+        Assert.Contains("(inline)", rows[0].TextContent);
+        Assert.All(rows, row => Assert.Equal("fluent-button", row.QuerySelector(".template-read-row__reader")!.TagName.ToLowerInvariant()));
 
+        rows[0].QuerySelector(".template-read-row__reader")!.Click();
+        Assert.Equal("macros/tool_note.md", EditorSession.SelectedKey);
+
+        Navigate(page, "assessment");
         page.Find(".editor-pane fluent-text-area").Change("{{ node.extract.content }} {{ snippet.standards.content }} {{ macro.tool_note.prompt }}");
         Assert.Contains("the JSON renders as text — read node.extract.value for the fields.", page.Find(".node-reads__warning").TextContent);
+        Assert.Contains("node.extract.content", page.Find(".template-read-rows[aria-label='Reads of prompts/assessment.md']").QuerySelectorAll(".template-read-row").Select(row => row.GetAttribute("data-read-member")));
+    }
+
+    [Fact]
+    public void AFactRead_IsARow_WithoutALink()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        var row = Assert.Single(page.Find(".template-read-rows[aria-label='Reads of macros/closing.md']").QuerySelectorAll(".template-read-row"));
+        Assert.Equal("Profile", row.GetAttribute("data-read-reader"));
+        Assert.Equal("profile.name", row.GetAttribute("data-read-member"));
+        Assert.NotNull(row.QuerySelector("span.template-read-row__reader"));
+    }
+
+    [Fact]
+    public void ATextReadingNothing_KeepsTheRestingLine()
+    {
+        var page = RenderEditor();
+        Navigate(page, "standards");
+
+        Assert.Equal("Reads: nothing yet", page.Find(".template-reads").TextContent.Trim());
+        Assert.Empty(page.FindAll(".template-read-rows[aria-label='Reads of snippets/standards.md']"));
+    }
+
+    // ----- #1086: Read by on the prompt pane -----
+
+    private static IReadOnlyList<string?> PromptReaders(IRenderedComponent<Templates> page, string promptId) =>
+        page.Find($".template-read-rows[aria-label='Readers of {promptId}']").QuerySelectorAll(".template-read-row").Select(row => row.GetAttribute("data-read-reader")).ToList();
+
+    /// <summary>The fixture with a second node running the assessment prompt.</summary>
+    private static WorkflowPackageContentResponse V25WithASecondAssessmentNode()
+    {
+        var package = EditorFixtures.V25();
+        var root = JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "assessment_2", ["label"] = "Assessment again", ["prompt"] = "assessment", ["format"] = "prose" });
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    [Fact]
+    public void ThePromptPane_SaysWhichNodeRunsIt_AsARow()
+    {
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+
+        Assert.Contains("Read by", page.Find(".editor-pane").TextContent);
+        Assert.Equal(new[] { "Node 'Assessment'" }, PromptReaders(page, "assessment"));
+        var row = page.Find(".template-read-rows[aria-label='Readers of assessment'] .template-read-row");
+        Assert.Contains("runs this prompt", row.TextContent);
+        Assert.DoesNotContain("for each item", row.TextContent);
+        Assert.Null(row.QuerySelector(".template-read-row__member"));
+        Assert.Empty(page.FindAll(".prompt-readers__empty"));
+
+        row.QuerySelector(".template-read-row__reader")!.Click();
+        Assert.Equal("node:assessment", EditorSession.SelectedKey);
+    }
+
+    [Fact]
+    public void AFannedPrompt_SaysTheFan()
+    {
+        var page = RenderEditor();
+        Navigate(page, "section");
+
+        Assert.Equal(new[] { "Node 'Section notes'" }, PromptReaders(page, "section"));
+        Assert.Contains("runs this prompt for each item of snippet.sections", page.Find(".template-read-rows[aria-label='Readers of section']").TextContent);
+    }
+
+    [Fact]
+    public void APromptRunByTwoNodes_ListsBoth()
+    {
+        var page = RenderEditor(V25WithASecondAssessmentNode());
+        Navigate(page, "assessment");
+
+        Assert.Equal(new[] { "Node 'Assessment'", "Node 'Assessment again'" }, PromptReaders(page, "assessment"));
+    }
+
+    [Fact]
+    public void AnOrphanPrompt_SaysReadByNothingYet()
+    {
+        var page = RenderEditor();
+        Navigate(page, "+ Prompt");
+        page.Find("fluent-text-field[placeholder='summarize-item']").Change("footer_text");
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create prompt")).Click();
+        Navigate(page, "footer_text");
+
+        Assert.Contains("Read by nothing yet", page.Find(".prompt-readers__empty").TextContent);
+        Assert.Empty(page.FindAll(".template-read-rows[aria-label='Readers of footer_text']"));
     }
 }

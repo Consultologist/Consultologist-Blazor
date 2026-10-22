@@ -525,8 +525,11 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "standards");
 
-        var readers = page.Find("ul.snippet-readers[aria-label='Readers of standards']");
-        Assert.Equal(new[] { "Prompt 'assessment'" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        // #1086: the readers as the shared descriptive rows — the reader as a link, the member read.
+        var readers = page.Find(".template-read-rows[aria-label='Readers of standards']");
+        Assert.Equal(new[] { "Prompt 'assessment'" }, readers.QuerySelectorAll(".template-read-row").Select(row => row.GetAttribute("data-read-reader")));
+        Assert.Equal("snippet.standards.content", readers.QuerySelector(".template-read-row__member")!.TextContent.Trim());
+        Assert.Empty(page.FindAll("ul.snippet-readers"));
         Assert.Contains("Change the readers below first to delete this snippet.", page.Find(".editor-pane").TextContent);
         Assert.NotNull(page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Remove").GetAttribute("disabled"));
         // The nav says nothing about an unread snippet for one that is read.
@@ -539,7 +542,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "standards");
 
-        page.Find("ul.snippet-readers button.snippet-readers__row").Click();
+        page.Find(".template-read-rows[aria-label='Readers of standards'] .template-read-row__reader").Click();
 
         Assert.Equal("assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
     }
@@ -550,9 +553,16 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         var page = RenderEditor();
         Navigate(page, "HPI");
 
-        var readers = page.Find("ul.snippet-readers[aria-label='Readers of sections']");
-        Assert.Equal(new[] { "Node 'section_notes' fans it" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        // #1086: the fanning node by its label, a note-only row ("fans it"), a link to the node.
+        var readers = page.Find(".template-read-rows[aria-label='Readers of sections']");
+        var row = Assert.Single(readers.QuerySelectorAll(".template-read-row"));
+        Assert.Equal("Node 'Section notes'", row.GetAttribute("data-read-reader"));
+        Assert.Contains("fans it", row.TextContent);
+        Assert.Null(row.QuerySelector(".template-read-row__member"));
         Assert.DoesNotContain("not fanned or iterated by anything yet", page.Markup);
+
+        row.QuerySelector(".template-read-row__reader")!.Click();
+        Assert.Equal("node:section_notes", EditorSession.SelectedKey);
     }
 
     [Fact]
@@ -566,7 +576,7 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         page.Find(".editor-pane fluent-text-area").Change("{{ snippet.standards.content }} Write plainly.");
         Navigate(page, "standards");
 
-        var readers = page.Find("ul.snippet-readers[aria-label='Readers of standards']").QuerySelectorAll("li").Select(li => li.TextContent.Trim()).ToList();
+        var readers = page.Find(".template-read-rows[aria-label='Readers of standards']").QuerySelectorAll(".template-read-row").Select(row => row.GetAttribute("data-read-reader")).ToList();
         Assert.Contains("Prompt 'assessment'", readers);
         Assert.Contains("Snippet 'house_style'", readers);
         Assert.Contains("not read by any template yet", page.Markup);
