@@ -756,12 +756,21 @@ decides). A pick is the author's preview choice, not pending state: no draft, no
 to every pane reading that enum and clears on a package load. An enum field inside an object input stays
 its token. `TemplateWalkOf` now finds a pending folder item's walk by its path (the palette had lost it).
 Left for follow-ups: the node pane's inline prompt editor (same shell, one attribute — done by #1108) and
-"preview as item" on a fanned prompt's pane (#1109).)*
+"preview as item" on a fanned prompt's pane (done by #1109).)*
 
 *(#1108, 2026-10-21, Milestone 31 — the node pane's inline prompt editor previews **what a reader gets** too: the
 Prompts pane's rendered-preview fragment over the same prompt file, so one prompt has one preview whichever pane
 opens it; the enum picks are shared page state, so a value chosen on either pane applies to both; a raw prompt
 keeps its verbatim preview and a ≤24 pane keeps Markdown.)*
+
+*(#1109, 2026-10-21, Milestone 31 — **preview as item**: on a prompt read by a node that fans a snippet folder (the
+selected node on the node pane, the first fanning reader on the Prompts pane) the rendered preview's control row gains
+a second select over the folder's items — in the nav's order, the published items not removed with their pending
+name, text and gate applied, then the pending ones; a gated item's label carries its `when`, shown not evaluated,
+since the preview scope does not evaluate folder gates — and a chosen item is bound as the fan item, so `item.name`
+and `item.content` render that item for real over the same scope. Unchosen by default (the tokens say so), keyed by
+folder so one pick serves both panes, not pending state, cleared on a package load; an input fan offers no pick; a
+stale pick — the item removed since — applies nothing.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's

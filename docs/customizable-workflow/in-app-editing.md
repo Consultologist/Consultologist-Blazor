@@ -252,8 +252,9 @@ declared sections:
   library's token scope (run values as `⟨input.notes⟩` tokens, snippets and
   macro texts for real, a macro's `.prompt` as its instruction plus the
   mechanics sentence), with a "preview with `input.<enum>` =" select for each
-  top-level enum input the template reads, unchosen by default. A raw prompt
-  keeps its verbatim preview.
+  top-level enum input the template reads, unchosen by default, and — on a
+  prompt read by a node fanning a snippet folder — a "preview as item" select
+  over the folder's items (#1109). A raw prompt keeps its verbatim preview.
 - **Renderers** (#1098, 25 only) — the engine's renderer pipes as read-only
   entries after Formats, one pane each: the format it renders, the spelling
   to insert per node of that format (with a Copy button), and "Used by" —
