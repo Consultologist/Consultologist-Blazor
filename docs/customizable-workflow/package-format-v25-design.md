@@ -755,8 +755,13 @@ substituted into the scope's inputs (an enum materialises as a string, so `{{ if
 decides). A pick is the author's preview choice, not pending state: no draft, no dot, no undo; it applies
 to every pane reading that enum and clears on a package load. An enum field inside an object input stays
 its token. `TemplateWalkOf` now finds a pending folder item's walk by its path (the palette had lost it).
-Left for follow-ups: the node pane's inline prompt editor (same shell, one attribute, with the fanning
-node known there) and "preview as item" on a fanned prompt's pane.)*
+Left for follow-ups: the node pane's inline prompt editor (same shell, one attribute — done by #1108) and
+"preview as item" on a fanned prompt's pane (#1109).)*
+
+*(#1108, 2026-10-21, Milestone 31 — the node pane's inline prompt editor previews **what a reader gets** too: the
+Prompts pane's rendered-preview fragment over the same prompt file, so one prompt has one preview whichever pane
+opens it; the enum picks are shared page state, so a value chosen on either pane applies to both; a raw prompt
+keeps its verbatim preview and a ≤24 pane keeps Markdown.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
