@@ -657,21 +657,39 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.Contains($"Format '{format}' takes no output macros; only a text format with outputMacros may.", page.Find(".node-macros-refused").TextContent);
     }
 
+    // ----- the node pane: Inline macros as rows naming where the read lives (#1087) -----
+
+    private static string InlineRows(string nodeId) => $".template-read-rows[aria-label='Inline macros of {nodeId}']";
+
+    private static IReadOnlyList<string> Vias(AngleSharp.Dom.IElement row) =>
+        row.QuerySelectorAll(".template-read-row__via").Select(v => v.TextContent.Trim()).ToList();
+
     [Fact]
-    public void InlineMacros_AreDerivedFromTheWalk_AndOpenTheMacro()
+    public void InlineMacros_AreRows_NamingWhereTheReadLives_AndOpenTheMacroOrTheHolder()
     {
         var page = RenderEditor();
         ShowNode(page, "assessment");
 
-        var slots = page.Find("ul.node-inline-macros[aria-label='Inline macros of assessment']");
-        Assert.Equal(new[] { "macro.tool_note.prompt — Tool note" }, slots.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
+        var row = Assert.Single(page.Find(InlineRows("assessment")).QuerySelectorAll(".template-read-row"));
+        Assert.Equal("Macro 'Tool note'", row.GetAttribute("data-read-reader"));
+        Assert.Equal("macro.tool_note.prompt", row.GetAttribute("data-read-member"));
+        Assert.Contains("(inline)", row.TextContent);
+        Assert.Contains("via", row.TextContent);
+        Assert.Equal(new[] { "prompt 'assessment'" }, Vias(row));
+        Assert.Empty(page.FindAll(".node-inline-macros__warning"));
+        Assert.Empty(page.FindAll("ul.node-inline-macros"));
 
-        page.Find("ul.node-inline-macros button").Click();
+        row.QuerySelector(".template-read-row__via")!.Click();
+        Assert.Equal("prompts/assessment.md", EditorSession.SelectedKey);
+
+        ShowNode(page, "assessment");
+        page.Find($"{InlineRows("assessment")} .template-read-row__reader").Click();
+        Assert.Equal("macros/tool_note.md", EditorSession.SelectedKey);
         Assert.Equal("tool_note", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
     }
 
     [Fact]
-    public void AFanNode_NamesTheItemsLackingTheInlineRead_InTheValidatorsWords()
+    public void AFanNode_NamesTheItemsLackingTheInlineRead_InTheValidatorsWords_UnderItsRow()
     {
         var page = RenderEditor();
         ShowNode(page, "section_notes");
@@ -682,10 +700,46 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         page.Find(".editor-pane fluent-text-area").Change("History: {{ input.notes }} {{ macro.tool_note.prompt }}");
         ShowNode(page, "section_notes");
 
-        Assert.Contains("macro.tool_note.prompt", page.Find("ul.node-inline-macros[aria-label='Inline macros of section_notes']").TextContent);
+        var row = Assert.Single(page.Find(InlineRows("section_notes")).QuerySelectorAll(".template-read-row"));
+        Assert.Equal("macro.tool_note.prompt", row.GetAttribute("data-read-member"));
+        Assert.Equal(new[] { "snippet 'sections/hpi'" }, Vias(row));
         Assert.Equal(
             "Node 'section_notes' fans snippet folder 'sections'; items plan carry no macro.tool_note.prompt read, so nothing tells the model to write macro.tool_note.content for them.",
-            page.Find(".node-inline-macros__warning").TextContent.Trim());
+            row.QuerySelector(".node-inline-macros__warning")!.TextContent.Trim());
+
+        // Both items carry it: two via links, no warning.
+        Navigate(page, "Plan");
+        page.Find(".editor-pane fluent-text-area").Change("Plan. {{ macro.tool_note.prompt }}");
+        ShowNode(page, "section_notes");
+
+        row = Assert.Single(page.Find(InlineRows("section_notes")).QuerySelectorAll(".template-read-row"));
+        Assert.Equal(new[] { "snippet 'sections/hpi'", "snippet 'sections/plan'" }, Vias(row));
+        Assert.Empty(page.FindAll(".node-inline-macros__warning"));
+    }
+
+    [Fact]
+    public void AReadReachedThroughASnippet_NamesTheSnippet_AndTheItemsItCameThrough()
+    {
+        var page = RenderEditor();
+        Navigate(page, "standards");
+        page.Find(".editor-pane fluent-text-area").Change("Follow the local standards. {{ macro.closing.prompt }}");
+
+        // assessment reads the snippet directly: the holder is the snippet, no items named.
+        ShowNode(page, "assessment");
+        var rows = page.Find(InlineRows("assessment")).QuerySelectorAll(".template-read-row").ToList();
+        Assert.Equal(new[] { "Macro 'Closing'", "Macro 'Tool note'" }, rows.Select(r => r.GetAttribute("data-read-reader")));
+        Assert.Equal(new[] { "snippet 'standards'" }, Vias(rows[0]));
+        Assert.Equal(new[] { "prompt 'assessment'" }, Vias(rows[1]));
+
+        // section_notes reaches it only through the hpi item reading the snippet: the holder names the item.
+        Navigate(page, "HPI");
+        page.Find(".editor-pane fluent-text-area").Change("History: {{ snippet.standards.content }}");
+        ShowNode(page, "section_notes");
+
+        var row = Assert.Single(page.Find(InlineRows("section_notes")).QuerySelectorAll(".template-read-row"));
+        Assert.Equal("Macro 'Closing'", row.GetAttribute("data-read-reader"));
+        Assert.Equal(new[] { "snippet 'standards' for item hpi" }, Vias(row));
+        Assert.Contains("items plan carry no macro.closing.prompt read", row.QuerySelector(".node-inline-macros__warning")!.TextContent);
     }
 
     // ----- the Deliverables pane: prepend / append, document scope -----

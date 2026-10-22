@@ -627,8 +627,9 @@ across every record ever written, and stay; the provenance document may say "the
 - **Node pane.** Format picker (catalogue + the package's custom files) with the entry's
   parameters rendered as fields and `onInvalid` when validatable; one **Macros** section —
   declared **Before / After** rows (macro, applies-when, fan-item scope, reorder within a
-  placement) and a derived, read-only **Inline macros** list; a derived, read-only **Reads**
-  list replacing Inputs and Variables, each row linking to the thing. The desk flips from
+  placement) and derived, read-only **Inline macros** rows naming where each read lives
+  (#1087); derived, read-only **Reads** rows replacing Inputs and Variables, each row
+  linking to the thing (#1086). The desk flips from
   "every variable is bound" to "every reference resolves".
 - **Prompt, snippet and macro panes.** The text editor becomes a **code editor** with
   Scriban highlighting and reference completion — never WYSIWYG, since a markdown round-trip
@@ -793,6 +794,17 @@ yet" stays. **Read by** as the same rows on the snippet pane (the reader · read
 reader "iterates its items"; a fanning node, by its label, "fans it" — a note-only row) and, new, on the prompt pane
 (the nodes running it — `Node 'Section notes' · runs this prompt for each item of snippet.sections` — or "Read by
 nothing yet"). A prompt walked per node is one row. `ReadsList`, `TemplateRead` and `SnippetReader` are retired.)*
+
+*(#1087, 2026-10-22, Milestone 31 — the node pane's **Inline macros** name where the read lives. The library's walk
+gains `PromptReadSitesOf(nodeId)` beside `PromptReadsOf` — the same closure, with the holder of each
+`macro.<id>.prompt` read (the prompt itself, a snippet or folder item, a macro text, an instruction) and the fan item a
+holder was reached through when only that item's own closure reaches it; the prompt's closure is credited once, to every
+instance; no spec bump. The pane renders one shared descriptive row per inline macro — the macro's label linking to its
+pane · reads `macro.<id>.prompt` (inline) · **via** every holder as a link (`prompt 'section_instructions'`,
+`snippet 'standards/assessment_plan'`, `macro 'closing'`, `macro 'closing' instruction`), a holder reached through fan
+items naming them (`snippet 'standards' for item hpi`) — and the validator's fan-coverage sentence sits inside the row it
+is about, its lacking items ordered as the validator orders them. The Macros rows above (the editable placements) are
+untouched; the empty "No inline macro" line stays. `TemplateReadRow` gains `Via` and `Warning` for every pane's rows.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's

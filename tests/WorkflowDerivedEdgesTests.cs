@@ -192,6 +192,55 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
+    public void PromptReadSitesOf_NamesTheHolder_AndTheFanItemItCameThrough()
+    {
+        // #1087: the same closure as PromptReadsOf, with where each read sits.
+        var (manifest, files) = V25Package.Minimal();
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["snippets/standards.md"] = "Standards. {{ macro.closing.prompt }}",
+            ["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}",
+        };
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        // assessment reads the snippet that holds the read: the holder is the snippet, no fan item.
+        Assert.Equal(
+            new[] { new WorkflowDerivedEdges.PromptReadSite("closing", TemplateKind.Snippet, "standards", "Snippet 'standards'", null) },
+            walk.PromptReadSitesOf("assessment"));
+
+        // section_notes reaches it only through the hpi item's own text: credited to hpi.
+        Assert.Equal(
+            new[] { new WorkflowDerivedEdges.PromptReadSite("closing", TemplateKind.Snippet, "sections/hpi", "Snippet 'sections/hpi'", "hpi") },
+            walk.PromptReadSitesOf("section_notes"));
+
+        Assert.Empty(walk.PromptReadSitesOf("extract"));
+        Assert.Empty(walk.PromptReadSitesOf("coverage"));
+    }
+
+    [Fact]
+    public void PromptReadSitesOf_CreditsAPromptHeldRead_Once_AndAnItemHeldOne_ToItsItem()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["prompts/section.md"] = "{{ item.name }}: {{ item.content }} {{ macro.closing.prompt }}",
+            ["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}",
+        };
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        Assert.Equal(
+            new[]
+            {
+                new WorkflowDerivedEdges.PromptReadSite("closing", TemplateKind.Prompt, "section_notes", "Prompt 'section'", null),
+                new WorkflowDerivedEdges.PromptReadSite("closing", TemplateKind.Snippet, "sections/hpi", "Snippet 'sections/hpi'", "hpi"),
+            },
+            walk.PromptReadSitesOf("section_notes"));
+        Assert.Equal(new[] { "closing" }, walk.PromptReadsOf("section_notes", "plan"));   // the prompt-held read reaches every item
+    }
+
+    [Fact]
     public void ANodeWithoutAFormat_ContributesNoReads()
     {
         var (manifest, files) = V25Package.Minimal();
