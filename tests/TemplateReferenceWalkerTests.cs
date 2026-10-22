@@ -752,4 +752,78 @@ public class TemplateReferenceWalkerTests
         Assert.All(refs.Occurrences, o => Assert.Equal("{{ " + o.Member + " }}", Block(text, o)));
         Assert.True(refs.Occurrences[0].Start < refs.Occurrences[3].Start);
     }
+
+    // ----- #1091: case/when branch blocks -----
+
+    private const string CaseLine = "{{~ case input.kind ~}}{{~ when \"new\" ~}}{{ macro.closing.prompt }}{{~ when \"follow_up\" ~}}" + Read + "{{~ else ~}}{{~ end ~}}";
+
+    private static TemplateBranchBlock Case(string text) => Assert.Single(TemplateFixtures.Ok(text).Branches);
+
+    [Fact]
+    public void TheCanonicalCaseOneLiner_IsABranchBlock_WithItsBranches_AndTheWholeLineAsItsSpan()
+    {
+        const string text = "Assess.\n" + CaseLine + "\n{{ input.notes }}";
+        var refs = TemplateFixtures.Ok(text);
+        var block = Assert.Single(refs.Branches);
+
+        Assert.Equal("input.kind", block.Subject);
+        Assert.True(block.Canonical);
+        Assert.Equal(
+            new[] { new TemplateBranch("new", "macro.closing.prompt"), new TemplateBranch("follow_up", "macro.letrozole.prompt"), new TemplateBranch(null, null) },
+            block.Branches);
+        Assert.Equal(CaseLine, text[block.Start..block.End]);
+
+        // The reads in the branches belong to the case: no guard, the block's index.
+        var inBranches = refs.Occurrences.Where(o => o.Member.StartsWith("macro.", StringComparison.Ordinal)).ToList();
+        Assert.Equal(2, inBranches.Count);
+        Assert.All(inBranches, o => { Assert.Equal(0, o.Branch); Assert.Null(o.Guard); });
+        Assert.Equal(-1, Assert.Single(refs.Occurrences, o => o.Member == "input.notes").Branch);
+    }
+
+    [Fact]
+    public void AHandWrittenMultiLineCase_IsCanonical_AndItsBlockRunsFromCaseToEnd()
+    {
+        const string block = "{{ case input.kind }}\n{{ when \"new\" }}\n{{ macro.closing.prompt }}\n{{ when \"follow_up\" }}\n{{ end }}";
+        const string text = "Before.\n" + block + "\nAfter.";
+        var c = Case(text);
+
+        Assert.True(c.Canonical);
+        Assert.Equal(new[] { new TemplateBranch("new", "macro.closing.prompt"), new TemplateBranch("follow_up", null) }, c.Branches);
+        Assert.Equal(block, text[c.Start..c.End]);
+    }
+
+    [Fact]
+    public void ACase_IsNotCanonical_WhenALiteralIsUndeclared_Doubled_Prose_OrTheSubjectIsNoEnum()
+    {
+        Assert.False(Case("{{ case input.kind }}{{ when \"bogus\" }}{{ macro.closing.prompt }}{{ end }}").Canonical);
+        Assert.False(Case("{{ case input.kind }}{{ when \"new\", \"follow_up\" }}{{ macro.closing.prompt }}{{ end }}").Canonical);
+        Assert.False(Case("{{ case input.kind }}{{ when \"new\" }}{{ macro.closing.prompt }} extra{{ end }}").Canonical);
+        Assert.False(Case("{{ case input.kind }}{{ when \"new\" }}{{ macro.closing.prompt }}{{ when \"new\" }}{{ end }}").Canonical);
+
+        var noEnum = Case("{{ case input.notes }}{{ when \"x\" }}{{ macro.closing.prompt }}{{ end }}");
+        Assert.False(noEnum.Canonical);
+        Assert.Equal("input.notes", noEnum.Subject);
+        Assert.Equal(new[] { new TemplateBranch("x", "macro.closing.prompt") }, noEnum.Branches);
+    }
+
+    [Fact]
+    public void ACaseInsideAnIf_OwnsItsReads_AndAnEnumNodeSubject_IsCanonical()
+    {
+        var refs = TemplateFixtures.Ok("{{ if input.kind == \"new\" }}{{ case input.kind }}{{ when \"new\" }}" + Read + "{{ end }}{{ end }}");
+        var read = Assert.Single(refs.Occurrences, o => o.Member == "macro.letrozole.prompt");
+        Assert.Equal(0, read.Branch);
+        Assert.Null(read.Guard);
+
+        var nodes = new Dictionary<string, TemplateNodeShape>(TemplateFixtures.Nodes(), StringComparer.Ordinal)
+        {
+            ["scope"] = new("classification", "enum", Values: new[] { "in_scope", "out_of_scope" }),
+        };
+        var context = TemplateFixtures.Context() with { Nodes = nodes };
+        var byNode = TemplateReferenceWalker.Walk("Prompt 'p'", "{{ case node.scope.value }}{{ when \"in_scope\" }}" + Read + "{{ end }}", context);
+        Assert.True(byNode.IsValid, string.Join(" | ", byNode.Errors));
+        var block = Assert.Single(byNode.Branches);
+        Assert.Equal("node.scope.value", block.Subject);
+        Assert.True(block.Canonical);
+        Assert.Equal(new[] { new TemplateBranch("in_scope", "macro.letrozole.prompt") }, block.Branches);
+    }
 }
