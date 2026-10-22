@@ -637,8 +637,8 @@ across every record ever written, and stay; the provenance document may say "the
   `{{ input.x }}`, `{{ node.x.content | concept_context }}`, `{{ snippet.x.content }}`,
   `{{ macro.x.content }}`, `{{ macro.x.prompt }}` at the cursor. Each pane lists what the text reads and, for a
   snippet or macro, where it is read.
-- **Macro pane.** Title / id / file / **instruction** → text → **Instances** (node and
-  deliverable rows) and **Read inline at** (derived).
+- **Macro pane.** Title / id / file / **instruction** → text → **Where it goes**: *Placed on*
+  rows (#1077) and one *Read by* list of descriptive rows (#1085, derived).
 - **Snippets pane** (was Data): `+ Snippet`, `+ Snippet folder`; a folder item's `when`.
 - **Formats pane** (new): the package's custom format files (schema editor), and the
   catalogue entries read-only with their detail line (§ 3.8).
@@ -771,6 +771,16 @@ since the preview scope does not evaluate folder gates — and a chosen item is 
 and `item.content` render that item for real over the same scope. Unchosen by default (the tokens say so), keyed by
 folder so one pick serves both panes, not pending state, cleared on a package load; an input fan offers no pick; a
 stale pick — the item removed since — applies nothing.)*
+
+*(#1085, 2026-10-22, Milestone 31 — a read is shown like a placement, **without its controls**: the macro pane's
+*Read inline by* / *Read as text by* chips become one **Read by** list of descriptive rows — the reader as the walk
+spells it, a link to its pane · reads `macro.<id>.prompt` (inline) or `macro.<id>.content` · a note — rendered by a
+shared fragment (`TemplateReadRows` over `TemplateReadRow`) the snippet, prompt and node panes adopt next (#1086,
+#1087) and #1088's guard builder attaches to. A folder's items are one row each (the walk's subject; a folder has no
+pane, its items do); a prompt run by several nodes is one row (the read sits once in the text — which nodes run it is
+the prompt pane's and the node pane's to say); a macro's instruction is labelled as the macro with "the instruction".
+Inline reads first, then text reads; no remove, no reorder — the palette inserts, the text editor removes. Reverses
+the "stay chips" sentence of #1077; the one "Not used yet" state stands.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
