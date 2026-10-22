@@ -806,6 +806,22 @@ items naming them (`snippet 'standards' for item hpi`) — and the validator's f
 is about, its lacking items ordered as the validator orders them. The Macros rows above (the editable placements) are
 untouched; the empty "No inline macro" line stays. `TemplateReadRow` gains `Via` and `Warning` for every pane's rows.)*
 
+*(#1088, 2026-10-22, Milestone 31 — a **guarded inline read set from the row**. The walker records every read
+occurrence — a statement that is one plain object chain — as `TemplateReadOccurrence`: the member, the `{{ … }}` block's
+span, the nearest enclosing `if`'s condition as written, whether the shape is **canonical** (that `if`'s own body holds the
+read and nothing else but the delimiters and whitespace, no `else`, not an else-if — a hand-written three-line guard is
+canonical too) and the whole `if…end` block's span; member-agnostic, no spec bump, the validator and the engine read
+nothing from it. The editor's `macro.<id>.prompt` read rows gain **Included when** — the condition builder loaded with the
+guard — wherever the pane edits the owning file (prompt, snippet, folder item, pending item, macro text, the node pane's
+inline prompt editor) and on the macro pane's "Read by" rows (the rewrite targets the reader's file). A change rewrites
+the text in place with the canonical one-liner `{{~ if <cond> ~}}{{ macro.<id>.prompt }}{{~ end ~}}` — `~` in all four
+places, the guard owns no whitespace — replacing a canonical guard's whole block or the bare read's block; "Always" writes
+the bare read; a hand-written guard normalises on its first edit; the line written sits under the builder. A non-canonical
+guard, or a member read more than once in the text, is read-only ("edit in the text"); an instruction's reads, the node
+pane's Reads section and its Inline macros (per holder) show the guard as a sentence. The rewrite is an ordinary pending
+text edit — Undo, Discard, the dot, publish. Only `.prompt` rows carry the builder here; #1092 flips the filter for the
+other read kinds. The gate as data is v26's (#1089, #1090): the canonical shape is what the data form replaces.)*
+
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
 text or an instruction — offering a snippet's choices, never the macro's own members), its
