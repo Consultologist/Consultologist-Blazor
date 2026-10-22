@@ -884,3 +884,27 @@ fluent-button.package-tag__button::part(control) {
 	align-items: baseline;
 	gap: 0.25rem 0.4rem;
 }
+
+/* #1091: a case as a table under the case subject's row — one line per declared value, a closed pick each, the line written. */
+.branch-table {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.branch-table__row {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.25rem 0.5rem;
+}
+
+.branch-table__value {
+	font-family: var(--consultologist-font-mono, monospace);
+	font-size: 0.8rem;
+	min-width: 7rem;
+}
+
+fluent-select.branch-table__pick {
+	font-size: 0.8rem;
+}
