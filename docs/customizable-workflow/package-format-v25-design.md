@@ -636,7 +636,7 @@ across every record ever written, and stay; the provenance document may say "the
   plain-text toggle. "+ variable" becomes an **insert reference** palette inserting
   `{{ input.x }}`, `{{ node.x.content | concept_context }}`, `{{ snippet.x.content }}`,
   `{{ macro.x.content }}`, `{{ macro.x.prompt }}` at the cursor. Each pane lists what the text reads and, for a
-  snippet or macro, where it is read.
+  snippet, a prompt or a macro, where it is read — as descriptive rows (#1085, #1086).
 - **Macro pane.** Title / id / file / **instruction** → text → **Where it goes**: *Placed on*
   rows (#1077) and one *Read by* list of descriptive rows (#1085, derived).
 - **Snippets pane** (was Data): `+ Snippet`, `+ Snippet folder`; a folder item's `when`.
@@ -781,6 +781,18 @@ pane, its items do); a prompt run by several nodes is one row (the read sits onc
 the prompt pane's and the node pane's to say); a macro's instruction is labelled as the macro with "the instruction".
 Inline reads first, then text reads; no remove, no reorder — the palette inserts, the text editor removes. Reverses
 the "stay chips" sentence of #1077; the one "Not used yet" state stands.)*
+
+*(#1086, 2026-10-22, Milestone 31 — the four surfaces say the same thing the same way: **Reads** as the shared
+descriptive rows under every text pane's palette (snippet, folder item, prompt, macro text and instruction, the node
+pane's inline prompt editor) and on the node pane's Reads section — grouped by kind in a fixed order, macros
+(`.prompt` inline, then `.content`) → snippets (then folders iterated) → inputs → nodes (one row per member read) →
+the fan item's members → run and profile facts — the thing read by its label where it has one (`Macro 'Tool note'`,
+`Input 'Referral notes'`, `Node 'Extract concepts'`), the member as the text spells it, a link to its pane where there
+is one, a computed node's parameter read noted; the comma-joined "Reads: …" line is gone, the resting "Reads: nothing
+yet" stays. **Read by** as the same rows on the snippet pane (the reader · reads `snippet.<id>.content`; a folder's
+reader "iterates its items"; a fanning node, by its label, "fans it" — a note-only row) and, new, on the prompt pane
+(the nodes running it — `Node 'Section notes' · runs this prompt for each item of snippet.sections` — or "Read by
+nothing yet"). A prompt walked per node is one row. `ReadsList`, `TemplateRead` and `SnippetReader` are retired.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
