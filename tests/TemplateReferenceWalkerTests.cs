@@ -661,4 +661,95 @@ public class TemplateReferenceWalkerTests
         Assert.Equal(new TemplateNodeRead(true, false), refs.Nodes["all"]);
         Assert.Single(refs.Errors);
     }
+
+    // ----- #1088: read occurrences and their guard -----
+
+    private const string Read = "{{ macro.letrozole.prompt }}";
+
+    private static TemplateReadOccurrence Occurrence(string text, string member = "macro.letrozole.prompt") =>
+        Assert.Single(TemplateFixtures.Ok(text).Occurrences.Where(o => o.Member == member));
+
+    private static string Block(string text, TemplateReadOccurrence o) => text[o.Start..o.End];
+
+    private static string GuardBlock(string text, TemplateReadOccurrence o) => text[o.GuardStart..o.GuardEnd];
+
+    [Fact]
+    public void AnUnguardedRead_IsAnOccurrence_WithItsBlockSpan_AndNoGuard()
+    {
+        const string text = "Assess.\n" + Read + "\nAfter.";
+        var o = Occurrence(text);
+
+        Assert.Equal(Read, Block(text, o));
+        Assert.Null(o.Guard);
+        Assert.False(o.GuardCanonical);
+        Assert.Equal((-1, -1), (o.GuardStart, o.GuardEnd));
+    }
+
+    [Fact]
+    public void TheCanonicalOneLiner_IsGuarded_AndCanonical_WithTheWholeLineAsTheGuardBlock()
+    {
+        const string line = "{{~ if input.kind == \"new\" ~}}" + Read + "{{~ end ~}}";
+        const string text = "History: {{ input.notes }}\n" + line + "\n";
+        var o = Occurrence(text);
+
+        Assert.Equal(Read, Block(text, o));
+        Assert.Equal("input.kind == \"new\"", o.Guard);
+        Assert.True(o.GuardCanonical);
+        Assert.Equal(line, GuardBlock(text, o));
+    }
+
+    [Fact]
+    public void AHandWrittenThreeLineGuard_IsCanonical_AndItsBlockRunsFromIfToEnd()
+    {
+        const string guard = "{{ if input.kind == \"new\" }}\n" + Read + "\n{{ end }}";
+        const string text = "History.\n" + guard + "\nAfter.";
+        var o = Occurrence(text);
+
+        Assert.Equal("input.kind == \"new\"", o.Guard);
+        Assert.True(o.GuardCanonical);
+        Assert.Equal(guard, GuardBlock(text, o));
+    }
+
+    [Fact]
+    public void AnElseBranch_ProseInTheBlock_OrAReadInTheElse_IsGuardedButNotCanonical()
+    {
+        var withElse = Occurrence("{{ if input.kind == \"new\" }}" + Read + "{{ else }}x{{ end }}");
+        Assert.Equal("input.kind == \"new\"", withElse.Guard);
+        Assert.False(withElse.GuardCanonical);
+
+        var withProse = Occurrence("{{ if input.kind == \"new\" }}" + Read + " extra{{ end }}");
+        Assert.Equal("input.kind == \"new\"", withProse.Guard);
+        Assert.False(withProse.GuardCanonical);
+
+        var inElse = Occurrence("{{ if input.kind == \"new\" }}x{{ else }}" + Read + "{{ end }}");
+        Assert.Equal("input.kind == \"new\"", inElse.Guard);
+        Assert.False(inElse.GuardCanonical);
+    }
+
+    [Fact]
+    public void ANestedIf_IsGuardedByTheInnerOne_AndAForBetween_IsNotCanonical()
+    {
+        const string nested = "{{ if input.kind == \"new\" }}{{ if input.kind != \"follow_up\" }}" + Read + "{{ end }}{{ end }}";
+        var inner = Occurrence(nested);
+        Assert.Equal("input.kind != \"follow_up\"", inner.Guard);
+        Assert.True(inner.GuardCanonical);
+        Assert.Equal("{{ if input.kind != \"follow_up\" }}" + Read + "{{ end }}", GuardBlock(nested, inner));
+
+        var throughFor = Occurrence("{{ if input.kind == \"new\" }}{{ for s in snippet.sections }}" + Read + "{{ end }}{{ end }}");
+        Assert.Equal("input.kind == \"new\"", throughFor.Guard);
+        Assert.False(throughFor.GuardCanonical);
+    }
+
+    [Fact]
+    public void ReadsAreRecorded_InTextOrder_ForEveryMember_AndAPipedReadIsNone()
+    {
+        const string text = Read + "\n{{ snippet.standards.content }}\n{{ node.extract.value }}\n" + Read + "\n{{ node.extract.content | concept_context }}";
+        var refs = TemplateFixtures.Ok(text);
+
+        Assert.Equal(
+            new[] { "macro.letrozole.prompt", "snippet.standards.content", "node.extract.value", "macro.letrozole.prompt" },
+            refs.Occurrences.Select(o => o.Member));
+        Assert.All(refs.Occurrences, o => Assert.Equal("{{ " + o.Member + " }}", Block(text, o)));
+        Assert.True(refs.Occurrences[0].Start < refs.Occurrences[3].Start);
+    }
 }

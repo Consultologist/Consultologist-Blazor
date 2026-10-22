@@ -4997,13 +4997,18 @@
     /// where there is one. Every text pane's palette, the node pane's Reads section and the
     /// Prompts pane read this.
     /// </summary>
-    private IReadOnlyList<TemplateReadRow> ReadsOf(PF.TemplateReferences references)
+    private IReadOnlyList<TemplateReadRow> ReadsOf(PF.TemplateReferences references, string? file = null, string? subject = null)
     {
         var rows = new List<TemplateReadRow>();
 
         foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
         {
-            rows.Add(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.prompt", "inline", null));
+            // #1088: the guard around the read, editable when the pane edits the owning file.
+            var member = $"macro.{macro}.prompt";
+            var sites = references.Occurrences.Where(o => o.Member == member).ToList();
+            rows.Add(new TemplateReadRow(
+                $"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, member, "inline", null,
+                Below: sites.Count == 0 ? null : ReadGuardBelow((file, subject ?? "the text", member, sites))));
         }
 
         foreach (var macro in references.MacroContents.Order(StringComparer.Ordinal))
@@ -5093,12 +5098,25 @@
         foreach (var macroGroup in sites.GroupBy(s => s.Macro, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
             var macroId = macroGroup.Key;
+            var member = $"macro.{macroId}.prompt";
             var via = new List<(string Label, string? Key)>();
+            var guards = new List<(string Holder, IReadOnlyList<PF.TemplateReadOccurrence> Sites)>();
 
             foreach (var holderGroup in macroGroup.GroupBy(s => (s.HolderKind, s.HolderId)))
             {
                 var first = holderGroup.First();
                 var label = char.ToLowerInvariant(first.HolderSubject[0]) + first.HolderSubject[1..];
+
+                // #1088: the holder's guard around the read, read-only here.
+                if (walk.Templates.FirstOrDefault(t => t.Kind == first.HolderKind && t.Id == first.HolderId) is { } holderTemplate)
+                {
+                    var holderSites = holderTemplate.References.Occurrences.Where(o => o.Member == member && o.Guard is not null).ToList();
+
+                    if (holderSites.Count > 0)
+                    {
+                        guards.Add((label, holderSites));
+                    }
+                }
                 var items = holderGroup
                     .Where(s => s.FanItem is { } item && folder is not null && first.HolderId != PF.WorkflowDerivedEdges.SnippetItemKey(folder, item))
                     .Select(s => s.FanItem!)
@@ -5137,15 +5155,27 @@
             rows.Add(new TemplateReadRow(
                 $"Macro '{MacroLabel(macroId)}'",
                 EffectiveMacros.FirstOrDefault(m => m.Id == macroId)?.File,
-                $"macro.{macroId}.prompt",
+                member,
                 "inline",
                 null,
                 via,
-                warning));
+                warning,
+                guards.Count == 0 ? null : HolderGuardsBelow((member, guards))));
         }
 
         return rows;
     }
+
+    /// <summary>#1088: on the node pane, each holder's guard around the read as a sentence — read-only, the text's own pane edits it.</summary>
+    private RenderFragment<(string Member, IReadOnlyList<(string Holder, IReadOnlyList<PF.TemplateReadOccurrence> Sites)> Guards)> HolderGuardsBelow => spec => @<text>
+        @foreach (var (holder, sites) in spec.Guards)
+        {
+            <div class="template-read-row__holder-guard">
+                <span class="muted-text">@holder:</span>
+                @ReadGuardBelow((null, holder, spec.Member, sites))
+            </div>
+        }
+    </text>;
 
     private RenderFragment NodeReadsSection(WorkflowManifestReader.NodeView node) => @<text>
         <div class="node-section node-reads-section">
@@ -5321,12 +5351,12 @@
     /// that is no file): its name for the labels, the choices it offers, its walk (reads and
     /// warnings), and how the picked snippet is appended.
     /// </summary>
-    private sealed record PaletteTarget(string Name, IReadOnlyList<ReferenceChoice> Choices, PF.WorkflowDerivedEdges.WalkedTemplate? Walked, Func<string, Task> Append, string Noun = "the text");
+    private sealed record PaletteTarget(string Name, IReadOnlyList<ReferenceChoice> Choices, PF.WorkflowDerivedEdges.WalkedTemplate? Walked, Func<string, Task> Append, string Noun = "the text", string? File = null);
 
-    /// <summary>A file's palette target: the choices for its text, its walk, appended through the text editor.</summary>
+    /// <summary>A file's palette target: the choices for its text, its walk, appended through the text editor; the file names where a read row's guard is rewritten (#1088).</summary>
     private PaletteTarget FilePaletteTarget(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText) =>
         new(file, ReferenceChoices(file, fanNode, isMacroText), TemplateWalkOf(file), snippet => OnTextChangedAsync(file, Appended(GetText(file), snippet)),
-            isMacroText ? "the macro text" : file.StartsWith("prompts/", StringComparison.Ordinal) ? "the prompt" : "the snippet");
+            isMacroText ? "the macro text" : file.StartsWith("prompts/", StringComparison.Ordinal) ? "the prompt" : "the snippet", file);
 
     /// <summary>
     /// #1044: a macro's instruction as a palette target — the choices a snippet gets (never the
@@ -5655,7 +5685,7 @@
         </details>
         @if (walked is { } template)
         {
-            var reads = ReadsOf(template.References);
+            var reads = ReadsOf(template.References, target.File, target.Name);
             @if (reads.Count == 0)
             {
                 <p class="muted-text template-reads">Reads: nothing yet</p>
@@ -5683,7 +5713,7 @@
     /// </summary>
     private sealed record TemplateReadRow(
         string Label, string? Key, string Member, string? Qualifier, string? Note,
-        IReadOnlyList<(string Label, string? Key)>? Via = null, string? Warning = null);
+        IReadOnlyList<(string Label, string? Key)>? Via = null, string? Warning = null, RenderFragment? Below = null);
 
     /// <summary>
     /// #1085: the shared descriptive read rows — "reader · reads member (qualifier) · note" —
@@ -5749,10 +5779,99 @@
                     {
                         <p class="muted-text template-read-row__warning node-inline-macros__warning">@warning</p>
                     }
+                    @if (readRow.Below is { } below)
+                    {
+                        <div class="template-read-row__below">@below</div>
+                    }
                 </div>
             }
         </div>
     </text>;
+
+    // ----- #1088: a read's guard — the {{~ if … ~}} around it, set from the row -----
+
+    private static string ReadBlock(string member) => $"{{{{ {member} }}}}";
+
+    /// <summary>The canonical line the row writes: the bare read, or the one-line guard that owns no whitespace.</summary>
+    private static string GuardedLine(string member, string? when) =>
+        when is null ? ReadBlock(member) : $"{{{{~ if {when} ~}}}}{ReadBlock(member)}{{{{~ end ~}}}}";
+
+    /// <summary>
+    /// #1088: the builder target for one read occurrence in a file the pane edits — the
+    /// guard the walker found is its value; a change rewrites the text in place (a
+    /// canonical guard's whole block, or the bare read's block) with the canonical line.
+    /// </summary>
+    private ConditionTarget ReadGuardTarget(string file, string subject, string member, PF.TemplateReadOccurrence site) =>
+        new($"read-guard:{file}\n{site.Start}", $"{member} in {subject}", site.Guard, when => RewriteReadGuard(file, member, site, when));
+
+    private void RewriteReadGuard(string file, string member, PF.TemplateReadOccurrence site, string? when)
+    {
+        var text = GetText(file);
+
+        // The walk is of the pending text, so a row is current; this only refuses a stale one.
+        if (site.Start < 0 || site.End > text.Length || !text[site.Start..site.End].Contains(member, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var (start, end) = site.Guard is not null && site.GuardCanonical ? (site.GuardStart, site.GuardEnd) : (site.Start, site.End);
+        ApplyTextChange(file, text[..start] + GuardedLine(member, when) + text[end..]);
+    }
+
+    /// <summary>
+    /// #1088: what sits under a macro.&lt;id&gt;.prompt read row — on a pane that edits the
+    /// owning file, the "Included when" builder over the one occurrence and the line it
+    /// writes (a non-canonical guard, or a member read more than once, is read-only: edit
+    /// in the text); elsewhere the guard as a sentence.
+    /// </summary>
+    private RenderFragment<(string? File, string Subject, string Member, IReadOnlyList<PF.TemplateReadOccurrence> Sites)> ReadGuardBelow => spec => @<text>
+        @if (spec.File is { } file && spec.Sites.Count == 1 && (spec.Sites[0].Guard is null || spec.Sites[0].GuardCanonical))
+        {
+            var site = spec.Sites[0];
+            @ConditionField(("Included when", ReadGuardTarget(file, spec.Subject, spec.Member, site), "Always"))
+            <code class="template-read-row__writes" aria-label="@($"Line written for {spec.Member} in {spec.Subject}")">@GuardedLine(spec.Member, site.Guard)</code>
+        }
+        else
+        {
+            @if (spec.File is not null && spec.Sites.Count > 1)
+            {
+                <p class="muted-text template-read-row__guard">read @spec.Sites.Count times — edit the guards in the text</p>
+            }
+            @foreach (var site in spec.Sites)
+            {
+                if (site.Guard is { } guard)
+                {
+                    <p class="muted-text template-read-row__guard">
+                        @if (site.GuardCanonical)
+                        {
+                            <text>included when </text><code>@guard</code>
+                        }
+                        else
+                        {
+                            <text>guarded by </text><code>@guard</code><text> · edit in the text</text>
+                        }
+                    </p>
+                }
+            }
+        }
+    </text>;
+
+    /// <summary>The file a walked template's text is edited as — the key GetText and the text editor use — or null for an instruction.</summary>
+    private string? TemplateFileOf(PF.WorkflowDerivedEdges.WalkedTemplate template)
+    {
+        if (template.Kind == PF.TemplateKind.Instruction)
+        {
+            return null;
+        }
+
+        if (template.Kind == PF.TemplateKind.Snippet && template.Id.IndexOf('/') is var slash && slash > 0
+            && addedItems.FirstOrDefault(a => a.Collection == template.Id[..slash] && a.Id == template.Id[(slash + 1)..]) is { } added)
+        {
+            return AddedPath(added);
+        }
+
+        return PaneKeyOf(template);
+    }
 
     /// <summary>The snippet pane's "Read by": the shared descriptive rows (#1086), each opening the reader's pane, or the empty sentence.</summary>
     private RenderFragment<(string Id, bool Folder)> SnippetReadersList => spec => @<text>
@@ -6970,6 +7089,16 @@
                 }
 
                 var row = ReaderRowOf(template, member, qualifier);
+
+                // #1088: a .prompt read's guard, editable from the macro's side — the rewrite targets the reader's file.
+                var sites = member.EndsWith(".prompt", StringComparison.Ordinal)
+                    ? template.References.Occurrences.Where(o => o.Member == member).ToList()
+                    : new List<PF.TemplateReadOccurrence>();
+
+                if (sites.Count > 0)
+                {
+                    row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites)) };
+                }
 
                 if (seen.Add((row.Label, row.Key)))
                 {
@@ -13298,27 +13427,34 @@
 
     private async Task OnTextChangedAsync(string path, string value)
     {
+        ApplyTextChange(path, value);
+        await PendingChangedAsync();
+    }
 
+    /// <summary>
+    /// The text edit itself, without the pending snapshot — the text editor's change
+    /// through <see cref="OnTextChangedAsync"/>, and (#1088) a read row's guard rewrite,
+    /// whose builder writes synchronously and whose commit snapshots once.
+    /// </summary>
+    private void ApplyTextChange(string path, string value)
+    {
         // A pending node's or standalone pending prompt's text lives on its
         // draft object, not in edits.
         if (AddedNodeForPromptFile(path) is { } addedNode)
         {
             addedNode.PromptText = value;
-            await PendingChangedAsync();
             return;
         }
 
         if (AddedPromptForFile(path) is { } addedPrompt)
         {
             addedPrompt.Text = value;
-            await PendingChangedAsync();
             return;
         }
 
         if (AddedMacroForFile(path) is { } addedMacroDraft)
         {
             addedMacroDraft.Text = value;
-            await PendingChangedAsync();
             return;
         }
 
@@ -13326,7 +13462,6 @@
         if (AddedFormatForFile(path) is { } addedFormatId)
         {
             addedFormats[addedFormatId] = value;
-            await PendingChangedAsync();
             return;
         }
 
@@ -13335,7 +13470,6 @@
         if (AddedScalarIdForPath(path) is { } pendingScalar)
         {
             addedScalars[pendingScalar] = value;
-            await PendingChangedAsync();
             return;
         }
 
@@ -13347,8 +13481,6 @@
         {
             edits[path] = value;
         }
-
-        await PendingChangedAsync();
     }
 
     private bool CollectionHasMembershipChanges(WorkflowManifestReader.CollectionView collection) =>

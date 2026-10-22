@@ -861,3 +861,26 @@ fluent-button.package-tag__button::part(control) {
 	margin: 0;
 	padding-left: 1.6rem;
 }
+
+/* #1088: what sits under a read row — the "Included when" builder, the line it writes, or the guard as a sentence. */
+.template-read-row__below {
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	padding-left: 1.6rem;
+}
+
+.template-read-row__writes {
+	font-size: 0.8rem;
+}
+
+.template-read-row__guard {
+	margin: 0;
+}
+
+.template-read-row__holder-guard {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 0.25rem 0.4rem;
+}
