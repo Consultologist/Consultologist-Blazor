@@ -255,6 +255,13 @@ declared sections:
   top-level enum input the template reads, unchosen by default, and — on a
   prompt read by a node fanning a snippet folder — a "preview as item" select
   over the folder's items (#1109). A raw prompt keeps its verbatim preview.
+- **Formats** (#1097, 25 only) — each package format is a nav entry with its own
+  pane: the strip, "Used by" (the nodes producing it, each a link), the schema
+  editor with the registry's sentences inline, Remove (while no node names it)
+  and a per-format Discard; `+ Format` is a pane that lands on the new format;
+  the catalogue's formats sit in a collapsed "catalogue (N)" folder of read-only
+  panes with their detail line and schema. A node's format picker carries an
+  "open" link to the format's pane.
 - **Renderers** (#1098, 25 only) — the engine's renderer pipes as read-only
   entries after Formats, one pane each: the format it renders, the spelling
   to insert per node of that format (with a Copy button), and "Used by" —

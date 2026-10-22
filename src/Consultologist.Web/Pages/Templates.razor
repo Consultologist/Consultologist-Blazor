@@ -515,12 +515,62 @@
                         @* v25 (C1 #1007, design § 13): formats replace schemas — the package's
                            own custom formats (edited here) and the catalogue's (read-only). *@
                         <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Braces())" /> Formats</span>
+                        @* #1097: one entry per package format (a dot when edited or added, struck when
+                           removed), "+ Format" as a pane, then the catalogue's formats as a collapsed
+                           folder of read-only panes. *@
+                        @foreach (var navFormat in LiveFormats)
+                        {
+                            var navFormatKey = FormatKeyFor(navFormat.Id);
+                            var navFormatView = navFormat;
+                            <button type="button"
+                                    class="editor-nav__item @(selectedKey == navFormatKey ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(navFormatKey)">
+                                <span class="editor-nav__dot">@(edits.ContainsKey(navFormatView.File) || addedFormats.ContainsKey(navFormatView.Id) ? "●" : "")</span>
+                                <span>@navFormatView.Id</span>
+                            </button>
+                        }
+                        @foreach (var removedFormat in RemovedFormatViews)
+                        {
+                            var restoreFormat = removedFormat;
+                            <div class="editor-nav__item editor-nav__item--removed" data-format-removed="@removedFormat.Id">
+                                <span class="editor-nav__dot"></span>
+                                <span class="editor-nav__strike">@removedFormat.Id</span>
+                                <button type="button" class="editor-nav__restore"
+                                        aria-label="@($"Restore format {removedFormat.Id}")"
+                                        @onclick="() => RestoreFormatAsync(restoreFormat)">(restore)</button>
+                            </div>
+                        }
                         <button type="button"
-                                class="editor-nav__item @(selectedKey == FormatsKey ? "editor-nav__item--selected" : "")"
-                                @onclick="() => Select(FormatsKey)">
-                            <span class="editor-nav__dot">@(FormatsCanDiscard ? "●" : "")</span>
-                            <span>Formats</span>
+                                class="editor-nav__item editor-nav__add @(selectedKey == AddFormatKey ? "editor-nav__item--selected" : "")"
+                                @onclick="() => Select(AddFormatKey)">
+                            <span class="editor-nav__dot"></span>
+                            <span>+ Format</span>
                         </button>
+                        <details class="editor-nav__folder editor-nav__folder--catalogue">
+                            <summary class="editor-nav__item editor-nav__folder-summary">
+                                <span class="editor-nav__chevron" aria-hidden="true">&#x203A;</span>
+                                <span class="editor-nav__dot"></span>
+                                <span>catalogue (@(formatsCatalogUnavailable ? "unavailable" : (formatsCatalog?.Formats?.Count ?? 0).ToString()))</span>
+                            </summary>
+                            @if (formatsCatalogUnavailable)
+                            {
+                                <div class="editor-nav__item editor-nav__item--nested editor-nav__item--removed">
+                                    <span class="editor-nav__dot"></span>
+                                    <span class="muted-text">The format catalogue is unavailable.</span>
+                                </div>
+                            }
+                            @foreach (var catalogueEntry in formatsCatalog?.Formats ?? Array.Empty<WorkflowFormatEntryView>())
+                            {
+                                var catalogueKey = CatalogueKeyFor(catalogueEntry.Id);
+                                var catalogueId = catalogueEntry.Id;
+                                <button type="button"
+                                        class="editor-nav__item editor-nav__item--nested @(selectedKey == catalogueKey ? "editor-nav__item--selected" : "")"
+                                        @onclick="() => Select(catalogueKey)">
+                                    <span class="editor-nav__dot"></span>
+                                    <span>@catalogueId</span>
+                                </button>
+                            }
+                        </details>
                         @* #1098: Renderers — the engine's renderer pipes (TemplatePipes.All), each a
                            read-only entry: a pipe is defined in code, not in the manifest or the
                            catalogue, so there is nothing to add, edit or discard here. *@
@@ -1000,126 +1050,134 @@
                             <p class="muted-text">A fork starts with no title and no tags. Publish your version first, then name it here.</p>
                         }
                     }
-                    else if (selectedKey == FormatsKey)
+                    else if (selectedKey == AddFormatKey && EffectiveSpecVersion >= 25)
                     {
-                        @* v25 (C1 #1007, design § 3.6/§ 13): the package's own formats — custom
-                           object shapes the engine validates replies against, each a JSON file
-                           edited here — and the catalogue's formats, read-only with the line that
-                           says who produces them. The agent yaml is never shown. *@
+                        @* #1097: "+ Format" as a pane (the + Macro idiom) — the id field and Create;
+                           the new format lands on its own pane. *@
                         <div class="pane-header">
                             <div>
-                                <h3 class="panel-title">Formats</h3>
+                                <h3 class="panel-title">New format</h3>
                                 <p class="muted-text">
-                                    What a node produces and who produces it. The package's own formats are
-                                    custom shapes: a JSON schema the engine validates the agent's reply against,
-                                    authored here. The catalogue's formats are the engine's — attested by their
-                                    agents or computed by the engine — and read-only. A node picks a format on
-                                    its card.
+                                    A custom shape the package owns: a JSON schema the engine validates the
+                                    agent's reply against, authored on the format's pane. The catalogue's
+                                    formats are the engine's — attested by their agents or computed by the
+                                    engine — and read-only. A node picks a format on its card.
                                 </p>
                             </div>
-                            @PaneDiscardButton(FormatsKey, FormatsCanDiscard, RevertFormatsEdits)
                         </div>
-                        @if (newFormatError != null)
-                        {
-                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newFormatError</FluentMessageBar>
-                        }
-                        <div class="new-item-fields" data-format-add>
-                            <label class="input-field">
-                                <span>new format id (snake_case)</span>
-                                <FluentTextField @bind-Value="newFormatId" Placeholder="medication_list" aria-label="New format id" />
-                            </label>
-                            <div class="action-row">
-                                <FluentButton Appearance="Appearance.Accent" @onclick="AddFormatAsync">Create format</FluentButton>
-                            </div>
-                        </div>
-                        <span class="node-section__head">Package formats</span>
-                        @if (!LiveFormats.Any() && !RemovedFormatViews.Any())
-                        {
-                            <EmptyState Compact Icon="@(new Icons.Regular.Size20.DocumentText())"
-                                        Description="This package declares no formats of its own — every node uses a catalogue format." />
-                        }
-                        @foreach (var format in LiveFormats)
-                        {
-                            var declaredFormat = format;
-                            var readers = FormatReferencedBy(format.Id);
-                            var body = GetText(format.File);
-                            var bodyErrors = FormatBodyErrors(format.Id, body);
-                            <div class="package-field" data-format="@format.Id">
-                                <div class="pane-header">
-                                    <div>
-                                        <span class="panel-title">@format.Id</span>
-                                        <span class="muted-text">@format.File · producer custom</span>
-                                    </div>
-                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove format"
-                                                  aria-label="@($"Remove format {format.Id}")"
-                                                  Disabled="@(readers.Count > 0)"
-                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                  @onclick="() => RemoveFormatAsync(declaredFormat)">Remove</FluentButton>
-                                </div>
-                                @if (readers.Count > 0)
-                                {
-                                    <span class="muted-text">Used by @(string.Join(", ", readers.Select(reader => $"'{reader}'"))). Change their format before it can be removed.</span>
-                                }
-                                else
-                                {
-                                    <span class="muted-text">Not yet used by any node — a node picks it in its format field.</span>
-                                }
-                                <FluentTextArea Class="format-body"
-                                                Value="@body"
-                                                ValueChanged="@(value => OnTextChangedAsync(declaredFormat.File, value))"
-                                                aria-label="@($"Format body for {format.Id}")"
-                                                Rows="14" />
-                                @foreach (var bodyError in bodyErrors)
-                                {
-                                    <span class="format-error">@bodyError</span>
-                                }
-                            </div>
-                        }
-                        @foreach (var removed in RemovedFormatViews)
-                        {
-                            var restoreFormat = removed;
-                            <div class="package-field editor-nav__item--removed" data-format-removed="@removed.Id">
-                                <span class="editor-nav__strike">@removed.Id</span>
-                                <button type="button" class="editor-nav__restore"
-                                        aria-label="@($"Restore format {removed.Id}")"
-                                        @onclick="() => RestoreFormatAsync(restoreFormat)">(restore)</button>
-                            </div>
-                        }
-                        <span class="node-section__head">Catalogue formats</span>
                         @if (formatsCatalogUnavailable)
                         {
                             <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
                                 The format catalogue is unavailable; catalogue formats cannot be picked until it loads. A node keeps the format it names.
                             </FluentMessageBar>
                         }
-                        else if (formatsCatalog is { } catalogue)
+                        @if (newFormatError != null)
                         {
-                            <p class="muted-text">@catalogue.Ref</p>
-                            @foreach (var entry in catalogue.Formats ?? Array.Empty<WorkflowFormatEntryView>())
-                            {
-                                <div class="package-field format-catalogue" data-catalogue-format="@entry.Id">
-                                    <div class="pane-header">
-                                        <div>
-                                            <span class="panel-title">@entry.Id</span>
-                                            <span class="muted-text">@entry.Type · @entry.Producer</span>
-                                        </div>
-                                    </div>
-                                    @if (!string.IsNullOrWhiteSpace(entry.Description))
-                                    {
-                                        <span class="muted-text">@entry.Description</span>
-                                    }
-                                    <span class="muted-text format-catalogue__detail">@FormatDetailLine(entry, catalogue)</span>
-                                    @if (entry.Parameters is { Count: > 0 } entryParameters)
-                                    {
-                                        <span class="muted-text">parameters: @(string.Join(", ", entryParameters.Select(pair => $"{pair.Key} ({pair.Value.Kind}{(pair.Value.Format != null ? $" of {pair.Value.Format}" : "")})")))</span>
-                                    }
-                                    @if (entry.Schema is { } entrySchema)
-                                    {
-                                        <pre class="schema-body">@JsonSerializer.Serialize(entrySchema, new JsonSerializerOptions { WriteIndented = true })</pre>
-                                    }
-                                </div>
-                            }
+                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newFormatError</FluentMessageBar>
                         }
+                        <div class="new-item-fields" data-format-add>
+                            <label class="input-field">
+                                <span>id (snake_case)</span>
+                                <FluentTextField @bind-Value="newFormatId" Placeholder="medication_list" aria-label="New format id" />
+                            </label>
+                        </div>
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Accent" @onclick="AddFormatAsync">Create format</FluentButton>
+                        </div>
+                    }
+                    else if (SelectedFormat is { } format)
+                    {
+                        @* #1097 (was the one Formats scroll, C1 #1007): a package format's own pane —
+                           the header strip, who produces it (the nodes naming it, as read rows), the
+                           schema editor with the registry's sentences inline, "How formats work". *@
+                        var formatReaders = FormatReferencedBy(format.Id);
+                        var formatBody = GetText(format.File);
+                        var formatBodyErrors = FormatBodyErrors(format.Id, formatBody);
+                        var formatUsers = FormatUserRows(format.Id);
+                        <div class="format-pane" data-format="@format.Id">
+                            <div class="pane-header">
+                                <div>
+                                    <h3 class="panel-title">@format.Id</h3>
+                                    <p class="pane-identity muted-text">
+                                        <span class="pane-identity__item">file <code>@format.File</code></span>
+                                        <span class="pane-identity__sep"> · </span>
+                                        <span class="pane-identity__item">producer custom</span>
+                                    </p>
+                                </div>
+                                <div class="pane-header__actions">
+                                    <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                                  Title="@(formatReaders.Count > 0 ? "Change the nodes' format first" : "Remove format")"
+                                                  aria-label="@($"Remove format {format.Id}")"
+                                                  Disabled="@(formatReaders.Count > 0)"
+                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                  @onclick="() => RemoveFormatAsync(format)">Remove format</FluentButton>
+                                    @PaneDiscardButton(FormatKeyFor(format.Id), FormatCanDiscard(format), () => RevertFormatEdits(format))
+                                </div>
+                            </div>
+                            <span class="node-section__head">Used by</span>
+                            @if (formatUsers.Count > 0)
+                            {
+                                @TemplateReadRows(($"Nodes using {format.Id}", formatUsers))
+                                <p class="muted-text format-users__note">Change their format before it can be removed.</p>
+                            }
+                            else
+                            {
+                                <p class="muted-text format-users__empty">Not yet used by any node — a node picks it in its format field.</p>
+                            }
+                            <span class="node-section__head">Schema</span>
+                            <FluentTextArea Class="format-body"
+                                            Value="@formatBody"
+                                            ValueChanged="@(value => OnTextChangedAsync(format.File, value))"
+                                            aria-label="@($"Format body for {format.Id}")"
+                                            Rows="14" />
+                            @foreach (var bodyError in formatBodyErrors)
+                            {
+                                <span class="format-error">@bodyError</span>
+                            }
+                            @FormatsHelp
+                        </div>
+                    }
+                    else if (SelectedCatalogueEntry is { } catalogueFormat && formatsCatalog is { } catalogue)
+                    {
+                        @* #1097: a catalogue format's own pane — read-only: the strip, the description,
+                           the detail line, the parameters, the schema, and the nodes producing it. *@
+                        var catalogueUsers = FormatUserRows(catalogueFormat.Id);
+                        <div class="format-pane format-catalogue" data-catalogue-format="@catalogueFormat.Id">
+                            <div class="pane-header">
+                                <div>
+                                    <h3 class="panel-title">@catalogueFormat.Id</h3>
+                                    <p class="pane-identity muted-text">
+                                        <span class="pane-identity__item">@catalogueFormat.Type · @catalogueFormat.Producer</span>
+                                        <span class="pane-identity__sep"> · </span>
+                                        <span class="pane-identity__item">@catalogue.Ref</span>
+                                    </p>
+                                </div>
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(catalogueFormat.Description))
+                            {
+                                <p class="muted-text">@catalogueFormat.Description</p>
+                            }
+                            <p class="muted-text format-catalogue__detail">@FormatDetailLine(catalogueFormat, catalogue)</p>
+                            @if (catalogueFormat.Parameters is { Count: > 0 } catalogueParameters)
+                            {
+                                <p class="muted-text">parameters: @(string.Join(", ", catalogueParameters.Select(pair => $"{pair.Key} ({pair.Value.Kind}{(pair.Value.Format != null ? $" of {pair.Value.Format}" : "")})")))</p>
+                            }
+                            @if (catalogueFormat.Schema is { } catalogueSchema)
+                            {
+                                <span class="node-section__head">Schema</span>
+                                <pre class="schema-body">@JsonSerializer.Serialize(catalogueSchema, new JsonSerializerOptions { WriteIndented = true })</pre>
+                            }
+                            <span class="node-section__head">Used by</span>
+                            @if (catalogueUsers.Count > 0)
+                            {
+                                @TemplateReadRows(($"Nodes using {catalogueFormat.Id}", catalogueUsers))
+                            }
+                            else
+                            {
+                                <p class="muted-text format-users__empty">No node produces <code>@catalogueFormat.Id</code> yet — a node picks it in its format field.</p>
+                            }
+                            @FormatsHelp
+                        </div>
                     }
                     else if (SelectedRendererName is { } rendererName)
                     {
@@ -1917,6 +1975,7 @@
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
                                              FormatOptions="@FormatOptions"
+                                             OnOpenFormat="OpenFormatPane"
                                              NodeOperandOptions="@NodeOperandChoices"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RemovedNodes="@RemovedNodes"
@@ -2254,6 +2313,7 @@
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
                                              FormatOptions="@FormatOptions"
+                                             OnOpenFormat="OpenFormatPane"
                                              NodeOperandOptions="@NodeOperandChoices"
                                              NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
@@ -4633,8 +4693,14 @@
         || (key == PackageKey && EffectiveSpecVersion >= 9)
         // #746/#759: the schemas pane is always reachable now that a contract can be added.
         || key == SchemasKey
-        // v25 (C1 #1007): the Formats pane, at 25 alone.
-        || (key == FormatsKey && EffectiveSpecVersion >= 25)
+        // #1097: a package format's pane, a catalogue format's pane and "+ Format", at 25 alone.
+        || (key == AddFormatKey && EffectiveSpecVersion >= 25)
+        || (key.StartsWith(FormatKeyPrefix, StringComparison.Ordinal)
+            && EffectiveSpecVersion >= 25
+            && LiveFormats.Any(f => FormatKeyFor(f.Id) == key))
+        || (key.StartsWith(CatalogueKeyPrefix, StringComparison.Ordinal)
+            && EffectiveSpecVersion >= 25
+            && (formatsCatalog?.Formats?.Any(e => CatalogueKeyFor(e.Id) == key) ?? false))
         || (key.StartsWith(NewKeyPrefix, StringComparison.Ordinal)
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
@@ -6896,7 +6962,47 @@
 
     // ----- v25 (C1 #1007): the Formats pane's pending state -----
 
-    private const string FormatsKey = "formats";
+    // #1097: a package format's pane, a catalogue format's pane, and "+ Format" — each its own entry at 25.
+    private const string FormatKeyPrefix = "format:";
+    private const string CatalogueKeyPrefix = "catalogue:";
+    private const string AddFormatKey = "add-format";
+
+    private static string FormatKeyFor(string formatId) => FormatKeyPrefix + formatId;
+
+    private static string CatalogueKeyFor(string formatId) => CatalogueKeyPrefix + formatId;
+
+    private WorkflowManifestReader.FormatView? SelectedFormat =>
+        selectedKey is { } key && key.StartsWith(FormatKeyPrefix, StringComparison.Ordinal)
+            ? LiveFormats.FirstOrDefault(f => FormatKeyFor(f.Id) == key)
+            : null;
+
+    private WorkflowFormatEntryView? SelectedCatalogueEntry =>
+        selectedKey is { } key && key.StartsWith(CatalogueKeyPrefix, StringComparison.Ordinal)
+            ? formatsCatalog?.Formats?.FirstOrDefault(e => CatalogueKeyFor(e.Id) == key)
+            : null;
+
+    /// <summary>#1097: the node pane's "open" beside the format picker — the package's format, else the catalogue's.</summary>
+    private void OpenFormatPane(string formatId) =>
+        Select(LiveFormats.Any(f => f.Id == formatId) ? FormatKeyFor(formatId) : CatalogueKeyFor(formatId));
+
+    /// <summary>#1097: the nodes producing a format, as read rows (a note-only row each, the node a link).</summary>
+    private IReadOnlyList<TemplateReadRow> FormatUserRows(string formatId) =>
+        EffectiveNodes
+            .Where(node => node.Format == formatId)
+            .Select(node => new TemplateReadRow($"Node '{NodeLabelOrId(node)}'", NodeKeyPrefix + node.Id, "", null, "produces it"))
+            .ToList();
+
+    private RenderFragment FormatsHelp => @<details class="pane-help">
+        <summary>How formats work</summary>
+        <dl class="pane-help__list">
+            <dt>What a node produces</dt>
+            <dd>A node picks a format on its card; the format says what the reply is — text, an enum's value, an object — and who produces it.</dd>
+            <dt>The package's own</dt>
+            <dd>A custom format is a JSON schema the engine validates the agent's reply against, kept as <code>formats/&lt;id&gt;.json</code> with <code>producer: custom</code>; the registry refuses a blank description or a shape it cannot read.</dd>
+            <dt>The catalogue's</dt>
+            <dd>The catalogue's formats are the engine's — served by an attested agent, computed by the engine, or the rendered prompt — read-only here; a package may not declare one of their ids.</dd>
+        </dl>
+    </details>;
 
     // The package's own formats the author has added — id → authored JSON body —
     // and the declared ones marked for removal (their map entry drops at compose,
@@ -6966,6 +7072,8 @@
         addedFormats[id] = NewFormatSkeleton;
         newFormatId = null;
         newFormatError = null;
+        // #1097: land on the new format's pane — writing its schema is the next step.
+        selectedKey = FormatKeyFor(id);
         await PendingChangedAsync();
     }
 
@@ -6978,6 +7086,7 @@
 
         if (addedFormats.Remove(format.Id))
         {
+            LeaveFormatPane(format.Id);
             await PendingChangedAsync();
             return;
         }
@@ -6988,7 +7097,32 @@
             removedFiles.Add(format.File);
         }
 
+        LeaveFormatPane(format.Id);
         await PendingChangedAsync();
+    }
+
+    /// <summary>#1097: a removed format's pane is gone — land on "+ Format" when it was open.</summary>
+    private void LeaveFormatPane(string formatId)
+    {
+        if (selectedKey == FormatKeyFor(formatId))
+        {
+            selectedKey = AddFormatKey;
+        }
+    }
+
+    /// <summary>#1097: the per-format discard — the format's body edit, or the pending format itself.</summary>
+    private bool FormatCanDiscard(WorkflowManifestReader.FormatView format) =>
+        edits.ContainsKey(format.File) || addedFormats.ContainsKey(format.Id);
+
+    private void RevertFormatEdits(WorkflowManifestReader.FormatView format)
+    {
+        if (addedFormats.Remove(format.Id))
+        {
+            LeaveFormatPane(format.Id);
+            return;
+        }
+
+        edits.Remove(format.File);
     }
 
     private async Task RestoreFormatAsync(WorkflowManifestReader.FormatView format)

@@ -237,6 +237,14 @@
                                     }
                                 </FluentSelect>
                             </label>
+                            @if (!string.IsNullOrEmpty(node.Format) && OnOpenFormat.HasDelegate)
+                            {
+                                var openFormatId = node.Format;
+                                <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source node-format__open"
+                                              Title="@($"format '{openFormatId}' — its pane")"
+                                              aria-label="@($"Open format {openFormatId}")"
+                                              @onclick="() => OnOpenFormat.InvokeAsync(openFormatId)">open</FluentButton>
+                            }
                             @if (FormatOf(node) is { Description: { Length: > 0 } formatDescription })
                             {
                                 <p class="muted-text node-field--wide node-format__description">@formatDescription</p>
@@ -776,6 +784,8 @@
     [Parameter] public EventCallback<VariableAdd> OnVariableAdded { get; set; }
     [Parameter] public EventCallback<NodeChange> OnNodeChanged { get; set; }
     [Parameter] public EventCallback<AggregateChange> OnAggregateChanged { get; set; }
+    /// <summary>#1097: the "open" link beside the format picker — the format's own pane (package or catalogue).</summary>
+    [Parameter] public EventCallback<string> OnOpenFormat { get; set; }
 
     private async Task MoveAggregateSourceAsync(WorkflowManifestReader.NodeView node, int index, int delta)
     {

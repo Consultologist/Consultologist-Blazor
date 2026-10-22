@@ -908,3 +908,15 @@ fluent-button.package-tag__button::part(control) {
 fluent-select.branch-table__pick {
 	font-size: 0.8rem;
 }
+
+/* #1097: a format's own pane — the Used by rows' empty sentence and note. */
+.format-pane {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+.format-users__empty,
+.format-users__note {
+	margin: 0;
+}

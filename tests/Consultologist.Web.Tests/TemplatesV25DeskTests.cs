@@ -270,11 +270,11 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
         // Removal is refused in the pane while a node names the format; the desk's
         // sentence covers the draft that restores a removal whose reader came back.
         var page = RenderEditor(EditorFixtures.V25().Manifest.GetRawText());
-        page.FindAll("button.editor-nav__item").First(b => b.TextContent.Replace("●", "").Trim() == "Formats").Click();
+        page.FindAll("button.editor-nav__item").First(b => b.TextContent.Replace("●", "").Trim() == "medication_list").Click();
         Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:meds";
         page.Render();
         page.Find("fluent-select.node-format").Change("prose");
-        page.FindAll("button.editor-nav__item").First(b => b.TextContent.Replace("●", "").Trim() == "Formats").Click();
+        page.FindAll("button.editor-nav__item").First(b => b.TextContent.Replace("●", "").Trim() == "medication_list").Click();
         page.Find("fluent-button[aria-label='Remove format medication_list']").Click();
         // The reader comes back onto the removed format (the picker no longer offers
         // it, so through the node's own pick staying as loaded: undo the re-pick).
@@ -290,7 +290,7 @@ public class TemplatesV25DeskTests : ClientRenderTestContext
     public void APackageFormatsBody_IsRefusedAtTheDesk_WithTheRegistrysSentence()
     {
         var page = RenderEditor(EditorFixtures.V25().Manifest.GetRawText());
-        page.FindAll("button.editor-nav__item").First(b => b.TextContent.Replace("●", "").Trim() == "Formats").Click();
+        page.FindAll("button.editor-nav__item").First(b => b.TextContent.Replace("●", "").Trim() == "medication_list").Click();
         page.Find("[data-format='medication_list'] fluent-text-area").Change("""{ "type": "object", "producer": "custom", "description": "x" }""");
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
 
