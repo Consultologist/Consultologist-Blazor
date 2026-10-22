@@ -641,8 +641,9 @@ across every record ever written, and stay; the provenance document may say "the
 - **Macro pane.** Title / id / file / **instruction** → text → **Where it goes**: *Placed on*
   rows (#1077) and one *Read by* list of descriptive rows (#1085, derived).
 - **Snippets pane** (was Data): `+ Snippet`, `+ Snippet folder`; a folder item's `when`.
-- **Formats pane** (new): the package's custom format files (schema editor), and the
-  catalogue entries read-only with their detail line (§ 3.8).
+- **Formats group** (#1097; was one Formats pane): each package format its own entry and
+  pane (the strip, "Used by", the schema editor), `+ Format` a pane, the catalogue a collapsed
+  folder of read-only panes with their detail line (§ 3.8).
 - **Renderers group** (#1098): the engine's renderer pipes as read-only entries after
   Formats — each pane names the format it renders, the spelling to insert, and who pipes
   what through it (from the walk's `Rendered`).
@@ -860,6 +861,17 @@ cycle); a hand-written member outside the list still shows "as written". A folde
 walker refuses `snippet.<folder>.<item>`; #1116 proposes it for v26). The snippet pane's "Read by" row shows the whole
 table when the snippet sits in a branch (since #1091); the node pane's sentence names a snippet branch. The `if … else`
 "otherwise" control stays the unfiled follow-up.)*
+
+*(#1097, 2026-10-22, Milestone 31 — **Formats as nav entries**. The one Formats scroll — the package's formats then the
+whole catalogue — is retired: the Formats group lists each package format as its own entry (a dot when its body is
+edited or the format is added, struck with a restore when removed) opening a pane keyed `format:<id>` — the header strip
+(`file <path> · producer custom`), Remove format disabled while a node names it, a **per-format** Discard, "Used by" as
+read rows (each node producing it, a link), the schema editor with the registry's sentences inline, and "How formats
+work"; then `+ Format` as a pane (the `+ Macro` idiom) that lands on the new format's pane; then the catalogue's formats
+as a collapsed folder "catalogue (N)" of read-only panes keyed `catalogue:<id>` — the strip (`type · producer · ref`), the
+description, the detail line, the parameters, the schema, "Used by". Removing the open format lands on `+ Format`. A
+node's format picker gains an "open" link to the format's pane, package or catalogue alike (`WorkflowNodeSummary.OnOpenFormat`).
+Two key prefixes, so the source is in the key; `PaneStillExists` keeps a key while the format exists. No format change.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
