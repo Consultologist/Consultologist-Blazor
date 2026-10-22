@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
@@ -444,19 +445,46 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".pane-footer"));
     }
 
-    // ----- the macro pane: Read at -----
+    // ----- the macro pane: Read by (#1085) -----
+
+    private const string ReadRows = ".template-read-rows[aria-label='Readers of tool_note']";
+
+    private static IReadOnlyList<string> Readers(IRenderedComponent<Templates> page, string rows = ReadRows) =>
+        page.Find(rows).QuerySelectorAll(".template-read-row").Select(row => row.GetAttribute("data-read-reader") ?? "").ToList();
+
+    private string SelectedKey => Services.GetRequiredService<WorkflowEditorSession>().SelectedKey ?? "";
+
+    /// <summary>The fixture with a second node running the assessment prompt — a prompt walked twice.</summary>
+    private static WorkflowPackageContentResponse V25WithASecondAssessmentNode()
+    {
+        var package = EditorFixtures.V25();
+        var root = JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "assessment_2", ["label"] = "Assessment again", ["prompt"] = "assessment", ["format"] = "prose" });
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
 
     [Fact]
-    public void TheMacroPane_ListsWhereItIsReadInline_FromTheWalk()
+    public void TheMacroPane_ListsItsReaders_AsRows_WithTheMember()
     {
         var page = RenderEditor();
         Navigate(page, "tool_note");
 
-        var readers = page.Find("ul.macro-readers[aria-label='Readers of tool_note']");
-        Assert.Equal(new[] { "Prompt 'assessment'" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
-        Assert.Contains("Read inline by", page.Find(".macro-where").TextContent);
+        var where = page.Find(".macro-where");
+        Assert.Contains("Read by", where.TextContent);
+        Assert.DoesNotContain("Read inline by", where.TextContent);
+        Assert.DoesNotContain("Read as text by", where.TextContent);
+        Assert.Empty(where.QuerySelectorAll("ul.snippet-readers"));
 
-        page.Find("ul.macro-readers button.snippet-readers__row").Click();
+        var row = Assert.Single(page.Find(ReadRows).QuerySelectorAll(".template-read-row"));
+        Assert.Equal("Prompt 'assessment'", row.GetAttribute("data-read-reader"));
+        Assert.Equal("Prompt 'assessment'", row.QuerySelector(".template-read-row__reader")!.TextContent.Trim());
+        Assert.Equal("macro.tool_note.prompt", row.QuerySelector(".template-read-row__member")!.TextContent.Trim());
+        Assert.Contains("reads", row.TextContent);
+        Assert.Contains("(inline)", row.TextContent);
+        Assert.DoesNotContain("the instruction", row.TextContent);
+
+        page.Find($"{ReadRows} .template-read-row__reader").Click();
+        Assert.Equal("prompts/assessment.md", SelectedKey);
         Assert.Equal("assessment", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
     }
 
@@ -468,23 +496,74 @@ public class TemplatesV25MacrosTests : ClientRenderTestContext
         Navigate(page, "closing");
 
         var where = page.Find(".macro-where");
-        Assert.Empty(where.QuerySelectorAll("ul.macro-readers"));
-        Assert.Empty(where.QuerySelectorAll("ul.macro-text-readers"));
+        Assert.Empty(where.QuerySelectorAll(".template-read-rows"));
+        Assert.DoesNotContain("Read by", where.TextContent);
         Assert.Empty(where.QuerySelectorAll(".macro-where__empty"));
         Assert.DoesNotContain("Not read by any template", where.TextContent);
     }
 
     [Fact]
-    public void ATextRead_IsListedUnderReadAsTextBy()
+    public void ATextRead_IsARow_AfterTheInlineOnes()
     {
         var page = RenderEditor();
         Navigate(page, "standards");
-        page.Find(".editor-pane fluent-text-area").Change("Follow the local standards. {{ macro.closing.content }}");
-        Navigate(page, "closing");
+        page.Find(".editor-pane fluent-text-area").Change("Follow the local standards. {{ macro.tool_note.content }}");
+        Navigate(page, "tool_note");
 
-        var readers = page.Find("ul.macro-text-readers[aria-label='Text readers of closing']");
-        Assert.Equal(new[] { "Snippet 'standards'" }, readers.QuerySelectorAll("li").Select(li => li.TextContent.Trim()));
-        Assert.Empty(page.FindAll("ul.macro-readers"));
+        Assert.Equal(new[] { "Prompt 'assessment'", "Snippet 'standards'" }, Readers(page));
+
+        var textRow = page.Find($"{ReadRows} .template-read-row[data-read-reader=\"Snippet 'standards'\"]");
+        Assert.Equal("macro.tool_note.content", textRow.QuerySelector(".template-read-row__member")!.TextContent.Trim());
+        Assert.DoesNotContain("(inline)", textRow.TextContent);
+
+        textRow.QuerySelector(".template-read-row__reader")!.Click();
+        Assert.Equal("snippets/standards.md", SelectedKey);
+    }
+
+    [Fact]
+    public void AnInstructionReader_IsLabelledAsTheMacro_WithTheNote()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+        page.Find("fluent-text-area[aria-label='Instruction for macro closing']").Change("Write {{ macro.closing.content }} last.");
+
+        var rows = ".template-read-rows[aria-label='Readers of closing']";
+        Assert.Equal(new[] { "Macro 'closing'" }, Readers(page, rows));
+
+        var row = page.Find($"{rows} .template-read-row");
+        Assert.Equal("macro.closing.content", row.QuerySelector(".template-read-row__member")!.TextContent.Trim());
+        Assert.Contains("the instruction", row.TextContent);
+        Assert.Equal("fluent-button", row.QuerySelector(".template-read-row__reader")!.TagName.ToLowerInvariant());
+
+        row.QuerySelector(".template-read-row__reader")!.Click();
+        Assert.Equal("macros/closing.md", SelectedKey);
+    }
+
+    [Fact]
+    public void AFoldersItems_AreOneRowEach_InNavOrder_EachOpeningItsItem()
+    {
+        var page = RenderEditor();
+        Navigate(page, "HPI");
+        page.Find(".editor-pane fluent-text-area").Change("History: {{ input.notes }} {{ macro.tool_note.prompt }}");
+        Navigate(page, "Plan");
+        page.Find(".editor-pane fluent-text-area").Change("Plan. {{ macro.tool_note.prompt }}");
+        Navigate(page, "tool_note");
+
+        Assert.Equal(new[] { "Prompt 'assessment'", "Snippet 'sections/hpi'", "Snippet 'sections/plan'" }, Readers(page));
+        Assert.All(page.Find(ReadRows).QuerySelectorAll(".template-read-row"), row => Assert.Contains("(inline)", row.TextContent));
+
+        page.Find($"{ReadRows} .template-read-row[data-read-reader=\"Snippet 'sections/hpi'\"] .template-read-row__reader").Click();
+        Assert.Equal("snippets/sections/hpi.md", SelectedKey);
+        Assert.Equal("HPI", page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
+    }
+
+    [Fact]
+    public void APromptRunByTwoNodes_IsOneRow()
+    {
+        var page = RenderEditor(V25WithASecondAssessmentNode());
+        Navigate(page, "tool_note");
+
+        Assert.Equal(new[] { "Prompt 'assessment'" }, Readers(page));
     }
 
     [Fact]

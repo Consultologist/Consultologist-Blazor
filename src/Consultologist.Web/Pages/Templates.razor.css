@@ -579,7 +579,8 @@ fluent-button.node-field__button::part(control) {
 
 /* #1077 (was #1072): the macro pane's "Where it goes" — the attach pickers
    first, then one .result-macro row per instance (the owner panes' rows, led by
-   a link to the owner); the read rows are chips like the snippet pane's. */
+   a link to the owner); the Read by rows are the shared descriptive read rows
+   (#1085, .template-read-rows below). */
 .macro-where {
 	display: flex;
 	flex-direction: column;
@@ -842,6 +843,14 @@ fluent-button.package-tag__button::part(control) {
 }
 
 .renderer-users {
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+
+/* #1085: the shared descriptive read rows — "reader · reads member (inline) · note" —
+   one .result-macro row each, led by a link to the reader's pane. */
+.template-read-rows {
 	display: flex;
 	flex-direction: column;
 	gap: 0.4rem;
