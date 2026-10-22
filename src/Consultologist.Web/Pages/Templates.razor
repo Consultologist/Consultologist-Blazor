@@ -2435,32 +2435,14 @@
                                 @if (At25)
                                 {
                                     @* Derived, read-only: the inline macros this node's prompt reaches
-                                       (macro.<id>.prompt, directly or through what it reads), from the walk. *@
-                                    var inlineMacros = PackageWalk?.PromptReadsOf(selectedNode.Id) ?? new HashSet<string>(StringComparer.Ordinal);
+                                       (macro.<id>.prompt, directly or through what it reads), from the walk —
+                                       #1087: as the shared descriptive rows naming where each read lives
+                                       (the via links), the validator's fan-coverage warning inside its row. *@
+                                    var inlineRows = InlineMacroRows(selectedNode);
                                     <span class="node-section__head">Inline macros</span>
-                                    @if (inlineMacros.Count > 0)
+                                    @if (inlineRows.Count > 0)
                                     {
-                                        <ul class="snippet-readers node-inline-macros" aria-label="@($"Inline macros of {selectedNode.Id}")">
-                                            @foreach (var inlineMacroId in inlineMacros.Order(StringComparer.Ordinal))
-                                            {
-                                                var inlineMacro = EffectiveMacros.FirstOrDefault(m => m.Id == inlineMacroId);
-                                                <li>
-                                                    <button type="button" class="snippet-readers__row" @onclick="() => SelectMacro(inlineMacroId)">macro.@(inlineMacroId).prompt@(inlineMacro is null ? "" : $" — {inlineMacro.Label}")</button>
-                                                </li>
-                                            }
-                                        </ul>
-                                        @if (NodeFanItems(selectedNode) is { Count: > 0 } inlineFanItems && FanFolderOf(selectedNode.ForEach) is { } inlineFolder)
-                                        {
-                                            @* The validator's warning, word for word: items whose text carries no read instruct nothing. *@
-                                            foreach (var inlineMacroId in inlineMacros.Order(StringComparer.Ordinal))
-                                            {
-                                                var lacking = inlineFanItems.Where(item => !(PackageWalk?.PromptReadsOf(selectedNode.Id, item.Id).Contains(inlineMacroId) ?? false)).Select(item => item.Id).ToList();
-                                                if (lacking.Count > 0)
-                                                {
-                                                    <p class="muted-text node-inline-macros__warning">Node '@selectedNode.Id' fans snippet folder '@inlineFolder'; items @string.Join(", ", lacking) carry no macro.@(inlineMacroId).prompt read, so nothing tells the model to write macro.@(inlineMacroId).content for them.</p>
-                                                }
-                                            }
-                                        }
+                                        @TemplateReadRows(($"Inline macros of {selectedNode.Id}", inlineRows))
                                     }
                                     else
                                     {
@@ -5087,6 +5069,84 @@
     /// does not resolve, a member outside the closed set, a mistyped renderer pipe
     /// (#1058) — as problems in the text (the desk says which).
     /// </summary>
+    /// <summary>
+    /// #1087: the node pane's "Inline macros" as the shared descriptive rows — one row per
+    /// inline macro the node's prompt reaches (the walk's PromptReadSitesOf), the macro's
+    /// label linking to its pane, the member, and where the read lives: every holder as
+    /// a "via" link (the prompt, a snippet or folder item, a macro text, an instruction),
+    /// naming the fan items a holder was reached through when it is not the item itself;
+    /// the validator's fan-coverage warning inside the row it is about.
+    /// </summary>
+    private IReadOnlyList<TemplateReadRow> InlineMacroRows(WorkflowManifestReader.NodeView node)
+    {
+        var rows = new List<TemplateReadRow>();
+
+        if (PackageWalk is not { } walk)
+        {
+            return rows;
+        }
+
+        var sites = walk.PromptReadSitesOf(node.Id);
+        var folder = FanFolderOf(node.ForEach);
+        var fanItems = NodeFanItems(node);
+
+        foreach (var macroGroup in sites.GroupBy(s => s.Macro, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
+        {
+            var macroId = macroGroup.Key;
+            var via = new List<(string Label, string? Key)>();
+
+            foreach (var holderGroup in macroGroup.GroupBy(s => (s.HolderKind, s.HolderId)))
+            {
+                var first = holderGroup.First();
+                var label = char.ToLowerInvariant(first.HolderSubject[0]) + first.HolderSubject[1..];
+                var items = holderGroup
+                    .Where(s => s.FanItem is { } item && folder is not null && first.HolderId != PF.WorkflowDerivedEdges.SnippetItemKey(folder, item))
+                    .Select(s => s.FanItem!)
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
+
+                if (items.Count > 0)
+                {
+                    label += $" for {(items.Count == 1 ? "item" : "items")} {string.Join(", ", items)}";
+                }
+
+                var key = first.HolderKind == PF.TemplateKind.Instruction
+                    ? EffectiveMacros.FirstOrDefault(m => m.Id == first.HolderId)?.File
+                    : walk.Templates.FirstOrDefault(t => t.Kind == first.HolderKind && t.Id == first.HolderId) is { } holder ? PaneKeyOf(holder) : null;
+
+                via.Add((label, key));
+            }
+
+            string? warning = null;
+
+            if (folder is not null && fanItems.Count > 0)
+            {
+                // The validator's warning, word for word: items whose text carries no read instruct nothing.
+                var lacking = fanItems
+                    .Where(item => !walk.PromptReadsOf(node.Id, item.Id).Contains(macroId))
+                    .Select(item => item.Id)
+                    .Order(StringComparer.Ordinal)
+                    .ToList();
+
+                if (lacking.Count > 0)
+                {
+                    warning = $"Node '{node.Id}' fans snippet folder '{folder}'; items {string.Join(", ", lacking)} carry no macro.{macroId}.prompt read, so nothing tells the model to write macro.{macroId}.content for them.";
+                }
+            }
+
+            rows.Add(new TemplateReadRow(
+                $"Macro '{MacroLabel(macroId)}'",
+                EffectiveMacros.FirstOrDefault(m => m.Id == macroId)?.File,
+                $"macro.{macroId}.prompt",
+                "inline",
+                null,
+                via,
+                warning));
+        }
+
+        return rows;
+    }
+
     private RenderFragment NodeReadsSection(WorkflowManifestReader.NodeView node) => @<text>
         <div class="node-section node-reads-section">
             <span class="node-section__head">Reads</span>
@@ -5621,7 +5681,9 @@
     /// the walk spells it (a link to its pane when it has one), the member read, a
     /// qualifier in parentheses ("inline") and a trailing note ("the instruction").
     /// </summary>
-    private sealed record TemplateReadRow(string Label, string? Key, string Member, string? Qualifier, string? Note);
+    private sealed record TemplateReadRow(
+        string Label, string? Key, string Member, string? Qualifier, string? Note,
+        IReadOnlyList<(string Label, string? Key)>? Via = null, string? Warning = null);
 
     /// <summary>
     /// #1085: the shared descriptive read rows — "reader · reads member (qualifier) · note" —
@@ -5660,7 +5722,33 @@
                         {
                             <span class="muted-text">· @note</span>
                         }
+                        @if (readRow.Via is { Count: > 0 } via)
+                        {
+                            <span class="muted-text">· via</span>
+                            @for (var i = 0; i < via.Count; i++)
+                            {
+                                var link = via[i];
+                                if (i > 0)
+                                {
+                                    <span class="muted-text">,</span>
+                                }
+                                if (link.Key is { } viaKey)
+                                {
+                                    <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner template-read-row__via"
+                                                  Title="@($"{link.Label} — edit on its pane")"
+                                                  @onclick="() => Select(viaKey)">@link.Label</FluentButton>
+                                }
+                                else
+                                {
+                                    <span class="template-read-row__via">@link.Label</span>
+                                }
+                            }
+                        }
                     </span>
+                    @if (readRow.Warning is { } warning)
+                    {
+                        <p class="muted-text template-read-row__warning node-inline-macros__warning">@warning</p>
+                    }
                 </div>
             }
         </div>

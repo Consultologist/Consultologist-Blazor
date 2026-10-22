@@ -855,3 +855,9 @@ fluent-button.package-tag__button::part(control) {
 	flex-direction: column;
 	gap: 0.4rem;
 }
+
+/* #1087: a row's warning (the validator's fan-coverage sentence) sits under its row, indented as a row's condition is. */
+.template-read-row__warning {
+	margin: 0;
+	padding-left: 1.6rem;
+}
