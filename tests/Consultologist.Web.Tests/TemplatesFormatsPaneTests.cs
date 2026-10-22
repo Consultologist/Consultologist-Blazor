@@ -80,6 +80,25 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         }
         """;
 
+    // #1097: each format is a nav entry opening its own pane; "+ Format" is a pane; the catalogue a collapsed folder.
+    private WorkflowEditorSession Session => Services.GetRequiredService<WorkflowEditorSession>();
+
+    private void ShowNode(IRenderedComponent<Templates> page, string nodeId)
+    {
+        Session.SelectedKey = $"node:{nodeId}";
+        page.Render();
+    }
+
+    private static string SelectedNav(IRenderedComponent<Templates> page) =>
+        page.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim();
+
+    private static void CreateFormat(IRenderedComponent<Templates> page, string id)
+    {
+        Navigate(page, "+ Format");
+        page.Find("fluent-text-field[aria-label='New format id']").Change(id);
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create format")).Click();
+    }
+
     [Fact]
     public void TheFormatsGroup_RendersAt25_InSchemasPlace()
     {
@@ -104,80 +123,121 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheCatalogueFormats_ReadOnly_WithTheirDetailLine()
+    public void TheFormatsGroup_ListsThePackagesFormats_ThenAdd_ThenTheCatalogueFolder()
     {
         var page = RenderEditor();
-        Navigate(page, "Formats");
 
+        var labels = page.FindAll("button.editor-nav__item").Select(b => b.TextContent.Replace("●", string.Empty).Trim()).ToList();
+        Assert.DoesNotContain("Formats", labels);
+        var medication = labels.IndexOf("medication_list");
+        var add = labels.IndexOf("+ Format");
+        Assert.True(medication >= 0 && add == medication + 1, string.Join(", ", labels));
+
+        var folder = page.Find("details.editor-nav__folder--catalogue");
+        Assert.Null(folder.GetAttribute("open"));
+        Assert.Contains("catalogue (5)", folder.QuerySelector("summary")!.TextContent);
+        // The catalogue's own order (alphabetical in the index).
+        Assert.Equal(
+            new[] { "classification", "concept_list", "prose", "rendered", "terms_subset" },
+            folder.QuerySelectorAll("button.editor-nav__item--nested").Select(b => b.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void APackageFormatsPane_HasTheStrip_TheUsedByRow_AndTheBody()
+    {
+        var page = RenderEditor();
+        Navigate(page, "medication_list");
+
+        Assert.Equal("format:medication_list", Session.SelectedKey);
+        var meds = page.Find("[data-format='medication_list']");
+        Assert.Equal("medication_list", meds.QuerySelector("h3.panel-title")!.TextContent.Trim());
+        var identity = meds.QuerySelector(".pane-identity")!.TextContent;
+        Assert.Contains("formats/medication_list.json", identity);
+        Assert.Contains("producer custom", identity);
+
+        var users = page.Find(".template-read-rows[aria-label='Nodes using medication_list']");
+        var row = Assert.Single(users.QuerySelectorAll(".template-read-row"));
+        Assert.Equal("Node 'Medications'", row.GetAttribute("data-read-reader"));
+        Assert.Contains("produces it", row.TextContent);
+        Assert.Contains("\"producer\": \"custom\"", meds.QuerySelector("fluent-text-area[aria-label='Format body for medication_list']")!.GetAttribute("current-value"));
+        Assert.NotNull(meds.QuerySelector("fluent-button[aria-label='Remove format medication_list'][disabled]"));
+        Assert.Empty(meds.QuerySelectorAll(".format-error"));
+        Assert.Contains("How formats work", meds.TextContent);
+
+        row.QuerySelector(".template-read-row__reader")!.Click();
+        Assert.Equal("node:meds", Session.SelectedKey);
+    }
+
+    [Fact]
+    public void ACatalogueFormatsPane_IsReadOnly_WithItsDetailLine()
+    {
+        var page = RenderEditor();
+        Navigate(page, "classification");
+
+        Assert.Equal("catalogue:classification", Session.SelectedKey);
         var classification = page.Find("[data-catalogue-format='classification']");
+        Assert.Contains("enum · attested", classification.QuerySelector(".pane-identity")!.TextContent);
+        Assert.Contains("formats@v2026.10.2", classification.QuerySelector(".pane-identity")!.TextContent);
         Assert.Contains("served by classification@1, attested", classification.QuerySelector(".format-catalogue__detail")!.TextContent);
-        Assert.Contains("enum · attested", classification.TextContent);
         Assert.Contains("parameters: values (values)", classification.TextContent);
+        Assert.Equal("Node 'Scope'", page.Find(".template-read-rows[aria-label='Nodes using classification'] .template-read-row").GetAttribute("data-read-reader"));
+        // Read-only: no editor, no remove, and never the agent's yaml.
+        Assert.Empty(classification.QuerySelectorAll("fluent-text-area"));
+        Assert.Empty(classification.QuerySelectorAll("fluent-button[aria-label^='Remove']"));
+        Assert.DoesNotContain("instructions:", classification.TextContent);
 
+        Navigate(page, "terms_subset");
         var termsSubset = page.Find("[data-catalogue-format='terms_subset']");
         Assert.Contains("computed by the engine (terms_subset)", termsSubset.TextContent);
         Assert.Contains("of (node of concept_list)", termsSubset.TextContent);
         Assert.NotNull(termsSubset.QuerySelector("pre.schema-body"));
 
+        Navigate(page, "rendered");
         Assert.Contains("rendered by the engine", page.Find("[data-catalogue-format='rendered']").TextContent);
+        Assert.Contains("No node produces", page.Find("[data-catalogue-format='rendered']").TextContent);
+        Navigate(page, "prose");
         Assert.Contains("served by test-json@48, attested", page.Find("[data-catalogue-format='prose']").TextContent);
-
-        // Read-only: no editor, no remove, and never the agent's yaml.
-        Assert.Empty(page.FindAll(".format-catalogue fluent-text-area"));
-        Assert.Empty(page.FindAll(".format-catalogue fluent-button"));
-        Assert.DoesNotContain("instructions:", page.Find(".editor-pane").TextContent);
-        Assert.Contains("formats@v2026.10.2", page.Find(".editor-pane").TextContent);
     }
 
     [Fact]
-    public void ThePackagesOwnFormat_IsEditable_AndNamesItsReader()
-    {
-        var page = RenderEditor();
-        Navigate(page, "Formats");
-
-        var meds = page.Find("[data-format='medication_list']");
-        Assert.Contains("formats/medication_list.json · producer custom", meds.TextContent);
-        Assert.Contains("Used by 'meds'.", meds.TextContent);
-        Assert.Contains("\"producer\": \"custom\"", meds.QuerySelector("fluent-text-area")!.GetAttribute("current-value"));
-        Assert.NotNull(meds.QuerySelector("fluent-button[aria-label='Remove format medication_list'][disabled]"));
-        Assert.Empty(meds.QuerySelectorAll(".format-error"));
-    }
-
-    [Fact]
-    public void WithoutTheCatalogue_ThePaneSaysSo()
+    public void WithoutTheCatalogue_TheFolderSaysSo_AndThePackageFormatStillOpens()
     {
         var page = RenderEditor(withCatalogue: false);
-        Navigate(page, "Formats");
 
-        Assert.Contains("The format catalogue is unavailable", page.Find(".editor-pane").TextContent);
+        var folder = page.Find("details.editor-nav__folder--catalogue");
+        Assert.Contains("unavailable", folder.QuerySelector("summary")!.TextContent);
+        Assert.Empty(folder.QuerySelectorAll("button.editor-nav__item--nested"));
         Assert.Empty(page.FindAll("[data-catalogue-format]"));
-        // The package's own format still edits.
+
+        Navigate(page, "medication_list");
         Assert.NotEmpty(page.FindAll("[data-format='medication_list'] fluent-text-area"));
+
+        Navigate(page, "+ Format");
+        Assert.Contains("The format catalogue is unavailable", page.Find(".editor-pane").TextContent);
     }
 
     [Fact]
-    public void CreatingAFormat_LandsPending_EditsItsBody_AndPublishesTheFile()
+    public void CreatingAFormat_LandsOnItsPane_WithADot_AndPublishesTheFile()
     {
         var page = RenderEditor();
         CapturePublish();
-        Navigate(page, "Formats");
 
-        page.Find("fluent-text-field[aria-label='New format id']").Change("plan_shape");
-        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create format")).Click();
+        CreateFormat(page, "plan_shape");
 
+        Assert.Equal("format:plan_shape", Session.SelectedKey);
+        Assert.Equal("plan_shape", SelectedNav(page));
+        Assert.Contains("●", page.Find("button.editor-nav__item--selected").TextContent);
         var created = page.Find("[data-format='plan_shape']");
-        Assert.Contains("Not yet used by any node", created.TextContent);
+        Assert.Contains("Not yet used by any node", created.QuerySelector(".format-users__empty")!.TextContent);
         Assert.Contains("\"producer\": \"custom\"", created.QuerySelector("fluent-text-area")!.GetAttribute("current-value"));
         // Explicit init: the skeleton's blank description is refused under the editor until written.
         Assert.Contains(created.QuerySelectorAll(".format-error").Select(e => e.TextContent), e => e.Contains("description must not be blank"));
-        Assert.Contains("●", page.Find("button.editor-nav__item--selected").TextContent);
 
         page.Find("[data-format='plan_shape'] fluent-text-area").Change(PlanShapeBody);
         Assert.Empty(page.Find("[data-format='plan_shape']").QuerySelectorAll(".format-error"));
 
         // The node pane's picker now offers it.
-        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:meds";
-        page.Render();
+        ShowNode(page, "meds");
         Assert.Contains("plan_shape", page.Find("fluent-select.node-format").QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value")));
         page.Find("fluent-select.node-format").Change("plan_shape");
         page.Find("fluent-select.node-on-invalid").Change("fail");
@@ -195,8 +255,6 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
         Assert.Equal("plan_shape", JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement.GetProperty("nodes").EnumerateArray()
             .Single(n => n.GetProperty("id").GetString() == "meds").GetProperty("format").GetString());
         var validated = Validated();
-        // medication_list is now unused and meds reads a plan shape the assessment prompt does not — the
-        // registry's words are about those reads, not the format file: it parsed, resolved and validated.
         Assert.DoesNotContain(validated.Errors, e => e.StartsWith("Format 'plan_shape'", StringComparison.Ordinal));
     }
 
@@ -207,11 +265,10 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
     public void CreatingAFormat_RefusesABadId(string id, string refusal)
     {
         var page = RenderEditor();
-        Navigate(page, "Formats");
 
-        page.Find("fluent-text-field[aria-label='New format id']").Change(id);
-        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create format")).Click();
+        CreateFormat(page, id);
 
+        Assert.Equal("add-format", Session.SelectedKey);
         Assert.Contains(page.FindAll(".fluent-messagebar-message"), bar => bar.TextContent.Contains(refusal));
         Assert.Empty(page.FindAll($"[data-format='{id}'] fluent-text-area").Where(_ => id != "medication_list"));
     }
@@ -223,35 +280,38 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
     public void EditingABody_ShowsTheRegistrysSentenceInline(string body, string sentence)
     {
         var page = RenderEditor();
-        Navigate(page, "Formats");
+        Navigate(page, "medication_list");
 
         page.Find("[data-format='medication_list'] fluent-text-area").Change(body);
 
         Assert.Contains(page.Find("[data-format='medication_list']").QuerySelectorAll(".format-error").Select(e => e.TextContent), e => e.Contains(sentence));
+        Assert.Contains("●", page.Find("button.editor-nav__item--selected").TextContent);
     }
 
     [Fact]
-    public void RemovingAFormat_IsRefusedWhileANodeNamesIt_ThenDropsItsEntryAndFile()
+    public void RemovingAFormat_IsRefusedWhileANodeNamesIt_ThenLandsOnAddFormat_AndTheNavStrikesIt()
     {
         var page = RenderEditor();
         CapturePublish();
-        Navigate(page, "Formats");
+        Navigate(page, "medication_list");
         Assert.NotNull(page.Find("fluent-button[aria-label='Remove format medication_list']").GetAttribute("disabled"));
 
         // Re-pick the reader onto a catalogue format; the medications read in the
         // assessment prompt goes with it (the author's two steps).
-        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:meds";
-        page.Render();
+        ShowNode(page, "meds");
         page.Find("fluent-select.node-format").Change("prose");
-        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "prompts/assessment.md";
+        Session.SelectedKey = "prompts/assessment.md";
         page.Render();
         page.Find("fluent-text-area").Change("Assess.\n{{ input.notes }}\n{{ node.meds.content }}\n{{ for c in node.extract.value.concepts }}- {{ c }}\n{{ end }}");
 
-        Navigate(page, "Formats");
+        Navigate(page, "medication_list");
         Assert.Null(page.Find("fluent-button[aria-label='Remove format medication_list']").GetAttribute("disabled"));
         page.Find("fluent-button[aria-label='Remove format medication_list']").Click();
 
-        Assert.NotEmpty(page.FindAll("[data-format-removed='medication_list']"));
+        Assert.Equal("add-format", Session.SelectedKey);
+        Assert.NotEmpty(page.FindAll("[data-format-removed='medication_list'] .editor-nav__strike"));
+        Assert.NotNull(page.Find("button[aria-label='Restore format medication_list']"));
+        Assert.DoesNotContain("medication_list", page.FindAll("button.editor-nav__item").Select(b => b.TextContent.Replace("●", string.Empty).Trim()));
         Assert.Empty(page.FindAll("[data-format='medication_list']"));
 
         Publish(page);
@@ -264,45 +324,42 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void ARemovedFormat_Restores()
+    public void ARemovedFormat_Restores_FromTheNav()
     {
         var page = RenderEditor();
-        Navigate(page, "Formats");
-        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:meds";
-        page.Render();
+        ShowNode(page, "meds");
         page.Find("fluent-select.node-format").Change("prose");
-        Navigate(page, "Formats");
+        Navigate(page, "medication_list");
         page.Find("fluent-button[aria-label='Remove format medication_list']").Click();
 
         page.Find("button[aria-label='Restore format medication_list']").Click();
 
-        Assert.NotEmpty(page.FindAll("[data-format='medication_list']"));
         Assert.Empty(page.FindAll("[data-format-removed]"));
+        Navigate(page, "medication_list");
+        Assert.NotEmpty(page.FindAll("[data-format='medication_list'] fluent-text-area"));
     }
 
     [Fact]
-    public void APendingFormat_RemovesOutright()
+    public void APendingFormat_RemovesOutright_AndLandsOnAddFormat()
     {
         var page = RenderEditor();
-        Navigate(page, "Formats");
-        page.Find("fluent-text-field[aria-label='New format id']").Change("plan_shape");
-        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create format")).Click();
+        CreateFormat(page, "plan_shape");
 
         page.Find("fluent-button[aria-label='Remove format plan_shape']").Click();
 
+        Assert.Equal("add-format", Session.SelectedKey);
         Assert.Empty(page.FindAll("[data-format='plan_shape']"));
         Assert.Empty(page.FindAll("[data-format-removed]"));
-        Assert.DoesNotContain("●", page.Find("button.editor-nav__item--selected").TextContent);
+        Assert.DoesNotContain("●", page.Find("nav").TextContent);
     }
 
     [Fact]
-    public void TheFormatsPane_SurvivesAReload_WithItsDraft()
+    public void AFormatsPane_SurvivesAReload_WithItsDraft()
     {
         var page = RenderEditor();
-        Navigate(page, "Formats");
-        page.Find("fluent-text-field[aria-label='New format id']").Change("plan_shape");
-        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create format")).Click();
+        CreateFormat(page, "plan_shape");
         page.Find("[data-format='plan_shape'] fluent-text-area").Change(PlanShapeBody);
+        Navigate(page, "medication_list");
         page.Find("[data-format='medication_list'] fluent-text-area").Change("{ nope");
 
         var saved = JSInterop.Invocations["localStorage.setItem"]
@@ -313,26 +370,50 @@ public class TemplatesFormatsPaneTests : ClientRenderTestContext
 
         var again = Render<Templates>();
 
-        // The remembered pane is the Formats pane, and both edits came back.
-        Assert.Equal("Formats", again.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
-        Assert.Equal(PlanShapeBody, again.Find("[data-format='plan_shape'] fluent-text-area").GetAttribute("current-value"));
+        // The remembered pane is the format's own, and both edits came back.
+        Assert.Equal("medication_list", again.Find("button.editor-nav__item--selected").TextContent.Replace("●", string.Empty).Trim());
         Assert.Equal("{ nope", again.Find("[data-format='medication_list'] fluent-text-area").GetAttribute("current-value"));
+        Navigate(again, "plan_shape");
+        Assert.Equal(PlanShapeBody, again.Find("[data-format='plan_shape'] fluent-text-area").GetAttribute("current-value"));
     }
 
     [Fact]
-    public void DiscardingThePane_DropsItsEdits()
+    public void DiscardingAFormatsPane_DropsItsEditsAlone()
     {
         var page = RenderEditor();
-        Navigate(page, "Formats");
-        page.Find("fluent-text-field[aria-label='New format id']").Change("plan_shape");
-        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Create format")).Click();
+        CreateFormat(page, "plan_shape");
+        Navigate(page, "medication_list");
         page.Find("[data-format='medication_list'] fluent-text-area").Change("{ nope");
 
         page.Find(".pane-discard-button").Click();
         page.FindAll("fluent-button").First(b => b.TextContent.Contains("Confirm discard")).Click();
 
-        Assert.Empty(page.FindAll("[data-format='plan_shape']"));
+        // This format's body is back; the pending format on its own pane is untouched.
         Assert.Contains("\"producer\": \"custom\"", page.Find("[data-format='medication_list'] fluent-text-area").GetAttribute("current-value"));
         Assert.DoesNotContain("●", page.Find("button.editor-nav__item--selected").TextContent);
+        Assert.Contains("plan_shape", page.FindAll("button.editor-nav__item").Select(b => b.TextContent.Replace("●", string.Empty).Trim()));
+
+        // A pending format's own discard drops it and lands on + Format.
+        Navigate(page, "plan_shape");
+        page.Find(".pane-discard-button").Click();
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Confirm discard")).Click();
+        Assert.Equal("add-format", Session.SelectedKey);
+        Assert.DoesNotContain("plan_shape", page.FindAll("button.editor-nav__item").Select(b => b.TextContent.Replace("●", string.Empty).Trim()));
+    }
+
+    [Fact]
+    public void TheNodePanesFormatPicker_OpensTheFormatsPane()
+    {
+        var page = RenderEditor();
+
+        ShowNode(page, "meds");
+        page.Find("fluent-button[aria-label='Open format medication_list']").Click();
+        Assert.Equal("format:medication_list", Session.SelectedKey);
+        Assert.Equal("medication_list", SelectedNav(page));
+
+        ShowNode(page, "scope");
+        page.Find("fluent-button[aria-label='Open format classification']").Click();
+        Assert.Equal("catalogue:classification", Session.SelectedKey);
+        Assert.Equal("classification", SelectedNav(page));
     }
 }
