@@ -2896,7 +2896,7 @@
                                    instruction rendered over the token scope, then the format's mechanics
                                    sentence, exactly as the engine composes it (TemplatePreviewScope.MacroPrompt). *@
                                 var (promptPreview, promptPreviewIsError) = MacroPromptPreview(macro);
-                                var readInline = MacroInlineReaders(macro.Id).Count > 0;
+                                var readInline = MacroInlineReadRows(macro.Id).Count > 0;
                                 var selfRead = PackageWalk?.Templates.Any(t => t.Kind == PF.TemplateKind.Instruction && t.Id == macro.Id && t.References.MacroContents.Contains(macro.Id)) ?? false;
                                 <div class="macro-prompt-preview" aria-label="@($"What the model is told for macro {macro.Id}")">
                                     <span class="muted-text">What the model is told</span>
@@ -3062,11 +3062,12 @@
                                    editable row per instance mirroring the owner's row on the node pane's and the
                                    Deliverables pane's own handlers, each led by a link to the owner (its label,
                                    as the sidebar names it); reordering among a node's siblings stays on the node
-                                   pane. Read inline by and Read as text by from the walk, as chips — a read is
-                                   not edited from the macro's side. One "not used yet" state when every row is
+                                   pane. Read by from the walk as descriptive rows (#1085: the shared
+                                   TemplateReadRows — reader link · reads member · note; inline reads first, then
+                                   text reads) — a read is shown like a placement without its controls; it is not
+                                   edited from the macro's side. One "not used yet" state when every row is
                                    empty; "placed only" and "inline only" are normal states. *@
-                                var inlineReaders = MacroInlineReaders(macro.Id);
-                                var textReaders = MacroTextReaders(macro.Id);
+                                var readRows = MacroReadRows(macro.Id);
                                 var attachableNodes = MacroAttachableNodes(macro.Id);
                                 // #1080: a deliverable is offered while one of the macro's two placements on it is free.
                                 var attachableDeliverables = EffectiveResults
@@ -3203,45 +3204,12 @@
                                             </div>
                                         }
                                     }
-                                    @if (inlineReaders.Count > 0)
+                                    @if (readRows.Count > 0)
                                     {
-                                        <p class="muted-text">Read inline by</p>
-                                        <ul class="snippet-readers macro-readers" aria-label="@($"Readers of {macro.Id}")">
-                                            @foreach (var reader in inlineReaders)
-                                            {
-                                                <li>
-                                                    @if (reader.Key is { } readerKey)
-                                                    {
-                                                        <button type="button" class="snippet-readers__row" title="@reader.Member" @onclick="() => Select(readerKey)">@reader.Subject</button>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="snippet-readers__row" title="@reader.Member">@reader.Subject</span>
-                                                    }
-                                                </li>
-                                            }
-                                        </ul>
+                                        <p class="muted-text">Read by</p>
+                                        @TemplateReadRows(($"Readers of {macro.Id}", readRows))
                                     }
-                                    @if (textReaders.Count > 0)
-                                    {
-                                        <p class="muted-text">Read as text by</p>
-                                        <ul class="snippet-readers macro-text-readers" aria-label="@($"Text readers of {macro.Id}")">
-                                            @foreach (var reader in textReaders)
-                                            {
-                                                <li>
-                                                    @if (reader.Key is { } readerKey)
-                                                    {
-                                                        <button type="button" class="snippet-readers__row" title="@reader.Member" @onclick="() => Select(readerKey)">@reader.Subject</button>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span class="snippet-readers__row" title="@reader.Member">@reader.Subject</span>
-                                                    }
-                                                </li>
-                                            }
-                                        </ul>
-                                    }
-                                    @if (placedOn.Count == 0 && inlineReaders.Count == 0 && textReaders.Count == 0)
+                                    @if (placedOn.Count == 0 && readRows.Count == 0)
                                     {
                                         <p class="muted-text macro-where__empty">Not used yet — place it on a node or a deliverable, or read <code>{{ macro.@(macro.Id).prompt }}</code> where it goes; the registry refuses an unused macro.</p>
                                     }
@@ -5611,6 +5579,51 @@
         }
     </text>;
 
+    /// <summary>
+    /// #1085: one read, shown like a placement without its controls — the reader as
+    /// the walk spells it (a link to its pane when it has one), the member read, a
+    /// qualifier in parentheses ("inline") and a trailing note ("the instruction").
+    /// </summary>
+    private sealed record TemplateReadRow(string Label, string? Key, string Member, string? Qualifier, string? Note);
+
+    /// <summary>
+    /// #1085: the shared descriptive read rows — "reader · reads member (qualifier) · note" —
+    /// without a heading or an empty state: each pane writes its own. The macro pane's
+    /// "Read by" first; the snippet, prompt and node panes adopt it (#1086, #1087).
+    /// </summary>
+    private RenderFragment<(string Aria, IReadOnlyList<TemplateReadRow> Rows)> TemplateReadRows => spec => @<text>
+        <div class="template-read-rows" aria-label="@spec.Aria">
+            @foreach (var row in spec.Rows)
+            {
+                var readRow = row;
+                <div class="result-macro template-read-row" data-read-reader="@readRow.Label" data-read-member="@readRow.Member">
+                    <span class="result-macro-row">
+                        @if (readRow.Key is { } readKey)
+                        {
+                            <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner template-read-row__reader"
+                                          Title="@($"{readRow.Label} — edit on its pane")"
+                                          @onclick="() => Select(readKey)">@readRow.Label</FluentButton>
+                        }
+                        else
+                        {
+                            <span class="template-read-row__reader">@readRow.Label</span>
+                        }
+                        <span class="muted-text">· reads</span>
+                        <code class="template-read-row__member">@readRow.Member</code>
+                        @if (readRow.Qualifier is { } qualifier)
+                        {
+                            <span class="muted-text">(@qualifier)</span>
+                        }
+                        @if (readRow.Note is { } note)
+                        {
+                            <span class="muted-text">· @note</span>
+                        }
+                    </span>
+                </div>
+            }
+        </div>
+    </text>;
+
     /// <summary>The "Read by" rows: each a button opening the reader's pane, or the empty sentence.</summary>
     private RenderFragment<(string Id, bool Folder)> SnippetReadersList => spec => @<text>
         @{ var readers = SnippetReaders(spec.Id, spec.Folder); }
@@ -6803,33 +6816,55 @@
             })
             .ToList();
 
-    /// <summary>One place a macro is read inline: the walk's subject, the member read, and the pane that holds it.</summary>
-    private sealed record MacroReader(string Subject, string Member, string? Key);
+    /// <summary>v25 (C3 #1009) / #1072 / #1085: the templates reading macro.&lt;id&gt;.prompt — where the macro goes inline — from the walk, as read rows.</summary>
+    private IReadOnlyList<TemplateReadRow> MacroInlineReadRows(string macroId) =>
+        MacroReadRowsOf(macroId, refs => refs.MacroPrompts, $"macro.{macroId}.prompt", "inline");
 
-    /// <summary>v25 (C3 #1009) / #1072: the templates reading macro.&lt;id&gt;.prompt — where the macro goes inline — from the walk.</summary>
-    private IReadOnlyList<MacroReader> MacroInlineReaders(string macroId) =>
-        MacroReadersOf(macroId, refs => refs.MacroPrompts, $"macro.{macroId}.prompt (inline)");
+    /// <summary>#1072 / #1085: the templates reading macro.&lt;id&gt;.content — the macro's text read as text — from the walk, as read rows.</summary>
+    private IReadOnlyList<TemplateReadRow> MacroTextReadRows(string macroId) =>
+        MacroReadRowsOf(macroId, refs => refs.MacroContents, $"macro.{macroId}.content", null);
 
-    /// <summary>#1072: the templates reading macro.&lt;id&gt;.content — the macro's text read as text — from the walk.</summary>
-    private IReadOnlyList<MacroReader> MacroTextReaders(string macroId) =>
-        MacroReadersOf(macroId, refs => refs.MacroContents, $"macro.{macroId}.content");
-
-    private IReadOnlyList<MacroReader> MacroReadersOf(string macroId, Func<PF.TemplateReferences, IReadOnlySet<string>> reads, string member)
+    /// <summary>#1085: the macro pane's one "Read by" list — the inline reads first, then the text reads.</summary>
+    private IReadOnlyList<TemplateReadRow> MacroReadRows(string macroId)
     {
-        var readers = new List<MacroReader>();
+        var rows = new List<TemplateReadRow>(MacroInlineReadRows(macroId));
+        rows.AddRange(MacroTextReadRows(macroId));
+        return rows;
+    }
+
+    /// <summary>
+    /// #1085: one read row per template whose references name the macro through
+    /// <paramref name="reads"/>, in the walk's order. A prompt is walked once per
+    /// node that runs it, so the same (label, pane) is kept once — the read sits
+    /// once in the text. A macro's instruction is labelled as the macro (its pane
+    /// is the macro's) with "the instruction" as the note.
+    /// </summary>
+    private IReadOnlyList<TemplateReadRow> MacroReadRowsOf(string macroId, Func<PF.TemplateReferences, IReadOnlySet<string>> reads, string member, string? qualifier)
+    {
+        var rows = new List<TemplateReadRow>();
+        var seen = new HashSet<(string Label, string? Key)>();
 
         if (PackageWalk is { } walk)
         {
             foreach (var template in walk.Templates)
             {
-                if (reads(template.References).Contains(macroId))
+                if (!reads(template.References).Contains(macroId))
                 {
-                    readers.Add(new MacroReader(template.Subject, member, PaneKeyOf(template)));
+                    continue;
+                }
+
+                var row = template.Kind == PF.TemplateKind.Instruction
+                    ? new TemplateReadRow($"Macro '{template.Id}'", EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File, member, qualifier, "the instruction")
+                    : new TemplateReadRow(template.Subject, PaneKeyOf(template), member, qualifier, null);
+
+                if (seen.Add((row.Label, row.Key)))
+                {
+                    rows.Add(row);
                 }
             }
         }
 
-        return readers;
+        return rows;
     }
 
     // v12 § 3 (#621): pending optional/default edits on DECLARED macros,
