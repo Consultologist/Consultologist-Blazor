@@ -4896,9 +4896,15 @@
                     : ReaderRowOf(template, member, null);
 
                 // #1092: a scalar read's guard, editable from the snippet's side — the rewrite targets the reader's file.
+                // #1091: a read chosen by a case shows the whole table instead.
+                var blocks = folder ? new List<PF.TemplateBranchBlock>() : BranchBlocksOf(template.References, member);
                 var sites = folder ? new List<PF.TemplateReadOccurrence>() : template.References.Occurrences.Where(o => o.Member == member).ToList();
 
-                if (sites.Count > 0)
+                if (blocks.Count > 0)
+                {
+                    row = row with { Below = BranchTablesBelow((TemplateFileOf(template), template.Subject, blocks)) };
+                }
+                else if (sites.Count > 0)
                 {
                     row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites)) };
                 }
@@ -5012,10 +5018,24 @@
 
         // #1088/#1092: every read kind's guard — the {{~ if ~}} around the read's one
         // occurrence, editable when the pane edits the owning file, a sentence otherwise.
+        // #1091: a read chosen by a case says so; the table sits on the case subject's row.
         TemplateReadRow Guarded(TemplateReadRow row)
         {
+            var blocks = BranchBlocksOf(references, row.Member);
+
+            if (blocks.Count > 0)
+            {
+                return row with { Note = $"chosen by {string.Join(", ", blocks.Select(b => b.Subject).Distinct(StringComparer.Ordinal))}" };
+            }
+
             var sites = references.Occurrences.Where(o => o.Member == row.Member).ToList();
             return sites.Count == 0 ? row : row with { Below = ReadGuardBelow((file, subject ?? "the text", row.Member, sites)) };
+        }
+
+        TemplateReadRow Tabled(TemplateReadRow row)
+        {
+            var blocks = references.Branches.Where(b => b.Subject == row.Member).ToList();
+            return blocks.Count == 0 ? row : row with { Below = BranchTablesBelow((file, subject ?? "the text", blocks)) };
         }
 
         foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
@@ -5042,7 +5062,7 @@
         foreach (var input in references.Inputs.Order(StringComparer.Ordinal))
         {
             var label = EffectiveInputs.FirstOrDefault(i => i.Id == input)?.Label;
-            rows.Add(new TemplateReadRow($"Input '{(string.IsNullOrWhiteSpace(label) ? input : label)}'", InputsKey, $"input.{input}", null, null));
+            rows.Add(Tabled(new TemplateReadRow($"Input '{(string.IsNullOrWhiteSpace(label) ? input : label)}'", InputsKey, $"input.{input}", null, null)));
         }
 
         foreach (var (nodeId, read) in references.Nodes)
@@ -5057,7 +5077,7 @@
 
             if (read.ReadsValue)
             {
-                rows.Add(Guarded(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.value", null, null)));
+                rows.Add(Tabled(Guarded(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.value", null, null))));
             }
         }
 
@@ -5112,21 +5132,21 @@
             var macroId = macroGroup.Key;
             var member = $"macro.{macroId}.prompt";
             var via = new List<(string Label, string? Key)>();
-            var guards = new List<(string Holder, IReadOnlyList<PF.TemplateReadOccurrence> Sites)>();
+            var guards = new List<(string Holder, PF.TemplateReferences References, IReadOnlyList<PF.TemplateReadOccurrence> Sites)>();
 
             foreach (var holderGroup in macroGroup.GroupBy(s => (s.HolderKind, s.HolderId)))
             {
                 var first = holderGroup.First();
                 var label = char.ToLowerInvariant(first.HolderSubject[0]) + first.HolderSubject[1..];
 
-                // #1088: the holder's guard around the read, read-only here.
+                // #1088: the holder's guard around the read, read-only here; #1091: or the case choosing it.
                 if (walk.Templates.FirstOrDefault(t => t.Kind == first.HolderKind && t.Id == first.HolderId) is { } holderTemplate)
                 {
-                    var holderSites = holderTemplate.References.Occurrences.Where(o => o.Member == member && o.Guard is not null).ToList();
+                    var holderSites = holderTemplate.References.Occurrences.Where(o => o.Member == member && (o.Guard is not null || o.Branch >= 0)).ToList();
 
                     if (holderSites.Count > 0)
                     {
-                        guards.Add((label, holderSites));
+                        guards.Add((label, holderTemplate.References, holderSites));
                     }
                 }
                 var items = holderGroup
@@ -5179,13 +5199,158 @@
     }
 
     /// <summary>#1088: on the node pane, each holder's guard around the read as a sentence — read-only, the text's own pane edits it.</summary>
-    private RenderFragment<(string Member, IReadOnlyList<(string Holder, IReadOnlyList<PF.TemplateReadOccurrence> Sites)> Guards)> HolderGuardsBelow => spec => @<text>
-        @foreach (var (holder, sites) in spec.Guards)
+    private RenderFragment<(string Member, IReadOnlyList<(string Holder, PF.TemplateReferences References, IReadOnlyList<PF.TemplateReadOccurrence> Sites)> Guards)> HolderGuardsBelow => spec => @<text>
+        @foreach (var (holder, references, sites) in spec.Guards)
         {
             <div class="template-read-row__holder-guard">
                 <span class="muted-text">@holder:</span>
                 @ReadGuardBelow((null, holder, spec.Member, sites))
+                @BranchTablesBelow((null, holder, BranchBlocksOf(references, spec.Member)))
             </div>
+        }
+    </text>;
+
+    // ----- #1091: a case/when read row over an enum — the table on the case subject's row -----
+
+    /// <summary>The case blocks a member is read in (its occurrences' Branch), each once.</summary>
+    private static IReadOnlyList<PF.TemplateBranchBlock> BranchBlocksOf(PF.TemplateReferences references, string member) =>
+        references.Occurrences
+            .Where(o => o.Member == member && o.Branch >= 0 && o.Branch < references.Branches.Count)
+            .Select(o => references.Branches[o.Branch])
+            .Distinct()
+            .ToList();
+
+    /// <summary>A case subject's declared values: an enum input's own, or an enum-format node's answer set.</summary>
+    private IReadOnlyList<string>? BranchValuesOf(string subject)
+    {
+        if (subject.StartsWith("input.", StringComparison.Ordinal))
+        {
+            return EffectiveInputs.FirstOrDefault(i => i.Id == subject["input.".Length..])?.Values;
+        }
+
+        if (subject.StartsWith("node.", StringComparison.Ordinal) && subject.EndsWith(".value", StringComparison.Ordinal))
+        {
+            var nodeId = subject["node.".Length..^".value".Length];
+            return EffectiveNodes.FirstOrDefault(n => n.Id == nodeId) is { } node ? ClassifierValues(node) : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>The member a branch's macro read takes: inline (.prompt) in a prompt or snippet, the text (.content) in a macro's text.</summary>
+    private static string BranchMemberFor(string file) => file.StartsWith("macros/", StringComparison.Ordinal) ? "content" : "prompt";
+
+    /// <summary>The table's branches in the declared order — one per value, then the else — with the block's reads placed.</summary>
+    private static IReadOnlyList<PF.TemplateBranch> TableBranches(PF.TemplateBranchBlock block, IReadOnlyList<string> values) =>
+        values.Select(v => new PF.TemplateBranch(v, block.Branches.FirstOrDefault(b => b.Literal == v)?.Member))
+            .Append(new PF.TemplateBranch(null, block.Branches.FirstOrDefault(b => b.Literal is null)?.Member))
+            .ToList();
+
+    /// <summary>The canonical one-liner: a when for every value with a read, the else when set, nothing when every branch is empty.</summary>
+    private static string BranchLine(string subject, IReadOnlyList<PF.TemplateBranch> branches)
+    {
+        if (branches.All(b => b.Member is null))
+        {
+            return string.Empty;
+        }
+
+        var line = new System.Text.StringBuilder($"{{{{~ case {subject} ~}}}}");
+
+        foreach (var branch in branches.Where(b => b.Member is not null))
+        {
+            line.Append(branch.Literal is { } literal ? $"{{{{~ when \"{literal}\" ~}}}}" : "{{~ else ~}}").Append(ReadBlock(branch.Member!));
+        }
+
+        return line.Append("{{~ end ~}}").ToString();
+    }
+
+    /// <summary>A branch's read as a row would label it.</summary>
+    private string BranchMemberLabel(string member)
+    {
+        if (member.StartsWith("macro.", StringComparison.Ordinal) && member.LastIndexOf('.') is var dot && dot > "macro.".Length)
+        {
+            return $"Macro '{MacroLabel(member["macro.".Length..dot])}'";
+        }
+
+        return member;
+    }
+
+    private async Task SetBranchAsync(string file, PF.TemplateBranchBlock block, IReadOnlyList<string> values, string? literal, string? pick)
+    {
+        var text = GetText(file);
+
+        // The walk is of the pending text, so a table is current; this only refuses a stale one.
+        if (block.Start < 0 || block.End > text.Length || !text[block.Start..block.End].Contains("case", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var branches = TableBranches(block, values)
+            .Select(b => b.Literal == literal ? b with { Member = string.IsNullOrEmpty(pick) ? null : pick } : b)
+            .ToList();
+        await OnTextChangedAsync(file, text[..block.Start] + BranchLine(block.Subject, branches) + text[block.End..]);
+    }
+
+    private RenderFragment<(string? File, string Subject, IReadOnlyList<PF.TemplateBranchBlock> Blocks)> BranchTablesBelow => spec => @<text>
+        @foreach (var block in spec.Blocks)
+        {
+            @BranchTableBelow((spec.File, spec.Subject, block))
+        }
+    </text>;
+
+    /// <summary>
+    /// #1091: one case as a table — on a pane that edits the owning file and a canonical
+    /// block, one line per declared value with a closed macro dropdown and "otherwise",
+    /// then the line written; a non-canonical block says so (edit in the text); elsewhere
+    /// the case as a sentence.
+    /// </summary>
+    private RenderFragment<(string? File, string Subject, PF.TemplateBranchBlock Block)> BranchTableBelow => spec => @<text>
+        @{
+            var block = spec.Block;
+            var values = BranchValuesOf(block.Subject) ?? Array.Empty<string>();
+            var editable = block.Canonical && values.Count > 0;
+            var branches = editable ? TableBranches(block, values) : block.Branches;
+        }
+        @if (spec.File is { } file && editable)
+        {
+            var member = BranchMemberFor(file);
+            <div class="branch-table" aria-label="@($"Case over {block.Subject} in {spec.Subject}")">
+                <span class="muted-text">by <code>@block.Subject</code></span>
+                @foreach (var branch in branches)
+                {
+                    var current = branch;
+                    var aria = current.Literal is { } literal
+                        ? $"Branch for {literal} of {block.Subject} in {spec.Subject}"
+                        : $"Otherwise of {block.Subject} in {spec.Subject}";
+                    <div class="branch-table__row">
+                        <span class="branch-table__value">@(current.Literal ?? "otherwise")</span>
+                        <FluentSelect TOption="string" class="branch-table__pick"
+                                      Value="@(current.Member ?? "")"
+                                      ValueChanged="@(v => SetBranchAsync(file, block, values, current.Literal, v))"
+                                      aria-label="@aria">
+                            <FluentOption TOption="string" Value="">nothing</FluentOption>
+                            @foreach (var macro in EffectiveMacros)
+                            {
+                                var option = $"macro.{macro.Id}.{member}";
+                                <FluentOption TOption="string" Value="@option">@MacroLabel(macro.Id)</FluentOption>
+                            }
+                            @if (current.Member is { } written && !EffectiveMacros.Any(m => $"macro.{m.Id}.{member}" == written))
+                            {
+                                <FluentOption TOption="string" Value="@written">as written: @written</FluentOption>
+                            }
+                        </FluentSelect>
+                    </div>
+                }
+                <code class="template-read-row__writes" aria-label="@($"Line written for {block.Subject} in {spec.Subject}")">@BranchLine(block.Subject, branches)</code>
+            </div>
+        }
+        else if (spec.File is not null)
+        {
+            <p class="muted-text template-read-row__guard">chooses by <code>@block.Subject</code> · edit in the text</p>
+        }
+        else
+        {
+            <p class="muted-text template-read-row__guard">by <code>@block.Subject</code>: @string.Join("; ", branches.Select(b => $"{b.Literal ?? "otherwise"} → {(b.Member is { } m ? BranchMemberLabel(m) : "nothing")}"))</p>
         }
     </text>;
 
@@ -7103,9 +7268,15 @@
                 var row = ReaderRowOf(template, member, qualifier);
 
                 // #1088/#1092: the read's guard, editable from the macro's side — the rewrite targets the reader's file.
+                // #1091: a read chosen by a case shows the whole table instead.
+                var blocks = BranchBlocksOf(template.References, member);
                 var sites = template.References.Occurrences.Where(o => o.Member == member).ToList();
 
-                if (sites.Count > 0)
+                if (blocks.Count > 0)
+                {
+                    row = row with { Below = BranchTablesBelow((TemplateFileOf(template), template.Subject, blocks)) };
+                }
+                else if (sites.Count > 0)
                 {
                     row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites)) };
                 }

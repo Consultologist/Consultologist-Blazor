@@ -22,6 +22,7 @@ public sealed record TemplateReferences(
     IReadOnlySet<string> ProfileFacts,
     IReadOnlySet<TemplateRenderedRead> Rendered,
     IReadOnlyList<TemplateReadOccurrence> Occurrences,
+    IReadOnlyList<TemplateBranchBlock> Branches,
     IReadOnlyList<string> Errors,
     IReadOnlyList<string> Warnings)
 {
@@ -59,7 +60,22 @@ public sealed record TemplateRenderedRead(string Node, string Pipe);
 /// (−1 when unguarded). The validator and the engine read nothing from it; the editor's read
 /// rows set a read's guard from it. In text order.
 /// </summary>
-public sealed record TemplateReadOccurrence(string Member, int Start, int End, string? Guard, bool GuardCanonical, int GuardStart, int GuardEnd);
+public sealed record TemplateReadOccurrence(string Member, int Start, int End, string? Guard, bool GuardCanonical, int GuardStart, int GuardEnd, int Branch = -1);
+
+/// <summary>#1091: one branch of a <c>case</c> — the <c>when</c> literal (null for the <c>else</c>) and the one read it holds (null when empty).</summary>
+public sealed record TemplateBranch(string? Literal, string? Member);
+
+/// <summary>
+/// #1091: a <c>{{ case … }}</c> block as written — its subject chain (<c>input.kind</c>,
+/// <c>node.x.value</c>), its branches in text order, whether the shape is <b>canonical</b>
+/// (the subject is a declared enum, every <c>when</c> one string literal among the enum's
+/// values, each body at most one plain read plus whitespace, the <c>else</c> last) — the
+/// shape the editor's row rewrites — and <c>[Start, End)</c>, the whole block in the text.
+/// A read in a branch is a <see cref="TemplateReadOccurrence"/> whose <c>Branch</c> indexes
+/// this list. The validator and the engine read nothing from it; the editor's read rows
+/// show and rewrite a case from it.
+/// </summary>
+public sealed record TemplateBranchBlock(string Subject, IReadOnlyList<TemplateBranch> Branches, bool Canonical, int Start, int End);
 
 /// <summary>Gathers a template's references while the walker runs; <see cref="ToReferences"/> freezes them.</summary>
 internal sealed class TemplateReferenceCollector
@@ -76,6 +92,7 @@ internal sealed class TemplateReferenceCollector
     private readonly HashSet<string> _profileFacts = new(StringComparer.Ordinal);
     private readonly HashSet<TemplateRenderedRead> _rendered = new();
     private readonly List<TemplateReadOccurrence> _occurrences = new();
+    private readonly List<TemplateBranchBlock?> _branches = new();
 
     public List<string> Errors { get; } = new();
 
@@ -109,7 +126,16 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadOccurrence(TemplateReadOccurrence occurrence) => _occurrences.Add(occurrence);
 
+    /// <summary>#1091: a case's slot is reserved on entry (its reads index it) and filled on exit.</summary>
+    public int ReserveBranchBlock()
+    {
+        _branches.Add(null);
+        return _branches.Count - 1;
+    }
+
+    public void SetBranchBlock(int index, TemplateBranchBlock block) => _branches[index] = block;
+
     public TemplateReferences ToReferences() => new(
         _inputs, _nodes, _snippets, _snippetFolders, _macroContents, _macroPrompts, _macroFolders, _itemMembers,
-        _runFacts, _profileFacts, _rendered, _occurrences, Errors, Warnings);
+        _runFacts, _profileFacts, _rendered, _occurrences, _branches.Where(b => b is not null).Cast<TemplateBranchBlock>().ToList(), Errors, Warnings);
 }

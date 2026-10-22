@@ -211,27 +211,175 @@ public static partial class TemplateReferenceWalker
 
             var member = root + string.Concat(segments.Cast<MemberSegment>().Select(s => "." + s.Name));
             var (start, end) = BlockSpan(node);
-            var guard = NearestIf(node);
+            var condition = NearestCondition(node);
 
-            if (guard is null)
+            // #1091: a read in a case's branch belongs to the case, not to an outer if.
+            if (condition is ScriptWhenStatement or ScriptCaseStatement || (condition is ScriptElseStatement && _cases.Count > 0 && condition.Parent is not ScriptIfStatement))
+            {
+                _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, null, false, -1, -1, _cases.Count > 0 ? _cases.Peek() : -1));
+                return;
+            }
+
+            if (condition is not ScriptIfStatement guard)
             {
                 _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, null, false, -1, -1));
                 return;
             }
 
-            var condition = guard.Condition is { } c ? Slice(c).Trim() : string.Empty;
-            var (guardStart, guardEnd) = GuardSpan(guard);
-            _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, condition, IsCanonical(guard, node), guardStart, guardEnd));
+            var guardText = guard.Condition is { } c ? Slice(c).Trim() : string.Empty;
+            var (guardStart, guardEnd) = BlockSpanToEnd(guard);
+            _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, guardText, IsCanonical(guard, node), guardStart, guardEnd));
         }
 
-        private static ScriptIfStatement? NearestIf(ScriptNode node)
+        /// <summary>The nearest enclosing condition statement — an if, a when, a case, or an else (of either).</summary>
+        private static ScriptNode? NearestCondition(ScriptNode node)
         {
             for (var parent = node.Parent; parent is not null; parent = parent.Parent)
             {
-                if (parent is ScriptIfStatement enclosing)
+                if (parent is ScriptIfStatement or ScriptWhenStatement or ScriptCaseStatement or ScriptElseStatement)
                 {
-                    return enclosing;
+                    // An else's owner decides: an if's else is the if's branch; a case's else is the case's.
+                    return parent is ScriptElseStatement elseStatement && elseStatement.Parent is ScriptIfStatement owner ? owner : parent;
                 }
+            }
+
+            return null;
+        }
+
+        // ----- #1091: case/when branch blocks --------------------------------------
+
+        private readonly Stack<int> _cases = new();
+
+        public override void Visit(ScriptCaseStatement node)
+        {
+            var index = _refs.ReserveBranchBlock();
+            _cases.Push(index);
+            base.Visit(node);
+            _cases.Pop();
+            _refs.SetBranchBlock(index, BranchBlockOf(node));
+        }
+
+        /// <summary>
+        /// A case as written: its subject chain, its branches, whether the shape is the
+        /// canonical one the editor's row rewrites (a declared enum subject, each when one
+        /// string literal among its values and seen once, each body at most one plain read
+        /// plus whitespace, the else last), and the whole block's span.
+        /// </summary>
+        private TemplateBranchBlock BranchBlockOf(ScriptCaseStatement node)
+        {
+            var canonical = true;
+            string subject;
+            IReadOnlyList<string>? declared = null;
+
+            if (node.Value is { } value && TryFlatten(value, out var root, out var segments, out _) && segments.All(s => s is MemberSegment))
+            {
+                var names = segments.Cast<MemberSegment>().Select(s => s.Name).ToList();
+                subject = root + string.Concat(names.Select(n => "." + n));
+                declared = EnumValuesOf(root, names);
+            }
+            else
+            {
+                subject = node.Value is { } v ? Slice(v).Trim() : string.Empty;
+            }
+
+            canonical &= declared is not null;
+
+            var branches = new List<TemplateBranch>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            ScriptConditionStatement? current = null;
+
+            foreach (var statement in node.Body?.Statements ?? Enumerable.Empty<ScriptStatement>())
+            {
+                switch (statement)
+                {
+                    case ScriptWhenStatement first when current is null:
+                        current = first;
+                        break;
+                    case ScriptEscapeStatement or ScriptEndStatement:
+                        break;
+                    case ScriptRawStatement raw when string.IsNullOrWhiteSpace(raw.Text.ToString()):
+                        break;
+                    default:
+                        canonical = false;
+                        break;
+                }
+            }
+
+            while (current is not null)
+            {
+                switch (current)
+                {
+                    case ScriptWhenStatement when_:
+                        string? literal = null;
+
+                        if (when_.Values is { Count: 1 } && when_.Values[0] is ScriptLiteral { Value: string lit })
+                        {
+                            literal = lit;
+                            canonical &= declared is not null && declared.Contains(lit, StringComparer.Ordinal) && seen.Add(lit);
+                        }
+                        else
+                        {
+                            literal = when_.Values is { Count: > 0 } ? string.Join(", ", when_.Values.Select(v => Slice(v).Trim())) : string.Empty;
+                            canonical = false;
+                        }
+
+                        branches.Add(new TemplateBranch(literal, BranchMemberOf(when_.Body, ref canonical)));
+                        current = when_.Next;
+                        break;
+                    case ScriptElseStatement else_:
+                        branches.Add(new TemplateBranch(null, BranchMemberOf(else_.Body, ref canonical)));
+                        current = null;
+                        break;
+                    default:
+                        canonical = false;
+                        current = null;
+                        break;
+                }
+            }
+
+            var (start, end) = BlockSpanToEnd(node);
+            return new TemplateBranchBlock(subject, branches, canonical, start, end);
+        }
+
+        /// <summary>The one plain read a branch body holds (null when empty); anything else makes the case non-canonical.</summary>
+        private static string? BranchMemberOf(ScriptBlockStatement? body, ref bool canonical)
+        {
+            string? member = null;
+
+            foreach (var statement in body?.Statements ?? Enumerable.Empty<ScriptStatement>())
+            {
+                switch (statement)
+                {
+                    case ScriptExpressionStatement read when member is null
+                        && TryFlatten(read.Expression, out var root, out var segments, out _) && segments.All(s => s is MemberSegment):
+                        member = root + string.Concat(segments.Cast<MemberSegment>().Select(s => "." + s.Name));
+                        break;
+                    case ScriptEscapeStatement or ScriptEndStatement:
+                        break;
+                    case ScriptRawStatement raw when string.IsNullOrWhiteSpace(raw.Text.ToString()):
+                        break;
+                    default:
+                        canonical = false;
+                        break;
+                }
+            }
+
+            return member;
+        }
+
+        /// <summary>A declared enum's values: an enum input's own, or an enum-format node's answer set read as <c>.value</c>.</summary>
+        private IReadOnlyList<string>? EnumValuesOf(string root, IReadOnlyList<string> names)
+        {
+            if (root == TemplateObjects.Input && names.Count == 1 && _context.Inputs.TryGetValue(names[0], out var input)
+                && input.Type == WorkflowInputTypes.Enum && input.Values is { Count: > 0 })
+            {
+                return input.Values;
+            }
+
+            if (root == TemplateObjects.Node && names.Count == 2 && names[1] == TemplateMembers.Value && _context.Nodes.TryGetValue(names[0], out var node)
+                && node.Type == WorkflowInputTypes.Enum && node.Values is { Count: > 0 })
+            {
+                return node.Values;
             }
 
             return null;
@@ -300,8 +448,8 @@ public static partial class TemplateReferenceWalker
 
         private static bool IsSlack(char c) => c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '~' || c == '-';
 
-        /// <summary>The whole <c>{{ if … }}…{{ end }}</c> block: the if's span widened to its delimiters, then to the <c>end</c> block's close when the span stops short of it.</summary>
-        private (int Start, int End) GuardSpan(ScriptIfStatement guard)
+        /// <summary>The whole <c>{{ if … }}…{{ end }}</c> (or <c>case</c>) block: the statement's span widened to its delimiters, then to the <c>end</c> block's close when the span stops short of it.</summary>
+        private (int Start, int End) BlockSpanToEnd(ScriptNode guard)
         {
             var (start, end) = BlockSpan(guard);
 

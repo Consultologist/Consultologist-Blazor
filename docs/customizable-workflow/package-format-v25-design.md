@@ -832,6 +832,26 @@ an occurrence (a `for`, a pipe, a member past `.value`). A folder item's **direc
 is not a 25 read kind — the walker refuses the chain, a folder is iterated — so it is out of scope here; #1116 proposes it
 as a v26 direct read (Milestone 30). The readers-disagree sentence waits for #1094's source-level gate.)*
 
+*(#1091, 2026-10-22, Milestone 31 — a **case/when read row over an enum**. The walker records every `case` as a branch
+block (`TemplateBranchBlock`: the subject chain, the branches — each `when`'s literal and the one read it holds, the
+`else` last — whether the shape is **canonical**: a declared enum subject (an enum input, or an enum-format node's
+`.value`, whose answer set now rides the walk's node shapes as it rides the validator's), every `when` one string literal
+among the enum's values seen once, each body at most one plain read plus whitespace; and the whole block's span); a read
+in a branch is an occurrence that indexes the block and carries no guard, even under an outer `if`; no spec bump, the
+engine reads nothing from it. The editor puts the table on the case subject's own read row — `Input 'Kind' · reads
+input.kind`, or the node's `.value` row — one line per declared value and "otherwise", each a closed dropdown over the
+package's macros (nothing | the macros; `.prompt` in a prompt or snippet, `.content` in a macro text; a hand-written
+member outside the list shown "as written") and the canonical one-liner written under it:
+`{{~ case input.kind ~}}{{~ when "new" ~}}{{ macro.a.prompt }}{{~ when "follow_up" ~}}{{ macro.b.prompt }}{{~ else ~}}{{ macro.c.prompt }}{{~ end ~}}`
+— `~` in every marker, a `when` only for a value holding a read, the `else` only when set, every branch empty → the
+block removed; a hand-written form with or without markers is canonical and normalises on edit. A read chosen by a case
+says "chosen by input.kind" on its own row instead of a guard builder; the macro pane's and the snippet pane's "Read by"
+rows show the whole table (the rewrite targets the reader's file); the node pane shows a case as a sentence; a
+non-canonical case is read-only ("edit in the text"). The table loads an existing block — creating one stays in the text
+(or the palette). Follow-ups: the `if … else` "otherwise" control on a #1088 row (the block fact already covers it; filed
+on request), a registry warning for a `when` literal outside the enum's values (a package-format matter), and #1093's
+snippets in the dropdown.)*
+
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
 text or an instruction — offering a snippet's choices, never the macro's own members), its

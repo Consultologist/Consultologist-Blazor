@@ -779,7 +779,8 @@ public static class WorkflowDerivedEdges
         {
             if (node.Format is { } id && SpecOf(id) is { } spec)
             {
-                shapes[node.Id] = new TemplateNodeShape(id, spec.Type, spec.Schema);
+                // #1091: an enum node's answer set rides its shape, as the validator's shapes carry it.
+                shapes[node.Id] = new TemplateNodeShape(id, spec.Type, spec.Schema, EnumAnswerSet(node, spec, inputsById));
             }
             else if (node.Aggregate is { Count: > 0 })
             {
@@ -793,6 +794,32 @@ public static class WorkflowDerivedEdges
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
 
         contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan);
+
+        static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
+        {
+            if (spec.Type != WorkflowInputTypes.Enum)
+            {
+                return null;
+            }
+
+            IReadOnlyList<string>? values = spec.Values?.ToList();
+
+            if (spec.ValuesParameter is { } parameter && node.With is { } with && with.TryGetValue(parameter, out var supplied))
+            {
+                if (supplied is JsonArray array)
+                {
+                    values = array.Select(v => v?.GetValue<string>() ?? string.Empty).ToList();
+                }
+                else if (supplied is JsonValue value && value.TryGetValue(out string? reference)
+                    && TemplateObjectReference.IsBare(reference, TemplateObjects.Input, out var inputId)
+                    && inputs.TryGetValue(inputId, out var input))
+                {
+                    values = input.Values;
+                }
+            }
+
+            return values;
+        }
 
         return specs
             .Select(node => new WalkNode(
