@@ -2282,6 +2282,7 @@
                                 }
                                 <WorkflowEditorPane ShowHeader="false" EditLabel="Prompt text"
                                                     EditorExtra="@(At25 ? InsertReferencePalette((promptView.File, selectedNode.ForEach != null ? selectedNode : null, false)) : null)"
+                                                    Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(promptView.File, $"Prompt '{nodePrompt}'", GetText(promptView.File))) : null)"
                                                     Text="@GetText(promptView.File)"
                                                     Raw="@EffectivePromptRaw(nodePrompt)"
                                                     TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">

@@ -1,6 +1,7 @@
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
+using Microsoft.Extensions.DependencyInjection;
 using NSubstitute;
 using PF = Consultologist.PackageFormat;
 
@@ -65,6 +66,15 @@ public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
 
     private static string PreviewHalf(IRenderedComponent<Templates> page) =>
         page.Find(".pane-preview").TextContent;
+
+    private void ShowNode(IRenderedComponent<Templates> page, string nodeId)
+    {
+        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = $"node:{nodeId}";
+        page.Render();
+    }
+
+    private static AngleSharp.Dom.IElement PromptTextSection(IRenderedComponent<Templates> page) =>
+        page.FindAll(".node-section").Single(s => s.QuerySelector(".node-section__head")?.TextContent.Trim() == "Prompt text");
 
     private int DraftSaves() =>
         JSInterop.Invocations.Count(i => i.Identifier == "localStorage.setItem" && i.Arguments[0] is string key && key.StartsWith("workflow-editor-draft:", StringComparison.Ordinal));
@@ -221,6 +231,49 @@ public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
 
         Assert.NotEmpty(page.FindAll(".editor-pane .markdown-preview"));
         Assert.DoesNotContain("What a reader gets", PreviewHalf(page));
+    }
+
+    // ----- #1108: the node pane's inline prompt editor -----
+
+    [Fact]
+    public void TheNodePane_PreviewsWhatAReaderGets_ForItsPrompt()
+    {
+        var page = RenderEditor();
+        ShowNode(page, "assessment");
+
+        var section = PromptTextSection(page);
+        var rendered = section.QuerySelector("pre.rendered-preview__text")!.TextContent;
+        Assert.Contains("Follow the local standards.", rendered);
+        Assert.Contains("⟨input.notes⟩", rendered);
+        Assert.Contains(PF.WorkflowMacroMechanics.Prompt("tool_note", "Note the tools used when a procedure is described."), rendered);
+        Assert.Null(section.QuerySelector(".markdown-preview"));
+        Assert.Contains("What a reader gets", section.QuerySelector(".pane-preview")!.TextContent);
+    }
+
+    [Fact]
+    public void APickMadeOnThePromptsPane_ShowsOnTheNodePane()
+    {
+        var page = RenderEditor(WithFile("prompts/assessment.md", GatedAssessment));
+        Navigate(page, "assessment");
+        page.Find(KindSelect).Change("new");
+
+        ShowNode(page, "assessment");
+
+        var section = PromptTextSection(page);
+        Assert.StartsWith("NEW", section.QuerySelector("pre.rendered-preview__text")!.TextContent);
+        var select = section.QuerySelector(KindSelect)!;
+        Assert.Equal("new", select.GetAttribute("current-value") ?? select.GetAttribute("value"));
+    }
+
+    [Fact]
+    public void TheNodePane_Below25_KeepsMarkdown()
+    {
+        var page = RenderEditor(EditorFixtures.V24Full());
+        ShowNode(page, "extract-patient-concepts");
+
+        var section = PromptTextSection(page);
+        Assert.NotNull(section.QuerySelector(".markdown-preview"));
+        Assert.DoesNotContain("What a reader gets", section.TextContent);
     }
 
     [Fact]
