@@ -2657,6 +2657,11 @@
                                             Raw="@EffectivePromptRaw(prompt.Id)"
                                             TextChanged="@(value => OnTextChangedAsync(prompt.File, value))">
                             @PaneDiscardButton(prompt.File, PromptCanDiscard(prompt), () => RevertPromptEdits(prompt.File, prompt.Id))
+                            @if (At25)
+                            {
+                                @* #1086: the nodes running the prompt, as the shared descriptive rows. *@
+                                @PromptReadersList(prompt)
+                            }
                             @* #731/#829: the plain-text (raw) toggle — checked, the prompt is
                                sent verbatim with no Scriban templating; unchecked, it is rendered
                                with Scriban. #832: shown at v15+ for a declared prompt, but
@@ -4879,18 +4884,18 @@
         }
     }
 
-    /// <summary>One place a snippet is read: the walk's subject and the pane that holds it (null when it has none).</summary>
-    private sealed record SnippetReader(string Subject, string? Key);
-
     /// <summary>
-    /// Where a snippet (or a folder) is read, from the walk: every template whose
-    /// references name it — a prompt, another snippet, a folder item, a macro —
-    /// and, for a folder, every node fanning it. The Snippets pane's "Read by"
-    /// list, the delete guard and the nav's "not read" line all read this.
+    /// Where a snippet (or a folder) is read, from the walk, as the shared descriptive
+    /// rows (#1086): every template whose references name it — a prompt, another snippet,
+    /// a folder item, a macro — reads <c>snippet.&lt;id&gt;.content</c> (a folder: iterates
+    /// its items), a prompt walked per node once; and, for a folder, every node fanning
+    /// it ("fans it"). The Snippets pane's "Read by" list, the delete guard and the nav's
+    /// "not read" line all read this.
     /// </summary>
-    private IReadOnlyList<SnippetReader> SnippetReaders(string id, bool folder)
+    private IReadOnlyList<TemplateReadRow> SnippetReadRows(string id, bool folder)
     {
-        var readers = new List<SnippetReader>();
+        var rows = new List<TemplateReadRow>();
+        var seen = new HashSet<(string Label, string? Key)>();
 
         if (PackageWalk is { } walk)
         {
@@ -4898,22 +4903,54 @@
             {
                 var reads = folder ? template.References.SnippetFolders.Contains(id) : template.References.Snippets.Contains(id);
 
-                if (reads)
+                if (!reads)
                 {
-                    readers.Add(new SnippetReader(template.Subject, PaneKeyOf(template)));
+                    continue;
+                }
+
+                var row = folder
+                    ? ReaderRowOf(template, $"snippet.{id}", null) with { Note = "iterates its items" }
+                    : ReaderRowOf(template, $"snippet.{id}.content", null);
+
+                if (seen.Add((row.Label, row.Key)))
+                {
+                    rows.Add(row);
                 }
             }
         }
 
         if (folder)
         {
-            readers.AddRange(EffectiveNodes
+            rows.AddRange(EffectiveNodes
                 .Where(node => node.ForEach == FanRef(id))
-                .Select(node => new SnippetReader($"Node '{node.Id}' fans it", $"{NodeKeyPrefix}{node.Id}")));
+                .Select(node => new TemplateReadRow($"Node '{NodeLabelOrId(node)}'", $"{NodeKeyPrefix}{node.Id}", "", null, "fans it")));
         }
 
-        return readers;
+        return rows;
     }
+
+    /// <summary>
+    /// #1086: the Prompts pane's "Read by" — the nodes running the prompt, as the shared
+    /// descriptive rows ("runs this prompt", the fan named when the node fans), or the
+    /// resting line when no node does.
+    /// </summary>
+    private RenderFragment<WorkflowManifestReader.PromptView> PromptReadersList => prompt => @<text>
+        @{
+            var runners = NodesUsingPrompt(prompt.Id)
+                .Select(node => new TemplateReadRow($"Node '{NodeLabelOrId(node)}'", $"{NodeKeyPrefix}{node.Id}", "", null,
+                    node.ForEach is { } fan ? $"runs this prompt for each item of {fan}" : "runs this prompt"))
+                .ToList();
+        }
+        @if (runners.Count > 0)
+        {
+            <p class="muted-text">Read by</p>
+            @TemplateReadRows(($"Readers of {prompt.Id}", runners))
+        }
+        else
+        {
+            <p class="muted-text prompt-readers__empty">Read by nothing yet — no node runs this prompt; pick it as a node's prompt on its card.</p>
+        }
+    </text>;
 
     /// <summary>The pane a walked template is edited on: a prompt's, a snippet's, a folder item's, a macro's file.</summary>
     private string? PaneKeyOf(PF.WorkflowDerivedEdges.WalkedTemplate template) => template.Kind switch
@@ -4970,86 +5007,78 @@
         return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Snippet && PaneKeyOf(t) == file);
     }
 
-    /// <summary>One read of a template: the reference as spelled, and the pane that holds the thing (null when it has none).</summary>
-    private sealed record TemplateRead(string Reference, string? Key);
-
     /// <summary>
-    /// A template's reads in the objects' order — inputs, nodes (.content / .value), snippets,
-    /// folders, the fan item's members, macros (.content / .prompt), run and profile facts —
-    /// each linking to its pane where there is one.
+    /// #1086: a template's reads as the shared descriptive rows, grouped by kind in a fixed
+    /// order — macros (.prompt inline, then .content), snippets (then folders iterated), inputs,
+    /// nodes (one row per member read), the fan item's members, run and profile facts — the thing
+    /// read by its label where it has one, the member as the text spells it, a link to its pane
+    /// where there is one. Every text pane's palette, the node pane's Reads section and the
+    /// Prompts pane read this.
     /// </summary>
-    private IReadOnlyList<TemplateRead> ReadsOf(PF.TemplateReferences references)
+    private IReadOnlyList<TemplateReadRow> ReadsOf(PF.TemplateReferences references)
     {
-        var reads = new List<TemplateRead>();
+        var rows = new List<TemplateReadRow>();
 
-        foreach (var input in references.Inputs.Order(StringComparer.Ordinal))
+        foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"input.{input}", InputsKey));
+            rows.Add(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.prompt", "inline", null));
         }
 
-        foreach (var (nodeId, read) in references.Nodes)
+        foreach (var macro in references.MacroContents.Order(StringComparer.Ordinal))
         {
-            var members = read.ReadsContent && read.ReadsValue ? ".content, .value" : read.ReadsValue ? ".value" : ".content";
-            reads.Add(new TemplateRead($"node.{nodeId}{members}", NodeKeyPrefix + nodeId));
+            rows.Add(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.content", null, null));
         }
 
         foreach (var snippet in references.Snippets.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"snippet.{snippet}.content", ScalarPath(snippet)));
+            rows.Add(new TemplateReadRow($"Snippet '{snippet}'", ScalarPath(snippet), $"snippet.{snippet}.content", null, null));
         }
 
         foreach (var folder in references.SnippetFolders.Order(StringComparer.Ordinal))
         {
             var firstItem = EffectiveCollections.FirstOrDefault(c => c.Id == folder)?.Items.FirstOrDefault(i => !removedFiles.Contains(i.File));
-            reads.Add(new TemplateRead($"for … in snippet.{folder}", firstItem?.File));
+            rows.Add(new TemplateReadRow($"Snippet folder '{folder}'", firstItem?.File, $"snippet.{folder}", null, "iterates its items"));
+        }
+
+        foreach (var input in references.Inputs.Order(StringComparer.Ordinal))
+        {
+            var label = EffectiveInputs.FirstOrDefault(i => i.Id == input)?.Label;
+            rows.Add(new TemplateReadRow($"Input '{(string.IsNullOrWhiteSpace(label) ? input : label)}'", InputsKey, $"input.{input}", null, null));
+        }
+
+        foreach (var (nodeId, read) in references.Nodes)
+        {
+            var node = EffectiveNodes.FirstOrDefault(n => n.Id == nodeId);
+            var label = $"Node '{(node is null ? nodeId : NodeLabelOrId(node))}'";
+
+            if (read.ReadsContent)
+            {
+                rows.Add(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.content", null, null));
+            }
+
+            if (read.ReadsValue)
+            {
+                rows.Add(new TemplateReadRow(label, NodeKeyPrefix + nodeId, $"node.{nodeId}.value", null, null));
+            }
         }
 
         foreach (var member in references.ItemMembers.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"item.{member} — the fan item", null));
-        }
-
-        foreach (var macro in references.MacroContents.Order(StringComparer.Ordinal))
-        {
-            reads.Add(new TemplateRead($"macro.{macro}.content", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
-        }
-
-        foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
-        {
-            reads.Add(new TemplateRead($"macro.{macro}.prompt (inline)", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File));
+            rows.Add(new TemplateReadRow("Fan item", null, $"item.{member}", null, null));
         }
 
         foreach (var fact in references.RunFacts.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"run.{fact}", null));
+            rows.Add(new TemplateReadRow("Run", null, $"run.{fact}", null, null));
         }
 
         foreach (var fact in references.ProfileFacts.Order(StringComparer.Ordinal))
         {
-            reads.Add(new TemplateRead($"profile.{fact}", null));
+            rows.Add(new TemplateReadRow("Profile", null, $"profile.{fact}", null, null));
         }
 
-        return reads;
+        return rows;
     }
-
-    /// <summary>The rows of a reads list: a button where the read has a pane, a span where it has none.</summary>
-    private RenderFragment<(string Aria, IReadOnlyList<TemplateRead> Reads)> ReadsList => spec => @<text>
-        <ul class="snippet-readers node-reads" aria-label="@spec.Aria">
-            @foreach (var read in spec.Reads)
-            {
-                <li>
-                    @if (read.Key is { } key)
-                    {
-                        <button type="button" class="snippet-readers__row" @onclick="() => Select(key)">@read.Reference</button>
-                    }
-                    else
-                    {
-                        <span class="snippet-readers__row">@read.Reference</span>
-                    }
-                </li>
-            }
-        </ul>
-    </text>;
 
     /// <summary>
     /// v25 (C4 #1010): the node pane's Reads section — what the node's prompt reads
@@ -5064,8 +5093,8 @@
             @{
                 var promptWalk = node.Prompt == null ? null : PromptWalkOf(node.Id);
                 var parameterReads = ParameterReadsOf(node.Id);
-                IReadOnlyList<TemplateRead> promptReads = promptWalk is null ? Array.Empty<TemplateRead>() : ReadsOf(promptWalk.References);
-                IReadOnlyList<TemplateRead> withReads = parameterReads is null ? Array.Empty<TemplateRead>() : ReadsOf(parameterReads).Select(r => r with { Reference = $"with: {r.Reference}" }).ToList();
+                IReadOnlyList<TemplateReadRow> promptReads = promptWalk is null ? Array.Empty<TemplateReadRow>() : ReadsOf(promptWalk.References);
+                IReadOnlyList<TemplateReadRow> withReads = parameterReads is null ? Array.Empty<TemplateReadRow>() : ReadsOf(parameterReads).Select(r => r with { Note = "a parameter" }).ToList();
             }
             @if (node.Prompt == null && parameterReads is null)
             {
@@ -5081,7 +5110,7 @@
             }
             else
             {
-                @ReadsList(($"Reads of {node.Id}", promptReads.Concat(withReads).ToList()))
+                @TemplateReadRows(($"Reads of {node.Id}", promptReads.Concat(withReads).ToList()))
             }
             @if (promptWalk is { } walked)
             {
@@ -5567,7 +5596,15 @@
         @if (walked is { } template)
         {
             var reads = ReadsOf(template.References);
-            <p class="muted-text template-reads">Reads: @(reads.Count == 0 ? "nothing yet" : string.Join(", ", reads.Select(r => r.Reference)))</p>
+            @if (reads.Count == 0)
+            {
+                <p class="muted-text template-reads">Reads: nothing yet</p>
+            }
+            else
+            {
+                <p class="muted-text template-reads">Reads</p>
+                @TemplateReadRows(($"Reads of {target.Name}", reads))
+            }
             @foreach (var warning in template.References.Warnings)
             {
                 <p class="muted-text node-reads__warning">@warning</p>
@@ -5589,7 +5626,9 @@
     /// <summary>
     /// #1085: the shared descriptive read rows — "reader · reads member (qualifier) · note" —
     /// without a heading or an empty state: each pane writes its own. The macro pane's
-    /// "Read by" first; the snippet, prompt and node panes adopt it (#1086, #1087).
+    /// "Read by" first; #1086 the "Reads" rows under every text pane's palette, the node
+    /// pane's Reads section, the snippet pane's "Read by" and the prompt pane's "Read by"
+    /// (a note-only row — an empty member — says "runs this prompt" / "fans it").
     /// </summary>
     private RenderFragment<(string Aria, IReadOnlyList<TemplateReadRow> Rows)> TemplateReadRows => spec => @<text>
         <div class="template-read-rows" aria-label="@spec.Aria">
@@ -5608,8 +5647,11 @@
                         {
                             <span class="template-read-row__reader">@readRow.Label</span>
                         }
-                        <span class="muted-text">· reads</span>
-                        <code class="template-read-row__member">@readRow.Member</code>
+                        @if (readRow.Member.Length > 0)
+                        {
+                            <span class="muted-text">· reads</span>
+                            <code class="template-read-row__member">@readRow.Member</code>
+                        }
                         @if (readRow.Qualifier is { } qualifier)
                         {
                             <span class="muted-text">(@qualifier)</span>
@@ -5624,27 +5666,13 @@
         </div>
     </text>;
 
-    /// <summary>The "Read by" rows: each a button opening the reader's pane, or the empty sentence.</summary>
+    /// <summary>The snippet pane's "Read by": the shared descriptive rows (#1086), each opening the reader's pane, or the empty sentence.</summary>
     private RenderFragment<(string Id, bool Folder)> SnippetReadersList => spec => @<text>
-        @{ var readers = SnippetReaders(spec.Id, spec.Folder); }
+        @{ var readers = SnippetReadRows(spec.Id, spec.Folder); }
         @if (readers.Count > 0)
         {
             <p class="muted-text">Read by</p>
-            <ul class="snippet-readers" aria-label="@($"Readers of {spec.Id}")">
-                @foreach (var reader in readers)
-                {
-                    <li>
-                        @if (reader.Key is { } key)
-                        {
-                            <button type="button" class="snippet-readers__row" @onclick="() => Select(key)">@reader.Subject</button>
-                        }
-                        else
-                        {
-                            <span class="snippet-readers__row">@reader.Subject</span>
-                        }
-                    </li>
-                }
-            </ul>
+            @TemplateReadRows(($"Readers of {spec.Id}", readers))
         }
         else if (spec.Folder)
         {
@@ -5680,7 +5708,7 @@
             id, CollectionDirectory(id), Array.Empty<WorkflowManifestReader.DataItemView>())));
 
     private bool CollectionIsUnused(string collectionId) =>
-        At25 ? SnippetReaders(collectionId, folder: true).Count == 0 : !nodes.Any(n => n.ForEach == FanRef(collectionId));
+        At25 ? SnippetReadRows(collectionId, folder: true).Count == 0 : !nodes.Any(n => n.ForEach == FanRef(collectionId));
 
     // Single-value data entries (#309). A value's key IS its path, derived the
     // same way whether pending or published, so selection needs no second
@@ -5714,7 +5742,7 @@
     // A collection is unused when nothing forEaches it; a value when nothing
     // binds it. Different edge kinds, same question.
     private bool ScalarIsUnused(string scalarId) =>
-        At25 ? SnippetReaders(scalarId, folder: false).Count == 0 : NodesBinding(scalarId).Count == 0;
+        At25 ? SnippetReadRows(scalarId, folder: false).Count == 0 : NodesBinding(scalarId).Count == 0;
 
     // Published values marked for deletion. Derived from removedFiles rather
     // than tracked separately, so PendingCount, Discard, Load and the draft
@@ -6853,9 +6881,7 @@
                     continue;
                 }
 
-                var row = template.Kind == PF.TemplateKind.Instruction
-                    ? new TemplateReadRow($"Macro '{template.Id}'", EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File, member, qualifier, "the instruction")
-                    : new TemplateReadRow(template.Subject, PaneKeyOf(template), member, qualifier, null);
+                var row = ReaderRowOf(template, member, qualifier);
 
                 if (seen.Add((row.Label, row.Key)))
                 {
@@ -6866,6 +6892,16 @@
 
         return rows;
     }
+
+    /// <summary>
+    /// #1085/#1086: the read row for a template that reads something — the reader as
+    /// the walk spells it, linked to its pane; a macro's instruction labelled as the
+    /// macro (its pane is the macro's) with "the instruction" as the note.
+    /// </summary>
+    private TemplateReadRow ReaderRowOf(PF.WorkflowDerivedEdges.WalkedTemplate template, string member, string? qualifier) =>
+        template.Kind == PF.TemplateKind.Instruction
+            ? new TemplateReadRow($"Macro '{template.Id}'", EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File, member, qualifier, "the instruction")
+            : new TemplateReadRow(template.Subject, PaneKeyOf(template), member, qualifier, null);
 
     // v12 § 3 (#621): pending optional/default edits on DECLARED macros,
     // keyed by id; an entry equal to the manifest removes itself.
