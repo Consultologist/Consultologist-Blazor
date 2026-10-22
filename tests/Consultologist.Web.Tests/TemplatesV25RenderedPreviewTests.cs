@@ -1,3 +1,5 @@
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using Bunit;
 using Consultologist.Web.Pages;
 using Consultologist.Web.Services.Workflow;
@@ -20,6 +22,7 @@ namespace Consultologist.Web.Tests;
 public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
 {
     private const string KindSelect = "fluent-select[aria-label='Preview with input.kind']";
+    private const string ItemSelect = "fluent-select[aria-label='Preview as item of snippet.sections']";
     private const string GatedAssessment = "{{ if input.kind == \"new\" }}NEW{{ else }}FOLLOW{{ end }}\n{{ snippet.standards.content }}";
 
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse? fixture = null, bool withCatalogue = true)
@@ -60,6 +63,24 @@ public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
         var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal) { [path] = text };
         return package with { Files = files };
     }
+
+    /// <summary>The V25 fixture with section_notes fanning an array input instead of the folder (its folder-item macro dropped).</summary>
+    private static WorkflowPackageContentResponse V25WithAnInputFan()
+    {
+        var package = EditorFixtures.V25();
+        var root = JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["inputs"]!.AsArray().Add(new JsonObject { ["id"] = "priors", ["label"] = "Priors", ["required"] = false, ["type"] = "array", ["items"] = "text" });
+        var sectionNotes = root["nodes"]!.AsArray().First(n => n!["id"]!.GetValue<string>() == "section_notes")!.AsObject();
+        sectionNotes["forEach"] = "input.priors";
+        sectionNotes.Remove("macros");
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    private static IReadOnlyList<string> OptionValues(AngleSharp.Dom.IElement select) =>
+        select.QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value") ?? "").ToList();
+
+    private static IReadOnlyList<string> OptionTexts(AngleSharp.Dom.IElement select) =>
+        select.QuerySelectorAll("fluent-option").Select(o => o.TextContent.Trim()).ToList();
 
     private static string Rendered(IRenderedComponent<Templates> page) =>
         page.Find(".pane-preview pre.rendered-preview__text").TextContent;
@@ -274,6 +295,103 @@ public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
         var section = PromptTextSection(page);
         Assert.NotNull(section.QuerySelector(".markdown-preview"));
         Assert.DoesNotContain("What a reader gets", section.TextContent);
+    }
+
+    // ----- #1109: preview as item -----
+
+    [Fact]
+    public void TheItemPick_OffersTheFoldersItems_InNavOrder_MarkingGatedOnes()
+    {
+        var page = RenderEditor();
+        Navigate(page, "section");
+
+        var select = page.Find(ItemSelect);
+        Assert.Equal(new[] { "", "hpi", "plan" }, OptionValues(select));
+        Assert.Equal(new[] { "— unchosen —", "HPI", "Plan — when input.kind == \"new\"" }, OptionTexts(select));
+        Assert.Equal("⟨item.name⟩: ⟨item.content⟩", Rendered(page));
+    }
+
+    [Fact]
+    public void ChoosingAnItem_RendersItForReal()
+    {
+        var page = RenderEditor();
+        Navigate(page, "section");
+
+        page.Find(ItemSelect).Change("hpi");
+        Assert.Equal("HPI: History: ⟨input.notes⟩", Rendered(page));
+
+        page.Find(ItemSelect).Change("plan");
+        Assert.Equal("Plan: Plan.", Rendered(page));
+
+        page.Find(ItemSelect).Change("");
+        Assert.Equal("⟨item.name⟩: ⟨item.content⟩", Rendered(page));
+    }
+
+    [Fact]
+    public void AnItemPick_SurvivesAPaneSwitch_AndShowsOnTheNodePane()
+    {
+        var page = RenderEditor();
+        Navigate(page, "section");
+        var savesBefore = DraftSaves();
+
+        page.Find(ItemSelect).Change("hpi");
+
+        Assert.DoesNotContain("●", page.Find("button.editor-nav__item--selected").TextContent);
+        Assert.Equal(savesBefore, DraftSaves());
+
+        ShowNode(page, "section_notes");
+        var section = PromptTextSection(page);
+        Assert.Equal("HPI: History: ⟨input.notes⟩", section.QuerySelector("pre.rendered-preview__text")!.TextContent);
+        var select = section.QuerySelector(ItemSelect)!;
+        Assert.Equal("hpi", select.GetAttribute("current-value") ?? select.GetAttribute("value"));
+    }
+
+    [Fact]
+    public void ARenamedItem_IsOfferedByItsNewName()
+    {
+        var page = RenderEditor();
+        Navigate(page, "HPI");
+        page.Find("input[aria-label='Name for snippet hpi']").Change("History");
+
+        Navigate(page, "section");
+
+        Assert.Contains("History", OptionTexts(page.Find(ItemSelect)));
+        page.Find(ItemSelect).Change("hpi");
+        Assert.Equal("History: History: ⟨input.notes⟩", Rendered(page));
+    }
+
+    [Fact]
+    public void APendingItem_IsOffered_AfterThePublishedOnes()
+    {
+        var page = RenderEditor();
+        Navigate(page, "+ Add item");
+        AddItem(page, "discharge", "Discharge", "Discharge plan: {{ input.notes }}");
+
+        Navigate(page, "section");
+
+        Assert.Equal(new[] { "", "hpi", "plan", "discharge" }, OptionValues(page.Find(ItemSelect)));
+        page.Find(ItemSelect).Change("discharge");
+        Assert.Equal("Discharge: Discharge plan: ⟨input.notes⟩", Rendered(page));
+    }
+
+    [Fact]
+    public void AnUnfannedPrompt_OffersNoItemPick()
+    {
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+
+        Assert.Empty(page.FindAll(ItemSelect));
+        Assert.Empty(page.FindAll(".rendered-preview__item-pick"));
+    }
+
+    [Fact]
+    public void AnInputFan_OffersNoItemPick()
+    {
+        var page = RenderEditor(V25WithAnInputFan());
+        Navigate(page, "section");
+
+        Assert.Empty(page.FindAll(".rendered-preview__item-pick"));
+        Assert.Equal("⟨item.name⟩: ⟨item.content⟩", Rendered(page));
     }
 
     [Fact]
