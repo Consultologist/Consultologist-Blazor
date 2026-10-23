@@ -1273,6 +1273,17 @@ only on a concept_list node's read and its pane counts "problems in this text" r
 
 *(2026-10-18, #1065: a template may read an aggregator's composed text — `TemplateNodeShape.Aggregator` joins both node maps (the validator's and `PrepareNodes`', so the starter and the editor see the same edge); `node.<agg>.content` is the composed sections before deliverable macros and the signature, `.value` and a renderer pipe are refused by name, the render probe probes it as text; a 25 aggregator may not declare `forEach` (the ≤24 rule, missed at 25); a node, instance or deliverable `when` may not read an aggregator — the deciding stage runs the whens' closure before the sections compose. The engine needed nothing: an aggregator completes into the same outputs map the pass it composes. package-format v2026.10.9 carries one valid and four invalid vectors; the two public packages blocked on this (`example-two-documents`, `example-v12-constructs`) migrate next.)*
 
+*(2026-10-22, #1122: a literal the enum never answers **warns** — a template's `==` / `!=` between an enum side (an enum
+input, an enum-format node's `.value`; `EnumValuesOf` resolves both) and a string literal the enum does not declare, and
+a `case`'s `when` with such a literal, add `Prompt 'p' compares input.kind to 'bogus', which it does not declare
+(values: new, follow_up); that branch never runs.` (a `!=`: `…; that test is always true.`) — a warning, never an error:
+a template's `if` is prose and a registry package keeps publishing, while a manifest `when` with the same literal stays
+refused by the condition walk's `TypeEquality`. Two walker sites: `Visit(ScriptBinaryExpression)` in template mode after
+the default visit, and the `case` loop beside the canonical check (a doubled `when` is non-canonical only — it does run).
+The editor needed nothing: the sentence rides the warning surface under the palette's Reads rows and the node pane's
+Reads section. package-format v2026.10.10 carries one valid vector with the two warnings; no existing vector changed.
+Filed in Milestone 31 as a desk finding, moved to Milestone 30 when the vector made it a format fact.)*
+
 *(#1046, 2026-10-17 — an input is not a "slot". The word named two things: the macro the model places
 (the ≤24 `[[slot:<id>]]` marker, `slot: true`, the record kind, `WorkflowSlotMarker`, `ConsultSlotFiller`, the
 v20 sentences, the editor's slot-instruction UI — all unchanged) and an *input* on the Create page (`ScalarSlot`,
