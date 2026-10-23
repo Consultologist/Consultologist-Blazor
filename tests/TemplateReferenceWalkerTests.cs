@@ -780,6 +780,22 @@ public class TemplateReferenceWalkerTests
         Assert.Equal(-1, Assert.Single(refs.Occurrences, o => o.Member == "input.notes").Branch);
     }
 
+    /// <summary>#1120: the palette's empty block — what the editor's row table fills; the subject is itself a read.</summary>
+    [Fact]
+    public void AnEmptyCase_IsACanonicalBlock_WithNoBranches_AndReadsItsSubject()
+    {
+        const string text = "Before.\n{{~ case input.kind ~}}{{~ end ~}}\nAfter.";
+        var refs = TemplateFixtures.Ok(text);
+        var block = Assert.Single(refs.Branches);
+
+        Assert.Equal("input.kind", block.Subject);
+        Assert.True(block.Canonical);
+        Assert.Empty(block.Branches);
+        Assert.Equal("{{~ case input.kind ~}}{{~ end ~}}", text[block.Start..block.End]);
+        Assert.Contains("kind", refs.Inputs);
+        Assert.Empty(refs.Errors);
+    }
+
     [Fact]
     public void AHandWrittenMultiLineCase_IsCanonical_AndItsBlockRunsFromCaseToEnd()
     {
