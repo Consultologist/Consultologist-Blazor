@@ -851,8 +851,7 @@ block removed; a hand-written form with or without markers is canonical and norm
 says "chosen by input.kind" on its own row instead of a guard builder; the macro pane's and the snippet pane's "Read by"
 rows show the whole table (the rewrite targets the reader's file); the node pane shows a case as a sentence; a
 non-canonical case is read-only ("edit in the text"). The table loads an existing block — creating one stayed in the text until #1120
-(or the palette). Follow-ups: the `if … else` "otherwise" control on a #1088 row (the block fact already covers it; filed
-on request), a registry warning for a `when` literal outside the enum's values (a package-format matter), and #1093's
+(or the palette). Follow-ups: the `if … else` "otherwise" control on a #1088 row (done by #1121), a registry warning for a `when` literal outside the enum's values (a package-format matter), and #1093's
 snippets in the dropdown (done by #1093).)*
 
 *(#1093, 2026-10-22, Milestone 31 — **a case branch may choose a snippet**. The branch dropdown is one closed list over
@@ -862,7 +861,7 @@ its scalar snippets (`Snippet 'standards'` — `.content`); a snippet's own bran
 cycle); a hand-written member outside the list still shows "as written". A folder item is not a direct read at 25 (the
 walker refuses `snippet.<folder>.<item>`; #1116 proposes it for v26). The snippet pane's "Read by" row shows the whole
 table when the snippet sits in a branch (since #1091); the node pane's sentence names a snippet branch. The `if … else`
-"otherwise" control stays the unfiled follow-up.)*
+"otherwise" control followed as #1121.)*
 
 *(#1097, 2026-10-22, Milestone 31 — **Formats as nav entries**. The one Formats scroll — the package's formats then the
 whole catalogue — is retired: the Formats group lists each package format as its own entry (a dot when its body is
@@ -911,6 +910,22 @@ not on the macro instruction's palette (an instruction has no table). Where the 
 row to carry the control, so the palette is the way in. An all-nothing table shows the empty spelling but a real block
 cleared to nothing is still removed (the #1091 fact). Nothing on the node pane (sentences) or the macro/snippet Read by
 rows. A library fact pins the empty case as a canonical zero-branch block. No format change.)*
+
+*(#1121, 2026-10-22, Milestone 31 — **the if … else extension of the guarded read row**. #1091 deferred it; a guard
+with an `else` read "guarded by … · edit in the text". **Walker**: `TemplateBranchBlock` gains a trailing `Kind`
+(`Case` | `If`). A canonical `if … else` — a top-level `if` (not an else-if) whose `else` is a plain else, each body
+at most one plain read plus whitespace, at least one read between them — is recorded as a block of kind `If`: its
+`Subject` is the condition text and its branches `(C, the then-read)` and `(null, the else-read)`; the then-read's
+occurrence keeps `C` as a canonical guard over the whole block, the else-read's has none, both index the block. Any
+other `if` (no else, an else-if, prose, a nested statement) stays #1088's guard. **Row**: under "Included when", while
+a condition is set, an "otherwise" pick — nothing, a macro, a scalar snippet (the case table's closed list, never the
+read itself) — writing the canonical one-liner `{{~ if C ~}}{{ a }}{{~ else ~}}{{ b }}{{~ end ~}}` (a hand-written
+if…else normalises on edit; nothing writes #1088's shape); editing the condition keeps the otherwise. Clearing to
+"Always" while an otherwise is set is **refused** — the row says "set otherwise to nothing first" and the builder keeps
+the condition the text keeps — because the clear would drop the other read. The else-read's own row says "otherwise of
+C" and carries no builder. The macro and snippet panes' Read by rows show the if…else as the two-line table ("when" /
+"otherwise", both picks; an else-only if shows "when" at nothing); the node pane a sentence "if C: when → X; otherwise
+→ Y". No format change.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
