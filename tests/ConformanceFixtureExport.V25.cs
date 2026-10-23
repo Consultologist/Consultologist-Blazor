@@ -189,6 +189,10 @@ public partial class ConformanceFixtureExport
             "A prompt reading node.<id>.content of an object format — valid, with the warning that the JSON renders as text and .value has the fields.",
             P("{{ snippet.standards.content }} {{ input.notes }} {{ node.extract.content }}"));
 
+        Valid("v25-literal-outside-the-enum-warns",
+            "A prompt's if comparing input.kind to a value it does not declare, and a case's when with another — valid, with the two warnings that the branch never runs.",
+            P("{{ if input.kind == \"bogus\" }}never{{ end }}{{ case input.kind }}{{ when \"nope\" }}no{{ end }} {{ snippet.standards.content }} {{ input.notes }}"));
+
         Valid("v25-folder-item-lacking-the-inline-read-warns",
             "One item of a fanned folder carries the inline macro read and the other does not — valid, with the warning that nothing tells the model to write the macro for the items without it.",
             Files(m, fs => fs["snippets/sections/hpi.md"] = "History. {{ macro.closing.prompt }}"));
