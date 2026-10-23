@@ -927,6 +927,21 @@ C" and carries no builder. The macro and snippet panes' Read by rows show the if
 "otherwise", both picks; an else-only if shows "when" at nothing); the node pane a sentence "if C: when → X; otherwise
 → Y". No format change.)*
 
+*(#1123, 2026-10-22, Milestone 31 — **rendered-preview picks beyond enums**. #1095's "preview with" row offered enum
+inputs only. One control per **top-level** input the template reads — an enum select as before, a **boolean** as a
+true/false select, a **number** as a typed field — per **text** input the template **compares** (`input.<id>` beside
+`==` / `!=`, either way round, detected on the text; a comparison inside a snippet the prompt reads belongs to the
+snippet's pane) and per **enum-format node** whose `.value` it reads (a select over the answer set `ClassifierValues`
+gives). A field inside an object input stays its token (the #1095 rule, enums and booleans alike — the issue's
+`intake.on_letrozole` is a field). No library change: a picked input is its value as a string and the renderer types
+it by the declaration (`Materialise`: a boolean becomes a boolean, a number a number), a picked node value replaces the
+enum node's output text, which its `.value` reads. A stale pick — the values edited since, a number that does not
+parse — applies nothing. Unchosen, the tokens stand, and the row's note now says what that means: an equality against a
+token is false, a bare `if` or an ordering sees a non-empty text — so `{{ if input.urgent }}` previews its then-branch
+until `false` is picked. Node picks ride a `previewNodePicks` beside the input and item picks: page state, not pending,
+cleared on load. Out of scope: date inputs (a pick needs a format the row would have to explain), an array's size
+(the carrier is one element), object fields.)*
+
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
 text or an instruction — offering a snippet's choices, never the macro's own members), its
