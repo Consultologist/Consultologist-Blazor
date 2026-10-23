@@ -551,4 +551,93 @@ public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
         ShowNode(page, "assessment");
         Assert.StartsWith("URGENT|MANY|IN|", PromptTextSection(page).QuerySelector("pre.rendered-preview__text")!.TextContent);
     }
+
+    // ----- #1124: as Markdown -----
+
+    private const string Bytes = "fluent-button[aria-label='Preview bytes']";
+    private const string AsMarkdown = "fluent-button[aria-label='Preview as Markdown']";
+    private const string MarkdownView = ".pane-preview .rendered-preview__markdown";
+    private const string HeadedStandards = "# Standards\n\nFollow {{ input.notes }} closely.";
+
+    [Fact]
+    public void TheDefault_IsBytes_WithTheToggleBesideTheLabel()
+    {
+        var page = RenderEditor(WithFile("snippets/standards.md", HeadedStandards));
+        Navigate(page, "standards");
+
+        Assert.Equal("# Standards\n\nFollow ⟨input.notes⟩ closely.", Rendered(page));
+        Assert.Equal("true", page.Find(Bytes).GetAttribute("aria-pressed"));
+        Assert.Equal("false", page.Find(AsMarkdown).GetAttribute("aria-pressed"));
+        Assert.Equal("Rendered preview of Snippet 'standards' as", page.Find(".rendered-preview__mode").GetAttribute("aria-label"));
+        Assert.Empty(page.FindAll(MarkdownView));
+    }
+
+    [Fact]
+    public void AsMarkdown_RendersTheSameString_AsMarkdown_WithTokensAsCode_AndIsNotPending()
+    {
+        var page = RenderEditor(WithFile("snippets/standards.md", HeadedStandards));
+        Navigate(page, "standards");
+        var savesBefore = DraftSaves();
+
+        page.Find(AsMarkdown).Click();
+
+        var view = page.Find(MarkdownView);
+        Assert.Equal("Standards", view.QuerySelector("h1")!.TextContent.Trim());
+        Assert.Equal("⟨input.notes⟩", view.QuerySelector("code.rendered-preview__token")!.TextContent);
+        Assert.Contains("Follow", view.QuerySelector("p")!.TextContent);
+        Assert.Empty(page.FindAll(".pane-preview pre.rendered-preview__text"));
+        Assert.Equal("true", page.Find(AsMarkdown).GetAttribute("aria-pressed"));
+        Assert.Equal("false", page.Find(Bytes).GetAttribute("aria-pressed"));
+        // The bytes underneath are untouched: the text, the draft and the dot say so.
+        Assert.Equal(HeadedStandards, page.Find(".pane-editor fluent-text-area").GetAttribute("current-value"));
+        Assert.Equal(savesBefore, DraftSaves());
+        Assert.DoesNotContain("●", page.Find("button.editor-nav__item--selected").TextContent);
+
+        page.Find(Bytes).Click();
+        Assert.Equal("# Standards\n\nFollow ⟨input.notes⟩ closely.", Rendered(page));
+    }
+
+    [Fact]
+    public void TheToggle_IsSharedAcrossPanes_AndTheNodePane()
+    {
+        var page = RenderEditor(WithFile("snippets/standards.md", HeadedStandards));
+        Navigate(page, "standards");
+        page.Find(AsMarkdown).Click();
+
+        Navigate(page, "assessment");
+        Assert.NotEmpty(page.FindAll(MarkdownView));
+
+        ShowNode(page, "assessment");
+        Assert.NotNull(PromptTextSection(page).QuerySelector(".rendered-preview__markdown"));
+
+        PromptTextSection(page).QuerySelector(Bytes)!.Click();
+        Navigate(page, "standards");
+        Assert.NotEmpty(page.FindAll(".pane-preview pre.rendered-preview__text"));
+        Assert.Empty(page.FindAll(MarkdownView));
+    }
+
+    [Fact]
+    public void AnErrorPreview_StaysBytes_AndHidesTheToggle()
+    {
+        var page = RenderEditor(WithFile("snippets/standards.md", HeadedStandards));
+        Navigate(page, "standards");
+        page.Find(AsMarkdown).Click();
+
+        page.Find(".editor-pane fluent-text-area").Change("{{ if }}");
+
+        Assert.Empty(page.FindAll(".rendered-preview__mode"));
+        Assert.Empty(page.FindAll(MarkdownView));
+        Assert.Contains("editor-warning", page.Find(".pane-preview pre.rendered-preview__text").ClassName);
+    }
+
+    [Fact]
+    public void ARawPrompt_IsUntouchedByTheToggle()
+    {
+        var page = RenderEditor(EditorFixtures.V15Raw());
+        Navigate(page, "disclaimer");
+        page.Find(".prompt-raw input[type=checkbox]").Change(true);
+
+        Assert.Contains("Plain text (verbatim)", PreviewHalf(page));
+        Assert.Empty(page.FindAll(".rendered-preview__mode"));
+    }
 }
