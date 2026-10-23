@@ -394,6 +394,12 @@ public static partial class TemplateReferenceWalker
                         {
                             literal = lit;
                             canonical &= declared is not null && declared.Contains(lit, StringComparer.Ordinal) && seen.Add(lit);
+
+                            // #1122: a when the enum never answers — a branch that never runs.
+                            if (declared is not null && !declared.Contains(lit, StringComparer.Ordinal))
+                            {
+                                WarnUndeclaredLiteral(subject, lit, declared, "that branch never runs");
+                            }
                         }
                         else
                         {
@@ -581,8 +587,55 @@ public static partial class TemplateReferenceWalker
 
         public override void Visit(ScriptBinaryExpression node)
         {
-            if (_condition) { Typed(node); } else { base.Visit(node); }
+            if (_condition)
+            {
+                Typed(node);
+                return;
+            }
+
+            base.Visit(node);
+            WarnUndeclaredComparison(node);
         }
+
+        // ----- #1122: a literal outside an enum's declared values ----------------
+
+        /// <summary>
+        /// A template's <c>==</c> / <c>!=</c> between an enum side (an enum input, an enum-format node's
+        /// <c>.value</c>) and a string literal the enum does not declare — a warning, since a template's
+        /// if is prose (a manifest when with the same literal is refused by the condition walk).
+        /// </summary>
+        private void WarnUndeclaredComparison(ScriptBinaryExpression node)
+        {
+            if (node.Operator is not (ScriptBinaryOperator.CompareEqual or ScriptBinaryOperator.CompareNotEqual))
+            {
+                return;
+            }
+
+            foreach (var (side, other) in new[] { (node.Left, node.Right), (node.Right, node.Left) })
+            {
+                if (other is ScriptLiteral { Value: string literal } && EnumSideOf(side) is var (chain, values)
+                    && !values.Contains(literal, StringComparer.Ordinal))
+                {
+                    WarnUndeclaredLiteral(chain, literal, values,
+                        node.Operator == ScriptBinaryOperator.CompareEqual ? "that branch never runs" : "that test is always true");
+                    return;
+                }
+            }
+        }
+
+        private (string Chain, IReadOnlyList<string> Values)? EnumSideOf(ScriptExpression? side)
+        {
+            if (!TryFlatten(side, out var root, out var segments, out _) || !segments.All(s => s is MemberSegment))
+            {
+                return null;
+            }
+
+            var names = segments.Cast<MemberSegment>().Select(s => s.Name).ToList();
+            return EnumValuesOf(root, names) is { } values ? (root + string.Concat(names.Select(n => "." + n)), values) : null;
+        }
+
+        private void WarnUndeclaredLiteral(string chain, string literal, IReadOnlyList<string> values, string consequence) =>
+            _refs.Warnings.Add($"{_subject} compares {chain} to '{literal}', which it does not declare (values: {string.Join(", ", values)}); {consequence}.");
 
         public override void Visit(ScriptUnaryExpression node)
         {

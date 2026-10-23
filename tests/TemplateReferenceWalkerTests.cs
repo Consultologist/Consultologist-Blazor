@@ -909,4 +909,51 @@ public class TemplateReferenceWalkerTests
         Assert.True(read.GuardCanonical);
         Assert.Equal(-1, read.Branch);
     }
+
+    // ----- #1122: a literal outside the enum's declared values -----
+
+    private const string Bogus = "Prompt 'p' compares input.kind to 'bogus', which it does not declare (values: new, follow_up); that branch never runs.";
+
+    [Fact]
+    public void AWhenLiteralOutsideTheEnum_Warns_ThatTheBranchNeverRuns_AndTheBlockIsNotCanonical()
+    {
+        var refs = TemplateFixtures.Ok("{{ case input.kind }}{{ when \"bogus\" }}" + Read + "{{ end }}");
+
+        Assert.Equal(Bogus, Assert.Single(refs.Warnings));
+        Assert.False(Assert.Single(refs.Branches).Canonical);
+    }
+
+    [Fact]
+    public void AnEqualsLiteralOutsideTheEnum_Warns_EitherWayRound_AndNotEquals_SaysTheTestIsAlwaysTrue()
+    {
+        Assert.Equal(Bogus, Assert.Single(TemplateFixtures.Ok("{{ if input.kind == \"bogus\" }}x{{ end }}").Warnings));
+        Assert.Equal(Bogus, Assert.Single(TemplateFixtures.Ok("{{ if \"bogus\" == input.kind }}x{{ end }}").Warnings));
+        Assert.Equal(
+            "Prompt 'p' compares input.kind to 'bogus', which it does not declare (values: new, follow_up); that test is always true.",
+            Assert.Single(TemplateFixtures.Ok("{{ if input.kind != \"bogus\" }}x{{ end }}").Warnings));
+    }
+
+    [Fact]
+    public void ADeclaredLiteral_ANonEnumSide_ANonLiteral_AndAValuelessEnumNode_WarnNothing()
+    {
+        Assert.Empty(TemplateFixtures.Ok("{{ if input.kind == \"new\" }}x{{ end }}").Warnings);
+        Assert.Empty(TemplateFixtures.Ok("{{ if input.notes == \"bogus\" }}x{{ end }}").Warnings);
+        Assert.Empty(TemplateFixtures.Ok("{{ if input.kind == input.notes }}x{{ end }}").Warnings);
+        Assert.Empty(TemplateFixtures.Ok("{{ if node.scope.value == \"bogus\" }}x{{ end }}").Warnings);
+        Assert.Empty(TemplateFixtures.Ok("{{ case input.kind }}{{ when \"new\" }}x{{ end }}").Warnings);
+    }
+
+    [Fact]
+    public void AnEnumNodesValue_WarnsLikeAnInput_ForAnIfAndAWhen()
+    {
+        var nodes = new Dictionary<string, TemplateNodeShape>(TemplateFixtures.Nodes(), StringComparer.Ordinal)
+        {
+            ["scope"] = new("classification", "enum", Values: new[] { "in_scope", "out_of_scope" }),
+        };
+        var context = TemplateFixtures.Context() with { Nodes = nodes };
+        const string sentence = "Prompt 'p' compares node.scope.value to 'maybe', which it does not declare (values: in_scope, out_of_scope); that branch never runs.";
+
+        Assert.Equal(sentence, Assert.Single(TemplateReferenceWalker.Walk("Prompt 'p'", "{{ if node.scope.value == \"maybe\" }}x{{ end }}", context).Warnings));
+        Assert.Equal(sentence, Assert.Single(TemplateReferenceWalker.Walk("Prompt 'p'", "{{ case node.scope.value }}{{ when \"maybe\" }}x{{ end }}", context).Warnings));
+    }
 }
