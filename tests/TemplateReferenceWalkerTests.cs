@@ -842,4 +842,71 @@ public class TemplateReferenceWalkerTests
         Assert.True(block.Canonical);
         Assert.Equal(new[] { new TemplateBranch("in_scope", "macro.letrozole.prompt") }, block.Branches);
     }
+
+    // ----- #1121: if … else branch blocks -----
+
+    private const string IfElseLine = "{{~ if input.kind == \"new\" ~}}{{ macro.closing.prompt }}{{~ else ~}}" + Read + "{{~ end ~}}";
+
+    [Fact]
+    public void TheCanonicalIfElse_IsAnIfBlock_WithBothReadsIndexingIt()
+    {
+        const string text = "Before.\n" + IfElseLine + "\nAfter.";
+        var refs = TemplateFixtures.Ok(text);
+        var block = Assert.Single(refs.Branches);
+
+        Assert.Equal(TemplateBranchKind.If, block.Kind);
+        Assert.Equal("input.kind == \"new\"", block.Subject);
+        Assert.True(block.Canonical);
+        Assert.Equal(
+            new[] { new TemplateBranch("input.kind == \"new\"", "macro.closing.prompt"), new TemplateBranch(null, "macro.letrozole.prompt") },
+            block.Branches);
+        Assert.Equal(IfElseLine, text[block.Start..block.End]);
+
+        // The then-read keeps the condition as a canonical guard over the whole block; the else-read has none; both index the block.
+        var then = Assert.Single(refs.Occurrences, o => o.Member == "macro.closing.prompt");
+        Assert.Equal("input.kind == \"new\"", then.Guard);
+        Assert.True(then.GuardCanonical);
+        Assert.Equal(IfElseLine, text[then.GuardStart..then.GuardEnd]);
+        Assert.Equal(0, then.Branch);
+
+        var otherwise = Assert.Single(refs.Occurrences, o => o.Member == "macro.letrozole.prompt");
+        Assert.Null(otherwise.Guard);
+        Assert.Equal(0, otherwise.Branch);
+    }
+
+    [Fact]
+    public void AnElseOnlyIf_IsABlock_WithNoThenMember()
+    {
+        var block = Case("{{~ if input.kind == \"new\" ~}}{{~ else ~}}" + Read + "{{~ end ~}}");
+
+        Assert.Equal(TemplateBranchKind.If, block.Kind);
+        Assert.Equal(new[] { new TemplateBranch("input.kind == \"new\"", null), new TemplateBranch(null, "macro.letrozole.prompt") }, block.Branches);
+    }
+
+    [Fact]
+    public void AnElseIf_ProseInTheElse_OrANestedStatement_IsNoBlock_AndTheReadsStayGuardedAsBefore()
+    {
+        var elseIf = TemplateFixtures.Ok("{{ if input.kind == \"new\" }}{{ macro.closing.prompt }}{{ else if input.kind == \"follow_up\" }}" + Read + "{{ end }}");
+        Assert.Empty(elseIf.Branches);
+        Assert.All(elseIf.Occurrences, o => { Assert.False(o.GuardCanonical); Assert.Equal(-1, o.Branch); });
+
+        var prose = TemplateFixtures.Ok("{{ if input.kind == \"new\" }}" + Read + "{{ else }}x{{ end }}");
+        Assert.Empty(prose.Branches);
+        Assert.Equal("input.kind == \"new\"", Assert.Single(prose.Occurrences).Guard);
+        Assert.False(Assert.Single(prose.Occurrences).GuardCanonical);
+
+        var nested = TemplateFixtures.Ok("{{ if input.kind == \"new\" }}{{ macro.closing.prompt }}{{ else }}{{ for s in snippet.sections }}{{ s.content }}{{ end }}{{ end }}");
+        Assert.Empty(nested.Branches);
+    }
+
+    [Fact]
+    public void APlainGuard_StaysAGuard_NotABlock()
+    {
+        var refs = TemplateFixtures.Ok("{{~ if input.kind == \"new\" ~}}" + Read + "{{~ end ~}}");
+
+        Assert.Empty(refs.Branches);
+        var read = Assert.Single(refs.Occurrences);
+        Assert.True(read.GuardCanonical);
+        Assert.Equal(-1, read.Branch);
+    }
 }

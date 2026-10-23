@@ -75,7 +75,21 @@ public sealed record TemplateBranch(string? Literal, string? Member);
 /// this list. The validator and the engine read nothing from it; the editor's read rows
 /// show and rewrite a case from it.
 /// </summary>
-public sealed record TemplateBranchBlock(string Subject, IReadOnlyList<TemplateBranch> Branches, bool Canonical, int Start, int End);
+public sealed record TemplateBranchBlock(string Subject, IReadOnlyList<TemplateBranch> Branches, bool Canonical, int Start, int End, TemplateBranchKind Kind = TemplateBranchKind.Case);
+
+/// <summary>
+/// #1121: what a <see cref="TemplateBranchBlock"/> was written as. A <c>case</c> (#1091) chooses by an enum's
+/// value; an <c>if … else</c> chooses by a condition — its <c>Subject</c> is the condition text and its two
+/// branches are <c>(condition, the then-read)</c> and <c>(null, the else-read)</c>, either read possibly
+/// absent but not both. An <c>if … else</c> is a block only in that canonical shape (a top-level <c>if</c>,
+/// a plain <c>else</c>, each body at most one plain read plus whitespace); any other <c>if</c> stays a guard
+/// on its reads' occurrences.
+/// </summary>
+public enum TemplateBranchKind
+{
+    Case,
+    If,
+}
 
 /// <summary>Gathers a template's references while the walker runs; <see cref="ToReferences"/> freezes them.</summary>
 internal sealed class TemplateReferenceCollector
