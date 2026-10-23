@@ -228,7 +228,85 @@ public static partial class TemplateReferenceWalker
 
             var guardText = guard.Condition is { } c ? Slice(c).Trim() : string.Empty;
             var (guardStart, guardEnd) = BlockSpanToEnd(guard);
+
+            // #1121: a read in a canonical if … else belongs to the if-block — the then-read keeps the
+            // condition as its (canonical) guard over the whole block, the else-read has none; both index it.
+            if (_ifBlocks.TryGetValue(guard, out var ifIndex))
+            {
+                var inElse = InElseOf(node, guard);
+                _refs.ReadOccurrence(inElse
+                    ? new TemplateReadOccurrence(member, start, end, null, false, -1, -1, ifIndex)
+                    : new TemplateReadOccurrence(member, start, end, guardText, true, guardStart, guardEnd, ifIndex));
+                return;
+            }
+
             _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, guardText, IsCanonical(guard, node), guardStart, guardEnd));
+        }
+
+        /// <summary>Does the read sit in the if's else (an else statement between the read and its owning if)?</summary>
+        private static bool InElseOf(ScriptNode read, ScriptIfStatement owner)
+        {
+            for (var parent = read.Parent; parent is not null && !ReferenceEquals(parent, owner); parent = parent.Parent)
+            {
+                if (parent is ScriptElseStatement elseStatement && ReferenceEquals(elseStatement.Parent, owner))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // ----- #1121: if … else branch blocks -------------------------------------
+
+        /// <summary>The canonical if … else statements being walked, by the slot their reads index.</summary>
+        private readonly Dictionary<ScriptIfStatement, int> _ifBlocks = new(ReferenceEqualityComparer.Instance);
+
+        public override void Visit(ScriptIfStatement node)
+        {
+            if (IfBlockOf(node) is not { } block)
+            {
+                base.Visit(node);
+                return;
+            }
+
+            var index = _refs.ReserveBranchBlock();
+            _ifBlocks[node] = index;
+            base.Visit(node);
+            _refs.SetBranchBlock(index, block);
+        }
+
+        /// <summary>
+        /// An if … else as a two-branch block when canonical: a top-level if (not an else-if) whose else is a
+        /// plain else, each body at most one plain read plus whitespace, at least one read between them.
+        /// Anything else — no else, an else-if, prose, a nested statement — is no block, and its reads keep
+        /// #1088's guard (non-canonical when the else exists).
+        /// </summary>
+        private TemplateBranchBlock? IfBlockOf(ScriptIfStatement node)
+        {
+            if (node.IsElseIf || node.Condition is not { } condition || node.Then is not { } then || node.Else is not ScriptElseStatement else_)
+            {
+                return null;
+            }
+
+            var canonical = true;
+            var thenMember = BranchMemberOf(then, ref canonical);
+            var elseMember = BranchMemberOf(else_.Body, ref canonical);
+
+            if (!canonical || (thenMember is null && elseMember is null))
+            {
+                return null;
+            }
+
+            var subject = Slice(condition).Trim();
+            var (start, end) = BlockSpanToEnd(node);
+            return new TemplateBranchBlock(
+                subject,
+                new[] { new TemplateBranch(subject, thenMember), new TemplateBranch(null, elseMember) },
+                true,
+                start,
+                end,
+                TemplateBranchKind.If);
         }
 
         /// <summary>The nearest enclosing condition statement — an if, a when, a case, or an else (of either).</summary>

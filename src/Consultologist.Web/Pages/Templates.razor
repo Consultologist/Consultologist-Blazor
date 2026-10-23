@@ -5023,7 +5023,7 @@
                 }
                 else if (sites.Count > 0)
                 {
-                    row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites)) };
+                    row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites, template.References.Branches)) };
                 }
 
                 if (seen.Add((row.Label, row.Key)))
@@ -5139,14 +5139,22 @@
         TemplateReadRow Guarded(TemplateReadRow row)
         {
             var blocks = BranchBlocksOf(references, row.Member);
+            var cases = blocks.Where(b => b.Kind == PF.TemplateBranchKind.Case).ToList();
 
-            if (blocks.Count > 0)
+            if (cases.Count > 0)
             {
-                return row with { Note = $"chosen by {string.Join(", ", blocks.Select(b => b.Subject).Distinct(StringComparer.Ordinal))}" };
+                return row with { Note = $"chosen by {string.Join(", ", cases.Select(b => b.Subject).Distinct(StringComparer.Ordinal))}" };
             }
 
             var sites = references.Occurrences.Where(o => o.Member == row.Member).ToList();
-            return sites.Count == 0 ? row : row with { Below = ReadGuardBelow((file, subject ?? "the text", row.Member, sites)) };
+
+            // #1121: the else-read of an if … else says so and carries no builder; the then-read keeps its builder, with "otherwise".
+            if (sites.Count == 1 && sites[0].Guard is null && sites[0].Branch >= 0 && blocks.FirstOrDefault(b => b.Kind == PF.TemplateBranchKind.If) is { } ifBlock)
+            {
+                return row with { Note = $"otherwise of {ifBlock.Subject}" };
+            }
+
+            return sites.Count == 0 ? row : row with { Below = ReadGuardBelow((file, subject ?? "the text", row.Member, sites, references.Branches)) };
         }
 
         TemplateReadRow Tabled(TemplateReadRow row)
@@ -5329,7 +5337,8 @@
         {
             <div class="template-read-row__holder-guard">
                 <span class="muted-text">@holder:</span>
-                @ReadGuardBelow((null, holder, spec.Member, sites))
+                @* #1121: a read in an if … else is told by the block's sentence, not twice. *@
+                @ReadGuardBelow((null, holder, spec.Member, sites.Where(s => s.Branch < 0).ToList(), references.Branches))
                 @BranchTablesBelow((null, holder, BranchBlocksOf(references, spec.Member)))
             </div>
         }
@@ -5429,6 +5438,12 @@
         }
     </text>;
 
+    /// <summary>#1121: the line a block writes by its kind — the case one-liner, or the if … else one-liner; nothing when every branch is empty.</summary>
+    private static string BlockLine(PF.TemplateBranchBlock block, IReadOnlyList<PF.TemplateBranch> branches) =>
+        block.Kind == PF.TemplateBranchKind.If
+            ? IfElseLine(branches.FirstOrDefault(b => b.Literal is not null)?.Member, block.Subject, branches.FirstOrDefault(b => b.Literal is null)?.Member)
+            : BranchLine(block.Subject, branches);
+
     /// <summary>The canonical one-liner: a when for every value with a read, the else when set, nothing when every branch is empty.</summary>
     private static string BranchLine(string subject, IReadOnlyList<PF.TemplateBranch> branches)
     {
@@ -5468,7 +5483,8 @@
     private async Task SetBranchAsync(string file, PF.TemplateBranchBlock block, IReadOnlyList<string> values, string? literal, string? pick)
     {
         var text = GetText(file);
-        var branches = TableBranches(block, values)
+        // #1121: an if … else has its two branches as written (the then's literal is the condition); a case's come from the enum.
+        var branches = (block.Kind == PF.TemplateBranchKind.If ? block.Branches : TableBranches(block, values))
             .Select(b => b.Literal == literal ? b with { Member = string.IsNullOrEmpty(pick) ? null : pick } : b)
             .ToList();
 
@@ -5486,12 +5502,12 @@
         }
 
         // The walk is of the pending text, so a table is current; this only refuses a stale one.
-        if (block.Start < 0 || block.End > text.Length || !text[block.Start..block.End].Contains("case", StringComparison.Ordinal))
+        if (block.Start < 0 || block.End > text.Length || !text[block.Start..block.End].Contains(block.Kind == PF.TemplateBranchKind.If ? "if" : "case", StringComparison.Ordinal))
         {
             return;
         }
 
-        await OnTextChangedAsync(file, text[..block.Start] + BranchLine(block.Subject, branches) + text[block.End..]);
+        await OnTextChangedAsync(file, text[..block.Start] + BlockLine(block, branches) + text[block.End..]);
     }
 
     private RenderFragment<(string? File, string Subject, IReadOnlyList<PF.TemplateBranchBlock> Blocks)> BranchTablesBelow => spec => @<text>
@@ -5510,23 +5526,26 @@
     private RenderFragment<(string? File, string Subject, PF.TemplateBranchBlock Block)> BranchTableBelow => spec => @<text>
         @{
             var block = spec.Block;
-            var values = BranchValuesOf(block.Subject) ?? Array.Empty<string>();
-            var editable = block.Canonical && values.Count > 0;
-            var branches = editable ? TableBranches(block, values) : block.Branches;
+            // #1121: an if … else is the two-line shape — "when C" and "otherwise" — over the same picks, no enum values.
+            var isIf = block.Kind == PF.TemplateBranchKind.If;
+            var values = isIf ? Array.Empty<string>() : BranchValuesOf(block.Subject) ?? Array.Empty<string>();
+            var editable = block.Canonical && (isIf || values.Count > 0);
+            var branches = editable && !isIf ? TableBranches(block, values) : block.Branches;
+            var byWord = isIf ? "if" : "by";
         }
         @if (spec.File is { } file && editable)
         {
             var options = BranchOptions(file);
-            <div class="branch-table" aria-label="@($"Case over {block.Subject} in {spec.Subject}")">
-                <span class="muted-text">by <code>@block.Subject</code></span>
+            <div class="branch-table" aria-label="@($"{(isIf ? "If" : "Case")} over {block.Subject} in {spec.Subject}")">
+                <span class="muted-text">@byWord <code>@block.Subject</code></span>
                 @foreach (var branch in branches)
                 {
                     var current = branch;
                     var aria = current.Literal is { } literal
-                        ? $"Branch for {literal} of {block.Subject} in {spec.Subject}"
+                        ? (isIf ? $"When of {block.Subject} in {spec.Subject}" : $"Branch for {literal} of {block.Subject} in {spec.Subject}")
                         : $"Otherwise of {block.Subject} in {spec.Subject}";
                     <div class="branch-table__row">
-                        <span class="branch-table__value">@(current.Literal ?? "otherwise")</span>
+                        <span class="branch-table__value">@(current.Literal is null ? "otherwise" : isIf ? "when" : current.Literal)</span>
                         <FluentSelect TOption="string" class="branch-table__pick"
                                       Value="@(current.Member ?? "")"
                                       ValueChanged="@(v => SetBranchAsync(file, block, values, current.Literal, v))"
@@ -5544,16 +5563,16 @@
                         </FluentSelect>
                     </div>
                 }
-                <code class="template-read-row__writes" aria-label="@($"Line written for {block.Subject} in {spec.Subject}")">@(branches.All(b => b.Member is null) ? EmptyCase(block.Subject) : BranchLine(block.Subject, branches))</code>
+                <code class="template-read-row__writes" aria-label="@($"Line written for {block.Subject} in {spec.Subject}")">@(!isIf && branches.All(b => b.Member is null) ? EmptyCase(block.Subject) : BlockLine(block, branches))</code>
             </div>
         }
         else if (spec.File is not null)
         {
-            <p class="muted-text template-read-row__guard">chooses by <code>@block.Subject</code> · edit in the text</p>
+            <p class="muted-text template-read-row__guard">chooses @byWord <code>@block.Subject</code> · edit in the text</p>
         }
         else
         {
-            <p class="muted-text template-read-row__guard">by <code>@block.Subject</code>: @string.Join("; ", branches.Select(b => $"{b.Literal ?? "otherwise"} → {(b.Member is { } m ? BranchMemberLabel(m) : "nothing")}"))</p>
+            <p class="muted-text template-read-row__guard">@byWord <code>@block.Subject</code>: @string.Join("; ", branches.Select(b => $"{(b.Literal is null ? "otherwise" : isIf ? "when" : b.Literal)} → {(b.Member is { } m ? BranchMemberLabel(m) : "nothing")}"))</p>
         }
     </text>;
 
@@ -6195,16 +6214,65 @@
         when is null ? ReadBlock(member) : $"{{{{~ if {when} ~}}}}{ReadBlock(member)}{{{{~ end ~}}}}";
 
     /// <summary>
+    /// #1121: the canonical if … else one-liner — the guard's shape with an else holding the other read; the
+    /// bare read when no condition (an otherwise without one is refused before it gets here); nothing when no read.
+    /// </summary>
+    private static string IfElseLine(string? member, string? when, string? other)
+    {
+        if (member is null && other is null)
+        {
+            return string.Empty;
+        }
+
+        if (when is null)
+        {
+            return member is null ? string.Empty : ReadBlock(member);
+        }
+
+        var line = new System.Text.StringBuilder($"{{{{~ if {when} ~}}}}");
+
+        if (member is not null)
+        {
+            line.Append(ReadBlock(member));
+        }
+
+        if (other is not null)
+        {
+            line.Append("{{~ else ~}}").Append(ReadBlock(other));
+        }
+
+        return line.Append("{{~ end ~}}").ToString();
+    }
+
+    private static string ReadGuardKey(string file, PF.TemplateReadOccurrence site) => $"read-guard:{file}\n{site.Start}";
+
+    /// <summary>#1121: the guarded reads whose clear to "Always" was refused because an otherwise is set — the row says why until the next write.</summary>
+    private readonly HashSet<string> _refusedClears = new(StringComparer.Ordinal);
+
+    /// <summary>#1121: the if … else block a single occurrence belongs to, when it does.</summary>
+    private static PF.TemplateBranchBlock? IfBlockOf(PF.TemplateReadOccurrence site, IReadOnlyList<PF.TemplateBranchBlock> blocks) =>
+        site.Branch >= 0 && site.Branch < blocks.Count && blocks[site.Branch].Kind == PF.TemplateBranchKind.If ? blocks[site.Branch] : null;
+
+    private static string? OtherwiseOf(PF.TemplateBranchBlock? ifBlock) => ifBlock?.Branches.FirstOrDefault(b => b.Literal is null)?.Member;
+
+    private async Task SetOtherwiseAsync(string file, string member, PF.TemplateReadOccurrence site, string? pick)
+    {
+        RewriteReadGuard(file, member, site, site.Guard, string.IsNullOrEmpty(pick) ? null : pick);
+        await PendingChangedAsync();
+    }
+
+    /// <summary>
     /// #1088: the builder target for one read occurrence in a file the pane edits — the
     /// guard the walker found is its value; a change rewrites the text in place (a
     /// canonical guard's whole block, or the bare read's block) with the canonical line.
     /// </summary>
-    private ConditionTarget ReadGuardTarget(string file, string subject, string member, PF.TemplateReadOccurrence site) =>
-        new($"read-guard:{file}\n{site.Start}", $"{member} in {subject}", site.Guard, when => RewriteReadGuard(file, member, site, when));
+    private ConditionTarget ReadGuardTarget(string file, string subject, string member, PF.TemplateReadOccurrence site, string? other = null) =>
+        new(ReadGuardKey(file, site), $"{member} in {subject}", site.Guard, when => RewriteReadGuard(file, member, site, when, other));
 
-    private void RewriteReadGuard(string file, string member, PF.TemplateReadOccurrence site, string? when)
+    private void RewriteReadGuard(string file, string member, PF.TemplateReadOccurrence site, string? when, string? other = null)
     {
         var text = GetText(file);
+        var key = ReadGuardKey(file, site);
 
         // The walk is of the pending text, so a row is current; this only refuses a stale one.
         if (site.Start < 0 || site.End > text.Length || !text[site.Start..site.End].Contains(member, StringComparison.Ordinal))
@@ -6212,8 +6280,18 @@
             return;
         }
 
+        // #1121: "Always" with an otherwise set would drop the other read — refused; the row says why,
+        // and the builder re-reads the condition from the text (the clear left a blank draft behind).
+        if (when is null && other is not null)
+        {
+            _refusedClears.Add(key);
+            conditionDrafts.Remove(key);
+            return;
+        }
+
+        _refusedClears.Remove(key);
         var (start, end) = site.Guard is not null && site.GuardCanonical ? (site.GuardStart, site.GuardEnd) : (site.Start, site.End);
-        ApplyTextChange(file, text[..start] + GuardedLine(member, when) + text[end..]);
+        ApplyTextChange(file, text[..start] + IfElseLine(member, when, other) + text[end..]);
     }
 
     /// <summary>
@@ -6222,12 +6300,47 @@
     /// writes (a non-canonical guard, or a member read more than once, is read-only: edit
     /// in the text); elsewhere the guard as a sentence.
     /// </summary>
-    private RenderFragment<(string? File, string Subject, string Member, IReadOnlyList<PF.TemplateReadOccurrence> Sites)> ReadGuardBelow => spec => @<text>
+    private RenderFragment<(string? File, string Subject, string Member, IReadOnlyList<PF.TemplateReadOccurrence> Sites, IReadOnlyList<PF.TemplateBranchBlock> Blocks)> ReadGuardBelow => spec => @<text>
+        @{
+            // #1121: the if … else a lone occurrence belongs to — its else-read is the row's "otherwise".
+            var ifBlock = spec.Sites.Count == 1 ? IfBlockOf(spec.Sites[0], spec.Blocks) : null;
+            var other = OtherwiseOf(ifBlock);
+        }
         @if (spec.File is { } file && spec.Sites.Count == 1 && (spec.Sites[0].Guard is null || spec.Sites[0].GuardCanonical))
         {
             var site = spec.Sites[0];
-            @ConditionField(("Included when", ReadGuardTarget(file, spec.Subject, spec.Member, site), "Always"))
-            <code class="template-read-row__writes" aria-label="@($"Line written for {spec.Member} in {spec.Subject}")">@GuardedLine(spec.Member, site.Guard)</code>
+            @ConditionField(("Included when", ReadGuardTarget(file, spec.Subject, spec.Member, site, other), "Always"))
+            @if (_refusedClears.Contains(ReadGuardKey(file, site)))
+            {
+                <p class="muted-text template-read-row__guard read-guard__refused">set otherwise to nothing first</p>
+            }
+            @if (site.Guard is not null)
+            {
+                var otherwiseOptions = BranchOptions(file).Where(o => o.Value != spec.Member).ToList();
+                <div class="branch-table__row read-guard__otherwise">
+                    <span class="branch-table__value">otherwise</span>
+                    <FluentSelect TOption="string" class="branch-table__pick"
+                                  Value="@(other ?? "")"
+                                  ValueChanged="@(v => SetOtherwiseAsync(file, spec.Member, site, v))"
+                                  aria-label="@($"Otherwise for {spec.Member} in {spec.Subject}")">
+                        <FluentOption TOption="string" Value="">nothing</FluentOption>
+                        @foreach (var choice in otherwiseOptions)
+                        {
+                            var option = choice;
+                            <FluentOption TOption="string" Value="@option.Value">@option.Label</FluentOption>
+                        }
+                        @if (other is { } written && !otherwiseOptions.Any(o => o.Value == written))
+                        {
+                            <FluentOption TOption="string" Value="@written">as written: @written</FluentOption>
+                        }
+                    </FluentSelect>
+                </div>
+            }
+            <code class="template-read-row__writes" aria-label="@($"Line written for {spec.Member} in {spec.Subject}")">@IfElseLine(spec.Member, site.Guard, other)</code>
+        }
+        else if (spec.File is null && ifBlock is not null)
+        {
+            @BranchTableBelow((null, spec.Subject, ifBlock))
         }
         else
         {
@@ -7677,7 +7790,7 @@
                 }
                 else if (sites.Count > 0)
                 {
-                    row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites)) };
+                    row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites, template.References.Branches)) };
                 }
 
                 if (seen.Add((row.Label, row.Key)))

@@ -276,7 +276,10 @@ declared sections:
   declared value and "otherwise", each choosing a macro or a snippet, the line it writes
   beneath. A row without a case carries "choose a read by its value…", which opens an empty
   table whose first pick appends the block to the text; the insert-reference palette's
-  "cases" group inserts the empty block for an enum the text does not read yet.
+  "cases" group inserts the empty block for an enum the text does not read yet. A guarded
+  read's "Included when" carries an "otherwise" pick (#1121) writing `if … else … end` around
+  the two reads; clearing the condition is refused while an otherwise is set, so no read is
+  dropped unasked.
 - **Renderers** (#1098, 25 only) — the engine's renderer pipes as read-only
   entries after Formats, one pane each: the format it renders, the spelling
   to insert per node of that format (with a Copy button), and "Used by" —
