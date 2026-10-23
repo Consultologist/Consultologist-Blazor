@@ -293,4 +293,163 @@ public class TemplatesV25BranchTableTests : ClientRenderTestContext
             new[] { "nothing", "Macro 'Closing'", "Macro 'Tool note'" },
             pick.QuerySelectorAll("fluent-option").Select(o => o.TextContent.Trim()));
     }
+
+    // ----- #1120: starting a case from the row or the palette -----
+
+    private const string KindRead = "{{ input.kind }}";
+    private const string EmptyKindCase = "{{~ case input.kind ~}}{{~ end ~}}";
+    private static string Start(string subject = "input.kind", string where = File) => $"fluent-button[aria-label=\"Start a case over {subject} in {where}\"]";
+    private static string Collapse(string subject = "input.kind", string where = File) => $"fluent-button[aria-label=\"Collapse case over {subject} in {where}\"]";
+    private static string Palette(string file = File) => $"fluent-select[aria-label='Reference to insert into {file}']";
+    private static IReadOnlyList<string?> Choices(IRenderedComponent<Templates> page, string file = File) =>
+        page.Find(Palette(file)).QuerySelectorAll("fluent-option").Where(o => o.GetAttribute("disabled") == null).Select(o => o.GetAttribute("value")).ToList();
+
+    [Fact]
+    public void AnEnumRowWithoutACase_CarriesTheRestingControl_AndNoTable()
+    {
+        var page = RenderEditor(WithFile(File, Original + "\n" + KindRead));
+        Navigate(page, "assessment");
+
+        var row = page.Find(Row("Reads of " + File, "input.kind"));
+        Assert.Equal("choose a read by its value…", row.QuerySelector(Start())!.TextContent.Trim());
+        Assert.Empty(row.QuerySelectorAll(".branch-table"));
+        // A non-enum read row offers nothing.
+        Assert.Empty(page.Find(Row("Reads of " + File, "input.notes")).QuerySelectorAll(".case-start__resting"));
+    }
+
+    [Fact]
+    public void OpeningTheControl_ShowsAnEmptyTable_AndCollapsingWritesNothing()
+    {
+        var page = RenderEditor(WithFile(File, Original + "\n" + KindRead));
+        Navigate(page, "assessment");
+        var before = EditorText(page);
+
+        page.Find(Start()).Click();
+
+        var row = page.Find(Row("Reads of " + File, "input.kind"));
+        Assert.NotNull(row.QuerySelector(".branch-table[aria-label=\"Case over input.kind in " + File + "\"]"));
+        Assert.Equal("", page.Find(Pick("new")).GetAttribute("current-value"));
+        Assert.Equal("", page.Find(Pick("follow_up")).GetAttribute("current-value"));
+        Assert.Equal("", page.Find(Otherwise()).GetAttribute("current-value"));
+        Assert.Equal(EmptyKindCase, page.Find(Line()).TextContent.Trim());
+        Assert.Equal(before, EditorText(page));
+
+        page.Find(Collapse()).Click();
+
+        Assert.Empty(page.FindAll(".branch-table"));
+        Assert.NotNull(page.Find(Start()));
+        Assert.Equal(before, EditorText(page));
+    }
+
+    [Fact]
+    public void TheFirstPick_AppendsTheOneLiner_AndTheRowCarriesTheRealTable()
+    {
+        var page = RenderEditor(WithFile(File, Original + "\n" + KindRead));
+        CapturePublish();
+        Navigate(page, "assessment");
+        var before = EditorText(page);
+        page.Find(Start()).Click();
+
+        page.Find(Pick("new")).Change("macro.closing.prompt");
+
+        Assert.Equal(before + "\n{{~ case input.kind ~}}{{~ when \"new\" ~}}" + Closing + "{{~ end ~}}", EditorText(page));
+        // The walk owns the block now: the table persists from the text, the control is gone.
+        Assert.Equal("macro.closing.prompt", page.Find(Pick("new")).GetAttribute("current-value"));
+        Assert.Empty(page.FindAll(".case-start__resting"));
+        Assert.Empty(page.FindAll(".case-start__collapse"));
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void AnEnumNodeRow_StartsACase_BesideItsGuardBuilder()
+    {
+        var page = RenderEditor(WithFile(File, Original + "\n{{ node.scope.value }}"));
+        Navigate(page, "assessment");
+
+        var row = page.Find(Row("Reads of " + File, "node.scope.value"));
+        Assert.NotNull(row.QuerySelector("fluent-button[aria-label=\"Add a condition for node.scope.value in " + File + "\"]"));
+        Assert.NotNull(row.QuerySelector(Start("node.scope.value")));
+
+        page.Find(Start("node.scope.value")).Click();
+
+        Assert.Equal("", page.Find(Pick("in_scope", "node.scope.value")).GetAttribute("current-value"));
+    }
+
+    [Fact]
+    public void ThePalette_OffersACaseOverEveryEnumSubject_NotYetCased_AfterProfile()
+    {
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+
+        var choices = Choices(page);
+        Assert.Equal(new[] { EmptyKindCase, "{{~ case node.scope.value ~}}{{~ end ~}}" }, choices.TakeLast(2));
+        Assert.True(choices.ToList().IndexOf("{{ profile.name }}") < choices.ToList().IndexOf(EmptyKindCase));
+        var options = page.Find(Palette()).QuerySelectorAll("fluent-option").Select(o => o.TextContent.Trim()).ToList();
+        Assert.Contains("— cases —", options);
+        Assert.Contains("case over input.kind", options);
+        // Not read yet: no row to carry the control — the palette is the way in.
+        Assert.Empty(page.FindAll(Row("Reads of " + File, "input.kind")));
+
+        // The scope node's own prompt is never offered a case over its own value.
+        Navigate(page, "scope");
+        Assert.DoesNotContain("{{~ case node.scope.value ~}}{{~ end ~}}", Choices(page, "prompts/scope.md"));
+        Assert.Contains(EmptyKindCase, Choices(page, "prompts/scope.md"));
+    }
+
+    [Fact]
+    public void InsertingACaseFromThePalette_WritesTheEmptyBlock_AndTheRowAppears_AllNothing()
+    {
+        var page = RenderEditor();
+        CapturePublish();
+        Navigate(page, "assessment");
+
+        page.Find(Palette()).Change(EmptyKindCase);
+        page.Find($"fluent-button[aria-label='Insert reference into {File}']").Click();
+
+        Assert.Equal(Original + "\n" + EmptyKindCase, EditorText(page));
+        var row = page.Find(Row("Reads of " + File, "input.kind"));
+        Assert.Empty(row.QuerySelectorAll(".case-start__resting"));
+        Assert.Equal("", page.Find(Pick("new")).GetAttribute("current-value"));
+        Assert.Equal("", page.Find(Otherwise()).GetAttribute("current-value"));
+        Assert.Equal(EmptyKindCase, page.Find(Line()).TextContent.Trim());
+        // The subject is cased now: the palette no longer offers it.
+        Assert.DoesNotContain(EmptyKindCase, Choices(page));
+
+        // A pick rewrites the block in place, not appended again.
+        page.Find(Pick("follow_up")).Change("macro.closing.prompt");
+        Assert.Equal(Original + "\n{{~ case input.kind ~}}{{~ when \"follow_up\" ~}}" + Closing + "{{~ end ~}}", EditorText(page));
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void ThePalette_HidesACaseSubject_OnceTheTextHoldsOne()
+    {
+        var page = RenderEditor(WithFile(File, Prompt));
+        Navigate(page, "assessment");
+
+        var choices = Choices(page);
+        Assert.DoesNotContain(EmptyKindCase, choices);
+        Assert.Contains("{{~ case node.scope.value ~}}{{~ end ~}}", choices);
+    }
+
+    [Fact]
+    public void TheInstructionPalette_OffersNoCase()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+
+        var options = page.Find("fluent-select[aria-label='Reference to insert into instruction of macro closing']")
+            .QuerySelectorAll("fluent-option").Select(o => o.TextContent.Trim()).ToList();
+        Assert.DoesNotContain("— cases —", options);
+        Assert.Contains("— cases —", page.Find("fluent-select[aria-label='Reference to insert into macros/closing.md']")
+            .QuerySelectorAll("fluent-option").Select(o => o.TextContent.Trim()));
+    }
 }
