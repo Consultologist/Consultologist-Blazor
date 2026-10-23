@@ -494,4 +494,16 @@ public class TemplatesV25ReadGuardTests : ClientRenderTestContext
         Assert.Equal("", reader.QuerySelector("fluent-select[aria-label=\"When of input.kind == \\\"new\\\" in Snippet 'sections/hpi'\"]")!.GetAttribute("current-value"));
         Assert.Equal("macro.tool_note.prompt", reader.QuerySelector("fluent-select[aria-label=\"Otherwise of input.kind == \\\"new\\\" in Snippet 'sections/hpi'\"]")!.GetAttribute("current-value"));
     }
+
+    /// <summary>#1125: a read's "Included when" rests as "Always", and its open builder's empty choice says so — not "always produced", as if the read produced something.</summary>
+    [Fact]
+    public void TheEmptyChoice_SaysAlways_OnAReadRow()
+    {
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+        const string subject = "macro.tool_note.prompt in prompts/assessment.md";
+        page.Find(AddGuard(subject)).Click();
+
+        Assert.Equal("always", page.Find(Operand(subject) + " fluent-option").TextContent.Trim());
+    }
 }

@@ -641,4 +641,15 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         row.QuerySelector(".template-read-row__reader")!.Click();
         Assert.Equal("macros/closing.md", EditorSession.SelectedKey);
     }
+
+    /// <summary>#1125: a folder item's "Included when" rests as "Every run", and its open builder's empty choice says so.</summary>
+    [Fact]
+    public void TheEmptyChoice_SaysEveryRun_OnAFolderItem()
+    {
+        var page = RenderEditor();
+        Navigate(page, "HPI");
+        page.Find(HpiAddCondition).Click();
+
+        Assert.Equal("every run", page.Find(HpiOperand + " fluent-option").TextContent.Trim());
+    }
 }
