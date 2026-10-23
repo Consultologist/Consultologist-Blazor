@@ -403,4 +403,152 @@ public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(KindSelect));
         Assert.StartsWith("FOLLOW", Rendered(page));
     }
+
+    // ----- #1123: picks beyond enums -----
+
+    private const string Urgent = "fluent-select[aria-label='Preview with input.urgent']";
+    private const string Visits = "input[aria-label='Preview with input.visits']";
+    private const string Scope = "fluent-select[aria-label='Preview with node.scope.value']";
+    private const string Notes = "input[aria-label='Preview with input.notes']";
+    private const string TypedAssessment =
+        "{{ if input.urgent }}URGENT{{ else }}ROUTINE{{ end }}|{{ if input.visits > 2 }}MANY{{ else }}FEW{{ end }}|{{ case node.scope.value }}{{ when \"in_scope\" }}IN{{ else }}OUT{{ end }}|{{ if input.notes == \"none\" }}NONE{{ else }}SOME{{ end }}\n{{ snippet.standards.content }}";
+
+    /// <summary>The V25 package with a top-level boolean and number input, and the assessment prompt testing every typed value.</summary>
+    private static WorkflowPackageContentResponse V25WithTypedInputs(string assessment = TypedAssessment)
+    {
+        var package = WithFile("prompts/assessment.md", assessment);
+        var root = JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        var inputs = root["inputs"]!.AsArray();
+        inputs.Add(new JsonObject { ["id"] = "urgent", ["label"] = "Urgent", ["required"] = false, ["type"] = "boolean" });
+        inputs.Add(new JsonObject { ["id"] = "visits", ["label"] = "Visits", ["required"] = false, ["type"] = "number" });
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    private static IReadOnlyList<string?> ControlLabels(IRenderedComponent<Templates> page) =>
+        page.FindAll(".rendered-preview__controls [aria-label^='Preview with ']").Select(c => c.GetAttribute("aria-label")).ToList();
+
+    [Fact]
+    public void TheControls_AppearForBooleans_Numbers_ComparedText_AndNodeValues_InIdOrder()
+    {
+        var page = RenderEditor(V25WithTypedInputs());
+        Navigate(page, "assessment");
+
+        Assert.Equal(
+            new[] { "Preview with input.notes", "Preview with input.urgent", "Preview with input.visits", "Preview with node.scope.value" },
+            ControlLabels(page));
+        Assert.Equal(new[] { "", "true", "false" }, OptionValues(page.Find(Urgent)));
+        Assert.Equal(new[] { "", "in_scope", "out_of_scope" }, OptionValues(page.Find(Scope)));
+        Assert.Empty(page.FindAll(KindSelect));
+        Assert.NotEmpty(page.FindAll(".rendered-preview__note"));
+        // Unchosen, the tokens stand: a bare if sees a non-empty text, an ordering compares the text, an equality is false.
+        Assert.StartsWith("URGENT|MANY|OUT|SOME", Rendered(page));
+    }
+
+    [Fact]
+    public void ABooleanPick_RendersThatBranch()
+    {
+        var page = RenderEditor(V25WithTypedInputs());
+        Navigate(page, "assessment");
+
+        page.Find(Urgent).Change("false");
+        Assert.StartsWith("ROUTINE|", Rendered(page));
+
+        page.Find(Urgent).Change("true");
+        Assert.StartsWith("URGENT|", Rendered(page));
+
+        // Unchosen again: the token, which a bare if reads as true.
+        page.Find(Urgent).Change("");
+        Assert.StartsWith("URGENT|", Rendered(page));
+        Assert.NotEmpty(page.FindAll(".rendered-preview__note"));
+    }
+
+    [Fact]
+    public void ANumberPick_SatisfiesTheComparison_AndANonNumberAppliesNothing()
+    {
+        var page = RenderEditor(V25WithTypedInputs());
+        Navigate(page, "assessment");
+
+        page.Find(Visits).Change("1");
+        Assert.Contains("|FEW|", Rendered(page));
+
+        page.Find(Visits).Change("3");
+        Assert.Contains("|MANY|", Rendered(page));
+
+        // A non-number is stale — the token stands (an ordering against the text holds) and nothing errors.
+        page.Find(Visits).Change("x");
+        Assert.Contains("|MANY|", Rendered(page));
+        Assert.DoesNotContain("editor-warning", page.Find("pre.rendered-preview__text").ClassName);
+
+        page.Find(Visits).Change("");
+        Assert.Contains("|MANY|", Rendered(page));
+    }
+
+    [Fact]
+    public void ANodeValuePick_RendersTheCaseBranch()
+    {
+        var page = RenderEditor(V25WithTypedInputs());
+        Navigate(page, "assessment");
+
+        page.Find(Scope).Change("in_scope");
+        Assert.Contains("|IN|", Rendered(page));
+
+        page.Find(Scope).Change("out_of_scope");
+        Assert.Contains("|OUT|", Rendered(page));
+
+        page.Find(Scope).Change("");
+        Assert.Contains("|OUT|", Rendered(page));
+    }
+
+    [Fact]
+    public void AComparedTextPick_RendersThatBranch_AndAnUncomparedTextInput_GetsNoField()
+    {
+        var page = RenderEditor(V25WithTypedInputs());
+        Navigate(page, "assessment");
+
+        page.Find(Notes).Change("none");
+        Assert.EndsWith("|NONE\nFollow the local standards.", Rendered(page).TrimEnd());
+
+        page.Find(Notes).Change("x");
+        Assert.Contains("|SOME", Rendered(page));
+
+        // The fixture's assessment reads input.notes but never compares it: no field.
+        var plain = RenderEditor();
+        Navigate(plain, "assessment");
+        Assert.Empty(plain.FindAll(Notes));
+    }
+
+    [Fact]
+    public void AFieldOfAnObjectInput_StaysItsToken()
+    {
+        var page = RenderEditor(WithFile("prompts/assessment.md", "{{ if input.intake.on_letrozole }}Y{{ else }}N{{ end }}\n{{ snippet.standards.content }}"));
+        Navigate(page, "assessment");
+
+        // A token is a non-empty string, which Scriban reads as true: the field stays unpreviewable by design.
+        Assert.Empty(page.FindAll("[aria-label='Preview with input.intake.on_letrozole']"));
+        Assert.Empty(page.FindAll("[aria-label='Preview with input.intake']"));
+        Assert.Empty(page.FindAll(".rendered-preview__controls"));
+    }
+
+    [Fact]
+    public void TypedPicks_AreNotPending_SurviveAPaneSwitch_AndShowOnTheNodePane()
+    {
+        var page = RenderEditor(V25WithTypedInputs());
+        Navigate(page, "assessment");
+        var savesBefore = DraftSaves();
+
+        page.Find(Urgent).Change("true");
+        page.Find(Scope).Change("in_scope");
+        // visits stays unchosen: its token, which the ordering reads as MANY.
+
+        Assert.StartsWith("URGENT|MANY|IN|", Rendered(page));
+        Assert.DoesNotContain("●", page.Find("button.editor-nav__item--selected").TextContent);
+        Assert.Equal(savesBefore, DraftSaves());
+
+        Navigate(page, "standards");
+        Navigate(page, "assessment");
+        Assert.StartsWith("URGENT|MANY|IN|", Rendered(page));
+
+        ShowNode(page, "assessment");
+        Assert.StartsWith("URGENT|MANY|IN|", PromptTextSection(page).QuerySelector("pre.rendered-preview__text")!.TextContent);
+    }
 }
