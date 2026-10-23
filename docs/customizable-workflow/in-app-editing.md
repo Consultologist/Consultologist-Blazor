@@ -260,8 +260,10 @@ declared sections:
   input stays its token), unchosen by default — an unchosen value renders as its
   token, so an equality against it is false while a bare `if` sees a non-empty
   text — and, on a prompt read by a node fanning a snippet folder, a "preview as
-  item" select over the folder's items (#1109). A raw prompt keeps its verbatim
-  preview.
+  item" select over the folder's items (#1109). A **bytes | as Markdown** toggle
+  beside "What a reader gets" shows the same rendered text as Markdown, tokens as
+  code (#1124); bytes is the default and the toggle is page state. A raw prompt
+  keeps its verbatim preview.
 - **Formats** (#1097, 25 only) — each package format is a nav entry with its own
   pane: the strip, "Used by" (the nodes producing it, each a link), the schema
   editor with the registry's sentences inline, Remove (while no node names it)
