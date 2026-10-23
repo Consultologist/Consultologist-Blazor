@@ -129,6 +129,20 @@ Sanity-check any new query against a time range known to have data **before**
 trusting an empty result. An absence is evidence only once the read path is
 proven — the recurring wrong turn of Milestone 16, three times over.
 
+### A FluentSelect pick runs its handler twice in the browser and once in bUnit
+
+*Symptom: one pick adds two of something, and the select keeps showing the
+pick instead of its "choose…" option.* A `FluentSelect` whose options are
+child-content `FluentOption`s reaches `ValueChanged` from two paths — the
+select's `change` (emitted by the web component while the click still bubbles)
+and then the option's own `@onclick` — and bUnit's `.Change()` drives only the
+first, so every test sees one call. A constant `Value=""` never resets the DOM
+either: the parameter is unchanged between renders, so no patch is sent, and
+each option keeps the `Selected` it toggled itself. Use
+`Shared/WorkflowEditor/OneShotSelect` for any "pick to act" select (#1136): a
+pick recreates the select, so the pair's second half finds no handler and is
+dropped, and the new instance rests.
+
 ### `az functionapp show --query state` is null on Flex Consumption
 
 *Symptom: `state`, `defaultHostName` and `availabilityState` all return

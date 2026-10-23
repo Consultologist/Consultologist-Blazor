@@ -467,17 +467,13 @@
                                 }
                             </ul>
                             <div class="add-variable__form">
-                                @* Action-select: Value pinned to "" so a re-render resets it after each pick. *@
-                                <FluentSelect TOption="string" class="binding-row__select"
-                                              Value=""
-                                              ValueChanged="@(v => AppendAggregateSourceAsync(node, v))"
-                                              aria-label="Add aggregate source">
-                                    <FluentOption TOption="string" Value="">+ add source…</FluentOption>
-                                    @foreach (var candidate in Nodes.Where(other => other.Id != node.Id && !node.Aggregate.Any(s => Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(s) == other.Id)))
-                                    {
-                                        <FluentOption TOption="string" Value="@AggregateRef(candidate.Id)">@AggregateRef(candidate.Id)</FluentOption>
-                                    }
-                                </FluentSelect>
+                                @* #1136: a pick is an action — OneShotSelect runs it once and rests. *@
+                                <OneShotSelect
+                                               AriaLabel="Add aggregate source"
+                                               Resting="+ add source…"
+                                               Choices="@(Nodes.Where(other => other.Id != node.Id && !node.Aggregate.Any(s => Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(s) == other.Id))
+                                                              .Select(candidate => new OneShotChoice(AggregateRef(candidate.Id), AggregateRef(candidate.Id))).ToList())"
+                                               OnPick="@(v => AppendAggregateSourceAsync(node, v))" />
                             </div>
                         }
                         else

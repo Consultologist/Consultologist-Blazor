@@ -1552,16 +1552,11 @@
                                                               @onclick="() => RemoveTypeArmAsync(declared, armValue)" />
                                             </span>
                                         }
-                                        <FluentSelect TOption="string" class="node-field__input declared-row__add-arm"
-                                                Value=""
-                                                ValueChanged="@(v => AddTypeArmAsync(declared, v))"
-                                                aria-label="@($"Add an accepted type to {declared.Id}")">
-                                            <FluentOption TOption="string" Value="">add a type…</FluentOption>
-                                            @foreach (var type in WorkflowInputTypes.All)
-                                            {
-                                                <FluentOption TOption="string" Value="@type">@type</FluentOption>
-                                            }
-                                        </FluentSelect>
+                                        <OneShotSelect Class="node-field__input declared-row__add-arm"
+                                                       AriaLabel="@($"Add an accepted type to {declared.Id}")"
+                                                       Resting="add a type…"
+                                                       Choices="@(WorkflowInputTypes.All.Select(type => new OneShotChoice(type, type)).ToList())"
+                                                       OnPick="@(v => AddTypeArmAsync(declared, v))" />
                                     </li>
                                 }
 
@@ -1873,16 +1868,11 @@
                                             {
                                                 @* #1080: at 25 a macro is offered while one of its two placements is free,
                                                    the option naming the one left ("closing — append"); below 25 once. *@
-                                                <FluentSelect TOption="string" class="binding-row__select result-macro-append"
-                                                        Value=""
-                                                        ValueChanged="@(v => AppendResultMacroAsync(deliverable, v))"
-                                                        aria-label="@($"Append macro to deliverable {deliverable.Id}")">
-                                                    <FluentOption TOption="string" Value="">@(At25 ? "attach a macro…" : "append macro…")</FluentOption>
-                                                    @foreach (var (candidateMacro, freeIdentity) in attachableMacros)
-                                                    {
-                                                        <FluentOption TOption="string" Value="@candidateMacro.Id">@FreeIdentityText(candidateMacro.Id, freeIdentity)</FluentOption>
-                                                    }
-                                                </FluentSelect>
+                                                <OneShotSelect Class="binding-row__select result-macro-append"
+                                                               AriaLabel="@($"Append macro to deliverable {deliverable.Id}")"
+                                                               Resting="@(At25 ? "attach a macro…" : "append macro…")"
+                                                               Choices="@(attachableMacros.Select(pair => new OneShotChoice(pair.Macro.Id, FreeIdentityText(pair.Macro.Id, pair.Free))).ToList())"
+                                                               OnPick="@(v => AppendResultMacroAsync(deliverable, v))" />
                                             }
                                             @if (resultMacros.Count == 0 && EffectiveMacros.Count == 0)
                                             {
@@ -2526,15 +2516,11 @@
                                 }
                                 else if (attachableLibraryMacros.Count > 0)
                                 {
-                                    <FluentSelect TOption="string" class="binding-row__select" Value=""
-                                                  ValueChanged="@(v => AttachNodeMacroAsync(selectedNode.Id, v))"
-                                                  aria-label="@($"Attach a macro to {selectedNode.Id}")">
-                                        <FluentOption TOption="string" Value="">attach a macro…</FluentOption>
-                                        @foreach (var libraryMacro in attachableLibraryMacros)
-                                        {
-                                            <FluentOption TOption="string" Value="@libraryMacro.Id">@libraryMacro.Id</FluentOption>
-                                        }
-                                    </FluentSelect>
+                                    <OneShotSelect
+                                                   AriaLabel="@($"Attach a macro to {selectedNode.Id}")"
+                                                   Resting="attach a macro…"
+                                                   Choices="@(attachableLibraryMacros.Select(m => new OneShotChoice(m.Id, m.Id)).ToList())"
+                                                   OnPick="@(v => AttachNodeMacroAsync(selectedNode.Id, v))" />
                                 }
                                 else if (EffectiveMacros.Count == 0)
                                 {
@@ -2666,17 +2652,12 @@
                                         }
                                         @if (attachableOutputMacros.Count > 0)
                                         {
-                                            <FluentSelect TOption="string" class="binding-row__select node-output-macro-attach"
-                                                          Value=""
-                                                          Disabled="@(attachDeliverable is null)"
-                                                          ValueChanged="@(v => AttachOutputMacroBeforeNodeAsync(attachDeliverable, selectedNode.Id, v))"
-                                                          aria-label="@($"Attach an output macro before {selectedNode.Id}")">
-                                                <FluentOption TOption="string" Value="">attach a macro before this node…</FluentOption>
-                                                @foreach (var libraryMacro in attachableOutputMacros)
-                                                {
-                                                    <FluentOption TOption="string" Value="@libraryMacro.Id">@libraryMacro.Id</FluentOption>
-                                                }
-                                            </FluentSelect>
+                                            <OneShotSelect Class="binding-row__select node-output-macro-attach"
+                                                           AriaLabel="@($"Attach an output macro before {selectedNode.Id}")"
+                                                           Resting="attach a macro before this node…"
+                                                           Disabled="@(attachDeliverable is null)"
+                                                           Choices="@(attachableOutputMacros.Select(m => new OneShotChoice(m.Id, m.Id)).ToList())"
+                                                           OnPick="@(v => AttachOutputMacroBeforeNodeAsync(attachDeliverable, selectedNode.Id, v))" />
                                         }
                                         else
                                         {
@@ -3133,16 +3114,11 @@
                                     }
                                     @if (attachableDocs.Count > 0)
                                     {
-                                        <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
-                                                Value=""
-                                                ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
-                                                aria-label="@($"Attach macro {macro.Id} to a deliverable")">
-                                            <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
-                                            @foreach (var candidateDeliverable in attachableDocs)
-                                            {
-                                                <FluentOption TOption="string" Value="@candidateDeliverable.Id">@candidateDeliverable.Label</FluentOption>
-                                            }
-                                        </FluentSelect>
+                                        <OneShotSelect Class="binding-row__select result-macro-attach-doc"
+                                                       AriaLabel="@($"Attach macro {macro.Id} to a deliverable")"
+                                                       Resting="attach to a deliverable…"
+                                                       Choices="@(attachableDocs.Select(d => new OneShotChoice(d.Id, d.Label)).ToList())"
+                                                       OnPick="@(v => AttachMacroToDeliverableAsync(macro.Id, v))" />
                                     }
                                     @if (attachedTo.Count == 0)
                                     {
@@ -3176,29 +3152,19 @@
                                     <div class="macro-where__add">
                                         @if (attachableNodes.Count > 0)
                                         {
-                                            <FluentSelect TOption="string" class="binding-row__select macro-attach-node"
-                                                    Value=""
-                                                    ValueChanged="@(v => AttachNodeMacroAsync(v, macro.Id))"
-                                                    aria-label="@($"Attach macro {macro.Id} to a node")">
-                                                <FluentOption TOption="string" Value="">attach to a node…</FluentOption>
-                                                @foreach (var candidateNode in attachableNodes)
-                                                {
-                                                    <FluentOption TOption="string" Value="@candidateNode.Id">@candidateNode.Id</FluentOption>
-                                                }
-                                            </FluentSelect>
+                                            <OneShotSelect Class="binding-row__select macro-attach-node"
+                                                           AriaLabel="@($"Attach macro {macro.Id} to a node")"
+                                                           Resting="attach to a node…"
+                                                           Choices="@(attachableNodes.Select(n => new OneShotChoice(n.Id, n.Id)).ToList())"
+                                                           OnPick="@(v => AttachNodeMacroAsync(v, macro.Id))" />
                                         }
                                         @if (attachableDeliverables.Count > 0)
                                         {
-                                            <FluentSelect TOption="string" class="binding-row__select result-macro-attach-doc"
-                                                    Value=""
-                                                    ValueChanged="@(v => AttachMacroToDeliverableAsync(macro.Id, v))"
-                                                    aria-label="@($"Attach macro {macro.Id} to a deliverable")">
-                                                <FluentOption TOption="string" Value="">attach to a deliverable…</FluentOption>
-                                                @foreach (var (candidateDeliverable, freeIdentity) in attachableDeliverables)
-                                                {
-                                                    <FluentOption TOption="string" Value="@candidateDeliverable.Id">@FreeIdentityText(candidateDeliverable.Label, freeIdentity)</FluentOption>
-                                                }
-                                            </FluentSelect>
+                                            <OneShotSelect Class="binding-row__select result-macro-attach-doc"
+                                                           AriaLabel="@($"Attach macro {macro.Id} to a deliverable")"
+                                                           Resting="attach to a deliverable…"
+                                                           Choices="@(attachableDeliverables.Select(pair => new OneShotChoice(pair.Result.Id, FreeIdentityText(pair.Result.Label, pair.Free!))).ToList())"
+                                                           OnPick="@(v => AttachMacroToDeliverableAsync(macro.Id, v))" />
                                         }
                                     </div>
                                     @foreach (var hostNode in EffectiveNodes)

@@ -1,0 +1,56 @@
+@* #1136: a FluentSelect whose pick is an action (attach, append, add), not a binding.
+   With child-content options one pick reaches ValueChanged TWICE in a browser — the
+   select's change (emitted by the web component while the click still bubbles) and
+   then the option's own @onclick (FluentOption's, through the list context's copy of
+   ValueChanged) — and bUnit's .Change() drives only the first, so the suite never
+   saw the pair. A constant Value="" never rests the DOM either: unchanged between
+   renders, it sends no patch, and each option keeps the Selected it toggled itself.
+   So a pick bumps the generation before anything else, and @key recreates the select
+   in the render that follows the handler's synchronous part: that batch removes the
+   old select and options together with their event handler ids, so the pair's second
+   half finds no handler and the browser drops it (and an id still bound while queued
+   is skipped by name, its component disposed); the new instance rests on the resting
+   option, its options carry no selection, and the next pick is a new gesture — never
+   swallowed (at 25 a macro is placed before AND after). The list context's copy of
+   the callback points at this component, which reads OnPick live, so a pane that
+   keeps the instance across subjects still attaches the shown subject. *@
+<FluentSelect TOption="string" @key="@_generation" class="@Class" Value="" Disabled="@Disabled"
+              ValueChanged="@PickedAsync" aria-label="@AriaLabel">
+    <FluentOption TOption="string" Value="">@Resting</FluentOption>
+    @foreach (var choice in Choices)
+    {
+        <FluentOption TOption="string" Value="@choice.Value">@choice.Text</FluentOption>
+    }
+</FluentSelect>
+
+@code {
+    /// <summary>The accessible name — the suites find the select by it.</summary>
+    [Parameter, EditorRequired] public string AriaLabel { get; set; } = string.Empty;
+
+    /// <summary>The empty option's text ("attach a macro…"), what the select rests on.</summary>
+    [Parameter, EditorRequired] public string Resting { get; set; } = string.Empty;
+
+    /// <summary>The options offered, in order.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<OneShotChoice> Choices { get; set; } = Array.Empty<OneShotChoice>();
+
+    /// <summary>The select's class string, verbatim (the sites' selectors live on it).</summary>
+    [Parameter] public string Class { get; set; } = "binding-row__select";
+
+    [Parameter] public bool Disabled { get; set; }
+
+    /// <summary>Runs once per pick with the picked value; never with the empty option.</summary>
+    [Parameter] public EventCallback<string> OnPick { get; set; }
+
+    private int _generation;
+
+    private async Task PickedAsync(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        _generation++;
+        await OnPick.InvokeAsync(value);
+    }
+}
