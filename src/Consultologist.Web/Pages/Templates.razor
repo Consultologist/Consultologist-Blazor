@@ -4914,21 +4914,89 @@
                 : new PreviewItem(pair.Added!.Id, pair.Added.Name, pair.Added.Content, string.IsNullOrWhiteSpace(pair.Added.When) ? null : pair.Added.When))
             .ToList();
 
-    /// <summary>The top-level enum inputs a walked template reads — one select each (an enum field inside an object input stays its token).</summary>
-    private IReadOnlyList<WorkflowManifestReader.InputView> PreviewEnumInputsOf(PF.WorkflowDerivedEdges.WalkedTemplate? walked) =>
-        walked is null
-            ? Array.Empty<WorkflowManifestReader.InputView>()
-            : EffectiveInputs
-                .Where(i => walked.References.Inputs.Contains(i.Id)
-                    && WorkflowInputTypes.Of(i) == WorkflowInputTypes.Enum
-                    && i.Values is { Count: > 0 })
-                .OrderBy(i => i.Id, StringComparer.Ordinal)
-                .ToList();
+    /// <summary>#1123: a node's value previewed with (node id → value) — the same rules as previewInputPicks.</summary>
+    private readonly Dictionary<string, string> previewNodePicks = new(StringComparer.Ordinal);
 
-    /// <summary>The token scope with the picks applied: a picked enum is its value — a string, as the run materialises an enum — so a comparison against it decides; a picked item (#1109) is the fan item, so item.content renders its text.</summary>
-    private static PF.TemplateRenderScope PickedScope(PF.TemplateRenderScope scope, IReadOnlyList<KeyValuePair<string, string>> picks, PreviewItem? item)
+    /// <summary>
+    /// #1123: one "preview with" control. Kind is the input's declared type (enum, boolean, number, text) or
+    /// "node" for an enum-format node's .value; Id is the input or node id; Label the path the control names;
+    /// Values the closed set a select offers (null for a typed field).
+    /// </summary>
+    private sealed record PreviewPick(string Kind, string Id, string Label, IReadOnlyList<string>? Values)
     {
-        if (picks.Count == 0 && item is null)
+        public bool IsNode => Kind == "node";
+        public bool IsSelect => Values is not null;
+    }
+
+    /// <summary>
+    /// The "preview with" controls a walked template earns — top-level inputs only (a field inside an object
+    /// input stays its token, the #1095 rule): an enum, boolean or number input it reads, a text input it
+    /// compares (#1123), then an enum-format node whose .value it reads. In id order within each.
+    /// </summary>
+    private IReadOnlyList<PreviewPick> PreviewPicksOf(PF.WorkflowDerivedEdges.WalkedTemplate? walked)
+    {
+        if (walked is null)
+        {
+            return Array.Empty<PreviewPick>();
+        }
+
+        var picks = new List<PreviewPick>();
+
+        foreach (var input in EffectiveInputs.Where(i => walked.References.Inputs.Contains(i.Id)).OrderBy(i => i.Id, StringComparer.Ordinal))
+        {
+            var label = $"input.{input.Id}";
+
+            switch (WorkflowInputTypes.Of(input))
+            {
+                case WorkflowInputTypes.Enum when input.Values is { Count: > 0 }:
+                    picks.Add(new PreviewPick(WorkflowInputTypes.Enum, input.Id, label, input.Values));
+                    break;
+                case WorkflowInputTypes.Boolean:
+                    picks.Add(new PreviewPick(WorkflowInputTypes.Boolean, input.Id, label, new[] { "true", "false" }));
+                    break;
+                case WorkflowInputTypes.Number:
+                    picks.Add(new PreviewPick(WorkflowInputTypes.Number, input.Id, label, null));
+                    break;
+                case WorkflowInputTypes.Text when ComparesInput(walked.Text, input.Id):
+                    picks.Add(new PreviewPick(WorkflowInputTypes.Text, input.Id, label, null));
+                    break;
+            }
+        }
+
+        foreach (var (nodeId, read) in walked.References.Nodes.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        {
+            if (read.ReadsValue && EffectiveNodes.FirstOrDefault(n => n.Id == nodeId) is { } node && ClassifierValues(node) is { Count: > 0 } values)
+            {
+                picks.Add(new PreviewPick("node", nodeId, $"node.{nodeId}.value", values));
+            }
+        }
+
+        return picks;
+    }
+
+    /// <summary>Does the text compare input.&lt;id&gt; to something (== or !=, either way round)? A text input earns a preview field only then.</summary>
+    private static bool ComparesInput(string text, string id)
+    {
+        var read = @"\binput\." + System.Text.RegularExpressions.Regex.Escape(id) + @"\b";
+        return System.Text.RegularExpressions.Regex.IsMatch(text, read + @"\s*(==|!=)")
+            || System.Text.RegularExpressions.Regex.IsMatch(text, @"(==|!=)\s*" + read);
+    }
+
+    /// <summary>Is the stored pick one the control still offers? A stale one — the values edited since, a number that does not parse — applies nothing.</summary>
+    private static bool PickIsCurrent(PreviewPick pick, string value) =>
+        pick.Values is { } values
+            ? values.Contains(value, StringComparer.Ordinal)
+            : pick.Kind != WorkflowInputTypes.Number || decimal.TryParse(value, System.Globalization.NumberStyles.AllowLeadingSign | System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out _);
+
+    /// <summary>
+    /// The token scope with the picks applied: a picked input is its value as a string — the renderer types it by
+    /// the input's declaration (an enum stays a string, a boolean becomes a boolean, a number a number), so a
+    /// comparison against it decides; a picked node value (#1123) replaces the enum node's output text, which its
+    /// .value reads; a picked item (#1109) is the fan item, so item.content renders its text.
+    /// </summary>
+    private static PF.TemplateRenderScope PickedScope(PF.TemplateRenderScope scope, IReadOnlyList<KeyValuePair<string, string>> picks, IReadOnlyList<KeyValuePair<string, string>> nodePicks, PreviewItem? item)
+    {
+        if (picks.Count == 0 && nodePicks.Count == 0 && item is null)
         {
             return scope;
         }
@@ -4939,15 +5007,25 @@
             inputs[id] = value;
         }
 
+        var nodes = new Dictionary<string, PF.TemplateNodeOutput>(scope.Nodes, StringComparer.Ordinal);
+        foreach (var (id, value) in nodePicks)
+        {
+            if (nodes.TryGetValue(id, out var output))
+            {
+                nodes[id] = output with { Text = value };
+            }
+        }
+
         return scope with
         {
             Inputs = inputs,
+            Nodes = nodes,
             Item = item is null ? scope.Item : new PF.TemplateFanItem(item.Id, item.Name, Text: item.Text)
         };
     }
 
     /// <summary>What a reader gets — the text rendered over the token scope with the picks applied; the renderer's own sentence when it does not render (MacroPromptPreview's shape).</summary>
-    private (string Text, bool IsError) RenderedPreviewOf(string subject, string text, IReadOnlyList<KeyValuePair<string, string>> picks, PreviewItem? item)
+    private (string Text, bool IsError) RenderedPreviewOf(string subject, string text, IReadOnlyList<KeyValuePair<string, string>> picks, IReadOnlyList<KeyValuePair<string, string>> nodePicks, PreviewItem? item)
     {
         if (PreviewScope is not { } scope)
         {
@@ -4956,7 +5034,7 @@
 
         try
         {
-            return (PF.TemplateRenderer.Render(subject, text, PickedScope(scope, picks, item), PF.TemplatePreviewScope.Pipes), false);
+            return (PF.TemplateRenderer.Render(subject, text, PickedScope(scope, picks, nodePicks, item), PF.TemplatePreviewScope.Pipes), false);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -5826,11 +5904,16 @@
         @{
             var walked = TemplateWalkOf(target.File);
             var subject = walked?.Subject ?? target.FallbackSubject;
-            var enums = PreviewEnumInputsOf(walked);
-            // A stale pick (the enum's values edited since) applies nothing.
-            var picks = enums
-                .Where(e => previewInputPicks.TryGetValue(e.Id, out var picked) && e.Values!.Contains(picked, StringComparer.Ordinal))
-                .Select(e => KeyValuePair.Create(e.Id, previewInputPicks[e.Id]))
+            // #1123: every "preview with" control the template earns; a stale pick (the values edited since, a
+            // number that does not parse) applies nothing.
+            var controls = PreviewPicksOf(walked);
+            var picks = controls
+                .Where(c => !c.IsNode && previewInputPicks.TryGetValue(c.Id, out var picked) && PickIsCurrent(c, picked))
+                .Select(c => KeyValuePair.Create(c.Id, previewInputPicks[c.Id]))
+                .ToList();
+            var nodePicks = controls
+                .Where(c => c.IsNode && previewNodePicks.TryGetValue(c.Id, out var picked) && PickIsCurrent(c, picked))
+                .Select(c => KeyValuePair.Create(c.Id, previewNodePicks[c.Id]))
                 .ToList();
             // #1109: the fanned folder's items, to preview as one of them; a stale pick (the item removed since) applies nothing.
             var folder = PreviewFolderOf(target.FanNode);
@@ -5838,27 +5921,40 @@
             var pickedItem = folder is not null && previewItemPicks.TryGetValue(folder, out var pickedItemId)
                 ? items.FirstOrDefault(i => i.Id == pickedItemId)
                 : null;
-            var (rendered, renderedIsError) = RenderedPreviewOf(subject, target.Text, picks, pickedItem);
+            var (rendered, renderedIsError) = RenderedPreviewOf(subject, target.Text, picks, nodePicks, pickedItem);
         }
         <span class="muted-text">What a reader gets</span>
-        @if (enums.Count > 0 || items.Count > 0)
+        @if (controls.Count > 0 || items.Count > 0)
         {
             <div class="rendered-preview__controls">
-                @foreach (var enumInput in enums)
+                @foreach (var control in controls)
                 {
-                    var pickInput = enumInput;
+                    var pick = control;
+                    var store = pick.IsNode ? previewNodePicks : previewInputPicks;
+                    var current = store.GetValueOrDefault(pick.Id) ?? "";
                     <label class="rendered-preview__control">
-                        <span class="muted-text">preview with <code>input.@pickInput.Id</code> =</span>
-                        <FluentSelect TOption="string" class="binding-row__select rendered-preview__pick"
-                                Value="@(previewInputPicks.GetValueOrDefault(pickInput.Id) ?? "")"
-                                ValueChanged="@(v => { if (string.IsNullOrEmpty(v)) { previewInputPicks.Remove(pickInput.Id); } else { previewInputPicks[pickInput.Id] = v; } })"
-                                aria-label="@($"Preview with input.{pickInput.Id}")">
-                            <FluentOption TOption="string" Value="">— unchosen —</FluentOption>
-                            @foreach (var enumValue in pickInput.Values!)
-                            {
-                                <FluentOption TOption="string" Value="@enumValue">@enumValue</FluentOption>
-                            }
-                        </FluentSelect>
+                        <span class="muted-text">preview with <code>@pick.Label</code> =</span>
+                        @if (pick.IsSelect)
+                        {
+                            <FluentSelect TOption="string" class="binding-row__select rendered-preview__pick"
+                                    Value="@(pick.Values!.Contains(current, StringComparer.Ordinal) ? current : "")"
+                                    ValueChanged="@(v => { if (string.IsNullOrEmpty(v)) { store.Remove(pick.Id); } else { store[pick.Id] = v; } })"
+                                    aria-label="@($"Preview with {pick.Label}")">
+                                <FluentOption TOption="string" Value="">— unchosen —</FluentOption>
+                                @foreach (var value in pick.Values!)
+                                {
+                                    <FluentOption TOption="string" Value="@value">@value</FluentOption>
+                                }
+                            </FluentSelect>
+                        }
+                        else
+                        {
+                            <input type="text" class="node-field__input rendered-preview__value"
+                                   inputmode="@(pick.Kind == WorkflowInputTypes.Number ? "decimal" : "text")"
+                                   value="@current" placeholder="— unchosen —"
+                                   aria-label="@($"Preview with {pick.Label}")"
+                                   @onchange="@(e => { var v = e.Value?.ToString()?.Trim(); if (string.IsNullOrEmpty(v)) { store.Remove(pick.Id); } else { store[pick.Id] = v; } })" />
+                        }
                     </label>
                 }
                 @if (folder is { } fanFolder && items.Count > 0)
@@ -5878,9 +5974,9 @@
                     </label>
                 }
             </div>
-            @if (enums.Any(e => picks.All(p => p.Key != e.Id)))
+            @if (controls.Any(c => c.IsNode ? nodePicks.All(p => p.Key != c.Id) : picks.All(p => p.Key != c.Id)))
             {
-                <p class="muted-text rendered-preview__note">An unchosen enum renders as its token, so a comparison against it is false — choose a value to see that branch.</p>
+                <p class="muted-text rendered-preview__note">An unchosen value renders as its token — an equality against it is false, a bare <code>if</code> or an ordering sees a non-empty text — choose a value to see the branch you mean.</p>
             }
         }
         <pre class="plain-preview rendered-preview__text @(renderedIsError ? "editor-warning" : null)" aria-label="@($"Rendered preview of {subject}")">@rendered</pre>
@@ -13228,6 +13324,7 @@
         walkTick++;
         previewInputPicks.Clear(); // #1095: a preview choice belongs to the loaded package.
         previewItemPicks.Clear(); // #1109: so does the item previewed as.
+        previewNodePicks.Clear(); // #1123: and the node value previewed with.
         prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
         nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
         collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);

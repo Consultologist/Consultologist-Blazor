@@ -254,10 +254,14 @@ declared sections:
   *what a reader gets*: the text rendered over the
   library's token scope (run values as `⟨input.notes⟩` tokens, snippets and
   macro texts for real, a macro's `.prompt` as its instruction plus the
-  mechanics sentence), with a "preview with `input.<enum>` =" select for each
-  top-level enum input the template reads, unchosen by default, and — on a
-  prompt read by a node fanning a snippet folder — a "preview as item" select
-  over the folder's items (#1109). A raw prompt keeps its verbatim preview.
+  mechanics sentence), with a "preview with" control for each top-level enum,
+  boolean or number input the template reads, each text input it compares, and
+  each enum-format node whose value it reads (#1123; a field inside an object
+  input stays its token), unchosen by default — an unchosen value renders as its
+  token, so an equality against it is false while a bare `if` sees a non-empty
+  text — and, on a prompt read by a node fanning a snippet folder, a "preview as
+  item" select over the folder's items (#1109). A raw prompt keeps its verbatim
+  preview.
 - **Formats** (#1097, 25 only) — each package format is a nav entry with its own
   pane: the strip, "Used by" (the nodes producing it, each a link), the schema
   editor with the registry's sentences inline, Remove (while no node names it)
