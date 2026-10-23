@@ -331,4 +331,167 @@ public class TemplatesV25ReadGuardTests : ClientRenderTestContext
         Assert.Empty(looping.Find(Row("Reads of prompts/scope.md", "snippet.sections")).QuerySelectorAll(".template-read-row__below"));
         Assert.Empty(looping.FindAll("fluent-button[aria-label^='Add a condition for']"));
     }
+
+    // ----- #1121: the if … else extension — "otherwise" on Included when -----
+
+    private const string ClosingRead = "{{ macro.closing.prompt }}";
+    private const string IfElseHpi = "History: {{ input.notes }}\n{{~ if input.kind == \"new\" ~}}" + Read + "{{~ else ~}}" + ClosingRead + "{{~ end ~}}\n";
+    private const string IfElseLine = "{{~ if input.kind == \"new\" ~}}" + Read + "{{~ else ~}}" + ClosingRead + "{{~ end ~}}";
+    private static string Otherwise(string subject) => $"fluent-select[aria-label=\"Otherwise for {subject}\"]";
+    private const string HpiReader = ".template-read-rows[aria-label='Readers of tool_note'] .template-read-row[data-read-reader=\"Snippet 'sections/hpi'\"]";
+
+    [Fact]
+    public void AHandWrittenIfElse_LoadsTheOtherwise_AndTheLineItWrites()
+    {
+        var page = RenderEditor(WithFile(HpiFile, IfElseHpi));
+        Navigate(page, "HPI");
+
+        var row = page.Find(HpiRow);
+        Assert.Equal("kind", row.QuerySelector(Operand(HpiSubject))!.GetAttribute("current-value"));
+        Assert.Equal("new", row.QuerySelector(Value(HpiSubject))!.GetAttribute("current-value"));
+        Assert.Equal("macro.closing.prompt", row.QuerySelector(Otherwise(HpiSubject))!.GetAttribute("current-value"));
+        Assert.Equal(IfElseLine, row.QuerySelector(Writes(HpiSubject))!.TextContent.Trim());
+        Assert.DoesNotContain("guarded by", row.TextContent);
+        Assert.DoesNotContain("edit in the text", row.TextContent);
+    }
+
+    [Fact]
+    public void PickingAnOtherwise_WritesTheOneLiner_AndTheRegistryAccepts()
+    {
+        var page = RenderEditor(WithFile(HpiFile, GuardedHpi));
+        CapturePublish();
+        Navigate(page, "HPI");
+
+        page.Find(Otherwise(HpiSubject)).Change("macro.closing.prompt");
+
+        Assert.Equal(IfElseHpi, EditorText(page));
+        Assert.Equal(IfElseLine, page.Find(Writes(HpiSubject)).TextContent.Trim());
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+
+        var validated = Validated();
+        Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
+    }
+
+    [Fact]
+    public void ClearingTheOtherwise_WritesTheGuardShape()
+    {
+        var page = RenderEditor(WithFile(HpiFile, IfElseHpi));
+        Navigate(page, "HPI");
+
+        page.Find(Otherwise(HpiSubject)).Change("");
+
+        Assert.Equal(GuardedHpi, EditorText(page));
+    }
+
+    [Fact]
+    public void EditingTheCondition_KeepsTheOtherwise()
+    {
+        var page = RenderEditor(WithFile(HpiFile, IfElseHpi));
+        Navigate(page, "HPI");
+
+        page.Find(Value(HpiSubject)).Change("follow_up");
+
+        Assert.Equal("History: {{ input.notes }}\n{{~ if input.kind == \"follow_up\" ~}}" + Read + "{{~ else ~}}" + ClosingRead + "{{~ end ~}}\n", EditorText(page));
+    }
+
+    [Fact]
+    public void ClearingToAlways_IsRefused_WhileAnOtherwiseIsSet()
+    {
+        var page = RenderEditor(WithFile(HpiFile, IfElseHpi));
+        Navigate(page, "HPI");
+
+        page.Find(Operand(HpiSubject)).Change("");
+
+        Assert.Equal(IfElseHpi, EditorText(page));
+        var row = page.Find(HpiRow);
+        Assert.Contains("set otherwise to nothing first", row.TextContent);
+        // The builder still shows the condition the text keeps.
+        Assert.Equal("kind", row.QuerySelector(Operand(HpiSubject))!.GetAttribute("current-value"));
+        Assert.Equal("new", row.QuerySelector(Value(HpiSubject))!.GetAttribute("current-value"));
+
+        page.Find(Otherwise(HpiSubject)).Change("");
+        Assert.DoesNotContain("set otherwise to nothing first", page.Find(HpiRow).TextContent);
+        page.Find(Operand(HpiSubject)).Change("");
+
+        Assert.Equal("History: {{ input.notes }}\n" + Read + "\n", EditorText(page));
+    }
+
+    [Fact]
+    public void AnUnguardedRead_OffersNoOtherwise_UntilAConditionIsSet()
+    {
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+        const string subject = "macro.tool_note.prompt in prompts/assessment.md";
+
+        Assert.Empty(page.FindAll(Otherwise(subject)));
+
+        page.Find(AddGuard(subject)).Click();
+        page.Find(Operand(subject)).Change("kind");
+        page.Find(Value(subject)).Change("new");
+
+        Assert.Equal("", page.Find(Otherwise(subject)).GetAttribute("current-value"));
+    }
+
+    [Fact]
+    public void TheElseReadsRow_SaysOtherwiseOf_AndCarriesNoBuilder()
+    {
+        var page = RenderEditor(WithFile(HpiFile, IfElseHpi));
+        Navigate(page, "HPI");
+
+        var row = page.Find(Row("Reads of " + HpiFile, "macro.closing.prompt"));
+        Assert.Contains("otherwise of input.kind == \"new\"", row.TextContent);
+        Assert.Empty(row.QuerySelectorAll("fluent-button[aria-label^='Add a condition for']"));
+        Assert.Empty(row.QuerySelectorAll("fluent-select"));
+    }
+
+    [Fact]
+    public void TheMacroPanesReadByRow_ShowsTheTwoLineTable_AndRewritesTheReadersFile()
+    {
+        var page = RenderEditor(WithFile(HpiFile, IfElseHpi));
+        Navigate(page, "tool_note");
+        const string where = "Snippet 'sections/hpi'";
+
+        var row = page.Find(HpiReader);
+        var table = row.QuerySelector(".branch-table[aria-label=\"If over input.kind == \\\"new\\\" in " + where + "\"]");
+        Assert.NotNull(table);
+        var when = row.QuerySelector("fluent-select[aria-label=\"When of input.kind == \\\"new\\\" in " + where + "\"]")!;
+        var otherwise = row.QuerySelector("fluent-select[aria-label=\"Otherwise of input.kind == \\\"new\\\" in " + where + "\"]")!;
+        Assert.Equal("macro.tool_note.prompt", when.GetAttribute("current-value"));
+        Assert.Equal("macro.closing.prompt", otherwise.GetAttribute("current-value"));
+        Assert.Equal(IfElseLine, row.QuerySelector("code[aria-label=\"Line written for input.kind == \\\"new\\\" in " + where + "\"]")!.TextContent.Trim());
+
+        otherwise.Change("");
+        Navigate(page, "HPI");
+
+        Assert.Equal(GuardedHpi, EditorText(page));
+    }
+
+    [Fact]
+    public void TheNodePane_ShowsTheIfElse_AsASentence()
+    {
+        var page = RenderEditor(WithFile(HpiFile, IfElseHpi));
+        ShowNode(page, "section_notes");
+
+        var row = page.Find(".template-read-rows[aria-label='Inline macros of section_notes'] .template-read-row[data-read-member='macro.tool_note.prompt']");
+        Assert.Contains("if input.kind == \"new\": when → Macro 'Tool note'; otherwise → Macro 'Closing'", row.TextContent);
+        Assert.DoesNotContain("included when", row.TextContent);
+        Assert.Empty(row.QuerySelectorAll("fluent-select"));
+    }
+
+    [Fact]
+    public void AnElseOnlyIf_PutsTheNoteOnTheElseRead_AndTheTableShowsWhenAtNothing()
+    {
+        var page = RenderEditor(WithFile(HpiFile, "History: {{ input.notes }}\n{{~ if input.kind == \"new\" ~}}{{~ else ~}}" + Read + "{{~ end ~}}\n"));
+        Navigate(page, "HPI");
+
+        var row = page.Find(HpiRow);
+        Assert.Contains("otherwise of input.kind == \"new\"", row.TextContent);
+        Assert.Empty(row.QuerySelectorAll("fluent-select"));
+
+        Navigate(page, "tool_note");
+        var reader = page.Find(HpiReader);
+        Assert.Equal("", reader.QuerySelector("fluent-select[aria-label=\"When of input.kind == \\\"new\\\" in Snippet 'sections/hpi'\"]")!.GetAttribute("current-value"));
+        Assert.Equal("macro.tool_note.prompt", reader.QuerySelector("fluent-select[aria-label=\"Otherwise of input.kind == \\\"new\\\" in Snippet 'sections/hpi'\"]")!.GetAttribute("current-value"));
+    }
 }
