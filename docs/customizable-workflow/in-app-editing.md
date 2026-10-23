@@ -271,6 +271,12 @@ declared sections:
   folder's dot, survives a reload, and a "(reset order)" link in the folder clears it;
   an added item sits last until moved; the fan-item selects and the preview-as-item pick
   follow the order. The same for a ≤24 data folder.
+- **Cases** (#1091, #1093, #1120, 25 only) — a `{{ case … }}` over an enum input or an
+  enum-format node's value shows on that subject's read row as a table: one pick per
+  declared value and "otherwise", each choosing a macro or a snippet, the line it writes
+  beneath. A row without a case carries "choose a read by its value…", which opens an empty
+  table whose first pick appends the block to the text; the insert-reference palette's
+  "cases" group inserts the empty block for an enum the text does not read yet.
 - **Renderers** (#1098, 25 only) — the engine's renderer pipes as read-only
   entries after Formats, one pane each: the format it renders, the spelling
   to insert per node of that format (with a Copy button), and "Used by" —

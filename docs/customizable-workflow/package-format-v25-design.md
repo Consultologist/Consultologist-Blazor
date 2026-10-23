@@ -850,7 +850,7 @@ member outside the list shown "as written") and the canonical one-liner written 
 block removed; a hand-written form with or without markers is canonical and normalises on edit. A read chosen by a case
 says "chosen by input.kind" on its own row instead of a guard builder; the macro pane's and the snippet pane's "Read by"
 rows show the whole table (the rewrite targets the reader's file); the node pane shows a case as a sentence; a
-non-canonical case is read-only ("edit in the text"). The table loads an existing block — creating one stays in the text
+non-canonical case is read-only ("edit in the text"). The table loads an existing block — creating one stayed in the text until #1120
 (or the palette). Follow-ups: the `if … else` "otherwise" control on a #1088 row (the block fact already covers it; filed
 on request), a registry warning for a `when` literal outside the enum's values (a package-format matter), and #1093's
 snippets in the dropdown (done by #1093).)*
@@ -894,6 +894,23 @@ same list below) as a swap in the pending list (`resultsEdit`), the dot through 
 arrows on the row beside Remove as a swap in `inputsEdit`; a tested input moves (the lock gates remove
 and retype only). Out of scope as filed: top-level snippets, the macro library, nodes; macro folders
 wait on #1099. No format change.)*
+
+*(#1120, 2026-10-22, Milestone 31 — **start a case from the row or the palette**. #1091's table only loaded an
+existing block. Two ways in now. **From the row**: an enum read row (an enum input's row, an enum-format node's
+`.value` row) whose text holds no case over that subject carries a resting control "choose a read by its value…"
+(the `ConditionField` resting idiom, rendered under any guard builder the row already carries) that opens an EMPTY
+table — today's `BranchTableBelow` over a synthetic block (`Start`/`End` −1, canonical, no branches): every declared
+value and otherwise at nothing, the written line showing the empty spelling `{{~ case X ~}}{{~ end ~}}`; the first
+pick appends the canonical one-liner at the end of the text (`Appended`, as the palette appends a reference) and the
+walk owns the block from then on; collapsing the empty table writes nothing. **From the palette**: the insert-reference
+select gains a "cases" group after profile — `case over input.<id>` / `case over node.<id>.value` for every enum
+subject the text may read, read already or not (the case reads it: the walker records the subject as a read, so the
+empty block alone makes the row appear with its all-nothing table) — inserting the empty block, which renders nothing;
+never the reading node's own value; hidden once the text holds a case over that subject (the row's table edits it);
+not on the macro instruction's palette (an instruction has no table). Where the subject is not yet read there is no
+row to carry the control, so the palette is the way in. An all-nothing table shows the empty spelling but a real block
+cleared to nothing is still removed (the #1091 fact). Nothing on the node pane (sentences) or the macro/snippet Read by
+rows. A library fact pins the empty case as a canonical zero-branch block. No format change.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
