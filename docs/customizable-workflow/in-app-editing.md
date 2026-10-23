@@ -225,11 +225,14 @@ declared sections:
 
 - **Inputs** — one row per declared input: id, label, required; an object's fields editor
   can **derive the fields it lacks from a pasted sample** response (#991: optional, typed from
-  the sample, never an enum; a key that is not snake_case is refused by name). Renaming an input
+  the sample, never an enum; a key that is not snake_case is refused by name). Rows reorder by
+  arrows beside Remove — `inputs[]` is the Create page's form order (#1103; a tested input moves).
+  Renaming an input
   **cascades into every binding that read it**, because the alternative is
   publishing a package the validator rejects for an undeclared input while the
   author hunts down bindings the editor could already identify.
-- **Deliverables** — one card per declared deliverable: id, label, and an
+- **Deliverables** — one card per declared deliverable (the cards reorder by arrows in
+  the card's header, #1103): id, label, and an
   **aggregator-only** node picker (every deliverable names its own aggregator);
   *Produced when* (a condition on an input or, at 25, an enum-format node);
   *Macros* (at 25 prepend / append around the aggregator's sections, each with
@@ -262,6 +265,12 @@ declared sections:
   the catalogue's formats sit in a collapsed "catalogue (N)" folder of read-only
   panes with their detail line and schema. A node's format picker carries an
   "open" link to the format's pane.
+- **Snippet folders** (#1103) — a folder's items reorder by arrows on the nav rows
+  (first/last disabled): index.json's array is the fan's run order and the `{{ for }}`
+  iteration order. The pending order is one ledger line ("N folder orders"), lights the
+  folder's dot, survives a reload, and a "(reset order)" link in the folder clears it;
+  an added item sits last until moved; the fan-item selects and the preview-as-item pick
+  follow the order. The same for a ≤24 data folder.
 - **Renderers** (#1098, 25 only) — the engine's renderer pipes as read-only
   entries after Formats, one pane each: the format it renders, the spelling
   to insert per node of that format (with a Copy button), and "Used by" —
