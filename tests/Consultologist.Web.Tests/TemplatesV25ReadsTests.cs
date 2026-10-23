@@ -227,4 +227,26 @@ public class TemplatesV25ReadsTests : ClientRenderTestContext
 
         Assert.Equal("assess", Selected(page));
     }
+
+    /// <summary>#1122: the walker's warning on a literal the enum never answers rides the existing warning surface — nothing editor-side.</summary>
+    [Fact]
+    public void AnUndeclaredLiteral_ShowsTheWalkersWarning_UnderTheReads_AndOnTheNodePane_AndDoesNotBlockPublish()
+    {
+        WorkflowPackagePublishRequest? sent = null;
+        WorkflowService.PublishPackageAsync(Arg.Do<WorkflowPackagePublishRequest>(r => sent = r))
+            .Returns(new WorkflowPublishOutcome(new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.10.2", "acct-1234567890ab@v2026.10.2"), Array.Empty<string>()));
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+        const string sentence = "Prompt 'assessment' compares input.kind to 'bogus', which it does not declare (values: new, follow_up); that branch never runs.";
+
+        page.Find(".editor-pane fluent-text-area").Change(EditorFixtures.V25().Files["prompts/assessment.md"] + "\n{{ if input.kind == \"bogus\" }}never{{ end }}");
+
+        Assert.Equal(sentence, page.Find(".node-reads__warning").TextContent.Trim());
+
+        ShowNode(page, "assessment");
+        Assert.Equal(sentence, page.Find(".node-reads__warning").TextContent.Trim());
+
+        page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish")).Click();
+        Assert.NotNull(sent);
+    }
 }
