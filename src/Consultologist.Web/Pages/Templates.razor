@@ -5158,14 +5158,14 @@
         }
     </text>;
 
-    /// <summary>The pane a walked template is edited on: a prompt's, a snippet's, a folder item's, a macro's file.</summary>
+    /// <summary>The pane a walked template is edited on: a prompt's, a snippet's, a folder item's, a macro's file — for its text and (#1126) its instruction alike, both edit on the macro's pane.</summary>
     private string? PaneKeyOf(PF.WorkflowDerivedEdges.WalkedTemplate template) => template.Kind switch
     {
         // A prompt is walked per NODE: the template's Id is the node id, its subject the prompt id (C4 #1010).
         PF.TemplateKind.Prompt => EffectiveNodes.FirstOrDefault(n => n.Id == template.Id)?.Prompt is { } promptId
             ? EffectivePrompts.FirstOrDefault(p => p.Id == promptId)?.File
             : null,
-        PF.TemplateKind.Macro => EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File,
+        PF.TemplateKind.Macro or PF.TemplateKind.Instruction => EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File,
         PF.TemplateKind.Snippet when template.Id.IndexOf('/') is var slash && slash > 0 =>
             EffectiveCollections.FirstOrDefault(c => c.Id == template.Id[..slash])?.Items.FirstOrDefault(i => i.Id == template.Id[(slash + 1)..])?.File
             ?? addedItems.FirstOrDefault(a => a.Collection == template.Id[..slash] && a.Id == template.Id[(slash + 1)..])?.Key,
@@ -5385,9 +5385,8 @@
                     label += $" for {(items.Count == 1 ? "item" : "items")} {string.Join(", ", items)}";
                 }
 
-                var key = first.HolderKind == PF.TemplateKind.Instruction
-                    ? EffectiveMacros.FirstOrDefault(m => m.Id == first.HolderId)?.File
-                    : walk.Templates.FirstOrDefault(t => t.Kind == first.HolderKind && t.Id == first.HolderId) is { } holder ? PaneKeyOf(holder) : null;
+                // #1126: the holder's pane — an instruction's is the macro's, as PaneKeyOf says.
+                var key = walk.Templates.FirstOrDefault(t => t.Kind == first.HolderKind && t.Id == first.HolderId) is { } holder ? PaneKeyOf(holder) : null;
 
                 via.Add((label, key));
             }
@@ -6130,13 +6129,9 @@
 
         if (PackageWalk is { } walk)
         {
+            // #1126: an instruction may pipe a renderer too — listed by its subject ("Macro '<id>' instruction"), opening the macro's pane.
             foreach (var template in walk.Templates)
             {
-                if (template.Kind == PF.TemplateKind.Instruction)
-                {
-                    continue;
-                }
-
                 foreach (var rendered in template.References.Rendered)
                 {
                     if (rendered.Pipe == pipe)
@@ -6497,7 +6492,11 @@
         }
     </text>;
 
-    /// <summary>The file a walked template's text is edited as — the key GetText and the text editor use — or null for an instruction.</summary>
+    /// <summary>
+    /// The file a walked template's text is edited as — the key GetText and the text editor use. Null for an
+    /// instruction: it edits on the macro's pane (PaneKeyOf answers that) but is not a file the text editor holds,
+    /// so the guard and table rewrites must never target it (#1088, #1091, #1126).
+    /// </summary>
     private string? TemplateFileOf(PF.WorkflowDerivedEdges.WalkedTemplate template)
     {
         if (template.Kind == PF.TemplateKind.Instruction)
@@ -7940,7 +7939,7 @@
     /// </summary>
     private TemplateReadRow ReaderRowOf(PF.WorkflowDerivedEdges.WalkedTemplate template, string member, string? qualifier) =>
         template.Kind == PF.TemplateKind.Instruction
-            ? new TemplateReadRow($"Macro '{template.Id}'", EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File, member, qualifier, "the instruction")
+            ? new TemplateReadRow($"Macro '{template.Id}'", PaneKeyOf(template), member, qualifier, "the instruction")
             : new TemplateReadRow(template.Subject, PaneKeyOf(template), member, qualifier, null);
 
     // v12 § 3 (#621): pending optional/default edits on DECLARED macros,
