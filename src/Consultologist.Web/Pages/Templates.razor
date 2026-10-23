@@ -3427,15 +3427,18 @@
   /// </summary>
   private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null, bool InputsOnly = false);
 
-  private sealed record ConditionScope(ConditionTarget Target, ConditionGroup Root, IReadOnlyList<int> Path);
+  // #1125: EmptyWord is the field's resting label, lower-cased — what the sole clause's empty choice says, so the
+  // open builder and the collapsed button agree ("always produced", "always run", "always", "every run").
+  private sealed record ConditionScope(ConditionTarget Target, ConditionGroup Root, IReadOnlyList<int> Path, string EmptyWord = "always produced");
 
   /// <summary>
   /// A deliverable's condition: the tree, or — for an expression the tree cannot
   /// hold — the text as itself, clearable and never rewritten (the v9 path).
   /// </summary>
-  private RenderFragment<ConditionTarget> ConditionEditor => target =>
+  private RenderFragment<(ConditionTarget Target, string EmptyWord)> ConditionEditor => spec =>
     @<text>
       @{
+        var target = spec.Target;
         var state = ConditionState(target);
       }
       @if (state.Verbatim is { } verbatim)
@@ -3456,7 +3459,7 @@
       }
       else
       {
-        @ConditionGroupView(new ConditionScope(target, state.Root, Array.Empty<int>()))
+        @ConditionGroupView(new ConditionScope(target, state.Root, Array.Empty<int>(), spec.EmptyWord))
       }
     </text>;
 
@@ -3523,7 +3526,7 @@
         }
         else
         {
-          @ConditionEditor(spec.Target)
+          @ConditionEditor((spec.Target, spec.RestingLabel.ToLowerInvariant()))
           @if (fieldIsEmpty)
           {
             <FluentButton Appearance="Appearance.Stealth" Class="condition-field__collapse"
@@ -3658,9 +3661,9 @@
                 Value="@clause.Operand"
                 ValueChanged="@(v => SetClauseOperandAsync(scope.Target, scope.Path, v))"
                 aria-label="@($"Condition operand for {subjectId}{suffix}")">
-          @* The sole clause's empty choice is the null condition; a clause
-             beside others has no meaning until chosen — never a default. *@
-          <FluentOption TOption="string" Value="">@(single ? "always produced" : "choose…")</FluentOption>
+          @* The sole clause's empty choice is the null condition, named by the target's resting word (#1125); a
+             clause beside others has no meaning until chosen — never a default. *@
+          <FluentOption TOption="string" Value="">@(single ? scope.EmptyWord : "choose…")</FluentOption>
           @if (!clause.IsEmpty && operand is null)
           {
             @* A loaded condition naming something not offered

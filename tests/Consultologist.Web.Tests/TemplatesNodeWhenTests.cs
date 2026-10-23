@@ -207,4 +207,15 @@ public class TemplatesNodeWhenTests : ClientRenderTestContext
 
         Assert.Equal("encounter_kind == follow_up", NodeWhenEdits(page)["draft-section"]);
     }
+
+    /// <summary>#1125: a node's "Runs when" rests as "Always run", and its open builder's empty choice says so.</summary>
+    [Fact]
+    public void TheEmptyChoice_SaysAlwaysRun_OnANodesWhen()
+    {
+        var page = RenderEditor(18);
+        ShowNode(page, "draft-section");
+        page.Find("[aria-label='Add a condition for draft-section']").Click();
+
+        Assert.Equal("always run", page.Find("[aria-label='Condition operand for draft-section'] fluent-option").TextContent.Trim());
+    }
 }

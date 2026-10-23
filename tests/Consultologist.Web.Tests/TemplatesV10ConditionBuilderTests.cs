@@ -472,4 +472,16 @@ public class TemplatesV10ConditionBuilderTests : ClientRenderTestContext
         Assert.Contains("patient.age", operands);
         Assert.DoesNotContain("patient.contact.preferred", operands);
     }
+
+    /// <summary>#1125: the sole clause's empty choice says the target's resting word — a deliverable's is "always produced"; a clause beside others still says "choose…".</summary>
+    [Fact]
+    public void TheEmptyChoice_SaysAlwaysProduced_OnADeliverable()
+    {
+        var page = At10();
+
+        Assert.Equal("always produced", page.Find(Sel("operand") + " fluent-option").TextContent.Trim());
+
+        page.Find("[aria-label='Add condition clause to consult_note']").Click();
+        Assert.Equal("choose…", page.Find(Sel("operand", " clause 2") + " fluent-option").TextContent.Trim());
+    }
 }

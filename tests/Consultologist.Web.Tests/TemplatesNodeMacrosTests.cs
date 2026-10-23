@@ -375,4 +375,16 @@ public class TemplatesNodeMacrosTests : ClientRenderTestContext
         Publish(page);
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
     }
+
+    /// <summary>#1125: a placement's "Applies when" rests as "Always", and its open builder's empty choice says so.</summary>
+    [Fact]
+    public void TheEmptyChoice_SaysAlways_OnAPlacement()
+    {
+        var page = RenderEditor(23);
+        ShowNode(page, "draft-section");
+        page.Find("[aria-label='Attach a macro to draft-section']").Change("tool_guidance");
+        page.Find("[aria-label='Add a condition for draft-section macro tool_guidance']").Click();
+
+        Assert.Equal("always", page.Find("[aria-label^='Condition operand for draft-section macro tool_guidance'] fluent-option").TextContent.Trim());
+    }
 }
