@@ -4918,6 +4918,20 @@
     private readonly Dictionary<string, string> previewNodePicks = new(StringComparer.Ordinal);
 
     /// <summary>
+    /// #1124: the rendered preview shown as Markdown rather than as the bytes — one toggle for every pane, page
+    /// state like the picks (not pending, no draft, no dot), back to bytes on a package load. Never touches the text.
+    /// </summary>
+    private bool previewAsMarkdown;
+
+    // A token in the rendered Markdown becomes a code span so ⟨input.notes⟩ reads as what it is. A post-pass over
+    // the HTML, not backticks in the source: a token inside a fenced block or a code span would show them, and
+    // Markdig leaves ⟨…⟩ alone (not angle brackets to HTML; an intraword underscore opens no emphasis).
+    private static readonly System.Text.RegularExpressions.Regex PreviewTokenRegex = new("⟨([^⟨⟩<>]+)⟩", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    private static MarkupString RenderedAsMarkdown(string rendered) =>
+        (MarkupString)PreviewTokenRegex.Replace(MarkdownPreview.Render(rendered), "<code class=\"rendered-preview__token\">⟨$1⟩</code>");
+
+    /// <summary>
     /// #1123: one "preview with" control. Kind is the input's declared type (enum, boolean, number, text) or
     /// "node" for an enum-format node's .value; Id is the input or node id; Label the path the control names;
     /// Values the closed set a select offers (null for a typed field).
@@ -5923,7 +5937,20 @@
                 : null;
             var (rendered, renderedIsError) = RenderedPreviewOf(subject, target.Text, picks, nodePicks, pickedItem);
         }
-        <span class="muted-text">What a reader gets</span>
+        <div class="rendered-preview__head">
+            <span class="muted-text">What a reader gets</span>
+            @if (!renderedIsError)
+            {
+                <div class="rendered-preview__mode" role="group" aria-label="@($"Rendered preview of {subject} as")">
+                    <FluentButton Appearance="@(previewAsMarkdown ? Appearance.Neutral : Appearance.Accent)"
+                                  aria-pressed="@(previewAsMarkdown ? "false" : "true")" aria-label="Preview bytes"
+                                  @onclick="() => previewAsMarkdown = false">bytes</FluentButton>
+                    <FluentButton Appearance="@(previewAsMarkdown ? Appearance.Accent : Appearance.Neutral)"
+                                  aria-pressed="@(previewAsMarkdown ? "true" : "false")" aria-label="Preview as Markdown"
+                                  @onclick="() => previewAsMarkdown = true">as Markdown</FluentButton>
+                </div>
+            }
+        </div>
         @if (controls.Count > 0 || items.Count > 0)
         {
             <div class="rendered-preview__controls">
@@ -5979,7 +6006,14 @@
                 <p class="muted-text rendered-preview__note">An unchosen value renders as its token — an equality against it is false, a bare <code>if</code> or an ordering sees a non-empty text — choose a value to see the branch you mean.</p>
             }
         }
-        <pre class="plain-preview rendered-preview__text @(renderedIsError ? "editor-warning" : null)" aria-label="@($"Rendered preview of {subject}")">@rendered</pre>
+        @if (renderedIsError || !previewAsMarkdown)
+        {
+            <pre class="plain-preview rendered-preview__text @(renderedIsError ? "editor-warning" : null)" aria-label="@($"Rendered preview of {subject}")">@rendered</pre>
+        }
+        else
+        {
+            <div class="markdown-preview rendered-preview__text rendered-preview__markdown" aria-label="@($"Rendered preview of {subject}")">@RenderedAsMarkdown(rendered)</div>
+        }
     </text>;
 
     /// <summary>#1073: the macro text's one sentence and its palette — right above the "Macro text" editor.</summary>
@@ -13325,6 +13359,7 @@
         previewInputPicks.Clear(); // #1095: a preview choice belongs to the loaded package.
         previewItemPicks.Clear(); // #1109: so does the item previewed as.
         previewNodePicks.Clear(); // #1123: and the node value previewed with.
+        previewAsMarkdown = false; // #1124: the preview is the bytes again.
         prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
         nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
         collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);

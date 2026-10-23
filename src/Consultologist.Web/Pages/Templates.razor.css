@@ -942,3 +942,21 @@ fluent-select.branch-table__pick {
 .rendered-preview__value {
 	width: 10rem;
 }
+
+/* #1124: the rendered preview's label beside its bytes | as Markdown toggle; a token in the Markdown view is code. */
+.rendered-preview__head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5rem;
+}
+
+.rendered-preview__mode {
+	display: inline-flex;
+	gap: 0.25rem;
+}
+
+::deep .rendered-preview__token {
+	font-family: var(--consultologist-font-mono, ui-monospace, monospace);
+	font-size: 0.9em;
+}
