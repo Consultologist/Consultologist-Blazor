@@ -640,7 +640,8 @@ across every record ever written, and stay; the provenance document may say "the
   snippet, a prompt or a macro, where it is read — as descriptive rows (#1085, #1086).
 - **Macro pane.** Title / id / file / **instruction** → text → **Where it goes**: *Placed on*
   rows (#1077) and one *Read by* list of descriptive rows (#1085, derived).
-- **Snippets pane** (was Data): `+ Snippet`, `+ Snippet folder`; a folder item's `when`.
+- **Snippets pane** (was Data): `+ Snippet`, `+ Snippet folder`; a folder item's `when`; a
+  folder's items reorder from the nav — index.json's array is the fan's run order (#1103).
 - **Formats group** (#1097; was one Formats pane): each package format its own entry and
   pane (the strip, "Used by", the schema editor), `+ Format` a pane, the catalogue a collapsed
   folder of read-only panes with their detail line (§ 3.8).
@@ -648,8 +649,9 @@ across every record ever written, and stay; the provenance document may say "the
   Formats — each pane names the format it renders, the spelling to insert, and who pipes
   what through it (from the walk's `Rendered`).
 - **Deliverables pane** (#985): prepend / append with applies-when, the one-line note for
-  node-placed instances, the two-way picker exclusion (#983).
-- **Inputs pane:** the object-form input's fields as today's object fields.
+  node-placed instances, the two-way picker exclusion (#983); the cards reorder (#1103).
+- **Inputs pane:** the object-form input's fields as today's object fields; the rows reorder —
+  the Create page's form order (#1103).
 
 *(C1 #1007, 2026-10-14 — the node pane's picker and the Formats pane are built, gated on
 `EffectiveSpecVersion >= 25` and inert until A5 moves the editor's version constants — moved
@@ -872,6 +874,26 @@ as a collapsed folder "catalogue (N)" of read-only panes keyed `catalogue:<id>` 
 description, the detail line, the parameters, the schema, "Used by". Removing the open format lands on `+ Format`. A
 node's format picker gains an "open" link to the format's pane, package or catalogue alike (`WorkflowNodeSummary.OnOpenFormat`).
 Two key prefixes, so the source is in the key; `PaneStillExists` keeps a key while the format exists. No format change.)*
+
+*(#1103, 2026-10-22, Milestone 31 — **reorder where order is a fact**. Three orders are facts of the
+package: a snippet folder's `index.json` array (the fan's run order and the `{{ for }}` iteration
+order), `deliverables[]` (the record's listing) and `inputs[]` (the Create page's form order). Each
+moves by up/down arrows, first/last disabled (the `MoveResultMacroAsync` idiom). **Folder items** —
+the arrows sit on the nav rows (each nested row a wrapper holding the label button and the two
+arrows, so the whole order stays in view; the item pane is untouched) over a **self-reverting
+per-folder overlay** `itemOrderEdits` (folder → live item ids, keyed by id since a pending item's key
+is a fresh Guid each restore; dropped when it equals the natural order, as `tagsEdit` is); it is one
+ledger kind ("N folder orders", not the manifest), rides the draft (`ItemOrders`), lights the folder
+dot — which now also lights for a pending name or when, the index.json it writes — and is cleared by
+a "(reset order)" link in the folder's nav block, the per-item pane's Discard being the wrong scope;
+`ComposeIndexJson` writes the shown order and the assemble gate recomposes on it; an added item sits
+last until moved; a removed item leaves the overlay; the fan-item selects and the preview-as-item
+pick follow the order; the ≤24 data folder moves the same way (one code path, `DataRoot` the only
+difference). **Deliverables** — arrows in the card's header strip (the #1081 strip, so 25 only; the
+same list below) as a swap in the pending list (`resultsEdit`), the dot through it. **Inputs** —
+arrows on the row beside Remove as a swap in `inputsEdit`; a tested input moves (the lock gates remove
+and retype only). Out of scope as filed: top-level snippets, the macro library, nodes; macro folders
+wait on #1099. No format change.)*
 
 *(#1044, 2026-10-16 — the editor's half of the reply-as-template change: the **instruction
 field** carries the insert-reference palette (the palette generalised over a target — a file's
