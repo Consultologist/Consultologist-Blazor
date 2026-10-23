@@ -937,3 +937,8 @@ fluent-select.branch-table__pick {
 .editor-nav__move {
 	flex: none;
 }
+
+/* #1123: a typed preview value (a number or a compared text input) sits beside the selects. */
+.rendered-preview__value {
+	width: 10rem;
+}
