@@ -920,3 +920,20 @@ fluent-select.branch-table__pick {
 .format-users__note {
 	margin: 0;
 }
+
+/* #1103: a folder item's nav row — the label button beside its move arrows; the nested padding stays on the row. */
+.editor-nav__row {
+	display: flex;
+	align-items: center;
+	gap: 0.1rem;
+}
+
+.editor-nav__row > .editor-nav__item {
+	flex: 1;
+	min-width: 0;
+	padding-left: 0;
+}
+
+.editor-nav__move {
+	flex: none;
+}
