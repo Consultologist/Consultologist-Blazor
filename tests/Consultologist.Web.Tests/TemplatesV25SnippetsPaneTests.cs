@@ -622,4 +622,23 @@ public class TemplatesV25SnippetsPaneTests : ClientRenderTestContext
         // The loaded index.json travels untouched: its when stays as written.
         Assert.Contains("\"when\": \"input.kind == \\\"new\\\"\"", sent!.Files["snippets/sections/index.json"]);
     }
+
+    /// <summary>#1126: an instruction reading a snippet is a linked row opening the macro — and carries no builder, since an instruction is not a text-editor file.</summary>
+    [Fact]
+    public void AnInstructionReader_IsALinkedRow_OpeningTheMacro_WithoutABuilder()
+    {
+        var page = RenderEditor();
+        Navigate(page, "closing");
+        page.Find("fluent-text-area[aria-label='Instruction for macro closing']").Change("Follow {{ snippet.standards.content }}.");
+        Navigate(page, "standards");
+
+        var readers = page.Find(".template-read-rows[aria-label='Readers of standards']");
+        var row = readers.QuerySelector(".template-read-row[data-read-reader=\"Macro 'closing'\"]")!;
+        Assert.Contains("the instruction", row.TextContent);
+        Assert.Equal("fluent-button", row.QuerySelector(".template-read-row__reader")!.TagName.ToLowerInvariant());
+        Assert.Empty(row.QuerySelectorAll("fluent-button[aria-label^='Add a condition for']"));
+
+        row.QuerySelector(".template-read-row__reader")!.Click();
+        Assert.Equal("macros/closing.md", EditorSession.SelectedKey);
+    }
 }

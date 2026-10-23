@@ -203,4 +203,23 @@ public class TemplatesV25RenderersPaneTests : ClientRenderTestContext
         Assert.Equal("concept_bullets", SelectedNav(page));
         Assert.Equal("concept_bullets", page.Find("h3.panel-title").TextContent.Trim());
     }
+
+    /// <summary>#1126: an instruction may pipe a renderer too — listed by its subject, opening the macro's pane.</summary>
+    [Fact]
+    public void UsedBy_ListsAnInstruction_ThatPipesARenderer_OpeningTheMacro()
+    {
+        var page = RenderEditor(V25WithARenderedRead());
+        Navigate(page, "closing");
+        page.Find("fluent-text-area[aria-label='Instruction for macro closing']").Change("Note {{ node.extract.content | concept_context }} briefly.");
+
+        Session.SelectedKey = "renderer:concept_context";
+        page.Render();
+
+        var rows = page.FindAll(".renderer-user");
+        Assert.Equal(new[] { "Macro 'closing' instruction", "Prompt 'assessment'" }, rows.Select(r => r.QuerySelector(".renderer-user__template")!.TextContent.Trim()));
+        Assert.All(rows, r => Assert.Equal("extract", r.GetAttribute("data-renderer-user-node")));
+
+        rows[0].QuerySelector(".renderer-user__template")!.Click();
+        Assert.Equal("macros/closing.md", Session.SelectedKey);
+    }
 }
