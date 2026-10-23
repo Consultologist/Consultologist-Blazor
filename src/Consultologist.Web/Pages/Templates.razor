@@ -5152,7 +5152,15 @@
         TemplateReadRow Tabled(TemplateReadRow row)
         {
             var blocks = references.Branches.Where(b => b.Subject == row.Member).ToList();
-            return blocks.Count == 0 ? row : row with { Below = BranchTablesBelow((file, subject ?? "the text", blocks)) };
+            if (blocks.Count > 0)
+            {
+                return row with { Below = BranchTablesBelow((file, subject ?? "the text", blocks)) };
+            }
+
+            // #1120: no case over this enum yet — the row can start one (under any guard builder it carries).
+            return file is not null && BranchValuesOf(row.Member) is { Count: > 0 }
+                ? row with { Below = CaseStartBelow((file, subject ?? "the text", row.Member, row.Below)) }
+                : row;
         }
 
         foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
@@ -5384,6 +5392,43 @@
             .Append(new PF.TemplateBranch(null, block.Branches.FirstOrDefault(b => b.Literal is null)?.Member))
             .ToList();
 
+    /// <summary>#1120: the empty block — what the palette inserts and what an all-nothing table shows; it renders nothing.</summary>
+    private static string EmptyCase(string subject) => $"{{{{~ case {subject} ~}}}}{{{{~ end ~}}}}";
+
+    // ----- #1120: starting a case from the row -----
+
+    /// <summary>The enum rows whose empty table is open (nothing written until the first pick), keyed by file and subject.</summary>
+    private readonly HashSet<string> _openCaseStarts = new(StringComparer.Ordinal);
+
+    private static string CaseStartKey(string file, string subject) => $"case-start:{file}\n{subject}";
+
+    /// <summary>A block that is not in the text: the table renders it empty and the first pick appends the one-liner.</summary>
+    private static PF.TemplateBranchBlock EmptyBlock(string subject) => new(subject, Array.Empty<PF.TemplateBranch>(), true, -1, -1);
+
+    /// <summary>
+    /// #1120: an enum read row without a case — the existing Below first (a node row's guard builder), then the
+    /// resting control (the ConditionField idiom) that opens an empty table; collapsing it writes nothing.
+    /// </summary>
+    private RenderFragment<(string File, string Subject, string Member, RenderFragment? Existing)> CaseStartBelow => spec => @<text>
+        @if (spec.Existing is { } existing)
+        {
+            @existing
+        }
+        @if (_openCaseStarts.Contains(CaseStartKey(spec.File, spec.Member)))
+        {
+            @BranchTableBelow((spec.File, spec.Subject, EmptyBlock(spec.Member)))
+            <FluentButton Appearance="Appearance.Stealth" Class="condition-field__collapse case-start__collapse"
+                          aria-label="@($"Collapse case over {spec.Member} in {spec.Subject}")"
+                          @onclick="() => { _openCaseStarts.Remove(CaseStartKey(spec.File, spec.Member)); }">choose a read by its value…</FluentButton>
+        }
+        else
+        {
+            <FluentButton Appearance="Appearance.Stealth" Class="condition-field__resting case-start__resting"
+                          aria-label="@($"Start a case over {spec.Member} in {spec.Subject}")"
+                          @onclick="() => { _openCaseStarts.Add(CaseStartKey(spec.File, spec.Member)); }">choose a read by its value…</FluentButton>
+        }
+    </text>;
+
     /// <summary>The canonical one-liner: a when for every value with a read, the else when set, nothing when every branch is empty.</summary>
     private static string BranchLine(string subject, IReadOnlyList<PF.TemplateBranch> branches)
     {
@@ -5423,6 +5468,22 @@
     private async Task SetBranchAsync(string file, PF.TemplateBranchBlock block, IReadOnlyList<string> values, string? literal, string? pick)
     {
         var text = GetText(file);
+        var branches = TableBranches(block, values)
+            .Select(b => b.Literal == literal ? b with { Member = string.IsNullOrEmpty(pick) ? null : pick } : b)
+            .ToList();
+
+        // #1120: a case started from the row has no block in the text yet — the first pick appends
+        // the one-liner at the end, as the palette appends a reference; the walk then owns it.
+        if (block.Start < 0 && block.End < 0)
+        {
+            if (BranchLine(block.Subject, branches) is { Length: > 0 } started)
+            {
+                _openCaseStarts.Remove(CaseStartKey(file, block.Subject));
+                await OnTextChangedAsync(file, Appended(text, started));
+            }
+
+            return;
+        }
 
         // The walk is of the pending text, so a table is current; this only refuses a stale one.
         if (block.Start < 0 || block.End > text.Length || !text[block.Start..block.End].Contains("case", StringComparison.Ordinal))
@@ -5430,9 +5491,6 @@
             return;
         }
 
-        var branches = TableBranches(block, values)
-            .Select(b => b.Literal == literal ? b with { Member = string.IsNullOrEmpty(pick) ? null : pick } : b)
-            .ToList();
         await OnTextChangedAsync(file, text[..block.Start] + BranchLine(block.Subject, branches) + text[block.End..]);
     }
 
@@ -5486,7 +5544,7 @@
                         </FluentSelect>
                     </div>
                 }
-                <code class="template-read-row__writes" aria-label="@($"Line written for {block.Subject} in {spec.Subject}")">@BranchLine(block.Subject, branches)</code>
+                <code class="template-read-row__writes" aria-label="@($"Line written for {block.Subject} in {spec.Subject}")">@(branches.All(b => b.Member is null) ? EmptyCase(block.Subject) : BranchLine(block.Subject, branches))</code>
             </div>
         }
         else if (spec.File is not null)
@@ -5569,7 +5627,7 @@
     /// the reading node fans, macros (.content; .prompt — never from a macro's own text, § 5.2),
     /// run and profile facts.
     /// </summary>
-    private IReadOnlyList<ReferenceChoice> ReferenceChoices(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText)
+    private IReadOnlyList<ReferenceChoice> ReferenceChoices(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText, bool withCases = true)
     {
         var choices = new List<ReferenceChoice>();
 
@@ -5665,6 +5723,24 @@
             choices.Add(new ReferenceChoice($"{{{{ profile.{fact} }}}}", $"profile.{fact}", "profile"));
         }
 
+        // #1120: a case over every enum subject the text may read — the empty block, which the row's
+        // table then fills; hidden once the text holds a case over that subject (the table edits it).
+        if (withCases)
+        {
+            var cased = TemplateWalkOf(file)?.References.Branches.Select(b => b.Subject).ToHashSet(StringComparer.Ordinal)
+                ?? new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (var input in EffectiveInputs.Where(i => i.Values is { Count: > 0 } && !cased.Contains($"input.{i.Id}")))
+            {
+                choices.Add(new ReferenceChoice(EmptyCase($"input.{input.Id}"), $"case over input.{input.Id}", "cases"));
+            }
+
+            foreach (var node in EffectiveNodes.Where(n => n.Id != readingNode && ClassifierValues(n) is { Count: > 0 } && !cased.Contains($"node.{n.Id}.value")))
+            {
+                choices.Add(new ReferenceChoice(EmptyCase($"node.{node.Id}.value"), $"case over node.{node.Id}.value", "cases"));
+            }
+        }
+
         return choices;
     }
 
@@ -5688,7 +5764,7 @@
     private PaletteTarget InstructionPaletteTarget(WorkflowManifestReader.MacroView macro) =>
         new(
             $"instruction of macro {macro.Id}",
-            ReferenceChoices(macro.File, null, isMacroText: false),
+            ReferenceChoices(macro.File, null, isMacroText: false, withCases: false),
             PackageWalk?.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Instruction && t.Id == macro.Id),
             snippet => SetMacroInstructionAsync(macro.Id, Appended(MacroInstruction(macro) ?? string.Empty, snippet)),
             "the instruction");
