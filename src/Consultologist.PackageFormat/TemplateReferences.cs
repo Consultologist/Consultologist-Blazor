@@ -44,9 +44,13 @@ public sealed record TemplateNodeRead(bool ReadsContent, bool ReadsValue)
 /// recorded only when the walk accepts the operand (a refused pipe names its edge, not its
 /// rendering; an operand the walk cannot type is judged when it renders and records nothing).
 /// The validator and the engine read nothing from it; the editor lists a renderer's "Used by"
-/// rows from it. The set is unordered.
+/// rows from it. The set is unordered. #1138: <see cref="Guard"/> and <see cref="GuardCanonical"/>
+/// are the enclosing <c>if</c> as <see cref="TemplateReadOccurrence"/> records it for a plain read —
+/// the condition as written (null when none, or in a case's branch) and whether that <c>if</c> holds
+/// only this piped read plus whitespace (no else, not an else-if). Record equality includes them:
+/// one node piped under two ifs is two entries.
 /// </summary>
-public sealed record TemplateRenderedRead(string Node, string Pipe);
+public sealed record TemplateRenderedRead(string Node, string Pipe, string? Guard = null, bool GuardCanonical = false);
 
 /// <summary>
 /// #1088: one read as written — a statement that is one plain object chain
@@ -136,7 +140,8 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadProfileFact(string member) => _profileFacts.Add(member);
 
-    public void ReadRendered(string node, string pipe) => _rendered.Add(new TemplateRenderedRead(node, pipe));
+    public void ReadRendered(string node, string pipe, string? guard = null, bool guardCanonical = false) =>
+        _rendered.Add(new TemplateRenderedRead(node, pipe, guard, guardCanonical));
 
     public void ReadOccurrence(TemplateReadOccurrence occurrence) => _occurrences.Add(occurrence);
 

@@ -159,15 +159,16 @@ public static partial class TemplateReferenceWalker
     /// is fine); or (#1058) as the operand of a renderer pipe, judged against
     /// the format the pipe renders. A parameter rather than a field so a
     /// nested resolution (an index expression, a function argument) carries
-    /// its own use and nothing leaks.
+    /// its own use and nothing leaks. #1138: a rendered use carries the if
+    /// around the pipe, for the rendered fact.
     /// </summary>
-    private readonly record struct ChainUse(ChainUseKind Kind, string? Pipe = null)
+    private readonly record struct ChainUse(ChainUseKind Kind, string? Pipe = null, string? Guard = null, bool GuardCanonical = false)
     {
         public static readonly ChainUse Value = new(ChainUseKind.Value);
         public static readonly ChainUse Iterable = new(ChainUseKind.Iterable);
         public static readonly ChainUse With = new(ChainUseKind.With);
 
-        public static ChainUse Rendered(string pipe) => new(ChainUseKind.Rendered, pipe);
+        public static ChainUse Rendered(string pipe, string? guard, bool guardCanonical) => new(ChainUseKind.Rendered, pipe, guard, guardCanonical);
     }
 
     private enum ChainUseKind { Value, Iterable, With, Rendered }
@@ -241,6 +242,24 @@ public static partial class TemplateReferenceWalker
             }
 
             _refs.ReadOccurrence(new TemplateReadOccurrence(member, start, end, guardText, IsCanonical(guard, node), guardStart, guardEnd));
+        }
+
+        /// <summary>
+        /// #1138: the if around a piped read, as RecordOccurrence records it for a plain one — the
+        /// nearest enclosing condition when it is an if (an else's owner; a when or a case's else is
+        /// no guard), its condition as written, and canonical when the pipe's own statement is the
+        /// if's only content (IsCanonical). A canonical if … else never holds a pipe (BranchMemberOf
+        /// makes it non-canonical), so RecordOccurrence's if-block branch does not arise here.
+        /// </summary>
+        private (string? Guard, bool Canonical) GuardOf(ScriptPipeCall pipe)
+        {
+            if (NearestCondition(pipe) is not ScriptIfStatement guard)
+            {
+                return (null, false);
+            }
+
+            var guardText = guard.Condition is { } c ? Slice(c).Trim() : string.Empty;
+            return (guardText, pipe.Parent is ScriptExpressionStatement read && IsCanonical(guard, read));
         }
 
         /// <summary>Does the read sit in the if's else (an else statement between the read and its owning if)?</summary>
@@ -977,7 +996,8 @@ public static partial class TemplateReferenceWalker
                 }
                 else
                 {
-                    ResolveExpression(node.From, ChainUse.Rendered(pipe.Name));
+                    var (guard, guardCanonical) = GuardOf(node);
+                    ResolveExpression(node.From, ChainUse.Rendered(pipe.Name, guard, guardCanonical));
                 }
 
                 if (call is not null)
@@ -1597,7 +1617,7 @@ public static partial class TemplateReferenceWalker
         {
             if (use.Kind == ChainUseKind.Rendered)
             {
-                return FinalizeRendered(target, walked, use.Pipe!);
+                return FinalizeRendered(target, walked, use);
             }
 
             // #1058: a shaped node's text read bare — the JSON renders as text. (The
@@ -1651,8 +1671,9 @@ public static partial class TemplateReferenceWalker
         /// a builtin's result, a nested expression) is judged when it renders
         /// (TemplateRenderer.ApplyPipe), as before.
         /// </summary>
-        private Target FinalizeRendered(Target target, string walked, string pipe)
+        private Target FinalizeRendered(Target target, string walked, ChainUse use)
         {
+            var pipe = use.Pipe!;
             var format = TemplatePipes.FormatOf(pipe)!;
 
             switch (target)
@@ -1661,8 +1682,8 @@ public static partial class TemplateReferenceWalker
                     return Refused;
 
                 case NodeContentTarget content when string.Equals(content.Node.Format, format, StringComparison.Ordinal):
-                    // #1098: the accepted rendering — the editor's "Used by" row for the pipe.
-                    _refs.ReadRendered(content.Id, pipe);
+                    // #1098: the accepted rendering — the editor's "Used by" row for the pipe; #1138: with its if.
+                    _refs.ReadRendered(content.Id, pipe, use.Guard, use.GuardCanonical);
                     return content;
 
                 case NodeContentTarget { Node.Aggregates: true } content:
