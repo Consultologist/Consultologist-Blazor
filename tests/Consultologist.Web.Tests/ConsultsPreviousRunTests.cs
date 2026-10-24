@@ -62,6 +62,20 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
                 Arg.Do<IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>?>(value => sentRefs = value))
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
+    // #1143: a several input's "+ Add entry" opens an unchosen row; typing is a second
+    // click on its text door — and the first row is already unchosen.
+    private static void AddTextRow(IRenderedComponent<Consults> page)
+    {
+        page.FindAll(".input-field__add").FirstOrDefault()?.Click();
+        page.FindAll(".input-field__choose-text").FirstOrDefault()?.Click();
+    }
+
+    private static IReadOnlyList<IElement> TypedRows(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row:not(.input-field__row--unchosen)");
+
+    private static IElement? Chooser(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row--unchosen").SingleOrDefault();
+
     private static IRenderedComponent<Consults> Rendered(BunitContext ctx)
     {
         var page = ctx.Render<Consults>();
@@ -170,7 +184,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         CaptureSubmit();
         var page = Rendered(this);
         page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
 
         ChooseNote(page, 1);
@@ -193,13 +207,13 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         // longer hides the typed rows underneath it — both render at once.
         WithRuns();
         var page = Rendered(this);
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
 
         ChooseNote(page, 1);
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
 
-        Assert.NotEmpty(page.FindAll(".input-field__row"));
+        Assert.NotEmpty(TypedRows(page));
         Assert.NotEmpty(page.FindAll(".input-field__loaded"));
     }
 
@@ -211,7 +225,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         WithRuns();
         var page = Rendered(this);
         page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
 
         ChooseNote(page, 1);
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));

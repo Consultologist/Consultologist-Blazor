@@ -490,6 +490,59 @@
 	gap: 0.3rem;
 }
 
+/* #1143: the unchosen row of a several (array<text>) input — two doors side by
+   side, typed or documents. The text door is ours to draw (the .empty-note-state
+   dashed idiom); FluentInputFile draws the documents door's own dashed border,
+   and its sizing lives in app.css because its container carries FluentInputFile's
+   scope, not this page's (#877). */
+.input-field__chooser {
+	display: flex;
+	gap: 0.5rem;
+	align-items: stretch;
+}
+
+.input-field__choice {
+	flex: 1 1 0;
+	min-width: 0;
+	min-height: 4.5rem;
+	display: flex;
+}
+
+.input-field__choice--text {
+	align-items: center;
+	justify-content: center;
+	border: 1px dashed var(--consultologist-border);
+	border-radius: var(--consultologist-radius-sm);
+	background: var(--consultologist-surface-muted);
+}
+
+/* The icon above the words, in both doors (ChildContent renders in this page's scope). */
+.input-field__choice-label {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 0.25rem;
+	text-align: center;
+	font-size: 0.8rem;
+	font-weight: 400;
+}
+
+.input-field__reading {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.8rem;
+}
+
+/* "Remove all" and its hint, under the chips they act on. */
+.input-field__documents-actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.5rem;
+	font-size: 0.8rem;
+}
+
 /* #429: the typed controls were styled only inside WorkflowNodeSummary,
    whose scoped rules never reached this page. */
 .node-field__input {

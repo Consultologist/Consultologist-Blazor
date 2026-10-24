@@ -371,15 +371,11 @@
                                                 </span>
                                             </div>
                                         }
-                                        @* preventDefault (#1137): with rows present, this click would otherwise
-                                           activate the label onto row 1's control as well. *@
-                                        <span class="input-field__add-wrap" @onclick:preventDefault="true" @onclick:stopPropagation="true">
-                                            <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
-                                                          IconStart="@(new Icons.Regular.Size20.Add())"
-                                                          OnClick="@(() => field.AddRow())">Add entry</FluentButton>
-                                        </span>
                                         @if (field.TakesSeveralDocuments)
                                         {
+                                            @* #1143: a several input's entries are one numbered list in the wire's order —
+                                               typed rows above, then document chips, then loaded chips, then the unchosen
+                                               row in "+ Add entry"'s slot. *@
                                             @if (field.HasFile)
                                             {
                                                 @* #428/#429/#872: several documents, in the order
@@ -394,7 +390,7 @@
                                                         var currentField = field;
                                                         <div class="input-field__document" @key="document" @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                                             <span class="input-field__chip">
-                                                                <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                                <span class="muted-text input-field__row-number">@(currentField.DocumentOrdinal(index)).</span>
                                                                 <span class="input-field__chip-name">@document.FileName</span>
                                                                 @if (document.PageCount is { } pages)
                                                                 {
@@ -420,45 +416,20 @@
                                                             <div class="input-field__preview">@document.PreviewText</div>
                                                         </div>
                                                     }
-                                                </div>
-                                            }
-                                            @* Or attach documents: each becomes one entry, in the
-                                               order chosen (v9 § 7). The same no-filter rule as the
-                                               single picker. *@
-                                            <span class="input-field__file">
-                                                @* #877: Fluent drop zone (drag-drop + browse). The handler
-                                                   is unchanged — OnInputFileChange hands it the same args,
-                                                   and MaximumFileSize/Count are set high so LoadFileAsync's
-                                                   own 10 MB check + per-file messages stay authoritative. *@
-                                                <FluentInputFile OnInputFileChange="args => LoadFileAsync(field, args)"
-                                                                 Multiple="true"
-                                                                 MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
-                                                                 Class="input-field__dropzone">
-                                                    <ChildContent><span class="muted-text">@field.DropSeveralPrompt</span></ChildContent>
-                                                </FluentInputFile>
-                                                @if (field.IsReading)
-                                                {
-                                                    <FluentProgressRing style="width: 16px; height: 16px;" />
-                                                    <span class="muted-text">Reading&hellip;</span>
-                                                }
-                                                @if (field.HasFile)
-                                                {
-                                                    @* preventDefault (#1137): this button goes with the chips, and with
-                                                       no typed rows the label's first labelable control is then
-                                                       "+ Add entry". The wrapper is the button's own — the span around
-                                                       holds the file input, whose click must stay native. *@
+                                                @* #1143: "Remove all" and its hint go with the chips they act on. The
+                                                   wrapper is the button's own (#1137): with no typed rows the label's
+                                                   first labelable control is then the unchosen row's text door. *@
+                                                <div class="input-field__documents-actions">
                                                     <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                                         <FluentButton Appearance="Appearance.Stealth"
                                                                       Title="Remove every attached file"
                                                                       @onclick="() => RemoveFile(field)">Remove all</FluentButton>
                                                     </span>
-                                                }
-                                            </span>
-                                            @if (field.HasFile)
-                                            {
-                                                <span class="muted-text input-field__hint">
-                                                    Looks wrong? Remove that file, or add a typed entry above alongside the rest.
-                                                </span>
+                                                    <span class="muted-text input-field__hint">
+                                                        Looks wrong? Remove that file, or add a typed entry alongside the rest.
+                                                    </span>
+                                                </div>
+                                                </div>
                                             }
                                             @if (field.HasLoaded)
                                             {
@@ -475,6 +446,7 @@
                                                         var currentField = field;
                                                         <div class="input-field__document input-field__loaded" @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                                             <span class="input-field__chip">
+                                                                <span class="muted-text input-field__row-number">@(currentField.LoadedOrdinal(index)).</span>
                                                                 <span class="input-field__chip-name">@loaded.Label</span>
                                                                 <span class="muted-text">@loaded.RunName</span>
                                                                 <FluentButton Appearance="Appearance.Stealth"
@@ -489,6 +461,82 @@
                                                     </span>
                                                 </div>
                                             }
+                                        }
+                                        @if (!field.ShowsChooser)
+                                        {
+                                            @* #1143: hidden while the unchosen row shows — that row is what this adds, and
+                                               it is already there. preventDefault (#1137): with rows present, this click would otherwise
+                                               activate the label onto row 1's control as well. *@
+                                            <span class="input-field__add-wrap" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
+                                                              IconStart="@(new Icons.Regular.Size20.Add())"
+                                                              OnClick="@(() => field.AddEntry())">Add entry</FluentButton>
+                                            </span>
+                                        }
+                                        @if (field.TakesSeveralDocuments && field.ShowsChooser)
+                                        {
+                                            @* #1143: the unchosen row — one more entry whose kind is not yet chosen: the
+                                               text door makes it the last typed row, the documents door attaches files as
+                                               the last document rows. Absent on the wire (not a ConsultInputNode), so it
+                                               never holds the run; shown on its own when the input has nothing, and then
+                                               without a Remove. The drop zone lives only here — "+ Add entry" brings it
+                                               back. *@
+                                            var chooserField = field;
+                                            var chooserOrdinal = field.ChooserOrdinal;
+                                            <div class="input-field__row input-field__row--unchosen">
+                                                <span class="muted-text input-field__row-number">@(chooserOrdinal).</span>
+                                                <div class="input-field__row-body">
+                                                    <div class="input-field__chooser">
+                                                        @* preventDefault (#1137): choosing text drops this door from the DOM. *@
+                                                        <span class="input-field__choice input-field__choice--text" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="input-field__choose-text"
+                                                                          Title="Type this entry"
+                                                                          OnClick="@(() => focusScalar = chooserField.ChooseText().Scalar)">
+                                                                <span class="input-field__choice-label">
+                                                                    <FluentIcon Value="@(new Icons.Regular.Size20.Compose())" />
+                                                                    <span>Click to enter text</span>
+                                                                </span>
+                                                            </FluentButton>
+                                                        </span>
+                                                        @* No preventDefault here: this span holds the file input, whose click
+                                                           must stay native (AGENTS.md). #877: Fluent drop zone (drag-drop +
+                                                           browse); MaximumFileSize/Count are set high so LoadFileAsync's own
+                                                           10 MB check + per-file messages stay authoritative. *@
+                                                        <span class="input-field__choice input-field__choice--documents" @onclick:stopPropagation="true">
+                                                            <FluentInputFile OnInputFileChange="args => LoadFileAsync(chooserField, args)"
+                                                                             Multiple="true"
+                                                                             MaximumFileSize="long.MaxValue" MaximumFileCount="int.MaxValue"
+                                                                             Class="input-field__dropzone input-field__dropzone--choice">
+                                                                <ChildContent>
+                                                                    <span class="input-field__choice-label muted-text">
+                                                                        <FluentIcon Value="@(new Icons.Regular.Size20.ArrowUpload())" />
+                                                                        <span>@field.DropSeveralPrompt</span>
+                                                                    </span>
+                                                                </ChildContent>
+                                                            </FluentInputFile>
+                                                        </span>
+                                                    </div>
+                                                    @if (field.IsReading)
+                                                    {
+                                                        <span class="muted-text input-field__reading">
+                                                            <FluentProgressRing style="width: 16px; height: 16px;" />
+                                                            Reading&hellip;
+                                                        </span>
+                                                    }
+                                                </div>
+                                                @if (field.ChooserIsRemovable)
+                                                {
+                                                    <span class="input-field__row-buttons" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove entry"
+                                                                      aria-label="@($"Remove entry {chooserOrdinal}")"
+                                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                      OnClick="@(() => chooserField.DismissChooser())" />
+                                                    </span>
+                                                }
+                                            </div>
+                                        }
+                                        @if (field.TakesSeveralDocuments)
+                                        {
                                             @* #510: or a previous run's deliverable, one per entry. *@
                                             <PreviousRunPicker OnChosen="loaded => LoadDeliverable(field, loaded)" />
                                             @LinkDocumentControl(field)

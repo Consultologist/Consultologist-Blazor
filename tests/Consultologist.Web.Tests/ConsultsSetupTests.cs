@@ -1035,14 +1035,25 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
     [Fact]
-    public void AnArray_StartsWithNoRowsAndAnAddButton()
+    public void ASeveralInput_OpensWithOneUnchosenRow_AndNoAddEntry()
     {
+        // #1143: the package opens with row 1 unchosen — the two doors, numbered,
+        // no Remove (nothing else to leave behind) and no "+ Add entry" (that row
+        // is what it would add). No typed row exists, so nothing holds the run.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
 
         var page = Render<Consults>();
 
-        Assert.Empty(page.FindAll(".input-field__row"));
-        Assert.Equal("Add entry", page.Find(".input-field__add").TextContent.Trim());
+        var chooser = Assert.IsAssignableFrom<IElement>(Chooser(page));
+        Assert.Equal("1.", chooser.QuerySelector(".input-field__row-number")!.TextContent.Trim());
+        Assert.NotNull(chooser.QuerySelector(".input-field__choose-text"));
+        Assert.NotNull(chooser.QuerySelector("input[type=file][multiple]"));
+        Assert.Contains("Click to enter text", chooser.TextContent);
+        Assert.Contains("Drop documents here, or browse", chooser.TextContent);
+        Assert.Empty(TypedRows(page));
+        Assert.Empty(page.FindAll(".input-field__add"));
+        Assert.Empty(page.FindAll("fluent-button[title='Remove entry']"));
+        Assert.Empty(page.FindAll(".input-field__error"));
     }
 
     [Fact]
@@ -1053,10 +1064,10 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
-        page.Find(".input-field__add").Click();
-        page.Find(".input-field__add").Click();
-        page.Find(".input-field__add").Click();
-        Assert.Equal(3, page.FindAll(".input-field__row").Count);
+        AddTextRow(page);
+        AddTextRow(page);
+        AddTextRow(page);
+        Assert.Equal(3, TypedRows(page).Count);
 
         var areas = page.FindAll("fluent-text-area");
         areas[1].Change("One.");
@@ -1066,7 +1077,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         // The third moves up, the first is removed: Three, Two.
         page.FindAll("fluent-button[title='Move up']")[2].Click();
         page.FindAll("fluent-button[title='Remove entry']")[0].Click();
-        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+        Assert.Equal(2, TypedRows(page).Count);
 
         page.FindAll("fluent-button").Last().Click();
 
@@ -1115,8 +1126,8 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
-        page.Find(".input-field__add").Click();
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("One.");
 
         Assert.Equal("Prior notes row 2 is empty; fill it in or remove it.", page.Find(".input-field__error").TextContent.Trim());
@@ -1135,10 +1146,10 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
-        page.Find(".input-field__add").Click();
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
+        AddTextRow(page);
 
-        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+        Assert.Equal(2, TypedRows(page).Count);
         Assert.Equal(4, page.FindAll(".input-field__row label.input-field__member").Count);
 
         page.FindAll("fluent-text-area")[1].Change("Sodium");
@@ -1163,7 +1174,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(items: WorkflowInputTypes.Enum), specVersion: 9);
 
         var page = Render<Consults>();
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
 
         var options = page.Find(".input-field__row fluent-select.node-field__input").QuerySelectorAll("fluent-option").Select(option => option.GetAttribute("value"));
         Assert.Equal(new[] { "", "clinic", "ward" }, options);
@@ -1204,6 +1215,31 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     private static IEnumerable<string> ChipNames(IRenderedComponent<Consults> page) =>
         page.FindAll(".input-field__document .input-field__chip-name").Select(chip => chip.TextContent.Trim());
 
+    // #1143: a several input's "+ Add entry" opens an unchosen row, and typing is a
+    // second click on its text door; any other array adds a typed row at once. The
+    // helper covers both, and the first row of a several input (already unchosen).
+    private static void AddTextRow(IRenderedComponent<Consults> page)
+    {
+        page.FindAll(".input-field__add").FirstOrDefault()?.Click();
+        page.FindAll(".input-field__choose-text").FirstOrDefault()?.Click();
+    }
+
+    // #1143: the drop zone lives only in the unchosen row — bring it back, then drop.
+    private static void DropOnNotes(IRenderedComponent<Consults> page, params InputFileContent[] files)
+    {
+        page.FindAll(".input-field__add").FirstOrDefault()?.Click();
+        FileInput(page, 1).UploadFiles(files);
+    }
+
+    private static IReadOnlyList<IElement> TypedRows(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row:not(.input-field__row--unchosen)");
+
+    private static IElement? Chooser(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row--unchosen").SingleOrDefault();
+
+    private static IEnumerable<string> RowNumbers(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row-number").Select(number => number.TextContent.Trim());
+
     [Fact]
     public void TwoFilesSelectedAtOnce_AttachInSelectionOrder()
     {
@@ -1211,7 +1247,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithExtractionOfEachFile();
 
         var page = Render<Consults>();
-        FileInput(page, 1).UploadFiles(
+        DropOnNotes(page, 
             InputFileContent.CreateFromText("First note.", "first.txt"),
             InputFileContent.CreateFromText("Second note.", "second.txt"));
 
@@ -1220,8 +1256,11 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
             new[] { "First note.", "Second note." },
             page.FindAll(".input-field__document .input-field__preview").Select(preview => preview.TextContent.Trim()));
         // #872 Task 5: no rows were added, but a mixed input still offers to
-        // add a typed one alongside the documents.
-        Assert.Empty(page.FindAll(".input-field__row"));
+        // add a typed one alongside the documents. #1143: the documents took the
+        // unchosen row's place and are numbered as the rows they are.
+        Assert.Empty(TypedRows(page));
+        Assert.Null(Chooser(page));
+        Assert.Equal(new[] { "1.", "2." }, RowNumbers(page));
         Assert.NotEmpty(page.FindAll(".input-field__add"));
     }
 
@@ -1234,7 +1273,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
-        FileInput(page, 1).UploadFiles(
+        DropOnNotes(page, 
             InputFileContent.CreateFromText("First note.", "first.txt"),
             InputFileContent.CreateFromText("Second note.", "second.txt"));
         page.FindAll("fluent-button[title='Move down']")[0].Click();
@@ -1256,9 +1295,9 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithExtractionOfEachFile();
 
         var page = Render<Consults>();
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("Typed row.");
-        FileInput(page, 1).UploadFiles(
+        DropOnNotes(page, 
             InputFileContent.CreateFromText("First note.", "first.txt"),
             InputFileContent.CreateFromText("Second note.", "second.txt"));
 
@@ -1267,7 +1306,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove all")).Click();
         Assert.Empty(page.FindAll(".input-field__document"));
-        Assert.Single(page.FindAll(".input-field__row"));
+        Assert.Single(TypedRows(page));
         Assert.Equal("Typed row.", FieldText(page, 1));
     }
 
@@ -1283,9 +1322,9 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("Typed row.");
-        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
 
         page.FindAll("fluent-button").Last().Click();
 
@@ -1309,11 +1348,11 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithExtractionOfEachFile();
 
         var page = Render<Consults>();
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("Typed row.");
-        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
 
-        Assert.NotEmpty(page.FindAll(".input-field__row"));
+        Assert.NotEmpty(TypedRows(page));
         Assert.NotEmpty(page.FindAll(".input-field__document"));
     }
 
@@ -1327,8 +1366,8 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
-        page.Find(".input-field__add").Click();
-        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+        AddTextRow(page);
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
 
         Assert.Equal("Prior notes row 1 is empty; fill it in or remove it.", page.Find(".input-field__error").TextContent.Trim());
         Assert.True(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
@@ -1341,7 +1380,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithExtractionOfEachFile();
 
         var page = Render<Consults>();
-        FileInput(page, 1).UploadFiles(
+        DropOnNotes(page, 
             InputFileContent.CreateFromText("First note.", "first.txt"),
             InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
 
@@ -1358,7 +1397,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithExtractionOfEachFile();
 
         var page = Render<Consults>();
-        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
+        DropOnNotes(page, InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
 
         Assert.Equal("This PDF has no text layer, so it is a scan or a fax.", page.Find(".input-field__file-error").TextContent.Trim());
     }
@@ -1412,7 +1451,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         var page = Render<Consults>();
         page.FindAll("fluent-button").First(button => button.TextContent.Contains("Edit inputs")).Click();
 
-        Assert.Equal(2, page.FindAll(".input-field__row").Count);
+        Assert.Equal(2, TypedRows(page).Count);
         Assert.Equal("Sodium", FieldText(page, 1));
         Assert.Equal(new[] { "138", "4.1" }, page.FindAll("input[inputmode=decimal]").Select(input => input.GetAttribute("value")));
     }
@@ -1517,23 +1556,27 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     // ----- #1137: the last row can go — label activation cancelled ----------
 
     [Fact]
-    public void RemovingTheOnlyRow_LeavesNoRow_NoError_AndStillOffersAdd()
+    public void RemovingTheOnlyRow_BringsTheUnchosenRowBack_WithoutItsRemove()
     {
-        // Zero rows is the absent array, not a held run: the Add button stays
-        // offered and nothing says "row 1 is empty".
+        // Zero typed rows is the absent array, not a held run: nothing says "row 1
+        // is empty". #1143: the input never shows zero rows — the unchosen row
+        // returns on its own, without a Remove, and "+ Add entry" stays hidden.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
 
         var page = Render<Consults>();
         page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("Only row.");
-        Assert.Single(page.FindAll(".input-field__row"));
+        Assert.Single(TypedRows(page));
+        Assert.Null(Chooser(page));
 
         page.Find("fluent-button[title='Remove entry']").Click();
 
-        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Empty(TypedRows(page));
+        Assert.NotNull(Chooser(page));
+        Assert.Empty(page.FindAll("fluent-button[title='Remove entry']"));
+        Assert.Empty(page.FindAll(".input-field__add"));
         Assert.Empty(page.FindAll(".input-field__error"));
-        Assert.Equal("Add entry", page.Find(".input-field__add").TextContent.Trim());
         Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
     }
 
@@ -1548,7 +1591,7 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
 
         var page = Render<Consults>();
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
 
         var rowButtons = page.Find(".input-field__row-buttons");
         Assert.True(rowButtons.HasAttribute("blazor:onclick:preventdefault"));
@@ -1562,15 +1605,16 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void RemoveAll_CancelsTheLabelsActivation_AndLeavesNoRow()
+    public void RemoveAll_CancelsTheLabelsActivation_AndBringsTheUnchosenRowBack()
     {
         // #1137's sibling: "Remove all" drops itself with the chips, and with no
-        // typed rows the label's first labelable descendant is again "+ Add entry".
+        // typed rows the label's first labelable descendant is then the unchosen
+        // row's text door (#1143) — the guard is the same.
         WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
         WithExtractionOfEachFile();
 
         var page = Render<Consults>();
-        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
         var removeAll = page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove all"));
         var wrapper = removeAll.ParentElement!;
         Assert.True(wrapper.HasAttribute("blazor:onclick:preventdefault"));
@@ -1580,7 +1624,8 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         removeAll.Click();
 
         Assert.Empty(page.FindAll(".input-field__document"));
-        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Empty(TypedRows(page));
+        Assert.NotNull(Chooser(page));
         Assert.Empty(page.FindAll(".input-field__error"));
     }
 }
