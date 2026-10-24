@@ -17,7 +17,7 @@ namespace Consultologist.PackageFormat;
 /// <param name="OutputMacros">May macros be placed on this output; null reads as false. True only on <c>text</c>.</param>
 /// <param name="Description">What the shape is for; shown by the editor's picker.</param>
 /// <param name="Schema">Required on every <c>object</c> format — a custom one carries the package's shape, a catalogue one its own.</param>
-/// <param name="Values">An <c>enum</c> format's answer set (strings; labels are v26) — or the set comes through a <c>values</c> parameter.</param>
+/// <param name="Values">An <c>enum</c> format's answer set (strings; labels are deferred without a version — #1061) — or the set comes through a <c>values</c> parameter.</param>
 /// <param name="Parameters">What a node supplies through <c>with</c>: on a computed format the operation's operands, on an attested one typed input the engine passes to the agent.</param>
 public sealed record WorkflowFormatSpec(
     string Type,
