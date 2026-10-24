@@ -305,6 +305,27 @@ public class TemplateReferenceWalkerTests
     public void ARendererPipe_InACondition_IsJudgedTheSame() =>
         TemplateFixtures.Refused("{{ if (node.assessment.content | concept_bullets) == \"x\" }}y{{ end }}", "pipes node.assessment.content through concept_bullets, but format 'prose' is text");
 
+    // #1138: the rendered fact carries the if around the pipe — the renderer pane's
+    // "included when" on a Used by row. Canonical only when the pipe's statement is the
+    // if's whole content; a piped read is still no occurrence (the #1088 rows are for
+    // reads a builder can wrap).
+    [Fact]
+    public void ARendererPipe_InsideAnIf_RecordsItsGuard_CanonicalWhenItIsTheIfsOnlyContent()
+    {
+        const string guard = "input.kind == \"new\"";
+
+        Assert.Equal(new TemplateRenderedRead("extract", "concept_bullets", guard, true),
+            Assert.Single(TemplateFixtures.Ok("{{ if " + guard + " }}{{ node.extract.content | concept_bullets }}{{ end }}").Rendered));
+        Assert.Equal(new TemplateRenderedRead("extract", "concept_bullets", guard, false),
+            Assert.Single(TemplateFixtures.Ok("{{ if " + guard + " }}Concepts:\n{{ node.extract.content | concept_bullets }}{{ end }}").Rendered));
+        Assert.Equal(new TemplateRenderedRead("extract", "concept_bullets", guard, false),
+            Assert.Single(TemplateFixtures.Ok("{{ if " + guard + " }}x{{ else }}{{ node.extract.content | concept_bullets }}{{ end }}").Rendered));
+        Assert.Equal(new TemplateRenderedRead("extract", "concept_bullets"),
+            Assert.Single(TemplateFixtures.Ok("{{ node.extract.content | concept_bullets }}").Rendered));
+        Assert.Null(Assert.Single(TemplateFixtures.Ok("{{~ case input.kind ~}}{{~ when \"new\" ~}}{{ node.extract.content | concept_bullets }}{{~ end ~}}").Rendered).Guard);
+        Assert.Empty(TemplateFixtures.Ok("{{ if " + guard + " }}{{ node.extract.content | concept_bullets }}{{ end }}").Occurrences);
+    }
+
     [Fact]
     public void TemplatePipes_DeclareTheFormatTheyRender()
     {
@@ -312,6 +333,17 @@ public class TemplateReferenceWalkerTests
         Assert.Equal(WorkflowFormatIds.ConceptList, TemplatePipes.FormatOf(TemplatePipes.ConceptContext));
         Assert.Null(TemplatePipes.FormatOf("frobnicate"));
         Assert.Equal(TemplatePipes.Specs.Select(spec => spec.Name), TemplatePipes.All);
+
+        // #1138: each spec renders through the library's own code, and Engine is the
+        // pipes as TemplateRenderer takes them — ConceptPipes.All's semantics, "node" default included.
+        Assert.Equal(TemplatePipes.All.Order(), TemplatePipes.Engine.Keys.Order());
+        Assert.Null(TemplatePipes.SpecOf("frobnicate"));
+        var concepts = ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, "extract");
+        var output = new TemplateNodeOutput(ConceptSamples.ConceptListJson, "object", "extract");
+        Assert.Equal(ConceptRenderers.Context(concepts), TemplatePipes.SpecOf(TemplatePipes.ConceptContext)!.Render(ConceptSamples.ConceptListJson, "extract"));
+        Assert.Equal(ConceptRenderers.Context(concepts), TemplatePipes.Engine[TemplatePipes.ConceptContext](output));
+        Assert.Equal(ConceptRenderers.Bullets(concepts), TemplatePipes.Engine[TemplatePipes.ConceptBullets](output));
+        Assert.Contains("source: node", TemplatePipes.Engine[TemplatePipes.ConceptContext](new TemplateNodeOutput(ConceptSamples.ConceptListJson, "object")), StringComparison.Ordinal);
     }
 
     [Fact]

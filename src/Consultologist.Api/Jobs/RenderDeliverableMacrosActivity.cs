@@ -97,7 +97,7 @@ public sealed class RenderDeliverableMacrosActivity
                 throw new InvalidOperationException($"Deliverable '{input.ResultId}' places macro '{placement.Id}', which the package does not carry.");
             }
 
-            var rendered = new ConsultRenderedMacro(placement.Id, TemplateRenderer.Render($"Macro '{placement.Id}'", source.Text, scope, ConceptPipes.All));
+            var rendered = new ConsultRenderedMacro(placement.Id, TemplateRenderer.Render($"Macro '{placement.Id}'", source.Text, scope, TemplatePipes.Engine));
             (string.Equals(placement.At, WorkflowDeliverableMacroSpec.Prepend, StringComparison.Ordinal) ? prepend : append).Add(rendered);
         }
 

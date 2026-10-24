@@ -71,6 +71,157 @@ public class TemplatesV25RenderersPaneTests : ClientRenderTestContext
         return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
     }
 
+    /// <summary>#1138: the V25 fixture with a second concept_list node, extract_more, that nothing pipes — plus assessment piping extract.</summary>
+    private static WorkflowPackageContentResponse V25WithTwoConceptListNodes()
+    {
+        var package = V25WithARenderedRead();
+        var root = JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["nodes"]!.AsArray().Add(JsonNode.Parse("""{ "id": "extract_more", "label": "More concepts", "prompt": "extract", "format": "concept_list", "onInvalid": "fail" }"""));
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    // ----- #1138 § 1: what it produces -----
+
+    [Fact]
+    public void WhatItProduces_RendersTheSample_ThroughTheLibrary_WithTheFirstNodesSource()
+    {
+        var page = OpenRenderer("concept_context");
+
+        var sample = page.Find("pre.renderer-sample");
+        Assert.Equal(Consultologist.PackageFormat.TemplatePipes.SpecOf("concept_context")!.Render(Consultologist.PackageFormat.ConceptSamples.ConceptListJson, "extract"), sample.TextContent);
+        Assert.Contains("source: extract", sample.TextContent);
+        Assert.Contains("active: False", sample.TextContent);
+        Assert.Contains("extract", page.Find(".renderer-sample__caption code").TextContent);
+
+        Session.SelectedKey = "renderer:concept_bullets";
+        page.Render();
+        var bullets = page.Find("pre.renderer-sample").TextContent;
+        Assert.Contains("[not active SNOMED concept]", bullets);
+        Assert.Contains("[not SNOMED concept]", bullets);
+        Assert.DoesNotContain("source:", bullets);
+    }
+
+    [Fact]
+    public void WhatItProduces_UsesThePlaceholder_WhenNoNodeHasTheFormat()
+    {
+        var page = OpenRenderer("concept_context", V25WithoutAConceptListNode());
+
+        Assert.Contains("source: <id>", page.Find("pre.renderer-sample").TextContent);
+        Assert.Contains("<id>", page.Find(".renderer-sample__caption").TextContent);
+    }
+
+    // ----- #1138 § 2: what it renders -----
+
+    [Fact]
+    public void WhatItRenders_ListsTheSchemasSixFields_AndOpensTheFormatPane()
+    {
+        var page = OpenRenderer("concept_context");
+
+        Assert.Contains("served by concept-extraction@1, attested", page.Find(".renderer-format").TextContent);
+        var fields = page.FindAll(".renderer-field");
+        Assert.Equal(
+            new[] { "concepts[].term", "concepts[].type", "concepts[].id", "concepts[].isSnomedConcept", "concepts[].isActive", "concepts[].support" },
+            fields.Select(f => f.GetAttribute("data-renderer-field")));
+        Assert.Contains("string | null", page.Find(".renderer-field[data-renderer-field='concepts[].id']").TextContent);
+        Assert.Contains("boolean", page.Find(".renderer-field[data-renderer-field='concepts[].isActive']").TextContent);
+        Assert.All(fields, f => Assert.Contains("required", f.TextContent));
+
+        page.Find("fluent-button[aria-label='Open format concept_list']").Click();
+        Assert.Equal("catalogue:concept_list", Session.SelectedKey);
+    }
+
+    [Fact]
+    public void Candidates_AreMarkedPipedOrNot_WithSpellingAndCopy()
+    {
+        var page = OpenRenderer("concept_context", V25WithTwoConceptListNodes());
+
+        var piped = page.Find(".renderer-spelling[data-renderer-node='extract']");
+        Assert.Equal("true", piped.GetAttribute("data-renderer-piped"));
+        Assert.Contains("piped by Prompt 'assessment'", piped.TextContent);
+        var candidate = page.Find(".renderer-spelling[data-renderer-node='extract_more']");
+        Assert.Equal("false", candidate.GetAttribute("data-renderer-piped"));
+        Assert.Contains("not yet piped", candidate.TextContent);
+        Assert.Equal("{{ node.extract_more.content | concept_context }}", candidate.QuerySelector("code")!.TextContent.Trim());
+        Assert.NotNull(candidate.QuerySelector("fluent-button[aria-label='Copy the spelling for node extract_more']"));
+        Assert.Contains("2 nodes · 1 piped", page.Find(".renderer-nodes__count").TextContent);
+    }
+
+    /// <summary>#1138: the V25 fixture with assessment piping extract inside an if — the guard a Used by row shows.</summary>
+    private static WorkflowPackageContentResponse V25WithAGuardedRenderedRead()
+    {
+        var package = EditorFixtures.V25();
+        var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+        files["prompts/assessment.md"] = files["prompts/assessment.md"] + "\n{{ if input.kind == \"new\" }}{{ node.extract.content | concept_context }}{{ end }}";
+        return package with { Files = files };
+    }
+
+    /// <summary>#1138: the V25 fixture with the scope prompt piping extract — scope's node reaches no deliverable.</summary>
+    private static WorkflowPackageContentResponse V25WithARenderedReadNoDeliverableCarries()
+    {
+        var package = EditorFixtures.V25();
+        var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+        files["prompts/scope.md"] = files["prompts/scope.md"] + "\n{{ node.extract.content | concept_bullets }}";
+        return package with { Files = files };
+    }
+
+    // ----- #1138 § 3: attestation -----
+
+    [Fact]
+    public void Attestation_NamesTheAgent_TheDeterminism_AndOnlyWhatTheStampRecords()
+    {
+        var page = OpenRenderer("concept_context");
+
+        var text = page.Find(".renderer-attestation").TextContent;
+        Assert.Contains("concept-extraction@1", text);
+        Assert.Contains("attested", text);
+        Assert.Contains("same bytes", text);
+        Assert.Contains("SNOMED CT", text);
+        Assert.Contains("not a separate stamp field", text);
+        Assert.Contains("source: …", text);
+
+        Session.SelectedKey = "renderer:concept_bullets";
+        page.Render();
+        var bullets = page.Find(".renderer-attestation").TextContent;
+        Assert.DoesNotContain("source: …", bullets);
+        Assert.Contains("these bytes carry none", bullets);
+    }
+
+    // ----- #1138 § 4: Used by, deeper -----
+
+    [Fact]
+    public void UsedBy_ShowsTheGuard_AndTheCarryingDeliverables()
+    {
+        var page = OpenRenderer("concept_context", V25WithAGuardedRenderedRead());
+
+        var row = Assert.Single(page.FindAll(".renderer-user"));
+        var guard = row.QuerySelector(".renderer-user__guard")!;
+        Assert.Contains("included when", guard.TextContent);
+        Assert.Equal("input.kind == \"new\"", guard.QuerySelector("code")!.TextContent);
+
+        // assessment is aggregated by all, whose deliverable is consult.
+        var carried = Assert.Single(row.QuerySelectorAll(".renderer-user__deliverable"));
+        Assert.Equal("Consultation note", carried.TextContent.Trim());
+        Assert.Empty(row.QuerySelectorAll(".renderer-user__none"));
+
+        page.Find(".renderer-user fluent-button[aria-label='Open deliverable consult']").Click();
+        Assert.Equal("results:consult", Session.SelectedKey);
+    }
+
+    [Fact]
+    public void UsedBy_HasNoGuard_WhenTheReadIsBare_AndSaysWhenNoDeliverableCarriesIt()
+    {
+        var page = OpenRenderer("concept_context", V25WithARenderedRead());
+        var row = Assert.Single(page.FindAll(".renderer-user"));
+        Assert.Empty(row.QuerySelectorAll(".renderer-user__guard"));
+        Assert.Single(row.QuerySelectorAll(".renderer-user__deliverable"));
+
+        page = OpenRenderer("concept_bullets", V25WithARenderedReadNoDeliverableCarries());
+        row = Assert.Single(page.FindAll(".renderer-user"));
+        Assert.Equal("Prompt 'scope'", row.QuerySelector(".renderer-user__template")!.TextContent.Trim());
+        Assert.Empty(row.QuerySelectorAll(".renderer-user__deliverable"));
+        Assert.Contains("no deliverable yet", row.QuerySelector(".renderer-user__none")!.TextContent);
+    }
+
     [Fact]
     public void TheGroup_ListsThePipes_At25_AfterFormats_AndIsAbsentBelow()
     {

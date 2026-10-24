@@ -1,3 +1,4 @@
+using Consultologist.PackageFormat;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Workflow;

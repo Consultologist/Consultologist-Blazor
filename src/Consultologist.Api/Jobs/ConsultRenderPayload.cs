@@ -73,7 +73,7 @@ internal static class ConsultRenderPayload
     /// </summary>
     /// <param name="trace">B5 #1004: when given, what this render read — its macro.&lt;id&gt;.prompt reads are the inline macros the prompt that ran instructed.</param>
     public static string RenderAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package, string promptText, TemplateRenderer.TemplateRenderTrace? trace = null) =>
-        TemplateRenderer.Render($"Prompt '{input.PromptId}'", promptText, ScopeAt25(input, package), ConceptPipes.All, trace);
+        TemplateRenderer.Render($"Prompt '{input.PromptId}'", promptText, ScopeAt25(input, package), TemplatePipes.Engine, trace);
 
     /// <summary>The 25 scope, completed from the payload and the package — what the prompt renders over, and (B5 #1004) what its instances and fills render over at completion.</summary>
     public static TemplateRenderScope ScopeAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package)

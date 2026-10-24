@@ -28,9 +28,22 @@ public static class TemplatePreviewScope
     /// <summary>The token for a read: <c>⟨path⟩</c>.</summary>
     public static string Token(string path) => $"⟨{path}⟩";
 
-    /// <summary>Every renderer pipe, rendering as a token that names the pipe and its operand's token.</summary>
+    /// <summary>
+    /// Every renderer pipe: over a token operand (the node's text as this scope makes
+    /// it) it renders a token naming the pipe and the operand's token; over real text
+    /// (#1138: a preview pick put the sample concept list in the node's place) it renders
+    /// the engine's bytes through the spec's own render function, with the concept source
+    /// mapped as the engine maps it (<see cref="WorkflowNodeDefaults.WellKnownConceptSources"/>;
+    /// the token keeps the raw node id, since it names a path).
+    /// </summary>
     public static readonly IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>> Pipes =
-        TemplatePipes.All.ToDictionary(name => name, name => (Func<TemplateNodeOutput, string>)(output => Token($"{name} of {TemplateObjects.Node}.{output.ConceptSource}.{TemplateMembers.Content}")), StringComparer.Ordinal);
+        TemplatePipes.Specs.ToDictionary(
+            spec => spec.Name,
+            spec => (Func<TemplateNodeOutput, string>)(output =>
+                output.Text.StartsWith('⟨')
+                    ? Token($"{spec.Name} of {TemplateObjects.Node}.{output.ConceptSource}.{TemplateMembers.Content}")
+                    : spec.Render(output.Text, WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(output.ConceptSource ?? "node", output.ConceptSource ?? "node"))),
+            StringComparer.Ordinal);
 
     // Tokens stay readable inside a JSON carrier (no \u27E8 escapes).
     private static readonly JsonSerializerOptions CarrierJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };

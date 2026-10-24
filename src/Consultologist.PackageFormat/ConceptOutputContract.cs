@@ -1,8 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Consultologist.Api.Models;
 
-namespace Consultologist.Api.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// The typed deserializer for the concept-list output contract: materializes
@@ -10,6 +9,8 @@ namespace Consultologist.Api.Workflow;
 /// lives in the output-contract catalog (agents/schemas/concept-list.json), welded to
 /// the attested structured-output agent; this class is the code-by-nature half —
 /// typed consumption of the shape (docs/customizable-workflow/output-contract-catalog.md).
+/// #1138: in the library, so the editor reads a concept list through the same code the
+/// engine does (the renderer pane's sample, a preview's picked sample).
 /// </summary>
 public static class ConceptOutputContract
 {

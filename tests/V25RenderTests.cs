@@ -68,7 +68,7 @@ public class V25RenderTests
 
         var rendered = ConsultRenderPayload.RenderAt25(input, package, "{{ node.extract.content | concept_context }}");
 
-        Assert.Equal(AgentSectionGenerator.FormatConcepts(ConceptOutputContract.Deserialize(json, "extract")), rendered);
+        Assert.Equal(ConceptRenderers.Context(ConceptOutputContract.Deserialize(json, "extract")), rendered);
         Assert.Contains("Asthma", rendered, StringComparison.Ordinal);
     }
 

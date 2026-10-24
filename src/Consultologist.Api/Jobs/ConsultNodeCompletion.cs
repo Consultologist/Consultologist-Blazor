@@ -80,7 +80,7 @@ internal static class ConsultNodeCompletion
         var trace = new TemplateRenderer.TemplateRenderTrace();
         var renderedReply = settled.Classification is not null
             ? settled.RawOutput
-            : TemplateRenderer.Render($"Node '{nodeId}' reply", settled.RawOutput, scope, ConceptPipes.All, trace);
+            : TemplateRenderer.Render($"Node '{nodeId}' reply", settled.RawOutput, scope, TemplatePipes.Engine, trace);
 
         // 5. The instances: anchored by forItem, gated by when.
         var instances = new List<WorkflowNodeCompletion.Instance>();
@@ -97,7 +97,7 @@ internal static class ConsultNodeCompletion
             // renders over — the item, the node texts, the facts — never the ≤24
             // tree; the fixed reason form (provenance@v2026.10.2).
             if (instance.When != null
-                && !WorkflowConditionAt25.Holds($"Node '{nodeId}' macro '{instance.Id}' condition", instance.When, scope, ConceptPipes.All))
+                && !WorkflowConditionAt25.Holds($"Node '{nodeId}' macro '{instance.Id}' condition", instance.When, scope, TemplatePipes.Engine))
             {
                 excluded.Add(new ConsultNodeExclusion(WorkflowNodeCompletion.MacroKind, instance.Id, WorkflowConditionAt25.Reason(instance.When)));
                 continue;
@@ -185,7 +185,7 @@ internal static class ConsultNodeCompletion
             throw new InvalidOperationException($"Node '{nodeId}' places macro '{macroId}', which the package does not carry.");
         }
 
-        return TemplateRenderer.Render($"Macro '{macroId}'", source.Text, scope, ConceptPipes.All);
+        return TemplateRenderer.Render($"Macro '{macroId}'", source.Text, scope, TemplatePipes.Engine);
     }
 }
 

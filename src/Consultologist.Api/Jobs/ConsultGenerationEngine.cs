@@ -1715,7 +1715,7 @@ internal static class ConsultDeliverables
 /// Resolves a node instance's bindings to rendered variable values — pure functions
 /// over the orchestration input and recorded activity results, so orchestrator-side
 /// use is replay-safe. Renderer implementations stay where the byte-pinning tests
-/// point: ConsultGenerationConceptFormatter and AgentSectionGenerator.FormatConcepts.
+/// point: the library's ConceptRenderers (#1138; the editor renders its sample through them).
 /// </summary>
 internal static class ConsultNodeVariableResolver
 {
@@ -1797,8 +1797,8 @@ internal static class ConsultNodeVariableResolver
 
     public static string Render(string renderer, IReadOnlyList<ClinicalConcept> concepts) => renderer switch
     {
-        WorkflowConceptRenderers.ConceptBullets => ConsultGenerationConceptFormatter.Format(concepts),
-        WorkflowConceptRenderers.ConceptContext => AgentSectionGenerator.FormatConcepts(concepts),
+        WorkflowConceptRenderers.ConceptBullets => ConceptRenderers.Bullets(concepts),
+        WorkflowConceptRenderers.ConceptContext => ConceptRenderers.Context(concepts),
         _ => throw new InvalidOperationException($"Unknown concept renderer '{renderer}'.")
     };
 

@@ -1211,6 +1211,14 @@
                         var rendererFormat = PF.TemplatePipes.FormatOf(rendererName) ?? PF.WorkflowFormatIds.ConceptList;
                         var rendererNodes = EffectiveNodes.Where(n => n.Format == rendererFormat).ToList();
                         var rendererUsers = RendererUsers(rendererName);
+                        // #1138: the sample through the spec's own render function — never a hand-written
+                        // sample — with the first node's concept source as the engine would stamp it, else
+                        // the placeholder; and the format's schema fields from the catalogue's entry.
+                        var sampleNode = rendererNodes.FirstOrDefault();
+                        var sampleSource = sampleNode is null ? "<id>" : PF.WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(sampleNode.Id, sampleNode.Id);
+                        var sampleText = PF.TemplatePipes.SpecOf(rendererName)?.Render(PF.ConceptSamples.ConceptListJson, sampleSource) ?? string.Empty;
+                        var rendererFields = SchemaFieldRows(FormatSchemaOf(rendererFormat));
+                        var pipedNodeCount = rendererNodes.Count(n => rendererUsers.Any(u => u.NodeId == n.Id));
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">@rendererName</h3>
@@ -1222,14 +1230,56 @@
                             </div>
                         </div>
                         <p class="muted-text">@RendererSentence(rendererName)</p>
-                        <span class="node-section__head">Spelling</span>
+                        @* #1138 § 1: what it produces — the library's two-concept sample rendered by the
+                           engine's own code, as the first node of the format would read it. *@
+                        <span class="node-section__head">What it produces</span>
+                        <p class="muted-text renderer-sample__caption">
+                            @if (sampleNode is { } captionNode)
+                            {
+                                <text>@PF.ConceptSamples.Count sample concepts rendered by the engine's own code, as node <code>@captionNode.Id</code> would read them.</text>
+                            }
+                            else
+                            {
+                                <text>@PF.ConceptSamples.Count sample concepts rendered by the engine's own code, with <code>&lt;id&gt;</code> where the node's id goes — no node produces <code>@rendererFormat</code> yet.</text>
+                            }
+                        </p>
+                        <pre class="plain-preview rendered-preview__text renderer-sample" aria-label="@($"Sample rendering of {rendererName}")">@sampleText</pre>
+                        <p class="muted-text renderer-sample__note">An empty concept list renders as <code>(none)</code>.</p>
+                        @* #1138 § 2: what it renders — the format, its producer, the catalogue's schema as
+                           field rows, then the nodes of the format: piped through this renderer or not yet. *@
+                        <span class="node-section__head">What it renders</span>
+                        <p class="muted-text renderer-format">
+                            <code>@rendererFormat</code> — @RendererFormatLine(rendererFormat)
+                            <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-format__open"
+                                          Title="@($"format '{rendererFormat}' — its own pane")"
+                                          aria-label="@($"Open format {rendererFormat}")"
+                                          @onclick="() => OpenFormatPane(rendererFormat)">open the format</FluentButton>
+                        </p>
+                        @if (rendererFields.Count > 0)
+                        {
+                            <div class="renderer-fields" aria-label="@($"Fields of {rendererFormat}")">
+                                @foreach (var rendererField in rendererFields)
+                                {
+                                    <p class="renderer-field" data-renderer-field="@rendererField.Path">
+                                        <code>@rendererField.Path</code>
+                                        <span class="muted-text">@rendererField.Type@(rendererField.Required ? " · required" : "")</span>
+                                    </p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="muted-text renderer-fields__none">The format's schema is not loaded here.</p>
+                        }
+                        <span class="node-section__head">Nodes of this format<span class="muted-text renderer-nodes__count"> — @rendererNodes.Count node@(rendererNodes.Count == 1 ? "" : "s") · @pipedNodeCount piped</span></span>
                         @if (rendererNodes.Count > 0)
                         {
                             @foreach (var rendererNode in rendererNodes)
                             {
                                 var spellingNode = rendererNode;
                                 var spelling = RendererSpelling(spellingNode.Id, rendererName);
-                                <p class="renderer-spelling" data-renderer-node="@spellingNode.Id">
+                                var pipedBy = rendererUsers.Where(u => u.NodeId == spellingNode.Id).Select(u => u.Subject).Distinct(StringComparer.Ordinal).ToList();
+                                <p class="renderer-spelling" data-renderer-node="@spellingNode.Id" data-renderer-piped="@(pipedBy.Count > 0 ? "true" : "false")">
                                     <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-spelling__node"
                                                   Title="@($"node '{spellingNode.Id}' — edit on the node's pane")"
                                                   aria-label="@($"Open node {spellingNode.Id}")"
@@ -1238,6 +1288,7 @@
                                     <FluentButton Appearance="Appearance.Stealth" Class="renderer-spelling__copy"
                                                   aria-label="@($"Copy the spelling for node {spellingNode.Id}")"
                                                   @onclick="() => CopySpellingAsync(spelling)">@CopySpellingLabel(spelling)</FluentButton>
+                                    <span class="muted-text renderer-spelling__piped">@(pipedBy.Count > 0 ? "piped by " + string.Join(", ", pipedBy) : "not yet piped")</span>
                                 </p>
                             }
                         }
@@ -1252,6 +1303,25 @@
                             </p>
                             <p class="muted-text renderer-spelling__none">No node produces <code>@rendererFormat</code> yet; give one that format on its card and the spelling names it here.</p>
                         }
+                        @* #1138 § 3: attestation in plain words — the producer from the catalogue's entry,
+                           the renderer's determinism, and exactly what the stamp records (the terminology
+                           edition and server, the catalogue ref); the concept source is not a stamp field. *@
+                        <span class="node-section__head">Attestation</span>
+                        <div class="renderer-attestation">
+                            <p class="muted-text">@RendererProducerSentence(rendererFormat)</p>
+                            <p class="muted-text"><code>@rendererName</code> is deterministic: the same concepts always render to the same bytes, so what the model read can be reproduced from the node's stored output.</p>
+                            <p class="muted-text">
+                                A run's provenance records the terminology edition the concepts were answered against and the server that served it (History's SNOMED CT chip), and the catalogue ref the run used.
+                                @if (rendererName == PF.TemplatePipes.ConceptContext)
+                                {
+                                    <text>The concept source is written into the rendered text itself (<code>source: …</code>) and kept with each stored concept — it is not a separate stamp field.</text>
+                                }
+                                else
+                                {
+                                    <text>The concept source is kept with each stored concept — it is not a separate stamp field, and these bytes carry none.</text>
+                                }
+                            </p>
+                        </div>
                         <span class="node-section__head">Used by</span>
                         @if (rendererUsers.Count > 0)
                         {
@@ -1276,6 +1346,31 @@
                                                           Title="@($"node '{rendererUser.NodeId}' — edit on the node's pane")"
                                                           aria-label="@($"Open node {rendererUser.NodeId}")"
                                                           @onclick="() => Select(NodeKeyPrefix + rendererUser.NodeId)">@rendererUser.NodeLabel</FluentButton>
+                                            @if (rendererUser.Guard is { } rendererGuard)
+                                            {
+                                                <span class="muted-text renderer-user__guard">included when <code>@rendererGuard</code></span>
+                                            }
+                                        </span>
+                                        @* #1138 § 4: the deliverables that end up carrying the rendered text — the reading
+                                           node's own, and those whose aggregator aggregates it (one hop, as the Deliverables
+                                           pane composes); a macro's readers and placements count. *@
+                                        <span class="result-macro-row renderer-user__carried">
+                                            <span class="muted-text">carried by</span>
+                                            @if (rendererUser.Deliverables.Count > 0)
+                                            {
+                                                @foreach (var carried in rendererUser.Deliverables)
+                                                {
+                                                    var carriedDeliverable = carried;
+                                                    <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-user__deliverable"
+                                                                  Title="@($"deliverable '{carriedDeliverable.Id}' — its card on the Deliverables pane")"
+                                                                  aria-label="@($"Open deliverable {carriedDeliverable.Id}")"
+                                                                  @onclick="() => Select(ResultsKeyFor(carriedDeliverable.Id))">@carriedDeliverable.Label</FluentButton>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="muted-text renderer-user__none">no deliverable yet — the reading node reaches none</span>
+                                            }
                                         </span>
                                     </div>
                                 }
@@ -4907,9 +5002,14 @@
     /// </summary>
     private sealed record PreviewPick(string Kind, string Id, string Label, IReadOnlyList<string>? Values)
     {
-        public bool IsNode => Kind == "node";
+        public bool IsNode => Kind is "node" or ConceptsPickKind;
         public bool IsSelect => Values is not null;
     }
+
+    /// <summary>#1138: the pick kind of a piped concept_list node — its one choice puts the library's sample in the node's place, so the pipe renders real bytes.</summary>
+    private const string ConceptsPickKind = "concepts";
+
+    private const string SampleConceptsPick = "sample concepts";
 
     /// <summary>
     /// The "preview with" controls a walked template earns — top-level inputs only (a field inside an object
@@ -4951,6 +5051,15 @@
             if (read.ReadsValue && EffectiveNodes.FirstOrDefault(n => n.Id == nodeId) is { } node && ClassifierValues(node) is { Count: > 0 } values)
             {
                 picks.Add(new PreviewPick("node", nodeId, $"node.{nodeId}.value", values));
+            }
+        }
+
+        // #1138: a concept_list node the template pipes through a renderer — "sample concepts" renders the bytes.
+        foreach (var pipedNodeId in walked.References.Rendered.Select(r => r.Node).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal))
+        {
+            if (EffectiveNodes.FirstOrDefault(n => n.Id == pipedNodeId) is { Format: PF.WorkflowFormatIds.ConceptList })
+            {
+                picks.Add(new PreviewPick(ConceptsPickKind, pipedNodeId, $"node.{pipedNodeId}.content", new[] { SampleConceptsPick }));
             }
         }
 
@@ -5893,9 +6002,10 @@
                 .Where(c => !c.IsNode && previewInputPicks.TryGetValue(c.Id, out var picked) && PickIsCurrent(c, picked))
                 .Select(c => KeyValuePair.Create(c.Id, previewInputPicks[c.Id]))
                 .ToList();
+            // #1138: a "sample concepts" pick is the library's sample concept list in the node's place.
             var nodePicks = controls
                 .Where(c => c.IsNode && previewNodePicks.TryGetValue(c.Id, out var picked) && PickIsCurrent(c, picked))
-                .Select(c => KeyValuePair.Create(c.Id, previewNodePicks[c.Id]))
+                .Select(c => KeyValuePair.Create(c.Id, c.Kind == ConceptsPickKind ? PF.ConceptSamples.ConceptListJson : previewNodePicks[c.Id]))
                 .ToList();
             // #1109: the fanned folder's items, to preview as one of them; a stale pick (the item removed since) applies nothing.
             var folder = PreviewFolderOf(target.FanNode);
@@ -5938,7 +6048,7 @@
                                 <FluentOption TOption="string" Value="">— unchosen —</FluentOption>
                                 @foreach (var value in pick.Values!)
                                 {
-                                    <FluentOption TOption="string" Value="@value">@value</FluentOption>
+                                    <FluentOption TOption="string" Value="@value">@(pick.Kind == ConceptsPickKind ? $"{value} ({PF.ConceptSamples.Count})" : value)</FluentOption>
                                 }
                             </FluentSelect>
                         }
@@ -6071,7 +6181,7 @@
             <dt>The engine's</dt>
             <dd>The set of renderers is defined in the engine, not in a package or the catalogue, so nothing is added, edited or removed here. The palette's renderer select on a matching read inserts the spelling.</dd>
             <dt>Preview</dt>
-            <dd>A pane's rendered preview shows a pipe as a token — <code>⟨concept_bullets of node.&lt;id&gt;.content⟩</code> — the rendering itself is the engine's at run time.</dd>
+            <dd>A pane's rendered preview shows a pipe as a token — <code>⟨concept_bullets of node.&lt;id&gt;.content⟩</code> — the rendering itself is the engine's at run time. Pick <em>sample concepts</em> on the preview to see the bytes the engine's own code renders (the sample above).</dd>
         </dl>
     </details>;
 
@@ -6089,7 +6199,155 @@
     private static string NodeLabelOrId(WorkflowManifestReader.NodeView node) =>
         string.IsNullOrWhiteSpace(node.Label) ? node.Id : node.Label;
 
-    private sealed record RendererUser(string Subject, string? TemplateKey, string NodeId, string NodeLabel);
+    /// <summary>#1138: the format a renderer renders, in the catalogue's own words (FormatDetailLine) — or the package's own, or not loaded.</summary>
+    private string RendererFormatLine(string formatId)
+    {
+        if (LiveFormats.Any(f => f.Id == formatId))
+        {
+            return "the package's own format";
+        }
+
+        return formatsCatalog is { } catalogue && catalogue.Formats?.FirstOrDefault(f => f.Id == formatId) is { } entry
+            ? FormatDetailLine(entry, catalogue)
+            : "from the catalogue, which is not loaded here";
+    }
+
+    /// <summary>#1138: one leaf field of a format's schema — its path (an array's items as <c>name[].field</c>), its type as declared (<c>string | null</c> for a union) and whether its object requires it.</summary>
+    private sealed record SchemaFieldRow(string Path, string Type, bool Required);
+
+    /// <summary>
+    /// #1138: a format's schema as leaf-field rows, in the schema's order — the top-level
+    /// properties, an array property's item properties as <c>name[].field</c>, an object
+    /// property's as <c>name.field</c>; the containers themselves are not rows. Empty when
+    /// there is no schema or no properties.
+    /// </summary>
+    private static IReadOnlyList<SchemaFieldRow> SchemaFieldRows(System.Text.Json.Nodes.JsonNode? schema)
+    {
+        var rows = new List<SchemaFieldRow>();
+        if (schema is System.Text.Json.Nodes.JsonObject root)
+        {
+            CollectSchemaFields(root, string.Empty, rows);
+        }
+
+        return rows;
+    }
+
+    private static void CollectSchemaFields(System.Text.Json.Nodes.JsonObject node, string prefix, List<SchemaFieldRow> rows)
+    {
+        if (node["properties"] is not System.Text.Json.Nodes.JsonObject properties)
+        {
+            return;
+        }
+
+        var required = node["required"] is System.Text.Json.Nodes.JsonArray requiredNames
+            ? requiredNames.Select(n => n?.ToString() ?? string.Empty).ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (name, value) in properties)
+        {
+            if (value is not System.Text.Json.Nodes.JsonObject property)
+            {
+                continue;
+            }
+
+            var path = prefix + name;
+            if (property["items"] is System.Text.Json.Nodes.JsonObject items && items["properties"] is System.Text.Json.Nodes.JsonObject)
+            {
+                CollectSchemaFields(items, path + "[].", rows);
+            }
+            else if (property["properties"] is System.Text.Json.Nodes.JsonObject)
+            {
+                CollectSchemaFields(property, path + ".", rows);
+            }
+            else
+            {
+                rows.Add(new SchemaFieldRow(path, SchemaTypeOf(property), required.Contains(name)));
+            }
+        }
+    }
+
+    private static string SchemaTypeOf(System.Text.Json.Nodes.JsonObject property) => property["type"] switch
+    {
+        System.Text.Json.Nodes.JsonArray types => string.Join(" | ", types.Select(t => t?.ToString() ?? "null")),
+        System.Text.Json.Nodes.JsonValue type => type.ToString(),
+        _ => "any"
+    };
+
+    /// <summary>#1098: one Used by row; #1138: with the read's if (null when unguarded) and the deliverables carrying the rendered text.</summary>
+    private sealed record RendererUser(string Subject, string? TemplateKey, string NodeId, string NodeLabel, string? Guard, IReadOnlyList<(string Id, string Label)> Deliverables);
+
+    /// <summary>#1138: the format's producer in plain words, from the catalogue's entry — claiming only what the entry says.</summary>
+    private string RendererProducerSentence(string formatId)
+    {
+        if (formatsCatalog is { } catalogue && catalogue.Formats?.FirstOrDefault(f => f.Id == formatId) is { } entry)
+        {
+            return entry.Producer == PF.WorkflowFormatProducers.Attested
+                ? $"{formatId} is produced by a purpose-built agent from the catalogue — {entry.AgentName}@{entry.AgentVersion} — attested: the agent and its response format are fixed by the catalogue's git ref the run records."
+                : $"{formatId} is {FormatDetailLine(entry, catalogue)}.";
+        }
+
+        return $"{formatId} is produced by the catalogue's attested agent; the catalogue is not loaded here.";
+    }
+
+    /// <summary>
+    /// #1138: the deliverables that carry what a template renders — for a prompt, its node's own
+    /// deliverables and those whose aggregator aggregates the node (one hop, as the Deliverables
+    /// pane composes); for a macro text or instruction, the nodes reading or placing the macro
+    /// and the deliverables placing it; for a snippet or folder item, the prompts reading it.
+    /// Distinct, in id order.
+    /// </summary>
+    private IReadOnlyList<(string Id, string Label)> DeliverablesCarrying(PF.WorkflowDerivedEdges.WalkedTemplate template)
+    {
+        var nodeIds = new List<string>();
+        var results = new List<WorkflowManifestReader.ResultView>();
+
+        switch (template.Kind)
+        {
+            case PF.TemplateKind.Prompt:
+                nodeIds.Add(template.Id);
+                break;
+
+            case PF.TemplateKind.Macro:
+            case PF.TemplateKind.Instruction:
+                foreach (var node in EffectiveNodes)
+                {
+                    var reads = template.Kind == PF.TemplateKind.Macro
+                        ? PromptWalkOf(node.Id)?.References.MacroContents.Contains(template.Id) == true
+                        : PackageWalk?.PromptReadSitesOf(node.Id).Any(site => site.Macro == template.Id) == true;
+                    if (reads || node.Macros?.Any(m => m.Id == template.Id) == true)
+                    {
+                        nodeIds.Add(node.Id);
+                    }
+                }
+
+                results.AddRange(EffectiveResults.Where(r => r.Macros?.Any(m => m.Id == template.Id) == true));
+                break;
+
+            case PF.TemplateKind.Snippet:
+                var folder = template.Id.Contains('/') ? template.Id[..template.Id.IndexOf('/')] : null;
+                if (PackageWalk is { } walk)
+                {
+                    nodeIds.AddRange(walk.Templates
+                        .Where(t => t.Kind == PF.TemplateKind.Prompt && (t.References.Snippets.Contains(template.Id) || (folder is not null && t.References.SnippetFolders.Contains(folder))))
+                        .Select(t => t.Id));
+                }
+
+                break;
+        }
+
+        foreach (var nodeId in nodeIds.Distinct(StringComparer.Ordinal))
+        {
+            // The deliverable's own node, or its aggregator's sources — node.<id> at 25, node:<id> before.
+            results.AddRange(EffectiveResults.Where(r => NodeIdOf(r.Node) == nodeId
+                || DeliverableAggregateSources(r).Any(source => NodeIdOf(source) == nodeId || source == $"node:{nodeId}")));
+        }
+
+        return results
+            .DistinctBy(r => r.Id, StringComparer.Ordinal)
+            .OrderBy(r => r.Id, StringComparer.Ordinal)
+            .Select(r => (r.Id, string.IsNullOrWhiteSpace(r.Label) ? r.Id : r.Label))
+            .ToList();
+    }
 
     /// <summary>#1098: every template piping a node through the pipe, from the walk's Rendered — one row per (template, node), ordered (the set is not).</summary>
     private IReadOnlyList<RendererUser> RendererUsers(string pipe)
@@ -6106,7 +6364,7 @@
                     if (rendered.Pipe == pipe)
                     {
                         var node = EffectiveNodes.FirstOrDefault(n => n.Id == rendered.Node);
-                        users.Add(new RendererUser(template.Subject, PaneKeyOf(template), rendered.Node, node is null ? rendered.Node : NodeLabelOrId(node)));
+                        users.Add(new RendererUser(template.Subject, PaneKeyOf(template), rendered.Node, node is null ? rendered.Node : NodeLabelOrId(node), rendered.Guard, DeliverablesCarrying(template)));
                     }
                 }
             }
@@ -6115,6 +6373,7 @@
         return users
             .OrderBy(u => u.Subject, StringComparer.Ordinal)
             .ThenBy(u => u.NodeId, StringComparer.Ordinal)
+            .ThenBy(u => u.Guard ?? string.Empty, StringComparer.Ordinal)
             .ToList();
     }
 

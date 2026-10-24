@@ -266,4 +266,23 @@ public class TemplateRendererTests
 
         Assert.Equal("none", Render("{{ if node.terms.value }}some{{ else }}none{{ end }}", scope));
     }
+
+    [Fact]
+    public void TheEnginePipes_RenderTheSamplesBytes_OverAScope()
+    {
+        // #1138: the library's Engine pipes through the renderer — what the engine's
+        // ConsultRenderPayload passes (V25RenderTests pins that path end to end).
+        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["extract"] = new(ConceptSamples.ConceptListJson, "object", ConceptSource: "extract") });
+        var concepts = ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, "extract");
+
+        Assert.Equal(ConceptRenderers.Context(concepts), Render("{{ node.extract.content | concept_context }}", scope, TemplatePipes.Engine));
+        Assert.Equal(ConceptRenderers.Bullets(concepts), Render("{{ node.extract.content | concept_bullets }}", scope, TemplatePipes.Engine));
+
+        // Malformed text fails as it did through ConceptPipes: the contract's exception is
+        // not an InvalidOperationException, so the renderer wraps it under the subject.
+        var bad = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["extract"] = new("{ not json", "object", ConceptSource: "extract") });
+        var ex = Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.content | concept_bullets }}", bad, TemplatePipes.Engine));
+        Assert.StartsWith("Prompt 'p' failed to render", ex.Message, StringComparison.Ordinal);
+        Assert.Contains("not valid concept-list JSON", ex.Message, StringComparison.Ordinal);
+    }
 }

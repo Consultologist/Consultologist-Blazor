@@ -29,7 +29,7 @@ internal sealed record ConsultConditionScope(
         _scope ??= ConsultRenderPayload.ScopeFor(Variables, VariableTypes, NodeTexts, Folders, null, null, Run, Profile, Package);
 
     /// <summary>Whether the condition holds over this scope; loud, with the subject, on anything the validator did not promise.</summary>
-    public bool Holds(string subject, string when) => WorkflowConditionAt25.Holds(subject, when, Scope, ConceptPipes.All);
+    public bool Holds(string subject, string when) => WorkflowConditionAt25.Holds(subject, when, Scope, TemplatePipes.Engine);
 
     public static string Reason(string when) => WorkflowConditionAt25.Reason(when);
 
