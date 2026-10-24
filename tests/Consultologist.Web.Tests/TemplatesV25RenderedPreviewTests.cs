@@ -404,6 +404,42 @@ public class TemplatesV25RenderedPreviewTests : ClientRenderTestContext
         Assert.StartsWith("FOLLOW", Rendered(page));
     }
 
+    // ----- #1138: the sample concepts pick -----
+
+    private const string ExtractSample = "fluent-select[aria-label='Preview with node.extract.content']";
+
+    [Fact]
+    public void ThePreview_OffersSampleConcepts_ForAPipedNode_AndRendersTheBytesWhenPicked()
+    {
+        var page = RenderEditor(WithFile("prompts/assessment.md", "Concepts:\n{{ node.extract.content | concept_context }}\n{{ snippet.standards.content }}"));
+        Navigate(page, "assessment");
+
+        var select = page.Find(ExtractSample);
+        Assert.Equal(new[] { "", "sample concepts" }, OptionValues(select));
+        Assert.Equal(new[] { "— unchosen —", "sample concepts (2)" }, OptionTexts(select));
+        Assert.Contains("⟨concept_context of node.extract.content⟩", Rendered(page));
+
+        page.Find(ExtractSample).Change("sample concepts");
+
+        var rendered = Rendered(page);
+        Assert.DoesNotContain("⟨concept_context", rendered);
+        Assert.Contains("- Diabetes mellitus (disorder) - 73211009; active: False; source: extract support: long-standing type 2 diabetes", rendered);
+        Assert.Contains("- Family support strong (finding) - ; active: False; source: extract", rendered);
+        Assert.Contains("Follow the local standards.", rendered);
+
+        page.Find(ExtractSample).Change("");
+        Assert.Contains("⟨concept_context of node.extract.content⟩", Rendered(page));
+    }
+
+    [Fact]
+    public void ThePreview_OffersNoSamplePick_WhenNothingIsPiped()
+    {
+        var page = RenderEditor();
+        Navigate(page, "assessment");
+
+        Assert.Empty(page.FindAll(ExtractSample));
+    }
+
     // ----- #1123: picks beyond enums -----
 
     private const string Urgent = "fluent-select[aria-label='Preview with input.urgent']";

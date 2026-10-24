@@ -5002,9 +5002,14 @@
     /// </summary>
     private sealed record PreviewPick(string Kind, string Id, string Label, IReadOnlyList<string>? Values)
     {
-        public bool IsNode => Kind == "node";
+        public bool IsNode => Kind is "node" or ConceptsPickKind;
         public bool IsSelect => Values is not null;
     }
+
+    /// <summary>#1138: the pick kind of a piped concept_list node — its one choice puts the library's sample in the node's place, so the pipe renders real bytes.</summary>
+    private const string ConceptsPickKind = "concepts";
+
+    private const string SampleConceptsPick = "sample concepts";
 
     /// <summary>
     /// The "preview with" controls a walked template earns — top-level inputs only (a field inside an object
@@ -5046,6 +5051,15 @@
             if (read.ReadsValue && EffectiveNodes.FirstOrDefault(n => n.Id == nodeId) is { } node && ClassifierValues(node) is { Count: > 0 } values)
             {
                 picks.Add(new PreviewPick("node", nodeId, $"node.{nodeId}.value", values));
+            }
+        }
+
+        // #1138: a concept_list node the template pipes through a renderer — "sample concepts" renders the bytes.
+        foreach (var pipedNodeId in walked.References.Rendered.Select(r => r.Node).Distinct(StringComparer.Ordinal).OrderBy(id => id, StringComparer.Ordinal))
+        {
+            if (EffectiveNodes.FirstOrDefault(n => n.Id == pipedNodeId) is { Format: PF.WorkflowFormatIds.ConceptList })
+            {
+                picks.Add(new PreviewPick(ConceptsPickKind, pipedNodeId, $"node.{pipedNodeId}.content", new[] { SampleConceptsPick }));
             }
         }
 
@@ -5988,9 +6002,10 @@
                 .Where(c => !c.IsNode && previewInputPicks.TryGetValue(c.Id, out var picked) && PickIsCurrent(c, picked))
                 .Select(c => KeyValuePair.Create(c.Id, previewInputPicks[c.Id]))
                 .ToList();
+            // #1138: a "sample concepts" pick is the library's sample concept list in the node's place.
             var nodePicks = controls
                 .Where(c => c.IsNode && previewNodePicks.TryGetValue(c.Id, out var picked) && PickIsCurrent(c, picked))
-                .Select(c => KeyValuePair.Create(c.Id, previewNodePicks[c.Id]))
+                .Select(c => KeyValuePair.Create(c.Id, c.Kind == ConceptsPickKind ? PF.ConceptSamples.ConceptListJson : previewNodePicks[c.Id]))
                 .ToList();
             // #1109: the fanned folder's items, to preview as one of them; a stale pick (the item removed since) applies nothing.
             var folder = PreviewFolderOf(target.FanNode);
@@ -6033,7 +6048,7 @@
                                 <FluentOption TOption="string" Value="">— unchosen —</FluentOption>
                                 @foreach (var value in pick.Values!)
                                 {
-                                    <FluentOption TOption="string" Value="@value">@value</FluentOption>
+                                    <FluentOption TOption="string" Value="@value">@(pick.Kind == ConceptsPickKind ? $"{value} ({PF.ConceptSamples.Count})" : value)</FluentOption>
                                 }
                             </FluentSelect>
                         }
@@ -6166,7 +6181,7 @@
             <dt>The engine's</dt>
             <dd>The set of renderers is defined in the engine, not in a package or the catalogue, so nothing is added, edited or removed here. The palette's renderer select on a matching read inserts the spelling.</dd>
             <dt>Preview</dt>
-            <dd>A pane's rendered preview shows a pipe as a token — <code>⟨concept_bullets of node.&lt;id&gt;.content⟩</code> — the rendering itself is the engine's at run time.</dd>
+            <dd>A pane's rendered preview shows a pipe as a token — <code>⟨concept_bullets of node.&lt;id&gt;.content⟩</code> — the rendering itself is the engine's at run time. Pick <em>sample concepts</em> on the preview to see the bytes the engine's own code renders (the sample above).</dd>
         </dl>
     </details>;
 
