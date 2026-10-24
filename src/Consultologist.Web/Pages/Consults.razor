@@ -348,7 +348,12 @@
                                                 <div class="input-field__row-body">
                                                     @StructureControl(row)
                                                 </div>
-                                                <span class="input-field__row-buttons">
+                                                @* preventDefault (#1137): inside the input's <label>, a Remove whose
+                                                   button the re-render drops is a label activation — a synthetic click
+                                                   on the first labelable control, which with no rows left is "+ Add
+                                                   entry": the row came straight back. FluentButton's OnClick cannot
+                                                   carry the modifier, so the wrapper does (#510's lesson). *@
+                                                <span class="input-field__row-buttons" @onclick:preventDefault="true" @onclick:stopPropagation="true">
                                                     <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
                                                                   aria-label="@($"Move entry {index + 1} up")"
                                                                   Disabled="@(index == 0)"
@@ -366,9 +371,13 @@
                                                 </span>
                                             </div>
                                         }
-                                        <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
-                                                      IconStart="@(new Icons.Regular.Size20.Add())"
-                                                      OnClick="@(() => field.AddRow())">Add entry</FluentButton>
+                                        @* preventDefault (#1137): with rows present, this click would otherwise
+                                           activate the label onto row 1's control as well. *@
+                                        <span class="input-field__add-wrap" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                            <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
+                                                          IconStart="@(new Icons.Regular.Size20.Add())"
+                                                          OnClick="@(() => field.AddRow())">Add entry</FluentButton>
+                                        </span>
                                         @if (field.TakesSeveralDocuments)
                                         {
                                             @if (field.HasFile)
@@ -434,9 +443,15 @@
                                                 }
                                                 @if (field.HasFile)
                                                 {
-                                                    <FluentButton Appearance="Appearance.Stealth"
-                                                                  Title="Remove every attached file"
-                                                                  @onclick="() => RemoveFile(field)">Remove all</FluentButton>
+                                                    @* preventDefault (#1137): this button goes with the chips, and with
+                                                       no typed rows the label's first labelable control is then
+                                                       "+ Add entry". The wrapper is the button's own — the span around
+                                                       holds the file input, whose click must stay native. *@
+                                                    <span @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                        <FluentButton Appearance="Appearance.Stealth"
+                                                                      Title="Remove every attached file"
+                                                                      @onclick="() => RemoveFile(field)">Remove all</FluentButton>
+                                                    </span>
                                                 }
                                             </span>
                                             @if (field.HasFile)
@@ -1285,9 +1300,11 @@
            draws the outermost one. *@
         <div class="input-field__group input-field__group--nested" @onclick:stopPropagation="true">
           @ArrayRows(node)
-          <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
-                        IconStart="@(new Icons.Regular.Size20.Add())"
-                        OnClick="@(() => node.AddRow())">Add entry</FluentButton>
+          <span class="input-field__add-wrap" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+            <FluentButton Appearance="Appearance.Stealth" Class="input-field__add"
+                          IconStart="@(new Icons.Regular.Size20.Add())"
+                          OnClick="@(() => node.AddRow())">Add entry</FluentButton>
+          </span>
         </div>
       }
       else
@@ -1308,7 +1325,9 @@
             <div class="input-field__row-body">
               @StructureControl(row)
             </div>
-            <span class="input-field__row-buttons">
+            @* preventDefault (#1137): the same label activation one level down — the
+               member's <label> holds these rows and their own "+ Add entry". *@
+            <span class="input-field__row-buttons" @onclick:preventDefault="true" @onclick:stopPropagation="true">
               <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
                             aria-label="@($"Move entry {index + 1} up")"
                             Disabled="@(index == 0)"

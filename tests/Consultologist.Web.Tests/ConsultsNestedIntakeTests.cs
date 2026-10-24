@@ -229,6 +229,32 @@ public class ConsultsNestedIntakeTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".input-field__row"));
     }
 
+    [Fact]
+    public void RemovingTheOnlyNestedRow_LeavesNoNestedRow_AndItsButtonsCancelTheLabelsActivation()
+    {
+        // #1137 one level down: a nested array's rows sit inside the member's <label>
+        // (and the input's); its Remove and "+ Add entry" wrappers carry the same
+        // preventDefault, and the only nested row goes without coming back.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithFamilyHistory(), specVersion: 10);
+        var page = Render<Consults>();
+        page.Find(".input-field__add").Click();
+        InnerAdd(page).Click();
+        Assert.Single(page.FindAll(".input-field__group--nested .input-field__row"));
+
+        var nestedButtons = page.Find(".input-field__group--nested .input-field__row-buttons");
+        Assert.True(nestedButtons.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.True(nestedButtons.HasAttribute("blazor:onclick:stoppropagation"));
+        var nestedAddWrap = page.Find(".input-field__group--nested .input-field__add-wrap");
+        Assert.True(nestedAddWrap.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.NotNull(nestedAddWrap.QuerySelector(".input-field__add"));
+
+        page.Find(".input-field__group--nested fluent-button[title='Remove entry']").Click();
+
+        Assert.Empty(page.FindAll(".input-field__group--nested .input-field__row"));
+        Assert.Single(page.FindAll(".input-field__row"));
+        Assert.NotNull(InnerAdd(page));
+    }
+
     private static Task Repin(IRenderedComponent<Consults> page)
     {
         var picker = page.FindComponent<Consultologist.Web.Shared.WorkflowEditor.WorkflowPackagePicker>();

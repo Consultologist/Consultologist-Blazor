@@ -1513,6 +1513,76 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Empty(page.FindAll("input[type=date]"));
         Assert.Empty(page.FindAll("fluent-select.node-field__input"));
     }
+
+    // ----- #1137: the last row can go — label activation cancelled ----------
+
+    [Fact]
+    public void RemovingTheOnlyRow_LeavesNoRow_NoError_AndStillOffersAdd()
+    {
+        // Zero rows is the absent array, not a held run: the Add button stays
+        // offered and nothing says "row 1 is empty".
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        page.Find(".input-field__add").Click();
+        page.FindAll("fluent-text-area")[1].Change("Only row.");
+        Assert.Single(page.FindAll(".input-field__row"));
+
+        page.Find("fluent-button[title='Remove entry']").Click();
+
+        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.Equal("Add entry", page.Find(".input-field__add").TextContent.Trim());
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+    }
+
+    [Fact]
+    public void TheRowButtonsAndAddEntry_CancelTheLabelsActivation()
+    {
+        // #1137: the rows sit inside the input's <label>. In a browser a click whose
+        // target the re-render removed activates the label — a synthetic click on its
+        // first labelable descendant, which once the last row is gone is "+ Add entry",
+        // so the removed row came straight back. bUnit has no browser to show that;
+        // it shows the wrapper's preventDefault, which is what cancels it.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find(".input-field__add").Click();
+
+        var rowButtons = page.Find(".input-field__row-buttons");
+        Assert.True(rowButtons.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.True(rowButtons.HasAttribute("blazor:onclick:stoppropagation"));
+        Assert.Equal(3, rowButtons.QuerySelectorAll("fluent-button").Length);
+
+        var addWrap = page.Find(".input-field__add-wrap");
+        Assert.True(addWrap.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.True(addWrap.HasAttribute("blazor:onclick:stoppropagation"));
+        Assert.NotNull(addWrap.QuerySelector(".input-field__add"));
+    }
+
+    [Fact]
+    public void RemoveAll_CancelsTheLabelsActivation_AndLeavesNoRow()
+    {
+        // #1137's sibling: "Remove all" drops itself with the chips, and with no
+        // typed rows the label's first labelable descendant is again "+ Add entry".
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        FileInput(page, 1).UploadFiles(InputFileContent.CreateFromText("First note.", "first.txt"));
+        var removeAll = page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove all"));
+        var wrapper = removeAll.ParentElement!;
+        Assert.True(wrapper.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.True(wrapper.HasAttribute("blazor:onclick:stoppropagation"));
+        Assert.Single(wrapper.Children);
+
+        removeAll.Click();
+
+        Assert.Empty(page.FindAll(".input-field__document"));
+        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Empty(page.FindAll(".input-field__error"));
+    }
 }
 
 /// <summary>
