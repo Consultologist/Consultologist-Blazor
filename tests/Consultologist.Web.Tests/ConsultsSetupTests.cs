@@ -1628,6 +1628,233 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.NotNull(Chooser(page));
         Assert.Empty(page.FindAll(".input-field__error"));
     }
+
+    // ----- #1143: the unchosen row — each entry chooses text or documents -----
+
+    private const string Draft = "62F, cough and weight loss over three months, for assessment.";
+
+    [Fact]
+    public void ChoosingText_TurnsTheUnchosenRowIntoTheLastTypedRow()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+        page.Find(".input-field__choose-text").Click();
+
+        Assert.Single(TypedRows(page));
+        Assert.Null(Chooser(page));
+        Assert.Equal(new[] { "1." }, RowNumbers(page));
+        Assert.Equal(2, page.FindAll("fluent-text-area").Count);
+        Assert.Equal("Add entry", page.Find(".input-field__add").TextContent.Trim());
+    }
+
+    [Fact]
+    public void AddEntry_AppendsAnUnchosenRow_Last_AndHidesItself()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
+        Assert.Null(Chooser(page));
+
+        page.Find(".input-field__add").Click();
+
+        var rows = page.FindAll(".input-field__row");
+        Assert.Contains("input-field__row--unchosen", rows[^1].ClassList);
+        Assert.Equal(new[] { "1.", "2.", "3." }, RowNumbers(page));
+        Assert.Empty(page.FindAll(".input-field__add"));
+        Assert.NotNull(page.Find("fluent-button[aria-label='Remove entry 3']"));
+    }
+
+    [Fact]
+    public void TheUnchosenRowsRemove_DropsIt_AndGivesAddEntryBack()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
+        page.Find(".input-field__add").Click();
+
+        page.Find("fluent-button[aria-label='Remove entry 3']").Click();
+
+        Assert.Null(Chooser(page));
+        Assert.NotEmpty(page.FindAll(".input-field__add"));
+        Assert.Single(TypedRows(page));
+        Assert.Equal(new[] { "first.txt" }, ChipNames(page));
+        Assert.Equal("Typed row.", FieldText(page, 1));
+    }
+
+    [Fact]
+    public void AnUnchosenRow_IsAbsent_NotAnEmptyRow()
+    {
+        // The unchosen row is not a ConsultInputNode: on its own it is the absent
+        // array (a required input is surfaced on the attempt, not held by "row 1
+        // is empty"); beside a filled row it adds nothing to what is sent.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(required: true), specVersion: 9);
+        CaptureSubmit();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change(Draft);
+        Assert.NotNull(Chooser(page));
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.False(page.FindAll("fluent-button").Last().HasAttribute("disabled"));
+
+        page.FindAll("fluent-button").Last().Click();
+        Assert.NotEmpty(page.FindAll(".input-field__required-hint"));
+        Assert.Null(sentInputs);
+
+        // A required prose input is also under the referral floor (#802), so the
+        // row carries a referral's worth of words.
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change(Draft);
+        page.Find(".input-field__add").Click();
+        Assert.NotNull(Chooser(page));
+        Assert.Empty(page.FindAll(".input-field__error"));
+        Assert.Empty(page.FindAll(".input-field__required-hint"));
+
+        // The refused attempt left its message bar (with its own dismiss button)
+        // after the form, so the submit is found by its words, not as the last button.
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Create consult")).Click();
+        var notes = sentInputs!["prior_notes"];
+        Assert.Equal(new[] { Draft }, notes.Elements!.Select(element => element.Canonical));
+    }
+
+    [Fact]
+    public void Numbering_RunsThroughTypedDocumentAndUnchosenRows()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        DropOnNotes(page,
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+        page.Find(".input-field__add").Click();
+
+        Assert.Equal(new[] { "1.", "2.", "3.", "4." }, RowNumbers(page));
+    }
+
+    [Fact]
+    public void TheUnchosenRowsDoors_GuardOnlyTheButtons()
+    {
+        // The text door and the Remove drop themselves from the DOM (the #1137
+        // label activation); the documents door holds the file input, whose
+        // click must stay native — no preventDefault on its span.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+
+        var page = Render<Consults>();
+        AddTextRow(page);
+        page.Find(".input-field__add").Click();
+
+        var chooser = Assert.IsAssignableFrom<IElement>(Chooser(page));
+        var text = chooser.QuerySelector(".input-field__choice--text")!;
+        Assert.True(text.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.True(text.HasAttribute("blazor:onclick:stoppropagation"));
+        Assert.NotNull(text.QuerySelector(".input-field__choose-text"));
+
+        var documents = chooser.QuerySelector(".input-field__choice--documents")!;
+        Assert.False(documents.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.NotNull(documents.QuerySelector("input[type=file][multiple]"));
+
+        var buttons = chooser.QuerySelector(".input-field__row-buttons")!;
+        Assert.True(buttons.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.True(buttons.HasAttribute("blazor:onclick:stoppropagation"));
+        Assert.Single(buttons.QuerySelectorAll("fluent-button"));
+    }
+
+    [Fact]
+    public void TheDropZone_LivesOnlyInTheUnchosenRow()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        Assert.Equal(2, page.FindAll("input[type=file]").Count);
+
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
+        // consult_draft's single zone is the one left.
+        Assert.Single(page.FindAll("input[type=file]"));
+
+        page.Find(".input-field__add").Click();
+        Assert.Equal(2, page.FindAll("input[type=file]").Count);
+    }
+
+    [Fact]
+    public void RemovingTheLastDocument_BringsTheUnchosenRowBack()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
+        Assert.Null(Chooser(page));
+
+        page.Find("fluent-button[title='Remove this file']").Click();
+
+        Assert.NotNull(Chooser(page));
+        Assert.Empty(page.FindAll("fluent-button[title='Remove entry']"));
+        Assert.Empty(page.FindAll(".input-field__add"));
+    }
+
+    [Fact]
+    public void AFullyRefusedDrop_KeepsTheUnchosenRow()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+
+        var page = Render<Consults>();
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        DropOnNotes(page, InputFileContent.CreateFromText("BAD scan", "scan.pdf"));
+
+        Assert.Equal("This PDF has no text layer, so it is a scan or a fax.", page.Find(".input-field__file-error").TextContent.Trim());
+        Assert.Empty(ChipNames(page));
+        Assert.NotNull(Chooser(page));
+        Assert.NotNull(page.Find("fluent-button[aria-label='Remove entry 2']"));
+    }
+
+    [Fact]
+    public void ASeveralTranscriptInput_KeepsItsPromptInTheUnchosenRow()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+            new WorkflowPackageInputResponse("visits", "Visit transcripts", false, WorkflowInputTypes.Array,
+                Items: new WorkflowPackageElementResponse(WorkflowInputTypes.Text), ExpectedContent: WorkflowExpectedContent.Transcript)
+        });
+
+        var page = Render<Consults>();
+
+        var chooser = Assert.IsAssignableFrom<IElement>(Chooser(page));
+        Assert.Contains("Drop transcripts here, or browse…", chooser.TextContent);
+        Assert.Contains("Click to enter text", chooser.TextContent);
+    }
+
+    [Fact]
+    public void AnArrayOfDates_StillStartsWithNoRows_AndAddEntry()
+    {
+        // Only a several (array<text>) input has the unchosen row; any other
+        // array keeps "+ Add entry" adding a typed row at once.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(items: WorkflowInputTypes.Date), specVersion: 9);
+
+        var page = Render<Consults>();
+        Assert.Empty(page.FindAll(".input-field__row"));
+        Assert.Null(Chooser(page));
+        Assert.Equal("Add entry", page.Find(".input-field__add").TextContent.Trim());
+
+        page.Find(".input-field__add").Click();
+        Assert.Single(page.FindAll(".input-field__row"));
+        Assert.NotNull(page.Find(".input-field__row input[type=date]"));
+        Assert.Null(Chooser(page));
+    }
 }
 
 /// <summary>
