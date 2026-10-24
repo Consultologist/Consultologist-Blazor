@@ -508,12 +508,15 @@
 	display: flex;
 }
 
+/* The stroke is Fluent's accent, the one its drop zone beside it draws — the
+   divider token is the muted fill's own grey, and the dashes vanished into it
+   live (#1143). The fill stays the group's: the dashes are the door. */
 .input-field__choice--text {
 	align-items: center;
 	justify-content: center;
-	border: 1px dashed var(--consultologist-border);
+	border: 1px dashed var(--accent-fill-rest, #0078d4);
 	border-radius: var(--consultologist-radius-sm);
-	background: var(--consultologist-surface-muted);
+	background: transparent;
 }
 
 /* The icon above the words, in both doors (ChildContent renders in this page's scope). */
