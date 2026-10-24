@@ -146,6 +146,82 @@ public class TemplatesV25RenderersPaneTests : ClientRenderTestContext
         Assert.Contains("2 nodes · 1 piped", page.Find(".renderer-nodes__count").TextContent);
     }
 
+    /// <summary>#1138: the V25 fixture with assessment piping extract inside an if — the guard a Used by row shows.</summary>
+    private static WorkflowPackageContentResponse V25WithAGuardedRenderedRead()
+    {
+        var package = EditorFixtures.V25();
+        var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+        files["prompts/assessment.md"] = files["prompts/assessment.md"] + "\n{{ if input.kind == \"new\" }}{{ node.extract.content | concept_context }}{{ end }}";
+        return package with { Files = files };
+    }
+
+    /// <summary>#1138: the V25 fixture with the scope prompt piping extract — scope's node reaches no deliverable.</summary>
+    private static WorkflowPackageContentResponse V25WithARenderedReadNoDeliverableCarries()
+    {
+        var package = EditorFixtures.V25();
+        var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+        files["prompts/scope.md"] = files["prompts/scope.md"] + "\n{{ node.extract.content | concept_bullets }}";
+        return package with { Files = files };
+    }
+
+    // ----- #1138 § 3: attestation -----
+
+    [Fact]
+    public void Attestation_NamesTheAgent_TheDeterminism_AndOnlyWhatTheStampRecords()
+    {
+        var page = OpenRenderer("concept_context");
+
+        var text = page.Find(".renderer-attestation").TextContent;
+        Assert.Contains("concept-extraction@1", text);
+        Assert.Contains("attested", text);
+        Assert.Contains("same bytes", text);
+        Assert.Contains("SNOMED CT", text);
+        Assert.Contains("not a separate stamp field", text);
+        Assert.Contains("source: …", text);
+
+        Session.SelectedKey = "renderer:concept_bullets";
+        page.Render();
+        var bullets = page.Find(".renderer-attestation").TextContent;
+        Assert.DoesNotContain("source: …", bullets);
+        Assert.Contains("these bytes carry none", bullets);
+    }
+
+    // ----- #1138 § 4: Used by, deeper -----
+
+    [Fact]
+    public void UsedBy_ShowsTheGuard_AndTheCarryingDeliverables()
+    {
+        var page = OpenRenderer("concept_context", V25WithAGuardedRenderedRead());
+
+        var row = Assert.Single(page.FindAll(".renderer-user"));
+        var guard = row.QuerySelector(".renderer-user__guard")!;
+        Assert.Contains("included when", guard.TextContent);
+        Assert.Equal("input.kind == \"new\"", guard.QuerySelector("code")!.TextContent);
+
+        // assessment is aggregated by all, whose deliverable is consult.
+        var carried = Assert.Single(row.QuerySelectorAll(".renderer-user__deliverable"));
+        Assert.Equal("Consultation note", carried.TextContent.Trim());
+        Assert.Empty(row.QuerySelectorAll(".renderer-user__none"));
+
+        page.Find(".renderer-user fluent-button[aria-label='Open deliverable consult']").Click();
+        Assert.Equal("results:consult", Session.SelectedKey);
+    }
+
+    [Fact]
+    public void UsedBy_HasNoGuard_WhenTheReadIsBare_AndSaysWhenNoDeliverableCarriesIt()
+    {
+        var page = OpenRenderer("concept_context", V25WithARenderedRead());
+        var row = Assert.Single(page.FindAll(".renderer-user"));
+        Assert.Empty(row.QuerySelectorAll(".renderer-user__guard"));
+        Assert.Single(row.QuerySelectorAll(".renderer-user__deliverable"));
+
+        page = OpenRenderer("concept_bullets", V25WithARenderedReadNoDeliverableCarries());
+        row = Assert.Single(page.FindAll(".renderer-user"));
+        Assert.Equal("Prompt 'scope'", row.QuerySelector(".renderer-user__template")!.TextContent.Trim());
+        Assert.Empty(row.QuerySelectorAll(".renderer-user__deliverable"));
+        Assert.Contains("no deliverable yet", row.QuerySelector(".renderer-user__none")!.TextContent);
+    }
+
     [Fact]
     public void TheGroup_ListsThePipes_At25_AfterFormats_AndIsAbsentBelow()
     {

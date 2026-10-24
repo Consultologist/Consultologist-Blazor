@@ -1303,6 +1303,25 @@
                             </p>
                             <p class="muted-text renderer-spelling__none">No node produces <code>@rendererFormat</code> yet; give one that format on its card and the spelling names it here.</p>
                         }
+                        @* #1138 § 3: attestation in plain words — the producer from the catalogue's entry,
+                           the renderer's determinism, and exactly what the stamp records (the terminology
+                           edition and server, the catalogue ref); the concept source is not a stamp field. *@
+                        <span class="node-section__head">Attestation</span>
+                        <div class="renderer-attestation">
+                            <p class="muted-text">@RendererProducerSentence(rendererFormat)</p>
+                            <p class="muted-text"><code>@rendererName</code> is deterministic: the same concepts always render to the same bytes, so what the model read can be reproduced from the node's stored output.</p>
+                            <p class="muted-text">
+                                A run's provenance records the terminology edition the concepts were answered against and the server that served it (History's SNOMED CT chip), and the catalogue ref the run used.
+                                @if (rendererName == PF.TemplatePipes.ConceptContext)
+                                {
+                                    <text>The concept source is written into the rendered text itself (<code>source: …</code>) and kept with each stored concept — it is not a separate stamp field.</text>
+                                }
+                                else
+                                {
+                                    <text>The concept source is kept with each stored concept — it is not a separate stamp field, and these bytes carry none.</text>
+                                }
+                            </p>
+                        </div>
                         <span class="node-section__head">Used by</span>
                         @if (rendererUsers.Count > 0)
                         {
@@ -1327,6 +1346,31 @@
                                                           Title="@($"node '{rendererUser.NodeId}' — edit on the node's pane")"
                                                           aria-label="@($"Open node {rendererUser.NodeId}")"
                                                           @onclick="() => Select(NodeKeyPrefix + rendererUser.NodeId)">@rendererUser.NodeLabel</FluentButton>
+                                            @if (rendererUser.Guard is { } rendererGuard)
+                                            {
+                                                <span class="muted-text renderer-user__guard">included when <code>@rendererGuard</code></span>
+                                            }
+                                        </span>
+                                        @* #1138 § 4: the deliverables that end up carrying the rendered text — the reading
+                                           node's own, and those whose aggregator aggregates it (one hop, as the Deliverables
+                                           pane composes); a macro's readers and placements count. *@
+                                        <span class="result-macro-row renderer-user__carried">
+                                            <span class="muted-text">carried by</span>
+                                            @if (rendererUser.Deliverables.Count > 0)
+                                            {
+                                                @foreach (var carried in rendererUser.Deliverables)
+                                                {
+                                                    var carriedDeliverable = carried;
+                                                    <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-user__deliverable"
+                                                                  Title="@($"deliverable '{carriedDeliverable.Id}' — its card on the Deliverables pane")"
+                                                                  aria-label="@($"Open deliverable {carriedDeliverable.Id}")"
+                                                                  @onclick="() => Select(ResultsKeyFor(carriedDeliverable.Id))">@carriedDeliverable.Label</FluentButton>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="muted-text renderer-user__none">no deliverable yet — the reading node reaches none</span>
+                                            }
                                         </span>
                                     </div>
                                 }
@@ -6214,7 +6258,81 @@
         _ => "any"
     };
 
-    private sealed record RendererUser(string Subject, string? TemplateKey, string NodeId, string NodeLabel);
+    /// <summary>#1098: one Used by row; #1138: with the read's if (null when unguarded) and the deliverables carrying the rendered text.</summary>
+    private sealed record RendererUser(string Subject, string? TemplateKey, string NodeId, string NodeLabel, string? Guard, IReadOnlyList<(string Id, string Label)> Deliverables);
+
+    /// <summary>#1138: the format's producer in plain words, from the catalogue's entry — claiming only what the entry says.</summary>
+    private string RendererProducerSentence(string formatId)
+    {
+        if (formatsCatalog is { } catalogue && catalogue.Formats?.FirstOrDefault(f => f.Id == formatId) is { } entry)
+        {
+            return entry.Producer == PF.WorkflowFormatProducers.Attested
+                ? $"{formatId} is produced by a purpose-built agent from the catalogue — {entry.AgentName}@{entry.AgentVersion} — attested: the agent and its response format are fixed by the catalogue's git ref the run records."
+                : $"{formatId} is {FormatDetailLine(entry, catalogue)}.";
+        }
+
+        return $"{formatId} is produced by the catalogue's attested agent; the catalogue is not loaded here.";
+    }
+
+    /// <summary>
+    /// #1138: the deliverables that carry what a template renders — for a prompt, its node's own
+    /// deliverables and those whose aggregator aggregates the node (one hop, as the Deliverables
+    /// pane composes); for a macro text or instruction, the nodes reading or placing the macro
+    /// and the deliverables placing it; for a snippet or folder item, the prompts reading it.
+    /// Distinct, in id order.
+    /// </summary>
+    private IReadOnlyList<(string Id, string Label)> DeliverablesCarrying(PF.WorkflowDerivedEdges.WalkedTemplate template)
+    {
+        var nodeIds = new List<string>();
+        var results = new List<WorkflowManifestReader.ResultView>();
+
+        switch (template.Kind)
+        {
+            case PF.TemplateKind.Prompt:
+                nodeIds.Add(template.Id);
+                break;
+
+            case PF.TemplateKind.Macro:
+            case PF.TemplateKind.Instruction:
+                foreach (var node in EffectiveNodes)
+                {
+                    var reads = template.Kind == PF.TemplateKind.Macro
+                        ? PromptWalkOf(node.Id)?.References.MacroContents.Contains(template.Id) == true
+                        : PackageWalk?.PromptReadSitesOf(node.Id).Any(site => site.Macro == template.Id) == true;
+                    if (reads || node.Macros?.Any(m => m.Id == template.Id) == true)
+                    {
+                        nodeIds.Add(node.Id);
+                    }
+                }
+
+                results.AddRange(EffectiveResults.Where(r => r.Macros?.Any(m => m.Id == template.Id) == true));
+                break;
+
+            case PF.TemplateKind.Snippet:
+                var folder = template.Id.Contains('/') ? template.Id[..template.Id.IndexOf('/')] : null;
+                if (PackageWalk is { } walk)
+                {
+                    nodeIds.AddRange(walk.Templates
+                        .Where(t => t.Kind == PF.TemplateKind.Prompt && (t.References.Snippets.Contains(template.Id) || (folder is not null && t.References.SnippetFolders.Contains(folder))))
+                        .Select(t => t.Id));
+                }
+
+                break;
+        }
+
+        foreach (var nodeId in nodeIds.Distinct(StringComparer.Ordinal))
+        {
+            // The deliverable's own node, or its aggregator's sources — node.<id> at 25, node:<id> before.
+            results.AddRange(EffectiveResults.Where(r => NodeIdOf(r.Node) == nodeId
+                || DeliverableAggregateSources(r).Any(source => NodeIdOf(source) == nodeId || source == $"node:{nodeId}")));
+        }
+
+        return results
+            .DistinctBy(r => r.Id, StringComparer.Ordinal)
+            .OrderBy(r => r.Id, StringComparer.Ordinal)
+            .Select(r => (r.Id, string.IsNullOrWhiteSpace(r.Label) ? r.Id : r.Label))
+            .ToList();
+    }
 
     /// <summary>#1098: every template piping a node through the pipe, from the walk's Rendered — one row per (template, node), ordered (the set is not).</summary>
     private IReadOnlyList<RendererUser> RendererUsers(string pipe)
@@ -6231,7 +6349,7 @@
                     if (rendered.Pipe == pipe)
                     {
                         var node = EffectiveNodes.FirstOrDefault(n => n.Id == rendered.Node);
-                        users.Add(new RendererUser(template.Subject, PaneKeyOf(template), rendered.Node, node is null ? rendered.Node : NodeLabelOrId(node)));
+                        users.Add(new RendererUser(template.Subject, PaneKeyOf(template), rendered.Node, node is null ? rendered.Node : NodeLabelOrId(node), rendered.Guard, DeliverablesCarrying(template)));
                     }
                 }
             }
@@ -6240,6 +6358,7 @@
         return users
             .OrderBy(u => u.Subject, StringComparer.Ordinal)
             .ThenBy(u => u.NodeId, StringComparer.Ordinal)
+            .ThenBy(u => u.Guard ?? string.Empty, StringComparer.Ordinal)
             .ToList();
     }
 

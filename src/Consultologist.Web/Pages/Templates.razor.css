@@ -865,6 +865,21 @@ fluent-button.package-tag__button::part(control) {
 	font-weight: normal;
 }
 
+/* #1138: the attestation paragraphs, a Used by row's guard and its carried-by line. */
+.renderer-attestation {
+	display: flex;
+	flex-direction: column;
+	gap: 0.3rem;
+}
+
+.renderer-attestation p {
+	margin: 0;
+}
+
+.renderer-user__carried {
+	padding-left: 1rem;
+}
+
 .renderer-spelling {
 	display: flex;
 	align-items: center;
