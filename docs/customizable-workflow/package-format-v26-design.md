@@ -634,3 +634,238 @@ scope: live capture, diarisation beyond the service's, translation.
 Left v26 on 2026-10-24: #1061 holds the shape (`{ value, label }` entries, `input.<id>.label`,
 the Create page showing the label) and sits in no milestone and no planned version. At 26
 `values` entries are strings and `input.<id>` has no `.label` member, as at 25.
+
+## 8. Refused by name at ≥ 26
+
+Each below 26 keeps its frozen rules; each at ≥ 26 is a sentence naming the key and the
+replacement — the 25 form, *"`<key>` is retired at specVersion 26; <replacement>."* — and a
+schema-catchable conformance vector where the key leaves the schema (`SHAPE_BLIND` where it
+does not).
+
+| Refused | Replaced by |
+|---|---|
+| `nodes[].forEach` | a `for` node whose body holds the node (§ 1) |
+| `nodes[].when` | an `if` node whose body holds the node (§ 1) |
+| `nodes[].aggregate` | `deliverables[].sources[]` (§ 3) |
+| `deliverables[].node` | `deliverables[].sources[]` (§ 3) |
+| `prompts[]`; `nodes[].prompt: <prompt id>` | `nodes[].prompt: "<file path>"` (§ 4) |
+| `nodes[].macros[].forItem` | the instance's `if` on `item.id` (§ 2.4) |
+| `when` on a node instance, a deliverable, a deliverable instance, a folder item | `if` (§ 2); `when` is a `case` branch label only |
+| `index.json` item `name`, `when` | the item file's header `label`, `if` (§ 5) |
+| `macros[].label`, `instruction`, `optional`, `default` in the manifest | the macro file's header (§ 5) |
+| a snippet, folder item or macro file with no header; a header on a prompt file | the header (§ 5.1) |
+| `item.name`, `snippet.<id>.name`, `macro.<id>.name` | `.label` (§ 5.2) |
+| `{{ node.x.content \| <renderer pipe> }}`; `node.x.value \| <pipe>` | `{{ node.x \| <pipe> }}` (§ 7.1) |
+| a flow node without `ret`; a branch without `ret` | `ret` (§ 1.2) |
+| a body node read by bare id from outside its flow node; a node in two bodies | the flow node's id (§ 1.2) |
+| a `case` value the set lacks; a value in two branches | the enum's values (§ 1.1) |
+| `while`; a `for` inside a `for`; a `for` over `node.<id>.value`; a folder item's `if` reading a node; `for … until`; `let` | the next bump, named in the sentence (§ 6) |
+| `node.<for>.content \| <pipe>`; `deliverable.<id>` in a condition; `deliverable.<id>.value` | § 7.1; § 3.1 |
+
+## 9. The template objects at 26
+
+The closed member sets, rewritten (`TemplateObjects.All`, `TemplateMembers`):
+
+| object | members at 26 | change |
+|---|---|---|
+| `input.<id>` (+ typed fields) | as 25 | — |
+| `node.<id>` | `content`, `value`; a flow node's are its returned node's (§ 1.3); a `for` node iterable with `item` + body nodes per element; a body node **scoped** to its flow node | flow nodes; scoping |
+| `snippet.<id>` | `id`, **`label`**, `content` | `name` → `label` |
+| `snippet.<folder>` | iterable; **`snippet.<folder>.<item>`** with the item members | direct item read (§ 5.4) |
+| `item` | `id`, **`label`**, `content` (a folder) / `value` (an array input) | `name` → `label` |
+| `macro.<id>` | `id`, **`label`**, `content`, `prompt`, **`instruction`** | `name` → `label`; `instruction` readable |
+| `macro.<folder>` | iterable; `macro.<folder>.<item>` with the macro members | direct item read (§ 5.4) |
+| **`deliverable.<id>`** | `content` | **new** (§ 3.1) |
+| `run`, `profile` | as 25 | — |
+
+The retired roots (`data`, `bindings`, `variables`) stay retired; `result`/`results` as a root
+was never one.
+
+## 10. The record and the registries
+
+**Provenance record** (`provenance-record.md`; `recordStorageVersions` gains **8**). The
+`nodes` snapshot loses `forEach`, `aggregate` and `promptId`, gains `prompt` (the path) and the
+flow rows: `{ id, kind: if | case | for, expression | collection, body: [ids], ret, branch?:
+"<values>" | "else" | "none", count? }`. The `nodeOutputs` ids stay `nodeId` and
+`nodeId:itemId` (no nesting at 26 — no paths). A deliverable's row carries its `sources[]` and
+the composed text's hash (the aggregator's `agentOutputHash`, moved); `skippedDocuments` keeps
+its fixed-form reason and gains the branch spelling for a source skipped by a flow node
+(*"source node.triage took no branch"*); `failedDocuments`, `excludedMacros` and `excluded[]`
+unchanged in shape — an instance excluded by its `if` carries the gate's text as it carries the
+`when`'s today. **Unchanged:** `effectiveInputHash` (and its version), the node hash ladder
+(`NodeHashVersion` 6 — a label, an instruction and a header are declaration, and files hash
+whole), the stamp. The reason the storage version bumps is the flow rows and the pruned node
+that now has one (§ 1.5), not any hash.
+
+**Package-format registry.** `package-format-v26.md` — a full grammar, not a delta, as the 25
+spec is — with headings mirroring it: Objects in templates (+ `deliverable`, the item path, the
+scoped body node), **Flow nodes** (new), **Gates** (new; folds 25's "Conditions and references"),
+Formats (unchanged; the node), Snippets and macros (**the header**, folders one shape), Deliverables
+(sources, the composed read), Refused at 26, Validation, Migration (25 → 26). The generated
+schema (`schemas/package-format-v26.schema.json`, from `PackageFormatSchemaExport`); the 5–25
+schemas and vectors stay byte-identical. `conformance/v26/` — valid: `v26-minimal` (= the
+migrated 25 minimal, the baseline rule 25 settled), one vector per flow node (`for` over a
+folder, `for` over an array input, `if` with and without `else`, `case` with several values and
+`else`), a body node read inside its loop and the flow node read outside, `sources[]` mixing a
+`for` and a scalar, `deliverable.<id>.content` read by a node, a direct item read under an item
+`if`, a macro's own `if` with an instance `if` (AND), a header carrying every key, a pipe on a
+node and on an `if` node, two deliverables sharing a source; invalid: one per § 8 row, plus
+missing `ret`, a bare body-node read, a node in two bodies, a `case` value outside the set, a
+value in two branches, nested `for`, `while`, a node-valued collection, an item `if` reading a
+node, two homes for a field, `when` outside a `case`, a header on a prompt, `deliverable` in a
+condition, a `for` node piped, a non-prose source, a reader that a deliverable sources (the
+cycle); gates under `v25/` (*"… requires specVersion 26"*) for the header, the flow keys,
+`sources`, `if`, `deliverable.`. The generator is a `tests/ConformanceFixtureExport.V26.cs`
+partial beside the 25 one; `SHAPE_BLIND` gains the cross-field rows.
+
+**Agents registry (formats catalogue):** nothing. No format changes; `terms_subset`'s
+`failWith` is noted, not renamed.
+
+## 11. The validator's sentences
+
+The 25 sentences in `WorkflowPackageValidator.V25.cs` that name a retired key, and their fate.
+A sentence that names a thing 26 keeps is unchanged and not listed.
+
+| 25 sentence (abridged) | at 26 |
+|---|---|
+| *Node 'x' aggregates and must not declare {format \| prompt \| with \| onInvalid \| forEach}; an aggregator is structural.* | gone — no aggregator; `aggregate` meets § 8's retirement sentence |
+| *Aggregator node 'x' source '…' must be node.<id>* / *aggregates itself* / *references unknown node* | become the **source** sentences: *"deliverable 'd' source '…' must be node.<id>"*, *"… names unknown node"*, *"… sources a node that reads it"* (§ 3) |
+| *Node 'x' must declare a prompt; format … is …* / *names prompt 'p', which the package does not declare* | *"must name a prompt file"* / *"names prompt file '…', which the package does not hold"* (§ 4) |
+| *Node 'x' forEach '…' must be snippet.<folder> or input.<id>* / *fans snippet 'id', which is a file* / *fans undeclared input* / *fans input 'id', which is a {type}; only an array can be fanned* | become the **`for`** sentences on the flow node: *"loop 'l' iterates '…'; a loop iterates snippet.<folder> or input.<id>"*, *"… iterates snippet 'id', which is a file, not a folder"*, *"… iterates input 'id', which is a {type}; only an array"* (§ 1.1) |
+| *Node 'x' reads node 'y', which fans; aggregation is explicit — collect it through an aggregator node.* | *"node 'x' reads node 'y', which runs inside loop 'l'; read node.l"* (§ 1.2) |
+| *Node 'x' reads node 'y' across fans ('a' vs 'b'); two fans align only over one source.* | *"… across loops ('a' vs 'b'); body nodes of one loop read one another"* — the alignment rule is now the body |
+| *{condition} reads node.x, which aggregates; a condition decides before the sections compose — read a scalar node.* | the same sentence over **`deliverable.<id>`** and a `for` node (§ 2.1, § 3.1) |
+| *{condition} reads …; a folder item's when reads inputs only, so the folder's size is known at job start.* | *"… a folder item's if reads inputs only …"* — and the § 6 sentence for a `for` collection reading a node |
+| *Node 'x' aggregates and must not place macros; place them on the nodes it aggregates or on the deliverable.* | gone |
+| *{where} is placed twice ({position}, forItem '…'); one identity (id, at, forItem) once …* | *"… placed twice (at); one identity (id, at) once — two gates to one text is one instance with if: a or b"* (§ 2.4) |
+| *{where} anchors to fan item '…', but 'x' does not fan a snippet folder* / *which the folder … does not contain* | the gate's typing: *"… compares item.id, but node 'x' runs in no loop"* / *"… compares item.id to '…', which loop 'l' does not contain (items: …)"* (the walker's 25 sentence, carried) |
+| *Node 'x' fans snippet folder 'f'; items … carry no macro.m.prompt read …* (warning) | *"loop 'l' over 'f': items … carry no …"* — unchanged in meaning (#1067) |
+| *{deliverable} node '…' must be node.<id>* / *must reference an aggregator node* / *Deliverables 'a' and 'b' share node 'x': each deliverable needs its own aggregator.* | the source sentences above; the sharing rule is **gone** (§ 3) |
+| *{deliverable macro} reads node 'x', which fans; a deliverable macro reads scalar nodes and aggregators …* | *"… which runs inside loop 'l'; a deliverable macro reads scalar nodes, flow nodes and deliverable.<id>.content — place the macro on a body node to read its items"* |
+| *Deliverable 'd' must transitively include at least one forEach source: a deliverable with no fan has no consult. {remedy}* | *"… at least one loop (a for node) among its sources …"*; the remedy names the package's `for` nodes or says to add one (§ 3.2) |
+| *Node 'x' does not feed {the \| any} deliverable … add it to {the \| a} deliverable's aggregator.* | *"… name it in {the \| a} deliverable's sources, or read it from a node that is"* (§ 3.2) |
+| *Macro 'm' declares no instruction; required at specVersion 25.* | conditional on reachability (§ 2.5) |
+| the condition subjects *Node 'x' condition* / *Node 'x' macro 'm' condition* / *Snippet folder 'f' item 'i' condition* / *Deliverable 'd' condition* / *Deliverable 'd' macro 'm' condition* | *"… if"* in place of *"… condition"*, plus *"Macro 'm' if"*, *"Snippet 's' if"*, *"Flow node 'x' if"* / *"… case"* |
+| the walker's *reads node 'x' bare; read ….content or ….value* | stays for a bare read in text; a bare node **as a pipe operand** is the 26 spelling (§ 7.1) |
+| the walker's *pipes … through p; a renderer pipe renders a node's text (node.<id>.content)* | *"… a renderer pipe takes the node (node.<id> \| p)"* |
+
+New sentences are quoted where they arise: § 1.1–1.4, § 2.1–2.5, § 3, § 4, § 5.1, § 7.1.
+
+## 12. The editor
+
+The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
+what changes **shape**, and what is new — for a package at 26 (a ≤25 package keeps its panes
+untouched, as ≤24 does today):
+
+**Label only** (one `ConditionField` with a new resting label; the builder, operators and the
+`ConditionScope` are 25's): "Applies when" (node instance) → **if**; "Gated when" (deliverable
+instance) → **if**; "Produced when" (deliverable) → **if**, resting "Always produced" → "Always";
+"Included when" (folder item) → **if**; "Included when" on a text read's own guard (#1088/#1092)
+keeps its sense (the guard is text) and the row shows *"· and the macro's if"* beside it.
+
+**Shape:**
+
+- **"Runs when"** (the node's `when`) goes. The palette gains the three flow nodes; a node is
+  placed inside one by the node pane's new "in [sections ▾]" picker (which replaces the
+  new-node "for each" select), and the `if`/`case` pane holds the expression builder, the branch
+  table (the #1091/#1120 case table, now on a node) and a **`ret` picker** per branch — empty
+  until chosen, blocking publish (explicit init).
+- **The `forItem` picker** (node instance "— every item —") goes; its row is the gate, with the
+  `case item.id` spelling offered when the gate is a disjunction of `item.id` equalities.
+- **The aggregator node** goes from the palette; the Deliverables card's node select becomes an
+  **ordered sources list** (pick a node, arrows, remove); "Composed as" (#1081) names the sources;
+  "Delivers →" on the node pane goes, replaced by *"Sourced by deliverable 'd'"* on a node that
+  is one.
+- **The Prompts nav** goes at 26; the node pane holds the prompt editor, its Reads rows and its
+  preview (one `TemplatePreviewScope` owner). "Prompt 'p' reads" rows read "Node 'x''s prompt".
+- **Label, instruction, optional, default and `if`** of a snippet, folder item or macro are
+  edited where they are today (the macro pane's top fields, the folder item's row, the snippet
+  pane's header); their **write target is the file's header**, not the manifest — the editor
+  serialises the header and the text together, and a header the editor did not write (hand-
+  edited, unknown key) is shown as the validator's sentence.
+- **Folder items** show their kind (snippet or macro) from the header; `macro.<folder>` folders
+  appear in the Macros nav group with the Snippets' folder idiom (#1103's arrows).
+- **The upgrade button**: "Upgrade to specVersion 26" on any 25 package (below 25, the chain
+  runs 24 → 25 → 26, one publish, one notice naming the steps); a refusal (an unfillable `ret`,
+  § 13) is said in the toolbar and leaves the package as loaded.
+
+The macro pane is § 2.6's picture.
+
+## 13. Migration 25 → 26 (mechanical; byte-identical in what the model sees)
+
+| At 25 | At 26 |
+|---|---|
+| N nodes with `forEach: snippet.standards` | **one** `for` node `{ id: "standards", for: "item in snippet.standards", nodes: [the N], ret }` — the id is the collection's (`standards`, `prior_notes`, `sections`); if a node already holds it, `<collection>_loop`, named in the notice |
+| the `for`'s `ret` | the body node an aggregator sourced, when exactly one aggregator sources exactly one body node of the loop (every public package: `section_instructions`, `plan_section`, `consult_note_section`, `summarise_note`, …); **otherwise refused**, nothing applied: *"loop 'standards' has no single returned node; name ret"* |
+| a node with `when: C` | an `if` node `{ id: "<node>_if", if: C, then: { nodes: [node], ret: node.<node> } }`; sibling nodes sharing C fold into one `if` (`ret` = refused unless one — the public packages have no node `when`) |
+| `aggregate: ["node.a", "node.b"]` + `deliverables[].node: node.agg` | `deliverables[].sources: ["node.<loop of a>", "node.b"]` — a fanned source becomes its loop, a scalar stays; the aggregator node is removed |
+| a template's `node.agg.content` where a deliverable names `agg` | `deliverable.<id>.content` (v12's `extract-note-terms`, `extract-letter-terms`) |
+| a template's `node.agg.content` where **no** deliverable names `agg` and `agg` has one fanned source | `node.<loop>.content` (two-documents' `agg_sections` → `node.standards.content`); otherwise refused naming the aggregator |
+| `when` on an instance, a deliverable, a deliverable instance, a folder item | `if`, the expression unchanged |
+| `forItem: "hpi"` (+ `when: C`) | `if: "item.id == \"hpi\""` (`… and (C)`) |
+| `prompts[]` + `nodes[].prompt: <id>` | `nodes[].prompt: "<the prompt's file>"`; `prompts[]` removed; a prompt bound by two nodes → refused (none exist) |
+| `{{ node.x.content \| concept_bullets }}` | `{{ node.x \| concept_bullets }}` (25 sites) |
+| `index.json` `{ id, name, file, when? }` | `[{ id, file }]`; each item file gains the header `{ "label": <name>, "if": <when> }` |
+| `macros[]` `{ id, label, file, optional?, default?, instruction? }` | `{ id, file }`; the file gains the header with the rest |
+| a standalone snippet file | gains `{ "label": <id humanised> }` — the one place the migration **invents** a value, named in the notice (a snippet had no label at 25; the editor shows it for review) |
+| `item.name`, `.name` in templates | `.label` |
+
+Rules: a pure library rewriter beside the 24 → 25 one — `WorkflowPackageMigration25To26`
+(manifest and files in, manifest and files at 26 out, one notice per rewrite, refusals that
+apply nothing) — the editor's button and `scripts/migrate-workflow-package.cs` both run it
+(the script gains the 26 stage after its 25 one). Round-trip tests as
+`WorkflowPackageMigration24To25Tests`: the retired keys are gone, every gate is `if`, the
+migrated package validates at 26, the notices name every rewrite, and **a migrated prompt
+renders the bytes the 25 one did** (the `for` node's `.content` and `deliverable.<id>.content`
+are the aggregator's bytes; the renamed pipe operand renders the same text). Conformance:
+`v26-minimal-is-the-migrated-v25-minimal`. The seven public packages republish at 26 after the
+engine release carries it, as the 25 migration did (2026-10-17/18); `scripts/validate-workflow-package.cs`
+and `stamp-workflow-package.cs` read headers.
+
+## 14. Phasing
+
+The 25 shape, one layer per PR, each green on its own; the bump is the last sub-issue.
+
+- **A — format** (`Consultologist.PackageFormat`, the package-format registry): the flow nodes
+  and body scoping in the manifest records and the walk; `ret`; the gate key and the macro's
+  own `if`; the header reader; `sources[]` and the `deliverable` object; the prompt path; the
+  pipe operand; every § 8 refusal; the § 11 sentences; the migration rewriter (§ 13);
+  `package-format-v26.md`, the schema and vectors (§ 10) — `AcceptedSpecVersions` += 26 **last**
+  (behind the unchanged set until then, as A4 was).
+- **B — engine + provenance**: flow-node scheduling over the **same skeleton** (a `for` is the
+  fan it replaces; an `if`/`case` is the deciding set it replaces; body scoping in
+  `NodeDependencies`); `deliverable` composition from `sources[]` (`TryCompleteAggregatorsAsync`
+  becomes the deliverable's compose step; `pendingDeliverables` keyed by deliverable); the
+  header stripped before render; the prompt loaded by path; `ApplyPipe` on the object; record
+  storage 8 (§ 10); `SupportedSpecVersions` += 26; an engine release.
+- **C — editor**: § 12; the one-button upgrade.
+- **The bump** (the 26 `#1018`, filed from this doc): both sets and `Templates.NewestSpecVersion`
+  += 26 together; the registry lists 26; the seven packages republish; the pins move.
+- **Siblings:** #1063 audio (engine + Create page) rides B's release or its own; #1144
+  (`array<text>` element order) is an engine and provenance matter, **not a 26 item**; the
+  Milestone 31 editor rows keep landing at 25 and are re-keyed by C.
+
+**Done when** (#1104): this doc exists with a decision or a named open question for every row of
+the port list — it does; each Milestone 30 issue links its section; the bump issue is filed.
+
+## 15. Deferred, by name
+
+- **Dynamic fan sizes — the scheduler redesign** (#1062; § 6): a count that changes during a
+  run; the precondition for everything below it.
+- **`while`** — a body repeated until a computed check holds, bounded; its per-pass reads and
+  record shape open on #1100 (§ 6).
+- **A `for` over a node's value**; **a folder item's `if` reading a node** (§ 6).
+- **A `for` inside a `for`** — rows take paths (§ 6).
+- **`for … until`**, **`let`** (§ 1.4, § 6).
+- **Placing a macro-folder item** as an instance — the id shape, the identity, reachability
+  through a folder (§ 5.3).
+- A per-node alias map for one prompt with different upstream nodes (v25 § 2) — nothing asks for
+  it (§ 4).
+- **Enum value labels** — #1061, no planned version (§ 7.3).
+- A package-defined header key set; `schemas: { refs, custom }` grouping — "keys do not grow
+  dots" (§ 5.1).
+- The `retry` policy's repair message; `onInvalid: retry` looping at all (today it fails as
+  `fail` does — a bounded repeat is `while`'s cousin and waits with it).
+- Labels on a classification format's answer values; localisation (#1061's out-of-scope).
+- Carried from 25 where still open: a schemaless `type: json` input; `extends` for a
+  package-local format; a `boolean` catalogue format; strict content-addressed agents.
