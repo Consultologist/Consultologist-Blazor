@@ -1351,9 +1351,8 @@
                                                 <span class="muted-text renderer-user__guard">included when <code>@rendererGuard</code></span>
                                             }
                                         </span>
-                                        @* #1138 § 4: the deliverables that end up carrying the rendered text — the reading
-                                           node's own, and those whose aggregator aggregates it (one hop, as the Deliverables
-                                           pane composes); a macro's readers and placements count. *@
+                                        @* #1138 § 4: the deliverables that end up carrying the rendered text — downstream of the
+                                           reading node through prompt reads and aggregators; a macro's readers and placements count. *@
                                         <span class="result-macro-row renderer-user__carried">
                                             <span class="muted-text">carried by</span>
                                             @if (rendererUser.Deliverables.Count > 0)
@@ -6290,10 +6289,11 @@
     }
 
     /// <summary>
-    /// #1138: the deliverables that carry what a template renders — for a prompt, its node's own
-    /// deliverables and those whose aggregator aggregates the node (one hop, as the Deliverables
-    /// pane composes); for a macro text or instruction, the nodes reading or placing the macro
-    /// and the deliverables placing it; for a snippet or folder item, the prompts reading it.
+    /// #1138: the deliverables that carry what a template renders — for a prompt, its node;
+    /// for a macro text or instruction, the nodes reading or placing the macro (and the
+    /// deliverables placing it); for a snippet or folder item, the prompts reading it — then
+    /// everything downstream of those nodes: the nodes whose prompts read them and the
+    /// aggregators aggregating them, transitively, and the deliverables of every node reached.
     /// Distinct, in id order.
     /// </summary>
     private IReadOnlyList<(string Id, string Label)> DeliverablesCarrying(PF.WorkflowDerivedEdges.WalkedTemplate template)
@@ -6335,11 +6335,27 @@
                 break;
         }
 
-        foreach (var nodeId in nodeIds.Distinct(StringComparer.Ordinal))
+        // Downstream of each reading node: the nodes whose prompt reads it and the aggregators
+        // that aggregate it, transitively (test/general carries a section draft through two
+        // prompt reads before the aggregator), then the deliverables of every node reached.
+        var visited = new HashSet<string>(StringComparer.Ordinal);
+        var queue = new Queue<string>(nodeIds);
+        while (queue.TryDequeue(out var nodeId))
         {
-            // The deliverable's own node, or its aggregator's sources — node.<id> at 25, node:<id> before.
-            results.AddRange(EffectiveResults.Where(r => NodeIdOf(r.Node) == nodeId
-                || DeliverableAggregateSources(r).Any(source => NodeIdOf(source) == nodeId || source == $"node:{nodeId}")));
+            if (!visited.Add(nodeId))
+            {
+                continue;
+            }
+
+            results.AddRange(EffectiveResults.Where(r => NodeIdOf(r.Node) == nodeId));
+            foreach (var downstream in EffectiveNodes)
+            {
+                var aggregates = downstream.Aggregate?.Any(source => NodeIdOf(source) == nodeId || source == $"node:{nodeId}") == true;
+                if (aggregates || PromptWalkOf(downstream.Id)?.References.Nodes.ContainsKey(nodeId) == true)
+                {
+                    queue.Enqueue(downstream.Id);
+                }
+            }
         }
 
         return results
