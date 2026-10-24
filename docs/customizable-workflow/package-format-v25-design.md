@@ -520,10 +520,11 @@ reads a node not in the scope.
 Enum values stay snake_case (`^[a-z][a-z0-9_]*$`): quoted literals in a 25 `when` (§ 16), a
 classification's answer set, printable where patient text is not. Revision 1 and the first
 cut of revision 2 added an optional free-text **label** per value (`{ value, label }`, with
-`input.<id>.label` on the object and the Create page showing the label). That is **moved to
+`input.<id>.label` on the object and the Create page showing the label). That was **moved to
 v26** (2026-10-12): it is independent of everything else in this version, it is the one
-change that touches the Create page's rendering of an input, and 25 is large enough. At 25
-`values` entries are strings, as at 24, and `input.<id>` has no `.label` member.
+change that touches the Create page's rendering of an input, and 25 is large enough. On
+2026-10-24 it left v26 as well: #1061 holds the shape and sits in no milestone and no planned
+version. At 25 `values` entries are strings, as at 24, and `input.<id>` has no `.label` member.
 
 ## 9. A form input may be an object
 
@@ -1325,7 +1326,7 @@ neither meaning, is `MacroChoice`. No release is needed; the engine's vendored r
 ## Deferred, by name
 
 - **Enum value labels** — `{ value, label }` entries, `input.<id>.label`, the Create page
-  showing the label — **v26** (§ 8).
+  showing the label — no planned version (#1061; § 8), out of v26 since 2026-10-24.
 - A per-node alias map for one prompt with different upstream nodes (§ 2).
 - **Macro folders** (`macro.<folder>`): the walker reads them, but the manifest has no shape
   for a folder of macros at 25 (`macros[]` is a flat library); a shape waits for a package
