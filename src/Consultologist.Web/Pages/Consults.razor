@@ -1239,7 +1239,8 @@
       {
         @* Bound to the input's own property: Blazor's expression formatter
            cannot parse an indexer whose argument is a property access. *@
-        <FluentTextArea @bind-Value="input.Value"
+        <FluentTextArea @ref="input.TextArea"
+                        @bind-Value="input.Value"
                         Placeholder="@input.Placeholder"
                         Rows="@input.Rows" />
         @* #561: the snippet road — rendered only when the library is
@@ -1486,6 +1487,10 @@
   // #683: set once the user tries to submit, so empty required fields can be
   // called out inline. There is no other form-touched state.
   private bool attemptedSubmit;
+
+  // #1143: the scalar whose text area is focused after the next render — the
+  // row a clinician just chose to type.
+  private ScalarInput? focusScalar;
   // #434: set beside aiRequestError when the refusal left a row in History —
   // a well-formed request the package produced nothing for. Cleared with it.
   private string? refusedJobId;
@@ -1555,6 +1560,19 @@
 
   [Parameter]
   public string? JobId { get; set; }
+
+  protected override async Task OnAfterRenderAsync(bool firstRender)
+  {
+    if (focusScalar is { } scalar)
+    {
+      focusScalar = null;
+      // FluentInputBase.FocusAsync is async void; the element's own is awaitable.
+      if (scalar.TextArea?.Element is { } area)
+      {
+        await area.FocusAsync();
+      }
+    }
+  }
 
   protected override async Task OnInitializedAsync()
   {
@@ -2654,6 +2672,7 @@
 
     var refusals = new List<string>();
     var warnings = new List<string>();
+    var attachedBefore = field.Documents.Count;
 
     try
     {
@@ -2724,6 +2743,13 @@
       field.IsReading = false;
       field.FileError = refusals.Count > 0 ? string.Join(" ", refusals) : null;
       field.FileWarning = warnings.Count > 0 ? string.Join(" ", warnings) : null;
+      // #1143: the documents took the unchosen row's place. A drop refused in
+      // full keeps the row — the refusal shows under the field and the retry
+      // is one drop away.
+      if (field.Documents.Count > attachedBefore)
+      {
+        field.DismissChooser();
+      }
     }
   }
 
@@ -2772,6 +2798,7 @@
         outcome.PageCount,
         outcome.Text!));
       field.LinkUrl = "";
+      field.DismissChooser();
 
       // #800: the link resolved to a document, but one carrying too little prose
       // to be a referral — warn without discarding it.
@@ -3620,6 +3647,12 @@
     /// </summary>
     public bool? Flag { get; set; }
 
+    /// <summary>
+    /// #1143: the rendered text area, when this scalar is one — captured so the
+    /// row a clinician just chose to type can be focused after the render.
+    /// </summary>
+    public FluentTextArea? TextArea { get; set; }
+
     public bool IsTouched => Type == WorkflowInputTypes.Boolean ? Flag.HasValue : !string.IsNullOrWhiteSpace(Value);
 
     /// <summary>What this input sends, or null when nothing was chosen — or, for a number, nothing parseable.</summary>
@@ -4022,6 +4055,52 @@
     public List<LoadedDeliverable> Loaded { get; } = new();
     public bool HasLoaded => Loaded.Count > 0;
 
+    // #1143: the unchosen row — "+ Add entry" asked for one more entry whose
+    // kind (typed, or documents) is not yet chosen. Not a ConsultInputNode: it
+    // is absent on the wire (Supplied, IsFilled and Problem never see it), and
+    // the markup draws it as the two doors. Only a several (array<text>) input
+    // ever has one; every other array adds a typed row at once.
+    private bool wantsChooser;
+
+    /// <summary>
+    /// The unchosen row is on screen: asked for, or being filled (the reading
+    /// spinner sits in it), or there is nothing else — an input never shows
+    /// zero rows.
+    /// </summary>
+    public bool ShowsChooser =>
+      TakesSeveralDocuments && (wantsChooser || IsReading || (Rows.Count == 0 && !HasFile && !HasLoaded));
+
+    /// <summary>Its Remove is offered only when removing it leaves something behind.</summary>
+    public bool ChooserIsRemovable => Rows.Count > 0 || HasFile || HasLoaded;
+
+    /// <summary>"+ Add entry": the unchosen row for a several input; a typed row at once for any other array.</summary>
+    public void AddEntry()
+    {
+      if (TakesSeveralDocuments)
+      {
+        wantsChooser = true;
+      }
+      else
+      {
+        Root.AddRow();
+      }
+    }
+
+    /// <summary>The text door: the unchosen row becomes the last typed row.</summary>
+    public ConsultInputNode ChooseText()
+    {
+      wantsChooser = false;
+      return Root.AddRow();
+    }
+
+    public void DismissChooser() => wantsChooser = false;
+
+    // Numbering runs through every kind in the wire's order (EffectiveValue:
+    // typed → documents → previous-run), then the unchosen row.
+    public int DocumentOrdinal(int index) => Rows.Count + index + 1;
+    public int LoadedOrdinal(int index) => Rows.Count + Documents.Count + index + 1;
+    public int ChooserOrdinal => Rows.Count + Documents.Count + Loaded.Count + 1;
+
     // The single-document view the markup still renders (#429 PR A keeps it
     // until the multi-file input lands).
     public string? FileName => Documents.Count > 0 ? Documents[0].FileName : null;
@@ -4117,6 +4196,7 @@
       FileError = null;
       FileWarning = null;
       AcknowledgedShort = false;
+      wantsChooser = false;
     }
 
     /// <summary>
@@ -4134,6 +4214,7 @@
       Root.CopyFrom(previous.Root);
       Documents.AddRange(previous.Documents);
       Loaded.AddRange(previous.Loaded);
+      wantsChooser = previous.wantsChooser;
     }
 
     /// <summary>
