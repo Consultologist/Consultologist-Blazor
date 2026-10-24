@@ -208,6 +208,21 @@ public class TemplatesV25RenderersPaneTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void UsedBy_FollowsPromptReadsAndAggregators_ToTheCarryingDeliverable()
+    {
+        // meds pipes extract; assessment reads node.meds.value; all aggregates assessment; consult delivers all.
+        var package = EditorFixtures.V25();
+        var files = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+        files["prompts/meds.md"] = files["prompts/meds.md"] + "\n{{ node.extract.content | concept_bullets }}";
+        var page = OpenRenderer("concept_bullets", package with { Files = files });
+
+        var row = Assert.Single(page.FindAll(".renderer-user"));
+        Assert.Equal("Prompt 'meds'", row.QuerySelector(".renderer-user__template")!.TextContent.Trim());
+        var carried = Assert.Single(row.QuerySelectorAll(".renderer-user__deliverable"));
+        Assert.Equal("Consultation note", carried.TextContent.Trim());
+    }
+
+    [Fact]
     public void UsedBy_HasNoGuard_WhenTheReadIsBare_AndSaysWhenNoDeliverableCarriesIt()
     {
         var page = OpenRenderer("concept_context", V25WithARenderedRead());
