@@ -599,6 +599,17 @@ POST /api/ConsultGenerationJobs
 > empty referral. The setup form still attaches one file per input; the
 > multi-file picker is #429's.
 
+> **The Create page's rows (#1143, 2026-10-24).** A several input is one
+> numbered list of rows, each typed, a document, or a previous-run
+> deliverable. A new row opens *unchosen* — two doors side by side,
+> "Click to enter text" and "Drop documents here, or browse…" — and the
+> package opens with row 1 unchosen; an unchosen row is absent on the
+> wire, so it never holds the run. The drop zone lives only in that row
+> ("+ Add entry" brings it back), and each dropped file becomes one
+> document row. The order sent is still typed → documents → previous-run,
+> and the rows show in that order; a document row among the typed rows
+> is #1144.
+
 ### Questionnaire file (#991, 2026-10-17)
 
 An object input declared `expectedContent: form` takes a **questionnaire response saved as a

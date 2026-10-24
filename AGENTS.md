@@ -151,7 +151,8 @@ the DOM disagrees.* Every input slot is a `<label>`; a click whose target the
 re-render removed reaches the label with no interactive target, and the
 browser runs the label's activation: a synthetic click on the first labelable
 descendant (a chip's Remove — #510; "+ Add entry" once the last row is gone —
-#1137). `@onclick:stopPropagation` stops Blazor's bubbling, not this.
+#1137; the unchosen row's text door — #1143). `@onclick:stopPropagation` stops
+Blazor's bubbling, not this.
 `FluentButton.OnClick` cannot carry the modifier, so wrap the button in a
 `<span @onclick:preventDefault="true" @onclick:stopPropagation="true">` —
 never a wrapper that holds a file input, checkbox, select or date input. bUnit

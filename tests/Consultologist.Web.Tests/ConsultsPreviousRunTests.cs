@@ -62,6 +62,20 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
                 Arg.Do<IReadOnlyDictionary<string, IReadOnlyList<ConsultInputRef>>?>(value => sentRefs = value))
             .Returns(new ConsultGenerationJobStartResponse("job-1", "https://example/status"));
 
+    // #1143: a several input's "+ Add entry" opens an unchosen row; typing is a second
+    // click on its text door — and the first row is already unchosen.
+    private static void AddTextRow(IRenderedComponent<Consults> page)
+    {
+        page.FindAll(".input-field__add").FirstOrDefault()?.Click();
+        page.FindAll(".input-field__choose-text").FirstOrDefault()?.Click();
+    }
+
+    private static IReadOnlyList<IElement> TypedRows(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row:not(.input-field__row--unchosen)");
+
+    private static IElement? Chooser(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row--unchosen").SingleOrDefault();
+
     private static IRenderedComponent<Consults> Rendered(BunitContext ctx)
     {
         var page = ctx.Render<Consults>();
@@ -170,7 +184,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         CaptureSubmit();
         var page = Rendered(this);
         page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
 
         ChooseNote(page, 1);
@@ -193,13 +207,13 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         // longer hides the typed rows underneath it — both render at once.
         WithRuns();
         var page = Rendered(this);
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
         page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
 
         ChooseNote(page, 1);
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
 
-        Assert.NotEmpty(page.FindAll(".input-field__row"));
+        Assert.NotEmpty(TypedRows(page));
         Assert.NotEmpty(page.FindAll(".input-field__loaded"));
     }
 
@@ -211,7 +225,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         WithRuns();
         var page = Rendered(this);
         page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
-        page.Find(".input-field__add").Click();
+        AddTextRow(page);
 
         ChooseNote(page, 1);
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
@@ -246,5 +260,58 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         page.FindAll(".input-field__loaded fluent-button").First(b => b.TextContent.Contains("Remove")).Click();
 
         page.WaitForAssertion(() => Assert.Empty(page.FindAll(".input-field__loaded")));
+    }
+
+    // ----- #1143: loaded chips are rows of the same list ------------------------
+
+    [Fact]
+    public void RemovingTheLastLoadedDeliverable_BringsTheUnchosenRowBack()
+    {
+        WithRuns();
+        var page = Rendered(this);
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
+        Assert.Null(Chooser(page));
+
+        page.FindAll(".input-field__loaded fluent-button").First(b => b.TextContent.Contains("Remove")).Click();
+
+        page.WaitForAssertion(() => Assert.Empty(page.FindAll(".input-field__loaded")));
+        Assert.NotNull(Chooser(page));
+        Assert.Empty(page.FindAll("fluent-button[title='Remove entry']"));
+        Assert.Empty(page.FindAll(".input-field__add"));
+    }
+
+    [Fact]
+    public void ALoadedChip_IsNumberedAfterTheTypedRows()
+    {
+        WithRuns();
+        var page = Rendered(this);
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
+
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
+
+        Assert.Equal("2.", page.Find(".input-field__loaded .input-field__row-number").TextContent.Trim());
+        Assert.Equal(new[] { "1.", "2." }, page.FindAll(".input-field__row-number").Select(n => n.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void AddEntry_AfterALoadedDeliverable_AppendsTheUnchosenRowLast()
+    {
+        WithRuns();
+        var page = Rendered(this);
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
+        Assert.Null(Chooser(page));
+
+        page.Find(".input-field__add").Click();
+
+        var chooser = Assert.IsAssignableFrom<IElement>(Chooser(page));
+        Assert.Equal("2.", chooser.QuerySelector(".input-field__row-number")!.TextContent.Trim());
+        Assert.NotNull(chooser.QuerySelector("fluent-button[title='Remove entry']"));
+        var ordered = page.FindAll(".input-field__loaded, .input-field__row--unchosen");
+        Assert.Contains("input-field__row--unchosen", ordered[^1].ClassList);
+        Assert.Empty(page.FindAll(".input-field__add"));
     }
 }
