@@ -35,13 +35,22 @@ stays with the engine.
   #433) with `IOutputContractResolver` as what it asks of a catalog.
 - The two exceptions format code throws: `WorkflowPackageSpecVersionException`,
   `WorkflowPackageContentException`.
+- The concept list as the engine reads and renders it (#1138): `ClinicalConcept`,
+  `ConceptOutputContract` (the typed read of a `concept_list` node's output,
+  with `ConceptOutputContractException`), `ConceptRenderers` (`Context` and
+  `Bullets` — the byte-stable renderings the `concept_context` and
+  `concept_bullets` pipes produce), `TemplatePipes.Engine` (those pipes as
+  `TemplateRenderer.Render` takes them) and `ConceptSamples` (the one
+  concept-list fixture the editor's renderer pane and the tests render). The
+  engine and the editor render through the same functions, so the editor's
+  sample is the engine's bytes.
 
 ## With the engine
 
 `WorkflowPackage` and `WorkflowResolvedResult` (the *resolved* package),
 the wire responses and publish request, `WorkflowPackageBlocks` (block
 expansion over the resolved package), `WorkflowPackageNaming` (account
-prefixes and access — #447's territory), `ConceptOutputContract`, the
+prefixes and access — #447's territory), the
 listings, the store and its `SupportedSpecVersions`, the publisher, the
 registry writer, lineage, the pin resolver, the public chain, and
 `OutputContractCatalog` (which implements `IOutputContractResolver`).
