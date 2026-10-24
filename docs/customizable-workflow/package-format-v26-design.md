@@ -369,3 +369,268 @@ Two things the picture fixes that the text above states: the "Prompt 'patient_le
 becomes "Node 'patient_letter''s prompt" at 26 (§ 4), and the `label`, `instruction` and `if`
 fields at the top edit the macro file's header (§ 5), not manifest keys — the pane does not
 change, its write target does.
+
+## 3. The deliverable names what it composes
+
+*(#1101; #1065 and #1067 survive the fold.)* At 25 a deliverable names one aggregator node,
+and the aggregator exists to be named: it has no format, no prompt, no `with`, may not place
+macros, and two deliverables may not share one. At 26 the aggregator is gone and the deliverable
+carries its **`sources[]`**:
+
+```json
+{ "id": "consult", "label": "Consultation note",
+  "sources": [ "node.sections", "node.patient_header" ],
+  "if": "input.encounter_kind == \"new_patient\"",
+  "check": "node.note_coverage",
+  "macros": [ { "id": "closing", "at": "append" } ],
+  "signature": true }
+```
+
+- **`sources[]`** is ordered. Each entry is `node.<id>` naming a node whose text is prose — a
+  prose-format node, a `for` node whose returned node is prose (contributing its items'
+  composed outputs in item order), or an `if`/`case` node whose every branch returns prose. A
+  node of an `object`, `enum`, `array` or `concept_list` format is refused as a source (*"deliverable
+  'consult' source node.extract is a concept_list; a deliverable composes prose — read its
+  .value from a prose node"*); it reaches the deliverable through a prose node that reads it. A
+  `check` node is never a source. **Two deliverables may share a source** — the 25 "each
+  deliverable needs its own aggregator" rule was about the aggregator's one-to-one identity and
+  goes with it (`example-two-documents`' note and letter stay distinct by their sources).
+- **Composition order** is unchanged: prepended deliverable macros → the sources in list order
+  (a `for` source's items in item order; a 26 source boundary is the 25 part boundary — the
+  bytes a reader hashes do not move) → appended macros → the signature. The engine's
+  `ComposeDeliverable` takes a source list where it took an aggregator's; the part model
+  (`ForEachPart`/`ScalarPart`) is the same.
+- `aggregate` on a node and `deliverables[].node` are refused with the replacement
+  (*"deliverable 'consult' declares node, which is retired at specVersion 26; name its sources"*;
+  *"node 'assemble_note' aggregates, which is retired at specVersion 26; a deliverable names its
+  sources"*).
+
+### 3.1 Reading the composed text: `deliverable.<id>.content`
+
+The read 25 admitted on an aggregator (#1065 — a prompt may read `node.<agg>.content`, the
+composed sections *before* deliverable macros and the signature) survives as a **sixth template
+object**: **`deliverable.<id>.content`**. Decision 2026-10-24 over the alternative "the `for`
+node's `.content` only": a deliverable may mix sources (`example-v12-constructs`' `assemble_note`
+composes a fan and a scalar), and the composed text of a mixed list has no other name; the one
+new object costs one closed member set.
+
+- Members: **`.content`** only. No `.value` (*"deliverable 'consult' composes text; it has no
+  value"*). Refused in any condition — a deliverable's `if`, an instance's, an item's, an `if`
+  or `case` node's — with the 25 sentence carried: *"a condition decides before the sections
+  compose; read a scalar node"*.
+- A read is an **edge**: the reading node waits on every source (and on the sources' own gates
+  being judged); a reader of a deliverable that is skipped by its `if` reads null, as a reader
+  of a skipped node does. A deliverable may not source a node that reads it — the cycle check
+  (#1067's reference rule) takes `deliverable.<id>` as a vertex.
+- Hashes: the composed text's hash is what it is today (the aggregator's `agentOutputHash` over
+  the composed bytes, now stamped on the deliverable's row — § 10); a reader's downstream-read
+  hash covers it as it covered the aggregator's.
+- A `for` node whose list is a deliverable's *only* source has the same bytes as that
+  deliverable's `.content`; a template may read either. The migration prefers the deliverable
+  object where a deliverable exists (§ 13).
+
+### 3.2 Reachability
+
+#1067's two rules keep their meaning with the aggregator gone:
+
+- **Every node feeds a deliverable**: a node must transitively reach a deliverable — through a
+  `sources[]` entry, or through a read by a node that does, or by being a body node returned or
+  read inside a flow node that does. The 25 sentence *"Node 'x' does not feed any deliverable …
+  add it to a deliverable's aggregator"* ends *"… name it in a deliverable's sources"*.
+- **Every deliverable includes a loop**: a deliverable's sources transitively include at least
+  one `for` node — the "no fan, no consult" rule, which at 25 said *"must transitively include
+  at least one forEach source"*. `example-two-documents`' `agg_sections` (an aggregator no
+  deliverable names, read by a prompt) is the shape that shows why the rule sits on the
+  deliverable and not on the aggregator: it was never a deliverable's, and at 26 it is simply
+  the `for` node's list, read as `node.sections.content`.
+
+`check` keeps its third state — a deliverable is produced, skipped (its `if`), or **failed**
+(its check) — and `failedDocuments` keeps its shape. The Deliverables card's node select becomes
+an ordered sources list; "Composed as" (#1081) stays and now names the sources; "Delivers →" on
+the aggregator's node pane goes with the aggregator.
+
+## 4. A node names its prompt file
+
+*(#1102.)* `nodes[].prompt` is a **file path** (`"prompts/assessment.md"`); `prompts[]` is gone.
+The 25 model already says it — a template that reads a node is, in effect, that node's prompt;
+the declaration added an id for the node to point at and nothing else.
+
+- `prompts[]` is refused with the replacement (*"prompts is retired at specVersion 26; a node
+  names its prompt file"*); a `prompt` value that is a declared id rather than a path is refused
+  naming the file (*"node 'assessment' names prompt 'assessment'; at specVersion 26 prompt is the
+  file: prompts/assessment.md"*). A path is relative to the package root, under any folder; a
+  prompt file carries **no header** (§ 5) — a prompt has no label, no instruction and no gate of
+  its own (its node's `if`, if any, is a flow node).
+- **Sharing is a snippet.** Two nodes that want one text read one snippet from two one-line
+  prompts (`{{ snippet.section_prompt.content }}`), or hold two files. **Finding (2026-10-24):**
+  no public package shares a prompt — every prompt id is one node's, because 25's migration
+  refused *"a prompt bound differently by two nodes"* and v12's `extract-terms` was split then.
+  The deferred per-node alias map (v25 design § 2) stays deferred; nothing asks for it.
+- The walk's subjects rename: *"Prompt 'p' reads …"* becomes *"Node 'x''s prompt reads …"*;
+  the condition and read rows in the editor follow (§ 12). `WorkflowDerivedEdges.WalkAll`
+  resolves `node.Prompt` as a file instead of through `promptsById`; the engine's
+  `RunPromptNodeActivity` loads by path.
+- The editor's Prompts nav goes at 26 (it stays for ≤25 packages); the node pane holds the
+  prompt editor and its preview, and `TemplatePreviewScope` has one owner per prompt — the
+  "preview through the first node using it" seam (#1095) has nothing left to choose.
+
+## 5. A file says what it is — the JSON header
+
+*(#1105; #1099, #1094 and #1116 are written against it.)* The label, the instruction, the
+option and the gate of a snippet or a macro live **in the file**, in a header the format reads
+and Scriban never sees. The manifest keeps what only the manifest can know: the id, the order,
+the placements, the nodes. Decision 2026-10-24 over #1094's `{ file, label, when }` declaration
+object (2026-10-19): one home per fact, and the file is the one that travels with the text.
+
+### 5.1 The header
+
+```
+{
+  "label": "Assessment and plan",
+  "if": "input.note_type == \"consult\"",
+  "instruction": "If the plan prescribes letrozole, …"
+}
+The text begins on the line after the closing brace.
+```
+
+- The first line of the file is exactly `{`; the header ends at the first line that is exactly
+  `}`; between them is one JSON object. A BOM and CRLF are tolerated. The text is everything
+  after the closing line (one newline consumed).
+- A snippet or macro file with no header is refused naming the missing field (*"snippets/
+  standards/hpi.md has no header; a snippet file opens with { "label": … }"*). A header on a
+  **prompt** file is refused (a prompt has none of these facts).
+- **Closed key set.** Snippet: `label` (required), `if`. Macro: `label` (required),
+  `instruction` (required where read inline, § 2.5), `optional`, `default`, `if`. Anything else
+  is refused naming the key; the reserved names `id`, `file`, `content`, `value`, `prompt` are
+  refused by name (they are the object's members, not the file's facts).
+- **One home.** A fact in the header *and* the manifest (`index.json` `name`, `macros[].label`)
+  is refused naming both — there is no fallback order to learn.
+- **Scriban never sees it.** The text that renders is the text after the header; `{{` in a
+  header value is a string. The **stamp is unchanged**: files hash whole, header included — a
+  label change is a text change, which is what it is.
+- The keys stay flat: no `gate: { if }`, no `schemas: { refs, custom }` grouping — "keys do not
+  grow dots" — and the header's key set is closed at 26 (a package-defined key set would be a
+  later bump).
+
+### 5.2 What moves, what stays
+
+| 25 | 26 |
+|---|---|
+| `index.json` item `{ id, name, file, when? }` | `[{ id, file }]` — an **ordered** list; `name` → the file's `label`, `when` → the file's `if` |
+| `macros[]` entry `{ id, label, file, optional?, default?, instruction? }` | `{ id, file }`; the rest in the file's header, plus `if` (§ 2.1) |
+| `snippets` `"<id>": "<file>"` / `"<dir>/"` | unchanged — the id → file (or folder) map; a standalone snippet's `label` and `if` in its header |
+| `item.name`, `snippet.<id>.name`, `macro.<id>.name` | **`.label`** — `name` refused with the replacement |
+| — | `macro.<id>.instruction` readable (what the model will be told, as text) |
+
+The template objects' member sets (§ 9) rename `name` to `label` everywhere — one word for the
+human-facing name, the word the manifest, the editor and the Create page already use for inputs
+and deliverables. The #1100 read tables wrote `item (id, name)`; they read `item (id, label)`
+at 26.
+
+### 5.3 Folders — one shape for snippets and macros (#1099)
+
+A folder is a directory with an `index.json` holding the ordered `[{ id, file }]` list; **its
+items are snippets or macros by what their headers say** — an `instruction` key makes a macro.
+A macro folder is declared as a snippet folder is: `"macros": { "closing": "macros/closing.md",
+"section_notes": "macros/section_notes/" }` (the `macros` map takes a folder value at 26, as
+`snippets` does at 25). Decided on #1099 (2026-10-19): the index carries the item order — the
+order of `{{ for m in macro.section_notes }}` and of any per-item placement — and #1103's
+arrows reorder it.
+
+The issue's two open questions, settled here:
+
+- **Instruction per item**, in each item's header — not a folder-level default. A macro's
+  instruction is what the model is told for *that* text; a shared sentence over different texts
+  is the kind of thing that reads right once and wrong on the third item. The editor may offer
+  "copy to the other items".
+- **Read, not placed, at 26.** `macro.<folder>` is iterated (`{{ for m in macro.<folder> }}`,
+  each `m` with `.id`, `.label`, `.content`, `.prompt`, `.instruction`) and an item is read
+  directly (§ 5.4); placing a folder item as an instance (`macros: [{ id: "section_notes.hpi",
+  at: "append" }]`) is **deferred by name** until a package needs it — the id's shape
+  (`<folder>.<item>` or flat), the placement's identity and reachability through a folder are
+  three decisions that want a real use. Reachability (#1067) for a folder item is through reads.
+
+### 5.4 A folder item readable directly (#1116)
+
+`snippet.<folder>.<item>` and `macro.<folder>.<item>` resolve to the item with the folder's
+member set — `.id`, `.label`, `.content`; `.prompt` and `.instruction` for a macro item. The 25
+refusal *"reads snippet.<folder>.<item>; a folder is iterated"* goes. An undeclared item is
+refused naming the folder's items. The read is recorded as `<folder>/<item>`
+(`WorkflowDerivedEdges.SnippetItemKey`), is an edge like any snippet read, and **the item's `if`
+governs it** (#1094): an item gated off renders empty where it is read directly, exactly as it
+is filtered out of every loop over its folder. `item.*` is refused in a standalone snippet's
+`if` and evaluated with the item's own id bound in an item's `if`.
+
+A gated-off snippet or item that is a prompt's *only* content leaves an empty prompt; the desk
+says so (the 25 "empty prompt" case). A gated snippet is still **used** — the gate is a run-time
+fact, reachability is a publish-time one.
+
+## 6. The next bump, by name — dynamic fan sizes and the scheduler redesign
+
+*(#1062; and the four flow shapes § 1.4 refuses.)* The invariant 25 and 26 share: **a loop's
+length is known when the job starts.** A folder's items are filtered by `if`s over inputs, an
+array input's elements are counted, `WorkflowPackageBlocks.Resolve` lays out the rows, and
+`TotalBlockCount` is written once on the entity and never derived (#176). The record's
+`collections` rosters, the SSE `snapshot`'s total and the progress bar all rest on that scalar.
+
+26 keeps it, by decision (2026-10-24), because no public package needs a count that changes
+during a run and the redesign is a release of its own: the orchestrator's totals
+(`totalBlockCount`, `totalNodeCount`) become per-loop scalars resolved when a loop's collection
+settles; the entity takes a resolution event (*"N sections, now M"*); the SSE stream carries it
+and the Create page's progress re-totals; an item excluded by a condition that read a node is a
+named state, *skipped by condition*, recorded with the condition's text and the value it read; a
+`for` over a `for` node's list gives item rows a **path** (`sections/hpi/paragraphs/2`) and SSE
+block ids carry it; the record-storage version bumps for the new rows and the event. That is
+the precondition for every shape 26 names and refuses:
+
+| shape | why it waits |
+|---|---|
+| a `for` over `node.<id>.value` (a node-valued collection) | the count is the node's output |
+| a folder item's `if` reading `node.<id>` | the count is a node's output (#1062's own ask; its `when` is `if` now, and "the aggregator keeps order over the resolved set" reads "the `for` node's list keeps item order") |
+| a `for` inside a `for` | rows take paths; one scalar per loop (#1062's out-of-scope "a fan of fans" is this shape — it is the goal there, not an exclusion) |
+| `while` — repeat a body until a computed check holds, bounded | passes are a count that grows; open on #1100: what a template reads per pass (`.content` = the last pass's returned node; `.passes`?), the record per pass, `onInvalid: retry`'s relation to it |
+| `for … until` (early exit) | a count that shrinks |
+| `let` (a computed value; the reduce over a loop's list) | its one use reads a dynamic list |
+
+Each is refused at 26 with a sentence that names the redesign (§ 1.4), and each is a row of the
+next design doc, not of this one.
+
+## 7. The smaller sections
+
+### 7.1 Renderer pipes take the node (#1059)
+
+`{{ node.extract | concept_context }}` replaces `{{ node.extract.content | concept_context }}`.
+Today `ApplyPipe` receives the `.content` string and finds the node by **reference equality**
+with an output's text — a lookup that works because `.content` is the very string the node
+holds, and that is the only reason the operand is spelled `.content`. At 26 the pipe takes the
+node object (`node.<id>` as a `ClosedObject`); the lookup goes.
+
+- The old spelling is refused at 26 with the replacement (*"pipes node.extract.content through
+  concept_context; at specVersion 26 a renderer pipe takes the node — node.extract |
+  concept_context"*); no dual acceptance. `.value` as an operand is refused (no node identity).
+- A **flow node** as operand is allowed when its returned node's format is the pipe's (an `if`
+  over two `concept_list` nodes pipes); a `for` node is refused — a list has no one text
+  (*"pipes node.sections through concept_bullets; a loop is a list — pipe a body node inside
+  it, or read node.sections.content"*).
+- Migration rewrites the 25 public sites mechanically (§ 13). No provenance change: the pipe's
+  rendered bytes are what they were.
+
+### 7.2 Audio transcripts — speech-to-text (#1063)
+
+Engine, provenance note and Create page; **not a manifest change**. The `transcript` input
+(since v13; a text transcript file since #994) accepts audio — WAV, MP3, M4A, OGG by sniff —
+when `SpeechToText__Endpoint` is set, behind an `ISpeechToText` seam as OCR sits behind
+`DocumentExtraction__OcrEndpoint`; Azure AI Speech in Canada. The result goes through the same
+`TranscriptTurns` rule as VTT/SRT, so `textSha256` is over turns; `extractor` is
+`speech/<service>+<version>`; `fileSha256` is over the audio bytes, which never rest.
+Outcomes, named: `too-long`, `stt-unavailable`, `stt-low-confidence` (the per-account gate as
+OCR's), `busy`. **No new record field** — duration and confidence are telemetry, not provenance
+— so **no provenance bump**; the provenance doc gains a sentence naming the extractor family.
+The Create page's transcript dropzone takes audio only when configured, and says so. Out of
+scope: live capture, diarisation beyond the service's, translation.
+
+### 7.3 Enum value labels
+
+Left v26 on 2026-10-24: #1061 holds the shape (`{ value, label }` entries, `input.<id>.label`,
+the Create page showing the label) and sits in no milestone and no planned version. At 26
+`values` entries are strings and `input.<id>` has no `.label` member, as at 25.
