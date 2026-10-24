@@ -1,3 +1,4 @@
+using Consultologist.PackageFormat;
 using Consultologist.Api.Models;
 
 namespace Consultologist.Api.Jobs;

@@ -1,12 +1,13 @@
-using Consultologist.Api.Agents;
-using Consultologist.Api.Jobs;
-using Consultologist.Api.Models;
+using Consultologist.PackageFormat;
 
 namespace Consultologist.Api.Tests;
 
 /// <summary>
 /// Verifies the two concept rendering formats normative in package-format-v2.md,
 /// byte-for-byte — these strings feed the model, so any harness must reproduce them.
+/// #1138: the renderers live in the library (ConceptRenderers — Bullets was
+/// ConsultGenerationConceptFormatter.Format, Context was AgentSectionGenerator.FormatConcepts),
+/// where the editor renders the same sample the pane shows.
 /// </summary>
 public class ConceptFormatContractTests
 {
@@ -27,13 +28,13 @@ public class ConceptFormatContractTests
             "- Family support strong [not SNOMED concept]" + Environment.NewLine +
             "- Tamoxifen therapy (procedure) - 75367002";
 
-        Assert.Equal(expected, ConsultGenerationConceptFormatter.Format(Sample));
+        Assert.Equal(expected, ConceptRenderers.Bullets(Sample));
     }
 
     [Fact]
     public void AnalysisFormat_EmptyListRendersNone()
     {
-        Assert.Equal("(none)", ConsultGenerationConceptFormatter.Format(Array.Empty<ClinicalConcept>()));
+        Assert.Equal("(none)", ConceptRenderers.Bullets(Array.Empty<ClinicalConcept>()));
     }
 
     [Fact]
@@ -45,13 +46,30 @@ public class ConceptFormatContractTests
             "- Family support strong () - ; active: False; source: draft" + Environment.NewLine +
             "- Tamoxifen therapy (procedure) - 75367002; active: True; source: typical support: adjuvant endocrine therapy";
 
-        Assert.Equal(expected, AgentSectionGenerator.FormatConcepts(Sample));
+        Assert.Equal(expected, ConceptRenderers.Context(Sample));
     }
 
     [Fact]
     public void TrajectoryContextFormat_EmptyListRendersNone()
     {
-        Assert.Equal("(none)", AgentSectionGenerator.FormatConcepts(Array.Empty<ClinicalConcept>()));
+        Assert.Equal("(none)", ConceptRenderers.Context(Array.Empty<ClinicalConcept>()));
+    }
+
+    [Fact]
+    public void TheSample_RendersEveryMarkOnce_ThroughBothRenderers()
+    {
+        // #1138: the library's fixture — what the editor's renderer pane shows — through the real code.
+        var concepts = ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, ConceptSamples.Source);
+        Assert.Equal(ConceptSamples.Count, concepts.Count);
+
+        Assert.Equal(
+            "- Diabetes mellitus (disorder) - 73211009 [not active SNOMED concept]" + Environment.NewLine +
+            "- Family support strong [not SNOMED concept]",
+            ConceptRenderers.Bullets(concepts));
+
+        Assert.Equal(
+            "- Diabetes mellitus (disorder) - 73211009; active: False; source: extract support: long-standing type 2 diabetes" + Environment.NewLine +
+            "- Family support strong (finding) - ; active: False; source: extract",
+            ConceptRenderers.Context(concepts));
     }
 }
-

@@ -1,3 +1,4 @@
+using Consultologist.PackageFormat;
 using System.Diagnostics;
 using Consultologist.Api.Models;
 using Azure.AI.Extensions.OpenAI;
@@ -155,22 +156,6 @@ public sealed class AgentSectionGenerator
 
     /// <summary>#551: one call's text and what it cost — the usage the SDK reported, or null.</summary>
     public sealed record AgentPromptResult(string Text, ConsultTokenUsage? Tokens);
-
-    internal static string FormatConcepts(IReadOnlyList<ClinicalConcept> concepts)
-    {
-        if (concepts.Count == 0)
-        {
-            return "(none)";
-        }
-
-        return string.Join(
-            Environment.NewLine,
-            concepts.Select(concept =>
-            {
-                var support = string.IsNullOrWhiteSpace(concept.Support) ? string.Empty : $" support: {concept.Support}";
-                return $"- {concept.Term} ({concept.Type}) - {concept.Id}; active: {concept.IsActive}; source: {concept.Source}{support}";
-            }));
-    }
 
     private static async Task<ResponseResult> CreateAgentResponseAsync(
         ProjectOpenAIClient projectOpenAIClient,

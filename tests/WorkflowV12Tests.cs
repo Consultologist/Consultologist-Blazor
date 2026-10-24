@@ -1734,7 +1734,7 @@ public class WorkflowV12TemplateResultTests
                 "not json at all", Consultologist.Api.Agents.OutputContracts.ConceptList, null, "fixed-terms-node"));
 
         Assert.StartsWith("Template 'fixed-terms-node' rendered output that is not valid concept-list JSON", exception.Message);
-        Assert.IsType<Consultologist.Api.Workflow.ConceptOutputContractException>(exception.InnerException);
+        Assert.IsType<ConceptOutputContractException>(exception.InnerException);
     }
 }
 

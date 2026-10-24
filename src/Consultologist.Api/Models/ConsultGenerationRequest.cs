@@ -806,15 +806,6 @@ public record BlockGenerationResult(
     // message beyond Error. Appended last, positional rule.
     string? ErrorStack = null);
 
-public sealed record ClinicalConcept(
-    string Term,
-    string Type,
-    string Id,
-    bool IsSnomedConcept,
-    bool IsActive,
-    string Source,
-    string? Support = null);
-
 public sealed record ConsultGenerationItemProgress(
     string ItemId,
     string ItemName,

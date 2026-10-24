@@ -86,11 +86,11 @@ public class NodeVariableResolverTests
     [Fact]
     public void IdentifyProblem_Parity()
     {
-        // Deleted activity body: { [PatientConcepts] = ConsultGenerationConceptFormatter.Format(input.PatientConcepts) }
+        // Deleted activity body: { [PatientConcepts] = ConceptRenderers.Bullets(input.PatientConcepts) }
         Assert.Equal(
             new Dictionary<string, string>
             {
-                ["patient_concepts"] = ConsultGenerationConceptFormatter.Format(PatientConcepts)
+                ["patient_concepts"] = ConceptRenderers.Bullets(PatientConcepts)
             },
             Resolve("identify-problem"));
     }
@@ -102,7 +102,7 @@ public class NodeVariableResolverTests
         Assert.Equal(
             new Dictionary<string, string>
             {
-                ["problem_concepts"] = ConsultGenerationConceptFormatter.Format(ProblemConcepts)
+                ["problem_concepts"] = ConceptRenderers.Bullets(ProblemConcepts)
             },
             Resolve("create-typical-trajectory"));
     }
@@ -114,9 +114,9 @@ public class NodeVariableResolverTests
         Assert.Equal(
             new Dictionary<string, string>
             {
-                ["problem_concepts"] = ConsultGenerationConceptFormatter.Format(ProblemConcepts),
-                ["patient_concepts"] = ConsultGenerationConceptFormatter.Format(PatientConcepts),
-                ["typical_trajectory_concepts"] = ConsultGenerationConceptFormatter.Format(TypicalConcepts)
+                ["problem_concepts"] = ConceptRenderers.Bullets(ProblemConcepts),
+                ["patient_concepts"] = ConceptRenderers.Bullets(PatientConcepts),
+                ["typical_trajectory_concepts"] = ConceptRenderers.Bullets(TypicalConcepts)
             },
             Resolve("create-patient-trajectory"));
     }
@@ -130,10 +130,10 @@ public class NodeVariableResolverTests
     public void Render_DispatchesToTheBytePinnedFormatters()
     {
         Assert.Equal(
-            ConsultGenerationConceptFormatter.Format(PatientConcepts),
+            ConceptRenderers.Bullets(PatientConcepts),
             ConsultNodeVariableResolver.Render(WorkflowConceptRenderers.ConceptBullets, PatientConcepts));
         Assert.Equal(
-            AgentSectionGenerator.FormatConcepts(TrajectoryConcepts),
+            ConceptRenderers.Context(TrajectoryConcepts),
             ConsultNodeVariableResolver.Render(WorkflowConceptRenderers.ConceptContext, TrajectoryConcepts));
         Assert.Throws<InvalidOperationException>(() => ConsultNodeVariableResolver.Render("markdown", PatientConcepts));
     }
@@ -150,7 +150,7 @@ public class NodeVariableResolverTests
         var variables = ConsultNodeVariableResolver.Resolve(firstStep, DraftInputs(Draft), item, null, NodesById, Outputs);
 
         // The R3 pin: the concept-context rendering carries source: patient-trajectory.
-        Assert.Equal(AgentSectionGenerator.FormatConcepts(TrajectoryConcepts), variables["patient_trajectory_concepts"]);
+        Assert.Equal(ConceptRenderers.Context(TrajectoryConcepts), variables["patient_trajectory_concepts"]);
         Assert.Contains("source: patient-trajectory", variables["patient_trajectory_concepts"]);
         Assert.Equal("History of Present Illness", variables["section_name"]);
     }
@@ -1221,7 +1221,7 @@ public class ForEachInstanceResolutionTests
         Assert.Equal("Draft consult text.", variables["draft"]);
         Assert.Equal("History of Present Illness", variables["name"]);
         Assert.Equal("Chronological prose.", variables["standard"]);
-        Assert.Equal(AgentSectionGenerator.FormatConcepts(Concepts), variables["concepts"]);
+        Assert.Equal(ConceptRenderers.Context(Concepts), variables["concepts"]);
         Assert.Equal("Previous step prose.", variables["previous"]);
     }
 
