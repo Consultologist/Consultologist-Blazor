@@ -457,9 +457,10 @@
 }
 
 /* #887: these are FluentButtons now (Stealth); Fluent owns their look. Only the
-   add button's layout position is ours to set. The ↑/↓/× row controls are
+   add button's layout position is ours to set — on its wrapper span, which
+   carries the label-activation guard (#1137). The ↑/↓/× row controls are
    icon-only Stealth buttons and need no rule. */
-.input-field__add {
+.input-field__add-wrap {
 	align-self: flex-start;
 }
 
