@@ -1325,6 +1325,11 @@ neither meaning, is `MacroChoice`. No release is needed; the engine's vendored r
 
 ## Deferred, by name
 
+*(2026-10-24 — the v26 design doc, `package-format-v26-design.md`, takes up the items below that
+are 26's: the scheduler redesign only by name — static flow nodes `if`/`case`/`for` land at 26,
+dynamic sizes after it; audio speech-to-text as an engine section; macro folders as one shape with
+snippet folders. The alias map stays, unasked for; see its § 15.)*
+
 - **Enum value labels** — `{ value, label }` entries, `input.<id>.label`, the Create page
   showing the label — no planned version (#1061; § 8), out of v26 since 2026-10-24.
 - A per-node alias map for one prompt with different upstream nodes (§ 2).

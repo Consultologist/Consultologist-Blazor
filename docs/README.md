@@ -103,7 +103,13 @@ would otherwise have carried it (#397).
   (Milestone 29, specVersion 25, revision 2: templates reference the package by
   object with derived edges; formats with a producer class and the catalogue in
   the agents registry replacing contracts, schemas and node kinds; snippets read,
-  macros placed; two per-node hashes)
+  macros placed; two per-node hashes),
+  [package format v26 design](customizable-workflow/package-format-v26-design.md) — the normative
+  text follows in the registry once layer A lands (Milestone 30, specVersion 26, revision 1:
+  every object is a node, every gate is Scriban — flow nodes `if`/`case`/`for` with a required
+  `ret`; gates keyed `if`; the aggregator folded into `deliverables[].sources` with
+  `deliverable.<id>.content`; a node names its prompt file; a JSON header on snippet and macro
+  files; 26 is the static half — dynamic fan sizes, `while` and nested loops are the next bump's)
 
 ## Research
 
