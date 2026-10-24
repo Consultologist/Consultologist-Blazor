@@ -143,6 +143,21 @@ each option keeps the `Selected` it toggled itself. Use
 pick recreates the select, so the pair's second half finds no handler and is
 dropped, and the new instance rests.
 
+### A Remove inside a Create slot puts the thing back
+
+*Symptom: clicking a Remove (or Remove all) on the Create page leaves an
+empty row behind, or drops a chip that was just added — the handler ran, and
+the DOM disagrees.* Every input slot is a `<label>`; a click whose target the
+re-render removed reaches the label with no interactive target, and the
+browser runs the label's activation: a synthetic click on the first labelable
+descendant (a chip's Remove — #510; "+ Add entry" once the last row is gone —
+#1137). `@onclick:stopPropagation` stops Blazor's bubbling, not this.
+`FluentButton.OnClick` cannot carry the modifier, so wrap the button in a
+`<span @onclick:preventDefault="true" @onclick:stopPropagation="true">` —
+never a wrapper that holds a file input, checkbox, select or date input. bUnit
+has no browser: pin the wrapper's `blazor:onclick:preventdefault` attribute in
+markup, and verify live.
+
 ### `az functionapp show --query state` is null on Flex Consumption
 
 *Symptom: `state`, `defaultHostName` and `availabilityState` all return
