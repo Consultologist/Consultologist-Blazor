@@ -71,6 +71,81 @@ public class TemplatesV25RenderersPaneTests : ClientRenderTestContext
         return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
     }
 
+    /// <summary>#1138: the V25 fixture with a second concept_list node, extract_more, that nothing pipes — plus assessment piping extract.</summary>
+    private static WorkflowPackageContentResponse V25WithTwoConceptListNodes()
+    {
+        var package = V25WithARenderedRead();
+        var root = JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        root["nodes"]!.AsArray().Add(JsonNode.Parse("""{ "id": "extract_more", "label": "More concepts", "prompt": "extract", "format": "concept_list", "onInvalid": "fail" }"""));
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() };
+    }
+
+    // ----- #1138 § 1: what it produces -----
+
+    [Fact]
+    public void WhatItProduces_RendersTheSample_ThroughTheLibrary_WithTheFirstNodesSource()
+    {
+        var page = OpenRenderer("concept_context");
+
+        var sample = page.Find("pre.renderer-sample");
+        Assert.Equal(Consultologist.PackageFormat.TemplatePipes.SpecOf("concept_context")!.Render(Consultologist.PackageFormat.ConceptSamples.ConceptListJson, "extract"), sample.TextContent);
+        Assert.Contains("source: extract", sample.TextContent);
+        Assert.Contains("active: False", sample.TextContent);
+        Assert.Contains("extract", page.Find(".renderer-sample__caption code").TextContent);
+
+        Session.SelectedKey = "renderer:concept_bullets";
+        page.Render();
+        var bullets = page.Find("pre.renderer-sample").TextContent;
+        Assert.Contains("[not active SNOMED concept]", bullets);
+        Assert.Contains("[not SNOMED concept]", bullets);
+        Assert.DoesNotContain("source:", bullets);
+    }
+
+    [Fact]
+    public void WhatItProduces_UsesThePlaceholder_WhenNoNodeHasTheFormat()
+    {
+        var page = OpenRenderer("concept_context", V25WithoutAConceptListNode());
+
+        Assert.Contains("source: <id>", page.Find("pre.renderer-sample").TextContent);
+        Assert.Contains("<id>", page.Find(".renderer-sample__caption").TextContent);
+    }
+
+    // ----- #1138 § 2: what it renders -----
+
+    [Fact]
+    public void WhatItRenders_ListsTheSchemasSixFields_AndOpensTheFormatPane()
+    {
+        var page = OpenRenderer("concept_context");
+
+        Assert.Contains("served by concept-extraction@1, attested", page.Find(".renderer-format").TextContent);
+        var fields = page.FindAll(".renderer-field");
+        Assert.Equal(
+            new[] { "concepts[].term", "concepts[].type", "concepts[].id", "concepts[].isSnomedConcept", "concepts[].isActive", "concepts[].support" },
+            fields.Select(f => f.GetAttribute("data-renderer-field")));
+        Assert.Contains("string | null", page.Find(".renderer-field[data-renderer-field='concepts[].id']").TextContent);
+        Assert.Contains("boolean", page.Find(".renderer-field[data-renderer-field='concepts[].isActive']").TextContent);
+        Assert.All(fields, f => Assert.Contains("required", f.TextContent));
+
+        page.Find("fluent-button[aria-label='Open format concept_list']").Click();
+        Assert.Equal("catalogue:concept_list", Session.SelectedKey);
+    }
+
+    [Fact]
+    public void Candidates_AreMarkedPipedOrNot_WithSpellingAndCopy()
+    {
+        var page = OpenRenderer("concept_context", V25WithTwoConceptListNodes());
+
+        var piped = page.Find(".renderer-spelling[data-renderer-node='extract']");
+        Assert.Equal("true", piped.GetAttribute("data-renderer-piped"));
+        Assert.Contains("piped by Prompt 'assessment'", piped.TextContent);
+        var candidate = page.Find(".renderer-spelling[data-renderer-node='extract_more']");
+        Assert.Equal("false", candidate.GetAttribute("data-renderer-piped"));
+        Assert.Contains("not yet piped", candidate.TextContent);
+        Assert.Equal("{{ node.extract_more.content | concept_context }}", candidate.QuerySelector("code")!.TextContent.Trim());
+        Assert.NotNull(candidate.QuerySelector("fluent-button[aria-label='Copy the spelling for node extract_more']"));
+        Assert.Contains("2 nodes · 1 piped", page.Find(".renderer-nodes__count").TextContent);
+    }
+
     [Fact]
     public void TheGroup_ListsThePipes_At25_AfterFormats_AndIsAbsentBelow()
     {

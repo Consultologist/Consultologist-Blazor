@@ -1211,6 +1211,14 @@
                         var rendererFormat = PF.TemplatePipes.FormatOf(rendererName) ?? PF.WorkflowFormatIds.ConceptList;
                         var rendererNodes = EffectiveNodes.Where(n => n.Format == rendererFormat).ToList();
                         var rendererUsers = RendererUsers(rendererName);
+                        // #1138: the sample through the spec's own render function — never a hand-written
+                        // sample — with the first node's concept source as the engine would stamp it, else
+                        // the placeholder; and the format's schema fields from the catalogue's entry.
+                        var sampleNode = rendererNodes.FirstOrDefault();
+                        var sampleSource = sampleNode is null ? "<id>" : PF.WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(sampleNode.Id, sampleNode.Id);
+                        var sampleText = PF.TemplatePipes.SpecOf(rendererName)?.Render(PF.ConceptSamples.ConceptListJson, sampleSource) ?? string.Empty;
+                        var rendererFields = SchemaFieldRows(FormatSchemaOf(rendererFormat));
+                        var pipedNodeCount = rendererNodes.Count(n => rendererUsers.Any(u => u.NodeId == n.Id));
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">@rendererName</h3>
@@ -1222,14 +1230,56 @@
                             </div>
                         </div>
                         <p class="muted-text">@RendererSentence(rendererName)</p>
-                        <span class="node-section__head">Spelling</span>
+                        @* #1138 § 1: what it produces — the library's two-concept sample rendered by the
+                           engine's own code, as the first node of the format would read it. *@
+                        <span class="node-section__head">What it produces</span>
+                        <p class="muted-text renderer-sample__caption">
+                            @if (sampleNode is { } captionNode)
+                            {
+                                <text>@PF.ConceptSamples.Count sample concepts rendered by the engine's own code, as node <code>@captionNode.Id</code> would read them.</text>
+                            }
+                            else
+                            {
+                                <text>@PF.ConceptSamples.Count sample concepts rendered by the engine's own code, with <code>&lt;id&gt;</code> where the node's id goes — no node produces <code>@rendererFormat</code> yet.</text>
+                            }
+                        </p>
+                        <pre class="plain-preview rendered-preview__text renderer-sample" aria-label="@($"Sample rendering of {rendererName}")">@sampleText</pre>
+                        <p class="muted-text renderer-sample__note">An empty concept list renders as <code>(none)</code>.</p>
+                        @* #1138 § 2: what it renders — the format, its producer, the catalogue's schema as
+                           field rows, then the nodes of the format: piped through this renderer or not yet. *@
+                        <span class="node-section__head">What it renders</span>
+                        <p class="muted-text renderer-format">
+                            <code>@rendererFormat</code> — @RendererFormatLine(rendererFormat)
+                            <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-format__open"
+                                          Title="@($"format '{rendererFormat}' — its own pane")"
+                                          aria-label="@($"Open format {rendererFormat}")"
+                                          @onclick="() => OpenFormatPane(rendererFormat)">open the format</FluentButton>
+                        </p>
+                        @if (rendererFields.Count > 0)
+                        {
+                            <div class="renderer-fields" aria-label="@($"Fields of {rendererFormat}")">
+                                @foreach (var rendererField in rendererFields)
+                                {
+                                    <p class="renderer-field" data-renderer-field="@rendererField.Path">
+                                        <code>@rendererField.Path</code>
+                                        <span class="muted-text">@rendererField.Type@(rendererField.Required ? " · required" : "")</span>
+                                    </p>
+                                }
+                            </div>
+                        }
+                        else
+                        {
+                            <p class="muted-text renderer-fields__none">The format's schema is not loaded here.</p>
+                        }
+                        <span class="node-section__head">Nodes of this format<span class="muted-text renderer-nodes__count"> — @rendererNodes.Count node@(rendererNodes.Count == 1 ? "" : "s") · @pipedNodeCount piped</span></span>
                         @if (rendererNodes.Count > 0)
                         {
                             @foreach (var rendererNode in rendererNodes)
                             {
                                 var spellingNode = rendererNode;
                                 var spelling = RendererSpelling(spellingNode.Id, rendererName);
-                                <p class="renderer-spelling" data-renderer-node="@spellingNode.Id">
+                                var pipedBy = rendererUsers.Where(u => u.NodeId == spellingNode.Id).Select(u => u.Subject).Distinct(StringComparer.Ordinal).ToList();
+                                <p class="renderer-spelling" data-renderer-node="@spellingNode.Id" data-renderer-piped="@(pipedBy.Count > 0 ? "true" : "false")">
                                     <FluentButton Appearance="Appearance.Lightweight" Class="binding-row__source macro-instance__owner renderer-spelling__node"
                                                   Title="@($"node '{spellingNode.Id}' — edit on the node's pane")"
                                                   aria-label="@($"Open node {spellingNode.Id}")"
@@ -1238,6 +1288,7 @@
                                     <FluentButton Appearance="Appearance.Stealth" Class="renderer-spelling__copy"
                                                   aria-label="@($"Copy the spelling for node {spellingNode.Id}")"
                                                   @onclick="() => CopySpellingAsync(spelling)">@CopySpellingLabel(spelling)</FluentButton>
+                                    <span class="muted-text renderer-spelling__piped">@(pipedBy.Count > 0 ? "piped by " + string.Join(", ", pipedBy) : "not yet piped")</span>
                                 </p>
                             }
                         }
@@ -6088,6 +6139,80 @@
 
     private static string NodeLabelOrId(WorkflowManifestReader.NodeView node) =>
         string.IsNullOrWhiteSpace(node.Label) ? node.Id : node.Label;
+
+    /// <summary>#1138: the format a renderer renders, in the catalogue's own words (FormatDetailLine) — or the package's own, or not loaded.</summary>
+    private string RendererFormatLine(string formatId)
+    {
+        if (LiveFormats.Any(f => f.Id == formatId))
+        {
+            return "the package's own format";
+        }
+
+        return formatsCatalog is { } catalogue && catalogue.Formats?.FirstOrDefault(f => f.Id == formatId) is { } entry
+            ? FormatDetailLine(entry, catalogue)
+            : "from the catalogue, which is not loaded here";
+    }
+
+    /// <summary>#1138: one leaf field of a format's schema — its path (an array's items as <c>name[].field</c>), its type as declared (<c>string | null</c> for a union) and whether its object requires it.</summary>
+    private sealed record SchemaFieldRow(string Path, string Type, bool Required);
+
+    /// <summary>
+    /// #1138: a format's schema as leaf-field rows, in the schema's order — the top-level
+    /// properties, an array property's item properties as <c>name[].field</c>, an object
+    /// property's as <c>name.field</c>; the containers themselves are not rows. Empty when
+    /// there is no schema or no properties.
+    /// </summary>
+    private static IReadOnlyList<SchemaFieldRow> SchemaFieldRows(System.Text.Json.Nodes.JsonNode? schema)
+    {
+        var rows = new List<SchemaFieldRow>();
+        if (schema is System.Text.Json.Nodes.JsonObject root)
+        {
+            CollectSchemaFields(root, string.Empty, rows);
+        }
+
+        return rows;
+    }
+
+    private static void CollectSchemaFields(System.Text.Json.Nodes.JsonObject node, string prefix, List<SchemaFieldRow> rows)
+    {
+        if (node["properties"] is not System.Text.Json.Nodes.JsonObject properties)
+        {
+            return;
+        }
+
+        var required = node["required"] is System.Text.Json.Nodes.JsonArray requiredNames
+            ? requiredNames.Select(n => n?.ToString() ?? string.Empty).ToHashSet(StringComparer.Ordinal)
+            : new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (name, value) in properties)
+        {
+            if (value is not System.Text.Json.Nodes.JsonObject property)
+            {
+                continue;
+            }
+
+            var path = prefix + name;
+            if (property["items"] is System.Text.Json.Nodes.JsonObject items && items["properties"] is System.Text.Json.Nodes.JsonObject)
+            {
+                CollectSchemaFields(items, path + "[].", rows);
+            }
+            else if (property["properties"] is System.Text.Json.Nodes.JsonObject)
+            {
+                CollectSchemaFields(property, path + ".", rows);
+            }
+            else
+            {
+                rows.Add(new SchemaFieldRow(path, SchemaTypeOf(property), required.Contains(name)));
+            }
+        }
+    }
+
+    private static string SchemaTypeOf(System.Text.Json.Nodes.JsonObject property) => property["type"] switch
+    {
+        System.Text.Json.Nodes.JsonArray types => string.Join(" | ", types.Select(t => t?.ToString() ?? "null")),
+        System.Text.Json.Nodes.JsonValue type => type.ToString(),
+        _ => "any"
+    };
 
     private sealed record RendererUser(string Subject, string? TemplateKey, string NodeId, string NodeLabel);
 

@@ -828,7 +828,43 @@ fluent-button.package-tag__button::part(control) {
 	margin: 0.25rem 0 0;
 }
 
-/* #1098: a renderer's pane — the spelling lines and the "Used by" rows. */
+/* #1098: a renderer's pane — the spelling lines and the "Used by" rows.
+   #1138: the sample, the format line, the schema's field rows. */
+.renderer-sample__caption,
+.renderer-sample__note,
+.renderer-format,
+.renderer-fields__none {
+	margin: 0;
+}
+
+.renderer-sample {
+	margin: 0;
+}
+
+.renderer-format {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+}
+
+.renderer-fields {
+	display: flex;
+	flex-direction: column;
+	gap: 0.2rem;
+}
+
+.renderer-field {
+	display: flex;
+	align-items: baseline;
+	gap: 0.5rem;
+	margin: 0;
+}
+
+.renderer-nodes__count {
+	font-weight: normal;
+}
+
 .renderer-spelling {
 	display: flex;
 	align-items: center;
