@@ -75,4 +75,38 @@ public class TemplatePreviewScopeTests
             Assert.False(string.IsNullOrWhiteSpace(rendered), path);
         }
     }
+
+    // ----- #1138: a picked sample renders for real -----
+
+    [Fact]
+    public void ARealOperand_RendersTheBytes_WithTheSourceMappedAsTheEngineMapsIt()
+    {
+        var concepts = ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, "extract");
+
+        // The token stays a token (its path keeps the raw id); real text renders through the spec.
+        Assert.Equal("⟨concept_context of node.extract.content⟩",
+            TemplatePreviewScope.Pipes[TemplatePipes.ConceptContext](new TemplateNodeOutput("⟨node.extract.content⟩", "object", "extract")));
+        Assert.Equal(ConceptRenderers.Context(concepts),
+            TemplatePreviewScope.Pipes[TemplatePipes.ConceptContext](new TemplateNodeOutput(ConceptSamples.ConceptListJson, "object", "extract")));
+        Assert.Equal(ConceptRenderers.Bullets(concepts),
+            TemplatePreviewScope.Pipes[TemplatePipes.ConceptBullets](new TemplateNodeOutput(ConceptSamples.ConceptListJson, "object", "extract")));
+
+        // A well-known id renders with its legacy source, as a run does; the token names the id.
+        Assert.Contains("source: patient", TemplatePreviewScope.Pipes[TemplatePipes.ConceptContext](new TemplateNodeOutput(ConceptSamples.ConceptListJson, "object", "extract_patient_concepts")), StringComparison.Ordinal);
+        Assert.Equal("⟨concept_bullets of node.extract_patient_concepts.content⟩",
+            TemplatePreviewScope.Pipes[TemplatePipes.ConceptBullets](new TemplateNodeOutput("⟨node.extract_patient_concepts.content⟩", "object", "extract_patient_concepts")));
+    }
+
+    [Fact]
+    public void AScopeHoldingTheSample_RendersItsBytesWhereThePipeIs()
+    {
+        var scope = Scope(WithInstruction("Concepts:\n{{ node.extract.content | concept_bullets }}"));
+        var nodes = new Dictionary<string, TemplateNodeOutput>(scope.Nodes, StringComparer.Ordinal);
+        nodes["extract"] = nodes["extract"] with { Text = ConceptSamples.ConceptListJson };
+
+        var prompt = TemplatePreviewScope.MacroPrompt("closing", scope with { Nodes = nodes });
+
+        Assert.StartsWith("Concepts:\n- Diabetes mellitus (disorder) - 73211009 [not active SNOMED concept]", prompt, StringComparison.Ordinal);
+        Assert.DoesNotContain("⟨concept_bullets", prompt, StringComparison.Ordinal);
+    }
 }

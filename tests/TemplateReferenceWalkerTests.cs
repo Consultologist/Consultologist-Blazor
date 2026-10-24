@@ -333,6 +333,17 @@ public class TemplateReferenceWalkerTests
         Assert.Equal(WorkflowFormatIds.ConceptList, TemplatePipes.FormatOf(TemplatePipes.ConceptContext));
         Assert.Null(TemplatePipes.FormatOf("frobnicate"));
         Assert.Equal(TemplatePipes.Specs.Select(spec => spec.Name), TemplatePipes.All);
+
+        // #1138: each spec renders through the library's own code, and Engine is the
+        // pipes as TemplateRenderer takes them — ConceptPipes.All's semantics, "node" default included.
+        Assert.Equal(TemplatePipes.All.Order(), TemplatePipes.Engine.Keys.Order());
+        Assert.Null(TemplatePipes.SpecOf("frobnicate"));
+        var concepts = ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, "extract");
+        var output = new TemplateNodeOutput(ConceptSamples.ConceptListJson, "object", "extract");
+        Assert.Equal(ConceptRenderers.Context(concepts), TemplatePipes.SpecOf(TemplatePipes.ConceptContext)!.Render(ConceptSamples.ConceptListJson, "extract"));
+        Assert.Equal(ConceptRenderers.Context(concepts), TemplatePipes.Engine[TemplatePipes.ConceptContext](output));
+        Assert.Equal(ConceptRenderers.Bullets(concepts), TemplatePipes.Engine[TemplatePipes.ConceptBullets](output));
+        Assert.Contains("source: node", TemplatePipes.Engine[TemplatePipes.ConceptContext](new TemplateNodeOutput(ConceptSamples.ConceptListJson, "object")), StringComparison.Ordinal);
     }
 
     [Fact]
