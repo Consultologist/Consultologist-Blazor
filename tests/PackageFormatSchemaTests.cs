@@ -310,6 +310,48 @@ public class PackageFormatSchemaTests
     }
 
     [Fact]
+    public void TheV26Schema_Renders_WithTheMembers()
+    {
+        // #1165: the model carries the 26 members ahead of the bump; Build(26)
+        // renders them (the file itself is exported at #1149), and every
+        // published 5–25 schema is unchanged — ThePublishedSchema_IsWhatThisModelProduces.
+        var schema = PackageFormatSchema.Build(26);
+        var properties = (JsonObject)schema["properties"]!;
+
+        var node = (JsonObject)properties["nodes"]!["items"]!["properties"]!;
+        foreach (var flow in new[] { "for", "if", "case", "then", "else", "branches", "nodes", "ret" })
+        {
+            Assert.True(node.ContainsKey(flow), flow);
+        }
+
+        Assert.Equal(1, node["ret"]!["minLength"]!.GetValue<int>());
+        Assert.Equal("^[a-z][a-z0-9_]*$", node["nodes"]!["items"]!["pattern"]!.GetValue<string>());
+        foreach (var body in new[] { "then", "else" })
+        {
+            var shape = (JsonObject)node[body]!;
+            Assert.Null(shape["$ref"]);
+            Assert.False(shape["additionalProperties"]!.GetValue<bool>());
+            Assert.Equal(new[] { "nodes", "ret" }, ((JsonObject)shape["properties"]!).Select(p => p.Key));
+        }
+
+        var branch = (JsonObject)node["branches"]!["items"]!;
+        Assert.Equal(new[] { "when", "nodes", "ret" }, ((JsonObject)branch["properties"]!).Select(p => p.Key));
+        Assert.False(branch["additionalProperties"]!.GetValue<bool>());
+
+        var placed = (JsonObject)node["macros"]!["items"]!["oneOf"]![1]!["properties"]!;
+        Assert.True(placed.ContainsKey("if"));
+
+        var deliverable = (JsonObject)properties["deliverables"]!["items"]!["properties"]!;
+        Assert.Equal("^node\\.[a-z][a-z0-9_]*$", deliverable["sources"]!["items"]!["pattern"]!.GetValue<string>());
+        Assert.Equal(1, deliverable["if"]!["minLength"]!.GetValue<int>());
+        Assert.Equal(new[] { "id", "at", "when", "if" }, ((JsonObject)deliverable["macros"]!["items"]!["properties"]!).Select(p => p.Key));
+
+        var v25 = (JsonObject)PackageFormatSchema.Build(25)["properties"]!["nodes"]!["items"]!["properties"]!;
+        Assert.False(v25.ContainsKey("for"));
+        Assert.False(v25.ContainsKey("ret"));
+    }
+
+    [Fact]
     public void TheV24Schema_KeepsTheColonSpellings_TheBytesMustNotMove()
     {
         // A5 (#1018): every 25 pattern fix is gated ≥25; the published v≤24

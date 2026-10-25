@@ -374,6 +374,48 @@ internal static class PackageFormatSchema
             Remove(properties, "failIfEmpty");
         }
 
+        // v26 (#1165, package-format-v26-design.md § 1): the flow nodes — for,
+        // if, case with then/else/branches, the body nodes and ret — arrive at
+        // 26. Below it none of the members exists, and the published v5–v25
+        // bytes must not move. (The 26 file itself is exported at the bump,
+        // #1149; the shape is closed here so the render is its siblings'.)
+        if (specVersion < 26)
+        {
+            foreach (var flow in new[] { "for", "if", "case", "then", "else", "branches", "nodes", "ret" })
+            {
+                Remove(properties, flow);
+            }
+        }
+        else
+        {
+            foreach (var expression in new[] { "for", "if", "case", "ret" })
+            {
+                Object(properties, expression)["minLength"] = 1;
+            }
+
+            // The exporter emits else as a $ref to then (one record type, two
+            // members — the deliverables precedent); give else the shape itself.
+            properties["else"] = Object(properties, "then").DeepClone();
+
+            foreach (var body in new[] { "then", "else" })
+            {
+                EnrichFlowBody(Object(properties, body));
+            }
+
+            var branches = Object(properties, "branches");
+            branches["minItems"] = 1;
+            var branch = Object(branches, "items");
+            var branchProperties = Object(branch, "properties");
+            var when = Object(branchProperties, "when");
+            when["minItems"] = 1;
+            Object(when, "items")["minLength"] = 1;
+            EnrichFlowBody(branch);
+
+            var bodyNodes = Object(properties, "nodes");
+            bodyNodes["minItems"] = 1;
+            Object(bodyNodes, "items")["pattern"] = DeclaredId;
+        }
+
         // v18 (#822): a node's own when arrives at 18; a string needs no
         // enriching, and the published v5–v17 bytes must not move.
         if (specVersion < 18)
@@ -421,6 +463,15 @@ internal static class PackageFormatSchema
             {
                 var placed = (JsonObject)macros["items"]!["oneOf"]![1]!["properties"]!;
                 placed["forItem"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId };
+            }
+
+            // v26 (#1165, design § 2.1): the instance's gate keyed if (when and
+            // forItem are retired at 26 by the validator; the schema keeps them
+            // so a 25-shaped manifest at 26 is refused by sentence, not shape).
+            if (specVersion >= 26)
+            {
+                var placed = (JsonObject)macros["items"]!["oneOf"]![1]!["properties"]!;
+                placed["if"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 };
             }
         }
 
@@ -763,6 +814,23 @@ internal static class PackageFormatSchema
             Object(properties, "when")["minLength"] = 1;
         }
 
+        // v26 (#1165, package-format-v26-design.md § 3, § 2.1): a deliverable
+        // names its sources (the aggregator and `node` fold into them) and its
+        // gate is keyed if. Below 26 neither member exists, and the published
+        // v5–v25 bytes must not move.
+        if (specVersion < 26)
+        {
+            Remove(properties, "sources");
+            Remove(properties, "if");
+        }
+        else
+        {
+            var sources = Object(properties, "sources");
+            sources["minItems"] = 1;
+            Object(sources, "items")["pattern"] = NodeObjectRef;
+            Object(properties, "if")["minLength"] = 1;
+        }
+
         // v11 (§ 4/§ 5): a deliverable's macro list and its signature flag.
         // The exporter cannot see through WorkflowDeliverableMacroSpecConverter
         // (the bindings precedent above): it reports the record, so the items
@@ -804,6 +872,12 @@ internal static class PackageFormatSchema
                 if (specVersion >= 19 && specVersion < 25)
                 {
                     placed["forItem"] = new JsonObject { ["type"] = "string", ["pattern"] = DeclaredId };
+                }
+
+                // v26 (#1165, design § 2.1): the deliverable instance's gate keyed if.
+                if (specVersion >= 26)
+                {
+                    placed["if"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 };
                 }
 
                 // v20 (#863): the model places this macro inline via a
@@ -920,6 +994,17 @@ internal static class PackageFormatSchema
     /// implementation now say the same thing rather than disagreeing about the
     /// specification they share.
     /// </summary>
+    /// <summary>v26 (#1165): a flow body — a set of body node ids and the returned one — closed like its siblings.</summary>
+    private static void EnrichFlowBody(JsonObject body)
+    {
+        var properties = Object(body, "properties");
+        var nodes = Object(properties, "nodes");
+        nodes["minItems"] = 1;
+        Object(nodes, "items")["pattern"] = DeclaredId;
+        Object(properties, "ret")["minLength"] = 1;
+        Close(body);
+    }
+
     private static void Close(JsonObject schema)
     {
         if (!schema.ContainsKey("additionalProperties"))

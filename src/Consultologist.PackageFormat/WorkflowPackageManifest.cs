@@ -495,7 +495,15 @@ public sealed record WorkflowDeliverableSpec(
     bool? Signature = null,
     // v12 (§ 13): the check node gating this deliverable — the
     // post-production mirror of when. Below 12 refused by name.
-    string? Check = null);
+    string? Check = null,
+    // v26 (package-format-v26-design.md § 3, #1165): the deliverable names what
+    // it composes — `sources`, an ordered list of node.<id> (the aggregator and
+    // `node` fold into it at 26) — and its gate is keyed `if` (§ 2; `when` is a
+    // case branch's label only). Trailing optionals, omitted when null; below 26
+    // each is refused by name by the validator. `Node` stays positional until
+    // #1101 settles the record at 26.
+    List<string>? Sources = null,
+    string? If = null);
 
 /// <summary>
 /// One entry in a deliverable's macro list. On the wire either the v11 bare
@@ -524,7 +532,10 @@ public sealed record WorkflowDeliverableMacroSpec(
     // `prepend` | `append`, document scope only. Node-anchored before/after and
     // forItem become node instances at 25, and the slot becomes the inline
     // macro (the macro.<id>.prompt read); below 25 `at` is refused by name. Trailing optional.
-    string? At = null)
+    string? At = null,
+    // v26 (package-format-v26-design.md § 2.1, #1165): the instance's gate keyed
+    // `if` — `when` is retired at 26. Trailing optional; below 26 refused by name.
+    string? If = null)
 {
     public const string Prepend = "prepend";
     public const string Append = "append";
@@ -532,7 +543,7 @@ public sealed record WorkflowDeliverableMacroSpec(
     /// <summary>An id and nothing else — the v11 form. Every adornment must
     /// count: the writer keys the bare-string form on this, so an entry that
     /// carries only a when or a forItem would silently drop it on republish.</summary>
-    public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null && At is null;
+    public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null && At is null && If is null;
 
     /// <summary>#863: the model, not the deliverable, chooses where this macro lands.</summary>
     public bool IsSlot => Slot == true;
@@ -548,7 +559,7 @@ public sealed record WorkflowDeliverableMacroSpec(
 public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<WorkflowDeliverableMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot, string? At);
+    private sealed record Shape(string? Id, string? Before, string? After, string? When, string? ForItem, bool? Slot, string? At, string? If);
 
     public override WorkflowDeliverableMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -570,7 +581,7 @@ public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<Workfl
             throw new JsonException("A placed macro entry must declare id.");
         }
 
-        return new WorkflowDeliverableMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot, shape.At);
+        return new WorkflowDeliverableMacroSpec(shape.Id, shape.Before, shape.After, shape.When, shape.ForItem, shape.Slot, shape.At, shape.If);
     }
 
     public override void Write(Utf8JsonWriter writer, WorkflowDeliverableMacroSpec value, JsonSerializerOptions options)
@@ -602,6 +613,11 @@ public sealed class WorkflowDeliverableMacroSpecConverter : JsonConverter<Workfl
         if (value.When != null)
         {
             writer.WriteString("when", value.When);
+        }
+
+        if (value.If != null)
+        {
+            writer.WriteString("if", value.If);
         }
 
         if (value.ForItem != null)
@@ -642,7 +658,11 @@ public sealed record WorkflowNodeMacroSpec(
     bool? Optional = null,
     // v24 (#957): composed only for ONE item of the data: collection the node
     // fans (the results[].macros[].forItem shape on the prompt side). Trailing.
-    string? ForItem = null)
+    string? ForItem = null,
+    // v26 (package-format-v26-design.md § 2.1, § 2.4, #1165): the instance's gate
+    // keyed `if` — `when` and `forItem` are retired at 26 (`forItem: "x"` is
+    // `if: "item.id == \"x\""`). Trailing optional; below 26 refused by name.
+    string? If = null)
 {
     public const string Before = "before";
     public const string After = "after";
@@ -650,7 +670,7 @@ public sealed record WorkflowNodeMacroSpec(
     /// <summary>An id and nothing else — the before/always form that a prelude
     /// migrates to. The writer keys the bare-string form on this, so any
     /// adornment must count or it would silently drop on republish.</summary>
-    public bool IsBare => At is null && When is null && Optional is null && ForItem is null;
+    public bool IsBare => At is null && When is null && Optional is null && ForItem is null && If is null;
 
     /// <summary>Null placement means before; only an explicit "after" moves it.</summary>
     public bool IsAfter => At == After;
@@ -663,7 +683,7 @@ public sealed record WorkflowNodeMacroSpec(
 public sealed class WorkflowNodeMacroSpecConverter : JsonConverter<WorkflowNodeMacroSpec>
 {
     // The object form, read without this converter on the outer shape.
-    private sealed record Shape(string? Id, string? At, string? When, bool? Optional, string? ForItem);
+    private sealed record Shape(string? Id, string? At, string? When, bool? Optional, string? ForItem, string? If);
 
     public override WorkflowNodeMacroSpec Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
@@ -685,7 +705,7 @@ public sealed class WorkflowNodeMacroSpecConverter : JsonConverter<WorkflowNodeM
             throw new JsonException("A placed node macro entry must declare id.");
         }
 
-        return new WorkflowNodeMacroSpec(shape.Id, shape.At, shape.When, shape.Optional, shape.ForItem);
+        return new WorkflowNodeMacroSpec(shape.Id, shape.At, shape.When, shape.Optional, shape.ForItem, shape.If);
     }
 
     public override void Write(Utf8JsonWriter writer, WorkflowNodeMacroSpec value, JsonSerializerOptions options)
@@ -707,6 +727,11 @@ public sealed class WorkflowNodeMacroSpecConverter : JsonConverter<WorkflowNodeM
         if (value.When != null)
         {
             writer.WriteString("when", value.When);
+        }
+
+        if (value.If != null)
+        {
+            writer.WriteString("if", value.If);
         }
 
         if (value.Optional != null)
@@ -800,7 +825,45 @@ public sealed record WorkflowNodeSpec(
     // format (a concept-list with no concepts, as ever). Judged on the reply
     // before anything is composed around it. Trailing optional, omitted when
     // null; below 25 refused by name by the validator.
-    string? FailIfEmpty = null);
+    string? FailIfEmpty = null,
+    // v26 (package-format-v26-design.md § 1, #1165): the FLOW NODES — a node
+    // carries one of `for` ("item in snippet.<folder>" | "item in input.<id>",
+    // its body in `nodes` and its returned node in `ret`), `if` (a Scriban
+    // boolean, its bodies in `then` and `else`) or `case` (an expression over a
+    // closed set, its `branches` each labelled by `when`) in place of a format;
+    // the body is a set of node ids attached to it, and `ret` names the one the
+    // outside reads — required on every flow node and branch, no default.
+    // Trailing optionals, omitted when null; below 26 each is refused by name
+    // by the validator; their semantics are #1100's.
+    string? For = null,
+    string? If = null,
+    string? Case = null,
+    WorkflowFlowBodySpec? Then = null,
+    WorkflowFlowBodySpec? Else = null,
+    List<WorkflowCaseBranchSpec>? Branches = null,
+    List<string>? Nodes = null,
+    string? Ret = null);
+
+/// <summary>
+/// v26 (package-format-v26-design.md § 1.2, #1165): a flow node's body — the
+/// node ids that run inside it (a set; order carries nothing) and <c>ret</c>,
+/// the one the outside reads as the flow node's <c>.content</c>/<c>.value</c>.
+/// The `then`/`else` of an <c>if</c>; a <c>for</c> carries the same two members
+/// on the node itself.
+/// </summary>
+public sealed record WorkflowFlowBodySpec(
+    List<string>? Nodes = null,
+    string? Ret = null);
+
+/// <summary>
+/// v26 (package-format-v26-design.md § 1.1, #1165): one branch of a <c>case</c>
+/// node — the values it takes (<c>when</c>, Scriban's word for a branch label,
+/// one or more), its body and its <c>ret</c>.
+/// </summary>
+public sealed record WorkflowCaseBranchSpec(
+    List<string>? When = null,
+    List<string>? Nodes = null,
+    string? Ret = null);
 
 /// <summary>
 /// v25 (§ 3.5): what happens on a reply the format's validation refuses —
@@ -906,7 +969,9 @@ public sealed record WorkflowDataItem(
     IReadOnlyDictionary<string, string> Fields,
     // v25 (#999): a snippet folder item's condition, carried for the
     // validator (input-only) and the job start (the folder's effective size).
-    string? When = null);
+    string? When = null,
+    // v26 (#1165): the same gate keyed `if` (`when` is retired at 26).
+    string? If = null);
 
 /// <summary>A resolved data collection: the declared item shape plus the items, in index order.</summary>
 public sealed record WorkflowDataCollection(
@@ -932,7 +997,11 @@ public sealed record WorkflowDataIndexItem(
     // a start-time scalar. Trailing optional; below 25 refused by name by the
     // validator, and never read by the data resolver (a template's own `if`
     // gates a read).
-    string? When = null);
+    string? When = null,
+    // v26 (package-format-v26-design.md § 2.1, #1165): the same gate keyed `if`
+    // — `when` is retired at 26. Trailing optional; below 26 refused by name.
+    // (#1105 moves it into the item file's header; the index carries it until.)
+    string? If = null);
 
 /// <summary>
 /// A binding value in a manifest: either a plain source string

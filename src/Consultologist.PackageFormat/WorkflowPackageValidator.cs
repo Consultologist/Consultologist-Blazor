@@ -213,6 +213,7 @@ public static partial class WorkflowPackageValidator
             ValidateSchemaRefs(manifest, catalogSchemas, errors);
             ValidateCustomSchemas(manifest, files, errors);
             ValidateV25Members(manifest, files, errors);
+            ValidateV26Members(manifest, files, errors);
             ValidateDerivedFrom(manifest, errors);
             ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors, warnings);
             WarnUnreachableByEmail(manifest, warnings);
@@ -470,7 +471,112 @@ public static partial class WorkflowPackageValidator
         // A data collection's index.json is read without a strict reader (the
         // resolver's), so an item's when was ignored before the member existed;
         // now that it is read, name it.
-        foreach (var (id, path) in manifest.Data ?? new Dictionary<string, string>())
+        foreach (var (id, item) in IndexItemsOf(manifest.Data, files))
+        {
+            if (item.When != null)
+            {
+                errors.Add($"Data collection '{id}' item '{item.Id}' declares when, which requires specVersion 25.");
+            }
+        }
+    }
+
+    // v26 (package-format-v26-design.md, #1165): the manifest model carries the
+    // 26 members ahead of the bump (#1150 wires them behind the unchanged
+    // accepted set; #1149 accepts them), so a manifest below 26 that spells one
+    // must be refused by name here — the posture every gated member has had
+    // since v8 — or it would parse and pass where yesterday the strict reader
+    // refused it as unmapped. Called from the ≤24 chain and from ValidateAt25.
+    private static void ValidateV26Members(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        List<string> errors)
+    {
+        if (manifest.SpecVersion >= 26)
+        {
+            return;
+        }
+
+        foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+        {
+            foreach (var (name, present) in new[]
+            {
+                ("for", node.For != null),
+                ("if", node.If != null),
+                ("case", node.Case != null),
+                ("then", node.Then != null),
+                ("else", node.Else != null),
+                ("branches", node.Branches != null),
+                ("nodes", node.Nodes != null),
+                ("ret", node.Ret != null),
+            })
+            {
+                if (present)
+                {
+                    errors.Add($"Node '{node.Id}' declares {name}, which requires specVersion 26.");
+                }
+            }
+
+            foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
+            {
+                if (instance.If != null)
+                {
+                    errors.Add($"Node '{node.Id}' macro '{instance.Id}' declares if, which requires specVersion 26.");
+                }
+            }
+        }
+
+        // The noun follows the key the version carries: Result below 25, Deliverable at 25.
+        foreach (var (noun, list) in new[] { ("Result", manifest.Results), ("Deliverable", manifest.Deliverables) })
+        {
+            foreach (var deliverable in list ?? new List<WorkflowDeliverableSpec>())
+            {
+                if (deliverable.Sources != null)
+                {
+                    errors.Add($"{noun} '{deliverable.Id}' declares sources, which requires specVersion 26.");
+                }
+
+                if (deliverable.If != null)
+                {
+                    errors.Add($"{noun} '{deliverable.Id}' declares if, which requires specVersion 26.");
+                }
+
+                foreach (var instance in deliverable.Macros ?? new List<WorkflowDeliverableMacroSpec>())
+                {
+                    if (instance.If != null)
+                    {
+                        errors.Add($"{noun} '{deliverable.Id}' macro '{instance.Id}' declares if, which requires specVersion 26.");
+                    }
+                }
+            }
+        }
+
+        foreach (var (id, item) in IndexItemsOf(manifest.Data, files))
+        {
+            if (item.If != null)
+            {
+                errors.Add($"Data collection '{id}' item '{item.Id}' declares if, which requires specVersion 26.");
+            }
+        }
+
+        foreach (var (id, item) in IndexItemsOf(manifest.Snippets, files))
+        {
+            if (item.If != null)
+            {
+                errors.Add($"Snippet folder '{id}' item '{item.Id}' declares if, which requires specVersion 26.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The items of every folder in a content table, read from its index.json
+    /// with the resolver's lenient options — a folder with no index, or a
+    /// malformed one, yields nothing (the resolver names it).
+    /// </summary>
+    private static IEnumerable<(string FolderId, WorkflowDataIndexItem Item)> IndexItemsOf(
+        IReadOnlyDictionary<string, string>? table,
+        IReadOnlyDictionary<string, string> files)
+    {
+        foreach (var (id, path) in table ?? new Dictionary<string, string>())
         {
             if (!path.EndsWith('/') || !files.TryGetValue(path + WorkflowDataResolver.IndexFileName, out var indexJson))
             {
@@ -485,15 +591,12 @@ public static partial class WorkflowPackageValidator
             }
             catch (JsonException)
             {
-                continue; // the resolver names the malformed index
+                continue;
             }
 
             foreach (var item in index?.Items ?? new List<WorkflowDataIndexItem>())
             {
-                if (item.When != null)
-                {
-                    errors.Add($"Data collection '{id}' item '{item.Id}' declares when, which requires specVersion 25.");
-                }
+                yield return (id, item);
             }
         }
     }

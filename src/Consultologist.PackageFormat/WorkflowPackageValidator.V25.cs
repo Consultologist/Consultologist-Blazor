@@ -57,6 +57,7 @@ public static partial class WorkflowPackageValidator
         ValidateMetadata(manifest, errors);
         ValidateDerivedFrom(manifest, errors);
         ValidateRetiredAt25(manifest, errors);
+        ValidateV26Members(manifest, files, errors);
         ValidateInputs(manifest, errors);
 
         var inputsById = (manifest.Inputs ?? new List<WorkflowInputSpec>())
