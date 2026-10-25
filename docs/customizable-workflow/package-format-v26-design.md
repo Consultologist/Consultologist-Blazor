@@ -763,6 +763,16 @@ macro fields with the header (#1105), a prompt id with the prompt path (#1102), 
 pipe operand with the walker (#1105, #1059). The manifest model — the 26 record members and the
 "requires specVersion 26" gates — is #1165, the 26 counterpart of A3.)*
 
+*(#1165, 2026-10-25 — the model lands: a node carries `for`, `if`, `case`, `then`, `else`, `branches`,
+`nodes` and `ret` (`WorkflowFlowBodySpec(nodes, ret)` for a body, `WorkflowCaseBranchSpec(when, nodes, ret)`
+for a branch), a deliverable `sources` and `if`, a node or deliverable instance `if` (counted by `IsBare`,
+written after `when`), a folder index item `if` carried into the resolved item; the schema generator hides
+every member below 26 so the published 5–25 schemas do not move a byte, and closes the flow bodies at 26;
+`ValidateV26Members` refuses each by name below 26 — *"Node 'x' declares for, which requires specVersion
+26."*, the noun following the key the version carries — from the ≤24 chain and from `ValidateAt25`.
+`WorkflowDeliverableSpec.Node` stays the positional it is until #1101 settles the record; the 26 schema file
+and the vectors are exported at #1149.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
