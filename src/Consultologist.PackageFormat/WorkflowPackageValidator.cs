@@ -101,7 +101,9 @@ public static partial class WorkflowPackageValidator
     /// <summary>
     /// <paramref name="accepted"/> replaces <see cref="AcceptedSpecVersions"/> for
     /// this call only — the refusal-sentence tests use it (and the v25 tests did,
-    /// while 25 was wired but not yet accepted; A5 #1018 added it to the real set).
+    /// while 25 was wired but not yet accepted; A5 #1018 added it to the real set —
+    /// and the v26 tests do, while 26 is wired but not yet accepted; #1150, the
+    /// bump is #1149).
     /// </summary>
     internal static ValidationResult Validate(
         WorkflowPackageManifest manifest,
@@ -114,6 +116,7 @@ public static partial class WorkflowPackageValidator
         var errors = new List<string>();
         var warnings = new List<string>();
         var at25 = manifest.SpecVersion >= 25;
+        var at26 = manifest.SpecVersion >= 26;
 
         if (manifest.Templating is null
             || !string.Equals(manifest.Templating.Engine, "scriban", StringComparison.OrdinalIgnoreCase))
@@ -195,6 +198,10 @@ public static partial class WorkflowPackageValidator
         if (!accepted.Contains(manifest.SpecVersion))
         {
             errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion {DescribeAcceptedSpecVersions()} (pre-v5 packages are archived; see registry-operations.md).");
+        }
+        else if (at26)
+        {
+            ValidateAt26(manifest, files, formats, errors, warnings);
         }
         else if (at25)
         {
