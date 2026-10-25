@@ -117,9 +117,9 @@ sees.
 
 { "id": "route",
   "case": "node.scope.value",
-  "when": [
-    { "values": [ "in_scope" ],                              "nodes": [ "plan" ],    "ret": "node.plan" },
-    { "values": [ "out_of_scope", "needs_information" ],     "nodes": [ "letter" ],  "ret": "node.letter" } ],
+  "branches": [
+    { "when": [ "in_scope" ],                              "nodes": [ "plan" ],    "ret": "node.plan" },
+    { "when": [ "out_of_scope", "needs_information" ],     "nodes": [ "letter" ],  "ret": "node.letter" } ],
   "else": { "nodes": [ "hold" ], "ret": "node.hold" } }
 ```
 
@@ -132,8 +132,10 @@ sees.
   a scalar node's `.value`, `run`, `profile` — the 25 condition scope) and a `then` body; `else`
   is optional.
 - **`case`** switches on an expression whose type is a closed set — an enum input or an
-  enum-format node (`classification`) — with one branch per set of values (a branch's `values[]`
-  lists one or more) and an optional `else`. It is the classifier pattern spelled once: at 25
+  enum-format node (`classification`) — its `branches[]` one per set of values (a branch's
+  `when[]` lists one or more, Scriban's word for the label; decided 2026-10-25 over a branch
+  list keyed `when` on the node, which would have given `nodes[].when` two shapes under one
+  name — the ≤25 string stays what it is and is retired) and an optional `else`. It is the classifier pattern spelled once: at 25
   "a classifier node plus N nodes each with a `when`" is N conditions that happen to partition
   the set; at 26 it is one node the editor offers branches for from the enum's values (#1091).
   **A value the set lacks is refused**, not warned: a manifest condition on an undeclared literal
@@ -750,6 +752,16 @@ A sentence that names a thing 26 keeps is unchanged and not listed.
 | the walker's *pipes … through p; a renderer pipe renders a node's text (node.<id>.content)* | *"… a renderer pipe takes the node (node.<id> \| p)"* |
 
 New sentences are quoted where they arise: § 1.1–1.4, § 2.1–2.5, § 3, § 4, § 5.1, § 7.1.
+
+*(#1150, 2026-10-25 — the path lands: `ValidateAt26` opens with the retirements whose replacement
+is a manifest shape — `prompts`, a node's `forEach`/`when`/`aggregate`, an instance's `forItem` and
+`when`, a deliverable's `node` and `when`, a deliverable instance's `when`, a folder item's `when` —
+then hands the rest to the 25 pipeline, which holds at ≥ 25; behind the unchanged accepted set,
+reached through the internal seam as A4 was, no vectors until the bump. The retirements whose
+replacement does not exist yet follow with it: the folder index's `name`/`when` and the manifest's
+macro fields with the header (#1105), a prompt id with the prompt path (#1102), `.name` and the
+pipe operand with the walker (#1105, #1059). The manifest model — the 26 record members and the
+"requires specVersion 26" gates — is #1165, the 26 counterpart of A3.)*
 
 ## 12. The editor
 
