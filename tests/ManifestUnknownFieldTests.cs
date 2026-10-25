@@ -91,6 +91,28 @@ public class ManifestUnknownFieldTests
     }
 
     [Fact]
+    public void TheV26Members_AreMembersTheReaderKnows()
+    {
+        // #1165: typed on the records ahead of the bump, so the strict reader
+        // accepts them on any version; refusing them below 26 is the
+        // validator's, by name (ValidateV26Members).
+        var node = JsonSerializer.Deserialize<WorkflowNodeSpec>(
+            """{ "id": "route", "label": "Route", "case": "node.scope.value", "branches": [ { "when": [ "in_scope" ], "nodes": [ "plan" ], "ret": "node.plan" } ], "else": { "nodes": [ "hold" ], "ret": "node.hold" }, "macros": [ { "id": "closing", "at": "after", "if": "input.kind == \"new\"" } ] }""",
+            WorkflowPackageManifestJson.ReadOptions)!;
+        var deliverable = JsonSerializer.Deserialize<WorkflowDeliverableSpec>(
+            """{ "id": "consult", "label": "Consultation note", "sources": [ "node.sections" ], "if": "input.kind == \"new\"", "macros": [ { "id": "closing", "at": "append", "if": "input.kind == \"new\"" } ] }""",
+            WorkflowPackageManifestJson.ReadOptions)!;
+
+        Assert.Equal("node.scope.value", node.Case);
+        Assert.Equal("in_scope", node.Branches!.Single().When!.Single());
+        Assert.Equal("node.hold", node.Else!.Ret);
+        Assert.Equal("input.kind == \"new\"", node.Macros!.Single().If);
+        Assert.Equal("node.sections", deliverable.Sources!.Single());
+        Assert.Equal("input.kind == \"new\"", deliverable.If);
+        Assert.Equal("input.kind == \"new\"", deliverable.Macros!.Single().If);
+    }
+
+    [Fact]
     public void TheDescription_NamesThePropertyAndNotADotNetType()
     {
         var exception = Assert.Throws<JsonException>(() =>
