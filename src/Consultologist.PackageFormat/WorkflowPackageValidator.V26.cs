@@ -116,6 +116,13 @@ public static partial class WorkflowPackageValidator
 
     private static void ValidateRetiredAt26(WorkflowPackageManifest manifest, List<string> errors)
     {
+        // #1099 (§ 5.3): on the wire macros is the map at 26 — the 25 list of
+        // objects is refused whole (a code-built list carries no shape mark).
+        if (manifest.Macros is WorkflowMacroTable { IsMap: false, Count: > 0 })
+        {
+            errors.Add("macros is a list; at specVersion 26 macros is a map { \"<id>\": \"<file>\" | \"<dir>/\" } — the file's header carries label, instruction, optional, default and if.");
+        }
+
         // #1105 (§ 5.2): a macro's label, instruction, optional and default are the
         // file's header's — one home; the folder index's name and when are refused
         // where the index is read (WorkflowTextHeaders.ReadIndexAt26).

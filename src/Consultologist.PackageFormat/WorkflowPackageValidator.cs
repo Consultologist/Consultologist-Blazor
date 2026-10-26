@@ -496,6 +496,12 @@ public static partial class WorkflowPackageValidator
             return;
         }
 
+        // #1099 (v26 design § 5.3): the macros map is the 26 spelling.
+        if (manifest.Macros is WorkflowMacroTable { IsMap: true })
+        {
+            errors.Add("macros is a map, which requires specVersion 26.");
+        }
+
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
         {
             foreach (var (name, present) in new[]
