@@ -469,7 +469,8 @@ the declaration added an id for the node to point at and nothing else.
   no public package shares a prompt — every prompt id is one node's, because 25's migration
   refused *"a prompt bound differently by two nodes"* and v12's `extract-terms` was split then.
   The deferred per-node alias map (v25 design § 2) stays deferred; nothing asks for it.
-- The walk's subjects rename: *"Prompt 'p' reads …"* becomes *"Node 'x''s prompt reads …"*;
+- The walk's subjects rename: *"Prompt 'p' reads …"* becomes *"Node 'x' prompt reads …"* (the family
+  of *"Node 'x' condition"* and *"Node 'x' if"*; built 2026-10-26);
   the condition and read rows in the editor follow (§ 12). `WorkflowDerivedEdges.WalkAll`
   resolves `node.Prompt` as a file instead of through `promptsById`; the engine's
   `RunPromptNodeActivity` loads by path.
@@ -828,6 +829,15 @@ transitively reach 'd's sources. Read it from a node that does, or name it among
 `WorkflowDeliverableSpec.Node` is nullable (the ≤25 aggregator; its readers take the empty string at 26). The
 minimal 26 package is valid but for the prompts' declaration (#1102). The engine's composition from sources is
 #1155, the Deliverables card #1161, the preview's token #1162.)*
+
+*(#1102, 2026-10-26 — a node names its prompt file, as § 4 says: at 26 the walk reads `nodes[].prompt` as a
+path under the node's own subject (*"Node 'assessment' prompt reads …"*); a declared prompt's id is refused
+naming the file the package holds (*"names prompt 'assessment'; at specVersion 26 prompt is the file
+(prompts/assessment.md)"*), a missing file is refused (*"prompt 'prompts/nope.md' is missing from the
+package"*); two nodes may name one file; the publish closure references the nodes' prompt files as `prompts[]`
+did. **The design's minimal 26 package is valid** — the first the path accepts whole. The engine's load by
+path and the store's gathering of the nodes' prompt files are #1157; the editor's node-pane prompt #1162;
+the migration #1152.)*
 
 ## 12. The editor
 
