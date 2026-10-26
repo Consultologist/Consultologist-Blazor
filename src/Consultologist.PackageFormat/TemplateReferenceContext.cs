@@ -27,7 +27,14 @@ public sealed record TemplateReferenceContext(
     bool ItemDeferred = false,
     // #1037: the ids of the folder's items when the fan is a snippet folder — what a
     // condition's `item.id == "x"` is typed against.
-    IReadOnlyList<string>? FanItemIds = null)
+    IReadOnlyList<string>? FanItemIds = null,
+    // #1100 (v26 design § 1.2): the body nodes by id → the flow node each runs
+    // inside, and the flow node whose body THIS template may read by bare id (a
+    // body node's own prompt and conditions; null for the outside). A body node
+    // read from outside its scope is refused naming the flow node to read. A
+    // deferred text (a snippet, a macro) is judged by its reader's edges instead.
+    IReadOnlyDictionary<string, TemplateBodyScope>? Bodies = null,
+    string? Scope = null)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -52,13 +59,67 @@ public sealed record TemplateNodeShape(
     IReadOnlyList<string>? Values = null,
     // #1065: an aggregator as a template sees it — its composed sections as text,
     // no value, no format (the empty Format never equals a renderer pipe's).
-    bool Aggregates = false)
+    bool Aggregates = false,
+    // #1100 (v26 design § 1.3): a flow node as a template reads it — a loop is a
+    // list of its returned node (iterable; .content the concatenation, .value the
+    // array), an if/case its returned node's shape when every branch returns one.
+    TemplateFlowShape? Flow = null)
 {
-    /// <summary>Whether <c>node.&lt;id&gt;.value</c> exists: every type but text parses.</summary>
-    public bool HasValue => Type != WorkflowInputTypes.Text;
+    /// <summary>Whether <c>node.&lt;id&gt;.value</c> exists: every type but text parses; a loop's when its returned node's does.</summary>
+    public bool HasValue => Flow?.Kind == TemplateFlowKind.For ? Flow.Ret?.HasValue == true : Type != WorkflowInputTypes.Text;
 
     /// <summary>#1065: the shape of an aggregator node — <c>.content</c> is its composed text; <c>.value</c> and a renderer pipe are refused by name.</summary>
     public static TemplateNodeShape Aggregator() => new(string.Empty, WorkflowInputTypes.Text, Aggregates: true);
+
+    /// <summary>#1100: a loop — text when read whole (the empty Format never equals a pipe's), iterable, its element the returned node's.</summary>
+    public static TemplateNodeShape Loop(string retId, TemplateNodeShape ret, TemplateFan? fan, IReadOnlyDictionary<string, TemplateNodeShape> body) =>
+        new(string.Empty, WorkflowInputTypes.Text, Flow: new TemplateFlowShape(TemplateFlowKind.For, retId, ret, Fan: fan, Body: body));
+
+    /// <summary>#1100: an if/case whose every branch returns one format — the returned node's shape, read as it would be.</summary>
+    public static TemplateNodeShape Branch(TemplateFlowKind kind, string retId, TemplateNodeShape ret) =>
+        ret with { Flow = new TemplateFlowShape(kind, retId, ret) };
+
+    /// <summary>#1100: an if/case whose branches return different formats — <c>.content</c> stays readable, <c>.value</c> and a pipe are refused naming them.</summary>
+    public static TemplateNodeShape Branch(TemplateFlowKind kind, IReadOnlyList<string> disagreement) =>
+        new(string.Empty, WorkflowInputTypes.Text, Flow: new TemplateFlowShape(kind, null, null, disagreement));
+}
+
+/// <summary>#1100 (v26 design § 1): the three flow nodes.</summary>
+public enum TemplateFlowKind { For, If, Case }
+
+/// <summary>
+/// #1100 (v26 design § 1.3): a flow node as a template reads it. <c>Ret</c> is
+/// the returned node's shape (null when an if/case's branches disagree —
+/// <c>Disagreement</c> names their types); a loop carries the fan its body runs
+/// under (what the element's <c>item</c> is typed by) and its body nodes by id
+/// (the element's other members).
+/// </summary>
+public sealed record TemplateFlowShape(
+    TemplateFlowKind Kind,
+    string? RetId,
+    TemplateNodeShape? Ret,
+    IReadOnlyList<string>? Disagreement = null,
+    TemplateFan? Fan = null,
+    IReadOnlyDictionary<string, TemplateNodeShape>? Body = null)
+{
+    /// <summary>"'object' and 'text'" — the disagreeing branches' types, for a sentence.</summary>
+    public string DescribeDisagreement()
+    {
+        var types = (Disagreement ?? Array.Empty<string>()).Select(t => $"'{t}'").ToList();
+        return types.Count switch
+        {
+            0 => "nothing",
+            1 => types[0],
+            _ => string.Join(", ", types.Take(types.Count - 1)) + " and " + types[^1],
+        };
+    }
+}
+
+/// <summary>#1100 (v26 design § 1.2): where a body node runs — the flow node it is attached to, and whether that is a loop.</summary>
+public sealed record TemplateBodyScope(string Owner, bool Loop)
+{
+    /// <summary>"loop 'l'" / "node 'x'" — the sentences' word for where the node runs.</summary>
+    public string Inside => Loop ? $"loop '{Owner}'" : $"node '{Owner}'";
 }
 
 /// <summary>What the template's node fans over — null when it does not fan.</summary>
@@ -125,6 +186,10 @@ public static class TemplateMembers
     public static readonly IReadOnlyList<string> Macro = new[] { Id, Name, Content, Prompt };
     public static readonly IReadOnlyList<string> SnippetFanItem = new[] { Id, Name, Content };
     public static readonly IReadOnlyList<string> InputFanItem = new[] { Id, Name, Value };
+
+    /// <summary>#1100 (v26 design § 1.3): a loop element's own members — item, content, value — beside the body nodes by id.</summary>
+    public const string Item = "item";
+    public static readonly IReadOnlyList<string> LoopElement = new[] { Item, Content, Value };
 
     /// <summary><c>run.date</c>, <c>.job</c>, <c>.package</c>, <c>.host</c> — the v11 run facts.</summary>
     public static readonly IReadOnlyList<string> Run = WorkflowMacroPlaceholders.RunFacts.Order(StringComparer.Ordinal).ToList();
