@@ -109,13 +109,13 @@ public class WorkflowV26DeliverableTests
     {
         var errors = V26Package.FlowErrors(
             m => m with { Deliverables = m.Deliverables!.Select(d => d with { Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: "append") } }).ToList() },
-            files => files["macros/closing.md"] = "Closing: {{ node.section_notes.content }}.");
+            files => files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line.") + "Closing: {{ node.section_notes.content }}.");
 
         Assert.Contains("Deliverable 'consult' macro 'closing' reads node 'section_notes', which runs inside loop 'sections'; a deliverable macro reads scalar nodes, flow nodes and deliverable.<id>.content — place the macro on a body node to read its items.", errors);
 
         var loopRead = V26Package.FlowErrors(
             m => m with { Deliverables = m.Deliverables!.Select(d => d with { Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: "append") } }).ToList() },
-            files => files["macros/closing.md"] = "Closing: {{ node.sections.content }}.");
+            files => files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line.") + "Closing: {{ node.sections.content }}.");
 
         Assert.Empty(loopRead);
     }

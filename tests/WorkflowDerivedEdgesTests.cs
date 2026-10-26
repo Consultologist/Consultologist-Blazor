@@ -195,7 +195,7 @@ public class WorkflowDerivedEdgesTests
         // #1100 PR 2: the engine's and the editor's entry resolves the flow nodes as
         // the validator does — the loop's shape, its body node's fan and scope.
         var (manifest, files) = V26Package.Minimal();
-        files["prompts/assessment.md"] = "Assess. {{ for e in node.sections }}{{ e.item.name }} {{ e.content }}{{ end }}";
+        files["prompts/assessment.md"] = "Assess. {{ for e in node.sections }}{{ e.item.label }} {{ e.content }}{{ end }}";
         var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
 
         var loop = Assert.Single(nodes, n => n.Node.Id == "sections");

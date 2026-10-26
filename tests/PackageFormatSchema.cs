@@ -289,10 +289,20 @@ internal static class PackageFormatSchema
         {
             Remove(properties, "instruction");
         }
-        else
+        else if (specVersion < 26)
         {
             Object(properties, "instruction")["minLength"] = 1;
             item["required"] = Required("id", "label", "file", "instruction");
+        }
+        else
+        {
+            // v26 (#1105, § 5): the label, the instruction and the option live in
+            // the macro file's header; the manifest entry is { id, file }.
+            Remove(properties, "label");
+            Remove(properties, "instruction");
+            Remove(properties, "optional");
+            Remove(properties, "default");
+            item["required"] = Required("id", "file");
         }
 
         Close(item);
