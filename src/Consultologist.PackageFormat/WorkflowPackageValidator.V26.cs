@@ -10,14 +10,12 @@ namespace Consultologist.PackageFormat;
 /// over a closed set — with bodies of plain nodes attached by id and a required
 /// <c>ret</c> naming the body node the outside reads; or a plain node of a
 /// format. <c>forEach</c>, a node's <c>when</c> and <c>aggregate</c> are retired
-/// (§ 8). The pipeline is the 25 one with the node, fan, condition and
-/// reachability steps replaced; the steps still the 25 methods' are named by the
-/// issue that replaces them — #1101 the deliverables and the reachability over
-/// <c>sources[]</c>, #1102 the prompt path, #1105 the macro library and the
-/// snippets' headers, #1059 the pipe operand. The reads a template makes of a
-/// flow node (<c>node.&lt;loop&gt;</c> iterable, <c>.value</c> across branches) are
-/// #1100's second PR; here a loop is read as text (the aggregator's shape) and a
-/// branch node as its returned node's format when every branch returns one.
+/// (§ 8). The flow nodes are resolved by <see cref="WorkflowFlowNodes"/>, which
+/// the derived-edges walk shares; the pipeline is the 25 one with the node,
+/// fan, condition and reachability steps replaced; the steps still the 25
+/// methods' are named by the issue that replaces them — #1101 the deliverables
+/// and the reachability over <c>sources[]</c>, #1102 the prompt path, #1105 the
+/// macro library and the snippets' headers, #1059 the pipe operand.
 /// </summary>
 public static partial class WorkflowPackageValidator
 {
@@ -31,41 +29,6 @@ public static partial class WorkflowPackageValidator
         public const string Prompts = "a node names its prompt file (nodes[].prompt: \"<path>\")";
         public const string ForItem = "the instance's if on item.id (if: \"item.id == \\\"<item>\\\"\")";
         public const string GateWhen = "a gate is keyed if; when is a case branch's label only";
-    }
-
-    private enum FlowKind { For, If, Case }
-
-    /// <summary>One body of a flow node: the loop's, an if's then/else, a case's branch (with its values) or else.</summary>
-    private sealed record BodyAt26(string Label, IReadOnlyList<string> Nodes, string? Ret, IReadOnlyList<string>? When)
-    {
-        /// <summary>The returned node's id, when <c>ret</c> is spelled <c>node.&lt;id&gt;</c>.</summary>
-        public string? RetNodeId => TemplateObjectReference.IsBare(Ret, TemplateObjects.Node, out var id) ? id : null;
-    }
-
-    /// <summary>A flow node resolved: its kind, bodies, and — for a loop — the fan its body runs under.</summary>
-    private sealed record FlowAt26(
-        WorkflowNodeSpec Node,
-        FlowKind Kind,
-        IReadOnlyList<BodyAt26> Bodies,
-        TemplateFan? Fan,
-        WorkflowDataCollection? Folder,
-        string? Expression)
-    {
-        /// <summary>"Loop 'l'" for a for node, "Node 'x'" for an if or case node — the sentences' subject.</summary>
-        public string Subject => Kind == FlowKind.For ? $"Loop '{Node.Id}'" : $"Node '{Node.Id}'";
-
-        /// <summary>"loop 'l'" / "node 'x'" — where a body node runs.</summary>
-        public string Inside => Kind == FlowKind.For ? $"loop '{Node.Id}'" : $"node '{Node.Id}'";
-
-        public IEnumerable<string> BodyNodeIds => Bodies.SelectMany(b => b.Nodes);
-
-        public string BodySubject(BodyAt26 body) => Kind == FlowKind.For ? Subject : $"{Subject} {body.Label}";
-    }
-
-    /// <summary>The flow nodes by id, and each body node's owner (the flow node it runs inside).</summary>
-    private sealed record FlowsAt26(IReadOnlyDictionary<string, FlowAt26> Flows, IReadOnlyDictionary<string, string> Owner)
-    {
-        public bool IsLoop(string id) => Flows.TryGetValue(id, out var flow) && flow.Kind == FlowKind.For;
     }
 
     private static void ValidateAt26(
@@ -90,30 +53,35 @@ public static partial class WorkflowPackageValidator
 
         var localFormats = ResolveFormatsAt25(manifest, files, catalog, errors);
         var snippets = ResolveSnippetsAt25(manifest, files, inputsById, errors);
-        var flows = ResolveFlowNodesAt26(manifest, snippets, inputsById, errors);
+        var flows = WorkflowFlowNodes.Resolve(manifest, snippets, inputsById, errors);
         var nodes = ValidateNodesAt26(manifest, localFormats, catalog, inputsById, flows, errors);
         ValidateMacroLibraryAt25(manifest, files, errors);
         ValidateCaseSubjectsAt26(flows, nodes, inputsById, errors);
 
+        // The plain nodes' shapes first; a flow node's is built over them (§ 1.3).
         var nodeShapes = nodes.Values
             .Where(n => n.Format is not null)
             .ToDictionary(n => n.Node.Id, n => new TemplateNodeShape(n.Format!.Id, n.Format.Spec.Type, n.Format.Spec.Schema, EnumValuesAt25(n, inputsById)), StringComparer.Ordinal);
+        var plainShapes = new Dictionary<string, TemplateNodeShape>(nodeShapes, StringComparer.Ordinal);
         foreach (var flow in flows.Flows.Values)
         {
-            nodeShapes[flow.Node.Id] = FlowShapeAt26(flow, nodes, inputsById);
+            nodeShapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, plainShapes);
         }
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        var bodies = flows.BodyScopes;
 
         TemplateReferenceContext ContextFor(TemplateFan? fan) => new(
             inputShapes, nodeShapes,
             snippets.Scalars.Keys.ToHashSet(StringComparer.Ordinal),
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
-            macroIds, TemplateReferenceContext.NoIds, fan);
+            macroIds, TemplateReferenceContext.NoIds, fan,
+            Bodies: bodies);
 
         var walk = WorkflowDerivedEdges.WalkAll(
             manifest, files,
             nodes.Values.Select(n => new WorkflowDerivedEdges.WalkNode(
-                n.Node, nodeShapes.GetValueOrDefault(n.Node.Id), n.Format?.Spec.Parameters, n.Fan)).ToList(),
+                n.Node, nodeShapes.GetValueOrDefault(n.Node.Id), n.Format?.Spec.Parameters, n.Fan,
+                Scope: flows.Owner.GetValueOrDefault(n.Node.Id))).ToList(),
             snippets, ContextFor);
         var walked = walk.Templates;
         TakeSentences(walk, errors, warnings);
@@ -123,7 +91,7 @@ public static partial class WorkflowPackageValidator
         ValidateConditionsAt26(walk, flows, errors);
         ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
         ValidateReferenceGraphAt25(walked, snippets, errors);
-        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodes, inputsById));
+        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes));
         // #1101: the deliverables name their sources; until then the 25 step
         // speaks of the aggregator a deliverable can no longer name.
         ValidateDeliverablesAt25(manifest, nodes, walk, errors);
@@ -215,272 +183,7 @@ public static partial class WorkflowPackageValidator
         }
     }
 
-    // ----- § 1: the flow nodes --------------------------------------------------
-
-    /// <summary>
-    /// Every node carrying <c>for</c>, <c>if</c> or <c>case</c>: one flow key, no
-    /// format or prompt (a flow node is structural), the keys its kind carries,
-    /// a loop's collection resolved to the fan its body runs under, each body a
-    /// set of declared plain nodes attached to exactly one body, and <c>ret</c>
-    /// required on every body and naming one of its nodes (§ 1.1–1.2).
-    /// </summary>
-    private static FlowsAt26 ResolveFlowNodesAt26(
-        WorkflowPackageManifest manifest,
-        WorkflowPackageData snippets,
-        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        List<string> errors)
-    {
-        var declared = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
-        var flows = new Dictionary<string, FlowAt26>(StringComparer.Ordinal);
-
-        foreach (var node in declared.Values)
-        {
-            var keys = new List<string>();
-            if (node.For != null) keys.Add("for");
-            if (node.If != null) keys.Add("if");
-            if (node.Case != null) keys.Add("case");
-
-            if (keys.Count == 0)
-            {
-                foreach (var (name, present) in new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null) })
-                {
-                    if (present)
-                    {
-                        errors.Add($"Node '{node.Id}' declares {name}, which belongs to a flow node; declare for, if or case.");
-                    }
-                }
-
-                continue;
-            }
-
-            if (keys.Count > 1)
-            {
-                errors.Add($"Node '{node.Id}' declares {string.Join(", ", keys)}; a node is one flow node — for, if or case.");
-                continue;
-            }
-
-            var kind = keys[0] switch { "for" => FlowKind.For, "if" => FlowKind.If, _ => FlowKind.Case };
-
-            foreach (var (name, present) in new[]
-            {
-                ("format", node.Format != null), ("prompt", node.Prompt != null), ("with", node.With != null), ("onInvalid", node.OnInvalid != null),
-                ("failIfEmpty", node.FailIfEmpty != null), ("reproducible", node.Reproducible != null), ("macros", node.Macros != null),
-            })
-            {
-                if (present)
-                {
-                    errors.Add($"Node '{node.Id}' declares {keys[0]} and {name}; a flow node is structural.");
-                }
-            }
-
-            var foreign = kind switch
-            {
-                FlowKind.For => new[] { ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null) },
-                FlowKind.If => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("branches", node.Branches != null) },
-                _ => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("then", node.Then != null) },
-            };
-            var kindWord = kind switch { FlowKind.For => "a for", FlowKind.If => "an if", _ => "a case" };
-
-            foreach (var (name, present) in foreign)
-            {
-                if (present)
-                {
-                    errors.Add($"Node '{node.Id}' declares {name}, which {kindWord} node does not carry.");
-                }
-            }
-
-            var bodies = new List<BodyAt26>();
-            TemplateFan? fan = null;
-            WorkflowDataCollection? folder = null;
-            string? expression = null;
-
-            switch (kind)
-            {
-                case FlowKind.For:
-                    (fan, folder) = ResolveLoopCollectionAt26(node.Id, node.For!, snippets, inputsById, errors);
-                    if (node.Nodes is not { Count: > 0 })
-                    {
-                        errors.Add($"Loop '{node.Id}' has no body; name the nodes that run per item in nodes.");
-                    }
-
-                    bodies.Add(new BodyAt26("body", node.Nodes ?? new List<string>(), node.Ret, null));
-                    break;
-
-                case FlowKind.If:
-                    expression = node.If;
-                    if (node.Then is null)
-                    {
-                        errors.Add($"Node '{node.Id}' declares if without then; an if node runs a then body.");
-                    }
-                    else
-                    {
-                        bodies.Add(new BodyAt26("then", node.Then.Nodes ?? new List<string>(), node.Then.Ret, null));
-                    }
-
-                    if (node.Else is not null)
-                    {
-                        bodies.Add(new BodyAt26("else", node.Else.Nodes ?? new List<string>(), node.Else.Ret, null));
-                    }
-
-                    break;
-
-                default:
-                    expression = node.Case;
-                    if (node.Branches is not { Count: > 0 })
-                    {
-                        errors.Add($"Node '{node.Id}' declares case without branches; a case node runs one branch per set of values.");
-                    }
-
-                    var index = 0;
-                    foreach (var branch in node.Branches ?? new List<WorkflowCaseBranchSpec>())
-                    {
-                        index++;
-                        if (branch.When is not { Count: > 0 })
-                        {
-                            errors.Add($"Node '{node.Id}' branch {index} lists no value; a branch's when names one or more values.");
-                        }
-
-                        bodies.Add(new BodyAt26($"branch {index}", branch.Nodes ?? new List<string>(), branch.Ret, branch.When));
-                    }
-
-                    if (node.Else is not null)
-                    {
-                        bodies.Add(new BodyAt26("else", node.Else.Nodes ?? new List<string>(), node.Else.Ret, null));
-                    }
-
-                    break;
-            }
-
-            flows[node.Id] = new FlowAt26(node, kind, bodies, fan, folder, expression);
-        }
-
-        // The bodies: declared plain nodes, each attached once, a loop's body
-        // never a flow node (nesting waits, § 6); ret required and a member.
-        var owner = new Dictionary<string, string>(StringComparer.Ordinal);
-
-        foreach (var flow in flows.Values)
-        {
-            foreach (var body in flow.Bodies)
-            {
-                var subject = flow.BodySubject(body);
-                var seen = new HashSet<string>(StringComparer.Ordinal);
-
-                foreach (var id in body.Nodes)
-                {
-                    if (!seen.Add(id))
-                    {
-                        errors.Add($"{subject} lists node '{id}' twice; a body is a set.");
-                        continue;
-                    }
-
-                    if (!declared.ContainsKey(id))
-                    {
-                        errors.Add($"{subject} names node '{id}', which the package does not declare.");
-                        continue;
-                    }
-
-                    if (flows.TryGetValue(id, out var inner))
-                    {
-                        errors.Add(inner.Kind == FlowKind.For
-                            ? $"Loop '{id}' runs inside {flow.Inside}; nesting waits for the scheduler redesign."
-                            : $"Node '{id}' runs inside {flow.Inside}; at specVersion 26 a body holds plain nodes — a flow node inside a body is a later issue.");
-                        continue;
-                    }
-
-                    if (owner.TryGetValue(id, out var first))
-                    {
-                        errors.Add($"Node '{id}' runs inside {flows[first].Inside} and inside {flow.Inside}; a node runs in one body.");
-                        continue;
-                    }
-
-                    owner[id] = flow.Node.Id;
-                }
-
-                if (body.Ret is null)
-                {
-                    errors.Add($"{subject} returns nothing; name the body node the outside reads with ret.");
-                }
-                else if (body.RetNodeId is null)
-                {
-                    errors.Add($"{subject} ret '{body.Ret}' must be node.<id>.");
-                }
-                else if (!body.Nodes.Contains(body.RetNodeId, StringComparer.Ordinal))
-                {
-                    errors.Add($"{subject} returns node.{body.RetNodeId}, which is not in its body (nodes: {string.Join(", ", body.Nodes)}).");
-                }
-            }
-        }
-
-        return new FlowsAt26(flows, owner);
-    }
-
-    /// <summary><c>for: "item in snippet.&lt;folder&gt;"</c> or <c>"item in input.&lt;id&gt;"</c> (an array); the fan the loop's body runs under.</summary>
-    private static (TemplateFan? Fan, WorkflowDataCollection? Folder) ResolveLoopCollectionAt26(
-        string loopId,
-        string text,
-        WorkflowPackageData snippets,
-        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        List<string> errors)
-    {
-        const string prefix = "item in ";
-        var grammar = $"Loop '{loopId}' iterates '{text}'; a loop iterates \"item in snippet.<folder>\" or \"item in input.<id>\".";
-
-        if (!text.StartsWith(prefix, StringComparison.Ordinal) || text.Length == prefix.Length)
-        {
-            errors.Add(grammar);
-            return (null, null);
-        }
-
-        var reference = text[prefix.Length..];
-
-        if (reference.Contains(' ') || TemplateObjectReference.IsColonSpelling(reference)
-            || !TemplateObjectReference.TryParse(reference, out var obj, out var id, out var rest))
-        {
-            errors.Add(grammar);
-            return (null, null);
-        }
-
-        if (obj == TemplateObjects.Node)
-        {
-            // § 6: a count the run discovers is the next bump's.
-            errors.Add($"Loop '{loopId}' iterates {reference}; a loop over a node's value waits for the scheduler redesign — iterate an input or a snippet folder.");
-            return (null, null);
-        }
-
-        if (rest.Length > 0 || (obj != TemplateObjects.Snippet && obj != TemplateObjects.Input))
-        {
-            errors.Add(grammar);
-            return (null, null);
-        }
-
-        if (obj == TemplateObjects.Snippet)
-        {
-            if (snippets.Collections.TryGetValue(id, out var folder))
-            {
-                return (new SnippetFolderFan(id), folder);
-            }
-
-            errors.Add(snippets.Scalars.ContainsKey(id)
-                ? $"Loop '{loopId}' iterates snippet '{id}', which is a file, not a folder."
-                : $"Loop '{loopId}' iterates snippet folder '{id}', which the package does not declare.");
-            return (null, null);
-        }
-
-        if (!inputsById.TryGetValue(id, out var declaration))
-        {
-            errors.Add($"Loop '{loopId}' iterates undeclared input '{id}'.");
-            return (null, null);
-        }
-
-        if (WorkflowInputTypes.Of(declaration) != WorkflowInputTypes.Array)
-        {
-            errors.Add($"Loop '{loopId}' iterates input '{id}', which is a {WorkflowInputTypes.Of(declaration)}; only an array can be iterated.");
-            return (null, null);
-        }
-
-        var element = WorkflowDeclarationNode.Of(declaration).Items ?? new WorkflowDeclarationNode(WorkflowInputTypes.Text, declaration.Label, false, null, null, null);
-        return (new InputArrayFan(element), null);
-    }
+    // ----- § 1: the nodes at 26 ---------------------------------------------------
 
     /// <summary>
     /// The 25 node rules with the aggregator gone and the fan the loop's: a plain
@@ -493,7 +196,7 @@ public static partial class WorkflowPackageValidator
         IReadOnlyDictionary<string, ResolvedFormat> localFormats,
         WorkflowFormatCatalog? catalog,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        FlowsAt26 flows,
+        WorkflowFlowNodes.Resolved flows,
         List<string> errors)
     {
         var nodes = new Dictionary<string, NodeAt25>(StringComparer.Ordinal);
@@ -527,9 +230,7 @@ public static partial class WorkflowPackageValidator
                 continue;
             }
 
-            var (fan, folder) = flows.Owner.TryGetValue(node.Id, out var ownerId) && flows.Flows.TryGetValue(ownerId, out var loop)
-                ? (loop.Fan, loop.Folder)
-                : (null, null);
+            var (fan, folder) = flows.FanOf(node.Id);
 
             if (string.IsNullOrWhiteSpace(node.Format))
             {
@@ -624,21 +325,20 @@ public static partial class WorkflowPackageValidator
     /// one of the set and takes one branch (§ 1.1).
     /// </summary>
     private static void ValidateCaseSubjectsAt26(
-        FlowsAt26 flows,
+        WorkflowFlowNodes.Resolved flows,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         List<string> errors)
     {
         const string rule = "a case switches on an enum input (input.<id>) or an enum-format node's value (node.<id>.value)";
 
-        foreach (var flow in flows.Flows.Values.Where(f => f.Kind == FlowKind.Case && f.Expression is not null))
+        foreach (var flow in flows.Flows.Values.Where(f => f.Kind == WorkflowFlowNodes.Kind.Case && f.Expression is not null))
         {
             var subject = flow.Expression!;
             IReadOnlyList<string>? values = null;
 
             if (TemplateObjectReference.IsBare(subject, TemplateObjects.Input, out var inputId))
             {
-                // An undeclared input is the walker's sentence when the branches' bodies read it; here only the type.
                 if (inputsById.TryGetValue(inputId, out var input))
                 {
                     if (WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum)
@@ -722,33 +422,6 @@ public static partial class WorkflowPackageValidator
             ? id
             : null;
 
-    /// <summary>
-    /// What a template reads of a flow node, until the second PR gives the
-    /// walker the loop's shape: a loop is its returned node's text, concatenated
-    /// (the aggregator's shape — <c>.content</c> reads, <c>.value</c> refused); an
-    /// if/case is its returned node's format when every branch returns one.
-    /// </summary>
-    private static TemplateNodeShape FlowShapeAt26(FlowAt26 flow, IReadOnlyDictionary<string, NodeAt25> nodes, IReadOnlyDictionary<string, WorkflowInputSpec> inputsById)
-    {
-        if (flow.Kind == FlowKind.For)
-        {
-            return TemplateNodeShape.Aggregator();
-        }
-
-        var returned = flow.Bodies
-            .Select(b => b.RetNodeId is { } id && nodes.TryGetValue(id, out var node) ? node : null)
-            .ToList();
-
-        if (returned.Count > 0 && returned.All(n => n?.Format is not null)
-            && returned.Select(n => n!.Format!.Id).Distinct(StringComparer.Ordinal).Count() == 1)
-        {
-            var node = returned[0]!;
-            return new TemplateNodeShape(node.Format!.Id, node.Format.Spec.Type, node.Format.Spec.Schema, EnumValuesAt25(node, inputsById));
-        }
-
-        return TemplateNodeShape.Aggregator();
-    }
-
     // ----- the edges, the bodies' scope, the conditions -------------------------
 
     /// <summary>
@@ -761,7 +434,7 @@ public static partial class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         WorkflowDerivedEdges.Walk walk,
-        FlowsAt26 flows,
+        WorkflowFlowNodes.Resolved flows,
         List<string> errors)
     {
         var edges = DeriveEdgesAt25(manifest, nodes, walk, errors)
@@ -777,7 +450,7 @@ public static partial class WorkflowPackageValidator
 
             targets.UnionWith(flow.BodyNodeIds.Where(nodes.ContainsKey));
 
-            if (flow.Kind == FlowKind.Case && flow.Expression is { } subject && CaseNodeSubjectOf(subject) is { } nodeId && nodes.ContainsKey(nodeId))
+            if (flow.Kind == WorkflowFlowNodes.Kind.Case && flow.Expression is { } subject && CaseNodeSubjectOf(subject) is { } nodeId && nodes.ContainsKey(nodeId))
             {
                 targets.Add(nodeId);
             }
@@ -788,10 +461,12 @@ public static partial class WorkflowPackageValidator
 
     /// <summary>
     /// § 1.2: a body node is read by bare id only from inside its body — the
-    /// flow node is the only name the outside sees; two loops' bodies do not read
-    /// each other; a body node does not read the loop it runs in.
+    /// walker refuses a prompt's or a condition's read naming the flow node; a
+    /// deferred text's (a snippet's, a macro's) read is judged here at its reader.
+    /// Two loops' bodies do not read each other; a body node does not read the
+    /// loop it runs in.
     /// </summary>
-    private static void ValidateFlowEdgesAt26(FlowsAt26 flows, IReadOnlyDictionary<string, HashSet<string>> edges, List<string> errors)
+    private static void ValidateFlowEdgesAt26(WorkflowFlowNodes.Resolved flows, IReadOnlyDictionary<string, HashSet<string>> edges, List<string> errors)
     {
         foreach (var (fromId, targets) in edges.OrderBy(pair => pair.Key, StringComparer.Ordinal))
         {
@@ -837,7 +512,7 @@ public static partial class WorkflowPackageValidator
     /// § 1.3, § 2.1: a condition decides before a loop runs, so it reads no loop
     /// (the 25 aggregator rule, carried); a folder item's gate reads inputs only.
     /// </summary>
-    private static void ValidateConditionsAt26(WorkflowDerivedEdges.Walk walk, FlowsAt26 flows, List<string> errors)
+    private static void ValidateConditionsAt26(WorkflowDerivedEdges.Walk walk, WorkflowFlowNodes.Resolved flows, List<string> errors)
     {
         foreach (var condition in walk.Conditions.Where(c => c.Site != WorkflowDerivedEdges.ConditionSite.FolderItem && c.Walk.IsValid))
         {
@@ -868,7 +543,7 @@ public static partial class WorkflowPackageValidator
 
     /// <summary>§ 1.2 (#1067 inside a body): a body node is returned or read by a sibling, or it runs for nothing.</summary>
     private static void ValidateBodyReachabilityAt26(
-        FlowsAt26 flows,
+        WorkflowFlowNodes.Resolved flows,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         IReadOnlyDictionary<string, HashSet<string>> edges,
         List<string> errors)
@@ -890,7 +565,7 @@ public static partial class WorkflowPackageValidator
 
                     if (!read)
                     {
-                        errors.Add(flow.Kind == FlowKind.For
+                        errors.Add(flow.Kind == WorkflowFlowNodes.Kind.For
                             ? $"Node '{id}' in loop '{flow.Node.Id}' is neither returned nor read; name it with ret or read it from a body node."
                             : $"Node '{id}' in node '{flow.Node.Id}' {body.Label} is neither returned nor read; name it with ret or read it from a body node.");
                     }
@@ -899,27 +574,70 @@ public static partial class WorkflowPackageValidator
         }
     }
 
-    /// <summary>The flow nodes' probes: a loop as text (the aggregator's), an if/case as its returned node's shape when the branches agree.</summary>
-    private static void ProbeFlowNodesAt26(
-        ScriptObject node,
-        FlowsAt26 flows,
-        IReadOnlyDictionary<string, NodeAt25> nodes,
-        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById)
+    /// <summary>
+    /// § 1.3: the flow nodes' probes — a loop as a list of two elements (each
+    /// carrying item, the returned node's content and value, and the body nodes)
+    /// that also reads as text and as the array of values; an if/case as its
+    /// returned node's shape when the branches agree, else as text.
+    /// </summary>
+    private static void ProbeFlowNodesAt26(ScriptObject node, WorkflowFlowNodes.Resolved flows, IReadOnlyDictionary<string, TemplateNodeShape> shapes)
     {
         foreach (var flow in flows.Flows.Values)
         {
-            var shape = FlowShapeAt26(flow, nodes, inputsById);
+            var shape = shapes[flow.Node.Id];
 
-            if (shape.Aggregates)
+            if (shape.Flow?.Kind == TemplateFlowKind.For)
             {
-                node[flow.Node.Id] = new ScriptObject { ["content"] = "placeholder" };
+                var ret = shape.Flow.Ret ?? TemplateNodeShape.Aggregator();
+                var list = new ScriptArray();
+
+                for (var i = 0; i < 2; i++)
+                {
+                    var element = new ScriptObject
+                    {
+                        [TemplateMembers.Item] = shape.Flow.Fan is InputArrayFan input
+                            ? new ScriptObject { ["id"] = i.ToString(), ["name"] = "placeholder", ["value"] = Probe(input.Element) }
+                            : new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["content"] = "placeholder" },
+                        [TemplateMembers.Content] = "placeholder",
+                    };
+
+                    if (ret.HasValue)
+                    {
+                        element[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(ret));
+                    }
+
+                    foreach (var (id, bodyShape) in shape.Flow.Body ?? new Dictionary<string, TemplateNodeShape>())
+                    {
+                        var member = new ScriptObject { [TemplateMembers.Content] = "placeholder" };
+                        if (bodyShape.HasValue)
+                        {
+                            member[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(bodyShape));
+                        }
+
+                        element[id] = member;
+                    }
+
+                    list.Add(element);
+                }
+
+                list.ScriptObject[TemplateMembers.Content] = "placeholder";
+                if (ret.HasValue)
+                {
+                    list.ScriptObject[TemplateMembers.Value] = new ScriptArray { ProbeFromShape(ValueShapeOf(ret)), ProbeFromShape(ValueShapeOf(ret)) };
+                }
+
+                node[flow.Node.Id] = list;
                 continue;
             }
 
-            var value = shape.Type == WorkflowInputTypes.Enum && shape.Schema is null
+            node[flow.Node.Id] = shape.HasValue
+                ? new ScriptObject { ["content"] = "placeholder", ["value"] = ProbeFromShape(ValueShapeOf(shape)) }
+                : new ScriptObject { ["content"] = "placeholder" };
+        }
+
+        static TemplateValueShape ValueShapeOf(TemplateNodeShape shape) =>
+            shape.Type == WorkflowInputTypes.Enum && shape.Schema is null
                 ? TemplateValueShape.Text
                 : TemplateValueShape.FromSchema(shape.Schema);
-            node[flow.Node.Id] = new ScriptObject { ["content"] = "placeholder", ["value"] = ProbeFromShape(value) };
-        }
     }
 }

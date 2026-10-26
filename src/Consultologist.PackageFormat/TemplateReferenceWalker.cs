@@ -117,7 +117,11 @@ public static partial class TemplateReferenceWalker
     private sealed record ObjectTarget(string Object) : Target;
 
     /// <summary><c>node.&lt;id&gt;</c>, awaiting <c>.content</c> or <c>.value</c>.</summary>
-    private sealed record NodeTarget(string Id, TemplateNodeShape Shape) : Target;
+    /// <summary>#1100: EdgeId is the node a read is recorded under — a body node reached through a loop's element records the loop.</summary>
+private sealed record NodeTarget(string Id, TemplateNodeShape Shape, string? EdgeId = null) : Target
+{
+    public string ReadId => EdgeId ?? Id;
+}
 
     /// <summary>A snippet — by id, or an item of a folder.</summary>
     private sealed record SnippetTarget(string? Id, string? Folder) : Target;
@@ -129,7 +133,11 @@ public static partial class TemplateReferenceWalker
     private sealed record FolderTarget(string Object, string Folder) : Target;
 
     /// <summary>The fan item, awaiting a member.</summary>
-    private sealed record ItemTarget : Target;
+    /// <summary>#1100: a loop element's <c>item</c> carries the loop's fan; the root <c>item</c> reads the context's.</summary>
+private sealed record ItemTarget(TemplateFan? Fan = null) : Target;
+
+/// <summary>#1100 (v26 design § 1.3): one element of a loop — <c>item</c>, the returned node's <c>content</c>/<c>value</c>, and every body node by id.</summary>
+private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) : Target;
 
     /// <summary><c>run</c> or <c>profile</c>, awaiting a fact name.</summary>
     private sealed record FactsTarget(string Object) : Target;
@@ -1304,6 +1312,18 @@ public static partial class TemplateReferenceWalker
                     return new ShapeTarget(TemplateValueShape.FromDeclaration(declaration));
 
                 case TemplateObjects.Node:
+                    // #1100 (v26 design § 1.2): a body node is read by bare id only from
+                    // inside its body — the flow node is the only name the outside sees.
+                    // A deferred text (a snippet, a macro) is judged at its reading node.
+                    if (!_context.ItemDeferred
+                        && _context.Bodies is { } bodies
+                        && bodies.TryGetValue(id, out var scope)
+                        && !string.Equals(scope.Owner, _context.Scope, StringComparison.Ordinal))
+                    {
+                        Errors.Add($"{_subject} reads node '{id}', which runs inside {scope.Inside}; read node.{scope.Owner}.");
+                        return Refused;
+                    }
+
                     if (!_context.Nodes.TryGetValue(id, out var shape))
                     {
                         Errors.Add($"{_subject} reads node '{id}', which the package does not declare.");
@@ -1350,6 +1370,7 @@ public static partial class TemplateReferenceWalker
             SnippetTarget => TemplateMembers.Snippet.Contains(name, StringComparer.Ordinal),
             MacroTarget => TemplateMembers.Macro.Contains(name, StringComparer.Ordinal),
             NodeTarget => TemplateMembers.Node.Contains(name, StringComparer.Ordinal),
+            LoopElementTarget element => TemplateMembers.LoopElement.Contains(name, StringComparer.Ordinal) || (element.Flow.Body?.ContainsKey(name) ?? false),
             FactsTarget { Object: TemplateObjects.Run } => TemplateMembers.Run.Contains(name, StringComparer.Ordinal),
             FactsTarget { Object: TemplateObjects.Profile } => TemplateMembers.Profile.Contains(name, StringComparer.Ordinal),
             ShapeTarget { Shape: { IsObject: true } shape } => shape.Fields?.ContainsKey(name) ?? false,
@@ -1419,8 +1440,11 @@ public static partial class TemplateReferenceWalker
                     Errors.Add($"{_subject} reads {walked}; a folder is iterated: {{{{ for s in {folder.Object}.{folder.Folder} }}}}.");
                     return Refused;
 
-                case ItemTarget:
-                    return StepItem(name, walked);
+                case LoopElementTarget element:
+                    return StepLoopElement(element, name, walked, before);
+
+                case ItemTarget item:
+                    return StepItem(name, walked, item.Fan ?? _context.Fan);
 
                 case FactsTarget facts:
                     return StepFacts(facts.Object, name, walked);
@@ -1445,12 +1469,35 @@ public static partial class TemplateReferenceWalker
             {
                 // Recorded before any judgement: a refused pipe still names its edge.
                 // The bare-read warning is Finalize's (#1058) — it knows the use.
-                _refs.ReadNode(node.Id, content: true, value: false);
-                return new NodeContentTarget(before, node.Id, node.Shape);
+                _refs.ReadNode(node.ReadId, content: true, value: false);
+                return new NodeContentTarget(before, node.ReadId, node.Shape);
             }
 
             if (name == TemplateMembers.Value)
             {
+                // #1100 (v26 design § 1.3): a loop's value is the array of its returned
+                // node's; an if/case's is its returned node's when the branches agree.
+                if (node.Shape.Flow is { } flow)
+                {
+                    if (flow.Kind == TemplateFlowKind.For)
+                    {
+                        if (flow.Ret is { HasValue: true } ret)
+                        {
+                            _refs.ReadNode(node.ReadId, content: false, value: true);
+                            return new NodeValueTarget(before, new TemplateValueShape(WorkflowInputTypes.Array, null, ValueShapeOf(ret), null));
+                        }
+
+                        Errors.Add($"{_subject} reads {before}.value, but loop '{node.Id}' returns '{flow.RetId}' of format '{flow.Ret?.Format}', which is text and has no value; read {before}.content or iterate {before}.");
+                        return Refused;
+                    }
+
+                    if (flow.Ret is null)
+                    {
+                        Errors.Add($"{_subject} reads {before}.value, but branches of '{node.Id}' return {flow.DescribeDisagreement()}; read {before}.content.");
+                        return Refused;
+                    }
+                }
+
                 if (node.Shape.Aggregates)
                 {
                     // #1065: an aggregator's text is its composed sections — nothing parses it.
@@ -1464,19 +1511,63 @@ public static partial class TemplateReferenceWalker
                     return Refused;
                 }
 
-                _refs.ReadNode(node.Id, content: false, value: true);
-                return new NodeValueTarget(before, node.Shape.Type == WorkflowInputTypes.Enum && node.Shape.Schema is null
-                    ? new TemplateValueShape(WorkflowInputTypes.Enum, null, null, node.Shape.Values)
-                    : TemplateValueShape.FromSchema(node.Shape.Schema));
+                _refs.ReadNode(node.ReadId, content: false, value: true);
+                return new NodeValueTarget(before, ValueShapeOf(node.Shape));
             }
 
             Errors.Add($"{_subject} reads {before}.{name}, which is not a member (node.<id> has .content and .value).");
             return Refused;
         }
 
-        private Target StepItem(string name, StringBuilder walked)
+        /// <summary>The shape of a node's <c>.value</c>: an enum format's answer set when it has no schema, else its schema's.</summary>
+        private static TemplateValueShape ValueShapeOf(TemplateNodeShape shape) =>
+            shape.Type == WorkflowInputTypes.Enum && shape.Schema is null
+                ? new TemplateValueShape(WorkflowInputTypes.Enum, null, null, shape.Values)
+                : TemplateValueShape.FromSchema(shape.Schema);
+
+        /// <summary>
+        /// #1100 (v26 design § 1.3): a loop element's members — <c>item</c> typed by
+        /// the loop's fan; <c>content</c> and <c>value</c> the returned node's, recorded
+        /// as reads of the loop; a body node by id, likewise recorded as the loop's
+        /// (the flow node is the only name the outside sees).
+        /// </summary>
+        private Target StepLoopElement(LoopElementTarget element, string name, StringBuilder walked, string before)
         {
-            switch (_context.Fan)
+            var flow = element.Flow;
+
+            switch (name)
+            {
+                case TemplateMembers.Item:
+                    return new ItemTarget(flow.Fan);
+
+                case TemplateMembers.Content:
+                    _refs.ReadNode(element.LoopId, content: true, value: false);
+                    return new NodeContentTarget(before, element.LoopId, flow.Ret ?? TemplateNodeShape.Aggregator());
+
+                case TemplateMembers.Value:
+                    if (flow.Ret is { HasValue: true } ret)
+                    {
+                        _refs.ReadNode(element.LoopId, content: false, value: true);
+                        return new NodeValueTarget(before, ValueShapeOf(ret));
+                    }
+
+                    Errors.Add($"{_subject} reads {walked}, but loop '{element.LoopId}' returns '{flow.RetId}' of format '{flow.Ret?.Format}', which is text and has no value; read {before}.content.");
+                    return Refused;
+
+                default:
+                    if (flow.Body is { } body && body.TryGetValue(name, out var shape))
+                    {
+                        return new NodeTarget(name, shape, element.LoopId);
+                    }
+
+                    Errors.Add($"{_subject} reads {walked}, which is not a member (a loop element has item, content, value and the body nodes: {string.Join(", ", (flow.Body?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
+                    return Refused;
+            }
+        }
+
+        private Target StepItem(string name, StringBuilder walked, TemplateFan? fan)
+        {
+            switch (fan)
             {
                 case SnippetFolderFan:
                     if (!TemplateMembers.SnippetFanItem.Contains(name, StringComparer.Ordinal))
@@ -1590,6 +1681,13 @@ public static partial class TemplateReferenceWalker
                         return Refused;
                     }
 
+                    if (target is NodeTarget { Shape.Flow.Kind: TemplateFlowKind.For } loop)
+                    {
+                        // #1100: node.<loop>[0] is one element of the list.
+                        _refs.ReadNode(loop.ReadId, content: true, value: true);
+                        return new LoopElementTarget(loop.Id, loop.Shape.Flow!);
+                    }
+
                     if (target is ShapeTarget { Shape: null } or ShapeTarget { Shape.IsUnknown: true })
                     {
                         return Untyped;
@@ -1635,8 +1733,22 @@ public static partial class TemplateReferenceWalker
 
             switch (target)
             {
+                // #1100 (v26 design § 1.3): a loop is iterable — its element carries item,
+                // the returned node's content and value, and the body nodes by id.
+                case NodeTarget { Shape.Flow.Kind: TemplateFlowKind.For } loop when use == ChainUse.Iterable:
+                    _refs.ReadNode(loop.ReadId, content: true, value: true);
+                    return new LoopElementTarget(loop.Id, loop.Shape.Flow!);
+
+                case NodeTarget { Shape.Flow.Kind: TemplateFlowKind.For } loop:
+                    Errors.Add($"{_subject} reads node '{loop.Id}' bare; read {walked}.content, {walked}.value, or iterate it ({{{{ for e in {walked} }}}}).");
+                    return Refused;
+
                 case NodeTarget node:
                     Errors.Add($"{_subject} reads node '{node.Id}' bare; read {walked}.content (its composed output) or {walked}.value.");
+                    return Refused;
+
+                case LoopElementTarget element when use == ChainUse.Value:
+                    Errors.Add($"{_subject} reads {walked} bare; read a member ({walked}.item, {walked}.content, {walked}.value or a body node: {string.Join(", ", (element.Flow.Body?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
                     return Refused;
 
                 case SnippetTarget { Id: { } id }:
@@ -1681,6 +1793,16 @@ public static partial class TemplateReferenceWalker
                 case RefusedTarget:
                     return Refused;
 
+                // #1100 (v26 design § 1.3, § 7.1): a loop is a list — no one text to render;
+                // an if/case whose branches disagree has no one format.
+                case NodeContentTarget { Node.Flow.Kind: TemplateFlowKind.For } content:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but {content.Path} loops — a list has no one text; pipe the returned node inside the loop ({{{{ for e in {content.Path} }}}}{{{{ e.content | {pipe} }}}}{{{{ end }}}}) or read {content.Path}.content.");
+                    return Refused;
+
+                case NodeContentTarget { Node.Flow: { Ret: null } } content:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but branches of '{content.Id}' return {content.Node.Flow!.DescribeDisagreement()}; {pipe} renders a {format} node's text (node.<id>.content).");
+                    return Refused;
+
                 case NodeContentTarget content when string.Equals(content.Node.Format, format, StringComparison.Ordinal):
                     // #1098: the accepted rendering — the editor's "Used by" row for the pipe; #1138: with its if.
                     _refs.ReadRendered(content.Id, pipe, use.Guard, use.GuardCanonical);
@@ -1723,6 +1845,9 @@ public static partial class TemplateReferenceWalker
 
             switch (target)
             {
+                case LoopElementTarget element:
+                    return element;
+
                 case FolderTarget folder:
                     return folder.Object == TemplateObjects.Snippet
                         ? new SnippetTarget(null, folder.Folder)

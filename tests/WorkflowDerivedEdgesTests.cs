@@ -190,6 +190,32 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
+    public void At26_TheSharedWalk_ShapesTheLoop_AndFansItsBody()
+    {
+        // #1100 PR 2: the engine's and the editor's entry resolves the flow nodes as
+        // the validator does — the loop's shape, its body node's fan and scope.
+        var (manifest, files) = V26Package.Minimal();
+        files["prompts/assessment.md"] = "Assess. {{ for e in node.sections }}{{ e.item.name }} {{ e.content }}{{ end }}";
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+
+        var loop = Assert.Single(nodes, n => n.Node.Id == "sections");
+        Assert.Equal(TemplateFlowKind.For, loop.Shape!.Flow!.Kind);
+        Assert.IsType<SnippetFolderFan>(loop.Fan);
+        var body = Assert.Single(nodes, n => n.Node.Id == "section_notes");
+        Assert.IsType<SnippetFolderFan>(body.Fan);
+        Assert.Equal("sections", body.Scope);
+        Assert.Equal("sections", contextFor(null).Bodies!["section_notes"].Owner);
+
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+        var prompt = Assert.Single(walk.Templates, t => t.Id == "assessment");
+        Assert.True(prompt.References.IsValid, string.Join(" | ", prompt.References.Errors));
+        Assert.Contains("sections", walk.EdgesOf("assessment"));
+
+        var derived = WorkflowDerivedEdges.Derive(manifest, files, V25Package.Catalog());
+        Assert.Contains("sections", derived["assessment"]);
+    }
+
+    [Fact]
     public void PromptReadsOf_ClosesOverSnippets_AndTheFanItemThatRan()
     {
         var (manifest, files) = V25Package.Minimal();

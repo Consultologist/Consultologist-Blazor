@@ -46,6 +46,29 @@ public static class TemplateFixtures
         ["coverage"] = new("terms_subset", "object", TermsSubsetSchema),
         ["meds"] = new("medication_list", "object", JsonNode.Parse("""{ "type": "object", "properties": { "medications": { "type": "array", "items": { "type": "string" } } } }""")),
         ["all"] = TemplateNodeShape.Aggregator(), // #1065
+        // #1100: the flow nodes — a loop over the sections folder returning a prose
+        // body node (a second body node beside it), a loop over the history input
+        // returning a concept_list node, an if whose branches agree on prose, a case
+        // whose branches disagree.
+        ["section_notes"] = new("prose", "text"),
+        ["draft"] = new("prose", "text"),
+        ["sections"] = TemplateNodeShape.Loop("section_notes", new("prose", "text"), new SnippetFolderFan("sections"),
+            new Dictionary<string, TemplateNodeShape>(StringComparer.Ordinal) { ["section_notes"] = new("prose", "text"), ["draft"] = new("prose", "text") }),
+        ["per_event"] = new("concept_list", "object", ConceptListSchema),
+        ["events"] = TemplateNodeShape.Loop("per_event", new("concept_list", "object", ConceptListSchema), new InputArrayFan(Inputs()["history"].Items!),
+            new Dictionary<string, TemplateNodeShape>(StringComparer.Ordinal) { ["per_event"] = new("concept_list", "object", ConceptListSchema) }),
+        ["full"] = new("prose", "text"),
+        ["triage"] = TemplateNodeShape.Branch(TemplateFlowKind.If, "full", new("prose", "text")),
+        ["split"] = TemplateNodeShape.Branch(TemplateFlowKind.Case, new[] { "object", "text" }),
+    };
+
+    /// <summary>#1100: where the fixture's body nodes run — what a read from outside the body is judged against.</summary>
+    public static IReadOnlyDictionary<string, TemplateBodyScope> Bodies() => new Dictionary<string, TemplateBodyScope>(StringComparer.Ordinal)
+    {
+        ["section_notes"] = new("sections", true),
+        ["draft"] = new("sections", true),
+        ["per_event"] = new("events", true),
+        ["full"] = new("triage", false),
     };
 
     public static TemplateReferenceContext Context(TemplateFan? fan = null) => new(
@@ -54,7 +77,8 @@ public static class TemplateFixtures
         new HashSet<string>(StringComparer.Ordinal) { "sections" },
         new HashSet<string>(StringComparer.Ordinal) { "closing", "letrozole" },
         new HashSet<string>(StringComparer.Ordinal) { "addenda" },
-        fan);
+        fan,
+        Bodies: Bodies());
 
     public static TemplateReferences Walk(string template, TemplateFan? fan = null, string subject = "Prompt 'p'") =>
         TemplateReferenceWalker.Walk(subject, template, Context(fan));
@@ -987,5 +1011,116 @@ public class TemplateReferenceWalkerTests
 
         Assert.Equal(sentence, Assert.Single(TemplateReferenceWalker.Walk("Prompt 'p'", "{{ if node.scope.value == \"maybe\" }}x{{ end }}", context).Warnings));
         Assert.Equal(sentence, Assert.Single(TemplateReferenceWalker.Walk("Prompt 'p'", "{{ case node.scope.value }}{{ when \"maybe\" }}x{{ end }}", context).Warnings));
+    }
+}
+
+/// <summary>
+/// #1100 (package-format-v26-design.md § 1.3): what a template reads of a flow
+/// node — a loop iterable, its element carrying item, the returned node's content
+/// and value and the body nodes by id; a loop's .value the array of the returned
+/// node's; an if/case as its returned node when the branches agree, refused by
+/// name when they do not; a body node read from outside its scope refused naming
+/// the flow node to read.
+/// </summary>
+public class TemplateReferenceWalkerFlowTests
+{
+    [Fact]
+    public void ALoop_IsIterable_AndItsElementCarriesItemContentValueAndTheBody()
+    {
+        var refs = TemplateFixtures.Ok("{{ for e in node.sections }}{{ e.item.name }}: {{ e.content }} / {{ e.draft.content }}{{ end }}");
+
+        Assert.Equal(new[] { "sections" }, refs.Edges);
+        Assert.Equal(new TemplateNodeRead(true, true), refs.Nodes["sections"]);
+        Assert.Empty(refs.Warnings);
+    }
+
+    [Fact]
+    public void ALoopElementsItem_IsTypedByTheLoopsFan()
+    {
+        TemplateFixtures.Refused("{{ for e in node.sections }}{{ e.item.value }}{{ end }}", "reads e.item.value, which a snippet fan item does not carry (it carries: id, name, content)");
+        TemplateFixtures.Ok("{{ for e in node.events }}{{ e.item.value.event }}{{ end }}");
+        TemplateFixtures.Refused("{{ for e in node.events }}{{ e.item.content }}{{ end }}", "reads e.item.content, which an input fan item does not carry (it carries: id, name, value)");
+        TemplateFixtures.Refused("{{ for e in node.events }}{{ e.item.value.date }}{{ end }}", "reads field 'date' of 'e.item.value', which it does not declare (fields: event, year)");
+    }
+
+    [Fact]
+    public void ALoopsValue_IsAnArrayOfTheReturnedNodes()
+    {
+        var refs = TemplateFixtures.Ok("{{ for v in node.events.value }}{{ v.concepts | array.size }}{{ end }} {{ node.events.value[0].concepts[0].term }}");
+
+        Assert.Equal(new TemplateNodeRead(false, true), refs.Nodes["events"]);
+        TemplateFixtures.Refused("{{ node.events.value.concepts }}", "reads field 'concepts' of 'node.events.value', which is an array of object, not an object");
+        TemplateFixtures.Refused("{{ for e in node.events }}{{ e.value.terms }}{{ end }}", "reads field 'terms' of 'e.value', which it does not declare (fields: concepts)");
+    }
+
+    [Fact]
+    public void ALoopsValue_OnATextReturnedNode_IsRefused()
+    {
+        TemplateFixtures.Refused("{{ node.sections.value }}", "reads node.sections.value, but loop 'sections' returns 'section_notes' of format 'prose', which is text and has no value; read node.sections.content or iterate node.sections");
+        TemplateFixtures.Refused("{{ for e in node.sections }}{{ e.value }}{{ end }}", "reads e.value, but loop 'sections' returns 'section_notes' of format 'prose', which is text and has no value; read e.content");
+    }
+
+    [Fact]
+    public void ALoopsContent_IsText_AndABareLoop_SaysIterate()
+    {
+        var refs = TemplateFixtures.Ok("{{ node.sections.content }}");
+        Assert.Equal(new TemplateNodeRead(true, false), refs.Nodes["sections"]);
+        Assert.Empty(refs.Warnings);
+
+        TemplateFixtures.Refused("{{ node.sections }}", "reads node 'sections' bare; read node.sections.content, node.sections.value, or iterate it ({{ for e in node.sections }})");
+        TemplateFixtures.Refused("{{ node.sections.items }}", "reads node.sections.items, which is not a member (node.<id> has .content and .value)");
+    }
+
+    [Fact]
+    public void AnIfNode_IsNotIterable_AndReadsAsItsReturnedNode()
+    {
+        TemplateFixtures.Refused("{{ for e in node.triage }}{{ e }}{{ end }}", "reads node 'triage' bare; read node.triage.content (its composed output) or node.triage.value");
+        TemplateFixtures.Ok("{{ node.triage.content }}");
+        TemplateFixtures.Refused("{{ node.triage.value }}", "reads node.triage.value, but format 'prose' is text and has no value; read node.triage.content");
+    }
+
+    [Fact]
+    public void AnIfOrCaseWhoseBranchesDisagree_RefusesValueAndPipes_ByName()
+    {
+        TemplateFixtures.Ok("{{ node.split.content }}");
+        TemplateFixtures.Refused("{{ node.split.value }}", "reads node.split.value, but branches of 'split' return 'object' and 'text'; read node.split.content");
+        TemplateFixtures.Refused("{{ node.split.content | concept_bullets }}", "pipes node.split.content through concept_bullets, but branches of 'split' return 'object' and 'text'; concept_bullets renders a concept_list node's text (node.<id>.content)");
+    }
+
+    [Fact]
+    public void ARendererPipe_OnALoop_IsRefused_ButOnItsElement_IsRecordedForTheLoop()
+    {
+        TemplateFixtures.Refused("{{ node.events.content | concept_bullets }}", "pipes node.events.content through concept_bullets, but node.events loops — a list has no one text; pipe the returned node inside the loop ({{ for e in node.events }}{{ e.content | concept_bullets }}{{ end }}) or read node.events.content");
+
+        var refs = TemplateFixtures.Ok("{{ for e in node.events }}{{ e.content | concept_bullets }} {{ e.per_event.content | concept_context }}{{ end }}");
+        Assert.Equal(new[] { "events" }, refs.Edges);
+        Assert.Equal(
+            new[] { new TemplateRenderedRead("events", "concept_bullets"), new TemplateRenderedRead("events", "concept_context") },
+            refs.Rendered.OrderBy(r => r.Pipe, StringComparer.Ordinal));
+
+        TemplateFixtures.Refused("{{ for e in node.sections }}{{ e.content | concept_bullets }}{{ end }}", "pipes e.content through concept_bullets, but format 'prose' is text; concept_bullets renders a concept_list node's text (node.<id>.content)");
+    }
+
+    [Fact]
+    public void ALoopElementsMembers_AreClosed()
+    {
+        TemplateFixtures.Refused("{{ for e in node.sections }}{{ e.id }}{{ end }}", "reads e.id, which is not a member (a loop element has item, content, value and the body nodes: draft, section_notes)");
+        TemplateFixtures.Refused("{{ for e in node.sections }}{{ e }}{{ end }}", "reads e bare; read a member (e.item, e.content, e.value or a body node: draft, section_notes)");
+    }
+
+    [Fact]
+    public void ABodyNode_ReadFromOutsideItsScope_IsRefused_NamingTheFlowNode()
+    {
+        TemplateFixtures.Refused("{{ node.section_notes.content }}", "reads node 'section_notes', which runs inside loop 'sections'; read node.sections");
+        TemplateFixtures.Refused("{{ node.full.content }}", "reads node 'full', which runs inside node 'triage'; read node.triage");
+
+        var inside = TemplateReferenceWalker.Walk("Prompt 'p'", "{{ node.draft.content }}", TemplateFixtures.Context(new SnippetFolderFan("sections")) with { Scope = "sections" });
+        Assert.True(inside.IsValid, string.Join(" | ", inside.Errors));
+        Assert.Equal(new[] { "draft" }, inside.Edges);
+
+        // A deferred text (a snippet, a macro) is judged at its reader, as item reads are.
+        var deferred = TemplateReferenceWalker.Walk("Snippet 's'", "{{ node.section_notes.content }}", TemplateFixtures.Context() with { ItemDeferred = true });
+        Assert.True(deferred.IsValid, string.Join(" | ", deferred.Errors));
+        Assert.Equal(new[] { "section_notes" }, deferred.Edges);
     }
 }
