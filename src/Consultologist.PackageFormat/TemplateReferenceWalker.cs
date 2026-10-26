@@ -1367,7 +1367,8 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
                     if (_context.SnippetFolders.Contains(id))
                     {
-                        _refs.ReadSnippetFolder(id);
+                        // #1116: the folder is recorded where it is iterated (ElementOf, an
+                        // index) — a direct item read records the item alone.
                         return new FolderTarget(root, id);
                     }
 
@@ -1382,7 +1383,6 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
                     if (_context.MacroFolders.Contains(id))
                     {
-                        _refs.ReadMacroFolder(id);
                         return new FolderTarget(root, id);
                     }
 
@@ -1511,6 +1511,29 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return new ShapeTarget(TemplateValueShape.Text);
 
                 case FolderTarget folder:
+                    // #1116 (v26 design § 5.4): at 26 a declared item is a member of its
+                    // folder, read directly with the folder's member set and recorded
+                    // under the item's key — an edge, a reach, an inline read like the
+                    // scalar's. Below 26 a folder is iterated only.
+                    var folderItems = folder.Object == TemplateObjects.Snippet ? _context.SnippetFolderItems : _context.MacroFolderItems;
+                    if (_context.Labelled && folderItems is not null && folderItems.TryGetValue(folder.Folder, out var itemIds))
+                    {
+                        if (!itemIds.Contains(name, StringComparer.Ordinal))
+                        {
+                            Errors.Add($"{_subject} reads {walked}, which folder '{folder.Folder}' does not contain (items: {string.Join(", ", itemIds)}).");
+                            return Refused;
+                        }
+
+                        var itemKey = WorkflowDerivedEdges.SnippetItemKey(folder.Folder, name);
+                        if (folder.Object == TemplateObjects.Snippet)
+                        {
+                            _refs.ReadSnippet(itemKey);
+                            return new SnippetTarget(itemKey, null);
+                        }
+
+                        return new MacroTarget(itemKey, null);
+                    }
+
                     Errors.Add($"{_subject} reads {walked}; a folder is iterated: {{{{ for s in {folder.Object}.{folder.Folder} }}}}.");
                     return Refused;
 
@@ -1799,6 +1822,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
                     if (target is FolderTarget folder)
                     {
+                        ReadFolder(folder);
                         return folder.Object == TemplateObjects.Snippet
                             ? new SnippetTarget(null, folder.Folder)
                             : new MacroTarget(null, folder.Folder);
@@ -1946,6 +1970,19 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             $"{_subject} pipes {what} through {pipe}; a renderer pipe renders a node's text (node.<id>.content).";
 
         /// <summary>What a loop variable is bound to, from the iterated expression.</summary>
+        /// <summary>The folder read as a folder — iterated or indexed (#1116: a direct item read is the item's alone).</summary>
+        private void ReadFolder(FolderTarget folder)
+        {
+            if (folder.Object == TemplateObjects.Snippet)
+            {
+                _refs.ReadSnippetFolder(folder.Folder);
+            }
+            else
+            {
+                _refs.ReadMacroFolder(folder.Folder);
+            }
+        }
+
         private Target ElementOf(ScriptExpression? iterator)
         {
             var target = ResolveExpression(iterator, ChainUse.Iterable);
@@ -1956,6 +1993,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return element;
 
                 case FolderTarget folder:
+                    ReadFolder(folder);
                     return folder.Object == TemplateObjects.Snippet
                         ? new SnippetTarget(null, folder.Folder)
                         : new MacroTarget(null, folder.Folder);

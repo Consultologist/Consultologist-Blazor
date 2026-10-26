@@ -944,6 +944,19 @@ items; the Web manifest reader reads the map. The engine half — the store gath
 payload's folders — is **#1182** (layer B, after #1157); the direct item read `macro.<folder>.<item>` is #1116;
 the editor's `+ Macro folder` is #1163's milestone; #1152 writes the map.)*
 
+*(#1116, 2026-10-26 — a folder item readable directly, as § 5.4 says; both the snippet item and the macro item
+(decided 2026-10-26). At 26 a declared item is a member of its folder: `snippet.<folder>.<item>` resolves to the
+item with the snippet member set, `macro.<folder>.<item>` with the macro's (`.prompt`, `.instruction` included),
+recorded under the item's key `<folder>/<item>` — an edge, a reach and an inline read exactly as the scalar's
+(an item read inline needs its instruction, § 2.5; the reader's edges close over the item's reads and its own
+gate). An undeclared item is refused naming the folder's items (*"reads snippet.sections.nope, which folder
+'sections' does not contain (items: hpi, plan)."*); below 26 the 25 sentence holds. The folder itself is now
+recorded where it is iterated or indexed, not where it is named, so a direct read waits on the item alone; an
+item read directly counts as its folder's use. The probe's and the renderer's folder arrays carry the items as
+members (Scriban's array members), so `snippet.sections.hpi.content` renders beside `{{ for s in snippet.sections }}`;
+a gated-off item's direct read renders empty through the engine's key (#1179). The editor's palette choice is
+M33's.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,

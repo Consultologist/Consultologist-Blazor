@@ -85,12 +85,17 @@ public static partial class WorkflowPackageValidator
         var bodies = flows.BodyScopes;
         var deliverableIds = (manifest.Deliverables ?? new List<WorkflowDeliverableSpec>()).Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
 
+        // #1116 (§ 5.4): a folder's items by id, so an item is readable directly.
+        var snippetFolderItems = snippets.Collections.ToDictionary(e => e.Key, e => (IReadOnlyList<string>)e.Value.Items.Select(i => i.Id).ToList(), StringComparer.Ordinal);
+        var macroFolderItems = (macroFolders?.Collections ?? new Dictionary<string, WorkflowDataCollection>()).ToDictionary(e => e.Key, e => (IReadOnlyList<string>)e.Value.Items.Select(i => i.Id).ToList(), StringComparer.Ordinal);
+
         TemplateReferenceContext ContextFor(TemplateFan? fan) => new(
             inputShapes, nodeShapes,
             snippets.Scalars.Keys.ToHashSet(StringComparer.Ordinal),
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
             macroIds, macroFolderIds, fan,
-            Bodies: bodies, Deliverables: deliverableIds, Labelled: true);
+            Bodies: bodies, Deliverables: deliverableIds, Labelled: true,
+            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems);
 
         var walk = WorkflowDerivedEdges.WalkAll(
             manifest, files,

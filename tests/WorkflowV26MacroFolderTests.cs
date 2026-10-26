@@ -170,10 +170,10 @@ public class WorkflowV26MacroFolderTests
     }
 
     [Fact]
-    public void AFolder_AsAValue_OrAnItemByPath_IsRefused_UntilTheDirectRead()
+    public void AFolder_AsAValue_IsRefused()
     {
+        // #1116: an item by path reads directly (WorkflowV26DirectReadTests); the folder as a value stays refused.
         Assert.Contains(Errors(WithFolder("{{ macro.section_notes }}")), e => e.StartsWith("Node 'assessment' prompt reads macro.section_notes", StringComparison.Ordinal));
-        Assert.Contains("Node 'assessment' prompt reads macro.section_notes.hpi; a folder is iterated: {{ for s in macro.section_notes }}.", Errors(WithFolder("{{ macro.section_notes.hpi.content }}")));
     }
 
     [Fact]

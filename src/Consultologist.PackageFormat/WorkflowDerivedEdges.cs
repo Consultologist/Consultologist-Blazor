@@ -222,7 +222,9 @@ public static class WorkflowDerivedEdges
                 reached.UnionWith(refs.MacroPrompts);
                 slots.UnionWith(refs.MacroPrompts);
                 // #1099: a folder iterated is used; its items are reached through the element's reads.
+                // #1116: an item read directly (keyed <folder>/<item>) uses its folder too.
                 reached.UnionWith(refs.MacroFolders);
+                reached.UnionWith(refs.MacroContents.Concat(refs.MacroPrompts).Where(k => k.Contains('/')).Select(k => k[..k.IndexOf('/')]));
                 reached.UnionWith(MacroFolderItems(refs.MacroFolderContents));
                 reached.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
                 slots.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
@@ -1047,7 +1049,12 @@ public static class WorkflowDerivedEdges
 
         var labelled = manifest.SpecVersion >= 26;
 
-        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, macroFolderIds, fan, Bodies: bodies, Deliverables: deliverableIds, Labelled: labelled);
+        // #1116 (v26 design § 5.4): a folder's items by id at 26, so an item is readable directly.
+        var snippetFolderItems = labelled ? content.Collections.ToDictionary(e => e.Key, e => (IReadOnlyList<string>)e.Value.Items.Select(i => i.Id).ToList(), StringComparer.Ordinal) : null;
+        var macroFolderItems = labelled ? (macroFolders?.Collections ?? new Dictionary<string, WorkflowDataCollection>()).ToDictionary(e => e.Key, e => (IReadOnlyList<string>)e.Value.Items.Select(i => i.Id).ToList(), StringComparer.Ordinal) : null;
+
+        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, macroFolderIds, fan, Bodies: bodies, Deliverables: deliverableIds, Labelled: labelled,
+            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {
