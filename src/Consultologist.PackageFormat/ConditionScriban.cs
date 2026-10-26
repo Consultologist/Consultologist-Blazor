@@ -124,7 +124,8 @@ public static class ConditionScriban
 
     // A reserved object read as a root (not `node:x`, not `x.node.y`), a Scriban
     // connective, or date.parse. A quoted literal is NOT a tell: ≤24 quotes too.
-    private static readonly Regex ObjectSpelling = new(@"(^|[^a-z0-9_:.])(input|node|item)\.[a-z0-9_]|&&|\|\||^!\s*\(|date\.parse", RegexOptions.Compiled);
+    // #1101: deliverable.<id> is the 26 object spelling too.
+    private static readonly Regex ObjectSpelling = new(@"(^|[^a-z0-9_:.])(input|node|item|deliverable)\.[a-z0-9_]|&&|\|\||^!\s*\(|date\.parse", RegexOptions.Compiled);
 
     /// <summary>
     /// Reads a condition in the object spelling back into the ≤24 tree — the
