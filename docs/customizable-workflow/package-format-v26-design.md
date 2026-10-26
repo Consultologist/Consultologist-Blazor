@@ -870,6 +870,21 @@ headers and is valid; the conformance partial carries the § 5 cases, held back.
 render, the renderer's `.label`/`.instruction` and the store's reading of the 26 index are #1157; the editor's
 header pane #1163; the migration's `{ "label": <name>, "if": <when> }` #1152.)*
 
+*(#1089, 2026-10-26 — the instance gate governs the inline read, as § 2.3 says; the library half. A node
+instance's `if` is walked at its site under the 26 subject (*"Node 'assessment' macro 'closing' if compares
+input.kind to 'maybe' …"*; a 25 `when` keeps *"… condition"*), typed against the inputs, refused reading a
+loop, `item.id` typed against the loop the node runs in (§ 2.4) and refused outside one. The judgement is one
+pure function, `WorkflowInlineGates.Suppressed(nodeId, instances, itemId, scope)`, over the node's render scope:
+a macro with no instance on the node is never named; a macro is suppressed when every instance of it on the
+node carries a gate and none holds (an instance anchored by `forItem` to another item is not this node's); any
+instance holding reads. The renderer's scope carries the set (`TemplateRenderScope.SuppressedPrompts`): a
+suppressed `macro.<id>.prompt` renders **empty — no instruction, no mechanics sentence, no read recorded**;
+null is the 25 render. `.content` is untouched (a placement's skip is completion's; a text's `.content` read
+is the macro's own `if`, #1090). Decided 2026-10-26: the engine half — the descriptor carrying `if`, the activity
+judging before the render, completion excluding by `if` — is **#1175** (layer B, after #1157); an instruction
+template that renders empty keeps today's sentence until #1096; the preview's node context is the editor's
+(M33).)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
