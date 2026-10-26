@@ -839,6 +839,16 @@ did. **The design's minimal 26 package is valid** — the first the path accepts
 path and the store's gathering of the nodes' prompt files are #1157; the editor's node-pane prompt #1162;
 the migration #1152.)*
 
+*(#1151, 2026-10-26 — the 26 conformance partial exists (`tests/ConformanceFixtureExport.V26.cs`): the
+design's minimal as the valid baseline beside an if node, a case node, the loop read from outside, two
+deliverables sharing a source and a deliverable's text read, and one refusal per sentence the path has built so
+far — the ten retirements, the flow nodes, the deliverable, the prompt. The export **holds back** every case
+above the engine's accepted ceiling and says so: validated through the public entry they would record the
+accepted-set sentence, and the registry files an unsupported version under `any/`; a dry run today reproduces
+the registry's `conformance/` byte for byte. The bump (#1149) lifts the hold-back by accepting 26; the
+migrated-25 baseline joins with #1152's rewriter; the "requires specVersion 26" gates (spec-25 cases) ride the
+bump too, since exported early they would change the supported v25 set.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
