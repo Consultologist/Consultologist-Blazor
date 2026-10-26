@@ -183,9 +183,10 @@ stays the one-rung key) and no sub-workflow call node — out of 26 with those r
 ### 1.4 What is static at 26
 
 A `for`'s collection is `snippet.<folder>` or `input.<id>`; a folder item's `if` (§ 2) reads
-inputs only; an `if` node *inside* a `for` body skips the item's body nodes and **keeps the
-count** (the item is a row that says "skipped by condition"). So every loop's length is known
-when the job starts, `TotalBlockCount` stays the stored scalar it has been since #176, and the
+inputs only; and **at 26 a body holds plain nodes** (decided 2026-10-26) — an `if` or `case`
+inside a `for` body, skipping the item's body nodes and keeping the count (the item a row that
+says "skipped by condition"), is a follow-up issue of its own; a `for` inside anything waits for
+the scheduler redesign (§ 6). So every loop's length is known when the job starts, `TotalBlockCount` stays the stored scalar it has been since #176, and the
 engine's skeleton (`ResolveSkeleton`, `SettledFolders`) resolves the 26 program as it resolves
 the 25 fans — the scheduler does not change shape in this bump. The sentence a 26 package
 meets when it reaches past that is the next bump's name, § 6: a collection expression that reads
@@ -772,6 +773,23 @@ every member below 26 so the published 5–25 schemas do not move a byte, and cl
 26."*, the noun following the key the version carries — from the ≤24 chain and from `ValidateAt25`.
 `WorkflowDeliverableSpec.Node` stays the positional it is until #1101 settles the record; the 26 schema file
 and the vectors are exported at #1149.)*
+
+*(#1100, PR 1 of 2, 2026-10-26 — the structure lands: the 26 path has its own pipeline, the flow nodes
+resolved first. Sentences, as built: one flow key (*"declares for, if; a node is one flow node — for, if or
+case"*); structural (*"declares for and format; a flow node is structural"*); the keys a kind carries; a
+loop's collection (*"Loop 'l' iterates '…'; a loop iterates "item in snippet.<folder>" or "item in
+input.<id>""*, the file/folder/input/array sentences, *"iterates node.x.value; a loop over a node's value
+waits for the scheduler redesign"*); bodies declared, plain, listed once, attached once (*"runs inside loop
+'l' and inside node 'triage'; a node runs in one body"*; *"Loop 'paragraphs' runs inside loop 'sections';
+nesting waits…"*; *"Node 'triage' runs inside loop 'sections'; at specVersion 26 a body holds plain nodes —
+a flow node inside a body is a later issue"*); `ret` required and a member; a case over an enum input or an
+enum-format node's value with each value in the set once; the scope on the edges (*"reads node 'y', which
+runs inside loop 'l'; read node.l"*, *"across loops ('a' vs 'b')"*, *"reads node.l, the loop it runs in"*);
+*"reads node.l, which loops; a condition decides before the loop runs"*; *"in loop 'l' is neither returned
+nor read"*. An `if` node's expression is a `Flow`-site condition whose reads are the flow node's edges and
+a gating read; a `case` subject is read structurally. Until PR 2 a loop reads as text (the aggregator's
+shape) and an `if`/`case` as its returned node's format when every branch returns one; PR 2 brings
+`{{ for e in node.<loop> }}`, `.value` across branches, the probe's iterable loop.)*
 
 ## 12. The editor
 

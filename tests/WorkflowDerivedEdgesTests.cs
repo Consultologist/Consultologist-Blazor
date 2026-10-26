@@ -170,6 +170,26 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
+    public void AnIfNodesExpression_IsAFlowCondition_AndItsReadsAreTheFlowNodesEdges()
+    {
+        // #1100: an if node's expression is walked at its own site; what it reads
+        // the flow node waits on, and the engine's stage one reads it as gating.
+        var (manifest, files) = V26Package.Minimal();
+        manifest = V26Package.WithNodes(manifest,
+            new WorkflowNodeSpec("full_workup", "Full work-up", Prompt: "assessment", Format: "prose"),
+            new WorkflowNodeSpec("triage", "Triage", If: "node.scope.value == \"in_scope\"", Then: new WorkflowFlowBodySpec(new List<string> { "full_workup" }, "node.full_workup")));
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        var condition = Assert.Single(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.Flow);
+        Assert.Equal("triage", condition.OwnerId);
+        Assert.Equal("Node 'triage' if", condition.Subject);
+        Assert.True(condition.Walk.IsValid, string.Join(" | ", condition.Walk.References.Errors));
+        Assert.Contains("scope", walk.EdgesOf("triage"));
+        Assert.Contains("scope", walk.GatingReads());
+    }
+
+    [Fact]
     public void PromptReadsOf_ClosesOverSnippets_AndTheFanItemThatRan()
     {
         var (manifest, files) = V25Package.Minimal();
