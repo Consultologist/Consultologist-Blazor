@@ -117,6 +117,23 @@ internal static class WorkflowPackageContentValidation
 
         foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
         {
+            // #1099 (v26 design § 5.3): a macro folder — its index and the items the index names.
+            if (manifest.SpecVersion >= 26 && macro.File is { } dir && dir.EndsWith('/'))
+            {
+                var macroIndex = dir + WorkflowDataResolver.IndexFileName;
+                referenced.Add(macroIndex);
+
+                if (files.TryGetValue(macroIndex, out var macroIndexJson))
+                {
+                    foreach (var (_, file) in WorkflowTextHeaders.ReadIndexAt26(macroIndexJson, macro.Id, "Macro", new List<string>()) ?? new List<(string, string)>())
+                    {
+                        referenced.Add(dir + file);
+                    }
+                }
+
+                continue;
+            }
+
             referenced.Add(macro.File);
         }
 
