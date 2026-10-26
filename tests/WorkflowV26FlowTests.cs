@@ -18,15 +18,12 @@ public class WorkflowV26FlowTests
 
     private static WorkflowFlowBodySpec Body(string? ret, params string[] nodes) => new(nodes.ToList(), ret);
 
-    /// <summary>Declares a prompt (prompts[] holds until #1102) for a node a test adds.</summary>
-    private static WorkflowPackageManifest WithPrompt(WorkflowPackageManifest m, string id) =>
-        m with { Prompts = m.Prompts!.Append(new WorkflowPromptSpec(id, $"prompts/{id}.md", new List<string>())).ToList() };
 
     /// <summary>The minimal with an if node `triage` over two prose nodes added beside the loop.</summary>
     private static WorkflowPackageManifest WithTriage(WorkflowPackageManifest m, string condition = "input.kind == \"new\"", WorkflowFlowBodySpec? then = null, WorkflowFlowBodySpec? @else = null) =>
         Sourcing(V26Package.WithNodes(m,
-            new("full_workup", "Full work-up", Prompt: "extract", Format: "prose"),
-            new("brief_update", "Brief update", Prompt: "extract", Format: "prose"),
+            new("full_workup", "Full work-up", Prompt: "prompts/extract.md", Format: "prose"),
+            new("brief_update", "Brief update", Prompt: "prompts/extract.md", Format: "prose"),
             new("triage", "Triage", If: condition, Then: then ?? Body("node.full_workup", "full_workup"), Else: @else ?? Body("node.brief_update", "brief_update"))), "node.triage");
 
     /// <summary>#1101: a flow node a test adds feeds the deliverable as one more source.</summary>
@@ -36,8 +33,8 @@ public class WorkflowV26FlowTests
     /// <summary>The minimal with a case node `route` over input.kind, two branches of one prose node each.</summary>
     private static WorkflowPackageManifest WithRoute(WorkflowPackageManifest m, string subject = "input.kind", params WorkflowCaseBranchSpec[] branches) =>
         Sourcing(V26Package.WithNodes(m,
-            new("plan", "Plan", Prompt: "extract", Format: "prose"),
-            new("letter", "Letter", Prompt: "extract", Format: "prose"),
+            new("plan", "Plan", Prompt: "prompts/extract.md", Format: "prose"),
+            new("letter", "Letter", Prompt: "prompts/extract.md", Format: "prose"),
             new("route", "Route", Case: subject, Branches: branches.Length == 0
                 ? new List<WorkflowCaseBranchSpec>
                 {
@@ -272,7 +269,7 @@ public class WorkflowV26FlowTests
         // PR 2: the walker names it where the read is written, so it never becomes an edge.
         var errors = V26Package.FlowErrors(m => m, files => files["prompts/assessment.md"] = "Assess. {{ node.section_notes.content }}");
 
-        Assert.Contains("Prompt 'assessment' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
+        Assert.Contains("Node 'assessment' prompt reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
         Assert.DoesNotContain("Node 'assessment' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
     }
 
@@ -299,18 +296,18 @@ public class WorkflowV26FlowTests
     public void BodyNodes_OfDifferentLoops_DoNotAlign()
     {
         var errors = V26Package.FlowErrors(
-            m => V26Package.WithNodes(WithPrompt(m, "per_section"),
-                new("per_section", "Per section", Prompt: "per_section", Format: "prose"),
+            m => V26Package.WithNodes(m,
+                new("per_section", "Per section", Prompt: "prompts/per_section.md", Format: "prose"),
                 new("other", "Other", For: "item in snippet.sections", Nodes: new List<string> { "per_section" }, Ret: "node.per_section")),
             files => files["prompts/per_section.md"] = "{{ item.content }} {{ node.section_notes.content }}");
 
         // The walker names the read where it is written (PR 2); a deferred text's
         // read is judged at its reader, where the two loops are named (PR 1).
-        Assert.Contains("Prompt 'per_section' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
+        Assert.Contains("Node 'per_section' prompt reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
 
         var deferred = V26Package.FlowErrors(
-            m => V26Package.WithNodes(WithPrompt(m, "per_section"),
-                new("per_section", "Per section", Prompt: "per_section", Format: "prose"),
+            m => V26Package.WithNodes(m,
+                new("per_section", "Per section", Prompt: "prompts/per_section.md", Format: "prose"),
                 new("other", "Other", For: "item in snippet.sections", Nodes: new List<string> { "per_section" }, Ret: "node.per_section")),
             files =>
             {
@@ -334,7 +331,7 @@ public class WorkflowV26FlowTests
     public void Siblings_ReadOneAnother_ItemAligned()
     {
         var errors = V26Package.FlowErrors(
-            m => V26Package.WithNode(V26Package.WithNodes(WithPrompt(m, "draft"), new WorkflowNodeSpec("draft", "Draft", Prompt: "draft", Format: "prose")),
+            m => V26Package.WithNode(V26Package.WithNodes(m, new WorkflowNodeSpec("draft", "Draft", Prompt: "prompts/draft.md", Format: "prose")),
                 "sections", n => n with { Nodes = new List<string> { "draft", "section_notes" } }),
             files =>
             {
@@ -376,7 +373,7 @@ public class WorkflowV26FlowTests
     public void ABodyNode_NeitherReturnedNorRead_IsUnreachable()
     {
         var errors = V26Package.FlowErrors(
-            m => V26Package.WithNode(V26Package.WithNodes(WithPrompt(m, "draft"), new WorkflowNodeSpec("draft", "Draft", Prompt: "draft", Format: "prose")),
+            m => V26Package.WithNode(V26Package.WithNodes(m, new WorkflowNodeSpec("draft", "Draft", Prompt: "prompts/draft.md", Format: "prose")),
                 "sections", n => n with { Nodes = new List<string> { "draft", "section_notes" } }),
             files => files["prompts/draft.md"] = "Draft {{ item.name }}.");
 
@@ -412,8 +409,8 @@ public class WorkflowV26FlowTests
         // concept lists, the element's content pipes through a renderer, the loop's
         // own text does not.
         WorkflowPackageManifest WithExtractLoop(WorkflowPackageManifest m) =>
-            V26Package.WithNode(V26Package.WithNodes(WithPrompt(m, "per_item"),
-                new WorkflowNodeSpec("per_item", "Per item", Prompt: "per_item", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail)),
+            V26Package.WithNode(V26Package.WithNodes(m,
+                new WorkflowNodeSpec("per_item", "Per item", Prompt: "prompts/per_item.md", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail)),
                 "sections", n => n with { Nodes = new List<string> { "per_item", "section_notes" }, Ret = "node.per_item" })
             // #1101: a concept_list loop is no prose source — the assessment, which reads it, is the deliverable's.
             with { Deliverables = m.Deliverables!.Select(d => d with { Sources = new List<string> { "node.assessment" } }).ToList() };
@@ -435,9 +432,9 @@ public class WorkflowV26FlowTests
     public void AnIfOverTwoFormats_RefusesValueByName()
     {
         var errors = V26Package.FlowErrors(
-            m => V26Package.WithNodes(WithPrompt(m, "full_extract"),
-                new WorkflowNodeSpec("full_extract", "Full extract", Prompt: "full_extract", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail),
-                new WorkflowNodeSpec("brief_update", "Brief update", Prompt: "extract", Format: "prose"),
+            m => V26Package.WithNodes(m,
+                new WorkflowNodeSpec("full_extract", "Full extract", Prompt: "prompts/full_extract.md", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail),
+                new WorkflowNodeSpec("brief_update", "Brief update", Prompt: "prompts/extract.md", Format: "prose"),
                 new WorkflowNodeSpec("triage", "Triage", If: "input.kind == \"new\"", Then: Body("node.full_extract", "full_extract"), Else: Body("node.brief_update", "brief_update"))),
             files =>
             {
@@ -445,6 +442,44 @@ public class WorkflowV26FlowTests
                 files["prompts/assessment.md"] = "Assess. {{ node.triage.content }} {{ node.triage.value }}";
             });
 
-        Assert.Contains("Prompt 'assessment' reads node.triage.value, but branches of 'triage' return 'object' and 'text'; read node.triage.content.", errors);
+        Assert.Contains("Node 'assessment' prompt reads node.triage.value, but branches of 'triage' return 'object' and 'text'; read node.triage.content.", errors);
+    }
+
+    // ----- #1102: a node names its prompt file -------------------------------------
+
+    [Fact]
+    public void ANodesPrompt_IsItsFile_WalkedUnderTheNodesSubject()
+    {
+        var errors = V26Package.FlowErrors(m => m, files => files["prompts/assessment.md"] = "Assess. {{ node.nope.content }}");
+
+        Assert.Contains("Node 'assessment' prompt reads node 'nope', which the package does not declare.", errors);
+    }
+
+    [Fact]
+    public void APromptThatIsAnId_IsRefusedNamingTheFile()
+    {
+        var errors = V26Package.FlowErrors(m => V26Package.WithNode(m, "assessment", n => n with { Prompt = "assessment" }));
+
+        Assert.Contains("Node 'assessment' names prompt 'assessment'; at specVersion 26 prompt is the file (prompts/assessment.md).", errors);
+    }
+
+    [Fact]
+    public void APromptFileMissing_IsRefused()
+    {
+        Assert.Contains("Node 'assessment' prompt 'prompts/nope.md' is missing from the package.",
+            V26Package.FlowErrors(m => V26Package.WithNode(m, "assessment", n => n with { Prompt = "prompts/nope.md" })));
+        Assert.Contains("Node 'assessment' prompt 'nope' is missing from the package.",
+            V26Package.FlowErrors(m => V26Package.WithNode(m, "assessment", n => n with { Prompt = "nope" })));
+    }
+
+    [Fact]
+    public void TwoNodes_MayShareOneFile()
+    {
+        // Reuse is a snippet by the design's word; two nodes naming one file are
+        // still two prompts, each walked as its node's.
+        var errors = V26Package.FlowErrors(m => Sourcing(V26Package.WithNodes(m,
+            new WorkflowNodeSpec("second_opinion", "Second opinion", Prompt: "prompts/assessment.md", Format: "prose")), "node.second_opinion"));
+
+        Assert.Empty(errors);
     }
 }

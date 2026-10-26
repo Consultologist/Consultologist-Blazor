@@ -39,6 +39,18 @@ public class WorkflowPackageClosureV25Tests
     }
 
     [Fact]
+    public void At26_ANodesPromptFile_IsReferenced_NotStray()
+    {
+        // #1102: a node names its prompt file; the closure references it as prompts[] did.
+        var (manifest, files) = V26Package.Minimal();
+        var errors = new List<string>();
+
+        WorkflowPackageContentValidation.ValidateFileClosure(manifest, files, errors);
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
     public void AStrayFile_IsStillNamed()
     {
         var (manifest, files) = V25Package.Minimal();

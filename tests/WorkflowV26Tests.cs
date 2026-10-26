@@ -7,9 +7,8 @@ namespace Consultologist.Api.Tests;
 /// The 26 packages and the seam that lets them through while 26 is wired but
 /// not yet accepted (#1150; the bump is #1149). <see cref="Minimal"/> is the
 /// design's minimal 26 package (#1100: a loop over a snippet folder, its one
-/// body node returned; #1101: the deliverable naming its sources; the prompts
-/// still declared until #1102 — <see cref="FlowErrors"/> sets that one sentence
-/// aside). <see cref="FromV25"/> is the 25 minimal with its version
+/// body node returned; #1101: the deliverable naming its sources; #1102: each
+/// node naming its prompt file) — valid at 26. <see cref="FromV25"/> is the 25 minimal with its version
 /// raised — invalid at 26 by design, every key 26 retires in it — for the
 /// retirement facts.
 /// </summary>
@@ -30,14 +29,16 @@ public static class V26Package
         var at26 = manifest with
         {
             SpecVersion = 26,
+            // #1102: a node names its prompt file; prompts[] is retired.
+            Prompts = null,
             Nodes = new List<WorkflowNodeSpec>
             {
-                new("extract", "Extract concepts", Prompt: "extract", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail),
-                new("scope", "Scope", Prompt: "scope", Format: "classification", OnInvalid: WorkflowOnInvalid.Fail,
+                new("extract", "Extract concepts", Prompt: "prompts/extract.md", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail),
+                new("scope", "Scope", Prompt: "prompts/scope.md", Format: "classification", OnInvalid: WorkflowOnInvalid.Fail,
                     With: new Dictionary<string, JsonNode?> { ["values"] = new JsonArray("in_scope", "out_of_scope") }),
-                new("assessment", "Assessment", Prompt: "assessment", Format: "prose",
+                new("assessment", "Assessment", Prompt: "prompts/assessment.md", Format: "prose",
                     Macros: new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After) }),
-                new("section_notes", "Section notes", Prompt: "section", Format: "prose"),
+                new("section_notes", "Section notes", Prompt: "prompts/section.md", Format: "prose"),
                 new("coverage", "Coverage", Format: "terms_subset", OnInvalid: WorkflowOnInvalid.Fail,
                     With: new Dictionary<string, JsonNode?> { ["of"] = "node.extract", ["in"] = "node.extract", ["failWith"] = "The note names problems the source does not." }),
                 new("sections", "Sections", For: "item in snippet.sections", Nodes: new List<string> { "section_notes" }, Ret: "node.section_notes"),
@@ -70,13 +71,8 @@ public static class V26Package
 
     public static List<string> Warnings((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) => Validate(bundle).Warnings;
 
-    /// <summary>
-    /// The errors but for the one the minimal earns until #1102 lands: the
-    /// prompts' declaration (`prompts[]` is retired; a node names its file then).
-    /// #1102 replaces this with validity.
-    /// </summary>
-    public static List<string> FlowErrors((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
-        Errors(bundle).Where(e => !e.StartsWith("prompts is retired", StringComparison.Ordinal)).ToList();
+    /// <summary>The errors of a 26 package built from the minimal — every one, since #1102 (the name stays for the facts that grew with the path).</summary>
+    public static List<string> FlowErrors((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) => Errors(bundle);
 
     public static List<string> FlowErrors(Func<WorkflowPackageManifest, WorkflowPackageManifest> change, Action<Dictionary<string, string>>? withFiles = null)
     {
@@ -241,12 +237,13 @@ public class WorkflowV26Tests
     }
 
     [Fact]
-    public void TheMinimalPackage_IsValid_ButForThePrompts()
+    public void TheMinimalPackage_IsValid()
     {
-        // #1101: the first 26 package the path accepts — one sentence left, #1102's.
-        var errors = V26Package.Errors(V26Package.Minimal());
+        // #1102: the first 26 package the path accepts whole — the design's minimal.
+        var result = V26Package.Validate(V26Package.Minimal());
 
-        Assert.Equal(new[] { "prompts is retired at specVersion 26; a node names its prompt file (nodes[].prompt: \"<path>\")." }, errors);
+        Assert.True(result.IsValid, string.Join(" | ", result.Errors));
+        Assert.Empty(result.Warnings);
     }
 
     [Fact]

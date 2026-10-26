@@ -14,8 +14,6 @@ public class WorkflowV26DeliverableTests
     private static List<string> Errors(Func<WorkflowDeliverableSpec, WorkflowDeliverableSpec> change, Action<Dictionary<string, string>>? withFiles = null) =>
         V26Package.FlowErrors(m => m with { Deliverables = m.Deliverables!.Select(change).ToList() }, withFiles);
 
-    private static WorkflowPackageManifest WithPrompt(WorkflowPackageManifest m, string id) =>
-        m with { Prompts = m.Prompts!.Append(new WorkflowPromptSpec(id, $"prompts/{id}.md", new List<string>())).ToList() };
 
     [Fact]
     public void TheMinimal_ComposesItsSources()
@@ -60,8 +58,8 @@ public class WorkflowV26DeliverableTests
     public void ALoopSource_ReturnsProse()
     {
         var errors = V26Package.FlowErrors(
-            m => V26Package.WithNode(V26Package.WithNodes(WithPrompt(m, "per_item"),
-                new WorkflowNodeSpec("per_item", "Per item", Prompt: "per_item", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail)),
+            m => V26Package.WithNode(V26Package.WithNodes(m,
+                new WorkflowNodeSpec("per_item", "Per item", Prompt: "prompts/per_item.md", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail)),
                 "sections", n => n with { Nodes = new List<string> { "per_item", "section_notes" }, Ret = "node.per_item" }),
             files => files["prompts/per_item.md"] = "Concepts of {{ item.content }} and {{ node.section_notes.content }}.");
 
@@ -72,9 +70,9 @@ public class WorkflowV26DeliverableTests
     public void AnIfSource_ReturnsProse_InEveryBranch()
     {
         WorkflowPackageManifest WithTriage(WorkflowPackageManifest m, string thenFormat) =>
-            V26Package.WithNodes(WithPrompt(m, "full"),
-                new WorkflowNodeSpec("full", "Full", Prompt: "full", Format: thenFormat, OnInvalid: thenFormat == "prose" ? null : WorkflowOnInvalid.Fail),
-                new WorkflowNodeSpec("brief", "Brief", Prompt: "extract", Format: "prose"),
+            V26Package.WithNodes(m,
+                new WorkflowNodeSpec("full", "Full", Prompt: "prompts/full.md", Format: thenFormat, OnInvalid: thenFormat == "prose" ? null : WorkflowOnInvalid.Fail),
+                new WorkflowNodeSpec("brief", "Brief", Prompt: "prompts/extract.md", Format: "prose"),
                 new WorkflowNodeSpec("triage", "Triage", If: "input.kind == \"new\"",
                     Then: new WorkflowFlowBodySpec(new List<string> { "full" }, "node.full"),
                     Else: new WorkflowFlowBodySpec(new List<string> { "brief" }, "node.brief")));
@@ -146,7 +144,7 @@ public class WorkflowV26DeliverableTests
     public void DeliverableContent_IsReadable_AsAnEdgeOnTheSources()
     {
         var (manifest, files) = V26Package.Minimal();
-        manifest = V26Package.WithNodes(WithPrompt(manifest, "letter"), new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose"));
+        manifest = V26Package.WithNodes(manifest, new WorkflowNodeSpec("letter", "Letter", Prompt: "prompts/letter.md", Format: "prose"));
         manifest = manifest with
         {
             Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("patient_letter", null, "Patient letter", Sources: new List<string> { "node.letter", "node.sections" })).ToList(),
@@ -164,10 +162,10 @@ public class WorkflowV26DeliverableTests
     {
         List<string> Reading(string text) => V26Package.FlowErrors(m => m, files => files["prompts/assessment.md"] = text);
 
-        Assert.Contains("Prompt 'assessment' reads deliverable.consult.value, which is not a member (deliverable.<id> has .content).", Reading("{{ deliverable.consult.value }}"));
-        Assert.Contains("Prompt 'assessment' pipes deliverable.consult.content through concept_bullets, but deliverable.consult composes sections; concept_bullets renders a concept_list node's text (node.<id>.content).", Reading("{{ deliverable.consult.content | concept_bullets }}"));
-        Assert.Contains("Prompt 'assessment' reads deliverable 'nope', which the package does not declare.", Reading("{{ deliverable.nope.content }}"));
-        Assert.Contains("Prompt 'assessment' reads deliverable 'consult' bare; read deliverable.consult.content.", Reading("{{ deliverable.consult }}"));
+        Assert.Contains("Node 'assessment' prompt reads deliverable.consult.value, which is not a member (deliverable.<id> has .content).", Reading("{{ deliverable.consult.value }}"));
+        Assert.Contains("Node 'assessment' prompt pipes deliverable.consult.content through concept_bullets, but deliverable.consult composes sections; concept_bullets renders a concept_list node's text (node.<id>.content).", Reading("{{ deliverable.consult.content | concept_bullets }}"));
+        Assert.Contains("Node 'assessment' prompt reads deliverable 'nope', which the package does not declare.", Reading("{{ deliverable.nope.content }}"));
+        Assert.Contains("Node 'assessment' prompt reads deliverable 'consult' bare; read deliverable.consult.content.", Reading("{{ deliverable.consult }}"));
     }
 
     [Fact]
@@ -190,7 +188,7 @@ public class WorkflowV26DeliverableTests
     public void EveryNode_FeedsADeliverable()
     {
         var errors = V26Package.FlowErrors(
-            m => V26Package.WithNodes(WithPrompt(m, "aside"), new WorkflowNodeSpec("aside", "Aside", Prompt: "aside", Format: "prose")),
+            m => V26Package.WithNodes(m, new WorkflowNodeSpec("aside", "Aside", Prompt: "prompts/aside.md", Format: "prose")),
             files => files["prompts/aside.md"] = "Aside {{ input.notes }}.");
 
         Assert.Contains("Node 'aside' does not feed the deliverable: every node must transitively reach 'consult's sources. Read it from a node that does, or name it among the deliverable's sources.", errors);
@@ -200,7 +198,7 @@ public class WorkflowV26DeliverableTests
     public void TheProbe_RendersADeliverableRead()
     {
         var (manifest, files) = V26Package.Minimal();
-        manifest = V26Package.WithNodes(WithPrompt(manifest, "letter"), new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose"));
+        manifest = V26Package.WithNodes(manifest, new WorkflowNodeSpec("letter", "Letter", Prompt: "prompts/letter.md", Format: "prose"));
         manifest = manifest with
         {
             Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("patient_letter", null, "Patient letter", Sources: new List<string> { "node.letter", "node.sections" })).ToList(),
