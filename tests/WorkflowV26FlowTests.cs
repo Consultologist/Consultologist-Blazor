@@ -265,7 +265,19 @@ public class WorkflowV26FlowTests
     [Fact]
     public void TheOutside_ReadingABodyNode_ReadsTheLoopInstead()
     {
+        // PR 2: the walker names it where the read is written, so it never becomes an edge.
         var errors = V26Package.FlowErrors(m => m, files => files["prompts/assessment.md"] = "Assess. {{ node.section_notes.content }}");
+
+        Assert.Contains("Prompt 'assessment' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
+        Assert.DoesNotContain("Node 'assessment' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
+    }
+
+    [Fact]
+    public void ASnippet_ReadingABodyNode_IsJudgedAtItsReader()
+    {
+        // A snippet is walked once with no scope of its own; the outside node that
+        // reads it earns the sentence on the edge (PR 1's rule), as item reads do.
+        var errors = V26Package.FlowErrors(m => m, files => files["snippets/standards.md"] = "Standards. {{ node.section_notes.content }}");
 
         Assert.Contains("Node 'assessment' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
     }
@@ -288,7 +300,21 @@ public class WorkflowV26FlowTests
                 new("other", "Other", For: "item in snippet.sections", Nodes: new List<string> { "per_section" }, Ret: "node.per_section")),
             files => files["prompts/per_section.md"] = "{{ item.content }} {{ node.section_notes.content }}");
 
-        Assert.Contains("Node 'per_section' reads node 'section_notes' across loops ('other' vs 'sections'); body nodes of one loop read one another.", errors);
+        // The walker names the read where it is written (PR 2); a deferred text's
+        // read is judged at its reader, where the two loops are named (PR 1).
+        Assert.Contains("Prompt 'per_section' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
+
+        var deferred = V26Package.FlowErrors(
+            m => V26Package.WithNodes(WithPrompt(m, "per_section"),
+                new("per_section", "Per section", Prompt: "per_section", Format: "prose"),
+                new("other", "Other", For: "item in snippet.sections", Nodes: new List<string> { "per_section" }, Ret: "node.per_section")),
+            files =>
+            {
+                files["prompts/per_section.md"] = "{{ item.content }} {{ snippet.standards.content }}";
+                files["snippets/standards.md"] = "Standards. {{ node.section_notes.content }}";
+            });
+
+        Assert.Contains("Node 'per_section' reads node 'section_notes' across loops ('other' vs 'sections'); body nodes of one loop read one another.", deferred);
     }
 
     [Fact]
@@ -339,7 +365,7 @@ public class WorkflowV26FlowTests
     {
         var errors = V26Package.FlowErrors(m => WithTriage(m, "node.section_notes.content != \"\""));
 
-        Assert.Contains("Node 'triage' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
+        Assert.Contains("Node 'triage' if reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
     }
 
     [Fact]
@@ -362,5 +388,57 @@ public class WorkflowV26FlowTests
 
         var valueRead = V26Package.FlowErrors(m => WithTriage(m), files => files["prompts/assessment.md"] = "Assess. {{ node.triage.value }}");
         Assert.Contains(valueRead, e => e.Contains("reads node.triage.value, but format 'prose' is text and has no value", StringComparison.Ordinal));
+    }
+
+    // ----- the reads (PR 2) --------------------------------------------------------
+
+    [Fact]
+    public void TheOutside_IteratesTheLoop_AndTheProbeRenders()
+    {
+        var errors = V26Package.FlowErrors(m => m, files =>
+            files["prompts/assessment.md"] = "Assess.\n{{ for e in node.sections }}{{ e.item.name }}: {{ e.content }} / {{ e.section_notes.content }}{{ end }}\n{{ node.sections.content }} {{ node.sections[0].item.id }} {{ node.sections | array.size }}");
+
+        Assert.Empty(errors);
+    }
+
+    [Fact]
+    public void TheLoopsValue_OverAConceptListReturnedNode()
+    {
+        // A loop whose returned node is a concept_list: .value is the array of the
+        // concept lists, the element's content pipes through a renderer, the loop's
+        // own text does not.
+        WorkflowPackageManifest WithExtractLoop(WorkflowPackageManifest m) =>
+            V26Package.WithNode(V26Package.WithNodes(WithPrompt(m, "per_item"),
+                new WorkflowNodeSpec("per_item", "Per item", Prompt: "per_item", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail)),
+                "sections", n => n with { Nodes = new List<string> { "per_item", "section_notes" }, Ret = "node.per_item" });
+
+        void Files(Dictionary<string, string> files, string assessment)
+        {
+            files["prompts/per_item.md"] = "Concepts of {{ item.content }} and {{ node.section_notes.content }}.";
+            files["prompts/assessment.md"] = assessment;
+        }
+
+        Assert.Empty(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ for v in node.sections.value }}{{ v.concepts | array.size }}{{ end }} {{ for e in node.sections }}{{ e.content | concept_bullets }}{{ end }}")));
+        Assert.Contains(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ node.sections.content | concept_bullets }}")),
+            e => e.Contains("pipes node.sections.content through concept_bullets, but node.sections loops — a list has no one text", StringComparison.Ordinal));
+        Assert.Contains(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ node.sections.value.concepts }}")),
+            e => e.Contains("reads field 'concepts' of 'node.sections.value', which is an array of object, not an object", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnIfOverTwoFormats_RefusesValueByName()
+    {
+        var errors = V26Package.FlowErrors(
+            m => V26Package.WithNodes(WithPrompt(m, "full_extract"),
+                new WorkflowNodeSpec("full_extract", "Full extract", Prompt: "full_extract", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail),
+                new WorkflowNodeSpec("brief_update", "Brief update", Prompt: "extract", Format: "prose"),
+                new WorkflowNodeSpec("triage", "Triage", If: "input.kind == \"new\"", Then: Body("node.full_extract", "full_extract"), Else: Body("node.brief_update", "brief_update"))),
+            files =>
+            {
+                files["prompts/full_extract.md"] = "Extract from {{ input.notes }}.";
+                files["prompts/assessment.md"] = "Assess. {{ node.triage.content }} {{ node.triage.value }}";
+            });
+
+        Assert.Contains("Prompt 'assessment' reads node.triage.value, but branches of 'triage' return 'object' and 'text'; read node.triage.content.", errors);
     }
 }
