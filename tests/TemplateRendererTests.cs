@@ -152,6 +152,25 @@ public class TemplateRendererTests
     }
 
     [Fact]
+    public void APromptWithNoInstruction_OrOneThatRendersEmpty_IsEmpty_WithNoSentenceAndNoRead()
+    {
+        // #1096 (v26 design § 2.3, § 2.5): a model told nothing is asked for nothing.
+        var macros = new Dictionary<string, TemplateMacroSource>
+        {
+            ["closing"] = new("closing", "Closing", "Closing.", ""),
+            ["opening"] = new("opening", "Opening", "Opening.", "{{ if false }}Say hello.{{ end }}"),
+            ["middle"] = new("middle", "Middle", "Middle.", "Say something."),
+        };
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+
+        var rendered = TemplateRenderer.Render("Prompt 'p'", "A{{ macro.closing.prompt }}B{{ macro.opening.prompt }}C{{ macro.middle.prompt }}", Scope(macros: macros), null, trace);
+
+        Assert.Equal("ABC" + WorkflowMacroMechanics.Prompt("middle", "Say something."), rendered);
+        Assert.Equal(new[] { "middle" }, trace.PromptReads);
+        Assert.Equal(string.Empty, WorkflowMacroMechanics.Prompt("x", "  \n"));
+    }
+
+    [Fact]
     public void AnInertSnippet_RendersEmptyContent_AndKeepsItsId()
     {
         // #1094 (v26 design § 2.1, § 5.4): the snippet's own gate does not hold — its content is empty where read.
