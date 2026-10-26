@@ -592,14 +592,15 @@ public static partial class WorkflowPackageValidator
                 .Concat(refs.Snippets.Select(id => $"{TemplateObjects.Snippet}.{id}"))
                 .Concat(refs.SnippetFolders.Select(id => $"{TemplateObjects.Snippet}.{id}"))
                 .Concat(refs.MacroContents.Concat(refs.MacroPrompts).Select(id => $"{TemplateObjects.Macro}.{id}"))
-                .Concat(refs.ItemMembers.Select(m => $"{TemplateObjects.Item}.{m}"))
+                // #1094 (§ 5.4, decided 2026-10-26): the item's own id is a static fact — allowed, typed against the folder by the walker.
+                .Concat(refs.ItemMembers.Where(m => m != TemplateMembers.Id).Select(m => $"{TemplateObjects.Item}.{m}"))
                 .Concat(refs.RunFacts.Select(m => $"{TemplateObjects.Run}.{m}"))
                 .Concat(refs.ProfileFacts.Select(m => $"{TemplateObjects.Profile}.{m}"))
                 .FirstOrDefault();
 
             if (offending is not null)
             {
-                errors.Add($"{condition.Subject} reads {offending}; a folder item's if reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).");
+                errors.Add($"{condition.Subject} reads {offending}; a folder item's if reads inputs and item.id only, so the folder's size is known at job start (the template's own if gates anything else).");
             }
         }
     }

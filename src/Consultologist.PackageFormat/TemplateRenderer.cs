@@ -111,7 +111,12 @@ public sealed record TemplateRenderScope(
     // #1090 (v26 design § 2.2): the macros whose own gate does not hold for this
     // render — inert: .prompt and .content both empty, nothing recorded (judged
     // by the caller with WorkflowInlineGates.Inert); null is the 25 render.
-    IReadOnlySet<string>? InertMacros = null);
+    IReadOnlySet<string>? InertMacros = null,
+    // #1094 (v26 design § 2.1, § 5.4): the standalone snippets whose own gate
+    // does not hold — content empty where read (judged by the caller with
+    // WorkflowInlineGates.InertSnippets); a folder item's gate is the fan
+    // filter (the engine's) and the direct read's (#1116). Null is the 25 render.
+    IReadOnlySet<string>? InertSnippets = null);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -214,7 +219,9 @@ public static class TemplateRenderer
         var snippet = new ClosedObject(subject, TemplateObjects.Snippet);
         foreach (var (id, text) in scope.Snippets)
         {
-            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, id, text, $"Snippet '{id}'", globals, trace);
+            // #1094: an inert snippet's content is empty where read; its id as ever.
+            var inert = scope.InertSnippets?.Contains(id) == true;
+            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, id, inert ? string.Empty : text, $"Snippet '{id}'", globals, trace);
         }
 
         foreach (var (folder, items) in scope.Folders)
