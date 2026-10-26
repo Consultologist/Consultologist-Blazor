@@ -24,7 +24,10 @@ public static class WorkflowDerivedEdges
         WorkflowNodeSpec Node,
         TemplateNodeShape? Shape,
         IReadOnlyDictionary<string, WorkflowFormatParameterSpec>? Parameters,
-        TemplateFan? Fan);
+        TemplateFan? Fan,
+        // #1100 (v26 design § 1.2): the flow node whose body this node runs in —
+        // its prompt and conditions read that body by bare id; null for the outside.
+        string? Scope = null);
 
     /// <summary>A template walked: who it is, what it read, and its text and context for the render probe.</summary>
     public sealed record WalkedTemplate(TemplateKind Kind, string Id, string Subject, string Text, TemplateReferences References, TemplateReferenceContext Context);
@@ -536,31 +539,32 @@ public static class WorkflowDerivedEdges
         string? InputTypeOf(string id) => inputTypes.GetValueOrDefault(id);
 
         // #1037: a condition under a snippet-folder fan is typed against the folder's item ids.
-        TemplateReferenceContext ConditionContext(TemplateFan? fan)
+        TemplateReferenceContext ConditionContext(TemplateFan? fan, string? scope)
         {
-            var context = contextFor(fan);
+            var context = contextFor(fan) with { Scope = scope };
             return fan is SnippetFolderFan folderFan && snippets.Collections.TryGetValue(folderFan.Folder, out var collection)
                 ? context with { FanItemIds = collection.Items.Select(i => i.Id).ToList() }
                 : context;
         }
 
-        void WalkCondition(ConditionSite site, string ownerId, string? macroId, string subject, string? when, TemplateFan? fan)
+        void WalkCondition(ConditionSite site, string ownerId, string? macroId, string subject, string? when, TemplateFan? fan, string? scope = null)
         {
             if (when is null)
             {
                 return;
             }
 
-            var context = ConditionContext(fan);
+            var context = ConditionContext(fan, scope);
             conditions.Add(new WalkedCondition(site, ownerId, macroId, subject, when, WorkflowConditionAt25.Walk(subject, when, context, InputTypeOf), context));
         }
 
         foreach (var walkNode in nodes)
         {
             var node = walkNode.Node;
-            var context = contextFor(walkNode.Fan);
+            // #1100: a body node's prompt and its own conditions read its body by bare id.
+            var context = contextFor(walkNode.Fan) with { Scope = walkNode.Scope };
 
-            WalkCondition(ConditionSite.Node, node.Id, null, $"Node '{node.Id}' condition", node.When, walkNode.Fan);
+            WalkCondition(ConditionSite.Node, node.Id, null, $"Node '{node.Id}' condition", node.When, walkNode.Fan, walkNode.Scope);
 
             // #1100 (v26 design § 1): an if node's expression is a condition of
             // its own site — walked as a node's when is (one boolean), read as
@@ -571,7 +575,7 @@ public static class WorkflowDerivedEdges
 
             foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
             {
-                WalkCondition(ConditionSite.NodeInstance, node.Id, instance.Id, $"Node '{node.Id}' macro '{instance.Id}' condition", instance.When, walkNode.Fan);
+                WalkCondition(ConditionSite.NodeInstance, node.Id, instance.Id, $"Node '{node.Id}' macro '{instance.Id}' condition", instance.When, walkNode.Fan, walkNode.Scope);
             }
 
             if (node.Prompt is not null
@@ -797,11 +801,25 @@ public static class WorkflowDerivedEdges
             }
         }
 
+        // #1100 (v26 design § 1): at 26 the flow nodes' shapes ride beside the plain
+        // nodes' — the same resolution the validator runs (its sentences discarded
+        // here; the validator said them at publish), so the engine's and the
+        // editor's walk see what the validator saw.
+        var flows = manifest.SpecVersion >= 26
+            ? WorkflowFlowNodes.Resolve(manifest, content, inputsById, discard)
+            : WorkflowFlowNodes.Resolved.None;
+        var plainShapes = new Dictionary<string, TemplateNodeShape>(shapes, StringComparer.Ordinal);
+        foreach (var flow in flows.Flows.Values)
+        {
+            shapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, plainShapes);
+        }
+
         var snippetIds = content.Scalars.Keys.ToHashSet(StringComparer.Ordinal);
         var folderIds = content.Collections.Keys.ToHashSet(StringComparer.Ordinal);
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        var bodies = flows.Flows.Count > 0 ? flows.BodyScopes : null;
 
-        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan);
+        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan, Bodies: bodies);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {
@@ -834,9 +852,14 @@ public static class WorkflowDerivedEdges
                 node,
                 shapes.GetValueOrDefault(node.Id),
                 SpecOf(node.Format)?.Parameters,
-                FanOf(node, content, inputsById)))
+                FanOf(node, content, inputsById) ?? FanAt26(node, flows),
+                flows.Owner.GetValueOrDefault(node.Id)))
             .ToList();
     }
+
+    /// <summary>#1100: at 26 a plain node's fan is its owner loop's, and a loop's its own.</summary>
+    private static TemplateFan? FanAt26(WorkflowNodeSpec node, WorkflowFlowNodes.Resolved flows) =>
+        flows.Flows.TryGetValue(node.Id, out var flow) ? flow.Fan : flows.FanOf(node.Id).Fan;
 
     /// <summary>The fan a node's template sees: a snippet folder, an array input's element, or nothing.</summary>
     public static TemplateFan? FanOf(WorkflowNodeSpec node, WorkflowPackageData content, IReadOnlyDictionary<string, WorkflowInputSpec> inputsById)
