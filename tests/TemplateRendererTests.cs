@@ -131,6 +131,27 @@ public class TemplateRendererTests
     }
 
     [Fact]
+    public void ASuppressedPromptRead_RendersEmpty_WithNoSentence_AndNoTraceRead()
+    {
+        // #1089 (v26 design § 2.3): the running node's instance gate does not hold —
+        // the read is empty, the mechanics sentence is not appended, no read is recorded.
+        var macros = new Dictionary<string, TemplateMacroSource>
+        {
+            ["closing"] = new("closing", "Closing", "Closing.", "Say goodbye."),
+            ["opening"] = new("opening", "Opening", "Opening.", "Say hello."),
+        };
+        var scope = Scope(macros: macros) with { SuppressedPrompts = new HashSet<string>(StringComparer.Ordinal) { "closing" } };
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+
+        var rendered = TemplateRenderer.Render("Prompt 'p'", "A{{ macro.closing.prompt }}B {{ macro.opening.prompt }}", scope, null, trace);
+
+        Assert.StartsWith("AB " + WorkflowMacroMechanics.Prompt("opening", "Say hello."), rendered);
+        Assert.Equal(new[] { "opening" }, trace.PromptReads);
+        // .content is not the gate's business (a placement's skip is completion's; a text's .content read is the macro's own if — #1090).
+        Assert.Equal("Closing.", Render("{{ macro.closing.content }}", scope));
+    }
+
+    [Fact]
     public void Macro_Text_Renders_AndPrompt_IsTheInstructionWithTheMechanicsSentence()
     {
         var scope = Scope(macros: new Dictionary<string, TemplateMacroSource>
