@@ -76,4 +76,28 @@ public static class WorkflowInlineGates
 
         return inert;
     }
+
+    /// <summary>
+    /// #1094 (§ 2.1, § 5.4): the standalone snippets whose own gate — the file
+    /// header's <c>if</c> — does not hold: <c>snippet.&lt;id&gt;.content</c> empty
+    /// where read. A snippet with no gate holds. A folder item's gate is the fan
+    /// filter (the engine's) and, with #1116's direct read, the item's.
+    /// </summary>
+    public static IReadOnlySet<string> InertSnippets(
+        IEnumerable<(string SnippetId, string? If)> snippets,
+        TemplateRenderScope scope,
+        IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
+    {
+        var inert = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (snippetId, gate) in snippets)
+        {
+            if (!string.IsNullOrWhiteSpace(gate) && !WorkflowConditionAt25.Holds($"Snippet '{snippetId}' if", gate, scope, pipes))
+            {
+                inert.Add(snippetId);
+            }
+        }
+
+        return inert;
+    }
 }

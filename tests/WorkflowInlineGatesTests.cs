@@ -97,4 +97,16 @@ public class WorkflowInlineGatesTests
         Assert.Equal(new[] { "closing" }, WorkflowInlineGates.Inert(new[] { ("closing", (string?)"input.kind == \"follow_up\"") }, scope));
         Assert.Equal(new[] { "opening" }, WorkflowInlineGates.Inert(new[] { ("closing", (string?)"input.kind == \"new\""), ("opening", (string?)"input.kind != \"new\"") }, scope));
     }
+
+    // ----- #1094: the standalone snippet's own gate -----------------------------------
+
+    [Fact]
+    public void ASnippet_IsInert_WhenItsOwnGateFails_AndNotOtherwise()
+    {
+        var scope = Scope();
+
+        Assert.Empty(WorkflowInlineGates.InertSnippets(new[] { ("standards", (string?)null) }, scope));
+        Assert.Empty(WorkflowInlineGates.InertSnippets(new[] { ("standards", (string?)"input.kind == \"new\"") }, scope));
+        Assert.Equal(new[] { "standards" }, WorkflowInlineGates.InertSnippets(new[] { ("standards", (string?)"input.kind == \"follow_up\"") }, scope));
+    }
 }

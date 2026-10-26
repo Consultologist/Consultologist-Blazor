@@ -231,8 +231,9 @@ is keyed if"*).
 
 The condition scope is 25's: inputs (typed), a scalar node's `.value`, `run`, `profile`; a
 flow node's `.value` when typed (§ 1.3); never a `for` node, never `deliverable.<id>` (§ 3),
-never an item of a loop the gate does not sit in. A folder item's `if` reads **inputs only** at
-26 (static length, § 1.4). Operators as 25: `==`, `!=`, `and`, `or`, `not`, parentheses;
+never an item of a loop the gate does not sit in. A folder item's `if` reads **inputs and its own
+`item.id`** at 26 (static length, § 1.4; the id a static fact typed against the folder — decided 2026-10-26,
+#1094; `item.label`/`.content` refused). Operators as 25: `==`, `!=`, `and`, `or`, `not`, parentheses;
 literals typed by the input or the enum (a literal the enum lacks is refused — #1122's
 warning is for templates).
 
@@ -897,6 +898,19 @@ blank block), recording no read; it composes by AND with the instance gate's set
 half — the inert render judged before the prompt, an inert macro's placements skipped into `excluded[]` /
 `excludedMacros` with the header's text — is **#1177** (layer B, beside #1175, after #1157); the desk's
 "never fires" warning is the editor's (M33); the migration's lifting of a uniform text guard is #1152's.)*
+
+*(#1094, 2026-10-26 — the snippet's and the folder item's gate, as § 2.1 and § 5.4 say; the library half. A
+standalone snippet's header `if` is walked at `ConditionSite.Snippet` under *"Snippet 'standards' if"* in no fan
+and no scope (an item refused as *"reads item.id, but the node does not fan"*; a loop and `deliverable.<id>` as
+everywhere); a reader's edges close over the gate's reads. A folder item's `if` is walked under its folder's fan
+(subject *"Snippet folder 'sections' item 'hpi' if"*; the 25 `when` keeps *"… condition"* and no fan), so its own
+`item.id` types against the folder (*"compares item.id to 'nope', which the folder does not contain (items:
+hpi, plan)"*); the 26 rule reads *"a folder item's if reads inputs and item.id only, so the folder's size is
+known at job start"*. `WorkflowInlineGates.InertSnippets` is the judgement; the render scope's `InertSnippets`
+empties `snippet.<id>.content` where read, the id as ever; null is the 25 render. Decided 2026-10-26: the engine
+half — the inert render judged before the prompt, the job starter's fan filter reading the item's `if`, the
+direct read gated once #1116 lands — is **#1179** (layer B, beside #1175/#1177, after #1157); the preview's
+picture is the editor's (M33); the migration's lifting of a uniform text guard is #1152's.)*
 
 ## 12. The editor
 

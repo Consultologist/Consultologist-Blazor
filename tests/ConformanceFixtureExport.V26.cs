@@ -200,5 +200,18 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-macro-if-reads-a-loop-at-26", "A macro's own if reading a loop — a condition decides before the loop runs.", MacroIf("node.sections.content != \"\""));
         Invalid("invalid-macro-if-reads-item-at-26", "A macro's own if reading item.id — the macro's gate sits in no loop.", MacroIf("item.id == \"hpi\""));
         Invalid("invalid-macro-if-reads-a-deliverable-at-26", "A macro's own if reading deliverable.<id>.content — a condition decides before the sections compose.", MacroIf("deliverable.consult.content != \"\""));
+
+        // ======================================================= § 2.1 / § 5.4: the snippet's and the folder item's if (#1094)
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) SnippetIf(string @if) =>
+            Files(m, fs => fs["snippets/standards.md"] = V26Package.Header("Local standards", @if: @if) + "Follow the local standards.");
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) ItemIf(string @if) =>
+            Files(m, fs => fs["snippets/sections/hpi.md"] = V26Package.Header("HPI", @if: @if) + "History: {{ input.notes }}");
+        Valid("v26-snippet-if", "A standalone snippet's own gate in its header over an input — its content empty where read when it does not hold.", SnippetIf("input.kind == \"new\""));
+        Valid("v26-folder-item-if-on-item-id", "A folder item's header if reading an input and its own item.id — the fan filter, typed against the folder.", ItemIf("input.kind == \"new\" && item.id == \"hpi\""));
+        Invalid("invalid-snippet-if-undeclared-value-at-26", "A snippet's own if comparing an input to a value it does not declare.", SnippetIf("input.kind == \"maybe\""));
+        Invalid("invalid-snippet-if-reads-item-at-26", "A snippet's own if reading item.id — a standalone snippet sits in no loop.", SnippetIf("item.id == \"hpi\""));
+        Invalid("invalid-snippet-if-reads-a-loop-at-26", "A snippet's own if reading a loop — a condition decides before the loop runs.", SnippetIf("node.sections.content != \"\""));
+        Invalid("invalid-folder-item-if-reads-item-label-at-26", "A folder item's if reading item.label — inputs and item.id only.", ItemIf("item.label == \"HPI\""));
+        Invalid("invalid-folder-item-if-item-the-folder-lacks-at-26", "A folder item's if comparing item.id to an id the folder does not contain.", ItemIf("item.id == \"nope\""));
     }
 }

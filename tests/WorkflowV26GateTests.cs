@@ -118,4 +118,61 @@ public class WorkflowV26GateTests
 
         Assert.DoesNotContain(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.Macro);
     }
+
+    // ----- #1094: the snippet's and the folder item's if (design § 2.1, § 5.4) -------
+
+    private static List<string> SnippetIf(string @if) =>
+        V26Package.FlowErrors(m => m, files => files["snippets/standards.md"] = V26Package.Header("Local standards", @if: @if) + "Follow the local standards.");
+
+    private static List<string> ItemIf(string @if) =>
+        V26Package.FlowErrors(m => m, files => files["snippets/sections/hpi.md"] = V26Package.Header("HPI", @if: @if) + "History: {{ input.notes }}");
+
+    [Fact]
+    public void AStandaloneSnippetsOwnIf_IsWalked_UnderItsSubject()
+    {
+        Assert.Contains("Snippet 'standards' if compares input.kind to 'maybe', which it does not declare (values: new, follow_up).", SnippetIf("input.kind == \"maybe\""));
+        Assert.Contains("Snippet 'standards' if reads node.sections, which loops; a condition decides before the loop runs — read a scalar node.", SnippetIf("node.sections.content != \"\""));
+        Assert.Contains("Snippet 'standards' if reads deliverable.consult; a condition decides before the sections compose — read a scalar node.", SnippetIf("deliverable.consult.content != \"\""));
+        Assert.Contains(SnippetIf("item.id == \"hpi\""), e => e.StartsWith("Snippet 'standards' if", StringComparison.Ordinal) && e.Contains("item", StringComparison.Ordinal));
+        Assert.Empty(SnippetIf("input.kind == \"new\""));
+        Assert.Empty(SnippetIf("node.scope.value == \"in_scope\""));
+    }
+
+    [Fact]
+    public void AStandaloneSnippetsOwnIf_IsRecordedAtItsSite_AndItsReadsReachTheReader()
+    {
+        var (manifest, files) = V26Package.Minimal();
+        // assessment reads snippet.standards.content and node.extract — not scope.
+        files["snippets/standards.md"] = V26Package.Header("Local standards", @if: "node.scope.value == \"in_scope\"") + "Follow the local standards.";
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        var gate = Assert.Single(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.Snippet);
+        Assert.Equal(("standards", "Snippet 'standards' if"), (gate.OwnerId, gate.Subject));
+        Assert.True(gate.Walk.IsValid, string.Join(" | ", gate.Walk.References.Errors));
+        Assert.Contains("scope", walk.EdgesOf("assessment"));
+        Assert.Empty(V26Package.FlowErrors((manifest, files)));
+    }
+
+    [Fact]
+    public void AFolderItemsIf_ReadsInputs_AndItsOwnItemId()
+    {
+        Assert.Empty(ItemIf("item.id == \"hpi\""));
+        Assert.Empty(ItemIf("input.kind == \"new\" && item.id == \"hpi\""));
+        Assert.Contains("Snippet folder 'sections' item 'hpi' if compares item.id to 'nope', which the folder does not contain (items: hpi, plan).", ItemIf("item.id == \"nope\""));
+        Assert.Contains("Snippet folder 'sections' item 'hpi' if reads item.label; a folder item's if reads inputs and item.id only, so the folder's size is known at job start (the template's own if gates anything else).", ItemIf("item.label == \"HPI\""));
+        Assert.Contains("Snippet folder 'sections' item 'hpi' if reads node.scope; a folder item's if reads inputs and item.id only, so the folder's size is known at job start (the template's own if gates anything else).", ItemIf("node.scope.value == \"in_scope\""));
+    }
+
+    [Fact]
+    public void Below26_ASnippetHasNoOwnGate_AndAnItemsWhenKeepsItsSubject()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        Assert.DoesNotContain(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.Snippet);
+        var item = Assert.Single(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.FolderItem);
+        Assert.Equal("Snippet folder 'sections' item 'plan' condition", item.Subject);
+    }
 }

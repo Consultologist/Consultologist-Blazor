@@ -152,6 +152,17 @@ public class TemplateRendererTests
     }
 
     [Fact]
+    public void AnInertSnippet_RendersEmptyContent_AndKeepsItsId()
+    {
+        // #1094 (v26 design § 2.1, § 5.4): the snippet's own gate does not hold — its content is empty where read.
+        var snippets = new Dictionary<string, string> { ["standards"] = "Follow the local standards.", ["intro"] = "Hello." };
+        var scope = Scope(snippets: snippets) with { InertSnippets = new HashSet<string>(StringComparer.Ordinal) { "standards" } };
+
+        Assert.Equal("AB Hello. standards", Render("A{{ snippet.standards.content }}B {{ snippet.intro.content }} {{ snippet.standards.id }}", scope));
+        Assert.Equal("AFollow the local standards.B", Render("A{{ snippet.standards.content }}B", Scope(snippets: snippets)));
+    }
+
+    [Fact]
     public void AnInertMacro_RendersEmptyPromptAndContent_WithNoReads()
     {
         // #1090 (v26 design § 2.2): the macro's own gate does not hold — inert everywhere

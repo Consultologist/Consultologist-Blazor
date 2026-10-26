@@ -42,7 +42,8 @@ public static class WorkflowDerivedEdges
 
     /// <summary>#1037: where a <c>when</c> sits — and, at 26 (#1100), <c>Flow</c>: an <c>if</c> or <c>case</c> node's own expression.</summary>
     // #1090 (v26 design § 2.2): Macro — the macro's own if, in its file's header.
-    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow, Macro }
+    // #1094 (§ 2.1, § 5.4): Snippet — a standalone snippet's own if, in its header.
+    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow, Macro, Snippet }
 
     /// <summary>
     /// #1037 (design § 16): a <c>when</c> walked — its site, the id of what it gates
@@ -496,6 +497,7 @@ public static class WorkflowDerivedEdges
             foreach (var snippet in refs.Snippets)
             {
                 VisitKey((TemplateKind.Snippet, snippet), seen, take);
+                VisitSnippetGate(snippet, seen, take);
             }
 
             foreach (var folder in refs.SnippetFolders)
@@ -522,6 +524,20 @@ public static class WorkflowDerivedEdges
         /// the macro's text reads. Seen under the macro's key with a suffix no id
         /// can carry.
         /// </summary>
+        /// <summary>#1094: a standalone snippet's own gate is judged where the snippet is read — the reader waits on what it reads.</summary>
+        private void VisitSnippetGate(string snippetId, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
+        {
+            if (!seen.Add((TemplateKind.Snippet, snippetId + "/if")))
+            {
+                return;
+            }
+
+            foreach (var gate in ConditionsOf(snippetId, ConditionSite.Snippet))
+            {
+                Visit(gate.Walk.References, seen, take);
+            }
+        }
+
         private void VisitMacroGate(string macroId, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
         {
             if (!seen.Add((TemplateKind.Macro, macroId + "/if")))
@@ -666,6 +682,16 @@ public static class WorkflowDerivedEdges
         {
             var subject = $"Snippet '{id}'";
             templates.Add(new WalkedTemplate(TemplateKind.Snippet, id, subject, text, TemplateReferenceWalker.Walk(subject, text, snippetContext), snippetContext));
+
+            // #1094 (v26 design § 2.1, § 5.4): a standalone snippet's own gate, its
+            // header's if — walked in no fan (item.* refused) and no scope; judged
+            // where the snippet is read.
+            if (headers is not null
+                && manifest.Snippets is { } table && table.TryGetValue(id, out var path)
+                && headers.TryGetValue(path, out var header) && !string.IsNullOrWhiteSpace(header.If))
+            {
+                WalkCondition(ConditionSite.Snippet, id, null, $"Snippet '{id}' if", header.If, null);
+            }
         }
 
         var folders = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
@@ -681,8 +707,18 @@ public static class WorkflowDerivedEdges
                 var key = SnippetItemKey(folder, item.Id);
                 keys.Add(key);
                 templates.Add(new WalkedTemplate(TemplateKind.Snippet, key, subject, text, TemplateReferenceWalker.Walk(subject, text, snippetContext), snippetContext));
-                // #1105: at 26 the item's gate is its header's if (the same site; the effect is #1094's).
-                WalkCondition(ConditionSite.FolderItem, key, null, $"Snippet folder '{folder}' item '{item.Id}' condition", item.When ?? item.If, null);
+                // #1105/#1094 (v26 design § 2.1, § 5.4): at 26 the item's gate is its
+                // header's if, walked under the folder's fan so its own item.id types
+                // against the folder's items (the validator holds it to inputs and
+                // item.id); the 25 when walks as ever, in no fan.
+                if (item.When is null && item.If is not null)
+                {
+                    WalkCondition(ConditionSite.FolderItem, key, null, $"Snippet folder '{folder}' item '{item.Id}' if", item.If, new SnippetFolderFan(folder));
+                }
+                else
+                {
+                    WalkCondition(ConditionSite.FolderItem, key, null, $"Snippet folder '{folder}' item '{item.Id}' condition", item.When, null);
+                }
             }
 
             folders[folder] = keys;
