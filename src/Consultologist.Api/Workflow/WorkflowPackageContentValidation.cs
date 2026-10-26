@@ -98,6 +98,18 @@ internal static class WorkflowPackageContentValidation
             referenced.Add(prompt.File);
         }
 
+        // #1102 (v26 design § 4): at 26 a node names its prompt file itself.
+        if (manifest.SpecVersion >= 26)
+        {
+            foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+            {
+                if (node.Prompt is not null)
+                {
+                    referenced.Add(node.Prompt);
+                }
+            }
+        }
+
         foreach (var path in (manifest.Preludes ?? new Dictionary<string, string>()).Values)
         {
             referenced.Add(path);

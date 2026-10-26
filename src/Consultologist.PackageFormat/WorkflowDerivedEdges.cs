@@ -536,7 +536,12 @@ public static class WorkflowDerivedEdges
         WorkflowPackageData snippets,
         Func<TemplateFan?, TemplateReferenceContext> contextFor)
     {
-        var promptsById = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).ToDictionary(p => p.Id, StringComparer.Ordinal);
+        // #1102 (v26 design § 4): at 26 a node names its prompt FILE; below, the
+        // declared prompt's id resolves through prompts[].
+        var at26 = manifest.SpecVersion >= 26;
+        var promptsById = at26
+            ? new Dictionary<string, WorkflowPromptSpec>(StringComparer.Ordinal)
+            : (manifest.Prompts ?? new List<WorkflowPromptSpec>()).ToDictionary(p => p.Id, StringComparer.Ordinal);
         var templates = new List<WalkedTemplate>();
         var parameters = new Dictionary<string, TemplateReferences>(StringComparer.Ordinal);
         var conditions = new List<WalkedCondition>();
@@ -585,13 +590,20 @@ public static class WorkflowDerivedEdges
                 WalkCondition(ConditionSite.NodeInstance, node.Id, instance.Id, $"Node '{node.Id}' macro '{instance.Id}' condition", instance.When, walkNode.Fan, walkNode.Scope);
             }
 
-            if (node.Prompt is not null
-                && walkNode.Shape is not null
-                && promptsById.TryGetValue(node.Prompt, out var promptSpec)
-                && files.TryGetValue(promptSpec.File, out var text))
+            if (node.Prompt is not null && walkNode.Shape is not null)
             {
-                var subject = $"Prompt '{promptSpec.Id}'";
-                templates.Add(new WalkedTemplate(TemplateKind.Prompt, node.Id, subject, text, TemplateReferenceWalker.Walk(subject, text, context), context));
+                if (at26 && files.TryGetValue(node.Prompt, out var promptText))
+                {
+                    // The prompt is the node's own: its subject is the node's, in the
+                    // family of "Node 'x' condition" and "Node 'x' if".
+                    var subject = $"Node '{node.Id}' prompt";
+                    templates.Add(new WalkedTemplate(TemplateKind.Prompt, node.Id, subject, promptText, TemplateReferenceWalker.Walk(subject, promptText, context), context));
+                }
+                else if (!at26 && promptsById.TryGetValue(node.Prompt, out var promptSpec) && files.TryGetValue(promptSpec.File, out var text))
+                {
+                    var subject = $"Prompt '{promptSpec.Id}'";
+                    templates.Add(new WalkedTemplate(TemplateKind.Prompt, node.Id, subject, text, TemplateReferenceWalker.Walk(subject, text, context), context));
+                }
             }
 
             if (walkNode.Parameters is { Count: > 0 })
