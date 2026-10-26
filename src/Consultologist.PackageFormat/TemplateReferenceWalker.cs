@@ -153,7 +153,9 @@ private sealed record DeliverableTarget(string Id) : Target;
     private record ShapeTarget(TemplateValueShape? Shape) : Target;
 
     /// <summary>#1058: <c>node.&lt;id&gt;.content</c> — a text that remembers its node; <c>Path</c> is the chain up to the node ("node.extract"), as the sentences spell it; <c>Id</c> is the node's id, for the rendering record (#1098).</summary>
-    private sealed record NodeContentTarget(string Path, string Id, TemplateNodeShape Node) : ShapeTarget(TemplateValueShape.Text);
+    // #1059: ElementRet — set for a loop element's .content (the returned body node's id), so the 26
+    // replacement names the node to pipe (e.<ret> | pipe).
+    private sealed record NodeContentTarget(string Path, string Id, TemplateNodeShape Node, string? ElementRet = null) : ShapeTarget(TemplateValueShape.Text);
 
     /// <summary>#1058: <c>node.&lt;id&gt;.value</c> — a typed value that remembers it is a node's parsed output.</summary>
     private sealed record NodeValueTarget(string Path, TemplateValueShape Value) : ShapeTarget(Value);
@@ -1649,7 +1651,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
                 case TemplateMembers.Content:
                     _refs.ReadNode(element.LoopId, content: true, value: false);
-                    return new NodeContentTarget(before, element.LoopId, flow.Ret ?? TemplateNodeShape.Aggregator());
+                    return new NodeContentTarget(before, element.LoopId, flow.Ret ?? TemplateNodeShape.Aggregator(), flow.RetId);
 
                 case TemplateMembers.Value:
                     if (flow.Ret is { HasValue: true } ret)
@@ -1915,6 +1917,11 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             var pipe = use.Pipe!;
             var format = TemplatePipes.FormatOf(pipe)!;
 
+            if (_context.Labelled)
+            {
+                return FinalizeRenderedAt26(target, walked, use, pipe, format);
+            }
+
             switch (target)
             {
                 case RefusedTarget:
@@ -1968,6 +1975,68 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
         private string NotANodesText(string what, string pipe) =>
             $"{_subject} pipes {what} through {pipe}; a renderer pipe renders a node's text (node.<id>.content).";
+
+        /// <summary>
+        /// #1059 (v26 design § 7.1): at 26 a renderer pipe takes the NODE —
+        /// {{ node.extract | concept_context }}; the .content spelling is refused
+        /// with the replacement, .value too (no node identity); an if/case node
+        /// passes when its returned node's format is the pipe's; a loop is a list
+        /// — pipe a body node inside it (decided 2026-10-26: e.&lt;ret&gt; | pipe, never
+        /// e.content | pipe). The edge and the rendering are recorded on the node.
+        /// </summary>
+        private Target FinalizeRenderedAt26(Target target, string walked, ChainUse use, string pipe, string format)
+        {
+            switch (target)
+            {
+                case RefusedTarget:
+                    return Refused;
+
+                case NodeTarget { Shape.Flow.Kind: TemplateFlowKind.For } loop:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}; a loop is a list — pipe a body node inside it ({{{{ for e in {walked} }}}}{{{{ e.{loop.Shape.Flow!.RetId ?? "<ret>"} | {pipe} }}}}{{{{ end }}}}), or read {walked}.content.");
+                    return Refused;
+
+                case NodeTarget { Shape.Flow: { Ret: null } } node:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but branches of '{node.Id}' return {node.Shape.Flow!.DescribeDisagreement()}; {pipe} renders a {format} node (node.<id>).");
+                    return Refused;
+
+                case NodeTarget node when string.Equals(node.Shape.Format, format, StringComparison.Ordinal):
+                    // The pipe reads the node's text: the edge, then the rendering (#1098; #1138 with its if).
+                    _refs.ReadNode(node.ReadId, content: true, value: false);
+                    _refs.ReadRendered(node.ReadId, pipe, use.Guard, use.GuardCanonical);
+                    return new ShapeTarget(TemplateValueShape.Text);
+
+                case NodeTarget { Shape.HasValue: false } node:
+                    _refs.ReadNode(node.ReadId, content: true, value: false);
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but format '{node.Shape.Format}' is text; {pipe} renders a {format} node (node.<id>).");
+                    return Refused;
+
+                case NodeTarget node:
+                    _refs.ReadNode(node.ReadId, content: true, value: false);
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but format '{node.Shape.Format}' ({node.Shape.Type}) is not {format}; {pipe} renders a {format} node (node.<id>).");
+                    return Refused;
+
+                case NodeContentTarget content:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}; at specVersion 26 a renderer pipe takes the node — {content.Path}{(content.ElementRet is null ? string.Empty : "." + content.ElementRet)} | {pipe}.");
+                    return Refused;
+
+                case NodeValueTarget value:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}; a renderer pipe takes the node — {value.Path} | {pipe}.");
+                    return Refused;
+
+                case DeliverableContentTarget composed:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but {composed.Path} composes sections; {pipe} renders a {format} node (node.<id>).");
+                    return Refused;
+
+                case LoopElementTarget:
+                case ShapeTarget { Shape: { } }:
+                case FolderTarget:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}; a renderer pipe takes a node (node.<id>).");
+                    return Refused;
+
+                default:
+                    return Finalize(target, walked, ChainUse.Value);
+            }
+        }
 
         /// <summary>What a loop variable is bound to, from the iterated expression.</summary>
         /// <summary>The folder read as a folder — iterated or indexed (#1116: a direct item read is the item's alone).</summary>

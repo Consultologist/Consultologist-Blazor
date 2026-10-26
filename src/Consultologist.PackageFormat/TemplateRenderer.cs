@@ -210,7 +210,8 @@ public static class TemplateRenderer
         var node = new ClosedObject(subject, TemplateObjects.Node);
         foreach (var (id, output) in scope.Nodes)
         {
-            node[id] = new LazyMembersObject(subject, $"{TemplateObjects.Node}.{id}",
+            // #1059: the node object carries its identity — a renderer pipe takes it whole.
+            node[id] = new NodeObject(subject, id, output,
                 new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
                 {
                     [TemplateMembers.Content] = () => output.Text,
@@ -356,9 +357,10 @@ public static class TemplateRenderer
     }
 
     /// <summary>
-    /// A pipe renders a node's text and nothing else (design § 1): the argument
-    /// must be the very string a <c>node.&lt;id&gt;.content</c> read produced, so
-    /// the pipe receives the node's output whole — its concept source with it.
+    /// A pipe renders a node and nothing else. #1059 (v26 design § 7.1): at 26
+    /// the operand is the node object, which carries its output whole — its
+    /// concept source with it; below 26 the operand is the very string a
+    /// <c>node.&lt;id&gt;.content</c> read produced, found by reference.
     /// </summary>
     private static string ApplyPipe(string subject, string name, Func<TemplateNodeOutput, string>? pipe, object? argument, IReadOnlyDictionary<string, TemplateNodeOutput> nodes)
     {
@@ -367,9 +369,14 @@ public static class TemplateRenderer
             throw new InvalidOperationException($"{subject} pipes through {name}, which this renderer does not provide.");
         }
 
+        if (argument is NodeObject node)
+        {
+            return pipe(node.Output);
+        }
+
         if (argument is not string text)
         {
-            throw new InvalidOperationException($"{subject} pipes a {Describe(argument)} through {name}; the pipe renders a node's text (node.<id>.content).");
+            throw new InvalidOperationException($"{subject} pipes a {Describe(argument)} through {name}; a renderer pipe takes a node (node.<id>) — or, below specVersion 26, its text (node.<id>.content).");
         }
 
         var output = nodes.Values.FirstOrDefault(node => ReferenceEquals(node.Text, text));
@@ -547,7 +554,22 @@ public static class TemplateRenderer
     /// member outside the set is absent, so a strict read of it fails as any
     /// undeclared member does.
     /// </summary>
-    private sealed class LazyMembersObject : ClosedObject
+    /// <summary>#1059: a node's object — its members, and the identity a renderer pipe takes.</summary>
+    private sealed class NodeObject : LazyMembersObject
+    {
+        public NodeObject(string subject, string id, TemplateNodeOutput output, Dictionary<string, Func<object?>> members)
+            : base(subject, $"{TemplateObjects.Node}.{id}", members)
+        {
+            Id = id;
+            Output = output;
+        }
+
+        public string Id { get; }
+
+        public TemplateNodeOutput Output { get; }
+    }
+
+    private class LazyMembersObject : ClosedObject
     {
         private readonly string _subject;
         private readonly string _path;
