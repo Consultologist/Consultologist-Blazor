@@ -72,7 +72,7 @@ public partial class ConformanceFixtureExport
         Valid("v26-if-node", "An if node over an input, each branch returning a prose node, sourced by the deliverable.", Triage());
         Valid("v26-case-node", "A case node over an enum input, one branch per value returning a prose node, sourced by the deliverable.", Route());
         Valid("v26-loop-read-outside", "The outside iterates the loop: the element's item, the returned node's content and a body node by id; the loop's text whole.",
-            P("Assess.\n{{ for e in node.sections }}{{ e.item.name }}: {{ e.content }} / {{ e.section_notes.content }}{{ end }}\n{{ node.sections.content }}"));
+            P("Assess.\n{{ for e in node.sections }}{{ e.item.label }}: {{ e.content }} / {{ e.section_notes.content }}{{ end }}\n{{ node.sections.content }}"));
         Valid("v26-two-deliverables-share-a-source", "Two deliverables compose the same loop.",
             Manifest(m, x => x with { Deliverables = x.Deliverables!.Append(new WorkflowDeliverableSpec("letter", null, "Letter", Sources: new List<string> { "node.sections" })).ToList() }));
         Valid("v26-deliverable-content-read", "A node reads a deliverable's composed text (deliverable.<id>.content) and is a second deliverable's source.",
@@ -89,7 +89,8 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-deliverable-node-at-26", "node on a deliverable at 26 — retired; a deliverable names its sources.", Deliverable(m, d => d with { Node = "node.sections" }));
         Invalid("invalid-deliverable-when-at-26", "when on a deliverable at 26 — retired; a gate is keyed if.", Deliverable(m, d => d with { When = "input.kind == \"new\"" }));
         Invalid("invalid-deliverable-instance-when-at-26", "when on a deliverable instance at 26 — retired; a gate is keyed if.", Deliverable(m, d => d with { Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: "append", When: "input.kind == \"new\"") } }));
-        Invalid("invalid-folder-item-when-at-26", "when on a snippet folder item at 26 — retired; a gate is keyed if.", raised);
+        Invalid("invalid-folder-item-when-at-26", "when on a snippet folder item at 26 — retired; a gate is keyed if in the item file's header.",
+            Files(m, fs => fs["snippets/sections/index.json"] = """[ { "id": "hpi", "file": "hpi.md" }, { "id": "plan", "file": "plan.md", "when": "input.kind == \"new\"" } ]"""));
 
         // ======================================================= § 1: the flow nodes (#1100)
         Invalid("invalid-two-flow-keys-at-26", "A node carrying for and if — one flow node.", Loop(n => n with { If = "input.kind == \"new\"" }));
@@ -127,13 +128,13 @@ public partial class ConformanceFixtureExport
                 fs =>
                 {
                     fs["prompts/per_section.md"] = "{{ item.content }} {{ snippet.standards.content }}";
-                    fs["snippets/standards.md"] = "Standards. {{ node.section_notes.content }}";
+                    fs["snippets/standards.md"] = V26Package.Header("Standards") + "Standards. {{ node.section_notes.content }}";
                 }));
         Invalid("invalid-body-node-reads-its-loop-at-26", "A body node reading the loop it runs in.", Files(m, fs => fs["prompts/section.md"] = "{{ item.content }} {{ node.sections.content }}"));
         Invalid("invalid-if-expression-reads-a-loop-at-26", "An if node's expression reading a loop — a condition decides before the loop runs.", Triage("node.sections.content != \"\""));
         Invalid("invalid-body-node-neither-returned-nor-read-at-26", "A body node nobody returns or reads.",
             Files(Node(Manifest(m, x => V26Package.WithNodes(x, new WorkflowNodeSpec("draft", "Draft", Prompt: "prompts/draft.md", Format: "prose"))), "sections", n => n with { Nodes = new List<string> { "draft", "section_notes" } }),
-                fs => fs["prompts/draft.md"] = "Draft {{ item.name }}."));
+                fs => fs["prompts/draft.md"] = "Draft {{ item.label }}."));
 
         // ======================================================= § 3: the deliverable (#1101)
         Invalid("invalid-deliverable-without-sources-at-26", "A deliverable naming no sources.", Deliverable(m, d => d with { Sources = null }));
@@ -155,5 +156,30 @@ public partial class ConformanceFixtureExport
         // ======================================================= § 4: the prompt on the node (#1102)
         Invalid("invalid-prompt-is-an-id-at-26", "A node naming a prompt by id — at 26 prompt is the file.", Node(m, "assessment", n => n with { Prompt = "assessment" }));
         Invalid("invalid-prompt-file-missing-at-26", "A node naming a prompt file the package lacks.", Node(m, "assessment", n => n with { Prompt = "prompts/nope.md" }));
+
+        // ======================================================= § 5: the JSON header (#1105)
+        Valid("v26-header-every-key", "A macro file's header carrying every key — label, instruction, optional, default and if over an input.",
+            Files(m, fs => fs["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.", @if: "input.kind == \"new\"", optional: true, @default: false) + "Closing: {{ profile.name }}."));
+        Invalid("invalid-snippet-without-header-at-26", "A snippet file with no header.", Files(m, fs => fs["snippets/standards.md"] = "Follow the local standards."));
+        Invalid("invalid-folder-item-without-header-at-26", "A folder item file with no header.", Files(m, fs => fs["snippets/sections/plan.md"] = "Plan."));
+        Invalid("invalid-macro-without-header-at-26", "A macro file with no header.", Files(m, fs => fs["macros/closing.md"] = "Closing: {{ profile.name }}."));
+        Invalid("invalid-header-on-a-prompt-at-26", "A prompt file opening with a header — a prompt has no label, instruction or gate.", Files(m, fs => fs["prompts/scope.md"] = V26Package.Header("Scope") + "Is this in scope? {{ input.notes }}"));
+        Invalid("invalid-header-unknown-key-at-26", "A header key the closed set lacks (a misspelt label).", Files(m, fs => fs["snippets/standards.md"] = "{\n  \"label\": \"Local standards\",\n  \"lable\": \"x\"\n}\nFollow the local standards."));
+        Invalid("invalid-header-reserved-key-at-26", "A header carrying a reserved object member (id).", Files(m, fs => fs["snippets/standards.md"] = "{\n  \"label\": \"Local standards\",\n  \"id\": \"standards\"\n}\nFollow the local standards."));
+        Invalid("invalid-snippet-header-with-instruction-at-26", "A snippet header carrying a macro's key.", Files(m, fs => fs["snippets/standards.md"] = V26Package.Header("Local standards", instruction: "no") + "Follow the local standards."));
+        Invalid("invalid-header-without-label-at-26", "A header declaring no label.", Files(m, fs => fs["snippets/standards.md"] = V26Package.Header(null, @if: "input.kind == \"new\"") + "Follow the local standards."));
+        Invalid("invalid-header-wrong-type-at-26", "A header label that is not a string.", Files(m, fs => fs["snippets/standards.md"] = "{\n  \"label\": 3\n}\nFollow the local standards."));
+        Invalid("invalid-header-not-an-object-at-26", "A header opened and never closed.", Files(m, fs => fs["snippets/standards.md"] = "{\n  \"label\": \"Local standards\"\nFollow the local standards."));
+        Invalid("invalid-macro-without-instruction-at-26", "A macro header declaring no instruction — required until read-site rules (#1096).", Files(m, fs => fs["macros/closing.md"] = V26Package.Header("Closing") + "Closing: {{ profile.name }}."));
+        Invalid("invalid-macro-label-in-the-manifest-at-26", "A macro's label in the manifest beside its header — one home.", Manifest(m, x => x with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") } }));
+        Invalid("invalid-macro-instruction-in-the-manifest-at-26", "A macro's instruction in the manifest — retired; the header carries it.", Manifest(m, x => x with { Macros = new List<WorkflowMacroSpec> { new("closing", null, "macros/closing.md", Instruction: "Add a closing line.") } }));
+        Invalid("invalid-index-object-shape-at-26", "The 25 index object ({ fields, items }) at 26 — the index is an ordered list.",
+            Files(m, fs => fs["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md" } ] }"""));
+        Invalid("invalid-index-item-name-at-26", "An index item carrying name — retired; the item file's header carries label.",
+            Files(m, fs => fs["snippets/sections/index.json"] = """[ { "id": "hpi", "file": "hpi.md", "name": "HPI" }, { "id": "plan", "file": "plan.md" } ]"""));
+        Invalid("invalid-reads-name-at-26", "A template reading .name — at 26 the member is .label.", P("Assess. {{ snippet.standards.name }}"));
+        Invalid("invalid-item-reads-name-at-26", "A body node reading item.name — at 26 the member is .label.", Files(m, fs => fs["prompts/section.md"] = "{{ item.name }}: {{ item.content }}"));
+        Invalid("invalid-folder-item-if-reads-a-node-at-26", "A folder item's header if reading a node — inputs only, so the folder's size is known at job start.",
+            Files(m, fs => fs["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "node.scope.value == \"in_scope\"") + "Plan."));
     }
 }

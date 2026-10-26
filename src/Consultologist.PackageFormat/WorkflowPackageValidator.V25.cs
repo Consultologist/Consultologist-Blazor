@@ -956,8 +956,11 @@ public static partial class WorkflowPackageValidator
         // branch's returned shape) — null on the 25 path, which has none.
         Action<ScriptObject>? probeFlowNodes = null,
         // #1101: the 26 path's deliverables, read as deliverable.<id>.content — null on the 25 path.
-        IReadOnlyCollection<string>? deliverableIds = null)
+        IReadOnlyCollection<string>? deliverableIds = null,
+        // #1105: at 26 the objects carry label (the header's) for name, and a macro its instruction.
+        bool labelled = false)
     {
+        var nameMember = labelled ? TemplateMembers.Label : TemplateMembers.Name;
         var walked = walk.Templates;
         var input = new ScriptObject();
         foreach (var (id, spec) in inputsById)
@@ -1004,7 +1007,11 @@ public static partial class WorkflowPackageValidator
         {
             // A duplicate id is refused by sentence above; the probe must not
             // throw on it (A5 #1018 — found by the conformance export).
-            macro[m.Id] = new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["content"] = "placeholder", ["prompt"] = "placeholder" };
+            macro[m.Id] = new ScriptObject { ["id"] = m.Id, [nameMember] = m.Label ?? "placeholder", ["content"] = "placeholder", ["prompt"] = "placeholder" };
+            if (labelled)
+            {
+                ((ScriptObject)macro[m.Id]!)[TemplateMembers.Instruction] = "placeholder";
+            }
         }
 
         ScriptObject? deliverable = null;
@@ -1057,12 +1064,12 @@ public static partial class WorkflowPackageValidator
             }
             else if (templateContext.Fan is InputArrayFan inputFan)
             {
-                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "0", ["name"] = "placeholder", ["value"] = Probe(inputFan.Element) };
+                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "0", [nameMember] = "placeholder", ["value"] = Probe(inputFan.Element) };
             }
             else if (templateContext.ItemDeferred)
             {
                 // C6 (#1012): a snippet or macro text runs under its reader's fan; the probe lends every member.
-                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["content"] = "placeholder", ["value"] = "placeholder" };
+                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", [nameMember] = "placeholder", ["content"] = "placeholder", ["value"] = "placeholder" };
             }
 
             var context = new PromptTemplateRenderer.RenderingContext();
@@ -1101,7 +1108,7 @@ public static partial class WorkflowPackageValidator
             }
         }
 
-        static ScriptObject SnippetProbe(string id) => new() { ["id"] = id, ["name"] = "placeholder", ["content"] = "placeholder" };
+        ScriptObject SnippetProbe(string id) => new() { ["id"] = id, [nameMember] = "placeholder", ["content"] = "placeholder" };
     }
 
     /// <summary>A probe value for a format's shape — the schema's structure, two elements per array, scalars by kind.</summary>

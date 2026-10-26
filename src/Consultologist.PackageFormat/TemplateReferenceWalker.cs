@@ -1391,10 +1391,10 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             }
         }
 
-        private static bool HasMember(Target target, string name) => target switch
+        private bool HasMember(Target target, string name) => target switch
         {
-            SnippetTarget => TemplateMembers.Snippet.Contains(name, StringComparer.Ordinal),
-            MacroTarget => TemplateMembers.Macro.Contains(name, StringComparer.Ordinal),
+            SnippetTarget => SnippetMembers.Contains(name, StringComparer.Ordinal),
+            MacroTarget => MacroMembers.Contains(name, StringComparer.Ordinal),
             NodeTarget => TemplateMembers.Node.Contains(name, StringComparer.Ordinal),
             DeliverableTarget => TemplateMembers.Deliverable.Contains(name, StringComparer.Ordinal),
             LoopElementTarget element => TemplateMembers.LoopElement.Contains(name, StringComparer.Ordinal) || (element.Flow.Body?.ContainsKey(name) ?? false),
@@ -1403,6 +1403,28 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             ShapeTarget { Shape: { IsObject: true } shape } => shape.Fields?.ContainsKey(name) ?? false,
             _ => false
         };
+
+        // #1105 (v26 design § 5.2): the member sets by version — at 26 .label for .name, a macro's .instruction.
+        private IReadOnlyList<string> SnippetMembers => _context.Labelled ? TemplateMembers.SnippetAt26 : TemplateMembers.Snippet;
+        private IReadOnlyList<string> MacroMembers => _context.Labelled ? TemplateMembers.MacroAt26 : TemplateMembers.Macro;
+        private IReadOnlyList<string> SnippetFanItemMembers => _context.Labelled ? TemplateMembers.SnippetFanItemAt26 : TemplateMembers.SnippetFanItem;
+        private IReadOnlyList<string> InputFanItemMembers => _context.Labelled ? TemplateMembers.InputFanItemAt26 : TemplateMembers.InputFanItem;
+        private IReadOnlyList<string> AnyFanItemMembers => _context.Labelled ? TemplateMembers.AnyFanItemAt26 : TemplateMembers.AnyFanItem;
+
+        /// <summary>At 26 a .name read is refused with its replacement before the member sentence.</summary>
+        private bool RefusesName(string name, string walked)
+        {
+            if (_context.Labelled && name == TemplateMembers.Name)
+            {
+                Errors.Add($"{_subject} reads {walked}; at specVersion 26 the member is .label.");
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string Listed(IReadOnlyList<string> members) =>
+            members.Count <= 2 ? string.Join(" and ", members.Select(m => "." + m)) : string.Join(", ", members.Take(members.Count - 1).Select(m => "." + m)) + " and ." + members[^1];
 
         /// <summary>One segment applied to a target; <paramref name="walked"/> is the chain so far, for sentences.</summary>
         private Target Step(Target target, Segment segment, StringBuilder walked)
@@ -1429,9 +1451,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return StepNode(node, name, before);
 
                 case SnippetTarget snippet:
-                    if (!TemplateMembers.Snippet.Contains(name, StringComparer.Ordinal))
+                    if (RefusesName(name, walked.ToString()))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which is not a member (a snippet has .id, .name and .content).");
+                        return Refused;
+                    }
+
+                    if (!SnippetMembers.Contains(name, StringComparer.Ordinal))
+                    {
+                        Errors.Add($"{_subject} reads {walked}, which is not a member (a snippet has {Listed(SnippetMembers)}).");
                         return Refused;
                     }
 
@@ -1443,9 +1470,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return new ShapeTarget(TemplateValueShape.Text);
 
                 case MacroTarget macro:
-                    if (!TemplateMembers.Macro.Contains(name, StringComparer.Ordinal))
+                    if (RefusesName(name, walked.ToString()))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which is not a member (a macro has .id, .name, .content and .prompt).");
+                        return Refused;
+                    }
+
+                    if (!MacroMembers.Contains(name, StringComparer.Ordinal))
+                    {
+                        Errors.Add($"{_subject} reads {walked}, which is not a member (a macro has {Listed(MacroMembers)}).");
                         return Refused;
                     }
 
@@ -1455,8 +1487,9 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         {
                             _refs.ReadMacroContent(macro.Id);
                         }
-                        else if (name == TemplateMembers.Prompt)
+                        else if (name == TemplateMembers.Prompt || name == TemplateMembers.Instruction)
                         {
+                            // #1105: the instruction is what .prompt is told — the same read, the same edge.
                             _refs.ReadMacroPrompt(macro.Id);
                         }
                     }
@@ -1607,9 +1640,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             switch (fan)
             {
                 case SnippetFolderFan:
-                    if (!TemplateMembers.SnippetFanItem.Contains(name, StringComparer.Ordinal))
+                    if (RefusesName(name, walked.ToString()))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which a snippet fan item does not carry (it carries: id, name, content).");
+                        return Refused;
+                    }
+
+                    if (!SnippetFanItemMembers.Contains(name, StringComparer.Ordinal))
+                    {
+                        Errors.Add($"{_subject} reads {walked}, which a snippet fan item does not carry (it carries: {string.Join(", ", SnippetFanItemMembers)}).");
                         return Refused;
                     }
 
@@ -1617,9 +1655,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return new ShapeTarget(TemplateValueShape.Text);
 
                 case InputArrayFan input:
-                    if (!TemplateMembers.InputFanItem.Contains(name, StringComparer.Ordinal))
+                    if (RefusesName(name, walked.ToString()))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which an input fan item does not carry (it carries: id, name, value).");
+                        return Refused;
+                    }
+
+                    if (!InputFanItemMembers.Contains(name, StringComparer.Ordinal))
+                    {
+                        Errors.Add($"{_subject} reads {walked}, which an input fan item does not carry (it carries: {string.Join(", ", InputFanItemMembers)}).");
                         return Refused;
                     }
 
@@ -1633,9 +1676,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     // any fan item member, typed loosely; the reading node's fan decides.
                     if (_context.ItemDeferred)
                     {
-                        if (!TemplateMembers.AnyFanItem.Contains(name, StringComparer.Ordinal))
+                        if (RefusesName(name, walked.ToString()))
                         {
-                            Errors.Add($"{_subject} reads {walked}, which a fan item does not carry (it carries: id, name, content or value).");
+                            return Refused;
+                        }
+
+                        if (!AnyFanItemMembers.Contains(name, StringComparer.Ordinal))
+                        {
+                            Errors.Add($"{_subject} reads {walked}, which a fan item does not carry (it carries: {(_context.Labelled ? "id, label, content or value" : "id, name, content or value")}).");
                             return Refused;
                         }
 

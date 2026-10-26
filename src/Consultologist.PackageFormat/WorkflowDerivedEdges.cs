@@ -536,6 +536,17 @@ public static class WorkflowDerivedEdges
         WorkflowPackageData snippets,
         Func<TemplateFan?, TemplateReferenceContext> contextFor)
     {
+        // #1105 (v26 design § 5): at 26 the files may still carry headers (the
+        // engine's and the editor's entry gives the package as published; the
+        // validator gives bodies, on which this is a no-op) — the walk reads the
+        // effective manifest and the bodies, as the validator did.
+        if (manifest.SpecVersion >= 26)
+        {
+            var texts = WorkflowTextHeaders.Resolve(manifest, files, new List<string>());
+            manifest = texts.Manifest;
+            files = texts.Files;
+        }
+
         // #1102 (v26 design § 4): at 26 a node names its prompt FILE; below, the
         // declared prompt's id resolves through prompts[].
         var at26 = manifest.SpecVersion >= 26;
@@ -639,7 +650,8 @@ public static class WorkflowDerivedEdges
                 var key = SnippetItemKey(folder, item.Id);
                 keys.Add(key);
                 templates.Add(new WalkedTemplate(TemplateKind.Snippet, key, subject, text, TemplateReferenceWalker.Walk(subject, text, snippetContext), snippetContext));
-                WalkCondition(ConditionSite.FolderItem, key, null, $"Snippet folder '{folder}' item '{item.Id}' condition", item.When, null);
+                // #1105: at 26 the item's gate is its header's if (the same site; the effect is #1094's).
+                WalkCondition(ConditionSite.FolderItem, key, null, $"Snippet folder '{folder}' item '{item.Id}' condition", item.When ?? item.If, null);
             }
 
             folders[folder] = keys;
@@ -797,7 +809,19 @@ public static class WorkflowDerivedEdges
         out Func<TemplateFan?, TemplateReferenceContext> contextFor)
     {
         var discard = new List<string>();
-        var content = WorkflowDataResolver.ResolveContent(manifest, files, discard);
+        // #1105 (v26 design § 5): at 26 the files hold headers Scriban never
+        // sees — the texts resolve as the validator resolved them (its sentences
+        // discarded here): the manifest with each macro's header facts, the
+        // files as bodies.
+        var texts = manifest.SpecVersion >= 26 ? WorkflowTextHeaders.Resolve(manifest, files, discard) : null;
+        if (texts is not null)
+        {
+            manifest = texts.Manifest;
+            files = texts.Files;
+        }
+        var content = texts is null
+            ? WorkflowDataResolver.ResolveContent(manifest, files, discard)
+            : WorkflowDataResolver.ResolveContent(manifest, texts, discard);
         snippets = content;
 
         var inputsById = (manifest.Inputs ?? new List<WorkflowInputSpec>())
@@ -863,7 +887,9 @@ public static class WorkflowDerivedEdges
             ? (manifest.Deliverables ?? new List<WorkflowDeliverableSpec>()).Select(d => d.Id).ToHashSet(StringComparer.Ordinal)
             : null;
 
-        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan, Bodies: bodies, Deliverables: deliverableIds);
+        var labelled = manifest.SpecVersion >= 26;
+
+        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan, Bodies: bodies, Deliverables: deliverableIds, Labelled: labelled);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {

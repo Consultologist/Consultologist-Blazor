@@ -160,6 +160,18 @@ internal static class WorkflowPackageContentValidation
                 continue;
             }
 
+            // #1105 (v26 design § 5.3): at 26 the index is the ordered [{ id, file }]
+            // list (the validator says what is wrong with it; here it only names files).
+            if (manifest.SpecVersion >= 26)
+            {
+                foreach (var (_, file) in WorkflowTextHeaders.ReadIndexAt26(indexJson, path, "Snippet", new List<string>()) ?? new List<(string, string)>())
+                {
+                    referenced.Add(path + file);
+                }
+
+                continue;
+            }
+
             WorkflowDataIndexFile? index;
             try
             {

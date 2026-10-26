@@ -31,6 +31,8 @@ public static class V26Package
             SpecVersion = 26,
             // #1102: a node names its prompt file; prompts[] is retired.
             Prompts = null,
+            // #1105: a macro's label and instruction are its file's header's; the manifest keeps id and file.
+            Macros = new List<WorkflowMacroSpec> { new("closing", null, "macros/closing.md") },
             Nodes = new List<WorkflowNodeSpec>
             {
                 new("extract", "Extract concepts", Prompt: "prompts/extract.md", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail),
@@ -50,11 +52,30 @@ public static class V26Package
 
         var files26 = new Dictionary<string, string>(files, StringComparer.Ordinal)
         {
-            // The item's gate is keyed if at 26 (#1094); until it is walked the item carries none.
-            ["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md" } ] }""",
+            // #1105 (§ 5): a snippet, a folder item and a macro file open with a JSON
+            // header — label (and the macro's instruction); the folder's index is the
+            // ordered [{ id, file }] list; the item's gate (#1094) would be its header's if.
+            ["snippets/sections/index.json"] = """[ { "id": "hpi", "file": "hpi.md" }, { "id": "plan", "file": "plan.md" } ]""",
+            ["snippets/standards.md"] = Header("Local standards") + "Follow the local standards.",
+            ["snippets/sections/hpi.md"] = Header("HPI") + "History: {{ input.notes }}",
+            ["snippets/sections/plan.md"] = Header("Plan") + "Plan.",
+            ["macros/closing.md"] = Header("Closing", instruction: "Add a closing line if the plan changed.") + "Closing: {{ profile.name }}.",
+            ["prompts/section.md"] = "{{ item.label }}: {{ item.content }}",
         };
 
         return (at26, files26);
+    }
+
+    /// <summary>A JSON header (§ 5.1) to prefix a text with — the first line `{`, the last `}`, one newline consumed.</summary>
+    public static string Header(string? label, string? instruction = null, string? @if = null, bool? optional = null, bool? @default = null)
+    {
+        var keys = new List<string>();
+        if (label is not null) keys.Add($"  \"label\": {System.Text.Json.JsonSerializer.Serialize(label)}");
+        if (instruction is not null) keys.Add($"  \"instruction\": {System.Text.Json.JsonSerializer.Serialize(instruction)}");
+        if (optional is not null) keys.Add($"  \"optional\": {(optional.Value ? "true" : "false")}");
+        if (@default is not null) keys.Add($"  \"default\": {(@default.Value ? "true" : "false")}");
+        if (@if is not null) keys.Add($"  \"if\": {System.Text.Json.JsonSerializer.Serialize(@if)}");
+        return "{\n" + string.Join(",\n", keys) + "\n}\n";
     }
 
     /// <summary>The 25 minimal raised to 26 — every key 26 retires, for the retirement facts.</summary>
@@ -211,11 +232,16 @@ public class WorkflowV26Tests
     [Fact]
     public void AFolderItemWhen_RetiredAt26_IsRefusedWithItsReplacement()
     {
-        // The 25 minimal's 'plan' item carries a when in snippets/sections/index.json.
-        var errors = V26Package.Errors(V26Package.FromV25());
+        // #1105: the 25 index object is refused whole (its items unread), so the
+        // item's when is met on the 26 list — a when key on an item of [{ id, file }].
+        var errors = V26Package.FlowErrors(m => m, files => files["snippets/sections/index.json"] =
+            """[ { "id": "hpi", "file": "hpi.md" }, { "id": "plan", "file": "plan.md", "when": "input.kind == \"new\"" } ]""");
 
-        Assert.Contains("Snippet folder 'sections' item 'plan' declares when, which is retired at specVersion 26; a gate is keyed if; when is a case branch's label only.", errors);
+        Assert.Contains("Snippet folder 'sections' item 'plan' declares when, which is retired at specVersion 26; a gate is keyed if in the item file's header; when is a case branch's label only.", errors);
         Assert.DoesNotContain(errors, e => e.StartsWith("Snippet folder 'sections' item 'hpi' declares when", StringComparison.Ordinal));
+
+        var raised = V26Package.Errors(V26Package.FromV25());
+        Assert.Contains("Snippet folder 'sections' index.json at specVersion 26 is an ordered list [{ id, file }]; name and when live in the item file's header.", raised);
     }
 
     [Fact]
@@ -230,10 +256,13 @@ public class WorkflowV26Tests
     public void AKeyAbsent_MeetsNoRetirementSentence()
     {
         // The raised 25 minimal meets only the retirements its keys earn: the
-        // prompts, forEach, aggregate, deliverable node and the one folder item when.
+        // prompts, forEach, aggregate, deliverable node, the macro's label and
+        // instruction in the manifest (#1105), and the folder index's item name
+        // (×2) and the one when (the 25 index object is refused whole first —
+        // its items are not read; those three ride the index sentence).
         var errors = V26Package.Errors(V26Package.FromV25()).Where(e => e.Contains("retired at specVersion 26", StringComparison.Ordinal)).ToList();
 
-        Assert.Equal(5, errors.Count);
+        Assert.Equal(6, errors.Count);
     }
 
     [Fact]

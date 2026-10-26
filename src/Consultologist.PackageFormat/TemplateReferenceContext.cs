@@ -37,7 +37,11 @@ public sealed record TemplateReferenceContext(
     string? Scope = null,
     // #1101 (v26 design § 3.1): the deliverables a template may read as
     // deliverable.<id>.content — null where the object does not exist (≤25).
-    IReadOnlySet<string>? Deliverables = null)
+    IReadOnlySet<string>? Deliverables = null,
+    // #1105 (v26 design § 5.2): at 26 the human-facing member is .label, not
+    // .name, on a snippet, a macro and a fan item, and a macro carries
+    // .instruction — the header's facts, readable by the names the header uses.
+    bool Labelled = false)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -183,6 +187,10 @@ public static class TemplateMembers
     public const string Content = "content";
     public const string Value = "value";
     public const string Prompt = "prompt";
+    /// <summary>#1105 (v26 design § 5.2): the header's label — the human-facing name at 26, where .name is refused with it.</summary>
+    public const string Label = "label";
+    /// <summary>#1105: a macro's instruction, readable at 26 as the text the model will be told.</summary>
+    public const string Instruction = "instruction";
 
     public static readonly IReadOnlyList<string> Node = new[] { Content, Value };
     public static readonly IReadOnlyList<string> Snippet = new[] { Id, Name, Content };
@@ -192,6 +200,13 @@ public static class TemplateMembers
     public static readonly IReadOnlyList<string> Macro = new[] { Id, Name, Content, Prompt };
     public static readonly IReadOnlyList<string> SnippetFanItem = new[] { Id, Name, Content };
     public static readonly IReadOnlyList<string> InputFanItem = new[] { Id, Name, Value };
+
+    /// <summary>#1105: the same sets at 26 — label for name; a macro's instruction.</summary>
+    public static readonly IReadOnlyList<string> SnippetAt26 = new[] { Id, Label, Content };
+    public static readonly IReadOnlyList<string> AnyFanItemAt26 = new[] { Id, Label, Content, Value };
+    public static readonly IReadOnlyList<string> MacroAt26 = new[] { Id, Label, Content, Prompt, Instruction };
+    public static readonly IReadOnlyList<string> SnippetFanItemAt26 = new[] { Id, Label, Content };
+    public static readonly IReadOnlyList<string> InputFanItemAt26 = new[] { Id, Label, Value };
 
     /// <summary>#1100 (v26 design § 1.3): a loop element's own members — item, content, value — beside the body nodes by id.</summary>
     public const string Item = "item";

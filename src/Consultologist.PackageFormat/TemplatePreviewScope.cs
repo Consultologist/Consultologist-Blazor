@@ -93,13 +93,23 @@ public static class TemplatePreviewScope
             nodes[node.Id] = new TemplateNodeOutput(text, type, node.Id, valueJson);
         }
 
-        var content = WorkflowDataResolver.ResolveContent(manifest, files, discard);
+        // #1105: at 26 the texts carry headers — the scope reads bodies and the
+        // header's label (the renderer's own 26 members are #1157's).
+        var texts = manifest.SpecVersion >= 26 ? WorkflowTextHeaders.Resolve(manifest, files, discard) : null;
+        if (texts is not null)
+        {
+            manifest = texts.Manifest;
+            files = texts.Files;
+        }
+        var content = texts is null
+            ? WorkflowDataResolver.ResolveContent(manifest, files, discard)
+            : WorkflowDataResolver.ResolveContent(manifest, texts, discard);
         var folders = content.Collections.ToDictionary(
             entry => entry.Key,
             entry => (IReadOnlyList<TemplateFolderItem>)entry.Value.Items
                 .Select(item => new TemplateFolderItem(
                     item.Id,
-                    item.Fields.GetValueOrDefault(TemplateMembers.Name, item.Id),
+                    item.Fields.GetValueOrDefault(TemplateMembers.Name) ?? item.Fields.GetValueOrDefault(TemplateMembers.Label, item.Id),
                     item.Fields.GetValueOrDefault(TemplateMembers.Content, string.Empty)))
                 .ToList(),
             StringComparer.Ordinal);
@@ -109,7 +119,7 @@ public static class TemplatePreviewScope
             .DistinctBy(macro => macro.Id, StringComparer.Ordinal)
             .ToDictionary(
                 macro => macro.Id,
-                macro => new TemplateMacroSource(macro.Id, macro.Label, files.GetValueOrDefault(macro.File!, string.Empty), macro.Instruction ?? string.Empty),
+                macro => new TemplateMacroSource(macro.Id, macro.Label ?? macro.Id, files.GetValueOrDefault(macro.File!, string.Empty), macro.Instruction ?? string.Empty),
                 StringComparer.Ordinal);
 
         return new TemplateRenderScope(

@@ -278,7 +278,7 @@ public class WorkflowV26FlowTests
     {
         // A snippet is walked once with no scope of its own; the outside node that
         // reads it earns the sentence on the edge (PR 1's rule), as item reads do.
-        var errors = V26Package.FlowErrors(m => m, files => files["snippets/standards.md"] = "Standards. {{ node.section_notes.content }}");
+        var errors = V26Package.FlowErrors(m => m, files => files["snippets/standards.md"] = V26Package.Header("Standards") + "Standards. {{ node.section_notes.content }}");
 
         Assert.Contains("Node 'assessment' reads node 'section_notes', which runs inside loop 'sections'; read node.sections.", errors);
     }
@@ -312,7 +312,7 @@ public class WorkflowV26FlowTests
             files =>
             {
                 files["prompts/per_section.md"] = "{{ item.content }} {{ snippet.standards.content }}";
-                files["snippets/standards.md"] = "Standards. {{ node.section_notes.content }}";
+                files["snippets/standards.md"] = V26Package.Header("Standards") + "Standards. {{ node.section_notes.content }}";
             });
 
         Assert.Contains("Node 'per_section' reads node 'section_notes' across loops ('other' vs 'sections'); body nodes of one loop read one another.", deferred);
@@ -335,7 +335,7 @@ public class WorkflowV26FlowTests
                 "sections", n => n with { Nodes = new List<string> { "draft", "section_notes" } }),
             files =>
             {
-                files["prompts/draft.md"] = "Draft {{ item.name }}.";
+                files["prompts/draft.md"] = "Draft {{ item.label }}.";
                 files["prompts/section.md"] = "{{ item.content }} {{ node.draft.content }}";
             });
 
@@ -375,7 +375,7 @@ public class WorkflowV26FlowTests
         var errors = V26Package.FlowErrors(
             m => V26Package.WithNode(V26Package.WithNodes(m, new WorkflowNodeSpec("draft", "Draft", Prompt: "prompts/draft.md", Format: "prose")),
                 "sections", n => n with { Nodes = new List<string> { "draft", "section_notes" } }),
-            files => files["prompts/draft.md"] = "Draft {{ item.name }}.");
+            files => files["prompts/draft.md"] = "Draft {{ item.label }}.");
 
         Assert.Contains("Node 'draft' in loop 'sections' is neither returned nor read; name it with ret or read it from a body node.", errors);
     }
@@ -397,7 +397,7 @@ public class WorkflowV26FlowTests
     public void TheOutside_IteratesTheLoop_AndTheProbeRenders()
     {
         var errors = V26Package.FlowErrors(m => m, files =>
-            files["prompts/assessment.md"] = "Assess.\n{{ for e in node.sections }}{{ e.item.name }}: {{ e.content }} / {{ e.section_notes.content }}{{ end }}\n{{ node.sections.content }} {{ node.sections[0].item.id }} {{ node.sections | array.size }}");
+            files["prompts/assessment.md"] = "Assess.\n{{ for e in node.sections }}{{ e.item.label }}: {{ e.content }} / {{ e.section_notes.content }}{{ end }}\n{{ node.sections.content }} {{ node.sections[0].item.id }} {{ node.sections | array.size }}");
 
         Assert.Empty(errors);
     }
