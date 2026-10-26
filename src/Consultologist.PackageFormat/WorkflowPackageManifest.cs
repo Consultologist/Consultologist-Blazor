@@ -127,7 +127,10 @@ public sealed record WorkflowFormatReference(
 /// </summary>
 public sealed record WorkflowMacroSpec(
     string Id,
-    string Label,
+    // #1105 (v26 design § 5): null at 26, where the macro file's header carries
+    // the label (the validator fills the effective manifest from it); required
+    // by sentence below 26.
+    string? Label,
     string File,
     bool? Optional = null,
     bool? Default = null,

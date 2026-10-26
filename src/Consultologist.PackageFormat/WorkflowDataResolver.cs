@@ -39,6 +39,20 @@ public static class WorkflowDataResolver
             : Resolve(manifest.Snippets, "Snippet", files, errors);
 
     /// <summary>
+    /// #1105 (v26 design § 5): the same resolution at 26 — the snippets through
+    /// the headers <see cref="WorkflowTextHeaders.Resolve"/> read (the files
+    /// given hold bodies), a folder's index the ordered list, an item's label
+    /// and gate from its header.
+    /// </summary>
+    public static WorkflowPackageData ResolveContent(
+        WorkflowPackageManifest manifest,
+        WorkflowResolvedTexts texts,
+        List<string> errors) =>
+        manifest.Data is not null || manifest.Snippets is null
+            ? Resolve(manifest.Data, "Data", texts.Files, errors)
+            : Resolve(manifest.Snippets, "Snippet", texts.Files, errors, texts.Headers);
+
+    /// <summary>
     /// v25 (#999): the same resolution over <c>manifest.snippets</c> — the
     /// table is the same shape (id → file, or folder → "dir/" with an
     /// index.json), the noun in every sentence is "Snippet", and a folder
@@ -48,7 +62,10 @@ public static class WorkflowDataResolver
         IReadOnlyDictionary<string, string>? table,
         string noun,
         IReadOnlyDictionary<string, string> files,
-        List<string> errors)
+        List<string> errors,
+        // #1105: non-null at 26 — the headers by path; a folder's index is then
+        // the ordered [{ id, file }] list and an item's label and if are its file's.
+        IReadOnlyDictionary<string, WorkflowTextHeader>? headers = null)
     {
         var scalars = new Dictionary<string, string>(StringComparer.Ordinal);
         var collections = new Dictionary<string, WorkflowDataCollection>(StringComparer.Ordinal);
@@ -57,7 +74,9 @@ public static class WorkflowDataResolver
         {
             if (path.EndsWith('/'))
             {
-                var collection = ResolveCollection(id, path, files, errors, noun);
+                var collection = headers is null
+                    ? ResolveCollection(id, path, files, errors, noun)
+                    : ResolveCollectionAt26(id, path, files, headers, errors, noun);
                 if (collection != null)
                 {
                     collections[id] = collection;
@@ -74,6 +93,68 @@ public static class WorkflowDataResolver
         }
 
         return new WorkflowPackageData(scalars, collections);
+    }
+
+    /// <summary>#1105: the folder at 26 — the index an ordered list, the item's label and gate from its header (its text already the body).</summary>
+    private static WorkflowDataCollection? ResolveCollectionAt26(
+        string id,
+        string directory,
+        IReadOnlyDictionary<string, string> files,
+        IReadOnlyDictionary<string, WorkflowTextHeader> headers,
+        List<string> errors,
+        string noun)
+    {
+        var indexPath = directory + IndexFileName;
+
+        if (!files.TryGetValue(indexPath, out var indexJson))
+        {
+            errors.Add($"{noun} collection '{id}' is missing '{indexPath}'.");
+            return null;
+        }
+
+        var index = WorkflowTextHeaders.ReadIndexAt26(indexJson, id, noun, errors);
+        if (index is null)
+        {
+            return null;
+        }
+
+        if (index.Count == 0)
+        {
+            errors.Add($"{noun} collection '{id}' declares no items.");
+            return null;
+        }
+
+        var items = new List<WorkflowDataItem>();
+        var seenIds = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (itemId, file) in index)
+        {
+            if (!seenIds.Add(itemId))
+            {
+                errors.Add($"{noun} collection '{id}' has duplicate item id '{itemId}'.");
+                continue;
+            }
+
+            var filePath = directory + file;
+            if (!files.TryGetValue(filePath, out var content))
+            {
+                errors.Add($"{noun} collection '{id}' item '{itemId}' file '{filePath}' is missing from the package.");
+                continue;
+            }
+
+            // A file with no header was refused by name at the header pass; it has no label here.
+            var header = headers.GetValueOrDefault(filePath);
+            var fields = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["id"] = itemId,
+                ["label"] = header?.Label ?? string.Empty,
+                ["content"] = content,
+            };
+
+            items.Add(new WorkflowDataItem(itemId, fields, null, header?.If));
+        }
+
+        return new WorkflowDataCollection(new[] { "id", "label", "content" }, items);
     }
 
     private static WorkflowDataCollection? ResolveCollection(

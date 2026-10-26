@@ -14,8 +14,11 @@ namespace Consultologist.PackageFormat;
 /// the derived-edges walk shares; the pipeline is the 25 one with the node,
 /// fan, condition and reachability steps replaced; the steps still the 25
 /// methods' are named by the issue that replaces them — #1101 the deliverables
-/// and the reachability over <c>sources[]</c>, #1102 the prompt path, #1105 the
-/// macro library and the snippets' headers, #1059 the pipe operand.
+/// and the reachability over <c>sources[]</c>, #1102 the prompt path, #1059
+/// the pipe operand. #1105 (§ 5): the texts resolve first — every snippet,
+/// folder item and macro file opens with a JSON header the format reads and
+/// Scriban never sees; the pipeline runs over the effective manifest (each
+/// macro's header facts filled in) and the bodies.
 /// </summary>
 public static partial class WorkflowPackageValidator
 {
@@ -29,6 +32,7 @@ public static partial class WorkflowPackageValidator
         public const string Prompts = "a node names its prompt file (nodes[].prompt: \"<path>\")";
         public const string ForItem = "the instance's if on item.id (if: \"item.id == \\\"<item>\\\"\")";
         public const string GateWhen = "a gate is keyed if; when is a case branch's label only";
+        public const string MacroField = "the macro file's header carries it";
     }
 
     private static void ValidateAt26(
@@ -42,8 +46,14 @@ public static partial class WorkflowPackageValidator
         ValidateDerivedFrom(manifest, errors);
         // The 25 retirements hold at ≥ 25 — their sentences keep the 25 form.
         ValidateRetiredAt25(manifest, errors);
-        ValidateRetiredAt26(manifest, files, errors);
+        ValidateRetiredAt26(manifest, errors);
         ValidateInputs(manifest, errors);
+
+        // #1105 (§ 5): the headers — from here on the manifest carries each
+        // macro's header facts and the files are bodies.
+        var texts = WorkflowTextHeaders.Resolve(manifest, files, errors);
+        manifest = texts.Manifest;
+        files = texts.Files;
 
         var inputsById = (manifest.Inputs ?? new List<WorkflowInputSpec>())
             .Where(input => WorkflowDeclaredIds.IsValid(input.Id))
@@ -52,10 +62,10 @@ public static partial class WorkflowPackageValidator
         var inputShapes = inputsById.ToDictionary(pair => pair.Key, pair => WorkflowDeclarationNode.Of(pair.Value), StringComparer.Ordinal);
 
         var localFormats = ResolveFormatsAt25(manifest, files, catalog, errors);
-        var snippets = ResolveSnippetsAt25(manifest, files, inputsById, errors);
+        var snippets = ResolveSnippetsAt26(manifest, texts, errors);
         var flows = WorkflowFlowNodes.Resolve(manifest, snippets, inputsById, errors);
         var nodes = ValidateNodesAt26(manifest, files, localFormats, catalog, inputsById, flows, errors);
-        ValidateMacroLibraryAt25(manifest, files, errors);
+        ValidateMacroLibraryAt26(manifest, files, errors);
         ValidateCaseSubjectsAt26(flows, nodes, inputsById, errors);
 
         // The plain nodes' shapes first; a flow node's is built over them (§ 1.3).
@@ -76,7 +86,7 @@ public static partial class WorkflowPackageValidator
             snippets.Scalars.Keys.ToHashSet(StringComparer.Ordinal),
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
             macroIds, TemplateReferenceContext.NoIds, fan,
-            Bodies: bodies, Deliverables: deliverableIds);
+            Bodies: bodies, Deliverables: deliverableIds, Labelled: true);
 
         var walk = WorkflowDerivedEdges.WalkAll(
             manifest, files,
@@ -92,7 +102,7 @@ public static partial class WorkflowPackageValidator
         ValidateConditionsAt26(walk, flows, errors);
         ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
         ValidateReferenceGraphAt25(walked, snippets, errors);
-        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes), deliverableIds);
+        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes), deliverableIds, labelled: true);
         ValidateDeliverablesAt26(manifest, nodes, walk, flows, nodeShapes, errors);
 
         var specs = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList();
@@ -103,8 +113,22 @@ public static partial class WorkflowPackageValidator
 
     // ----- § 8: refused by name, with the replacement -------------------------
 
-    private static void ValidateRetiredAt26(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files, List<string> errors)
+    private static void ValidateRetiredAt26(WorkflowPackageManifest manifest, List<string> errors)
     {
+        // #1105 (§ 5.2): a macro's label, instruction, optional and default are the
+        // file's header's — one home; the folder index's name and when are refused
+        // where the index is read (WorkflowTextHeaders.ReadIndexAt26).
+        foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
+        {
+            foreach (var (key, declared) in new[] { ("label", macro.Label != null), ("instruction", macro.Instruction != null), ("optional", macro.Optional != null), ("default", macro.Default != null) })
+            {
+                if (declared)
+                {
+                    errors.Add($"Macro '{macro.Id}' declares {key} in the manifest, which is retired at specVersion 26; {RetiredAt26.MacroField} ({macro.File}).");
+                }
+            }
+        }
+
         if (manifest.Prompts != null)
         {
             errors.Add($"prompts is retired at specVersion 26; {RetiredAt26.Prompts}.");
@@ -161,20 +185,58 @@ public static partial class WorkflowPackageValidator
                 }
             }
         }
+    }
 
-        // A folder item's when sits in the folder's index.json, not the manifest:
-        // resolve the snippet table as ResolveSnippetsAt25 will (its own sentences
-        // are that step's — a folder that does not resolve is simply absent here).
-        var snippets = WorkflowDataResolver.Resolve(manifest.Snippets, SnippetNoun, files, new List<string>());
+    // ----- § 5: the texts — headers, the snippets and the macro library -----------
 
-        foreach (var (folder, collection) in snippets.Collections)
+    /// <summary>The snippets at 26: the headers' bodies and labels through the resolver; the snake_case rule as 25.</summary>
+    private static WorkflowPackageData ResolveSnippetsAt26(WorkflowPackageManifest manifest, WorkflowResolvedTexts texts, List<string> errors)
+    {
+        var snippets = WorkflowDataResolver.Resolve(manifest.Snippets, SnippetNoun, texts.Files, errors, texts.Headers);
+
+        foreach (var (id, _) in manifest.Snippets ?? new Dictionary<string, string>())
         {
-            foreach (var item in collection.Items)
+            if (!WorkflowDeclaredIds.IsValid(id))
             {
-                if (item.When != null)
-                {
-                    errors.Add($"Snippet folder '{folder}' item '{item.Id}' declares when, which is retired at specVersion 26; {RetiredAt26.GateWhen}.");
-                }
+                errors.Add($"Snippet id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+            }
+        }
+
+        return snippets;
+    }
+
+    /// <summary>
+    /// The macro library at 26: the id and the file as 25; the label is the
+    /// header's (its absence said by the header pass); the instruction the
+    /// header's, required until #1096 makes it conditional on an inline read.
+    /// </summary>
+    private static void ValidateMacroLibraryAt26(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files, List<string> errors)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
+        {
+            if (!WorkflowDeclaredIds.IsValid(macro.Id))
+            {
+                errors.Add($"Macro id '{macro.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+                continue;
+            }
+
+            if (!ids.Add(macro.Id))
+            {
+                errors.Add($"Duplicate macro id '{macro.Id}'.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(macro.File) || !files.ContainsKey(macro.File))
+            {
+                errors.Add($"Macro '{macro.Id}' file '{macro.File}' is missing from the package.");
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(macro.Instruction))
+            {
+                errors.Add($"Macro '{macro.Id}' header declares no instruction; required at specVersion 26 ({macro.File}).");
             }
         }
     }
@@ -879,8 +941,8 @@ public static partial class WorkflowPackageValidator
                     var element = new ScriptObject
                     {
                         [TemplateMembers.Item] = shape.Flow.Fan is InputArrayFan input
-                            ? new ScriptObject { ["id"] = i.ToString(), ["name"] = "placeholder", ["value"] = Probe(input.Element) }
-                            : new ScriptObject { ["id"] = "item", ["name"] = "placeholder", ["content"] = "placeholder" },
+                            ? new ScriptObject { ["id"] = i.ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = Probe(input.Element) }
+                            : new ScriptObject { ["id"] = "item", [TemplateMembers.Label] = "placeholder", ["content"] = "placeholder" },
                         [TemplateMembers.Content] = "placeholder",
                     };
 
