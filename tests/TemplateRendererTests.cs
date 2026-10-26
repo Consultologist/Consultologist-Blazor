@@ -152,6 +152,31 @@ public class TemplateRendererTests
     }
 
     [Fact]
+    public void AnInertMacro_RendersEmptyPromptAndContent_WithNoReads()
+    {
+        // #1090 (v26 design § 2.2): the macro's own gate does not hold — inert everywhere
+        // it is read: no instruction, no sentence, no content, nothing recorded. A
+        // suppressed-only macro (#1089) keeps its content.
+        var macros = new Dictionary<string, TemplateMacroSource>
+        {
+            ["closing"] = new("closing", "Closing", "Closing.", "Say goodbye."),
+            ["opening"] = new("opening", "Opening", "Opening.", "Say hello."),
+        };
+        var scope = Scope(macros: macros) with
+        {
+            InertMacros = new HashSet<string>(StringComparer.Ordinal) { "closing" },
+            SuppressedPrompts = new HashSet<string>(StringComparer.Ordinal) { "opening" },
+        };
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+
+        var rendered = TemplateRenderer.Render("Prompt 'p'", "A{{ macro.closing.prompt }}B{{ macro.closing.content }}C{{ macro.opening.prompt }}D{{ macro.opening.content }}", scope, null, trace);
+
+        Assert.Equal("ABCDOpening.", rendered);
+        Assert.Empty(trace.PromptReads);
+        Assert.Equal(new[] { "opening" }, trace.ContentReads);
+    }
+
+    [Fact]
     public void Macro_Text_Renders_AndPrompt_IsTheInstructionWithTheMechanicsSentence()
     {
         var scope = Scope(macros: new Dictionary<string, TemplateMacroSource>

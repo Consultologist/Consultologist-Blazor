@@ -107,7 +107,11 @@ public sealed record TemplateRenderScope(
     // leave empty — judged by the caller over this scope with
     // WorkflowInlineGates.Suppressed (the running node's instance gates); null
     // is the 25 render, nothing suppressed.
-    IReadOnlySet<string>? SuppressedPrompts = null);
+    IReadOnlySet<string>? SuppressedPrompts = null,
+    // #1090 (v26 design § 2.2): the macros whose own gate does not hold for this
+    // render — inert: .prompt and .content both empty, nothing recorded (judged
+    // by the caller with WorkflowInlineGates.Inert); null is the 25 render.
+    IReadOnlySet<string>? InertMacros = null);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -253,7 +257,7 @@ public static class TemplateRenderer
                     // #1089 (v26 design § 2.3): an inline read the running node's
                     // instance gate suppresses renders empty — no instruction, no
                     // mechanics sentence, no read recorded (the model is told nothing).
-                    if (scope.SuppressedPrompts?.Contains(source.Id) == true)
+                    if (scope.SuppressedPrompts?.Contains(source.Id) == true || scope.InertMacros?.Contains(source.Id) == true)
                     {
                         return string.Empty;
                     }
@@ -265,6 +269,13 @@ public static class TemplateRenderer
             var text = new Lazy<string>(() => RenderWith($"Macro '{id}'", source.Text, globals, trace, nested: true));
             members[TemplateMembers.Content] = () =>
             {
+                // #1090: an inert macro's content is empty where read — no blank
+                // block, no read recorded (a placed instance composes nothing).
+                if (scope.InertMacros?.Contains(source.Id) == true)
+                {
+                    return string.Empty;
+                }
+
                 trace?.ContentRead(source.Id);
                 return text.Value;
             };

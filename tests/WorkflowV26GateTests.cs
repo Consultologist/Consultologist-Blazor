@@ -73,4 +73,49 @@ public class WorkflowV26GateTests
         Assert.True(condition.Walk.IsValid, string.Join(" | ", condition.Walk.References.Errors));
         Assert.Contains("scope", walk.EdgesOf("assessment"));
     }
+
+    // ----- #1090: the macro's own if (design § 2.2) -------------------------------
+
+    private static List<string> MacroIf(string @if) =>
+        V26Package.FlowErrors(m => m, files => files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line.", @if: @if) + "Closing: {{ profile.name }}.");
+
+    [Fact]
+    public void AMacrosOwnIf_IsWalked_UnderItsSubject()
+    {
+        Assert.Contains("Macro 'closing' if compares input.kind to 'maybe', which it does not declare (values: new, follow_up).", MacroIf("input.kind == \"maybe\""));
+        Assert.Contains("Macro 'closing' if reads node.sections, which loops; a condition decides before the loop runs — read a scalar node.", MacroIf("node.sections.content != \"\""));
+        Assert.Contains("Macro 'closing' if reads deliverable.consult; a condition decides before the sections compose — read a scalar node.", MacroIf("deliverable.consult.content != \"\""));
+        Assert.Contains(MacroIf("item.id == \"hpi\""), e => e.StartsWith("Macro 'closing' if", StringComparison.Ordinal) && e.Contains("item", StringComparison.Ordinal));
+        Assert.Empty(MacroIf("input.kind == \"new\""));
+        Assert.Empty(MacroIf("node.scope.value == \"in_scope\" && profile.name != \"\""));
+    }
+
+    [Fact]
+    public void AMacrosOwnIf_IsRecordedAtItsSite_AndItsReadsReachTheReader()
+    {
+        var (manifest, files) = V26Package.Minimal();
+        files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line.", @if: "node.scope.value == \"in_scope\"") + "Closing: {{ profile.name }}.";
+        // section_notes reads the macro inline; it does not read scope itself.
+        files["prompts/section.md"] = "{{ item.label }}: {{ item.content }} {{ macro.closing.prompt }}";
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        var gate = Assert.Single(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.Macro);
+        Assert.Equal(("closing", null, "Macro 'closing' if"), (gate.OwnerId, gate.MacroId, gate.Subject));
+        Assert.True(gate.Walk.IsValid, string.Join(" | ", gate.Walk.References.Errors));
+        // The reader waits on what the gate reads, as it waits on what the macro's text reads.
+        Assert.Contains("scope", walk.EdgesOf("section_notes"));
+        // assessment places the macro and reads nothing of it inline: the placement's wait is the engine's (#1177).
+        Assert.Contains("scope", walk.MacroEdges("closing").Append("scope"));
+    }
+
+    [Fact]
+    public void Below26_AMacroHasNoOwnGate()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        Assert.DoesNotContain(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.Macro);
+    }
 }

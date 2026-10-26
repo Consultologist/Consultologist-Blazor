@@ -51,4 +51,29 @@ public static class WorkflowInlineGates
 
         return suppressed;
     }
+
+    /// <summary>
+    /// #1090 (§ 2.2): the macros whose own gate — the file header's <c>if</c> —
+    /// does not hold: inert for the run, <c>.prompt</c> and <c>.content</c> empty
+    /// where read, every placement skipped (the engine's). A macro with no gate
+    /// holds. Composes by AND with <see cref="Suppressed"/>: the engine hands
+    /// both sets to the scope; the inert set empties the content too.
+    /// </summary>
+    public static IReadOnlySet<string> Inert(
+        IEnumerable<(string MacroId, string? If)> macros,
+        TemplateRenderScope scope,
+        IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
+    {
+        var inert = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var (macroId, gate) in macros)
+        {
+            if (!string.IsNullOrWhiteSpace(gate) && !WorkflowConditionAt25.Holds($"Macro '{macroId}' if", gate, scope, pipes))
+            {
+                inert.Add(macroId);
+            }
+        }
+
+        return inert;
+    }
 }
