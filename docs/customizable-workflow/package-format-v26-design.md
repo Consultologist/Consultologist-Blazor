@@ -791,6 +791,24 @@ a gating read; a `case` subject is read structurally. Until PR 2 a loop reads as
 shape) and an `if`/`case` as its returned node's format when every branch returns one; PR 2 brings
 `{{ for e in node.<loop> }}`, `.value` across branches, the probe's iterable loop.)*
 
+*(#1100, PR 2 of 2, 2026-10-26 — the reads land, as § 1.3 reads them. The walker's node shape carries a
+flow (`TemplateFlowShape`: the returned node, a loop's fan and body, an if/case's disagreement); a loop is
+**iterable** — `{{ for e in node.sections }}` — and its element carries `item` (typed by the loop's fan),
+`content` and `value` (the returned node's) and every body node by id, every read recorded as the loop's (the
+flow node is the only name the outside sees); `node.<loop>.content` is text, `node.<loop>.value` the array of
+the returned node's values (*"reads node.sections.value, but loop 'sections' returns 'section_notes' of
+format 'prose', which is text and has no value; read node.sections.content or iterate node.sections"*), a bare
+loop says *"… or iterate it ({{ for e in node.sections }})"*, a bare element names its members; an `if`/`case`
+reads as its returned node when the branches agree and refuses `.value` and a pipe by name when they do not
+(*"branches of 'triage' return 'object' and 'text'; read node.triage.content"*); a renderer pipe on a loop is
+refused (*"a list has no one text; pipe the returned node inside the loop …"*) and on its element recorded for
+the loop. A body node read from outside its scope is refused where it is written (*"Prompt 'assessment'
+reads node 'section_notes', which runs inside loop 'sections'; read node.sections"* — the context's `Bodies`
+and the template's `Scope`); a deferred text's read is judged at its reader by the edge rule. The flow nodes
+are resolved once for every walk (`WorkflowFlowNodes`, shared by the validator and by the engine's and the
+editor's `PrepareNodes`), and the probe gives a loop a list that also reads as text and as the array. The DAG
+diagram's loop drawing is #1160's. #1100 closes.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
