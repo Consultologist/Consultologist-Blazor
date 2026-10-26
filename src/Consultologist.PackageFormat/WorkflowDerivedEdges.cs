@@ -37,8 +37,8 @@ public static class WorkflowDerivedEdges
     /// </summary>
     public sealed record PromptReadSite(string Macro, TemplateKind HolderKind, string HolderId, string HolderSubject, string? FanItem);
 
-    /// <summary>#1037: where a <c>when</c> sits.</summary>
-    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem }
+    /// <summary>#1037: where a <c>when</c> sits — and, at 26 (#1100), <c>Flow</c>: an <c>if</c> or <c>case</c> node's own expression.</summary>
+    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow }
 
     /// <summary>
     /// #1037 (design § 16): a <c>when</c> walked — its site, the id of what it gates
@@ -130,8 +130,9 @@ public static class WorkflowDerivedEdges
             }
 
             // #1037: what the node's own when and its instances' whens read — the
-            // node waits on them as it waits on what its texts read.
-            foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance))
+            // node waits on them as it waits on what its texts read. #1100: an
+            // if/case node's expression likewise — the flow node waits on it.
+            foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance, ConditionSite.Flow))
             {
                 Visit(condition.Walk.References, seen, Take);
             }
@@ -268,7 +269,7 @@ public static class WorkflowDerivedEdges
         /// neither gates the boundary.
         /// </summary>
         public IReadOnlySet<string> GatingReads() =>
-            ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance));
+            ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance or ConditionSite.Flow));
 
         /// <summary>#1038: whether any gating when reads a profile fact (directly or through a text) — a read only the boundary can serve, since the starter judges before the profile is fetched.</summary>
         public bool GatingReadsProfile()
@@ -560,6 +561,13 @@ public static class WorkflowDerivedEdges
             var context = contextFor(walkNode.Fan);
 
             WalkCondition(ConditionSite.Node, node.Id, null, $"Node '{node.Id}' condition", node.When, walkNode.Fan);
+
+            // #1100 (v26 design § 1): an if node's expression is a condition of
+            // its own site — walked as a node's when is (one boolean), read as
+            // the flow node's edges; a flow node runs in no loop, so no fan. A
+            // case node's subject is a value, not a truth — the validator reads
+            // it structurally (ValidateCaseSubjectsAt26) and adds its edge itself.
+            WalkCondition(ConditionSite.Flow, node.Id, null, $"Node '{node.Id}' if", node.If, null);
 
             foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
             {

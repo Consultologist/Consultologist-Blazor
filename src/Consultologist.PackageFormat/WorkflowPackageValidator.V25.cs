@@ -951,7 +951,10 @@ public static partial class WorkflowPackageValidator
         IReadOnlyDictionary<string, NodeAt25> nodes,
         WorkflowPackageData snippets,
         WorkflowPackageManifest manifest,
-        List<string> errors)
+        List<string> errors,
+        // #1100: the 26 path lends the flow nodes' probes (a loop's text, a
+        // branch's returned shape) — null on the 25 path, which has none.
+        Action<ScriptObject>? probeFlowNodes = null)
     {
         var walked = walk.Templates;
         var input = new ScriptObject();
@@ -974,6 +977,8 @@ public static partial class WorkflowPackageValidator
         {
             node.Add(n.Node.Id, new ScriptObject { ["content"] = "placeholder" });
         }
+
+        probeFlowNodes?.Invoke(node);
 
         var snippet = new ScriptObject();
         foreach (var id in snippets.Scalars.Keys)
