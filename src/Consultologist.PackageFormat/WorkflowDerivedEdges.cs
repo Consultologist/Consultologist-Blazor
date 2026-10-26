@@ -598,7 +598,12 @@ public static class WorkflowDerivedEdges
 
             foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
             {
-                WalkCondition(ConditionSite.NodeInstance, node.Id, instance.Id, $"Node '{node.Id}' macro '{instance.Id}' condition", instance.When, walkNode.Fan, walkNode.Scope);
+                // #1089 (v26 design § 2.1, § 2.3): the gate keyed if at 26, walked at the
+                // same site under the 26 subject; when below, under the 25 subject.
+                var instanceSubject = instance.When is null && instance.If is not null
+                    ? $"Node '{node.Id}' macro '{instance.Id}' if"
+                    : $"Node '{node.Id}' macro '{instance.Id}' condition";
+                WalkCondition(ConditionSite.NodeInstance, node.Id, instance.Id, instanceSubject, instance.When ?? instance.If, walkNode.Fan, walkNode.Scope);
             }
 
             if (node.Prompt is not null && walkNode.Shape is not null)
