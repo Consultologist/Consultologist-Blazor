@@ -181,5 +181,15 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-item-reads-name-at-26", "A body node reading item.name — at 26 the member is .label.", Files(m, fs => fs["prompts/section.md"] = "{{ item.name }}: {{ item.content }}"));
         Invalid("invalid-folder-item-if-reads-a-node-at-26", "A folder item's header if reading a node — inputs only, so the folder's size is known at job start.",
             Files(m, fs => fs["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "node.scope.value == \"in_scope\"") + "Plan."));
+
+        // ======================================================= § 2.3 / § 2.4: the instance gate (#1089)
+        static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Instance((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) b, string nodeId, string @if) =>
+            Node(b, nodeId, n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After, If: @if) } });
+        Valid("v26-instance-if", "A node instance gated by if over an input — the gate as data, governing the placement and the node's inline read.", Instance(m, "assessment", "input.kind == \"new\""));
+        Valid("v26-instance-if-on-item-id", "A body node's instance gated on item.id — forItem folded into the gate, typed against the loop.", Instance(m, "section_notes", "item.id == \"hpi\""));
+        Invalid("invalid-instance-if-undeclared-value-at-26", "An instance if comparing an input to a value it does not declare.", Instance(m, "assessment", "input.kind == \"maybe\""));
+        Invalid("invalid-instance-if-reads-a-loop-at-26", "An instance if reading a loop — a condition decides before the loop runs.", Instance(m, "assessment", "node.sections.content != \"\""));
+        Invalid("invalid-instance-if-item-outside-a-loop-at-26", "An instance if reading item.id on a node that runs in no loop.", Instance(m, "assessment", "item.id == \"hpi\""));
+        Invalid("invalid-instance-if-item-the-loop-lacks-at-26", "An instance if comparing item.id to an item the loop's folder lacks.", Instance(m, "section_notes", "item.id == \"nope\""));
     }
 }

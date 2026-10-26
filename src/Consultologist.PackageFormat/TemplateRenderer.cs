@@ -102,7 +102,12 @@ public sealed record TemplateRenderScope(
     TemplateFanItem? Item,
     IReadOnlyDictionary<string, TemplateMacroSource> Macros,
     TemplateRunFacts Run,
-    TemplateProfileFacts Profile);
+    TemplateProfileFacts Profile,
+    // #1089 (v26 design § 2.3): the macros whose inline read this render must
+    // leave empty — judged by the caller over this scope with
+    // WorkflowInlineGates.Suppressed (the running node's instance gates); null
+    // is the 25 render, nothing suppressed.
+    IReadOnlySet<string>? SuppressedPrompts = null);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -245,6 +250,14 @@ public static class TemplateRenderer
                 // the model is to write — is appended after, never rendered.
                 [TemplateMembers.Prompt] = () =>
                 {
+                    // #1089 (v26 design § 2.3): an inline read the running node's
+                    // instance gate suppresses renders empty — no instruction, no
+                    // mechanics sentence, no read recorded (the model is told nothing).
+                    if (scope.SuppressedPrompts?.Contains(source.Id) == true)
+                    {
+                        return string.Empty;
+                    }
+
                     trace?.PromptReads.Add(source.Id);
                     return WorkflowMacroMechanics.Prompt(source.Id, RenderWith($"Macro '{id}' instruction", source.Instruction, globals, trace, nested: true));
                 },
