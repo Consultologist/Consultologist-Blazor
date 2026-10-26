@@ -269,8 +269,17 @@ public static class TemplateRenderer
                         return string.Empty;
                     }
 
+                    // #1096 (§ 2.3, § 2.5): the instruction renders first; a blank result —
+                    // no instruction, or a template that renders to nothing — is an
+                    // empty read: no mechanics sentence, no read recorded.
+                    var rendered = RenderWith($"Macro '{id}' instruction", source.Instruction, globals, trace, nested: true);
+                    if (string.IsNullOrWhiteSpace(rendered))
+                    {
+                        return string.Empty;
+                    }
+
                     trace?.PromptReads.Add(source.Id);
-                    return WorkflowMacroMechanics.Prompt(source.Id, RenderWith($"Macro '{id}' instruction", source.Instruction, globals, trace, nested: true));
+                    return WorkflowMacroMechanics.Prompt(source.Id, rendered);
                 },
             };
             var text = new Lazy<string>(() => RenderWith($"Macro '{id}'", source.Text, globals, trace, nested: true));

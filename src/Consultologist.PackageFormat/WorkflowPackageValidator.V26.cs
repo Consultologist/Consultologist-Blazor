@@ -101,6 +101,7 @@ public static partial class WorkflowPackageValidator
 
         ValidateConditionsAt26(walk, flows, errors);
         ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
+        ValidateInstructionsAt26(manifest, nodes, walk, errors);
         ValidateReferenceGraphAt25(walked, snippets, errors);
         RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes), deliverableIds, labelled: true);
         ValidateDeliverablesAt26(manifest, nodes, walk, flows, nodeShapes, errors);
@@ -208,7 +209,8 @@ public static partial class WorkflowPackageValidator
     /// <summary>
     /// The macro library at 26: the id and the file as 25; the label is the
     /// header's (its absence said by the header pass); the instruction the
-    /// header's, required until #1096 makes it conditional on an inline read.
+    /// header's, required only where read inline (#1096,
+    /// <see cref="ValidateInstructionsAt26"/>, after the walk).
     /// </summary>
     private static void ValidateMacroLibraryAt26(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files, List<string> errors)
     {
@@ -231,12 +233,39 @@ public static partial class WorkflowPackageValidator
             if (string.IsNullOrWhiteSpace(macro.File) || !files.ContainsKey(macro.File))
             {
                 errors.Add($"Macro '{macro.Id}' file '{macro.File}' is missing from the package.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// #1096 (§ 2.5): a macro's instruction is required where macro.&lt;id&gt;.prompt
+    /// is reachable by a run — the #1067 walk from node prompts through the
+    /// snippets and folder items they fan (<see cref="WorkflowDerivedEdges.Walk.PromptReadsOf"/>)
+    /// — and optional where it never is: a placed-only macro's instruction has
+    /// no reader (the editor's desk says "unread"). A macro both read inline and
+    /// placed needs one.
+    /// </summary>
+    private static void ValidateInstructionsAt26(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, NodeAt25> nodes,
+        WorkflowDerivedEdges.Walk walk,
+        List<string> errors)
+    {
+        var readers = nodes.Keys.Order(StringComparer.Ordinal)
+            .Select(nodeId => (NodeId: nodeId, Reads: walk.PromptReadsOf(nodeId)))
+            .ToList();
+
+        foreach (var macro in (manifest.Macros ?? new List<WorkflowMacroSpec>()).DistinctBy(m => m.Id, StringComparer.Ordinal))
+        {
+            if (!string.IsNullOrWhiteSpace(macro.Instruction))
+            {
                 continue;
             }
 
-            if (string.IsNullOrWhiteSpace(macro.Instruction))
+            var reader = readers.FirstOrDefault(r => r.Reads.Contains(macro.Id)).NodeId;
+            if (reader is not null)
             {
-                errors.Add($"Macro '{macro.Id}' header declares no instruction; required at specVersion 26 ({macro.File}).");
+                errors.Add($"Macro '{macro.Id}' is read inline by node '{reader}' and declares no instruction; the model is told nothing ({macro.File}).");
             }
         }
     }
