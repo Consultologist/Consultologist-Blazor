@@ -346,10 +346,12 @@ public class PackageFormatSchemaTests
         Assert.Equal(1, deliverable["if"]!["minLength"]!.GetValue<int>());
         Assert.Equal(new[] { "id", "at", "when", "if" }, ((JsonObject)deliverable["macros"]!["items"]!["properties"]!).Select(p => p.Key));
 
-        // #1105 (§ 5): a macro entry is { id, file }; its label, instruction and option are the file's header.
-        var macro = (JsonObject)properties["macros"]!["items"]!;
-        Assert.Equal(new[] { "id", "file" }, ((JsonObject)macro["properties"]!).Select(p => p.Key));
-        Assert.Equal(new[] { "id", "file" }, macro["required"]!.AsArray().Select(r => r!.GetValue<string>()));
+        // #1105/#1099 (§ 5, § 5.3): macros is a map id → file at 26, as snippets is; the header carries the rest.
+        var macros = (JsonObject)properties["macros"]!;
+        Assert.Equal("object", macros["type"]!.GetValue<string>());
+        Assert.Equal("^[a-z][a-z0-9_]*$", macros["propertyNames"]!["pattern"]!.GetValue<string>());
+        Assert.Equal("string", macros["additionalProperties"]!["type"]!.GetValue<string>());
+        Assert.Null(macros["items"]);
 
         var v25 = (JsonObject)PackageFormatSchema.Build(25)["properties"]!["nodes"]!["items"]!["properties"]!;
         Assert.False(v25.ContainsKey("for"));
