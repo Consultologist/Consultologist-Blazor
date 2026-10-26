@@ -84,4 +84,17 @@ public class WorkflowInlineGatesTests
         Assert.Empty(WorkflowInlineGates.Suppressed("assessment", new[] { new WorkflowInlineGate("closing", "node.scope.value == \"in_scope\"") }, null, Scope(nodes: nodes)));
         Assert.Equal(new[] { "closing" }, WorkflowInlineGates.Suppressed("assessment", new[] { new WorkflowInlineGate("closing", "node.scope.value == \"out_of_scope\"") }, null, Scope(nodes: nodes)));
     }
+
+    // ----- #1090: the macro's own gate ------------------------------------------------
+
+    [Fact]
+    public void AMacro_IsInert_WhenItsOwnGateFails_AndNotOtherwise()
+    {
+        var scope = Scope();
+
+        Assert.Empty(WorkflowInlineGates.Inert(new[] { ("closing", (string?)null) }, scope));
+        Assert.Empty(WorkflowInlineGates.Inert(new[] { ("closing", (string?)"input.kind == \"new\"") }, scope));
+        Assert.Equal(new[] { "closing" }, WorkflowInlineGates.Inert(new[] { ("closing", (string?)"input.kind == \"follow_up\"") }, scope));
+        Assert.Equal(new[] { "opening" }, WorkflowInlineGates.Inert(new[] { ("closing", (string?)"input.kind == \"new\""), ("opening", (string?)"input.kind != \"new\"") }, scope));
+    }
 }

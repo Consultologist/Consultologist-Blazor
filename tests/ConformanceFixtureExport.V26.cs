@@ -191,5 +191,14 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-instance-if-reads-a-loop-at-26", "An instance if reading a loop — a condition decides before the loop runs.", Instance(m, "assessment", "node.sections.content != \"\""));
         Invalid("invalid-instance-if-item-outside-a-loop-at-26", "An instance if reading item.id on a node that runs in no loop.", Instance(m, "assessment", "item.id == \"hpi\""));
         Invalid("invalid-instance-if-item-the-loop-lacks-at-26", "An instance if comparing item.id to an item the loop's folder lacks.", Instance(m, "section_notes", "item.id == \"nope\""));
+
+        // ======================================================= § 2.2: the macro's own if (#1090)
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) MacroIf(string @if) =>
+            Files(m, fs => fs["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.", @if: @if) + "Closing: {{ profile.name }}.");
+        Valid("v26-macro-if-over-a-node-value", "A macro's own gate in its header over a scalar node's value — inert everywhere when it does not hold.", MacroIf("node.scope.value == \"in_scope\""));
+        Invalid("invalid-macro-if-undeclared-value-at-26", "A macro's own if comparing an input to a value it does not declare — a gate that can never hold.", MacroIf("input.kind == \"maybe\""));
+        Invalid("invalid-macro-if-reads-a-loop-at-26", "A macro's own if reading a loop — a condition decides before the loop runs.", MacroIf("node.sections.content != \"\""));
+        Invalid("invalid-macro-if-reads-item-at-26", "A macro's own if reading item.id — the macro's gate sits in no loop.", MacroIf("item.id == \"hpi\""));
+        Invalid("invalid-macro-if-reads-a-deliverable-at-26", "A macro's own if reading deliverable.<id>.content — a condition decides before the sections compose.", MacroIf("deliverable.consult.content != \"\""));
     }
 }
