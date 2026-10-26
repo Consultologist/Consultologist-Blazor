@@ -24,14 +24,18 @@ public class WorkflowV26FlowTests
 
     /// <summary>The minimal with an if node `triage` over two prose nodes added beside the loop.</summary>
     private static WorkflowPackageManifest WithTriage(WorkflowPackageManifest m, string condition = "input.kind == \"new\"", WorkflowFlowBodySpec? then = null, WorkflowFlowBodySpec? @else = null) =>
-        V26Package.WithNodes(m,
+        Sourcing(V26Package.WithNodes(m,
             new("full_workup", "Full work-up", Prompt: "extract", Format: "prose"),
             new("brief_update", "Brief update", Prompt: "extract", Format: "prose"),
-            new("triage", "Triage", If: condition, Then: then ?? Body("node.full_workup", "full_workup"), Else: @else ?? Body("node.brief_update", "brief_update")));
+            new("triage", "Triage", If: condition, Then: then ?? Body("node.full_workup", "full_workup"), Else: @else ?? Body("node.brief_update", "brief_update"))), "node.triage");
+
+    /// <summary>#1101: a flow node a test adds feeds the deliverable as one more source.</summary>
+    private static WorkflowPackageManifest Sourcing(WorkflowPackageManifest m, string source) =>
+        m with { Deliverables = m.Deliverables!.Select(d => d with { Sources = (d.Sources ?? new List<string>()).Append(source).ToList() }).ToList() };
 
     /// <summary>The minimal with a case node `route` over input.kind, two branches of one prose node each.</summary>
     private static WorkflowPackageManifest WithRoute(WorkflowPackageManifest m, string subject = "input.kind", params WorkflowCaseBranchSpec[] branches) =>
-        V26Package.WithNodes(m,
+        Sourcing(V26Package.WithNodes(m,
             new("plan", "Plan", Prompt: "extract", Format: "prose"),
             new("letter", "Letter", Prompt: "extract", Format: "prose"),
             new("route", "Route", Case: subject, Branches: branches.Length == 0
@@ -40,7 +44,7 @@ public class WorkflowV26FlowTests
                     new(new List<string> { "new" }, new List<string> { "plan" }, "node.plan"),
                     new(new List<string> { "follow_up" }, new List<string> { "letter" }, "node.letter"),
                 }
-                : branches.ToList()));
+                : branches.ToList())), "node.route");
 
     // ----- the minimal, and what a flow node declares ---------------------------
 
@@ -410,7 +414,9 @@ public class WorkflowV26FlowTests
         WorkflowPackageManifest WithExtractLoop(WorkflowPackageManifest m) =>
             V26Package.WithNode(V26Package.WithNodes(WithPrompt(m, "per_item"),
                 new WorkflowNodeSpec("per_item", "Per item", Prompt: "per_item", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail)),
-                "sections", n => n with { Nodes = new List<string> { "per_item", "section_notes" }, Ret = "node.per_item" });
+                "sections", n => n with { Nodes = new List<string> { "per_item", "section_notes" }, Ret = "node.per_item" })
+            // #1101: a concept_list loop is no prose source — the assessment, which reads it, is the deliverable's.
+            with { Deliverables = m.Deliverables!.Select(d => d with { Sources = new List<string> { "node.assessment" } }).ToList() };
 
         void Files(Dictionary<string, string> files, string assessment)
         {
