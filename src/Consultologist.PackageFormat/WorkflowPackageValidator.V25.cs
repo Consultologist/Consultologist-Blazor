@@ -954,7 +954,9 @@ public static partial class WorkflowPackageValidator
         List<string> errors,
         // #1100: the 26 path lends the flow nodes' probes (a loop's text, a
         // branch's returned shape) — null on the 25 path, which has none.
-        Action<ScriptObject>? probeFlowNodes = null)
+        Action<ScriptObject>? probeFlowNodes = null,
+        // #1101: the 26 path's deliverables, read as deliverable.<id>.content — null on the 25 path.
+        IReadOnlyCollection<string>? deliverableIds = null)
     {
         var walked = walk.Templates;
         var input = new ScriptObject();
@@ -1005,6 +1007,16 @@ public static partial class WorkflowPackageValidator
             macro[m.Id] = new ScriptObject { ["id"] = m.Id, ["name"] = m.Label, ["content"] = "placeholder", ["prompt"] = "placeholder" };
         }
 
+        ScriptObject? deliverable = null;
+        if (deliverableIds is not null)
+        {
+            deliverable = new ScriptObject();
+            foreach (var id in deliverableIds)
+            {
+                deliverable[id] = new ScriptObject { ["content"] = "placeholder" };
+            }
+        }
+
         var run = new ScriptObject();
         foreach (var fact in TemplateMembers.Run)
         {
@@ -1028,6 +1040,11 @@ public static partial class WorkflowPackageValidator
                 [TemplateObjects.Run] = run,
                 [TemplateObjects.Profile] = profile
             };
+
+            if (deliverable is not null)
+            {
+                globals[TemplateObjects.Deliverable] = deliverable;
+            }
 
             foreach (var pipe in TemplatePipes.All)
             {

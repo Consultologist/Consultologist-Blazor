@@ -69,13 +69,14 @@ public static partial class WorkflowPackageValidator
         }
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var bodies = flows.BodyScopes;
+        var deliverableIds = (manifest.Deliverables ?? new List<WorkflowDeliverableSpec>()).Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
 
         TemplateReferenceContext ContextFor(TemplateFan? fan) => new(
             inputShapes, nodeShapes,
             snippets.Scalars.Keys.ToHashSet(StringComparer.Ordinal),
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
             macroIds, TemplateReferenceContext.NoIds, fan,
-            Bodies: bodies);
+            Bodies: bodies, Deliverables: deliverableIds);
 
         var walk = WorkflowDerivedEdges.WalkAll(
             manifest, files,
@@ -91,16 +92,11 @@ public static partial class WorkflowPackageValidator
         ValidateConditionsAt26(walk, flows, errors);
         ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
         ValidateReferenceGraphAt25(walked, snippets, errors);
-        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes));
-        // #1101: the deliverables name their sources; until then the 25 step
-        // speaks of the aggregator a deliverable can no longer name.
-        ValidateDeliverablesAt25(manifest, nodes, walk, errors);
+        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes), deliverableIds);
+        ValidateDeliverablesAt26(manifest, nodes, walk, flows, nodeShapes, errors);
 
         var specs = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList();
-        // #1101: the reachability rooted at the deliverables (every node feeds
-        // one; every deliverable includes a loop) is rewritten over sources[];
-        // the 25 step keys on forEach and is skipped here. Inside a body the
-        // #1067 rule holds already.
+        ValidateReachabilityAt26(manifest, specs, nodes, flows, edges, errors);
         ValidateBodyReachabilityAt26(flows, nodes, edges, errors);
         ValidateAcyclic(specs, edges, errors);
     }
@@ -538,6 +534,288 @@ public static partial class WorkflowPackageValidator
             {
                 errors.Add($"{condition.Subject} reads {offending}; a folder item's if reads inputs only, so the folder's size is known at job start (the template's own if gates anything else).");
             }
+        }
+    }
+
+    // ----- § 3: the deliverable names what it composes ---------------------------
+
+    /// <summary>
+    /// § 3 (#1101): a deliverable composes its <c>sources</c> — ordered, each a
+    /// prose node (a plain node of a text format, a loop whose returned node is
+    /// prose, an if/case whose every branch returns prose), never a body node by
+    /// its own name; two deliverables may share a source. The check, the
+    /// instances and the signature keep their 25 rules; a deliverable macro reads
+    /// no body node by name (the loop is what it reads).
+    /// </summary>
+    private static void ValidateDeliverablesAt26(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, NodeAt25> nodes,
+        WorkflowDerivedEdges.Walk walk,
+        WorkflowFlowNodes.Resolved flows,
+        IReadOnlyDictionary<string, TemplateNodeShape> shapes,
+        List<string> errors)
+    {
+        var walked = walk.Templates;
+        var deliverables = manifest.Deliverables;
+
+        if (deliverables is not { Count: > 0 })
+        {
+            errors.Add("deliverables must declare at least one deliverable.");
+            return;
+        }
+
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var declaredMacros = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        var checks = nodes.Values.Where(n => n.Format?.Spec.Producer == WorkflowFormatProducers.Computed).Select(n => n.Node.Id).ToHashSet(StringComparer.Ordinal);
+        var namedChecks = new HashSet<string>(StringComparer.Ordinal);
+        var signatureReaders = walked.Where(w => w.Kind == TemplateKind.Macro && w.References.ProfileFacts.Contains("signature")).Select(w => w.Id).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var deliverable in deliverables)
+        {
+            var subject = $"Deliverable '{deliverable.Id}'";
+
+            if (!WorkflowDeclaredIds.IsValid(deliverable.Id))
+            {
+                errors.Add($"Deliverable id '{deliverable.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+            }
+            else if (!ids.Add(deliverable.Id))
+            {
+                errors.Add($"Duplicate deliverable id '{deliverable.Id}'.");
+            }
+
+            if (string.IsNullOrWhiteSpace(deliverable.Label))
+            {
+                errors.Add($"{subject} has no label.");
+            }
+
+            if (deliverable.Sources is not { Count: > 0 })
+            {
+                errors.Add($"{subject} names no sources; a deliverable composes one or more nodes (sources: [\"node.<id>\", …]).");
+            }
+            else
+            {
+                var seenSources = new HashSet<string>(StringComparer.Ordinal);
+
+                foreach (var source in deliverable.Sources)
+                {
+                    if (!TemplateObjectReference.IsBare(source, TemplateObjects.Node, out var sourceId))
+                    {
+                        errors.Add($"{subject} source '{source}' must be node.<id>.");
+                        continue;
+                    }
+
+                    if (!seenSources.Add(sourceId))
+                    {
+                        errors.Add($"{subject} source node.{sourceId} twice; a source composes once.");
+                        continue;
+                    }
+
+                    if (!nodes.TryGetValue(sourceId, out var node))
+                    {
+                        errors.Add($"{subject} source names unknown node '{sourceId}'.");
+                        continue;
+                    }
+
+                    if (flows.Owner.TryGetValue(sourceId, out var owner))
+                    {
+                        errors.Add($"{subject} source node.{sourceId} runs inside {flows.Flows[owner].Inside}; name node.{owner}.");
+                        continue;
+                    }
+
+                    if (flows.Flows.TryGetValue(sourceId, out var flow))
+                    {
+                        var ret = shapes.TryGetValue(sourceId, out var shape) ? shape.Flow?.Ret : null;
+
+                        if (flow.Kind == WorkflowFlowNodes.Kind.For)
+                        {
+                            if (ret is null || ret.Type != WorkflowInputTypes.Text || ret.Aggregates)
+                            {
+                                errors.Add($"{subject} source node.{sourceId} loops over '{shape?.Flow?.RetId}' of format '{ret?.Format}'; a deliverable composes prose.");
+                            }
+                        }
+                        else if (ret is null)
+                        {
+                            errors.Add($"{subject} source node.{sourceId} returns {shape?.Flow?.DescribeDisagreement()}; a deliverable composes prose.");
+                        }
+                        else if (ret.Type != WorkflowInputTypes.Text)
+                        {
+                            errors.Add($"{subject} source node.{sourceId} returns '{shape?.Flow?.RetId}' of format '{ret.Format}'; a deliverable composes prose.");
+                        }
+
+                        continue;
+                    }
+
+                    if (node.Format is null)
+                    {
+                        continue; // the node's own sentence names the missing format
+                    }
+
+                    if (node.Format.Spec.Producer == WorkflowFormatProducers.Computed)
+                    {
+                        errors.Add($"{subject} source node.{sourceId} is a check; a check gates a deliverable (check: node.{sourceId}), it is no text.");
+                    }
+                    else if (node.Format.Spec.Type != WorkflowInputTypes.Text)
+                    {
+                        errors.Add($"{subject} source node.{sourceId} is a {node.Format.Id}; a deliverable composes prose — read its .value from a prose node.");
+                    }
+                }
+            }
+
+            if (deliverable.Check != null)
+            {
+                if (!TemplateObjectReference.IsBare(deliverable.Check, TemplateObjects.Node, out var checkId))
+                {
+                    errors.Add($"{subject} check '{deliverable.Check}' must be node.<id>, naming a node of a computed format.");
+                }
+                else if (!nodes.ContainsKey(checkId))
+                {
+                    errors.Add($"{subject} check names node '{checkId}', which the package does not declare.");
+                }
+                else if (!checks.Contains(checkId))
+                {
+                    errors.Add($"{subject} check names node '{checkId}', whose format is not computed; a check is a node of a computed format (terms_subset).");
+                }
+                else
+                {
+                    namedChecks.Add(checkId);
+                }
+            }
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var signatures = 0;
+
+            foreach (var entry in deliverable.Macros ?? new List<WorkflowDeliverableMacroSpec>())
+            {
+                var where = $"{subject} macro '{entry.Id}'";
+
+                if (!declaredMacros.Contains(entry.Id))
+                {
+                    errors.Add($"{where} is not a declared macro.");
+                    continue;
+                }
+
+                if (entry.At is null)
+                {
+                    errors.Add($"{where} must declare at (prepend | append).");
+                }
+                else if (entry.At != WorkflowDeliverableMacroSpec.Prepend && entry.At != WorkflowDeliverableMacroSpec.Append)
+                {
+                    errors.Add($"{where} declares at '{entry.At}'; a deliverable instance is placed 'prepend' or 'append'.");
+                }
+
+                if (!seen.Add($"{entry.Id}\n{entry.At}"))
+                {
+                    errors.Add($"{where} is placed twice ({entry.At}); one identity (id, at) once.");
+                }
+
+                // § 1.2: a deliverable composes no item — a body node is read through its loop.
+                foreach (var read in walk.MacroEdges(entry.Id).Order(StringComparer.Ordinal))
+                {
+                    if (flows.Owner.TryGetValue(read, out var readOwner))
+                    {
+                        errors.Add($"{where} reads node '{read}', which runs inside {flows.Flows[readOwner].Inside}; a deliverable macro reads scalar nodes, flow nodes and deliverable.<id>.content — place the macro on a body node to read its items.");
+                    }
+                }
+
+                if (walk.TextItemReadOf(TemplateKind.Macro, entry.Id) is { } itemRead)
+                {
+                    errors.Add($"{where} reads item.{itemRead.Member}; a deliverable composes no fan item — place the macro on the node to read its items.");
+                }
+
+                if (signatureReaders.Contains(entry.Id))
+                {
+                    signatures++;
+                }
+            }
+
+            if (deliverable.Signature == true && signatures > 0)
+            {
+                errors.Add($"{subject} declares signature and places a macro that reads profile.signature; a deliverable is signed once.");
+            }
+            else if (signatures > 1)
+            {
+                errors.Add($"{subject} places more than one macro that reads profile.signature; a deliverable is signed once.");
+            }
+        }
+
+        foreach (var orphan in checks.Where(id => !namedChecks.Contains(id)).Order(StringComparer.Ordinal))
+        {
+            errors.Add($"Check '{orphan}' is not named by any deliverable; a check gates a deliverable, or it is dead weight.");
+        }
+    }
+
+    /// <summary>
+    /// § 3.2 (#1067's two rules over sources): every deliverable's closure holds a
+    /// loop — a deliverable with no loop has no consult; every node reaches some
+    /// deliverable's closure, but for an enum node (read by conditions) and a
+    /// check's chain. A flow node's bodies are reached when it is.
+    /// </summary>
+    private static void ValidateReachabilityAt26(
+        WorkflowPackageManifest manifest,
+        IReadOnlyList<WorkflowNodeSpec> specs,
+        IReadOnlyDictionary<string, NodeAt25> nodes,
+        WorkflowFlowNodes.Resolved flows,
+        IReadOnlyDictionary<string, HashSet<string>> edges,
+        List<string> errors)
+    {
+        var roots = new List<(string DeliverableId, IReadOnlyList<string> Sources)>();
+
+        foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())
+        {
+            var sources = (deliverable.Sources ?? new List<string>())
+                .Select(source => TemplateObjectReference.IsBare(source, TemplateObjects.Node, out var id) ? id : null)
+                .OfType<string>()
+                .Where(id => nodes.ContainsKey(id) && !flows.Owner.ContainsKey(id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            if (sources.Count > 0)
+            {
+                roots.Add((deliverable.Id, sources));
+            }
+        }
+
+        if (roots.Count == 0)
+        {
+            return;
+        }
+
+        var reachableFromAny = new HashSet<string>(StringComparer.Ordinal);
+        var loops = flows.Flows.Values.Where(f => f.Kind == WorkflowFlowNodes.Kind.For).Select(f => f.Node.Id).Order(StringComparer.Ordinal).ToList();
+        var remedy = loops.Count > 0
+            ? $"Name a for node among its sources or read one from a source (loops in this package: {string.Join(", ", loops)})."
+            : "This package declares no loop — add a for node over a snippet folder or an array input and name it among the deliverable's sources.";
+
+        foreach (var (deliverableId, sources) in roots)
+        {
+            var reachable = WorkflowNodeClosure.Reachable(sources, edges);
+            reachableFromAny.UnionWith(reachable);
+
+            if (!reachable.Any(flows.IsLoop))
+            {
+                errors.Add($"Deliverable '{deliverableId}' must transitively include at least one loop (a for node): a deliverable with no loop has no consult. {remedy}");
+            }
+        }
+
+        var checkChain = WorkflowNodeClosure.Reachable(
+            nodes.Values.Where(n => n.Format?.Spec.Producer == WorkflowFormatProducers.Computed).Select(n => n.Node.Id),
+            edges);
+
+        foreach (var spec in specs)
+        {
+            if (nodes.TryGetValue(spec.Id, out var node) && node.Format?.Spec.Type == WorkflowInputTypes.Enum)
+            {
+                continue;
+            }
+
+            if (checkChain.Contains(spec.Id) || reachableFromAny.Contains(spec.Id))
+            {
+                continue;
+            }
+
+            errors.Add(roots.Count == 1
+                ? $"Node '{spec.Id}' does not feed the deliverable: every node must transitively reach '{roots[0].DeliverableId}'s sources. Read it from a node that does, or name it among the deliverable's sources."
+                : $"Node '{spec.Id}' does not feed any deliverable: every node must transitively reach a deliverable's sources. Read it from a node that does, or name it among a deliverable's sources.");
         }
     }
 
