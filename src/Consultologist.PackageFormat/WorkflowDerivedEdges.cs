@@ -41,7 +41,8 @@ public static class WorkflowDerivedEdges
     public sealed record PromptReadSite(string Macro, TemplateKind HolderKind, string HolderId, string HolderSubject, string? FanItem);
 
     /// <summary>#1037: where a <c>when</c> sits — and, at 26 (#1100), <c>Flow</c>: an <c>if</c> or <c>case</c> node's own expression.</summary>
-    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow }
+    // #1090 (v26 design § 2.2): Macro — the macro's own if, in its file's header.
+    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow, Macro }
 
     /// <summary>
     /// #1037 (design § 16): a <c>when</c> walked — its site, the id of what it gates
@@ -489,6 +490,7 @@ public static class WorkflowDerivedEdges
             foreach (var slot in refs.MacroPrompts)
             {
                 VisitKey((TemplateKind.Instruction, slot), seen, take);
+                VisitMacroGate(slot, seen, take);
             }
 
             foreach (var snippet in refs.Snippets)
@@ -510,6 +512,26 @@ public static class WorkflowDerivedEdges
             foreach (var macro in refs.MacroContents)
             {
                 VisitKey((TemplateKind.Macro, macro), seen, take);
+                VisitMacroGate(macro, seen, take);
+            }
+        }
+
+        /// <summary>
+        /// #1090 (v26 design § 2.2): a macro's own gate is judged where the macro
+        /// is read — the reader waits on what the gate reads as it waits on what
+        /// the macro's text reads. Seen under the macro's key with a suffix no id
+        /// can carry.
+        /// </summary>
+        private void VisitMacroGate(string macroId, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
+        {
+            if (!seen.Add((TemplateKind.Macro, macroId + "/if")))
+            {
+                return;
+            }
+
+            foreach (var gate in ConditionsOf(macroId, ConditionSite.Macro))
+            {
+                Visit(gate.Walk.References, seen, take);
             }
         }
 
@@ -534,17 +556,21 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         IReadOnlyList<WalkNode> nodes,
         WorkflowPackageData snippets,
-        Func<TemplateFan?, TemplateReferenceContext> contextFor)
+        Func<TemplateFan?, TemplateReferenceContext> contextFor,
+        // #1090: the headers by path when the caller resolved the texts (the
+        // validator); null and the walk resolves them itself at 26.
+        IReadOnlyDictionary<string, WorkflowTextHeader>? headers = null)
     {
         // #1105 (v26 design § 5): at 26 the files may still carry headers (the
         // engine's and the editor's entry gives the package as published; the
         // validator gives bodies, on which this is a no-op) — the walk reads the
         // effective manifest and the bodies, as the validator did.
-        if (manifest.SpecVersion >= 26)
+        if (manifest.SpecVersion >= 26 && headers is null)
         {
             var texts = WorkflowTextHeaders.Resolve(manifest, files, new List<string>());
             manifest = texts.Manifest;
             files = texts.Files;
+            headers = texts.Headers;
         }
 
         // #1102 (v26 design § 4): at 26 a node names its prompt FILE; below, the
@@ -678,6 +704,15 @@ public static class WorkflowDerivedEdges
             {
                 var instructionSubject = $"Macro '{macro.Id}' instruction";
                 templates.Add(new WalkedTemplate(TemplateKind.Instruction, macro.Id, instructionSubject, macro.Instruction, TemplateReferenceWalker.Walk(instructionSubject, macro.Instruction, snippetContext), snippetContext));
+            }
+
+            // #1090 (v26 design § 2.2): the macro's own gate, its header's if —
+            // walked in no fan and no scope (inputs, scalar node values, run,
+            // profile; never an item, a loop or a deliverable); judged where the
+            // macro is read or placed.
+            if (headers is not null && headers.TryGetValue(macro.File, out var header) && !string.IsNullOrWhiteSpace(header.If))
+            {
+                WalkCondition(ConditionSite.Macro, macro.Id, null, $"Macro '{macro.Id}' if", header.If, null);
             }
         }
 

@@ -93,7 +93,7 @@ public static partial class WorkflowPackageValidator
             nodes.Values.Select(n => new WorkflowDerivedEdges.WalkNode(
                 n.Node, nodeShapes.GetValueOrDefault(n.Node.Id), n.Format?.Spec.Parameters, n.Fan,
                 Scope: flows.Owner.GetValueOrDefault(n.Node.Id))).ToList(),
-            snippets, ContextFor);
+            snippets, ContextFor, texts.Headers);
         var walked = walk.Templates;
         TakeSentences(walk, errors, warnings);
         var edges = DeriveEdgesAt26(manifest, nodes, walk, flows, errors);

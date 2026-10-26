@@ -1405,6 +1405,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
         };
 
         // #1105 (v26 design § 5.2): the member sets by version — at 26 .label for .name, a macro's .instruction.
+        private string NameMember => _context.Labelled ? TemplateMembers.Label : TemplateMembers.Name;
         private IReadOnlyList<string> SnippetMembers => _context.Labelled ? TemplateMembers.SnippetAt26 : TemplateMembers.Snippet;
         private IReadOnlyList<string> MacroMembers => _context.Labelled ? TemplateMembers.MacroAt26 : TemplateMembers.Macro;
         private IReadOnlyList<string> SnippetFanItemMembers => _context.Labelled ? TemplateMembers.SnippetFanItemAt26 : TemplateMembers.SnippetFanItem;
@@ -1853,7 +1854,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return Refused;
 
                 case ItemTarget:
-                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan ? "item.id, item.name, item.value" : "item.id, item.name, item.content")}).");
+                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan ? $"item.id, item.{NameMember}, item.value" : $"item.id, item.{NameMember}, item.content")}).");
                     return Refused;
 
                 case FolderTarget folder when use == ChainUse.Value:
