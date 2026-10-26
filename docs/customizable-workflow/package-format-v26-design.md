@@ -993,6 +993,16 @@ and validate at 26** through the seam: loops `standards` (general, test/general,
 `--to 26` (validation at 26 waits for the bump; the suite validates through the seam). The editor's chain to
 26 is M33's; the republish follows the engine release.)*
 
+*(#1153, 2026-10-26 — the registry's v26, the document half. `package-format-v26.md` landed in
+`consultologist-package-format` as a full grammar mirroring v25's headings (objects at 26, derived edges, flow
+nodes, gates, the node's prompt file, the header and folders of one shape, deliverables, refused at 26,
+validation, the migration as amended), **unlisted until the bump** as v25's document first landed; the README's
+table through 26; the registry at v2026.10.11. Decided 2026-10-26, without a pending state: the schema and the
+`conformance/v26/` vectors wait for #1149 — the registry's CI makes `documents` equal `supported`, files a case
+whose version is outside `supported` under `any/` and lets `SHAPE_BLIND` name only indexed cases, and the
+engine replays every indexed vector through the public validator; the vectors stay generated-and-held in the
+engine (116 cases, pinned through the seam) and #1149's body carries that half. Layer A is complete.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
