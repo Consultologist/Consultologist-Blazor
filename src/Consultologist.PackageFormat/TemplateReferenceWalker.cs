@@ -1747,6 +1747,10 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
                     Errors.Add($"{_subject} reads node '{node.Id}' bare; read {walked}.content (its composed output) or {walked}.value.");
                     return Refused;
 
+                case LoopElementTarget element when use == ChainUse.Value:
+                    Errors.Add($"{_subject} reads {walked} bare; read a member ({walked}.item, {walked}.content, {walked}.value or a body node: {string.Join(", ", (element.Flow.Body?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
+                    return Refused;
+
                 case SnippetTarget { Id: { } id }:
                     Errors.Add($"{_subject} reads snippet '{id}' bare; read {walked}.content.");
                     return Refused;
