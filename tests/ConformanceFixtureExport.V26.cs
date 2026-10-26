@@ -243,5 +243,23 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-direct-item-undeclared-at-26", "A direct read of an item the folder does not contain.", P("Assess. {{ snippet.sections.nope.content }}"));
         Invalid("invalid-direct-macro-item-prompt-without-instruction-at-26", "A macro folder item read inline directly with no instruction.",
             Files(Folder("{{ macro.section_notes.plan.prompt }}"), fs => fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes") + "Plan noted."));
+
+        // ======================================================= § 7.1: a renderer pipe takes the node (#1059)
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) ConceptBody(string read) =>
+            Files(Node(Manifest(m, x => V26Package.WithNodes(x, new WorkflowNodeSpec("per_item", "Per item", Prompt: "prompts/per_item.md", Format: "concept_list", OnInvalid: WorkflowOnInvalid.Fail))),
+                "sections", n => n with { Nodes = new List<string> { "per_item", "section_notes" }, Ret = "node.section_notes" }),
+                fs =>
+                {
+                    fs["prompts/per_item.md"] = "Concepts of {{ item.content }}.";
+                    fs["prompts/section.md"] = "{{ item.label }}: {{ item.content }} {{ node.per_item | concept_bullets }}";
+                    fs["prompts/assessment.md"] = "Assess. " + read;
+                });
+        Valid("v26-renderer-pipe-on-the-node", "A renderer pipe taking the node — {{ node.extract | concept_bullets }}.", P("Assess. {{ node.extract | concept_bullets }}"));
+        Valid("v26-renderer-pipe-on-a-body-node-in-a-loop", "Inside a loop the pipe takes the body node by id — {{ for e in node.sections }}{{ e.per_item | concept_bullets }}{{ end }}.", ConceptBody("{{ for e in node.sections }}{{ e.per_item | concept_bullets }}{{ end }}"));
+        Invalid("invalid-renderer-pipe-on-content-at-26", "The 25 spelling node.<id>.content | pipe at 26 — the pipe takes the node.", P("Assess. {{ node.extract.content | concept_bullets }}"));
+        Invalid("invalid-renderer-pipe-on-value-at-26", "A node's value piped — no node identity.", P("Assess. {{ node.extract.value | concept_bullets }}"));
+        Invalid("invalid-renderer-pipe-on-a-loop-at-26", "A loop piped — a list has no one text; pipe a body node inside it.", P("Assess. {{ node.sections | concept_bullets }}"));
+        Invalid("invalid-renderer-pipe-on-a-loop-elements-content-at-26", "A loop element's content piped — the pipe takes the body node by id.", ConceptBody("{{ for e in node.sections }}{{ e.content | concept_bullets }}{{ end }}"));
+        Invalid("invalid-renderer-pipe-on-a-text-node-at-26", "A prose node piped — a renderer renders a concept_list node.", Files(m, fs => fs["prompts/section.md"] = "{{ item.label }}: {{ item.content }} {{ node.assessment | concept_bullets }}"));
     }
 }

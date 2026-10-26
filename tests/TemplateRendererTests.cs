@@ -304,7 +304,7 @@ public class TemplateRendererTests
         var pipes = new Dictionary<string, Func<TemplateNodeOutput, string>> { [TemplatePipes.ConceptContext] = output => output.Text };
 
         var value = Assert.Throws<InvalidOperationException>(() => Render("{{ node.extract.value | concept_context }}", scope, pipes));
-        Assert.Equal("Prompt 'p' pipes a object through concept_context; the pipe renders a node's text (node.<id>.content).", value.Message);
+        Assert.Equal("Prompt 'p' pipes a object through concept_context; a renderer pipe takes a node (node.<id>) — or, below specVersion 26, its text (node.<id>.content).", value.Message);
 
         var literal = Assert.Throws<InvalidOperationException>(() => Render("{{ 'free text' | concept_context }}", scope, pipes));
         Assert.Equal("Prompt 'p' pipes text that is not a node's output through concept_context; the pipe renders a node's text (node.<id>.content).", literal.Message);
@@ -353,6 +353,9 @@ public class TemplateRendererTests
 
         Assert.Equal(ConceptRenderers.Context(concepts), Render("{{ node.extract.content | concept_context }}", scope, TemplatePipes.Engine));
         Assert.Equal(ConceptRenderers.Bullets(concepts), Render("{{ node.extract.content | concept_bullets }}", scope, TemplatePipes.Engine));
+        // #1059 (v26 design § 7.1): the node itself as the operand renders the same bytes — the node object carries its output.
+        Assert.Equal(ConceptRenderers.Context(concepts), Render("{{ node.extract | concept_context }}", scope, TemplatePipes.Engine));
+        Assert.Equal(ConceptRenderers.Bullets(concepts), Render("{{ node.extract | concept_bullets }}", scope, TemplatePipes.Engine));
 
         // Malformed text fails as it did through ConceptPipes: the contract's exception is
         // not an InvalidOperationException, so the renderer wraps it under the subject.
