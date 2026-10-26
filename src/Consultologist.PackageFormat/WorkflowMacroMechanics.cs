@@ -18,7 +18,14 @@ public static class WorkflowMacroMechanics
     public const string Sentence =
         "If so, write {{ macro.<id>.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.";
 
-    /// <summary>The inline prompt of one macro: its instruction (already rendered), a blank line, the mechanics sentence naming its read.</summary>
+    /// <summary>
+    /// The inline prompt of one macro: its instruction (already rendered), a
+    /// blank line, the mechanics sentence naming its read. #1096 (v26 design
+    /// § 2.3, § 2.5): a blank instruction is no prompt — the sentence is
+    /// appended only to a model that was told something.
+    /// </summary>
     public static string Prompt(string macroId, string renderedInstruction) =>
-        $"{renderedInstruction.TrimEnd()}\n\n{Sentence.Replace("<id>", macroId, StringComparison.Ordinal)}";
+        string.IsNullOrWhiteSpace(renderedInstruction)
+            ? string.Empty
+            : $"{renderedInstruction.TrimEnd()}\n\n{Sentence.Replace("<id>", macroId, StringComparison.Ordinal)}";
 }

@@ -113,12 +113,32 @@ public class WorkflowV26HeaderTests
     }
 
     [Fact]
-    public void AMacrosInstruction_IsRequired_UntilReadSiteRules()
+    public void AMacrosInstruction_IsRequired_WhereReadInline_AndOptionalWhereNot()
     {
-        // Decided 2026-10-26: 25's strength, read from the header; #1096 makes it conditional.
-        var errors = Errors(files => files["macros/closing.md"] = V26Package.Header("Closing") + "Closing.");
+        // #1096 (§ 2.5): closing is placed after assessment and read inline by nothing — optional.
+        Assert.Empty(Errors(files => files["macros/closing.md"] = V26Package.Header("Closing") + "Closing."));
 
-        Assert.Contains("Macro 'closing' header declares no instruction; required at specVersion 26 (macros/closing.md).", errors);
+        // Read inline by the assessment prompt — required, the reader named.
+        Assert.Contains("Macro 'closing' is read inline by node 'assessment' and declares no instruction; the model is told nothing (macros/closing.md).",
+            Errors(files =>
+            {
+                files["macros/closing.md"] = V26Package.Header("Closing") + "Closing.";
+                files["prompts/assessment.md"] = "Assess. {{ macro.closing.prompt }}";
+            }));
+
+        // Read inline through a snippet the assessment prompt reads — the node named, not the snippet.
+        Assert.Contains("Macro 'closing' is read inline by node 'assessment' and declares no instruction; the model is told nothing (macros/closing.md).",
+            Errors(files =>
+            {
+                files["macros/closing.md"] = V26Package.Header("Closing") + "Closing.";
+                files["snippets/standards.md"] = V26Package.Header("Local standards") + "Follow. {{ macro.closing.prompt }}";
+            }));
+
+        // Read inline with an instruction — as ever; an instruction on a placed-only macro — kept, no warning.
+        Assert.Empty(Errors(files => files["prompts/assessment.md"] = "Assess. {{ macro.closing.prompt }}"));
+        var placedOnly = V26Package.Validate(V26Package.Minimal());
+        Assert.True(placedOnly.IsValid);
+        Assert.Empty(placedOnly.Warnings);
     }
 
     [Fact]
