@@ -504,7 +504,9 @@ The text begins on the line after the closing brace.
   standards/hpi.md has no header; a snippet file opens with { "label": … }"*). A header on a
   **prompt** file is refused (a prompt has none of these facts).
 - **Closed key set.** Snippet: `label` (required), `if`. Macro: `label` (required),
-  `instruction` (required where read inline, § 2.5), `optional`, `default`, `if`. Anything else
+  `instruction` (required where read inline, § 2.5 — until #1096 lands it is required as at 25,
+  decided 2026-10-26), `optional`, `default`, `if` (the key is carried from #1105; #1090 and #1094
+  give a macro's and a snippet's `if` their effect). Anything else
   is refused naming the key; the reserved names `id`, `file`, `content`, `value`, `prompt` are
   refused by name (they are the object's members, not the file's facts).
 - **One home.** A fact in the header *and* the manifest (`index.json` `name`, `macros[].label`)
@@ -848,6 +850,25 @@ accepted-set sentence, and the registry files an unsupported version under `any/
 the registry's `conformance/` byte for byte. The bump (#1149) lifts the hold-back by accepting 26; the
 migrated-25 baseline joins with #1152's rewriter; the "requires specVersion 26" gates (spec-25 cases) ride the
 bump too, since exported early they would change the supported v25 set.)*
+
+*(#1105, 2026-10-26 — a file says what it is, as § 5 says. `WorkflowTextHeaders` (new): `Split` (the first
+line `{`, the first `}` line, BOM and CRLF tolerated, a `{{` line never a header), `Parse` per kind (the
+closed sets, the reserved names, the types, the label required — every sentence names the file),
+`ReadIndexAt26` (the ordered `[{ id, file }]`; the 25 object, an item's `name`/`when` and any other key
+refused naming the header) and `Resolve`: every snippet, folder item and macro file the manifest names is
+split and parsed, a prompt file that opens with a header refused, and the result is **the effective manifest**
+(each macro's header facts filled into `macros[]`, whose `label` is nullable now) **and the bodies** — what the
+26 pipeline, the shared walk (`WalkAll`, idempotent on bodies), `PrepareNodes` and the preview scope run over;
+the resolver at 26 takes the headers and reads a folder's items from the list with fields `id`, `label`,
+`content` and the item's `if`. The manifest's `macros[].label/instruction/optional/default` are retired by
+sentence; the instruction is required in the header (*"Macro 'closing' header declares no instruction; required
+at specVersion 26"*) until #1096. The walker's members at 26: `.label` for `.name` (*"reads item.name; at
+specVersion 26 the member is .label"*), a macro's `.instruction` the same read as `.prompt`; the probe
+labelled. The folder item's `if` is walked at the item's site (the effect is #1094's). The schema at 26: a
+macro entry `{ id, file }`. The publish closure reads the 26 index. The minimal 26 package carries its
+headers and is valid; the conformance partial carries the § 5 cases, held back. The engine's strip before
+render, the renderer's `.label`/`.instruction` and the store's reading of the 26 index are #1157; the editor's
+header pane #1163; the migration's `{ "label": <name>, "if": <when> }` #1152.)*
 
 ## 12. The editor
 
