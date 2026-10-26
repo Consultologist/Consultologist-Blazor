@@ -93,9 +93,21 @@ internal static class PackageFormatSchema
         {
             Remove(properties, "macros");
         }
-        else
+        else if (specVersion < 26)
         {
             EnrichMacros(Object(properties, "macros"), specVersion);
+        }
+        else
+        {
+            // v26 (#1099, § 5.3): macros is a map id → file (a trailing '/' a folder),
+            // as snippets is; the header carries the rest. The record's list is the
+            // in-memory shape; the wire is the map.
+            properties["macros"] = new JsonObject
+            {
+                ["type"] = "object",
+                ["propertyNames"] = new JsonObject { ["pattern"] = DeclaredId },
+                ["additionalProperties"] = new JsonObject { ["type"] = "string", ["minLength"] = 1 },
+            };
         }
 
         // v21 (#923): schemaRefs — a schema id referencing a catalog contract by

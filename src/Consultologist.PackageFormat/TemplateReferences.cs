@@ -27,7 +27,12 @@ public sealed record TemplateReferences(
     IReadOnlyList<string> Warnings,
     // #1101 (v26 design § 3.1): the deliverables whose composed text this
     // template reads — an edge on each one's sources (the walk expands it).
-    IReadOnlySet<string>? Deliverables = null)
+    IReadOnlySet<string>? Deliverables = null,
+    // #1099 (v26 design § 5.3): the macro folders whose elements this template
+    // reads as .content, and as .prompt / .instruction — the walk expands each
+    // to the folder's items (MacroFolders alone is the iteration).
+    IReadOnlySet<string>? MacroFolderContents = null,
+    IReadOnlySet<string>? MacroFolderPrompts = null)
 {
     public bool IsValid => Errors.Count == 0;
 
@@ -111,6 +116,8 @@ internal sealed class TemplateReferenceCollector
     private readonly HashSet<string> _macroContents = new(StringComparer.Ordinal);
     private readonly HashSet<string> _macroPrompts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _macroFolders = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _macroFolderContents = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _macroFolderPrompts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _itemMembers = new(StringComparer.Ordinal);
     private readonly HashSet<string> _runFacts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _profileFacts = new(StringComparer.Ordinal);
@@ -141,6 +148,10 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadMacroFolder(string folder) => _macroFolders.Add(folder);
 
+    public void ReadMacroFolderContent(string folder) => _macroFolderContents.Add(folder);
+
+    public void ReadMacroFolderPrompt(string folder) => _macroFolderPrompts.Add(folder);
+
     public void ReadItem(string member) => _itemMembers.Add(member);
 
     public void ReadDeliverable(string id) => _deliverables.Add(id);
@@ -166,5 +177,5 @@ internal sealed class TemplateReferenceCollector
     public TemplateReferences ToReferences() => new(
         _inputs, _nodes, _snippets, _snippetFolders, _macroContents, _macroPrompts, _macroFolders, _itemMembers,
         _runFacts, _profileFacts, _rendered, _occurrences, _branches.Where(b => b is not null).Cast<TemplateBranchBlock>().ToList(), Errors, Warnings,
-        _deliverables);
+        _deliverables, _macroFolderContents, _macroFolderPrompts);
 }

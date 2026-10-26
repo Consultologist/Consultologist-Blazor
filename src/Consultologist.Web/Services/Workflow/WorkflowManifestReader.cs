@@ -640,7 +640,27 @@ public static class WorkflowManifestReader
     {
         var macros = new List<MacroView>();
 
-        if (!TryGetProperty(manifest, "macros", out var array) || array.ValueKind != JsonValueKind.Array)
+        if (!TryGetProperty(manifest, "macros", out var array))
+        {
+            return macros;
+        }
+
+        // #1099 (v26 design § 5.3): at 26 macros is a map id → file (a trailing '/' a
+        // folder); the header carries the rest — the view holds the id and the path.
+        if (array.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var entry in array.EnumerateObject())
+            {
+                if (entry.Value.ValueKind == JsonValueKind.String && entry.Value.GetString() is { } file)
+                {
+                    macros.Add(new MacroView(entry.Name, entry.Name, file, null, null, null));
+                }
+            }
+
+            return macros;
+        }
+
+        if (array.ValueKind != JsonValueKind.Array)
         {
             return macros;
         }

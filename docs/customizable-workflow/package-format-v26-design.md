@@ -524,7 +524,7 @@ The text begins on the line after the closing brace.
 | 25 | 26 |
 |---|---|
 | `index.json` item `{ id, name, file, when? }` | `[{ id, file }]` — an **ordered** list; `name` → the file's `label`, `when` → the file's `if` |
-| `macros[]` entry `{ id, label, file, optional?, default?, instruction? }` | `{ id, file }`; the rest in the file's header, plus `if` (§ 2.1) |
+| `macros[]` entry `{ id, label, file, optional?, default?, instruction? }` | **`macros` is a map** `{ "<id>": "<file>" \| "<dir>/" }` on the wire, as `snippets` is (§ 5.3; decided 2026-10-26 — the list every reader holds in memory, a converter between); the rest in the file's header, plus `if` (§ 2.1) |
 | `snippets` `"<id>": "<file>"` / `"<dir>/"` | unchanged — the id → file (or folder) map; a standalone snippet's `label` and `if` in its header |
 | `item.name`, `snippet.<id>.name`, `macro.<id>.name` | **`.label`** — `name` refused with the replacement |
 | — | `macro.<id>.instruction` readable (what the model will be told, as text) |
@@ -923,6 +923,26 @@ read recorded (decided 2026-10-26; the case #1089 deferred, closed — `Workflow
 empty prompt for a blank instruction at every version; a valid 25 macro's instruction is non-blank). No engine
 half: the engine renders through the renderer. The gates group (#1089, #1090, #1094, #1096) is complete in the
 library.)*
+
+*(#1099, 2026-10-26 — macro folders, as § 5.3 says; the library half. **The map on the wire, the list in
+memory** (decided 2026-10-26): at 26 `macros` is `{ "<id>": "<file>" | "<dir>/" }`, snippet-identical;
+`WorkflowMacroTableConverter` reads the map and the 25 list into the `WorkflowMacroSpec` list every reader holds,
+marked with the shape read (`WorkflowMacroTable.IsMap`), and writes the map for bare entries, the list
+otherwise (every 5–25 manifest round-trips its bytes); the list is refused at 26 and the map below 26 by
+sentence; the 26 schema describes the map. **The folder:** an entry whose path ends with `/` is a folder as a
+`snippets` entry is — its index the ordered list, its items macro files parsed with the macro key set (the
+kind follows the declaration, decided 2026-10-26), resolved through the shared resolver with the noun "Macro"
+(*"Macro collection 'section_notes' is missing 'macros/section_notes/index.json'."*), each item's header on
+the item; walked as macro texts keyed `<folder>/<item>` with their instructions and their own gates;
+`macro.<folder>` iterated, the element's `.content` and `.prompt`/`.instruction` reads expanded to every item
+for reachability, the inline-read closure (an item read inline needs its instruction, § 2.5) and a reader's
+edges; **read, not placed** — placing the folder (*"names macro folder 'section_notes'; a folder is read …,
+not placed, at specVersion 26"*) or an item by `<folder>.<item>` refused by name; the probe and the renderer
+iterate the folder as an array of macro objects in the index's order (the inert and suppressed sets keyed
+`<folder>/<item>`); the preview scope carries the folders; the publish closure references the index and its
+items; the Web manifest reader reads the map. The engine half — the store gathering a folder, the render
+payload's folders — is **#1182** (layer B, after #1157); the direct item read `macro.<folder>.<item>` is #1116;
+the editor's `+ Macro folder` is #1163's milestone; #1152 writes the map.)*
 
 ## 12. The editor
 

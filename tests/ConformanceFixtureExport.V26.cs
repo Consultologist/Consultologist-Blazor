@@ -215,5 +215,26 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-snippet-if-reads-a-loop-at-26", "A snippet's own if reading a loop — a condition decides before the loop runs.", SnippetIf("node.sections.content != \"\""));
         Invalid("invalid-folder-item-if-reads-item-label-at-26", "A folder item's if reading item.label — inputs and item.id only.", ItemIf("item.label == \"HPI\""));
         Invalid("invalid-folder-item-if-item-the-folder-lacks-at-26", "A folder item's if comparing item.id to an id the folder does not contain.", ItemIf("item.id == \"nope\""));
+
+        // ======================================================= § 5.3: macro folders, the map on the wire (#1099)
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Folder(string read = "{{ for m in macro.section_notes }}{{ m.label }}: {{ m.prompt }}{{ end }}") =>
+            Files(Manifest(m, x => x with { Macros = x.Macros!.Append(new WorkflowMacroSpec("section_notes", null, "macros/section_notes/")).ToList() }), fs =>
+            {
+                fs["macros/section_notes/index.json"] = """[ { "id": "hpi", "file": "hpi.md" }, { "id": "plan", "file": "plan.md" } ]""";
+                fs["macros/section_notes/hpi.md"] = V26Package.Header("HPI notes", instruction: "Note the history.") + "History noted: {{ profile.name }}.";
+                fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.") + "Plan noted.";
+                fs["prompts/assessment.md"] = "Assess. " + read;
+            });
+        Valid("v26-macro-folder", "A macro folder — the index an ordered list, the items macro files — read as {{ for m in macro.<folder> }} with each item's label and prompt.", Folder());
+        Invalid("invalid-macros-list-at-26", "macros spelled as the 25 list of objects at 26 — the map { \"<id>\": \"<file>\" } is the 26 spelling.",
+            Manifest(m, x => x with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") } }));
+        Invalid("invalid-macro-folder-without-index-at-26", "A macro folder with no index.json.", Files(Folder(), fs => fs.Remove("macros/section_notes/index.json")));
+        Invalid("invalid-macro-folder-item-without-header-at-26", "A macro folder item file with no header.", Files(Folder(), fs => fs["macros/section_notes/plan.md"] = "Plan noted."));
+        Invalid("invalid-macro-folder-placed-at-26", "A macro folder placed on a node — a folder is read, not placed.",
+            Node(Folder(), "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After), new("section_notes", At: WorkflowNodeMacroSpec.After) } }));
+        Invalid("invalid-macro-folder-item-placed-at-26", "A macro folder item placed by <folder>.<item> — waits for a package that needs it.",
+            Node(Folder(), "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("section_notes.hpi", At: WorkflowNodeMacroSpec.After) } }));
+        Invalid("invalid-macro-folder-prompt-read-without-instruction-at-26", "A folder item read inline through the folder with no instruction.", Files(Folder(), fs => fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes") + "Plan noted."));
+        Invalid("invalid-macro-folder-read-as-a-value-at-26", "A macro folder read as a value — a folder is iterated.", Folder("{{ macro.section_notes }}"));
     }
 }

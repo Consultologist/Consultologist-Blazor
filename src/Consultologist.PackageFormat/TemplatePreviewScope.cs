@@ -114,8 +114,16 @@ public static class TemplatePreviewScope
                 .ToList(),
             StringComparer.Ordinal);
 
+        // #1099: a macro folder's items at 26, each with its header's label and instruction.
+        var macroFolders = texts is null ? null : WorkflowTextHeaders.ResolveMacroFolders(manifest, texts, discard)?.Collections.ToDictionary(
+            entry => entry.Key,
+            entry => (IReadOnlyList<TemplateMacroSource>)entry.Value.Items
+                .Select(item => new TemplateMacroSource(item.Id, item.Header?.Label ?? item.Id, item.Fields.GetValueOrDefault(TemplateMembers.Content, string.Empty), item.Header?.Instruction ?? string.Empty))
+                .ToList(),
+            StringComparer.Ordinal);
+
         var macros = (manifest.Macros ?? new List<WorkflowMacroSpec>())
-            .Where(macro => macro.File is not null)
+            .Where(macro => macro.File is not null && !macro.File.EndsWith('/'))
             .DistinctBy(macro => macro.Id, StringComparer.Ordinal)
             .ToDictionary(
                 macro => macro.Id,
@@ -132,7 +140,8 @@ public static class TemplatePreviewScope
             new TemplateFanItem(Token($"{TemplateObjects.Item}.{TemplateMembers.Id}"), Token($"{TemplateObjects.Item}.{TemplateMembers.Name}"), Text: Token($"{TemplateObjects.Item}.{TemplateMembers.Content}")),
             macros,
             new TemplateRunFacts(Token("run.date"), Token("run.job"), Token("run.package"), Token("run.host")),
-            new TemplateProfileFacts(Token("profile.name"), Token("profile.signature")));
+            new TemplateProfileFacts(Token("profile.name"), Token("profile.signature")),
+            MacroFolders: macroFolders);
     }
 
     /// <summary>What the model is told where <c>macro.&lt;id&gt;.prompt</c> is read — the instruction rendered over the scope, then the mechanics sentence; the renderer's own sentence when the instruction does not render.</summary>

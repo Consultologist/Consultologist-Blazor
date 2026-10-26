@@ -116,7 +116,11 @@ public sealed record TemplateRenderScope(
     // does not hold — content empty where read (judged by the caller with
     // WorkflowInlineGates.InertSnippets); a folder item's gate is the fan
     // filter (the engine's) and the direct read's (#1116). Null is the 25 render.
-    IReadOnlySet<string>? InertSnippets = null);
+    IReadOnlySet<string>? InertSnippets = null,
+    // #1099 (v26 design § 5.3): the macro folders — macro.<folder> an array of
+    // macro objects in the index's order; the inert and suppressed sets key an
+    // item as <folder>/<item>. Null is the 25 render.
+    IReadOnlyDictionary<string, IReadOnlyList<TemplateMacroSource>>? MacroFolders = null);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -250,7 +254,9 @@ public static class TemplateRenderer
         }
 
         var macro = new ClosedObject(subject, TemplateObjects.Macro);
-        foreach (var (id, source) in scope.Macros)
+
+        // #1099: one macro object — a flat macro keyed by its id, a folder item by <folder>/<item>.
+        LazyMembersObject MacroObject(string key, string path, TemplateMacroSource source)
         {
             var members = new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
             {
@@ -264,7 +270,7 @@ public static class TemplateRenderer
                     // #1089 (v26 design § 2.3): an inline read the running node's
                     // instance gate suppresses renders empty — no instruction, no
                     // mechanics sentence, no read recorded (the model is told nothing).
-                    if (scope.SuppressedPrompts?.Contains(source.Id) == true || scope.InertMacros?.Contains(source.Id) == true)
+                    if (scope.SuppressedPrompts?.Contains(key) == true || scope.InertMacros?.Contains(key) == true)
                     {
                         return string.Empty;
                     }
@@ -272,30 +278,47 @@ public static class TemplateRenderer
                     // #1096 (§ 2.3, § 2.5): the instruction renders first; a blank result —
                     // no instruction, or a template that renders to nothing — is an
                     // empty read: no mechanics sentence, no read recorded.
-                    var rendered = RenderWith($"Macro '{id}' instruction", source.Instruction, globals, trace, nested: true);
+                    var rendered = RenderWith($"Macro '{key}' instruction", source.Instruction, globals, trace, nested: true);
                     if (string.IsNullOrWhiteSpace(rendered))
                     {
                         return string.Empty;
                     }
 
-                    trace?.PromptReads.Add(source.Id);
+                    trace?.PromptReads.Add(key);
                     return WorkflowMacroMechanics.Prompt(source.Id, rendered);
                 },
             };
-            var text = new Lazy<string>(() => RenderWith($"Macro '{id}'", source.Text, globals, trace, nested: true));
+            var text = new Lazy<string>(() => RenderWith($"Macro '{key}'", source.Text, globals, trace, nested: true));
             members[TemplateMembers.Content] = () =>
             {
                 // #1090: an inert macro's content is empty where read — no blank
                 // block, no read recorded (a placed instance composes nothing).
-                if (scope.InertMacros?.Contains(source.Id) == true)
+                if (scope.InertMacros?.Contains(key) == true)
                 {
                     return string.Empty;
                 }
 
-                trace?.ContentRead(source.Id);
+                trace?.ContentRead(key);
                 return text.Value;
             };
-            macro[id] = new LazyMembersObject(subject, $"{TemplateObjects.Macro}.{id}", members, UncachedMacroMembers);
+            return new LazyMembersObject(subject, path, members, UncachedMacroMembers);
+        }
+
+        foreach (var (id, source) in scope.Macros)
+        {
+            macro[id] = MacroObject(id, $"{TemplateObjects.Macro}.{id}", source);
+        }
+
+        // #1099 (v26 design § 5.3): a macro folder iterates as an array, in the index's order.
+        foreach (var (folder, items) in scope.MacroFolders ?? new Dictionary<string, IReadOnlyList<TemplateMacroSource>>())
+        {
+            var array = new ScriptArray();
+            foreach (var item in items)
+            {
+                array.Add(MacroObject($"{folder}/{item.Id}", $"{TemplateObjects.Macro}.{folder}[{item.Id}]", item));
+            }
+
+            macro[folder] = array;
         }
 
         globals[TemplateObjects.Macro] = macro;

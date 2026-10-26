@@ -906,13 +906,19 @@ public static partial class WorkflowPackageValidator
 
     // ----- § 5.2: the reference graph ----------------------------------------------
 
-    private static void ValidateReferenceGraphAt25(IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked, WorkflowPackageData snippets, List<string> errors)
+    private static void ValidateReferenceGraphAt25(IReadOnlyList<WorkflowDerivedEdges.WalkedTemplate> walked, WorkflowPackageData snippets, List<string> errors, WorkflowPackageData? macroFolders = null)
     {
         var graph = new TemplateReferenceGraph();
 
         foreach (var (folder, collection) in snippets.Collections)
         {
             graph.AddSnippetFolder(folder, collection.Items.Select(i => SnippetItemKey(folder, i.Id)).ToList());
+        }
+
+        // #1099: a macro folder's members are its items, keyed <folder>/<item>.
+        foreach (var (folder, collection) in macroFolders?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
+        {
+            graph.AddMacroFolder(folder, collection.Items.Select(i => SnippetItemKey(folder, i.Id)).ToList());
         }
 
         var added = new HashSet<(TemplateKind, string)>();
@@ -958,7 +964,9 @@ public static partial class WorkflowPackageValidator
         // #1101: the 26 path's deliverables, read as deliverable.<id>.content — null on the 25 path.
         IReadOnlyCollection<string>? deliverableIds = null,
         // #1105: at 26 the objects carry label (the header's) for name, and a macro its instruction.
-        bool labelled = false)
+        bool labelled = false,
+        // #1099: the macro folders at 26 — macro.<folder> an array of macro objects.
+        WorkflowPackageData? macroFolders = null)
     {
         var nameMember = labelled ? TemplateMembers.Label : TemplateMembers.Name;
         var walked = walk.Templates;
@@ -1012,6 +1020,18 @@ public static partial class WorkflowPackageValidator
             {
                 ((ScriptObject)macro[m.Id]!)[TemplateMembers.Instruction] = "placeholder";
             }
+        }
+
+        // #1099 (v26 design § 5.3): a macro folder iterates as an array of macro objects.
+        foreach (var (folder, collection) in macroFolders?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
+        {
+            var items = new ScriptArray();
+            foreach (var item in collection.Items)
+            {
+                items.Add(new ScriptObject { ["id"] = item.Id, [nameMember] = "placeholder", ["content"] = "placeholder", ["prompt"] = "placeholder", [TemplateMembers.Instruction] = "placeholder" });
+            }
+
+            macro[folder] = items;
         }
 
         ScriptObject? deliverable = null;

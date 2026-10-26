@@ -38,6 +38,11 @@ public sealed record WorkflowPackageManifest(
     // appended verbatim to the deliverables that name them. Trailing
     // optional, omitted when null, so every earlier manifest writes the
     // bytes it always wrote. The version gate is the validator's.
+    // v26 (#1099, design § 5.3): on the wire a MAP { "<id>": "<file>" | "<dir>/" },
+    // as snippets is — the header carries the rest (§ 5); in memory the same
+    // list every reader holds (WorkflowMacroTableConverter; the shape read is
+    // marked on WorkflowMacroTable for the validator's version rule).
+    [property: JsonConverter(typeof(WorkflowMacroTableConverter))]
     List<WorkflowMacroSpec>? Macros = null,
     // v21 (package-format-v21.md, #923): a declared output schema may be a
     // REFERENCE to a published catalog output-contract by name — schema id →
@@ -116,6 +121,84 @@ public sealed record WorkflowPackageManifest(
 public sealed record WorkflowFormatReference(
     string Id,
     string File);
+
+/// <summary>
+/// #1099 (v26 design § 5.3): the macro list as READ from a manifest, marked
+/// with the shape the wire carried — the 25 list of objects or the 26 map
+/// { "<id>": "<file>" | "<dir>/" }. A list built in code carries no mark and
+/// passes either version's shape rule (as a code-built instance is bare).
+/// </summary>
+public sealed class WorkflowMacroTable : List<WorkflowMacroSpec>
+{
+    public WorkflowMacroTable(IEnumerable<WorkflowMacroSpec> entries, bool isMap) : base(entries)
+    {
+        IsMap = isMap;
+    }
+
+    /// <summary>True when the wire carried the 26 map; false for the 25 list.</summary>
+    public bool IsMap { get; }
+}
+
+/// <summary>
+/// #1099: macros on the wire — the 25 list of objects, or the 26 map of
+/// id → file (a trailing '/' a folder). Written as the map when every entry
+/// carries id and file alone (a 26 manifest), as the list otherwise (every
+/// 5–25 manifest round-trips the bytes it always wrote).
+/// </summary>
+public sealed class WorkflowMacroTableConverter : JsonConverter<List<WorkflowMacroSpec>>
+{
+    public override List<WorkflowMacroSpec>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            var list = JsonSerializer.Deserialize<List<WorkflowMacroSpec>>(ref reader, options) ?? new List<WorkflowMacroSpec>();
+            return new WorkflowMacroTable(list, isMap: false);
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("macros must be a list of macro entries or a map of id to file.");
+        }
+
+        var entries = new List<WorkflowMacroSpec>();
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            var id = reader.GetString() ?? throw new JsonException("A macros map key must be an id.");
+            if (!reader.Read() || reader.TokenType != JsonTokenType.String)
+            {
+                throw new JsonException($"macros '{id}' must be a file path (or a folder path ending with '/').");
+            }
+
+            entries.Add(new WorkflowMacroSpec(id, null, reader.GetString()!));
+        }
+
+        return new WorkflowMacroTable(entries, isMap: true);
+    }
+
+    public override void Write(Utf8JsonWriter writer, List<WorkflowMacroSpec> value, JsonSerializerOptions options)
+    {
+        var bare = value.Count > 0 && value.All(m => m.Label is null && m.Instruction is null && m.Optional is null && m.Default is null);
+        if (bare)
+        {
+            writer.WriteStartObject();
+            foreach (var macro in value)
+            {
+                writer.WriteString(macro.Id, macro.File);
+            }
+
+            writer.WriteEndObject();
+            return;
+        }
+
+        writer.WriteStartArray();
+        foreach (var macro in value)
+        {
+            JsonSerializer.Serialize(writer, macro, options);
+        }
+
+        writer.WriteEndArray();
+    }
+}
 
 /// <summary>
 /// One declared macro (v11 § 4): a package-owned template file, applied to a
@@ -976,7 +1059,11 @@ public sealed record WorkflowDataItem(
     // validator (input-only) and the job start (the folder's effective size).
     string? When = null,
     // v26 (#1165): the same gate keyed `if` (`when` is retired at 26).
-    string? If = null);
+    string? If = null,
+    // #1099 (v26 design § 5.3): the item file's header, whole — a macro folder's
+    // item carries its instruction, option and gate here; a snippet item's
+    // label and if are read into Fields and If as before.
+    WorkflowTextHeader? Header = null);
 
 /// <summary>A resolved data collection: the declared item shape plus the items, in index order.</summary>
 public sealed record WorkflowDataCollection(
