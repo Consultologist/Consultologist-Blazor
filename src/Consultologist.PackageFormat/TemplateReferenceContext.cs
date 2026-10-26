@@ -34,7 +34,10 @@ public sealed record TemplateReferenceContext(
     // read from outside its scope is refused naming the flow node to read. A
     // deferred text (a snippet, a macro) is judged by its reader's edges instead.
     IReadOnlyDictionary<string, TemplateBodyScope>? Bodies = null,
-    string? Scope = null)
+    string? Scope = null,
+    // #1101 (v26 design § 3.1): the deliverables a template may read as
+    // deliverable.<id>.content — null where the object does not exist (≤25).
+    IReadOnlySet<string>? Deliverables = null)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -148,6 +151,9 @@ public static class TemplateObjects
 
     public static readonly IReadOnlyList<string> All = new[] { Input, Node, Snippet, Item, Macro, Run, Profile };
 
+    /// <summary>#1101 (v26 design § 3.1): the sixth object — a deliverable's composed text, <c>deliverable.&lt;id&gt;.content</c>. Reserved at every version; resolves where the context carries deliverables.</summary>
+    public const string Deliverable = "deliverable";
+
     /// <summary><c>data</c> became <c>snippet</c> at 25 (§ 4).</summary>
     public const string RetiredData = "data";
 
@@ -155,7 +161,7 @@ public static class TemplateObjects
     public static readonly IReadOnlyList<string> RetiredRoots = new[] { RetiredData, "bindings", "variables" };
 
     public static bool IsReserved(string? name) =>
-        name != null && (All.Contains(name, StringComparer.Ordinal) || RetiredRoots.Contains(name, StringComparer.Ordinal));
+        name != null && (All.Contains(name, StringComparer.Ordinal) || name == Deliverable || RetiredRoots.Contains(name, StringComparer.Ordinal));
 
     /// <summary>
     /// Scriban's own globals, opaque to the walker: the builtin modules, the
@@ -190,6 +196,9 @@ public static class TemplateMembers
     /// <summary>#1100 (v26 design § 1.3): a loop element's own members — item, content, value — beside the body nodes by id.</summary>
     public const string Item = "item";
     public static readonly IReadOnlyList<string> LoopElement = new[] { Item, Content, Value };
+
+    /// <summary>#1101: a deliverable's one member — its composed text, before its macros and signature.</summary>
+    public static readonly IReadOnlyList<string> Deliverable = new[] { Content };
 
     /// <summary><c>run.date</c>, <c>.job</c>, <c>.package</c>, <c>.host</c> — the v11 run facts.</summary>
     public static readonly IReadOnlyList<string> Run = WorkflowMacroPlaceholders.RunFacts.Order(StringComparer.Ordinal).ToList();

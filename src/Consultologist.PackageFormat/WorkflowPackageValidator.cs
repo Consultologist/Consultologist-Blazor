@@ -3240,9 +3240,10 @@ public static partial class WorkflowPackageValidator
                     }
                     else if ((entry.Before ?? entry.After) is { } anchor)
                     {
-                        var aggregatorId = result.Node.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
-                            ? result.Node[WorkflowNodeBindingSources.NodePrefix.Length..]
-                            : result.Node;
+                        var resultNode = result.Node ?? string.Empty;
+                        var aggregatorId = resultNode.StartsWith(WorkflowNodeBindingSources.NodePrefix, StringComparison.Ordinal)
+                            ? resultNode[WorkflowNodeBindingSources.NodePrefix.Length..]
+                            : resultNode;
 
                         if (nodesById.GetValueOrDefault(aggregatorId)?.Aggregate is not { Count: > 0 } aggregate)
                         {
