@@ -505,8 +505,8 @@ The text begins on the line after the closing brace.
   standards/hpi.md has no header; a snippet file opens with { "label": … }"*). A header on a
   **prompt** file is refused (a prompt has none of these facts).
 - **Closed key set.** Snippet: `label` (required), `if`. Macro: `label` (required),
-  `instruction` (required where read inline, § 2.5 — until #1096 lands it is required as at 25,
-  decided 2026-10-26), `optional`, `default`, `if` (the key is carried from #1105; #1090 and #1094
+  `instruction` (required where read inline, § 2.5; built 2026-10-26), `optional`, `default`, `if` (the
+  key is carried from #1105; #1090 and #1094
   give a macro's and a snippet's `if` their effect). Anything else
   is refused naming the key; the reserved names `id`, `file`, `content`, `value`, `prompt` are
   refused by name (they are the object's members, not the file's facts).
@@ -911,6 +911,18 @@ empties `snippet.<id>.content` where read, the id as ever; null is the 25 render
 half — the inert render judged before the prompt, the job starter's fan filter reading the item's `if`, the
 direct read gated once #1116 lands — is **#1179** (layer B, beside #1175/#1177, after #1157); the preview's
 picture is the editor's (M33); the migration's lifting of a uniform text guard is #1152's.)*
+
+*(#1096, 2026-10-26 — the instruction required only where read inline, as § 2.5 says. `ValidateInstructionsAt26`
+runs after the walk over the inline-read closure from node prompts (`Walk.PromptReadsOf`, the #1067 closure):
+a macro with no header instruction that a node's prompt reaches — directly or through the snippets and folder
+items it reads — is refused naming the reading node (*"Macro 'closing' is read inline by node 'assessment' and
+declares no instruction; the model is told nothing (macros/closing.md)."*); a placed-only macro's instruction is
+optional and, when present, kept (the desk note "unread" is the editor's, M33). The renderer: a blank rendered
+instruction — absent, or a template that renders to nothing — is an **empty read**, no mechanics sentence, no
+read recorded (decided 2026-10-26; the case #1089 deferred, closed — `WorkflowMacroMechanics.Prompt` gives an
+empty prompt for a blank instruction at every version; a valid 25 macro's instruction is non-blank). No engine
+half: the engine renders through the renderer. The gates group (#1089, #1090, #1094, #1096) is complete in the
+library.)*
 
 ## 12. The editor
 
