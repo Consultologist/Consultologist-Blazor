@@ -163,7 +163,7 @@ public class WorkflowV26DeliverableTests
         List<string> Reading(string text) => V26Package.FlowErrors(m => m, files => files["prompts/assessment.md"] = text);
 
         Assert.Contains("Node 'assessment' prompt reads deliverable.consult.value, which is not a member (deliverable.<id> has .content).", Reading("{{ deliverable.consult.value }}"));
-        Assert.Contains("Node 'assessment' prompt pipes deliverable.consult.content through concept_bullets, but deliverable.consult composes sections; concept_bullets renders a concept_list node's text (node.<id>.content).", Reading("{{ deliverable.consult.content | concept_bullets }}"));
+        Assert.Contains("Node 'assessment' prompt pipes deliverable.consult.content through concept_bullets, but deliverable.consult composes sections; concept_bullets renders a concept_list node (node.<id>).", Reading("{{ deliverable.consult.content | concept_bullets }}"));
         Assert.Contains("Node 'assessment' prompt reads deliverable 'nope', which the package does not declare.", Reading("{{ deliverable.nope.content }}"));
         Assert.Contains("Node 'assessment' prompt reads deliverable 'consult' bare; read deliverable.consult.content.", Reading("{{ deliverable.consult }}"));
     }

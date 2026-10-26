@@ -421,9 +421,14 @@ public class WorkflowV26FlowTests
             files["prompts/assessment.md"] = assessment;
         }
 
-        Assert.Empty(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ for v in node.sections.value }}{{ v.concepts | array.size }}{{ end }} {{ for e in node.sections }}{{ e.content | concept_bullets }}{{ end }}")));
+        // #1059 (decided 2026-10-26): inside the loop the pipe takes the body node by id, never the element's content.
+        Assert.Empty(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ for v in node.sections.value }}{{ v.concepts | array.size }}{{ end }} {{ for e in node.sections }}{{ e.per_item | concept_bullets }}{{ end }}")));
+        Assert.Contains("Node 'assessment' prompt pipes e.content through concept_bullets; at specVersion 26 a renderer pipe takes the node — e.per_item | concept_bullets.",
+            V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ for e in node.sections }}{{ e.content | concept_bullets }}{{ end }}")));
         Assert.Contains(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ node.sections.content | concept_bullets }}")),
-            e => e.Contains("pipes node.sections.content through concept_bullets, but node.sections loops — a list has no one text", StringComparison.Ordinal));
+            e => e.Contains("pipes node.sections.content through concept_bullets; at specVersion 26 a renderer pipe takes the node — node.sections | concept_bullets.", StringComparison.Ordinal));
+        Assert.Contains(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ node.sections | concept_bullets }}")),
+            e => e.Contains("pipes node.sections through concept_bullets; a loop is a list — pipe a body node inside it ({{ for e in node.sections }}{{ e.per_item | concept_bullets }}{{ end }}), or read node.sections.content.", StringComparison.Ordinal));
         Assert.Contains(V26Package.FlowErrors(WithExtractLoop, files => Files(files, "{{ node.sections.value.concepts }}")),
             e => e.Contains("reads field 'concepts' of 'node.sections.value', which is an array of object, not an object", StringComparison.Ordinal));
     }

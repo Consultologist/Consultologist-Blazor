@@ -618,7 +618,11 @@ node object (`node.<id>` as a `ClosedObject`); the lookup goes.
 - A **flow node** as operand is allowed when its returned node's format is the pipe's (an `if`
   over two `concept_list` nodes pipes); a `for` node is refused — a list has no one text
   (*"pipes node.sections through concept_bullets; a loop is a list — pipe a body node inside
-  it, or read node.sections.content"*).
+  it ({{ for e in node.sections }}{{ e.per_item | concept_bullets }}{{ end }}), or read
+  node.sections.content"*). **Inside a loop the pipe takes the body node by id** (decided
+  2026-10-26, one rule everywhere): `e.content | concept_bullets` is refused with the replacement
+  naming the returned node (*"… at specVersion 26 a renderer pipe takes the node — e.per_item |
+  concept_bullets"*); `e.content` stays readable as text.
 - Migration rewrites the 25 public sites mechanically (§ 13). No provenance change: the pipe's
   rendered bytes are what they were.
 
@@ -957,6 +961,19 @@ members (Scriban's array members), so `snippet.sections.hpi.content` renders bes
 a gated-off item's direct read renders empty through the engine's key (#1179). The editor's palette choice is
 M33's.)*
 
+*(#1059, 2026-10-26 — a renderer pipe takes the node, as § 7.1 says. The walker at 26 judges a bare node
+operand by its format: the edge and the rendering are recorded on the node (`Rendered` carries the node, the
+pipe and the guard as before); `node.x.content | pipe` is refused with the replacement, `node.x.value | pipe`
+too; an `if`/`case` node passes when its returned node's format is the pipe's and is refused naming the
+disagreement; a `for` node is refused naming the body node to pipe; inside a loop the body node by id passes
+(`e.per_item | concept_bullets`, a body node reading its sibling by bare id likewise) and the element's content
+is refused naming it (decided 2026-10-26); a deliverable's text, a snippet, an input and a bare element are not
+nodes. Below 26 every sentence is as it was. The renderer's node object (`NodeObject`) carries its id and
+output, so `ApplyPipe` takes the node whole; the reference-equality lookup over `.content` stays for a 25
+package's spelling. The probe and the preview scope needed nothing (the probe ignores the operand; the
+preview resolves the output first). The engine renders `{{ node.x | pipe }}` through the same renderer; the
+loop element's body nodes as node objects at run time are #1154's. #1152 rewrites the 28 public sites.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
@@ -1010,7 +1027,7 @@ The macro pane is § 2.6's picture.
 | `when` on an instance, a deliverable, a deliverable instance, a folder item | `if`, the expression unchanged |
 | `forItem: "hpi"` (+ `when: C`) | `if: "item.id == \"hpi\""` (`… and (C)`) |
 | `prompts[]` + `nodes[].prompt: <id>` | `nodes[].prompt: "<the prompt's file>"`; `prompts[]` removed; a prompt bound by two nodes → refused (none exist) |
-| `{{ node.x.content \| concept_bullets }}` | `{{ node.x \| concept_bullets }}` (25 sites) |
+| `{{ node.x.content \| concept_bullets }}` | `{{ node.x \| concept_bullets }}` (28 sites over four packages); inside a loop `e.content \| pipe` → `e.<ret> \| pipe` (§ 7.1) |
 | `index.json` `{ id, name, file, when? }` | `[{ id, file }]`; each item file gains the header `{ "label": <name>, "if": <when> }` |
 | `macros[]` `{ id, label, file, optional?, default?, instruction? }` | `{ id, file }`; the file gains the header with the rest |
 | a standalone snippet file | gains `{ "label": <id humanised> }` — the one place the migration **invents** a value, named in the notice (a snippet had no label at 25; the editor shows it for review) |
