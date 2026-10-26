@@ -5,11 +5,12 @@
 // manifest model has no source-generated context.
 #:property JsonSerializerIsReflectionEnabledByDefault=true
 
-// Migrates a workflow package directory on disk to specVersion 25, offline.
+// Migrates a workflow package directory on disk to specVersion 25 (the default) or 26, offline.
 //
 // Usage:
-//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir>          # dry run: notices, refusals, the file plan, the 25 validation
-//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --write  # apply: files, manifest.json, dag.mmd
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir>                   # dry run: notices, refusals, the file plan, the 25 validation
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --write           # apply: files, manifest.json, dag.mmd
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 26 [--write] # #1152: the 25 → 26 stage (WorkflowPackageMigration25To26)
 //
 // WHY THIS EXISTS. The editor upgrades a package in the browser: below 23 it
 // turns preludes into node macros and bumps the number (formats up to 24 are
@@ -35,7 +36,9 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.PackageFormat;
 
-var packageDir = args.FirstOrDefault(argument => !argument.StartsWith("--", StringComparison.Ordinal));
+var toIndex = System.Array.IndexOf(args, "--to");
+var to = toIndex >= 0 && toIndex + 1 < args.Length && int.TryParse(args[toIndex + 1], out var parsedTo) ? parsedTo : 25;
+var packageDir = args.Where((argument, i) => !argument.StartsWith("--", StringComparison.Ordinal) && i != toIndex + 1).FirstOrDefault();
 var write = args.Contains("--write", StringComparer.Ordinal);
 
 if (packageDir is null)
@@ -99,6 +102,59 @@ catch (JsonException ex)
 var from = MigrationRunner.Get(staged, "specVersion") is JsonValue v && v.TryGetValue<int>(out var n) ? n : 0;
 var name = MigrationRunner.Str(staged, "name") ?? "?";
 var version = MigrationRunner.Str(staged, "version") ?? "?";
+
+// #1152: the 26 stage — a 25 package through the library's 25 → 26 rewriter.
+// Validation at 26 waits for the bump (#1149): the public Validate refuses 26
+// until AcceptedSpecVersions carries it; the test suite validates through the seam.
+if (to == 26)
+{
+    if (from != 25)
+    {
+        Console.Error.WriteLine($"error: {name}@{version} is at specVersion {from}; the 26 stage takes a 25 package (migrate to 25 first).");
+        return 1;
+    }
+
+    var result26 = WorkflowPackageMigration25To26.Migrate(staged.ToJsonString(), before);
+
+    foreach (var notice in result26.Notices)
+    {
+        Console.Out.WriteLine($"notice: {notice}");
+    }
+
+    if (!result26.Succeeded)
+    {
+        foreach (var refusal in result26.Refusals)
+        {
+            Console.Error.WriteLine($"error: {refusal}");
+        }
+
+        Console.Error.WriteLine($"{name}@{version}: specVersion 25 → 26 refused; nothing written.");
+        return 1;
+    }
+
+    var removed26 = before.Keys.Except(result26.Files.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+    var added26 = result26.Files.Keys.Except(before.Keys, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+    var rewritten26 = result26.Files
+        .Where(pair => before.TryGetValue(pair.Key, out var old) && !string.Equals(old, pair.Value, StringComparison.Ordinal))
+        .Select(pair => pair.Key).Order(StringComparer.Ordinal).ToList();
+
+    foreach (var path in removed26) Console.Out.WriteLine($"delete:  {path}");
+    foreach (var path in added26) Console.Out.WriteLine($"add:     {path}");
+    foreach (var path in rewritten26) Console.Out.WriteLine($"rewrite: {path}");
+    Console.Out.WriteLine("note: validation at specVersion 26 waits for the bump (#1149); the test suite validates the rewriter through the seam.");
+
+    if (write)
+    {
+        var manifest26 = JsonSerializer.Deserialize<WorkflowPackageManifest>(result26.ManifestJson, WorkflowPackageManifestJson.ReadOptions)
+            ?? throw new InvalidOperationException("The migrated manifest deserialized to null.");
+        MigrationRunner.Write(root, result26.ManifestJson, before, result26.Files, WorkflowDagDiagram.Generate(manifest26));
+    }
+
+    Console.Out.WriteLine(
+        $"{name}@{version}: specVersion 25 → 26, {added26.Count} added, {rewritten26.Count} rewritten, {removed26.Count} deleted"
+            + (write ? ", written" : " (dry run; pass --write to apply)"));
+    return 0;
+}
 
 if (from >= 25)
 {

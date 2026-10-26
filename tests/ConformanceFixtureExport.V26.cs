@@ -18,6 +18,18 @@ namespace Consultologist.Api.Tests;
 /// </summary>
 public partial class ConformanceFixtureExport
 {
+    internal static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) MigratedV25Minimal()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        var result = WorkflowPackageMigration25To26.Migrate(System.Text.Json.JsonSerializer.Serialize(manifest, WorkflowPackageManifestJson.WriteOptions), files);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException("The v25 minimal does not migrate: " + string.Join(" | ", result.Refusals));
+        }
+
+        return (WorkflowPackageManifestJson.Read(result.ManifestJson, "migrated", V26Package.Accepting26.ToList()), new Dictionary<string, string>(result.Files, StringComparer.Ordinal));
+    }
+
     private static void AddV26Cases(List<Case> cases)
     {
         void Invalid(string id, string description, (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
@@ -66,6 +78,8 @@ public partial class ConformanceFixtureExport
                     : branches.ToList()))), "node.route");
 
         // ======================================================= valid
+        // #1152 (§ 13): the baseline rule 25 settled — the migrated 25 minimal is a valid 26 package.
+        Valid("v26-minimal-is-the-migrated-v25-minimal", "The 25 minimal through the 25 → 26 rewriter: the fan a loop, the aggregator the deliverable's sources, the prompts by path, the headers, the index list, the macros map, .label.", MigratedV25Minimal());
         Valid("v26-minimal",
             "The design's minimal 26 package: a prose node reading an input and a snippet, a concept_list node, a classification taking its values through with, a terms_subset check, a loop over a snippet folder returning its one body node, a macro placed after the prose node, one deliverable composing the prose node and the loop, checked.",
             m);

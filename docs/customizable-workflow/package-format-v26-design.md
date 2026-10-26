@@ -974,6 +974,25 @@ package's spelling. The probe and the preview scope needed nothing (the probe ig
 preview resolves the output first). The engine renders `{{ node.x | pipe }}` through the same renderer; the
 loop element's body nodes as node objects at run time are #1154's. #1152 rewrites the 28 public sites.)*
 
+*(#1152, 2026-10-26 — the migration 25 → 26, as § 13 says. `WorkflowPackageMigration25To26.Migrate(manifestJson,
+files)` beside the 24 → 25 rewriter: the texts checked for a header already; the fans folded into loops, **a
+loop per aggregated chain** (decided 2026-10-26: the collection's id when sole, `<collection>_<ret>`
+otherwise; a node read by two chains and a fanned node no aggregator reaches refused); a node's `when`
+wrapped in an `if` node; the aggregators dissolved into `sources[]` and their reads rewritten
+(`deliverable.<id>.content` where a deliverable names the aggregator, the loop's `.content` where none does
+and it has one fanned source, refused otherwise); every gate keyed `if`, `forItem` as `item.id == …`; the
+prompts by path; the renderer pipes taking the node; the folder indexes as lists and every snippet, item and
+macro file opening with its header (a standalone snippet's label invented and named in the notice);
+`macros` the map; `.name` reading `.label`; one notice per rewrite, refusals applying nothing. The 25 minimal
+migrates into a valid 26 package (the conformance baseline `v26-minimal-is-the-migrated-v25-minimal`); a pipe
+on the node renders the bytes the `.content` one did. **The seven public packages migrate without a refusal
+and validate at 26** through the seam: loops `standards` (general, test/general, two-documents),
+`standards_section_instructions` + `standards_letter_body` (v12), `plan_sections` + `letter_decline_letter` +
+`letter_information_request` (classifier-scope), `sections_consult_note_section` + `sections_progress_note_section`
+(conditional-documents), the five of structured-intake. The runner `scripts/migrate-workflow-package.cs` gains
+`--to 26` (validation at 26 waits for the bump; the suite validates through the seam). The editor's chain to
+26 is M33's; the republish follows the engine release.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
@@ -1018,8 +1037,8 @@ The macro pane is § 2.6's picture.
 
 | At 25 | At 26 |
 |---|---|
-| N nodes with `forEach: snippet.standards` | **one** `for` node `{ id: "standards", for: "item in snippet.standards", nodes: [the N], ret }` — the id is the collection's (`standards`, `prior_notes`, `sections`); if a node already holds it, `<collection>_loop`, named in the notice |
-| the `for`'s `ret` | the body node an aggregator sourced, when exactly one aggregator sources exactly one body node of the loop (every public package: `section_instructions`, `plan_section`, `consult_note_section`, `summarise_note`, …); **otherwise refused**, nothing applied: *"loop 'standards' has no single returned node; name ret"* |
+| N nodes with `forEach: snippet.standards` | **a `for` node per aggregated chain** (decided 2026-10-26; the one-loop-per-collection rule migrated only `general` and `test/general`): for each body node an aggregator sources, one loop `{ id, for: "item in snippet.standards", nodes: [that node + the body nodes it reads inside the collection], ret: node.<that node> }`. The id is the collection's when it is the collection's only loop (`standards`, `plan_sections`); otherwise `<collection>_<ret>` (`sections_consult_note_section`, `standards_letter_body`, `prior_notes_summarise_note`), named in the notice. Two aggregators sourcing one node share its loop (two-documents). A fanned node no aggregator reaches, a node read by two chains, a loop id a node holds — **refused**, nothing applied |
+| the `for`'s `ret` | the body node the aggregator sourced — one per loop by construction |
 | a node with `when: C` | an `if` node `{ id: "<node>_if", if: C, then: { nodes: [node], ret: node.<node> } }`; sibling nodes sharing C fold into one `if` (`ret` = refused unless one — the public packages have no node `when`) |
 | `aggregate: ["node.a", "node.b"]` + `deliverables[].node: node.agg` | `deliverables[].sources: ["node.<loop of a>", "node.b"]` — a fanned source becomes its loop, a scalar stays; the aggregator node is removed |
 | a template's `node.agg.content` where a deliverable names `agg` | `deliverable.<id>.content` (v12's `extract-note-terms`, `extract-letter-terms`) |
@@ -1027,8 +1046,8 @@ The macro pane is § 2.6's picture.
 | `when` on an instance, a deliverable, a deliverable instance, a folder item | `if`, the expression unchanged |
 | `forItem: "hpi"` (+ `when: C`) | `if: "item.id == \"hpi\""` (`… and (C)`) |
 | `prompts[]` + `nodes[].prompt: <id>` | `nodes[].prompt: "<the prompt's file>"`; `prompts[]` removed; a prompt bound by two nodes → refused (none exist) |
-| `{{ node.x.content \| concept_bullets }}` | `{{ node.x \| concept_bullets }}` (28 sites over four packages); inside a loop `e.content \| pipe` → `e.<ret> \| pipe` (§ 7.1) |
-| `index.json` `{ id, name, file, when? }` | `[{ id, file }]`; each item file gains the header `{ "label": <name>, "if": <when> }` |
+| `{{ node.x.content \| concept_bullets }}` | `{{ node.x \| concept_bullets }}` (25 sites over four packages, every operand a scalar); inside a loop `e.content \| pipe` → `e.<ret> \| pipe` (§ 7.1; no such site exists at 25) |
+| `index.json` `{ fields, items: [{ id, name, file, when? }] }` | `[{ id, file }]` (`fields` dropped); each item file gains the header `{ "label": <name>, "if": <when> }` |
 | `macros[]` `{ id, label, file, optional?, default?, instruction? }` | `{ id, file }`; the file gains the header with the rest |
 | a standalone snippet file | gains `{ "label": <id humanised> }` — the one place the migration **invents** a value, named in the notice (a snippet had no label at 25; the editor shows it for review) |
 | `item.name`, `.name` in templates | `.label` |
