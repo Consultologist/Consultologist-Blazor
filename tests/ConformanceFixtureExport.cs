@@ -1208,7 +1208,58 @@ public partial class ConformanceFixtureExport
         // ----- v25 (#1018): the object-template format — ConformanceFixtureExport.V25.cs -----
         AddV25Cases(cases);
 
+        // ----- v26 (#1151, #1149): the program manifest — ConformanceFixtureExport.V26.cs -----
+        AddV26Cases(cases);
+
         return cases;
+    }
+
+    /// <summary>
+    /// #1151: the cases above the engine's accepted ceiling — a version wired
+    /// but not yet accepted (the seam carries its tests). The export holds them
+    /// back: validated through the public entry they would record the
+    /// accepted-set sentence, and the registry files an unsupported version
+    /// under any/. The bump (#1149) lifts them by accepting the version.
+    /// </summary>
+    private static IReadOnlyList<Case> HeldBack(IEnumerable<Case> cases)
+    {
+        var ceiling = WorkflowPackageValidator.AcceptedSpecVersions.Max();
+        return cases.Where(c => c.SpecVersion > ceiling).ToList();
+    }
+
+    [Fact]
+    public void TheCasesAboveTheCeiling_AreHeldBack_UntilTheBump()
+    {
+        var cases = Cases();
+        var held = HeldBack(cases);
+        var at26 = cases.Where(c => c.SpecVersion == 26).ToList();
+
+        Assert.NotEmpty(at26);
+        Assert.Equal(WorkflowPackageValidator.AcceptedSpecVersions.Contains(26) ? 0 : at26.Count, held.Count(c => c.SpecVersion == 26));
+        // The one case about the accepted set itself (specVersion 3) is below the ceiling and exports as ever.
+        Assert.DoesNotContain(held, c => c.Id == "invalid-spec-version-unsupported");
+    }
+
+    [Fact]
+    public void TheV26Cases_SayWhatTheValidatorSays_AtTheSeam()
+    {
+        // What the export will capture at the bump is what the seam says today:
+        // a valid case validates, an invalid one meets at least one sentence —
+        // the suites pin the sentences themselves.
+        foreach (var testCase in Cases().Where(c => c.SpecVersion == 26))
+        {
+            var result = WorkflowPackageValidator.Validate(
+                testCase.Manifest, testCase.Files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog(), V26Package.Accepting26);
+
+            if (testCase.Id.StartsWith("invalid-", StringComparison.Ordinal))
+            {
+                Assert.False(result.IsValid, $"{testCase.Id} should be refused");
+            }
+            else
+            {
+                Assert.True(result.IsValid, $"{testCase.Id}: {string.Join(" | ", result.Errors)}");
+            }
+        }
     }
 
     /// <summary>
@@ -1351,7 +1402,10 @@ public partial class ConformanceFixtureExport
         // below 25 the argument is never read.
         var formats = V25Package.Catalog();
 
-        foreach (var testCase in Cases())
+        var all = Cases();
+        var held = HeldBack(all);
+
+        foreach (var testCase in all.Except(held))
         {
             var result = WorkflowPackageValidator.Validate(
                 testCase.Manifest, testCase.Files, TestOutputContracts.CatalogSchemas, null, formats);
@@ -1392,5 +1446,10 @@ public partial class ConformanceFixtureExport
             JsonSerializer.Serialize(new { index = catalogIndex, files = catalogFiles }, Json));
         File.WriteAllText(Path.Combine(outDir!, "index.json"),
             JsonSerializer.Serialize(new { cases = index }, Json));
+
+        if (held.Count > 0)
+        {
+            Console.WriteLine($"held back {held.Count} case(s) above specVersion {WorkflowPackageValidator.AcceptedSpecVersions.Max()}: {string.Join(", ", held.Select(c => c.Id))}");
+        }
     }
 }
