@@ -885,6 +885,19 @@ judging before the render, completion excluding by `if` — is **#1175** (layer 
 template that renders empty keeps today's sentence until #1096; the preview's node context is the editor's
 (M33).)*
 
+*(#1090, 2026-10-26 — the macro's own gate, as § 2.2 says; the library half. The macro file's header `if`
+(#1105) is walked at its own site, `ConditionSite.Macro`, under *"Macro 'closing' if"* — in no fan and no
+scope: inputs, scalar node values, run and profile; an item (*"reads item.id, but the node does not fan"*), a
+loop and `deliverable.<id>` refused as at every condition site. The validator hands the headers it resolved to
+the shared walk, which resolves them itself when called with the package as published. A reader's edges close
+over the gate's reads as over the macro's text — a node reading `macro.closing.prompt` waits on the scalar node
+the gate compares. `WorkflowInlineGates.Inert(macros, scope)` is the judgement beside `Suppressed`; the render
+scope's `InertMacros` empties **both** `.prompt` (no instruction, no mechanics sentence) and `.content` (no
+blank block), recording no read; it composes by AND with the instance gate's set. Decided 2026-10-26: the engine
+half — the inert render judged before the prompt, an inert macro's placements skipped into `excluded[]` /
+`excludedMacros` with the header's text — is **#1177** (layer B, beside #1175, after #1157); the desk's
+"never fires" warning is the editor's (M33); the migration's lifting of a uniform text guard is #1152's.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
