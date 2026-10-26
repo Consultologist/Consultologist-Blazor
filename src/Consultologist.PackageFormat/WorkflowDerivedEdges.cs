@@ -536,6 +536,17 @@ public static class WorkflowDerivedEdges
         WorkflowPackageData snippets,
         Func<TemplateFan?, TemplateReferenceContext> contextFor)
     {
+        // #1105 (v26 design § 5): at 26 the files may still carry headers (the
+        // engine's and the editor's entry gives the package as published; the
+        // validator gives bodies, on which this is a no-op) — the walk reads the
+        // effective manifest and the bodies, as the validator did.
+        if (manifest.SpecVersion >= 26)
+        {
+            var texts = WorkflowTextHeaders.Resolve(manifest, files, new List<string>());
+            manifest = texts.Manifest;
+            files = texts.Files;
+        }
+
         // #1102 (v26 design § 4): at 26 a node names its prompt FILE; below, the
         // declared prompt's id resolves through prompts[].
         var at26 = manifest.SpecVersion >= 26;
