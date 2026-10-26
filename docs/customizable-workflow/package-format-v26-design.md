@@ -809,6 +809,26 @@ are resolved once for every walk (`WorkflowFlowNodes`, shared by the validator a
 editor's `PrepareNodes`), and the probe gives a loop a list that also reads as text and as the array. The DAG
 diagram's loop drawing is #1160's. #1100 closes.)*
 
+*(#1101, 2026-10-26 — the deliverable names what it composes, as § 3 says. `deliverables[].sources[]` is
+required, each `node.<id>` declared once and prose — a plain node of a text format (*"source node.extract is a
+concept_list; a deliverable composes prose — read its .value from a prose node"*; a check: *"a check gates a
+deliverable (check: node.coverage), it is no text"*), a loop whose returned node is prose (*"loops over
+'per_item' of format 'concept_list'; a deliverable composes prose"*), an `if`/`case` whose every branch returns
+prose (*"returns 'object' and 'text'; …"*), never a body node by name (*"runs inside loop 'sections'; name
+node.sections"*); two deliverables may share a source. The sixth object **`deliverable.<id>.content`** is the
+walker's: text, recorded on the references and expanded by the walk to the deliverable's sources (a reader
+waits on them; a source reading its deliverable is a cycle); no `.value`, no bare read, no renderer pipe
+(*"composes sections; … renders a … node's text"*), never in a condition (*"a condition decides before the
+sections compose"*). The word is reserved at every version and resolves where the context carries deliverables
+(26); below, the unchanged "not an object" sentence. The deliverable's `if` and its instances' `if` are walked
+at their sites. Reachability is rooted at the sources: *"Deliverable 'd' must transitively include at least one
+loop (a for node): a deliverable with no loop has no consult. Name a for node among its sources or read one
+from a source (loops in this package: …)"*; *"Node 'x' does not feed the deliverable: every node must
+transitively reach 'd's sources. Read it from a node that does, or name it among the deliverable's sources"*.
+`WorkflowDeliverableSpec.Node` is nullable (the ≤25 aggregator; its readers take the empty string at 26). The
+minimal 26 package is valid but for the prompts' declaration (#1102). The engine's composition from sources is
+#1155, the Deliverables card #1161, the preview's token #1162.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,

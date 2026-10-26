@@ -59,15 +59,18 @@ public static class WorkflowDerivedEdges
         private readonly Dictionary<string, WalkNode> _nodes;
         private readonly Dictionary<(TemplateKind, string), TemplateReferences> _byKey;
         private readonly Dictionary<string, IReadOnlyList<string>> _folders;
+        private readonly Dictionary<string, IReadOnlyList<string>> _deliverableSources;
 
         internal Walk(
             IReadOnlyList<WalkNode> nodes,
             IReadOnlyList<WalkedTemplate> templates,
             IReadOnlyDictionary<string, TemplateReferences> parameters,
             IReadOnlyDictionary<string, IReadOnlyList<string>> folders,
-            IReadOnlyList<WalkedCondition>? conditions = null)
+            IReadOnlyList<WalkedCondition>? conditions = null,
+            IReadOnlyDictionary<string, IReadOnlyList<string>>? deliverableSources = null)
         {
             _nodes = nodes.ToDictionary(n => n.Node.Id, StringComparer.Ordinal);
+            _deliverableSources = (deliverableSources ?? new Dictionary<string, IReadOnlyList<string>>()).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
             Templates = templates;
             Parameters = parameters;
             Conditions = conditions ?? Array.Empty<WalkedCondition>();
@@ -79,6 +82,10 @@ public static class WorkflowDerivedEdges
 
             _folders = folders.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         }
+
+        /// <summary>#1101: a template's node edges — its node reads, and for each deliverable it reads (deliverable.&lt;id&gt;.content) that deliverable's sources.</summary>
+        private IEnumerable<string> EdgesIn(TemplateReferences refs) =>
+            refs.Edges.Concat(refs.DeliverableReads.SelectMany(id => _deliverableSources.GetValueOrDefault(id) ?? Array.Empty<string>()));
 
         /// <summary>Every template walked: prompts (Id = the node id), snippets (Id = the snippet id or folder/item), macro texts and — #1044 — macro instructions (Id = the macro id). Walked whether or not a run reaches them; <see cref="MacrosReached"/> is the reachable view.</summary>
         public IReadOnlyList<WalkedTemplate> Templates { get; }
@@ -110,7 +117,7 @@ public static class WorkflowDerivedEdges
 
             void Take(TemplateReferences refs)
             {
-                edges.UnionWith(refs.Edges);
+                edges.UnionWith(EdgesIn(refs));
                 slots.UnionWith(refs.MacroPrompts);
             }
 
@@ -178,7 +185,7 @@ public static class WorkflowDerivedEdges
         public IReadOnlySet<string> MacroEdges(string macroId)
         {
             var edges = new HashSet<string>(StringComparer.Ordinal);
-            VisitKey((TemplateKind.Macro, macroId), new HashSet<(TemplateKind, string)>(), refs => edges.UnionWith(refs.Edges));
+            VisitKey((TemplateKind.Macro, macroId), new HashSet<(TemplateKind, string)>(), refs => edges.UnionWith(EdgesIn(refs)));
             return edges;
         }
 
@@ -295,7 +302,7 @@ public static class WorkflowDerivedEdges
 
             foreach (var condition in conditions)
             {
-                Visit(condition.Walk.References, seen, refs => edges.UnionWith(refs.Edges));
+                Visit(condition.Walk.References, seen, refs => edges.UnionWith(EdgesIn(refs)));
             }
 
             return edges;
@@ -648,14 +655,35 @@ public static class WorkflowDerivedEdges
         foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())
         {
             WalkCondition(ConditionSite.Deliverable, deliverable.Id, null, $"Deliverable '{deliverable.Id}' condition", deliverable.When, null);
+            // #1101 (v26 design § 2.1): the gate keyed if, at the same sites.
+            WalkCondition(ConditionSite.Deliverable, deliverable.Id, null, $"Deliverable '{deliverable.Id}' if", deliverable.If, null);
 
             foreach (var instance in deliverable.Macros ?? new List<WorkflowDeliverableMacroSpec>())
             {
                 WalkCondition(ConditionSite.DeliverableInstance, deliverable.Id, instance.Id, $"Deliverable '{deliverable.Id}' macro '{instance.Id}' condition", instance.When, null);
+                WalkCondition(ConditionSite.DeliverableInstance, deliverable.Id, instance.Id, $"Deliverable '{deliverable.Id}' macro '{instance.Id}' if", instance.If, null);
             }
         }
 
-        return new Walk(nodes, templates, parameters, folders, conditions);
+        return new Walk(nodes, templates, parameters, folders, conditions, DeliverableSourcesOf(manifest));
+    }
+
+    /// <summary>#1101: each deliverable's sources as node ids (the node.&lt;id&gt; entries; the validator names a misspelled one).</summary>
+    internal static IReadOnlyDictionary<string, IReadOnlyList<string>> DeliverableSourcesOf(WorkflowPackageManifest manifest)
+    {
+        var sources = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
+        foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())
+        {
+            var ids = (deliverable.Sources ?? new List<string>())
+                .Select(source => TemplateObjectReference.IsBare(source, TemplateObjects.Node, out var id) ? id : null)
+                .OfType<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            sources.TryAdd(deliverable.Id, ids);
+        }
+
+        return sources;
     }
 
     /// <summary>
@@ -818,8 +846,12 @@ public static class WorkflowDerivedEdges
         var folderIds = content.Collections.Keys.ToHashSet(StringComparer.Ordinal);
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
         var bodies = flows.Flows.Count > 0 ? flows.BodyScopes : null;
+        // #1101: at 26 a template reads deliverable.<id>.content.
+        var deliverableIds = manifest.SpecVersion >= 26
+            ? (manifest.Deliverables ?? new List<WorkflowDeliverableSpec>()).Select(d => d.Id).ToHashSet(StringComparer.Ordinal)
+            : null;
 
-        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan, Bodies: bodies);
+        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan, Bodies: bodies, Deliverables: deliverableIds);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {

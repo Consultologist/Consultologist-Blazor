@@ -134,7 +134,9 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             return manifest.Deliverables
                 .Select(deliverable => new WorkflowResolvedResult(
                     deliverable.Id,
-                    TemplateObjectReference.NodeIdOf(deliverable.Node) ?? deliverable.Node,
+                    // #1155: at 26 the deliverable composes its sources; the resolved
+                    // result's node is the ≤25 aggregator and empty until then.
+                    TemplateObjectReference.NodeIdOf(deliverable.Node) ?? deliverable.Node ?? string.Empty,
                     deliverable.Label,
                     null,
                     deliverable.Macros?.Select(entry => entry.Id).Distinct(StringComparer.Ordinal).ToList(),

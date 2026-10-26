@@ -216,6 +216,31 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
+    public void At26_ADeliverableRead_IsAnEdgeOnItsSources_AtTheSharedWalk()
+    {
+        // #1101: deliverable.consult.content read by a node makes that node wait on
+        // consult's sources — on the validator's walk and on the engine's alike.
+        var (manifest, files) = V26Package.Minimal();
+        manifest = manifest with
+        {
+            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("letter", "prompts/letter.md", new List<string>())).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose")).ToList(),
+        };
+        files["prompts/letter.md"] = "Dear doctor,\n{{ deliverable.consult.content }}";
+
+        var derived = Derive((manifest, files));
+
+        Assert.Equal(new[] { "assessment", "sections" }, derived["letter"].Order());
+        Assert.Contains("consult", contextOf((manifest, files)).Deliverables!);
+
+        static TemplateReferenceContext contextOf((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
+        {
+            WorkflowDerivedEdges.PrepareNodes(bundle.Manifest, bundle.Files, V25Package.Catalog(), out _, out var contextFor);
+            return contextFor(null);
+        }
+    }
+
+    [Fact]
     public void PromptReadsOf_ClosesOverSnippets_AndTheFanItemThatRan()
     {
         var (manifest, files) = V25Package.Minimal();

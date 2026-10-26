@@ -215,7 +215,7 @@ public static class WorkflowDagDiagram
         if (manifest.Results is { Count: > 0 })
         {
             return manifest.Results
-                .Select(result => ((string?)result.Id, (string?)result.Label, result.Node, result.When))
+                .Select(result => ((string?)result.Id, (string?)result.Label, result.Node ?? string.Empty, result.When))
                 .ToList();
         }
 

@@ -78,7 +78,8 @@ public static class TemplateFixtures
         new HashSet<string>(StringComparer.Ordinal) { "closing", "letrozole" },
         new HashSet<string>(StringComparer.Ordinal) { "addenda" },
         fan,
-        Bodies: Bodies());
+        Bodies: Bodies(),
+        Deliverables: new HashSet<string>(StringComparer.Ordinal) { "consult" });
 
     public static TemplateReferences Walk(string template, TemplateFan? fan = null, string subject = "Prompt 'p'") =>
         TemplateReferenceWalker.Walk(subject, template, Context(fan));
@@ -1122,5 +1123,54 @@ public class TemplateReferenceWalkerFlowTests
         var deferred = TemplateReferenceWalker.Walk("Snippet 's'", "{{ node.section_notes.content }}", TemplateFixtures.Context() with { ItemDeferred = true });
         Assert.True(deferred.IsValid, string.Join(" | ", deferred.Errors));
         Assert.Equal(new[] { "section_notes" }, deferred.Edges);
+    }
+}
+
+/// <summary>
+/// #1101 (package-format-v26-design.md § 3.1): the sixth object —
+/// deliverable.&lt;id&gt;.content, a deliverable's composed text: readable as text and
+/// recorded on the references (the walk makes it an edge on the sources), no
+/// value, no renderer pipe, no read in a condition; no object where the context
+/// carries no deliverables (≤25), though the word is reserved everywhere.
+/// </summary>
+public class TemplateReferenceWalkerDeliverableTests
+{
+    [Fact]
+    public void ADeliverablesContent_IsReadable_AndRecorded()
+    {
+        var refs = TemplateFixtures.Ok("Letter from:\n{{ deliverable.consult.content }}");
+
+        Assert.Equal(new[] { "consult" }, refs.DeliverableReads);
+        Assert.Empty(refs.Edges);
+        Assert.Empty(refs.Warnings);
+    }
+
+    [Theory]
+    [InlineData("{{ deliverable.consult }}", "reads deliverable 'consult' bare; read deliverable.consult.content")]
+    [InlineData("{{ deliverable }}", "reads 'deliverable' bare; name the object: deliverable.<id>.content")]
+    [InlineData("{{ deliverable.consult.value }}", "reads deliverable.consult.value, which is not a member (deliverable.<id> has .content)")]
+    [InlineData("{{ deliverable.nope.content }}", "reads deliverable 'nope', which the package does not declare")]
+    [InlineData("{{ deliverable.consult.content | concept_bullets }}", "pipes deliverable.consult.content through concept_bullets, but deliverable.consult composes sections; concept_bullets renders a concept_list node's text (node.<id>.content)")]
+    public void Refusals_NameTheRule(string template, string sentence)
+    {
+        TemplateFixtures.Refused(template, sentence);
+    }
+
+    [Fact]
+    public void ADeliverableRead_InACondition_IsRefused()
+    {
+        var walk = WorkflowConditionAt25.Walk("Deliverable 'letter' if", "deliverable.consult.content != \"\"", TemplateFixtures.Context(), _ => null);
+
+        Assert.Contains(walk.References.Errors, e => e.Contains("reads deliverable.consult; a condition decides before the sections compose — read a scalar node", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Below26_TheWordIsNoObject_ButReserved()
+    {
+        var refs = TemplateReferenceWalker.Walk("Prompt 'p'", "{{ deliverable.consult.content }}", TemplateFixtures.Context() with { Deliverables = null });
+
+        Assert.Contains("Prompt 'p' reads 'deliverable', which is not an object (input, node, snippet, item, macro, run, profile), a loop variable, or a Scriban builtin.", refs.Errors);
+        Assert.True(TemplateObjects.IsReserved("deliverable"));
+        TemplateFixtures.Refused("{{ for deliverable in snippet.sections }}{{ deliverable.content }}{{ end }}", "names a loop variable 'deliverable', a reserved object");
     }
 }

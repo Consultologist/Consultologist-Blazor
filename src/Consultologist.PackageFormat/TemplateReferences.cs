@@ -24,9 +24,15 @@ public sealed record TemplateReferences(
     IReadOnlyList<TemplateReadOccurrence> Occurrences,
     IReadOnlyList<TemplateBranchBlock> Branches,
     IReadOnlyList<string> Errors,
-    IReadOnlyList<string> Warnings)
+    IReadOnlyList<string> Warnings,
+    // #1101 (v26 design § 3.1): the deliverables whose composed text this
+    // template reads — an edge on each one's sources (the walk expands it).
+    IReadOnlySet<string>? Deliverables = null)
 {
     public bool IsValid => Errors.Count == 0;
+
+    /// <summary>#1101: the deliverable ids read, never null.</summary>
+    public IReadOnlySet<string> DeliverableReads => Deliverables ?? TemplateReferenceContext.NoIds;
 
     /// <summary>The node ids this template depends on, in first-read order.</summary>
     public IEnumerable<string> Edges => Nodes.Keys;
@@ -109,6 +115,7 @@ internal sealed class TemplateReferenceCollector
     private readonly HashSet<string> _runFacts = new(StringComparer.Ordinal);
     private readonly HashSet<string> _profileFacts = new(StringComparer.Ordinal);
     private readonly HashSet<TemplateRenderedRead> _rendered = new();
+    private readonly HashSet<string> _deliverables = new(StringComparer.Ordinal);
     private readonly List<TemplateReadOccurrence> _occurrences = new();
     private readonly List<TemplateBranchBlock?> _branches = new();
 
@@ -136,6 +143,8 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadItem(string member) => _itemMembers.Add(member);
 
+    public void ReadDeliverable(string id) => _deliverables.Add(id);
+
     public void ReadRunFact(string member) => _runFacts.Add(member);
 
     public void ReadProfileFact(string member) => _profileFacts.Add(member);
@@ -156,5 +165,6 @@ internal sealed class TemplateReferenceCollector
 
     public TemplateReferences ToReferences() => new(
         _inputs, _nodes, _snippets, _snippetFolders, _macroContents, _macroPrompts, _macroFolders, _itemMembers,
-        _runFacts, _profileFacts, _rendered, _occurrences, _branches.Where(b => b is not null).Cast<TemplateBranchBlock>().ToList(), Errors, Warnings);
+        _runFacts, _profileFacts, _rendered, _occurrences, _branches.Where(b => b is not null).Cast<TemplateBranchBlock>().ToList(), Errors, Warnings,
+        _deliverables);
 }

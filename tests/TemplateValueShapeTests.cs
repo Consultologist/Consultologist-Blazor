@@ -80,6 +80,7 @@ public class TemplateValueShapeTests
     [InlineData("snippet", true)]
     [InlineData("item", true)]
     [InlineData("macro", true)]
+    [InlineData("deliverable", true)] // #1101
     [InlineData("data", true)]
     [InlineData("bindings", true)]
     [InlineData("variables", true)]

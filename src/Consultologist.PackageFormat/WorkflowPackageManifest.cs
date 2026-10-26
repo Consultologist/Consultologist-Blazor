@@ -478,7 +478,9 @@ public static class WorkflowExpectedContent
 /// </summary>
 public sealed record WorkflowDeliverableSpec(
     string Id,
-    string Node,
+    // ≤25: the aggregator the deliverable names. v26 (#1101): retired — a
+    // deliverable names its `sources`; the strict reader yields null here.
+    string? Node,
     string Label,
     // v8: produced only when this holds (package-format-v8-design.md § 5).
     // Trailing optional — a v7 results block stays valid, and a deliverable

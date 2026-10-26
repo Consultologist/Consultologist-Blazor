@@ -142,6 +142,9 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
     /// <summary><c>run</c> or <c>profile</c>, awaiting a fact name.</summary>
     private sealed record FactsTarget(string Object) : Target;
 
+/// <summary>#1101 (v26 design § 3.1): a deliverable — its composed text, <c>.content</c>, and nothing else.</summary>
+private sealed record DeliverableTarget(string Id) : Target;
+
     /// <summary>
     /// A typed value (null shape = untyped, members pass). Not sealed: a node's
     /// <c>.content</c> and <c>.value</c> are shapes that remember whose they
@@ -154,6 +157,9 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
 
     /// <summary>#1058: <c>node.&lt;id&gt;.value</c> — a typed value that remembers it is a node's parsed output.</summary>
     private sealed record NodeValueTarget(string Path, TemplateValueShape Value) : ShapeTarget(Value);
+
+/// <summary>#1101: a deliverable's composed text read — text; a renderer pipe is refused (composed sections are no format's text).</summary>
+private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTarget(TemplateValueShape.Text);
 
     /// <summary>A Scriban builtin, a function result, anything the walker does not check.</summary>
     private sealed record OpaqueTarget : Target;
@@ -1233,10 +1239,20 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
 
             switch (root)
             {
+                // #1101: the sixth object exists where the context carries deliverables
+                // (26); below, the word is no object and meets the sentence below.
+                case TemplateObjects.Deliverable when _context.Deliverables is null:
+                    break;
+
+                case TemplateObjects.Deliverable when _condition:
+                    Errors.Add($"{_subject} reads {root}{(segments.Count > 0 && segments[0] is MemberSegment d ? "." + d.Name : string.Empty)}; a condition decides before the sections compose — read a scalar node.");
+                    return Refused;
+
                 case TemplateObjects.Input:
                 case TemplateObjects.Node:
                 case TemplateObjects.Snippet:
                 case TemplateObjects.Macro:
+                case TemplateObjects.Deliverable:
                     if (segments.Count == 0 || segments[0] is not MemberSegment first)
                     {
                         if (segments.Count > 0)
@@ -1294,6 +1310,7 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
             TemplateObjects.Node => "node.<id>.content or node.<id>.value",
             TemplateObjects.Snippet => "snippet.<id>.content",
             TemplateObjects.Macro => "macro.<id>.content or macro.<id>.prompt",
+            TemplateObjects.Deliverable => "deliverable.<id>.content",
             _ => root
         };
 
@@ -1310,6 +1327,15 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
 
                     _refs.ReadInput(id);
                     return new ShapeTarget(TemplateValueShape.FromDeclaration(declaration));
+
+                case TemplateObjects.Deliverable:
+                    if (_context.Deliverables is null || !_context.Deliverables.Contains(id))
+                    {
+                        Errors.Add($"{_subject} reads deliverable '{id}', which the package does not declare.");
+                        return Refused;
+                    }
+
+                    return new DeliverableTarget(id);
 
                 case TemplateObjects.Node:
                     // #1100 (v26 design § 1.2): a body node is read by bare id only from
@@ -1370,6 +1396,7 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
             SnippetTarget => TemplateMembers.Snippet.Contains(name, StringComparer.Ordinal),
             MacroTarget => TemplateMembers.Macro.Contains(name, StringComparer.Ordinal),
             NodeTarget => TemplateMembers.Node.Contains(name, StringComparer.Ordinal),
+            DeliverableTarget => TemplateMembers.Deliverable.Contains(name, StringComparer.Ordinal),
             LoopElementTarget element => TemplateMembers.LoopElement.Contains(name, StringComparer.Ordinal) || (element.Flow.Body?.ContainsKey(name) ?? false),
             FactsTarget { Object: TemplateObjects.Run } => TemplateMembers.Run.Contains(name, StringComparer.Ordinal),
             FactsTarget { Object: TemplateObjects.Profile } => TemplateMembers.Profile.Contains(name, StringComparer.Ordinal),
@@ -1442,6 +1469,16 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
 
                 case LoopElementTarget element:
                     return StepLoopElement(element, name, walked, before);
+
+                case DeliverableTarget deliverable:
+                    if (name != TemplateMembers.Content)
+                    {
+                        Errors.Add($"{_subject} reads {walked}, which is not a member (deliverable.<id> has .content).");
+                        return Refused;
+                    }
+
+                    _refs.ReadDeliverable(deliverable.Id);
+                    return new DeliverableContentTarget(before, deliverable.Id);
 
                 case ItemTarget item:
                     return StepItem(name, walked, item.Fan ?? _context.Fan);
@@ -1759,6 +1796,10 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
                     Errors.Add($"{_subject} reads macro '{id}' bare; read {walked}.content or {walked}.prompt.");
                     return Refused;
 
+                case DeliverableTarget deliverable:
+                    Errors.Add($"{_subject} reads deliverable '{deliverable.Id}' bare; read {walked}.content.");
+                    return Refused;
+
                 case FactsTarget facts:
                     Errors.Add($"{_subject} reads '{facts.Object}' bare; name the fact: {facts.Object}.{string.Join(" or " + facts.Object + ".", facts.Object == TemplateObjects.Run ? TemplateMembers.Run : TemplateMembers.Profile)}.");
                     return Refused;
@@ -1797,6 +1838,10 @@ private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) :
                 // an if/case whose branches disagree has no one format.
                 case NodeContentTarget { Node.Flow.Kind: TemplateFlowKind.For } content:
                     Errors.Add($"{_subject} pipes {walked} through {pipe}, but {content.Path} loops — a list has no one text; pipe the returned node inside the loop ({{{{ for e in {content.Path} }}}}{{{{ e.content | {pipe} }}}}{{{{ end }}}}) or read {content.Path}.content.");
+                    return Refused;
+
+                case DeliverableContentTarget composed:
+                    Errors.Add($"{_subject} pipes {walked} through {pipe}, but {composed.Path} composes sections; {pipe} renders a {format} node's text (node.<id>.content).");
                     return Refused;
 
                 case NodeContentTarget { Node.Flow: { Ret: null } } content:

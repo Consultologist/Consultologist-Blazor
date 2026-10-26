@@ -7,9 +7,9 @@ namespace Consultologist.Api.Tests;
 /// The 26 packages and the seam that lets them through while 26 is wired but
 /// not yet accepted (#1150; the bump is #1149). <see cref="Minimal"/> is the
 /// design's minimal 26 package (#1100: a loop over a snippet folder, its one
-/// body node returned; the deliverable still naming a node and the prompts still
-/// declared until #1101 and #1102 — <see cref="FlowErrors"/> sets those two
-/// sentences aside). <see cref="FromV25"/> is the 25 minimal with its version
+/// body node returned; #1101: the deliverable naming its sources; the prompts
+/// still declared until #1102 — <see cref="FlowErrors"/> sets that one sentence
+/// aside). <see cref="FromV25"/> is the 25 minimal with its version
 /// raised — invalid at 26 by design, every key 26 retires in it — for the
 /// retirement facts.
 /// </summary>
@@ -42,8 +42,9 @@ public static class V26Package
                     With: new Dictionary<string, JsonNode?> { ["of"] = "node.extract", ["in"] = "node.extract", ["failWith"] = "The note names problems the source does not." }),
                 new("sections", "Sections", For: "item in snippet.sections", Nodes: new List<string> { "section_notes" }, Ret: "node.section_notes"),
             },
-            // #1101: sources: ["node.sections"]; until then the retired key, one sentence.
-            Deliverables = new List<WorkflowDeliverableSpec> { new("consult", "node.sections", "Consultation note", Check: "node.coverage") },
+            // #1101: the deliverable composes the assessment and the loop (the 25
+            // aggregator's two sources), checked by coverage.
+            Deliverables = new List<WorkflowDeliverableSpec> { new("consult", null, "Consultation note", Check: "node.coverage", Sources: new List<string> { "node.assessment", "node.sections" }) },
         };
 
         var files26 = new Dictionary<string, string>(files, StringComparer.Ordinal)
@@ -70,14 +71,12 @@ public static class V26Package
     public static List<string> Warnings((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) => Validate(bundle).Warnings;
 
     /// <summary>
-    /// The errors but for the two the minimal earns until its issues land: the
-    /// deliverable's (#1101 — `node` retired, `sources` not yet read) and the
-    /// prompts' declaration (#1102). #1101 replaces this with validity.
+    /// The errors but for the one the minimal earns until #1102 lands: the
+    /// prompts' declaration (`prompts[]` is retired; a node names its file then).
+    /// #1102 replaces this with validity.
     /// </summary>
     public static List<string> FlowErrors((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
-        Errors(bundle).Where(e => !e.StartsWith("Deliverable ", StringComparison.Ordinal)
-            && !e.StartsWith("deliverables", StringComparison.Ordinal)
-            && !e.StartsWith("prompts is retired", StringComparison.Ordinal)).ToList();
+        Errors(bundle).Where(e => !e.StartsWith("prompts is retired", StringComparison.Ordinal)).ToList();
 
     public static List<string> FlowErrors(Func<WorkflowPackageManifest, WorkflowPackageManifest> change, Action<Dictionary<string, string>>? withFiles = null)
     {
@@ -239,6 +238,15 @@ public class WorkflowV26Tests
         var errors = V26Package.Errors(V26Package.FromV25()).Where(e => e.Contains("retired at specVersion 26", StringComparison.Ordinal)).ToList();
 
         Assert.Equal(5, errors.Count);
+    }
+
+    [Fact]
+    public void TheMinimalPackage_IsValid_ButForThePrompts()
+    {
+        // #1101: the first 26 package the path accepts — one sentence left, #1102's.
+        var errors = V26Package.Errors(V26Package.Minimal());
+
+        Assert.Equal(new[] { "prompts is retired at specVersion 26; a node names its prompt file (nodes[].prompt: \"<path>\")." }, errors);
     }
 
     [Fact]
