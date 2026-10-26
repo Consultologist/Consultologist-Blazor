@@ -54,7 +54,7 @@ public static partial class WorkflowPackageValidator
         var localFormats = ResolveFormatsAt25(manifest, files, catalog, errors);
         var snippets = ResolveSnippetsAt25(manifest, files, inputsById, errors);
         var flows = WorkflowFlowNodes.Resolve(manifest, snippets, inputsById, errors);
-        var nodes = ValidateNodesAt26(manifest, localFormats, catalog, inputsById, flows, errors);
+        var nodes = ValidateNodesAt26(manifest, files, localFormats, catalog, inputsById, flows, errors);
         ValidateMacroLibraryAt25(manifest, files, errors);
         ValidateCaseSubjectsAt26(flows, nodes, inputsById, errors);
 
@@ -189,6 +189,7 @@ public static partial class WorkflowPackageValidator
     /// </summary>
     private static IReadOnlyDictionary<string, NodeAt25> ValidateNodesAt26(
         WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
         IReadOnlyDictionary<string, ResolvedFormat> localFormats,
         WorkflowFormatCatalog? catalog,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
@@ -196,7 +197,6 @@ public static partial class WorkflowPackageValidator
         List<string> errors)
     {
         var nodes = new Dictionary<string, NodeAt25>(StringComparer.Ordinal);
-        var prompts = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
         var unresolvedCatalogueIds = new SortedSet<string>(StringComparer.Ordinal);
 
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
@@ -269,10 +269,15 @@ public static partial class WorkflowPackageValidator
             {
                 errors.Add($"Node '{node.Id}' must declare a prompt; format '{format.Id}' is {spec.Producer}.");
             }
-            else if (node.Prompt != null && !prompts.Contains(node.Prompt))
+            else if (node.Prompt != null && !files.ContainsKey(node.Prompt))
             {
-                // #1102: the prompt becomes a file path; until then the 25 declaration.
-                errors.Add($"Node '{node.Id}' names prompt '{node.Prompt}', which the package does not declare.");
+                // #1102 (v26 design § 4): a node names its prompt FILE — a declared
+                // prompt's id (the 25 spelling) is refused naming the file when the
+                // package holds it, else the file is missing.
+                var asFile = node.Prompt.Contains('/') ? null : $"prompts/{node.Prompt}.md";
+                errors.Add(asFile is not null && files.ContainsKey(asFile)
+                    ? $"Node '{node.Id}' names prompt '{node.Prompt}'; at specVersion 26 prompt is the file ({asFile})."
+                    : $"Node '{node.Id}' prompt '{node.Prompt}' is missing from the package.");
             }
 
             var validatable = spec.Type != WorkflowInputTypes.Text;

@@ -176,7 +176,7 @@ public class WorkflowDerivedEdgesTests
         // the flow node waits on, and the engine's stage one reads it as gating.
         var (manifest, files) = V26Package.Minimal();
         manifest = V26Package.WithNodes(manifest,
-            new WorkflowNodeSpec("full_workup", "Full work-up", Prompt: "assessment", Format: "prose"),
+            new WorkflowNodeSpec("full_workup", "Full work-up", Prompt: "prompts/assessment.md", Format: "prose"),
             new WorkflowNodeSpec("triage", "Triage", If: "node.scope.value == \"in_scope\"", Then: new WorkflowFlowBodySpec(new List<string> { "full_workup" }, "node.full_workup")));
         var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
         var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
@@ -216,6 +216,22 @@ public class WorkflowDerivedEdgesTests
     }
 
     [Fact]
+    public void At26_TheWalk_ReadsANodesPromptByPath_UnderTheNodesSubject()
+    {
+        // #1102: no prompts[] at 26 — the node names its file; the walked template
+        // is the node's, in the family of "Node 'x' condition".
+        var (manifest, files) = V26Package.Minimal();
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        var prompt = Assert.Single(walk.Templates, t => t.Kind == TemplateKind.Prompt && t.Id == "assessment");
+        Assert.Equal("Node 'assessment' prompt", prompt.Subject);
+        Assert.True(walk.HasPrompt("assessment"));
+        Assert.False(walk.HasPrompt("coverage"));
+        Assert.Contains("extract", walk.EdgesOf("assessment"));
+    }
+
+    [Fact]
     public void At26_ADeliverableRead_IsAnEdgeOnItsSources_AtTheSharedWalk()
     {
         // #1101: deliverable.consult.content read by a node makes that node wait on
@@ -223,8 +239,7 @@ public class WorkflowDerivedEdgesTests
         var (manifest, files) = V26Package.Minimal();
         manifest = manifest with
         {
-            Prompts = manifest.Prompts!.Append(new WorkflowPromptSpec("letter", "prompts/letter.md", new List<string>())).ToList(),
-            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("letter", "Letter", Prompt: "letter", Format: "prose")).ToList(),
+            Nodes = manifest.Nodes!.Append(new WorkflowNodeSpec("letter", "Letter", Prompt: "prompts/letter.md", Format: "prose")).ToList(),
         };
         files["prompts/letter.md"] = "Dear doctor,\n{{ deliverable.consult.content }}";
 
