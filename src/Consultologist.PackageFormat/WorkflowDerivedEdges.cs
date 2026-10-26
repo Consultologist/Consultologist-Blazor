@@ -61,6 +61,7 @@ public static class WorkflowDerivedEdges
         private readonly Dictionary<string, WalkNode> _nodes;
         private readonly Dictionary<(TemplateKind, string), TemplateReferences> _byKey;
         private readonly Dictionary<string, IReadOnlyList<string>> _folders;
+        private readonly Dictionary<string, IReadOnlyList<string>> _macroFolders;
         private readonly Dictionary<string, IReadOnlyList<string>> _deliverableSources;
 
         internal Walk(
@@ -69,8 +70,11 @@ public static class WorkflowDerivedEdges
             IReadOnlyDictionary<string, TemplateReferences> parameters,
             IReadOnlyDictionary<string, IReadOnlyList<string>> folders,
             IReadOnlyList<WalkedCondition>? conditions = null,
-            IReadOnlyDictionary<string, IReadOnlyList<string>>? deliverableSources = null)
+            IReadOnlyDictionary<string, IReadOnlyList<string>>? deliverableSources = null,
+            // #1099: a macro folder's item keys (<folder>/<item>), as _folders for snippets.
+            IReadOnlyDictionary<string, IReadOnlyList<string>>? macroFolders = null)
         {
+            _macroFolders = (macroFolders ?? new Dictionary<string, IReadOnlyList<string>>()).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
             _nodes = nodes.ToDictionary(n => n.Node.Id, StringComparer.Ordinal);
             _deliverableSources = (deliverableSources ?? new Dictionary<string, IReadOnlyList<string>>()).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
             Templates = templates;
@@ -121,6 +125,7 @@ public static class WorkflowDerivedEdges
             {
                 edges.UnionWith(EdgesIn(refs));
                 slots.UnionWith(refs.MacroPrompts);
+                slots.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
             }
 
             if (_byKey.TryGetValue((TemplateKind.Prompt, nodeId), out var prompt))
@@ -216,6 +221,11 @@ public static class WorkflowDerivedEdges
                 reached.UnionWith(refs.MacroContents);
                 reached.UnionWith(refs.MacroPrompts);
                 slots.UnionWith(refs.MacroPrompts);
+                // #1099: a folder iterated is used; its items are reached through the element's reads.
+                reached.UnionWith(refs.MacroFolders);
+                reached.UnionWith(MacroFolderItems(refs.MacroFolderContents));
+                reached.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
+                slots.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
             }
 
             foreach (var nodeId in _nodes.Keys.Order(StringComparer.Ordinal))
@@ -334,7 +344,11 @@ public static class WorkflowDerivedEdges
                 return reads;
             }
 
-            void Take(TemplateReferences refs) => reads.UnionWith(refs.MacroPrompts);
+            void Take(TemplateReferences refs)
+            {
+                reads.UnionWith(refs.MacroPrompts);
+                reads.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
+            }
 
             Visit(prompt, seen, Take);
 
@@ -516,7 +530,27 @@ public static class WorkflowDerivedEdges
                 VisitKey((TemplateKind.Macro, macro), seen, take);
                 VisitMacroGate(macro, seen, take);
             }
+
+            // #1099 (v26 design § 5.3): a macro folder's element read is every item's.
+            foreach (var item in MacroFolderItems(refs.MacroFolderContents))
+            {
+                VisitKey((TemplateKind.Macro, item), seen, take);
+                VisitMacroGate(item, seen, take);
+            }
+
+            foreach (var item in MacroFolderItems(refs.MacroFolderPrompts))
+            {
+                VisitKey((TemplateKind.Instruction, item), seen, take);
+                VisitMacroGate(item, seen, take);
+            }
         }
+
+        /// <summary>#1099: the item keys of the macro folders named, in the index's order.</summary>
+        private IEnumerable<string> MacroFolderItems(IReadOnlySet<string>? folders) =>
+            (folders ?? (IReadOnlySet<string>)new HashSet<string>()).SelectMany(f => _macroFolders.GetValueOrDefault(f) ?? Array.Empty<string>());
+
+        /// <summary>#1099: a macro folder's item keys, in the index's order (empty for a folder the walk did not see).</summary>
+        public IReadOnlyList<string> MacroFolderItemsOf(string folder) => _macroFolders.GetValueOrDefault(folder) ?? Array.Empty<string>();
 
         /// <summary>
         /// #1090 (v26 design § 2.2): a macro's own gate is judged where the macro
@@ -575,7 +609,10 @@ public static class WorkflowDerivedEdges
         Func<TemplateFan?, TemplateReferenceContext> contextFor,
         // #1090: the headers by path when the caller resolved the texts (the
         // validator); null and the walk resolves them itself at 26.
-        IReadOnlyDictionary<string, WorkflowTextHeader>? headers = null)
+        IReadOnlyDictionary<string, WorkflowTextHeader>? headers = null,
+        // #1099 (v26 design § 5.3): the macro folders resolved (Collections keyed by
+        // folder id; each item's header on the item) — null and there are none.
+        WorkflowPackageData? macros = null)
     {
         // #1105 (v26 design § 5): at 26 the files may still carry headers (the
         // engine's and the editor's entry gives the package as published; the
@@ -752,6 +789,38 @@ public static class WorkflowDerivedEdges
             }
         }
 
+        // #1099 (v26 design § 5.3): a macro folder's items — each a macro text
+        // keyed <folder>/<item>, its instruction, its own gate — walked as the
+        // flat macros are; read through {{ for m in macro.<folder> }}.
+        var macroFolders = new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+
+        foreach (var (folder, collection) in macros?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
+        {
+            var keys = new List<string>();
+
+            foreach (var item in collection.Items)
+            {
+                var key = SnippetItemKey(folder, item.Id);
+                keys.Add(key);
+                var text = item.Fields.GetValueOrDefault("content") ?? string.Empty;
+                var subject = $"Macro '{key}'";
+                templates.Add(new WalkedTemplate(TemplateKind.Macro, key, subject, text, TemplateReferenceWalker.Walk(subject, text, snippetContext), snippetContext));
+
+                if (!string.IsNullOrWhiteSpace(item.Header?.Instruction))
+                {
+                    var instructionSubject = $"Macro '{key}' instruction";
+                    templates.Add(new WalkedTemplate(TemplateKind.Instruction, key, instructionSubject, item.Header.Instruction, TemplateReferenceWalker.Walk(instructionSubject, item.Header.Instruction, snippetContext), snippetContext));
+                }
+
+                if (!string.IsNullOrWhiteSpace(item.Header?.If))
+                {
+                    WalkCondition(ConditionSite.Macro, key, null, $"Macro '{key}' if", item.Header.If, null);
+                }
+            }
+
+            macroFolders[folder] = keys;
+        }
+
         foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())
         {
             WalkCondition(ConditionSite.Deliverable, deliverable.Id, null, $"Deliverable '{deliverable.Id}' condition", deliverable.When, null);
@@ -765,7 +834,7 @@ public static class WorkflowDerivedEdges
             }
         }
 
-        return new Walk(nodes, templates, parameters, folders, conditions, DeliverableSourcesOf(manifest));
+        return new Walk(nodes, templates, parameters, folders, conditions, DeliverableSourcesOf(manifest), macroFolders);
     }
 
     /// <summary>#1101: each deliverable's sources as node ids (the node.&lt;id&gt; entries; the validator names a misspelled one).</summary>
@@ -882,7 +951,17 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats,
         out WorkflowPackageData snippets,
-        out Func<TemplateFan?, TemplateReferenceContext> contextFor)
+        out Func<TemplateFan?, TemplateReferenceContext> contextFor) =>
+        PrepareNodes(manifest, files, formats, out snippets, out contextFor, out _);
+
+    /// <summary>#1099: the same, with the macro folders resolved at 26 (null below, or when the package declares none) — hand them to <see cref="WalkAll"/>.</summary>
+    public static IReadOnlyList<WalkNode> PrepareNodes(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats,
+        out WorkflowPackageData snippets,
+        out Func<TemplateFan?, TemplateReferenceContext> contextFor,
+        out WorkflowPackageData? macroFolders)
     {
         var discard = new List<string>();
         // #1105 (v26 design § 5): at 26 the files hold headers Scriban never
@@ -956,7 +1035,10 @@ public static class WorkflowDerivedEdges
 
         var snippetIds = content.Scalars.Keys.ToHashSet(StringComparer.Ordinal);
         var folderIds = content.Collections.Keys.ToHashSet(StringComparer.Ordinal);
-        var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        // #1099: at 26 a macro entry may be a folder — resolved as the validator resolves it.
+        macroFolders = texts is null ? null : WorkflowTextHeaders.ResolveMacroFolders(manifest, texts, discard);
+        var macroFolderIds = macroFolders?.Collections.Keys.ToHashSet(StringComparer.Ordinal) ?? TemplateReferenceContext.NoIds;
+        var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).Where(id => !macroFolderIds.Contains(id)).ToHashSet(StringComparer.Ordinal);
         var bodies = flows.Flows.Count > 0 ? flows.BodyScopes : null;
         // #1101: at 26 a template reads deliverable.<id>.content.
         var deliverableIds = manifest.SpecVersion >= 26
@@ -965,7 +1047,7 @@ public static class WorkflowDerivedEdges
 
         var labelled = manifest.SpecVersion >= 26;
 
-        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, TemplateReferenceContext.NoIds, fan, Bodies: bodies, Deliverables: deliverableIds, Labelled: labelled);
+        contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, macroFolderIds, fan, Bodies: bodies, Deliverables: deliverableIds, Labelled: labelled);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {

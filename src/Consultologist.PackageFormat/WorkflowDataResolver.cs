@@ -151,7 +151,7 @@ public static class WorkflowDataResolver
                 ["content"] = content,
             };
 
-            items.Add(new WorkflowDataItem(itemId, fields, null, header?.If));
+            items.Add(new WorkflowDataItem(itemId, fields, null, header?.If, header));
         }
 
         return new WorkflowDataCollection(new[] { "id", "label", "content" }, items);

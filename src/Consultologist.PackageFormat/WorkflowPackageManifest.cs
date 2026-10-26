@@ -1059,7 +1059,11 @@ public sealed record WorkflowDataItem(
     // validator (input-only) and the job start (the folder's effective size).
     string? When = null,
     // v26 (#1165): the same gate keyed `if` (`when` is retired at 26).
-    string? If = null);
+    string? If = null,
+    // #1099 (v26 design § 5.3): the item file's header, whole — a macro folder's
+    // item carries its instruction, option and gate here; a snippet item's
+    // label and if are read into Fields and If as before.
+    WorkflowTextHeader? Header = null);
 
 /// <summary>A resolved data collection: the declared item shape plus the items, in index order.</summary>
 public sealed record WorkflowDataCollection(

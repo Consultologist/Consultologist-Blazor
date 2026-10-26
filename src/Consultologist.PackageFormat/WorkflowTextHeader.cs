@@ -316,6 +316,23 @@ public static class WorkflowTextHeaders
         var macros = new List<WorkflowMacroSpec>();
         foreach (var macro in manifest.Macros ?? new List<WorkflowMacroSpec>())
         {
+            // #1099 (§ 5.3): a macro folder — the index an ordered list, each item a
+            // macro file with the macro key set (the kind follows the declaration).
+            if (macro.File is { } dir && dir.EndsWith('/'))
+            {
+                if (files.TryGetValue(dir + WorkflowDataResolver.IndexFileName, out var indexJson)
+                    && ReadIndexAt26(indexJson, macro.Id, "Macro", new List<string>()) is { } items)
+                {
+                    foreach (var (_, file) in items)
+                    {
+                        Take(WorkflowTextKind.Macro, dir + file);
+                    }
+                }
+
+                macros.Add(macro);
+                continue;
+            }
+
             if (!string.IsNullOrWhiteSpace(macro.File))
             {
                 Take(WorkflowTextKind.Macro, macro.File);
@@ -336,5 +353,21 @@ public static class WorkflowTextHeaders
 
         var effective = manifest.Macros is null ? manifest : manifest with { Macros = macros };
         return new WorkflowResolvedTexts(effective, bodies, headers);
+    }
+
+    /// <summary>
+    /// #1099 (§ 5.3): the macro folders resolved through the shared resolver —
+    /// the entries whose file ends with '/', as a table folder id → directory,
+    /// with the noun "Macro" in every sentence; each item carries its header.
+    /// Null when the package declares no folder.
+    /// </summary>
+    public static WorkflowPackageData? ResolveMacroFolders(WorkflowPackageManifest manifest, WorkflowResolvedTexts texts, List<string> errors)
+    {
+        var folders = (manifest.Macros ?? new List<WorkflowMacroSpec>())
+            .Where(m => m.File is { } file && file.EndsWith('/'))
+            .GroupBy(m => m.Id, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.First().File, StringComparer.Ordinal);
+
+        return folders.Count == 0 ? null : WorkflowDataResolver.Resolve(folders, "Macro", texts.Files, errors, texts.Headers);
     }
 }

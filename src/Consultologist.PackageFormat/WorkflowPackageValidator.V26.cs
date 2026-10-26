@@ -63,9 +63,12 @@ public static partial class WorkflowPackageValidator
 
         var localFormats = ResolveFormatsAt25(manifest, files, catalog, errors);
         var snippets = ResolveSnippetsAt26(manifest, texts, errors);
+        // #1099 (§ 5.3): the macro folders through the shared resolver.
+        var macroFolders = WorkflowTextHeaders.ResolveMacroFolders(manifest, texts, errors);
         var flows = WorkflowFlowNodes.Resolve(manifest, snippets, inputsById, errors);
         var nodes = ValidateNodesAt26(manifest, files, localFormats, catalog, inputsById, flows, errors);
-        ValidateMacroLibraryAt26(manifest, files, errors);
+        ValidateMacroLibraryAt26(manifest, files, macroFolders, errors);
+        ValidateMacroPlacementsAt26(manifest, macroFolders, errors);
         ValidateCaseSubjectsAt26(flows, nodes, inputsById, errors);
 
         // The plain nodes' shapes first; a flow node's is built over them (§ 1.3).
@@ -77,7 +80,8 @@ public static partial class WorkflowPackageValidator
         {
             nodeShapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, plainShapes);
         }
-        var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).ToHashSet(StringComparer.Ordinal);
+        var macroFolderIds = macroFolders?.Collections.Keys.ToHashSet(StringComparer.Ordinal) ?? TemplateReferenceContext.NoIds;
+        var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).Where(id => !macroFolderIds.Contains(id)).ToHashSet(StringComparer.Ordinal);
         var bodies = flows.BodyScopes;
         var deliverableIds = (manifest.Deliverables ?? new List<WorkflowDeliverableSpec>()).Select(d => d.Id).ToHashSet(StringComparer.Ordinal);
 
@@ -85,7 +89,7 @@ public static partial class WorkflowPackageValidator
             inputShapes, nodeShapes,
             snippets.Scalars.Keys.ToHashSet(StringComparer.Ordinal),
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
-            macroIds, TemplateReferenceContext.NoIds, fan,
+            macroIds, macroFolderIds, fan,
             Bodies: bodies, Deliverables: deliverableIds, Labelled: true);
 
         var walk = WorkflowDerivedEdges.WalkAll(
@@ -93,7 +97,7 @@ public static partial class WorkflowPackageValidator
             nodes.Values.Select(n => new WorkflowDerivedEdges.WalkNode(
                 n.Node, nodeShapes.GetValueOrDefault(n.Node.Id), n.Format?.Spec.Parameters, n.Fan,
                 Scope: flows.Owner.GetValueOrDefault(n.Node.Id))).ToList(),
-            snippets, ContextFor, texts.Headers);
+            snippets, ContextFor, texts.Headers, macroFolders);
         var walked = walk.Templates;
         TakeSentences(walk, errors, warnings);
         var edges = DeriveEdgesAt26(manifest, nodes, walk, flows, errors);
@@ -101,9 +105,9 @@ public static partial class WorkflowPackageValidator
 
         ValidateConditionsAt26(walk, flows, errors);
         ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
-        ValidateInstructionsAt26(manifest, nodes, walk, errors);
-        ValidateReferenceGraphAt25(walked, snippets, errors);
-        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes), deliverableIds, labelled: true);
+        ValidateInstructionsAt26(manifest, nodes, walk, macroFolders, errors);
+        ValidateReferenceGraphAt25(walked, snippets, errors, macroFolders);
+        RenderProbeAt25(walk, inputsById, nodes, snippets, manifest, errors, node => ProbeFlowNodesAt26(node, flows, nodeShapes), deliverableIds, labelled: true, macroFolders: macroFolders);
         ValidateDeliverablesAt26(manifest, nodes, walk, flows, nodeShapes, errors);
 
         var specs = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList();
@@ -219,7 +223,7 @@ public static partial class WorkflowPackageValidator
     /// header's, required only where read inline (#1096,
     /// <see cref="ValidateInstructionsAt26"/>, after the walk).
     /// </summary>
-    private static void ValidateMacroLibraryAt26(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files, List<string> errors)
+    private static void ValidateMacroLibraryAt26(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files, WorkflowPackageData? macroFolders, List<string> errors)
     {
         var ids = new HashSet<string>(StringComparer.Ordinal);
 
@@ -237,9 +241,65 @@ public static partial class WorkflowPackageValidator
                 continue;
             }
 
+            // #1099 (§ 5.3): a folder — its index and items are the resolver's sentences; its item ids snake_case.
+            if (macro.File is { } dir && dir.EndsWith('/'))
+            {
+                foreach (var item in macroFolders?.Collections.GetValueOrDefault(macro.Id)?.Items ?? Array.Empty<WorkflowDataItem>())
+                {
+                    if (!WorkflowDeclaredIds.IsValid(item.Id))
+                    {
+                        errors.Add($"Macro folder '{macro.Id}' item id '{item.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+                    }
+                }
+
+                continue;
+            }
+
             if (string.IsNullOrWhiteSpace(macro.File) || !files.ContainsKey(macro.File))
             {
                 errors.Add($"Macro '{macro.Id}' file '{macro.File}' is missing from the package.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// #1099 (§ 5.3): a macro folder is read, not placed, at 26 — placing the
+    /// folder, or an item by <c>&lt;folder&gt;.&lt;item&gt;</c>, waits for a package
+    /// that needs it (the id's shape, the placement's identity and reachability
+    /// through a folder are three decisions that want a real use).
+    /// </summary>
+    private static void ValidateMacroPlacementsAt26(WorkflowPackageManifest manifest, WorkflowPackageData? macroFolders, List<string> errors)
+    {
+        if (macroFolders is null)
+        {
+            return;
+        }
+
+        void Check(string where, string id)
+        {
+            if (macroFolders.Collections.ContainsKey(id))
+            {
+                errors.Add($"{where} names macro folder '{id}'; a folder is read ({{{{ for m in macro.{id} }}}}), not placed, at specVersion 26.");
+            }
+            else if (id.IndexOf('.') is > 0 and var dot && macroFolders.Collections.ContainsKey(id[..dot]))
+            {
+                errors.Add($"{where} names folder item '{id}'; placing a folder item waits for a package that needs it — read the folder ({{{{ for m in macro.{id[..dot]} }}}}).");
+            }
+        }
+
+        foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+        {
+            foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
+            {
+                Check($"Node '{node.Id}' macro '{instance.Id}'", instance.Id);
+            }
+        }
+
+        foreach (var deliverable in manifest.Deliverables ?? new List<WorkflowDeliverableSpec>())
+        {
+            foreach (var instance in deliverable.Macros ?? new List<WorkflowDeliverableMacroSpec>())
+            {
+                Check($"Deliverable '{deliverable.Id}' macro '{instance.Id}'", instance.Id);
             }
         }
     }
@@ -256,24 +316,41 @@ public static partial class WorkflowPackageValidator
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         WorkflowDerivedEdges.Walk walk,
+        WorkflowPackageData? macroFolders,
         List<string> errors)
     {
         var readers = nodes.Keys.Order(StringComparer.Ordinal)
             .Select(nodeId => (NodeId: nodeId, Reads: walk.PromptReadsOf(nodeId)))
             .ToList();
 
+        void Require(string key, string? instruction, string file)
+        {
+            if (!string.IsNullOrWhiteSpace(instruction))
+            {
+                return;
+            }
+
+            var reader = readers.FirstOrDefault(r => r.Reads.Contains(key)).NodeId;
+            if (reader is not null)
+            {
+                errors.Add($"Macro '{key}' is read inline by node '{reader}' and declares no instruction; the model is told nothing ({file}).");
+            }
+        }
+
         foreach (var macro in (manifest.Macros ?? new List<WorkflowMacroSpec>()).DistinctBy(m => m.Id, StringComparer.Ordinal))
         {
-            if (!string.IsNullOrWhiteSpace(macro.Instruction))
+            if (macro.File is { } dir && dir.EndsWith('/'))
             {
+                // #1099: a folder's items, read through {{ for m in macro.<folder> }}{{ m.prompt }}.
+                foreach (var item in macroFolders?.Collections.GetValueOrDefault(macro.Id)?.Items ?? Array.Empty<WorkflowDataItem>())
+                {
+                    Require(WorkflowDerivedEdges.SnippetItemKey(macro.Id, item.Id), item.Header?.Instruction, dir + item.Id + ".md");
+                }
+
                 continue;
             }
 
-            var reader = readers.FirstOrDefault(r => r.Reads.Contains(macro.Id)).NodeId;
-            if (reader is not null)
-            {
-                errors.Add($"Macro '{macro.Id}' is read inline by node '{reader}' and declares no instruction; the model is told nothing ({macro.File}).");
-            }
+            Require(macro.Id, macro.Instruction, macro.File);
         }
     }
 
@@ -627,7 +704,7 @@ public static partial class WorkflowPackageValidator
             var offending = refs.Nodes.Keys.Select(id => $"{TemplateObjects.Node}.{id}")
                 .Concat(refs.Snippets.Select(id => $"{TemplateObjects.Snippet}.{id}"))
                 .Concat(refs.SnippetFolders.Select(id => $"{TemplateObjects.Snippet}.{id}"))
-                .Concat(refs.MacroContents.Concat(refs.MacroPrompts).Select(id => $"{TemplateObjects.Macro}.{id}"))
+                .Concat(refs.MacroContents.Concat(refs.MacroPrompts).Concat(refs.MacroFolders).Select(id => $"{TemplateObjects.Macro}.{id}"))
                 // #1094 (§ 5.4, decided 2026-10-26): the item's own id is a static fact — allowed, typed against the folder by the walker.
                 .Concat(refs.ItemMembers.Where(m => m != TemplateMembers.Id).Select(m => $"{TemplateObjects.Item}.{m}"))
                 .Concat(refs.RunFacts.Select(m => $"{TemplateObjects.Run}.{m}"))

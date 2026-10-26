@@ -1494,6 +1494,19 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                             _refs.ReadMacroPrompt(macro.Id);
                         }
                     }
+                    else if (macro.Folder is not null)
+                    {
+                        // #1099 (v26 design § 5.3): a folder element's read is a read of
+                        // every item — the walk expands it to the folder's items.
+                        if (name == TemplateMembers.Content)
+                        {
+                            _refs.ReadMacroFolderContent(macro.Folder);
+                        }
+                        else if (name == TemplateMembers.Prompt || name == TemplateMembers.Instruction)
+                        {
+                            _refs.ReadMacroFolderPrompt(macro.Folder);
+                        }
+                    }
 
                     return new ShapeTarget(TemplateValueShape.Text);
 
