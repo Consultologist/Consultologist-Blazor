@@ -223,10 +223,10 @@ public class WorkflowV26HeaderTests
     public void AFolderItemsIf_IsWalked_AtItsSite()
     {
         var bad = Errors(files => files["snippets/sections/hpi.md"] = V26Package.Header("HPI", @if: "input.kind == \"maybe\"") + "History.");
-        Assert.Contains(bad, e => e.StartsWith("Snippet folder 'sections' item 'hpi' condition", StringComparison.Ordinal) && e.Contains("'maybe'", StringComparison.Ordinal));
+        Assert.Contains(bad, e => e.StartsWith("Snippet folder 'sections' item 'hpi' if", StringComparison.Ordinal) && e.Contains("'maybe'", StringComparison.Ordinal));
 
         Assert.Contains(Errors(files => files["snippets/sections/hpi.md"] = V26Package.Header("HPI", @if: "node.scope.value == \"in_scope\"") + "History."),
-            e => e.StartsWith("Snippet folder 'sections' item 'hpi' condition reads node.scope", StringComparison.Ordinal));
+            e => e.StartsWith("Snippet folder 'sections' item 'hpi' if reads node.scope", StringComparison.Ordinal));
 
         Assert.Empty(Errors(files => files["snippets/sections/hpi.md"] = V26Package.Header("HPI", @if: "input.kind == \"new\"") + "History."));
     }
