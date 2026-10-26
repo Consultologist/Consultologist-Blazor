@@ -233,7 +233,13 @@ public static class TemplateRenderer
             var array = new ScriptArray();
             foreach (var item in items)
             {
-                array.Add(Rendered(subject, $"{TemplateObjects.Snippet}.{folder}[{item.Id}]", item.Id, item.Name, item.Text, $"Snippet '{folder}/{item.Id}'", globals, trace));
+                // #1116 (v26 design § 5.4): a declared item is a member of its folder,
+                // read directly as snippet.<folder>.<item>; an item gated off (#1094,
+                // the engine's key <folder>/<item>) reads empty there.
+                var inert = scope.InertSnippets?.Contains($"{folder}/{item.Id}") == true;
+                var rendered = Rendered(subject, $"{TemplateObjects.Snippet}.{folder}[{item.Id}]", item.Id, item.Name, inert ? string.Empty : item.Text, $"Snippet '{folder}/{item.Id}'", globals, trace);
+                array.Add(rendered);
+                array.ScriptObject[item.Id] = rendered;
             }
 
             snippet[folder] = array;
@@ -315,7 +321,10 @@ public static class TemplateRenderer
             var array = new ScriptArray();
             foreach (var item in items)
             {
-                array.Add(MacroObject($"{folder}/{item.Id}", $"{TemplateObjects.Macro}.{folder}[{item.Id}]", item));
+                var rendered = MacroObject($"{folder}/{item.Id}", $"{TemplateObjects.Macro}.{folder}[{item.Id}]", item);
+                array.Add(rendered);
+                // #1116: macro.<folder>.<item> reads the item directly.
+                array.ScriptObject[item.Id] = rendered;
             }
 
             macro[folder] = array;

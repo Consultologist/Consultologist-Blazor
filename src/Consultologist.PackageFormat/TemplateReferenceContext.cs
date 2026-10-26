@@ -41,7 +41,13 @@ public sealed record TemplateReferenceContext(
     // #1105 (v26 design § 5.2): at 26 the human-facing member is .label, not
     // .name, on a snippet, a macro and a fan item, and a macro carries
     // .instruction — the header's facts, readable by the names the header uses.
-    bool Labelled = false)
+    bool Labelled = false,
+    // #1116 (v26 design § 5.4): a folder's item ids, so a declared item is a
+    // member of its folder — snippet.<folder>.<item>, macro.<folder>.<item> —
+    // read directly with the folder's member set; null (≤25) and a folder is
+    // iterated only.
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? SnippetFolderItems = null,
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? MacroFolderItems = null)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 

@@ -1004,7 +1004,13 @@ public static partial class WorkflowPackageValidator
             var items = new ScriptArray();
             foreach (var item in collection.Items)
             {
-                items.Add(SnippetProbe(item.Id));
+                var probe = SnippetProbe(item.Id);
+                items.Add(probe);
+                // #1116 (v26 design § 5.4): a declared item is a member of its folder — snippet.<folder>.<item>.
+                if (labelled)
+                {
+                    items.ScriptObject[item.Id] = probe;
+                }
             }
 
             snippet.Add(folder, items);
@@ -1028,7 +1034,10 @@ public static partial class WorkflowPackageValidator
             var items = new ScriptArray();
             foreach (var item in collection.Items)
             {
-                items.Add(new ScriptObject { ["id"] = item.Id, [nameMember] = "placeholder", ["content"] = "placeholder", ["prompt"] = "placeholder", [TemplateMembers.Instruction] = "placeholder" });
+                var probe = new ScriptObject { ["id"] = item.Id, [nameMember] = "placeholder", ["content"] = "placeholder", ["prompt"] = "placeholder", [TemplateMembers.Instruction] = "placeholder" };
+                items.Add(probe);
+                // #1116: macro.<folder>.<item> reads the item directly.
+                items.ScriptObject[item.Id] = probe;
             }
 
             macro[folder] = items;
