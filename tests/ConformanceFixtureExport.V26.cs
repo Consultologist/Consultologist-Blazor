@@ -236,5 +236,12 @@ public partial class ConformanceFixtureExport
             Node(Folder(), "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("section_notes.hpi", At: WorkflowNodeMacroSpec.After) } }));
         Invalid("invalid-macro-folder-prompt-read-without-instruction-at-26", "A folder item read inline through the folder with no instruction.", Files(Folder(), fs => fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes") + "Plan noted."));
         Invalid("invalid-macro-folder-read-as-a-value-at-26", "A macro folder read as a value — a folder is iterated.", Folder("{{ macro.section_notes }}"));
+
+        // ======================================================= § 5.4: a folder item readable directly (#1116)
+        Valid("v26-direct-item-read", "A snippet folder item read directly — snippet.<folder>.<item>.content, with .id and .label.", P("Assess. {{ snippet.sections.hpi.content }} ({{ snippet.sections.hpi.label }})"));
+        Valid("v26-direct-macro-item-read", "A macro folder item read directly — macro.<folder>.<item>.prompt and .content.", Folder("{{ macro.section_notes.hpi.prompt }} {{ macro.section_notes.plan.content }}"));
+        Invalid("invalid-direct-item-undeclared-at-26", "A direct read of an item the folder does not contain.", P("Assess. {{ snippet.sections.nope.content }}"));
+        Invalid("invalid-direct-macro-item-prompt-without-instruction-at-26", "A macro folder item read inline directly with no instruction.",
+            Files(Folder("{{ macro.section_notes.plan.prompt }}"), fs => fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes") + "Plan noted."));
     }
 }
