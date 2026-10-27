@@ -1358,7 +1358,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 entry => entry.Key,
                 entry => (IReadOnlyList<IReadOnlyDictionary<string, string>>)entry.Value.Items
                     // v26 (#1154, design § 2.1): the gate keyed `if`, judged with
-                    // the item in hand (the rule allows inputs and item.id).
+                    // the item in hand (the rule allows inputs and item.id). #1179:
+                    // the ONE judgement of an item's gate — the render reads the
+                    // settled set, never re-judges (ConsultGatedScope.JudgeSnippets).
                     .Where(item => item.If is { } gate
                         ? scope!.WithItem(entry.Key, item).Holds($"Snippet folder '{entry.Key}' item '{item.Id}' if", gate)
                         : item.When is null

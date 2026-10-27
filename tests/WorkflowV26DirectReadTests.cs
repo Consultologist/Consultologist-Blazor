@@ -105,7 +105,10 @@ public class WorkflowV26DirectReadTests
 
         Assert.Equal("History. hpi [History.Plan.] " + WorkflowMacroMechanics.Prompt("plan", "Note the plan.") + " Plan noted.",
             TemplateRenderer.Render("Prompt 'p'", "{{ snippet.sections.hpi.content }} {{ snippet.sections.hpi.id }} [{{ for s in snippet.sections }}{{ s.content }}{{ end }}] {{ macro.section_notes.plan.prompt }} {{ macro.section_notes.plan.content }}", Scope()));
-        // An item gated off (#1094, the engine's key) reads empty directly.
-        Assert.Equal("[]", TemplateRenderer.Render("Prompt 'p'", "[{{ snippet.sections.hpi.content }}]", Scope(new HashSet<string>(StringComparer.Ordinal) { "sections/hpi" })));
+        // An item gated off (#1094, the engine's key) reads empty directly — and (#1179,
+        // § 5.4) is left out of every loop over its folder; the list's size is the live count.
+        var gated = Scope(new HashSet<string>(StringComparer.Ordinal) { "sections/hpi" });
+        Assert.Equal("[]", TemplateRenderer.Render("Prompt 'p'", "[{{ snippet.sections.hpi.content }}]", gated));
+        Assert.Equal("[Plan.] 1 hpi", TemplateRenderer.Render("Prompt 'p'", "[{{ for s in snippet.sections }}{{ s.content }}{{ end }}] {{ snippet.sections | array.size }} {{ snippet.sections.hpi.id }}", gated));
     }
 }

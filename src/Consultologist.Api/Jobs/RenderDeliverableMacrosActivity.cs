@@ -98,6 +98,8 @@ public sealed class RenderDeliverableMacrosActivity
         if (package.Manifest.SpecVersion >= 26)
         {
             scope = scope with { InertMacros = WorkflowInlineGates.Inert(scope.Macros.Values.Select(macro => (macro.Id, macro.If)), scope, TemplatePipes.Engine) };
+            // v26 (#1179): and the snippets' — an inert snippet or a gated-off item is off here too.
+            scope = ConsultGatedScope.JudgeSnippets(scope, package, input.Folders);
         }
 
         var prepend = new List<ConsultRenderedMacro>();

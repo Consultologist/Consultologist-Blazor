@@ -37,7 +37,53 @@ internal static class ConsultGatedScope
             scope,
             TemplatePipes.Engine);
 
-        return scope with { InertMacros = inert, SuppressedPrompts = suppressed };
+        return JudgeSnippets(scope with { InertMacros = inert, SuppressedPrompts = suppressed }, package, input.Folders);
+    }
+
+    /// <summary>
+    /// v26 (#1179, design § 2.1, § 5.4): the snippet gates on a scope, at 26 only.
+    /// A standalone snippet's header `if` is judged here over the scope
+    /// (<see cref="WorkflowInlineGates.InertSnippets"/>) — inert, its content is
+    /// empty where read. A folder item's `if` was judged ONCE, at job start, with
+    /// the item bound (the starter's fan filter, <c>SettledFolders</c>): the
+    /// settled snapshot the orchestrator threads holds the live items. The render
+    /// sees the FULL declared folder (bodies, labels) with every item the
+    /// snapshot lacks keyed inert — a direct read of a gated-off item renders
+    /// empty (the strict context would otherwise refuse the member), and the
+    /// renderer leaves an inert item out of every loop. Below 26 the scope is
+    /// the one it was: the settled folders, no key.
+    /// </summary>
+    public static TemplateRenderScope JudgeSnippets(
+        TemplateRenderScope scope,
+        WorkflowPackage package,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? settledFolders)
+    {
+        if (package.Manifest.SpecVersion < 26)
+        {
+            return scope;
+        }
+
+        var keys = new HashSet<string>(StringComparer.Ordinal);
+        var snippets = package.EffectiveManifest.Snippets ?? new Dictionary<string, string>();
+
+        keys.UnionWith(WorkflowInlineGates.InertSnippets(
+            scope.Snippets.Keys.Select(id => (id, package.Texts?.Headers.GetValueOrDefault(snippets.GetValueOrDefault(id) ?? string.Empty)?.If)),
+            scope,
+            TemplatePipes.Engine));
+
+        var folders = new Dictionary<string, IReadOnlyList<TemplateFolderItem>>(StringComparer.Ordinal);
+        foreach (var (folder, collection) in package.Data?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
+        {
+            var live = (settledFolders?.GetValueOrDefault(folder) ?? Array.Empty<IReadOnlyDictionary<string, string>>())
+                .Select(item => item.GetValueOrDefault("id", string.Empty))
+                .ToHashSet(StringComparer.Ordinal);
+            folders[folder] = collection.Items
+                .Select(item => new TemplateFolderItem(item.Id, WorkflowPackageBlocks.ItemName(new Dictionary<string, string>(item.Fields, StringComparer.Ordinal) { ["id"] = item.Id }), item.Fields.GetValueOrDefault("content", string.Empty)))
+                .ToList();
+            keys.UnionWith(collection.Items.Where(item => !live.Contains(item.Id)).Select(item => $"{folder}/{item.Id}"));
+        }
+
+        return scope with { Folders = folders, InertSnippets = keys };
     }
 
     /// <summary>The node id of an instance key ("nodeId" or "nodeId:itemId").</summary>

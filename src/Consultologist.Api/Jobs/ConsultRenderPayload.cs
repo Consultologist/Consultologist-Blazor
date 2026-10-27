@@ -287,7 +287,13 @@ internal static class ConsultRenderPayload
             Loops: loopOutputs,
             SkippedNodes: skipped is { Count: > 0 } ? skipped.ToHashSet(StringComparer.Ordinal) : null,
             Labelled: manifest.SpecVersion >= 26,
-            Deliverables: deliverables);
+            Deliverables: deliverables,
+            // v26 (#1179): a standalone snippet's label is its header's.
+            SnippetLabels: package.Texts is { } texts
+                ? (package.EffectiveManifest.Snippets ?? new Dictionary<string, string>())
+                    .Where(entry => !entry.Value.EndsWith('/') && texts.Headers.GetValueOrDefault(entry.Value)?.Label is not null)
+                    .ToDictionary(entry => entry.Key, entry => texts.Headers[entry.Value].Label!, StringComparer.Ordinal)
+                : null);
     }
 
     /// <summary>The type a node's format declares — the stamped catalogue's, or a package-local format file's — so <c>.value</c> parses accordingly; text when unknown.</summary>
