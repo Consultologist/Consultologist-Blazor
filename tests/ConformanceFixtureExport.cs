@@ -1210,6 +1210,8 @@ public partial class ConformanceFixtureExport
 
         // ----- v26 (#1151, #1149): the program manifest — ConformanceFixtureExport.V26.cs -----
         AddV26Cases(cases);
+        // ----- #1149: the below-26 gates, filed under v25/ -----
+        AddV25GateCases(cases);
 
         return cases;
     }

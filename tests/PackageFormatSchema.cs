@@ -851,6 +851,15 @@ internal static class PackageFormatSchema
             sources["minItems"] = 1;
             Object(sources, "items")["pattern"] = NodeObjectRef;
             Object(properties, "if")["minLength"] = 1;
+            // #1149: at 26 a deliverable names its sources, not a node — `node`
+            // stays a property (a 25-shaped manifest is refused by sentence, not
+            // shape) but leaves the required list, which `sources` joins.
+            item["required"] = new JsonArray(item["required"]!.AsArray()
+                .Select(r => r!.GetValue<string>())
+                .Where(r => r != "node")
+                .Append("sources")
+                .Select(r => (JsonNode?)JsonValue.Create(r))
+                .ToArray());
         }
 
         // v11 (§ 4/§ 5): a deliverable's macro list and its signature flag.
