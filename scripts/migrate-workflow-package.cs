@@ -103,9 +103,9 @@ var from = MigrationRunner.Get(staged, "specVersion") is JsonValue v && v.TryGet
 var name = MigrationRunner.Str(staged, "name") ?? "?";
 var version = MigrationRunner.Str(staged, "version") ?? "?";
 
-// #1152: the 26 stage — a 25 package through the library's 25 → 26 rewriter.
-// Validation at 26 waits for the bump (#1149): the public Validate refuses 26
-// until AcceptedSpecVersions carries it; the test suite validates through the seam.
+// #1152: the 26 stage — a 25 package through the library's 25 → 26 rewriter,
+// validated at 26 in memory as the registry would (#1149: the public Validate
+// accepts 26), before any write.
 if (to == 26)
 {
     if (from != 25)
@@ -141,12 +141,22 @@ if (to == 26)
     foreach (var path in removed26) Console.Out.WriteLine($"delete:  {path}");
     foreach (var path in added26) Console.Out.WriteLine($"add:     {path}");
     foreach (var path in rewritten26) Console.Out.WriteLine($"rewrite: {path}");
-    Console.Out.WriteLine("note: validation at specVersion 26 waits for the bump (#1149); the test suite validates the rewriter through the seam.");
+
+    var manifest26 = JsonSerializer.Deserialize<WorkflowPackageManifest>(result26.ManifestJson, WorkflowPackageManifestJson.ReadOptions)
+        ?? throw new InvalidOperationException("The migrated manifest deserialized to null.");
+    var validation26 = WorkflowPackageValidator.Validate(manifest26, result26.Files, catalogSchemas, formats: formats);
+    foreach (var warning in validation26.Warnings) Console.Out.WriteLine($"warning: {warning}");
+    foreach (var error in validation26.Errors) Console.Error.WriteLine($"error: {error}");
+    if (validation26.Errors.Count > 0)
+    {
+        Console.Error.WriteLine($"{name}@{version}: the 26 package does not validate; nothing written.");
+        return 1;
+    }
+
+    Console.Out.WriteLine($"{name}@{version}: specVersion 25 → 26 validates ({validation26.Errors.Count} errors, {validation26.Warnings.Count} warnings).");
 
     if (write)
     {
-        var manifest26 = JsonSerializer.Deserialize<WorkflowPackageManifest>(result26.ManifestJson, WorkflowPackageManifestJson.ReadOptions)
-            ?? throw new InvalidOperationException("The migrated manifest deserialized to null.");
         MigrationRunner.Write(root, result26.ManifestJson, before, result26.Files, WorkflowDagDiagram.Generate(manifest26));
     }
 

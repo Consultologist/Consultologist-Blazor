@@ -36,7 +36,11 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // v25 (#1018): object templates — the template is the source of truth:
     // formats (local and catalogue), snippets, deliverables, inline macros, the
     // reply is a template; every id snake_case, every reference an object read.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 };
+    // v26 (#1149): the manifest is a program — flow nodes (for, if, case) with
+    // a required ret, gates keyed if, a deliverable's sources[] and
+    // deliverable.<id>.content, the prompt by path, the JSON header, the
+    // macros map, the pipe operand; record storage 8.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()
