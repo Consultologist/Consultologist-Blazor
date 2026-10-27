@@ -22,7 +22,9 @@ public class TemplatesV26LoopPaneTests : ClientRenderTestContext
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V26());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
-        return Render<Templates>();
+        // #1209: a 26 package opens read-only until #1164 — these tests author the
+        // 26 panes on purpose, through the seam (removed with the gate by #1164).
+        return Render<Templates>(parameters => parameters.Add(p => p.AuthorsAboveCeiling, true));
     }
 
     private IRenderedComponent<Templates> ShowNode(string nodeId, WorkflowPackageContentResponse? fixture = null)
