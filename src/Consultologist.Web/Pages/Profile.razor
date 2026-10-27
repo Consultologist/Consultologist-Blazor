@@ -1089,6 +1089,72 @@
                 </div>
             </section>
 
+            @* #1063: the speech-to-text confidence gate for recordings — the scanned-PDF
+               card's twin, on by default for the same reason. *@
+            <section class="content-card stt-confidence-card">
+                <div class="form-stack">
+                    <h3 class="panel-title">
+                        Recording transcript confidence
+                    </h3>
+
+                    <p class="panel-description">
+                        A recording dropped on a transcript input is transcribed by speech-to-text.
+                        This sets the minimum confidence the transcription must reach before it is
+                        accepted — below it, the recording is refused and you are asked to upload the
+                        transcript instead, so a doubtful transcript never becomes a consult. Turn the
+                        check off to accept every transcribed recording whatever its confidence.
+                    </p>
+
+                    @if (sttMessage != null)
+                    {
+                        <FluentMessageBar Intent="@sttMessageIntent" AllowDismiss="false" Class="stt-confidence-message">
+                            @sttMessage
+                        </FluentMessageBar>
+                    }
+
+                    <div class="state-panel">
+                        <span class="muted-text">Minimum transcription confidence</span>
+                        <strong class="stt-confidence-state">@SttConfidencePreference.Describe(sttGateEnabled, sttSavedPercent)</strong>
+                    </div>
+
+                    <div class="action-row">
+                        <input type="number"
+                               min="@SttConfidencePreference.MinPercent"
+                               max="@SttConfidencePreference.MaxPercent"
+                               class="node-field__input stt-confidence-input"
+                               value="@sttPercentInput"
+                               @onchange="args => sttPercentInput = args.Value?.ToString() ?? string.Empty"
+                               disabled="@(sttRequestInProgress || !sttGateEnabled)"
+                               placeholder="Percent"
+                               aria-label="Minimum transcription confidence percent" />
+                        <FluentButton Appearance="Appearance.Accent"
+                                      Class="stt-confidence-save"
+                                      Disabled="@(sttRequestInProgress || !sttGateEnabled || string.IsNullOrWhiteSpace(sttPercentInput))"
+                                      @onclick="SaveSttConfidenceAsync">
+                            Save
+                        </FluentButton>
+                        @if (sttGateEnabled)
+                        {
+                            <FluentButton Appearance="Appearance.Neutral"
+                                          Class="stt-confidence-off"
+                                          Disabled="@sttRequestInProgress"
+                                          @onclick="() => SetSttGateAsync(false)">
+                                Turn off checking
+                            </FluentButton>
+                        }
+                        else
+                        {
+                            <FluentButton Appearance="Appearance.Accent"
+                                          Class="stt-confidence-on"
+                                          Disabled="@sttRequestInProgress"
+                                          @onclick="() => SetSttGateAsync(true)">
+                                Turn on checking
+                            </FluentButton>
+                        }
+                    </div>
+                </div>
+            </section>
+
             @* #806: export every package this account owns as one zip, a
                subfolder per package (its latest version) — a backup, and the
                way to move packages out to the GitOps repo or local editing. *@
@@ -1859,6 +1925,7 @@
         await LoadFormsModeAsync();
         await LoadRetentionAsync();
         await LoadOcrConfidenceAsync();
+        await LoadSttConfidenceAsync();
         await LoadUsageAsync();
         await LoadSignaturesAsync();
         await LoadSnippetsAsync();
@@ -2475,6 +2542,106 @@
         finally
         {
             ocrRequestInProgress = false;
+        }
+    }
+
+    // #1063: the speech-to-text gate card — the scanned-PDF card's twin, its own state.
+    private bool sttGateEnabled = true;
+    private int? sttSavedPercent;
+    private string sttPercentInput = SttConfidencePreference.DefaultPercent.ToString();
+    private bool sttRequestInProgress;
+    private string? sttMessage;
+    private MessageIntent sttMessageIntent = MessageIntent.Info;
+
+    private async Task LoadSttConfidenceAsync()
+    {
+        try
+        {
+            var gate = await AccountService.GetSettingAsync(SttConfidencePreference.GateKey);
+            var min = await AccountService.GetSettingAsync(SttConfidencePreference.MinKey);
+            sttGateEnabled = SttConfidencePreference.GateEnabled(gate?.Value);
+            sttSavedPercent = SttConfidencePreference.ParsePercent(min?.Value);
+            // The input prefills with the effective percent, so the field shows
+            // the default (80) rather than blank on an account that never set it.
+            sttPercentInput = SttConfidencePreference.EffectivePercent(min?.Value).ToString();
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch
+        {
+            sttGateEnabled = true;
+            sttSavedPercent = null;
+        }
+    }
+
+    private async Task SaveSttConfidenceAsync()
+    {
+        var percent = SttConfidencePreference.ParsePercent(sttPercentInput);
+        if (percent == null || !SttConfidencePreference.InRange(percent.Value))
+        {
+            sttMessage = $"The minimum must be a whole number between {SttConfidencePreference.MinPercent} and {SttConfidencePreference.MaxPercent}.";
+            sttMessageIntent = MessageIntent.Error;
+            return;
+        }
+
+        sttRequestInProgress = true;
+
+        try
+        {
+            await AccountService.SaveSettingAsync(
+                SttConfidencePreference.MinKey, SttConfidencePreference.StorePercent(percent.Value), SttConfidencePreference.ContentType);
+            // Saving a minimum implies the check is on; ensure the gate is set,
+            // so a Save from a freshly-turned-on card is coherent.
+            await AccountService.SaveSettingAsync(
+                SttConfidencePreference.GateKey, SttConfidencePreference.StoreGate(true), SttConfidencePreference.ContentType);
+            sttGateEnabled = true;
+            sttSavedPercent = percent;
+            sttMessage = $"Recordings below {percent}% transcription confidence will be refused.";
+            sttMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception)
+        {
+            sttMessage = "We couldn't save your transcription setting. Please try again.";
+            sttMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            sttRequestInProgress = false;
+        }
+    }
+
+    private async Task SetSttGateAsync(bool enabled)
+    {
+        sttRequestInProgress = true;
+
+        try
+        {
+            await AccountService.SaveSettingAsync(
+                SttConfidencePreference.GateKey, SttConfidencePreference.StoreGate(enabled), SttConfidencePreference.ContentType);
+            sttGateEnabled = enabled;
+            sttMessage = enabled
+                ? $"Recordings will be checked; those below {SttConfidencePreference.EffectivePercent(sttSavedPercent?.ToString())}% transcription confidence are refused."
+                : "Checking is off. Every transcribed recording is accepted, whatever its confidence.";
+            sttMessageIntent = MessageIntent.Success;
+        }
+        catch (AccessTokenNotAvailableException exception)
+        {
+            exception.Redirect();
+        }
+        catch (Exception)
+        {
+            sttMessage = "We couldn't save your transcription setting. Please try again.";
+            sttMessageIntent = MessageIntent.Error;
+        }
+        finally
+        {
+            sttRequestInProgress = false;
         }
     }
 

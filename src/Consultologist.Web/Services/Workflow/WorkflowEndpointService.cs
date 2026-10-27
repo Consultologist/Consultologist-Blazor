@@ -37,7 +37,12 @@ public interface IWorkflowEndpointService
 }
 
 /// <summary>The deployed engine's attestation, the three refs History resolves numbers through.</summary>
-public record EngineView(string? Commit, string? PackageFormat, string? Provenance, string? ApiHost = null, string? Release = null);
+public record EngineView(string? Commit, string? PackageFormat, string? Provenance, string? ApiHost = null, string? Release = null,
+    // #1063: the deployment's capabilities (Public/Engine `features`); null from a build before.
+    EngineFeaturesView? Features = null);
+
+/// <summary>#1063: mirrors the Api's EngineFeatures — today whether recordings are transcribed.</summary>
+public record EngineFeaturesView(bool SpeechToText);
 
 /// <summary>
 /// v25 (C1 #1007): the formats catalogue as GET WorkflowFormats describes it — its

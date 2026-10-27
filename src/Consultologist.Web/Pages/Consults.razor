@@ -1639,9 +1639,31 @@
   {
     Navigation.LocationChanged += HandleLocationChanged;
     await LoadScheduleDefaultAsync();
+    await LoadEngineFeaturesAsync();
     await LoadPackageBlocksAsync();
     await LoadWorkflowNodesAsync();
     await TryReattachAsync();
+  }
+
+  // #1063: what this deployment transcribes. The attestation is anonymous and
+  // cached; a failure costs only the word "recording" in a transcript door.
+  private bool acceptsRecordings;
+
+  private async Task LoadEngineFeaturesAsync()
+  {
+    try
+    {
+      acceptsRecordings = (await WorkflowService.GetEngineAsync())?.Features?.SpeechToText == true;
+    }
+    catch
+    {
+      acceptsRecordings = false;
+    }
+
+    foreach (var field in inputFields)
+    {
+      field.AcceptsRecordings = acceptsRecordings;
+    }
   }
 
   // #207: re-attach to an in-flight (or just-finished) job instead of showing
@@ -2629,6 +2651,8 @@
       .Select(input =>
       {
         var field = new ConsultInputField(input, textRows: declared.Count == 1 ? 16 : 6);
+        // #1063: the door's sentence names a recording when the engine transcribes one.
+        field.AcceptsRecordings = acceptsRecordings;
 
         // #429: the whole answer carries — a chosen boolean too, which used
         // to be dropped here — but only into an input of the same shape.
@@ -4098,9 +4122,18 @@
     /// </summary>
     public bool IsTranscriptChannel => ExpectedContent == WorkflowExpectedContent.Transcript;
 
-    public string DropOnePrompt => IsTranscriptChannel ? "Drop a transcript here, or browse…" : "Drop a document here, or browse…";
+    // #1063: the sentence is the whole door (no accept filter, § 1) — it names a
+    // recording only when the deployment transcribes one, which the engine's
+    // attestation says (Public/Engine features.speechToText).
+    public bool AcceptsRecordings { get; set; }
 
-    public string DropSeveralPrompt => IsTranscriptChannel ? "Drop transcripts here, or browse…" : "Drop documents here, or browse…";
+    public string DropOnePrompt => IsTranscriptChannel
+      ? (AcceptsRecordings ? "Drop a transcript or a recording here, or browse…" : "Drop a transcript here, or browse…")
+      : "Drop a document here, or browse…";
+
+    public string DropSeveralPrompt => IsTranscriptChannel
+      ? (AcceptsRecordings ? "Drop transcripts or recordings here, or browse…" : "Drop transcripts here, or browse…")
+      : "Drop documents here, or browse…";
 
     public string? ChannelLabel => ExpectedContent switch
     {
