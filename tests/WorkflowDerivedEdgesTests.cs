@@ -404,6 +404,22 @@ public class WorkflowDerivedEdgesTests
         Assert.Equal(new[] { "all" }, Derive((manifest, files))["letter"].Order());
         Assert.Empty(Derive((manifest, files))["all"]);
     }
+
+    // #1182 (v26): the engine's wrappers walk the macro folders too — a reader of
+    // macro.<folder> has edges to what the items read; an item's gate is a gating read.
+
+    [Fact]
+    public void At26_TheWrappers_WalkTheMacroFolders_SoAReaderHasTheItemsEdges()
+    {
+        var (manifest, files) = WorkflowV26MacroFolderTests.WithFolder();
+        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @if: "node.scope.value == \"in_scope\"") + "Plan noted: {{ node.extract.value.concepts | array.size }}.";
+        Assert.Equal(new List<string>(), V26Package.Errors((manifest, files)));
+
+        // The item's content read (extract) and its gate's read (scope) are the reader's
+        // edges — a macro's gate is judged at the render, so it is not a gating read.
+        Assert.Equal(new[] { "extract", "scope" }, WorkflowDerivedEdges.Derive(manifest, files, V25Package.Catalog())["assessment"].Order());
+        Assert.DoesNotContain("scope", WorkflowDerivedEdges.GatingReads(manifest, files, V25Package.Catalog()));
+    }
 }
 
 /// <summary>Design § 5.3: the mechanics sentence is a constant of the format, pinned to the registry's published text.</summary>

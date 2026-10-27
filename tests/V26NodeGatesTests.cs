@@ -405,4 +405,68 @@ public class V26NodeGatesTests
         Assert.Equal(new[] { "hpi" }, scope.Folders["sections"].Select(item => item.Id));
         Assert.Equal("[HPI;]", ConsultRenderPayload.RenderAt25(input, package, "[{{ for s in snippet.sections }}{{ s.name }};{{ end }}]"));
     }
+
+    // ----- macro folders (#1182) ---------------------------------------------------------------
+
+    private static WorkflowPackage WithMacroFolder(string? planIf = null)
+    {
+        var (manifest, files) = WorkflowV26MacroFolderTests.WithFolder("{{ for m in macro.section_notes }}[{{ m.id }}|{{ m.label }}|{{ m.prompt }}|{{ m.content }}]{{ end }} {{ macro.section_notes.hpi.content }}");
+        if (planIf is not null)
+        {
+            files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @if: planIf) + "Plan noted.";
+        }
+
+        Assert.Equal(new List<string>(), V26Package.Errors((manifest, files)));
+        return WorkflowPackageStoreMaterialiseTests.Load(manifest, files);
+    }
+
+    private static ConsultPromptNodeActivityInput FolderInput(WorkflowPackage package) =>
+        new("assessment", "prompts/assessment.md", Inputs, package.Ref, Format: "prose", Producer: "attested",
+            NodeTexts: new Dictionary<string, string> { ["extract"] = "{ \"concepts\": [ \"Asthma\" ] }" }, Run: Run, Profile: Profile);
+
+    [Fact]
+    public void APromptIteratingAMacroFolder_RendersEachItemsLabelPromptAndContent_InTheIndexsOrder()
+    {
+        var package = WithMacroFolder();
+        var input = FolderInput(package);
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+
+        var rendered = ConsultRenderPayload.RenderAt25(input, package, package.TextOf("prompts/assessment.md"), trace);
+
+        Assert.Equal(
+            "Assess. [hpi|HPI notes|" + WorkflowMacroMechanics.Prompt("hpi", "Note the history.") + "|History noted: Dr Example.][plan|Plan notes|" + WorkflowMacroMechanics.Prompt("plan", "Note the plan.") + "|Plan noted.] History noted: Dr Example.",
+            rendered);
+        Assert.Equal(new[] { "section_notes/hpi", "section_notes/plan" }, trace.PromptReads);
+        Assert.Empty(ConsultGatedScope.Judge(input, package).InertMacros!);
+    }
+
+    [Fact]
+    public void AFolderItemGatedOffByItsHeader_RendersEmptyPromptAndContent_AndStaysInTheLoop()
+    {
+        var package = WithMacroFolder("input.kind == \"follow_up\"");
+        var input = FolderInput(package);
+
+        var rendered = ConsultRenderPayload.RenderAt25(input, package, package.TextOf("prompts/assessment.md"));
+
+        Assert.Equal("Assess. [hpi|HPI notes|" + WorkflowMacroMechanics.Prompt("hpi", "Note the history.") + "|History noted: Dr Example.][plan|Plan notes||] History noted: Dr Example.", rendered);
+        Assert.Equal(new[] { "section_notes/plan" }, ConsultGatedScope.Judge(input, package).InertMacros!.Order());
+    }
+
+    [Fact]
+    public void TheDeliverableMacroRender_IteratesAMacroFolder_WithItsGates()
+    {
+        var (manifest, files) = WorkflowV26MacroFolderTests.WithFolder();
+        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @if: "input.kind == \"follow_up\"") + "Plan noted.";
+        // The placed macro (closing) reads the folder: a live item's content, a gated-off item's none.
+        files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Close.") + "[{{ for m in macro.section_notes }}{{ m.content }}{{ end }}]";
+        manifest = manifest with { Deliverables = manifest.Deliverables!.Select(d => d.Id == "consult" ? d with { Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append) } } : d).ToList() };
+        Assert.Equal(new List<string>(), V26Package.Errors((manifest, files)));
+        var package = WorkflowPackageStoreMaterialiseTests.Load(manifest, files);
+        var input = new ConsultDeliverableMacrosActivityInput("consult", package.Ref, new[] { new ConsultMacroPlacement("closing", At: "append") },
+            Inputs, null, new Dictionary<string, string>(), null, Run, Profile);
+
+        var result = RenderDeliverableMacrosActivity.Render(input, package);
+
+        Assert.Equal("[History noted: Dr Example.]", Assert.Single(result.Append).Text);
+    }
 }

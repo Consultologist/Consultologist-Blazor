@@ -898,7 +898,7 @@ public class WorkflowPackagePublisherTests
 
         Assert.False(result.Succeeded);
         Assert.Contains(
-            "File path 'publish.json' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, formats/<file>, data/<collection>/<file>, data/<file>, snippets/<folder>/<file>, or snippets/<file>.",
+            "File path 'publish.json' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, macros/<folder>/<file>, formats/<file>, data/<collection>/<file>, data/<file>, snippets/<folder>/<file>, or snippets/<file>.",
             result.Errors);
         Assert.Empty(writer.Blobs);
     }

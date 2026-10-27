@@ -87,4 +87,22 @@ public class WorkflowPackageClosureV25Tests
         Assert.Empty(errors);
         Assert.Equal(WorkflowDataResolver.Resolve(manifest, files, new List<string>()).Collections.Count, content.Collections.Count);
     }
+
+    // #1182 (v26): a macro folder's files — macros/<folder>/<file>, the folder id
+    // snake_case as a snippet folder's — are admitted at publish; the sentence names the shape.
+    [Fact]
+    public void AMacroFolderDirectory_TakesSnakeCase_AndIsAdmitted()
+    {
+        var errors = new List<string>();
+
+        WorkflowPackageContentValidation.ValidateFilePaths(new Dictionary<string, string>
+        {
+            ["macros/section_notes/index.json"] = "[]",
+            ["macros/section_notes/hpi.md"] = "x",
+            ["macros/Section-Notes/hpi.md"] = "x"
+        }, errors);
+
+        var error = Assert.Single(errors);
+        Assert.Equal("File path 'macros/Section-Notes/hpi.md' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, macros/<folder>/<file>, formats/<file>, data/<collection>/<file>, data/<file>, snippets/<folder>/<file>, or snippets/<file>.", error);
+    }
 }
