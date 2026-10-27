@@ -237,6 +237,8 @@ public sealed class RunPromptNodeActivity
 
             var package = await _packageStore.ResolveAsync(packageRef!, cancellationToken);
 
+            // v26 (#1157, design § 4): at 26 the id IS the prompt's path — the store
+            // keys the prompts by it, so the lookup is the one it was.
             if (package.Prompts is null || !package.Prompts.TryGetValue(input.PromptId, out var prompt))
             {
                 throw new InvalidOperationException(

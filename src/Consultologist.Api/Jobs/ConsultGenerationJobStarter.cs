@@ -387,7 +387,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // and both descriptor birthplaces (the boundary filters with the
         // resolved map, since DecideActivity never sees the request). A
         // choice naming the wrong macro refuses the start by name.
-        var macroChoices = ResolveMacroChoices(request, package.Manifest);
+        // v26 (#1157): optional and default are the header's at 26 — the effective manifest.
+        var macroChoices = ResolveMacroChoices(request, package.EffectiveManifest);
         if (macroChoices.Error != null)
         {
             _logger.LogWarning("Rejected job start: a macro choice was refused. Kind={Kind}", ConsultGenerationJobStartError.MacroChoiceMismatch);
@@ -819,7 +820,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // v25 (B4 #1003): the formats catalogue a node resolves against - the
         // package's own stamped version at 25, else the engine's pin, whose
         // generic custom agent a 22-24 custom-schema node now runs on.
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.SourceFiles, package.Manifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest, flows, branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id))).ToList();
+        // v26 (#1157): the texts as a render reads them (a format or schema file
+        // is byte-identical in both maps) and the macros with their header facts.
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.TextFiles, package.EffectiveManifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest, flows, branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id))).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -890,12 +893,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // it always wrote, and no macro-less start pays the table read.
         IReadOnlyDictionary<string, string>? macroTexts = null;
         string? profileName = null;
-        if (package.Manifest.Macros is { Count: > 0 } macroSpecs)
+        if (package.EffectiveManifest.Macros is { Count: > 0 } macroSpecs)
         {
-            macroTexts = macroSpecs.ToDictionary(
-                macro => macro.Id,
-                macro => package.SourceFiles![macro.File],
-                StringComparer.Ordinal);
+            // v26 (#1157): the bodies — a header is a string the model never
+            // sees; a folder entry (#1182) is no text.
+            macroTexts = macroSpecs
+                .Where(macro => !macro.File.EndsWith('/'))
+                .ToDictionary(
+                    macro => macro.Id,
+                    macro => package.TextOf(macro.File),
+                    StringComparer.Ordinal);
             profileName = await _accounts.GetDisplayNameAsync(appUserId, cancellationToken);
         }
 

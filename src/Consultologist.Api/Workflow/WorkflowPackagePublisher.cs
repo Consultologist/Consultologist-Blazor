@@ -317,7 +317,13 @@ public sealed class WorkflowPackagePublisher
             return Array.Empty<string>();
         }
 
-        var now = WorkflowDataResolver.ResolveContent(stamped, files, new List<string>());
+        // v26 (#1157): the parent arrived through the store, resolved through
+        // its headers (bodies; items with their labels) — the new version
+        // resolves the same way, or every headered text reads as changed and
+        // the 26 index as no folder at all.
+        var now = stamped.SpecVersion >= 26
+            ? WorkflowDataResolver.ResolveContent(stamped, WorkflowTextHeaders.Resolve(stamped, files, new List<string>()), new List<string>())
+            : WorkflowDataResolver.ResolveContent(stamped, files, new List<string>());
 
         var relabelled = now.Scalars
             .Where(pair => was.Scalars.TryGetValue(pair.Key, out var before)
