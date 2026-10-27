@@ -925,9 +925,9 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
-        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
 
-        return WalkAll(manifest, files, nodes, snippets, contextFor).Edges;
+        return WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders).Edges;
     }
 
     /// <summary>
@@ -942,8 +942,8 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
-        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
-        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders);
         var reads = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
 
         foreach (var deliverable in manifest.EffectiveDeliverables)
@@ -977,8 +977,8 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
-        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
-        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders);
         return nodes.ToDictionary(
             node => node.Node.Id,
             node => (IReadOnlySet<string>)new SortedSet<string>(walk.DeliverableReadsOf(node.Node.Id), StringComparer.Ordinal),
@@ -991,8 +991,8 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
-        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
-        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders);
         var reads = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
 
         foreach (var deliverable in manifest.EffectiveDeliverables)
@@ -1016,8 +1016,8 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
-        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
-        return WalkAll(manifest, files, nodes, snippets, contextFor).GatingReads();
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
+        return WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders).GatingReads();
     }
 
     /// <summary>#1038: whether any gating when reads a profile fact (see <see cref="Walk.GatingReadsProfile"/>).</summary>
@@ -1026,8 +1026,8 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
-        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
-        return WalkAll(manifest, files, nodes, snippets, contextFor).GatingReadsProfile();
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
+        return WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders).GatingReadsProfile();
     }
 
     /// <summary>B8 #1027: the macro ids whose text reads <c>profile.signature</c> — the 25 signature carrier the starter's snapshot gate reads.</summary>
@@ -1036,8 +1036,8 @@ public static class WorkflowDerivedEdges
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
-        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
-        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders);
         return (manifest.Macros ?? new List<WorkflowMacroSpec>())
             .Select(macro => macro.Id)
             .Where(walk.MacroReadsSignature)
