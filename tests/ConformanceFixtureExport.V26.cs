@@ -187,8 +187,6 @@ public partial class ConformanceFixtureExport
         Valid("v26-placed-only-macro-without-instruction", "A placed-only macro with no instruction — nothing reads it inline; the model is told nothing (§ 2.5).", Files(m, fs => fs["macros/closing.md"] = V26Package.Header("Closing") + "Closing: {{ profile.name }}."));
         Invalid("invalid-inline-read-macro-without-instruction-at-26", "A macro read inline by a node's prompt with no instruction — the model would be told nothing.",
             Files(P("Assess. {{ macro.closing.prompt }}"), fs => fs["macros/closing.md"] = V26Package.Header("Closing") + "Closing: {{ profile.name }}."));
-        Invalid("invalid-macro-label-in-the-manifest-at-26", "A macro's label in the manifest beside its header — one home.", Manifest(m, x => x with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") } }));
-        Invalid("invalid-macro-instruction-in-the-manifest-at-26", "A macro's instruction in the manifest — retired; the header carries it.", Manifest(m, x => x with { Macros = new List<WorkflowMacroSpec> { new("closing", null, "macros/closing.md", Instruction: "Add a closing line.") } }));
         Invalid("invalid-index-object-shape-at-26", "The 25 index object ({ fields, items }) at 26 — the index is an ordered list.",
             Files(m, fs => fs["snippets/sections/index.json"] = """{ "fields": ["id", "name", "content"], "items": [ { "id": "hpi", "name": "HPI", "file": "hpi.md" }, { "id": "plan", "name": "Plan", "file": "plan.md" } ] }"""));
         Invalid("invalid-index-item-name-at-26", "An index item carrying name — retired; the item file's header carries label.",
@@ -239,9 +237,11 @@ public partial class ConformanceFixtureExport
                 fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.") + "Plan noted.";
                 fs["prompts/assessment.md"] = "Assess. " + read;
             });
+        // The manifest-side macro shapes a 26 writer cannot carry — the 25 list, a
+        // label or an instruction beside the map — have no vector: the typed writer
+        // spells the map, so the wire could not hold the invalid shape. The reader's
+        // refusals are pinned in WorkflowV26MacroFolderTests and WorkflowV26HeaderTests.
         Valid("v26-macro-folder", "A macro folder — the index an ordered list, the items macro files — read as {{ for m in macro.<folder> }} with each item's label and prompt.", Folder());
-        Invalid("invalid-macros-list-at-26", "macros spelled as the 25 list of objects at 26 — the map { \"<id>\": \"<file>\" } is the 26 spelling.",
-            Manifest(m, x => x with { Macros = new List<WorkflowMacroSpec> { new("closing", "Closing", "macros/closing.md") } }));
         Invalid("invalid-macro-folder-without-index-at-26", "A macro folder with no index.json.", Files(Folder(), fs => fs.Remove("macros/section_notes/index.json")));
         Invalid("invalid-macro-folder-item-without-header-at-26", "A macro folder item file with no header.", Files(Folder(), fs => fs["macros/section_notes/plan.md"] = "Plan noted."));
         Invalid("invalid-macro-folder-placed-at-26", "A macro folder placed on a node — a folder is read, not placed.",
@@ -275,5 +275,41 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-renderer-pipe-on-a-loop-at-26", "A loop piped — a list has no one text; pipe a body node inside it.", P("Assess. {{ node.sections | concept_bullets }}"));
         Invalid("invalid-renderer-pipe-on-a-loop-elements-content-at-26", "A loop element's content piped — the pipe takes the body node by id.", ConceptBody("{{ for e in node.sections }}{{ e.content | concept_bullets }}{{ end }}"));
         Invalid("invalid-renderer-pipe-on-a-text-node-at-26", "A prose node piped — a renderer renders a concept_list node.", Files(m, fs => fs["prompts/section.md"] = "{{ item.label }}: {{ item.content }} {{ node.assessment | concept_bullets }}"));
+    }
+
+    /// <summary>
+    /// #1149: the below-26 gates — a 26 key on a 25 manifest refused by name
+    /// (*"… requires specVersion 26"*, #1165). Filed under v25/ at the bump, as
+    /// the v24 gates were at 25's; schema-catchable: the member is absent from the
+    /// 25 schema (the macros map is an object where 25 wants a list).
+    /// </summary>
+    private static void AddV25GateCases(List<Case> cases)
+    {
+        void Gate(string id, string description, (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
+            => cases.Add(new Case(id, 25, description, bundle.Manifest, bundle.Files));
+
+        var (m, files) = V25Package.Minimal();
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) With(Func<WorkflowPackageManifest, WorkflowPackageManifest> change) => (change(m), files);
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Node(string id, Func<WorkflowNodeSpec, WorkflowNodeSpec> change) => (V25Package.WithNode(m, id, change), files);
+
+        // The macros map below 26 has no case here: the typed writer spells a 25
+        // manifest's macros as the list, so the wire could not carry the shape;
+        // WorkflowV26MacroFolderTests pins the refusal through the reader.
+        Gate("invalid-node-for-at-v25", "A for node on a 25 manifest. Flow nodes arrive at 26 (forEach until then).",
+            Node("assessment", n => n with { For = "item in snippet.sections" }));
+        Gate("invalid-node-if-at-v25", "An if node on a 25 manifest. Flow nodes arrive at 26 (when until then).",
+            Node("assessment", n => n with { If = "input.kind == \"new\"" }));
+        Gate("invalid-node-case-at-v25", "A case node on a 25 manifest. Flow nodes arrive at 26.",
+            Node("assessment", n => n with { Case = "node.scope.value" }));
+        Gate("invalid-node-ret-at-v25", "ret on a plain node of a 25 manifest. ret arrives at 26, on a flow node.",
+            Node("assessment", n => n with { Ret = "node.assessment" }));
+        Gate("invalid-node-macro-if-at-v25", "A node instance's if on a 25 manifest. The gate is keyed if at 26 (when until then).",
+            Node("assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After, If: "input.kind == \"new\"") } }));
+        Gate("invalid-deliverable-sources-at-v25", "A deliverable's sources on a 25 manifest. sources arrives at 26 (node until then).",
+            With(x => x with { Deliverables = x.Deliverables!.Select(d => d with { Sources = new List<string> { "node.all" } }).ToList() }));
+        Gate("invalid-deliverable-if-at-v25", "A deliverable's if on a 25 manifest. The gate is keyed if at 26 (when until then).",
+            With(x => x with { Deliverables = x.Deliverables!.Select(d => d with { If = "input.kind == \"new\"" }).ToList() }));
+        Gate("invalid-deliverable-macro-if-at-v25", "A deliverable instance's if on a 25 manifest. The gate is keyed if at 26 (when until then).",
+            With(x => x with { Deliverables = x.Deliverables!.Select(d => d with { Macros = new List<WorkflowDeliverableMacroSpec> { new("closing", At: WorkflowDeliverableMacroSpec.Append, If: "input.kind == \"new\"") } }).ToList() }));
     }
 }

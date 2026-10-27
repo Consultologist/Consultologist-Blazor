@@ -698,7 +698,9 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
         Assert.Empty(UpgradeButtons(page));
         Assert.Contains("upgraded 10 → 25", page.Markup, StringComparison.Ordinal);
-        Assert.Equal(Templates.NewestSpecVersion, Templates.RunnableSpecVersion);
+        // #1149: the engine runs 26 while the editor authors up to 25 (#1164 closes the gap) —
+        // the opposite gap to a not-yet-runnable format, so no second button and no notice.
+        Assert.True(Templates.NewestSpecVersion <= Templates.RunnableSpecVersion);
     }
 
     [Fact]

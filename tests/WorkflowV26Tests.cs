@@ -120,17 +120,19 @@ public class WorkflowV26Tests
     }
 
     [Fact]
-    public void ThePublicEntry_StillRefuses26_UntilTheBump()
+    public void ThePublicEntry_Accepts26_SinceTheBump_AndRefuses27()
     {
-        // The accepted set does not move here (#1149 moves it with the store's
-        // and the editor's mirror); the seam is the only door.
-        Assert.DoesNotContain(26, WorkflowPackageValidator.AcceptedSpecVersions);
+        // #1149: the accepted set carries 26 (with the store's set; the editor's
+        // authoring mirror lags by name until #1164). The seam and the public
+        // door agree; the version after is what the set refuses now.
+        Assert.Contains(26, WorkflowPackageValidator.AcceptedSpecVersions);
 
         var (manifest, files) = V26Package.Minimal();
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Empty(result.Errors);
 
-        Assert.Contains(result.Errors, e => e.StartsWith("specVersion 26 is not supported", StringComparison.Ordinal));
-        Assert.DoesNotContain(result.Errors, e => e.Contains("retired at specVersion 26", StringComparison.Ordinal));
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 27 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 27 is not supported", StringComparison.Ordinal));
     }
 
     [Fact]
