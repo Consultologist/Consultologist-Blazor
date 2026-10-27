@@ -414,6 +414,9 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Node</span>
                     </button>
+                    @* v26 (#1162): the Prompts group goes — a prompt is its node's file, edited on the node pane. *@
+                    @if (!At26)
+                    {
                     <span class="editor-nav__group"><FluentIcon Value="@(new Icons.Regular.Size16.Comment())" /> Prompts</span>
                     @if (!EffectivePrompts.Any())
                     {
@@ -441,6 +444,7 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Prompt</span>
                     </button>
+                    }
                     @* v11 #564: package-owned macro templates (§ 4/§ 9). The
                        group shows whenever macros exist so a carried one is
                        reachable below 11; authoring is offered only at 11. *@
@@ -2180,7 +2184,7 @@
                                              ArrayInputs="@ArrayInputIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
-                                             AllowPromptChange="@(EffectiveSpecVersion >= 6)"
+                                             AllowPromptChange="@(EffectiveSpecVersion >= 6 && !At26)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
                                              FormatOptions="@FormatOptions"
@@ -2458,7 +2462,8 @@
                             }
                             @if (EffectiveSpecVersion >= 25 ? NewNodeTakesPrompt : newNodeKind != "aggregator" && newNodeKind != CheckKind)
                             {
-                                @if (EffectiveSpecVersion >= 6)
+                                @* v26 (#1162): a node at 26 always mints its own file — no prompt to pick. *@
+                                @if (EffectiveSpecVersion >= 6 && !At26)
                                 {
                                     <label class="input-field">
                                         <span>prompt</span>
@@ -2841,7 +2846,7 @@
                                              ArrayInputs="@ArrayInputIds"
                                              ContractOptions="@ContractOptions"
                                              PromptOptions="@EffectivePrompts.Select(p => p.Id).ToList()"
-                                             AllowPromptChange="@(EffectiveSpecVersion >= 6)"
+                                             AllowPromptChange="@(EffectiveSpecVersion >= 6 && !At26)"
                                              OfferReproducible="@(EffectiveSpecVersion >= 11)"
                                              CheckOperandOptions="@CheckOperandChoices"
                                              FormatOptions="@FormatOptions"
@@ -2878,7 +2883,7 @@
                                 }
                                 <WorkflowEditorPane ShowHeader="false" EditLabel="Prompt text"
                                                     EditorExtra="@(At25 ? InsertReferencePalette((promptView.File, WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null, false)) : null)"
-                                                    Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(promptView.File, $"Prompt '{nodePrompt}'", GetText(promptView.File), WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null)) : null)"
+                                                    Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(promptView.File, At26 ? $"Node '{selectedNode.Id}' prompt" : $"Prompt '{nodePrompt}'", GetText(promptView.File), WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null)) : null)"
                                                     Text="@GetText(promptView.File)"
                                                     Raw="@EffectivePromptRaw(nodePrompt)"
                                                     TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">
@@ -5396,8 +5401,9 @@
     private sealed record PreviewItem(string Id, string Name, string Text, string? When);
 
     /// <summary>#1109: the snippet folder a fanning reader iterates — null for no fan or an input fan (no items to be).</summary>
-    private static string? PreviewFolderOf(WorkflowManifestReader.NodeView? fanNode) =>
-        fanNode is { ForEach: { } forEach } && PF.WorkflowFanSources.IsSnippetFan(forEach)
+    private string? PreviewFolderOf(WorkflowManifestReader.NodeView? fanNode) =>
+        // v26 (#1162, a #1160 leftover): a body node fans through its loop — EffectiveFan answers at both versions.
+        fanNode != null && WorkflowManifestReader.NodeView.EffectiveFan(fanNode, EffectiveNodes) is { } forEach && PF.WorkflowFanSources.IsSnippetFan(forEach)
             ? PF.WorkflowFanSources.CollectionIdOf(forEach)
             : null;
 
@@ -5677,6 +5683,8 @@
     private string? PaneKeyOf(PF.WorkflowDerivedEdges.WalkedTemplate template) => template.Kind switch
     {
         // A prompt is walked per NODE: the template's Id is the node id, its subject the prompt id (C4 #1010).
+        // v26 (#1162): a prompt is edited on its node's pane.
+        PF.TemplateKind.Prompt when At26 => EffectiveNodes.Any(n => n.Id == template.Id) ? NodeKeyFor(template.Id) : null,
         PF.TemplateKind.Prompt => EffectiveNodes.FirstOrDefault(n => n.Id == template.Id)?.Prompt is { } promptId
             ? EffectivePrompts.FirstOrDefault(p => p.Id == promptId)?.File
             : null,
@@ -6218,8 +6226,30 @@
                     <p class="muted-text node-reads__unresolved">@walked.References.Errors.Count @(walked.References.Errors.Count == 1 ? "problem" : "problems") in this text — Publish says which.</p>
                 }
             }
+            @if (At26)
+            {
+                @* v26 (#1162): the prompt pane's "Read by", now on the node — every node whose
+                   prompt reads node.<id>; a deliverable sourcing it is "Sourced by" above. *@
+                var readers = NodeReaderRows(node.Id);
+                @if (readers.Count > 0)
+                {
+                    <p class="muted-text node-read-by">Read by</p>
+                    @TemplateReadRows(($"Readers of {node.Id}", readers))
+                }
+                else
+                {
+                    <p class="muted-text node-read-by node-read-by__empty">Read by nothing yet — no prompt reads <code>node.@node.Id</code>.</p>
+                }
+            }
         </div>
     </text>;
+
+    /// <summary>v26 (#1162): the nodes whose prompt reads node.&lt;id&gt; — each a row opening that node's pane.</summary>
+    private IReadOnlyList<TemplateReadRow> NodeReaderRows(string nodeId) =>
+        EffectiveNodes
+            .Where(other => other.Id != nodeId && PromptWalkOf(other.Id)?.References.Nodes.ContainsKey(nodeId) == true)
+            .Select(other => new TemplateReadRow($"Node '{NodeLabelOrId(other)}'", $"{NodeKeyPrefix}{other.Id}", "", null, "its prompt reads it"))
+            .ToList();
 
     // ----- v25 (C4 #1010): the insert-reference palette -----
 
@@ -7185,6 +7215,12 @@
         if (template.Kind == PF.TemplateKind.Instruction)
         {
             return null;
+        }
+
+        // v26 (#1162): a prompt's file is the node's Prompt (its pane key is the node's).
+        if (At26 && template.Kind == PF.TemplateKind.Prompt)
+        {
+            return EffectiveNodes.FirstOrDefault(n => n.Id == template.Id)?.Prompt;
         }
 
         if (template.Kind == PF.TemplateKind.Snippet && template.Id.IndexOf('/') is var slash && slash > 0
@@ -8959,7 +8995,8 @@
         added.Id,
         added.Label,
         // v12 § 13 (#621): a check has no prompt family at all; v25: nor a computed format.
-        added.HasPrompt ? added.PromptRef ?? added.Id : null,
+        // v26 (#1162): at 26 the prompt is its file — what the composer writes.
+        added.HasPrompt ? (At26 ? added.PromptRef ?? AddedPromptFile(added.Id) : added.PromptRef ?? added.Id) : null,
         added.ForEach,
         Array.Empty<WorkflowManifestReader.BindingView>(),
         IsResult: DeliverableRootIds.Contains(added.Id),
@@ -13300,6 +13337,18 @@
     // pending prompt node's fresh prompt and every standalone pending prompt
     // (variables arrive via the chips, like any added variable).
     private IReadOnlyList<WorkflowManifestReader.PromptView> EffectivePrompts =>
+        // v26 (#1162, design § 4): prompts[] is retired — a prompt is its node's file. The
+        // model is DERIVED from the effective nodes, one view per prompted node, keyed by
+        // the file on both Id and File so every id-keyed site (NodesUsingPrompt,
+        // TemplateWalkOf, FanningReaderOf, the palette's self-exclusion) matches a node's
+        // Prompt, which holds the path. Never a standalone prompt at 26.
+        At26
+            ? EffectiveNodes.Where(n => !n.IsFlow && n.Prompt != null)
+                .Select(n => n.Prompt!)
+                .Distinct(StringComparer.Ordinal)
+                .Select(file => new WorkflowManifestReader.PromptView(file, file, Array.Empty<string>(), null, false))
+                .ToList()
+            :
         prompts.Where(p => nodes.Any(n => n.Prompt == p.Id && !removedNodeIds.Contains(n.Id))
                 || !nodes.Any(n => n.Prompt == p.Id))
             .Concat(addedNodes.Where(a => a.HasPrompt && a.PromptRef == null).Select(a => new WorkflowManifestReader.PromptView(
@@ -13497,7 +13546,9 @@
         || flowEdits.ContainsKey(node.Id)
         || addedNodes.Any(a => a.Id == node.Id)
         || bindingEdits.Keys.Any(key => key.StartsWith(node.Id + "\n", StringComparison.Ordinal))
-        || (node.Prompt != null && HasVariableEdits(node.Prompt));
+        || (node.Prompt != null && HasVariableEdits(node.Prompt))
+        // v26 (#1162): the node's prompt text is edited on its pane — a text edit is the node's.
+        || (At26 && node.Prompt != null && edits.ContainsKey(node.Prompt));
 
     private async Task AddNodeAsync()
     {
@@ -13565,9 +13616,17 @@
 
         // Only a freshly minted prompt (named after the node) can collide
         // with an existing prompt id.
-        if (promptRef == null && !aggregator && !check && !computed && !flow && EffectivePrompts.Any(p => p.Id == id))
+        if (promptRef == null && !aggregator && !check && !computed && !flow && !At26 && EffectivePrompts.Any(p => p.Id == id))
         {
             newNodeError = $"A prompt named '{id}' already exists — choose it in the prompt field, or pick another node id.";
+            return;
+        }
+
+        // v26 (#1162): the node mints prompts/<id>.md — a file the package already holds is refused.
+        if (At26 && !aggregator && !check && !computed && !flow
+            && (content?.Files.ContainsKey(AddedPromptFile(id)) == true || addedNodes.Any(a => a.HasPrompt && a.PromptRef == null && AddedPromptFile(a.Id) == AddedPromptFile(id))))
+        {
+            newNodeError = $"A prompt file '{AddedPromptFile(id)}' already exists — pick another node id.";
             return;
         }
 
@@ -13625,7 +13684,8 @@
         // Land on the next step: the aggregator's source list or an existing
         // prompt's bindings on the node card, or the new prompt's text —
         // a check has no prompt, so its card is the destination.
-        selectedKey = aggregator || check || computed || flow || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
+        // v26 (#1162): the node pane holds the prompt editor — every node lands on its pane.
+        selectedKey = aggregator || check || computed || flow || promptRef != null || At26 ? NodeKeyFor(id) : AddedPromptFile(id);
         await PendingChangedAsync();
     }
 
@@ -15896,7 +15956,9 @@
                 }
                 else if (addedNode.HasPrompt && addedNode.PromptRef == null && string.IsNullOrWhiteSpace(addedNode.PromptText))
                 {
-                    unbound.Add($"Node '{addedNode.Id}' has no prompt text yet — write it under Prompts.");
+                    unbound.Add(At26
+                        ? $"Node '{addedNode.Id}' prompt has no text yet — write it on the node's pane."
+                        : $"Node '{addedNode.Id}' has no prompt text yet — write it under Prompts.");
                 }
             }
 
@@ -16165,6 +16227,11 @@
     private void RevertNodeEdits(string nodeId, string? promptId)
     {
         nodeEdits.Remove(nodeId);
+        // v26 (#1162): the pane is the prompt's only home — a node discard reverts its text too.
+        if (At26 && promptId != null)
+        {
+            edits.Remove(promptId);
+        }
         nodeWhenEdits.Remove(nodeId);
         conditionDrafts.Remove($"node-when:{nodeId}");
         aggregateEdits.Remove(nodeId);
