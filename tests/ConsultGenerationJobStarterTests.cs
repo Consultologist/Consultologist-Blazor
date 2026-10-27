@@ -4128,7 +4128,8 @@ public class ConsultGenerationJobStarterTests
             {
                 new ConsultInputOrigin(
                     ConsultInputOriginKinds.PreviousRun, TextSha256: "sha", SourceJobId: SourceJob, SourceResultId: "consult")
-            });
+            },
+            new int?[] { null });
 
         var over = await ConsultGenerationJobStarter.ExtractInputFilesAsync(
             new ConsultGenerationRequest(
@@ -4733,7 +4734,119 @@ public class ConsultGenerationJobStarterTests
         Assert.Null(input.SuppliedInputs);
     }
 
+    // ----- #1144: the element order is the order sent ---------------------------------------------
+
+    private static InputFilePayload TextAt(string text, int position) =>
+        new("text/plain", Encoding.UTF8.GetBytes(text), position);
+
+    private static WorkflowPackageManifest SeveralNotes() => V9Fixtures.WithInput(new WorkflowInputSpec(
+        "prior_notes", "Prior notes", Required: false, Type: WorkflowInputTypes.Array, Items: WorkflowInputTypes.Text));
+
+    private static Dictionary<string, ConsultInputValue> TypedNotes(params string[] rows) => new(StringComparer.Ordinal)
+    {
+        ["consult_draft"] = Referral,
+        ["seen_on"] = "2026-08-10",
+        ["encounter_kind"] = "follow_up",
+        ["prior_notes"] = ConsultInputValue.OfArray(rows.Select(ConsultInputValue.OfText).ToArray())
+    };
+
+    [Fact]
+    public void PlaceElements_WithNoPositions_IsTodaysOrder_TypedThenDocumentsThenPreviousRun()
+    {
+        var typed = new[] { ConsultInputValue.OfText("t1"), ConsultInputValue.OfText("t2") };
+        var placed = new[]
+        {
+            new ConsultGenerationJobStarter.PlacedElement(ConsultInputValue.OfText("d1"), new ConsultInputOrigin(ConsultInputOriginKinds.Document), null),
+            new ConsultGenerationJobStarter.PlacedElement(ConsultInputValue.OfText("r1"), new ConsultInputOrigin(ConsultInputOriginKinds.PreviousRun), null),
+        };
+
+        var (elements, origins) = ConsultGenerationJobStarter.PlaceElements(typed, placed);
+
+        Assert.Equal(new[] { "t1", "t2", "d1", "r1" }, elements.Select(e => e.Canonical));
+        Assert.Equal(new[] { "typed", "typed", "document", "previous-run" }, origins.Select(o => o.Kind));
+    }
+
+    [Fact]
+    public void PlaceElements_PlacesEachPositionedEntry_AndTheTypedRowsFillTheRest()
+    {
+        var typed = new[] { ConsultInputValue.OfText("t1"), ConsultInputValue.OfText("t2") };
+        var placed = new[]
+        {
+            new ConsultGenerationJobStarter.PlacedElement(ConsultInputValue.OfText("d1"), new ConsultInputOrigin(ConsultInputOriginKinds.Document), 0),
+            new ConsultGenerationJobStarter.PlacedElement(ConsultInputValue.OfText("r1"), new ConsultInputOrigin(ConsultInputOriginKinds.PreviousRun), 2),
+        };
+
+        var (elements, origins) = ConsultGenerationJobStarter.PlaceElements(typed, placed);
+
+        Assert.Equal(new[] { "d1", "t1", "r1", "t2" }, elements.Select(e => e.Canonical));
+        Assert.Equal(new[] { "document", "typed", "previous-run", "typed" }, origins.Select(o => o.Kind));
+    }
+
+    [Fact]
+    public void PlaceElements_APositionBeyondTheArray_GoesLast_AndTwoAtOnePosition_KeepFileOrder()
+    {
+        var typed = new[] { ConsultInputValue.OfText("t1") };
+        var placed = new[]
+        {
+            new ConsultGenerationJobStarter.PlacedElement(ConsultInputValue.OfText("d1"), new ConsultInputOrigin(ConsultInputOriginKinds.Document), 1),
+            new ConsultGenerationJobStarter.PlacedElement(ConsultInputValue.OfText("d2"), new ConsultInputOrigin(ConsultInputOriginKinds.Document), 1),
+            new ConsultGenerationJobStarter.PlacedElement(ConsultInputValue.OfText("d3"), new ConsultInputOrigin(ConsultInputOriginKinds.Document), 99),
+        };
+
+        var (elements, _) = ConsultGenerationJobStarter.PlaceElements(typed, placed);
+
+        // d3 clamps to the last slot (3); d1 takes 1, d2 the next free (2); t1 fills 0.
+        Assert.Equal(new[] { "t1", "d1", "d2", "d3" }, elements.Select(e => e.Canonical));
+
+        // Two beyond-the-end entries: the first takes the last slot, the second the last FREE slot.
+        var crowded = ConsultGenerationJobStarter.PlaceElements(typed, new[] { placed[2], placed[2] with { Element = ConsultInputValue.OfText("d4") } });
+        Assert.Equal(new[] { "t1", "d4", "d3" }, crowded.Elements.Select(e => e.Canonical));
+    }
+
+    [Fact]
+    public async Task ADocumentAndAPreviousRunWithPositions_SitAmongTheTypedRows_WithOriginsAtTheirActualIndex()
+    {
+        WithSourceRun(SourceRun(text: "Earlier note."));
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: TypedNotes("typed one"),
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["prior_notes"] = new() { new ConsultInputRef(SourceJob, "consult", Position: 2) } },
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["prior_notes"] = [TextAt("doc one text", 0)] });
+
+        var captured = await StartAndCaptureAsync(SeveralNotes(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        Assert.Equal(
+            new[] { "doc one text", "typed one", "Earlier note." },
+            captured.OrchestrationInput!.Request.Inputs!["prior_notes"].Elements!.Select(e => e.Canonical));
+        var origins = captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"];
+        Assert.Equal(new[] { ConsultInputOriginKinds.Document, ConsultInputOriginKinds.Typed, ConsultInputOriginKinds.PreviousRun }, origins.Select(o => o.Kind));
+        Assert.NotNull(origins[0].Extractor);
+        Assert.Equal((SourceJob, "consult"), (origins[2].SourceJobId, origins[2].SourceResultId));
+    }
+
+    [Fact]
+    public async Task APositionedPreviousRun_WithTypedRowsAndNoDocument_TakesItsPlace()
+    {
+        // The ref-only post-loop (no file for the id) places too.
+        WithSourceRun(SourceRun(text: "Earlier note."));
+        var request = new ConsultGenerationRequest(
+            null,
+            Inputs: TypedNotes("typed one", "typed two"),
+            InputRefs: new Dictionary<string, List<ConsultInputRef>> { ["prior_notes"] = new() { new ConsultInputRef(SourceJob, "consult", Position: 0) } });
+
+        var captured = await StartAndCaptureAsync(SeveralNotes(), request);
+
+        Assert.Null(captured.Outcome.Error);
+        Assert.Equal(
+            new[] { "Earlier note.", "typed one", "typed two" },
+            captured.OrchestrationInput!.Request.Inputs!["prior_notes"].Elements!.Select(e => e.Canonical));
+        Assert.Equal(
+            new[] { ConsultInputOriginKinds.PreviousRun, ConsultInputOriginKinds.Typed, ConsultInputOriginKinds.Typed },
+            captured.OrchestrationInput.InputDocumentOrigins!["prior_notes"].Select(o => o.Kind));
+    }
 }
+
 
 public class ResolveEffectiveInputsTests
 {
