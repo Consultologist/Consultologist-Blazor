@@ -232,6 +232,44 @@ public class ConsultNodeSchedulerTests
         Assert.Empty(ConsultNodeScheduler.NodeDependencies(Trajectory));
     }
 
+    // v26 (#1154, design § 1.3): a reader of a loop waits on the loop's own row
+    // (the aggregator's bytes, composed inline), not on its items; a flow node's
+    // dependencies are its decision's reads, never its bodies; a flow node that
+    // took no branch is settled with nothing to read.
+    [Fact]
+    public void At26_AReaderOfALoop_WaitsOnTheLoopRow_NotTheItems()
+    {
+        var body = new ConsultNodeDescriptor("section_notes", "Section notes", ForEach: "snippet.sections", Format: "prose", In: "sections");
+        var loop = new ConsultNodeDescriptor("sections", "Sections", Flow: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes");
+        var reader = new ConsultNodeDescriptor("summary", "Summary", Format: "prose", Reads: new[] { "sections" });
+        var nodesById = new[] { body, loop, reader }.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+        Assert.Equal(new[] { "sections" }, ConsultNodeScheduler.NodeDependencies(reader));
+        Assert.False(ConsultNodeScheduler.InstanceReady(reader, null, nodesById, Outputs("section_notes:hpi", "section_notes:plan")));
+        Assert.True(ConsultNodeScheduler.InstanceReady(reader, null, nodesById, Outputs("sections")));
+    }
+
+    [Fact]
+    public void At26_AFlowNodesDependencies_AreItsDecisionsReads_NotItsBodies()
+    {
+        var route = new ConsultNodeDescriptor("route", "Route", Reads: new[] { "scope" }, Flow: "case", Expression: "node.scope.value", Body: new[] { "plan", "letter" });
+
+        Assert.Equal(new[] { "scope" }, ConsultNodeScheduler.NodeDependencies(route));
+    }
+
+    [Fact]
+    public void At26_ASkippedDependency_IsSatisfied()
+    {
+        var triage = new ConsultNodeDescriptor("triage", "Triage", Flow: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup" }, Branch: "none");
+        var reader = new ConsultNodeDescriptor("summary", "Summary", Format: "prose", Reads: new[] { "triage", "extract" });
+        var nodesById = new[] { triage, reader, new ConsultNodeDescriptor("extract", "Extract", Format: "concept_list") }.ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var skipped = new HashSet<string>(StringComparer.Ordinal) { "triage" };
+
+        Assert.False(ConsultNodeScheduler.InstanceReady(reader, null, nodesById, Outputs("extract")));
+        Assert.False(ConsultNodeScheduler.InstanceReady(reader, null, nodesById, Outputs(), skipped));
+        Assert.True(ConsultNodeScheduler.InstanceReady(reader, null, nodesById, Outputs("extract"), skipped));
+    }
+
     // v23 #955: a node macro gated on a classifier is a scheduling edge too, so
     // the node waits for the classifier's answer before its when is judged.
     private static readonly ConsultNodeDescriptor GatedByMacro = new(
