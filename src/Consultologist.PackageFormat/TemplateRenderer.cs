@@ -156,7 +156,11 @@ public sealed record TemplateRenderScope(
     // composed text (the sources' sections, before the deliverable's macros and
     // the signature), null for one skipped by its `if` (the read is null; a
     // guard sees it). Null is a render that reads none.
-    IReadOnlyDictionary<string, string?>? Deliverables = null);
+    IReadOnlyDictionary<string, string?>? Deliverables = null,
+    // #1179 (v26 design § 5.2): a standalone snippet's label — its header's — by
+    // id, for `snippet.<id>.label`; a folder item's rides the folder item. Null
+    // is the 25 render (the id names the snippet).
+    IReadOnlyDictionary<string, string>? SnippetLabels = null);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -304,8 +308,10 @@ public static class TemplateRenderer
         foreach (var (id, text) in scope.Snippets)
         {
             // #1094: an inert snippet's content is empty where read; its id as ever.
+            // #1179: its label is the header's at 26.
             var inert = scope.InertSnippets?.Contains(id) == true;
-            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, id, inert ? string.Empty : text, $"Snippet '{id}'", globals, trace, scope.Labelled);
+            var label = scope.SnippetLabels?.GetValueOrDefault(id) ?? id;
+            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, label, inert ? string.Empty : text, $"Snippet '{id}'", globals, trace, scope.Labelled);
         }
 
         foreach (var (folder, items) in scope.Folders)
@@ -315,10 +321,16 @@ public static class TemplateRenderer
             {
                 // #1116 (v26 design § 5.4): a declared item is a member of its folder,
                 // read directly as snippet.<folder>.<item>; an item gated off (#1094,
-                // the engine's key <folder>/<item>) reads empty there.
+                // the engine's key <folder>/<item>) reads empty there and — #1179 —
+                // is left out of every loop over its folder, exactly as the fan
+                // filter leaves it out: a member, never an element.
                 var inert = scope.InertSnippets?.Contains($"{folder}/{item.Id}") == true;
                 var rendered = Rendered(subject, $"{TemplateObjects.Snippet}.{folder}[{item.Id}]", item.Id, item.Name, inert ? string.Empty : item.Text, $"Snippet '{folder}/{item.Id}'", globals, trace, scope.Labelled);
-                array.Add(rendered);
+                if (!inert)
+                {
+                    array.Add(rendered);
+                }
+
                 array.ScriptObject[item.Id] = rendered;
             }
 
