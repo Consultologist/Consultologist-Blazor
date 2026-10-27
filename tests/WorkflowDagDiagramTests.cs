@@ -30,6 +30,42 @@ public class WorkflowDagDiagramTests
         Assert.Contains("-->|\"aggregate\"| assemble_note", diagram);
     }
 
+    // v26 (#1160): a loop draws as its own subgraph — fed by its collection, the body
+    // in order — returning into the loop's box through ret; a deliverable's sources
+    // each draw an edge. A ≤25 manifest never reaches the loop branch.
+
+    [Fact]
+    public void Diagram_At26_DrawsALoopAsASubgraphReturningThroughRet()
+    {
+        var (manifest, _) = V26Package.Minimal();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest);
+
+        Assert.Contains("snippet_sections([\"snippet.sections\"])", diagram);
+        Assert.Contains("snippet_sections -->|\"for\"| for_sections", diagram);
+        Assert.Contains("subgraph for_sections[\"sections: per snippet.sections item\"]", diagram);
+        Assert.Contains("        section_notes[\"section_notes<br/>", diagram);
+        Assert.Contains("sections[\"sections<br/>Sections<br/>item in snippet.sections\"]", diagram);
+        Assert.Contains("section_notes -->|\"ret\"| sections", diagram);
+        // The body node is not also a top-level box, nor the loop.
+        Assert.Equal(1, diagram.Split("section_notes[\"").Length - 1);
+        Assert.Equal(1, diagram.Split("    sections[\"").Length - 1);
+        // The deliverable's sources each feed its hexagon.
+        Assert.Contains("sections --> result_consult", diagram);
+        Assert.DoesNotContain("     --> result_consult", diagram);
+    }
+
+    [Fact]
+    public void Diagram_At25_HasNoLoopSubgraph()
+    {
+        var (manifest, _) = V25Package.Minimal();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest);
+
+        Assert.DoesNotContain("subgraph for_", diagram);
+        Assert.Contains("subgraph foreach_", diagram);
+    }
+
     [Fact]
     public void Diagram_RendersV5ManifestsNatively()
     {
