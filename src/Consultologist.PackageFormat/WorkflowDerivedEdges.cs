@@ -138,12 +138,11 @@ public static class WorkflowDerivedEdges
                 }
             }
 
-            if (_nodes.TryGetValue(nodeId, out var node))
+            _nodes.TryGetValue(nodeId, out var node);
+
+            foreach (var instance in node?.Node.Macros ?? new List<WorkflowNodeMacroSpec>())
             {
-                foreach (var instance in node.Node.Macros ?? new List<WorkflowNodeMacroSpec>())
-                {
-                    VisitKey((TemplateKind.Macro, instance.Id), seen, Take);
-                }
+                VisitKey((TemplateKind.Macro, instance.Id), seen, Take);
             }
 
             // #1037: what the node's own when and its instances' whens read — the
@@ -152,6 +151,17 @@ public static class WorkflowDerivedEdges
             foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance, ConditionSite.Flow))
             {
                 Visit(condition.Walk.References, seen, Take);
+            }
+
+            // #1154: a case node switches on a node's value — read structurally
+            // (#1100), an edge all the same: the decision waits on it. A flow
+            // node's edges are what its DECISION reads, never its bodies (the
+            // engine attaches those itself, the taken body only); the validator's
+            // own map adds the bodies for the scope and cycle checks.
+            if (node is not null && node.Node.Case is { } subject
+                && WorkflowFlowNodes.CaseNodeSubjectOf(subject) is { } subjectId && _nodes.ContainsKey(subjectId))
+            {
+                edges.Add(subjectId);
             }
 
             // A fill's text may itself read snippets and macro texts (never a
@@ -292,8 +302,20 @@ public static class WorkflowDerivedEdges
         /// at the node's own completion and a folder item's reads inputs only, so
         /// neither gates the boundary.
         /// </summary>
-        public IReadOnlySet<string> GatingReads() =>
-            ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance or ConditionSite.Flow));
+        public IReadOnlySet<string> GatingReads()
+        {
+            var reads = new HashSet<string>(
+                ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance or ConditionSite.Flow)),
+                StringComparer.Ordinal);
+
+            // #1154: a case node's subject gates its bodies as an if's expression
+            // does — a node it switches on is a deciding read.
+            reads.UnionWith(_nodes.Values
+                .Select(n => n.Node.Case is { } subject ? WorkflowFlowNodes.CaseNodeSubjectOf(subject) : null)
+                .Where(id => id is not null && _nodes.ContainsKey(id))!);
+
+            return reads;
+        }
 
         /// <summary>#1038: whether any gating when reads a profile fact (directly or through a text) — a read only the boundary can serve, since the starter judges before the profile is fetched.</summary>
         public bool GatingReadsProfile()
@@ -301,7 +323,9 @@ public static class WorkflowDerivedEdges
             var found = false;
             var seen = new HashSet<(TemplateKind, string)>();
 
-            foreach (var condition in Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance))
+            // #1154: an if node's expression is a gating read too — decided at the
+            // boundary when it reads the profile, as a 25 when is.
+            foreach (var condition in Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance or ConditionSite.Flow))
             {
                 Visit(condition.Walk.References, seen, refs => found |= refs.ProfileFacts.Count > 0);
             }

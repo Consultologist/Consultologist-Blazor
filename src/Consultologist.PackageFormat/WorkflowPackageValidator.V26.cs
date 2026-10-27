@@ -536,7 +536,7 @@ public static partial class WorkflowPackageValidator
                     errors.Add($"Node '{flow.Node.Id}' switches on {subject}, which the package does not declare; {rule}.");
                 }
             }
-            else if (CaseNodeSubjectOf(subject) is { } nodeId)
+            else if (WorkflowFlowNodes.CaseNodeSubjectOf(subject) is { } nodeId)
             {
                 if (flows.Flows.ContainsKey(nodeId))
                 {
@@ -595,14 +595,6 @@ public static partial class WorkflowPackageValidator
         }
     }
 
-    /// <summary><c>node.&lt;id&gt;.value</c> → the id; anything else → null.</summary>
-    private static string? CaseNodeSubjectOf(string subject) =>
-        TemplateObjectReference.TryParse(subject, out var obj, out var id, out var rest)
-            && obj == TemplateObjects.Node
-            && rest.TrimStart('.') == TemplateMembers.Value
-            ? id
-            : null;
-
     // ----- the edges, the bodies' scope, the conditions -------------------------
 
     /// <summary>
@@ -631,7 +623,7 @@ public static partial class WorkflowPackageValidator
 
             targets.UnionWith(flow.BodyNodeIds.Where(nodes.ContainsKey));
 
-            if (flow.Kind == WorkflowFlowNodes.Kind.Case && flow.Expression is { } subject && CaseNodeSubjectOf(subject) is { } nodeId && nodes.ContainsKey(nodeId))
+            if (flow.Kind == WorkflowFlowNodes.Kind.Case && flow.Expression is { } subject && WorkflowFlowNodes.CaseNodeSubjectOf(subject) is { } nodeId && nodes.ContainsKey(nodeId))
             {
                 targets.Add(nodeId);
             }
