@@ -93,7 +93,35 @@ internal static class ConsultRenderPayload
         }
 
         return ScopeFor(input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, input.Item, input.ForEach, input.Run, input.Profile, package,
-            input.Loops, input.FlowRets, input.SkippedNodes);
+            input.Loops, input.FlowRets, input.SkippedNodes, input.Deliverables);
+    }
+
+    /// <summary>
+    /// v26 (#1155, design § 3.1): the composed texts of the deliverables a node
+    /// (or a deliverable's macros) reads — id → text; null for one not in the
+    /// run (skipped by its if: the read is null). The scheduler started the
+    /// reader only once the deliverable's sources settled, and the compose step
+    /// runs on that same pass, so a run deliverable not yet composed is an
+    /// engine fault, said loud. Null when nothing is read (the 25 bytes).
+    /// </summary>
+    public static IReadOnlyDictionary<string, string?>? DeliverableTextsFor(
+        IReadOnlyList<string>? deliverableReads,
+        IReadOnlyDictionary<string, ConsultDeliverableComposition.Composed> composed,
+        IReadOnlySet<string> runDeliverables)
+    {
+        if (deliverableReads is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        return deliverableReads.ToDictionary(
+            id => id,
+            id => composed.TryGetValue(id, out var c)
+                ? c.Rendered
+                : runDeliverables.Contains(id)
+                    ? throw new InvalidOperationException($"Deliverable '{id}' is read before it composed; the orchestrator does not hold its text.")
+                    : null,
+            StringComparer.Ordinal);
     }
 
     /// <summary>
@@ -162,7 +190,9 @@ internal static class ConsultRenderPayload
         // v26 (#1154): the loops read whole, the flow nodes' returned nodes, the skipped flows.
         IReadOnlyDictionary<string, ConsultLoopPayload>? loops = null,
         IReadOnlyDictionary<string, string>? flowRets = null,
-        IReadOnlyList<string>? skipped = null)
+        IReadOnlyList<string>? skipped = null,
+        // v26 (#1155): the deliverables read, composed (null = skipped).
+        IReadOnlyDictionary<string, string?>? deliverables = null)
     {
         var manifest = package.Manifest;
         var nodesById = (package.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
@@ -245,7 +275,8 @@ internal static class ConsultRenderPayload
             profile,
             Loops: loopOutputs,
             SkippedNodes: skipped is { Count: > 0 } ? skipped.ToHashSet(StringComparer.Ordinal) : null,
-            Labelled: manifest.SpecVersion >= 26);
+            Labelled: manifest.SpecVersion >= 26,
+            Deliverables: deliverables);
     }
 
     /// <summary>The type a node's format declares — the stamped catalogue's, or a package-local format file's — so <c>.value</c> parses accordingly; text when unknown.</summary>

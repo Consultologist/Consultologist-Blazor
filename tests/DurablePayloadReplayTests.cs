@@ -74,7 +74,7 @@ public class DurablePayloadReplayTests
         // #923 phase 2 appended AgentName/AgentVersion last — two more trailing
         // nulls a pre-phase-2 payload binds and writes back.
         // #1001 appended the format identity; #1002 the 25 render scope — six more trailing nulls; #1004 the two facts an instance's when reads.
-        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"NodeTexts\":null,\"Folders\":null,\"Item\":null,\"ForEach\":null,\"Run\":null,\"Profile\":null,\"With\":null,\"OnInvalid\":null,\"Supplied\":null,\"Classifications\":null,\"FailIfEmpty\":null,\"Instances\":null,\"Loops\":null,\"FlowRets\":null,\"SkippedNodes\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(stored[..^1] + ",\"Values\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"Before\":null,\"After\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"NodeTexts\":null,\"Folders\":null,\"Item\":null,\"ForEach\":null,\"Run\":null,\"Profile\":null,\"With\":null,\"OnInvalid\":null,\"Supplied\":null,\"Classifications\":null,\"FailIfEmpty\":null,\"Instances\":null,\"Loops\":null,\"FlowRets\":null,\"SkippedNodes\":null,\"Deliverables\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Null(input.Values);
         Assert.Equal(
             "Seen 2026-08-10. Bill it.",
@@ -107,7 +107,7 @@ public class DurablePayloadReplayTests
         var withRefs = stored
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null,\"InputFormFiles\":null}", StringComparison.Ordinal)
             // #1154: and Sources, appended last at 26.
-            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null,\"Reads\":null,\"Sources\":null}", StringComparison.Ordinal);
+            .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null,\"Reads\":null,\"Sources\":null,\"DeliverableReads\":null}", StringComparison.Ordinal);
         Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
@@ -255,7 +255,8 @@ public class DurablePayloadReplayTests
         var result = JsonSerializer.Deserialize<ConsultDeliverableMacrosResult>(storedResult, Durable)!;
 
         Assert.Equal("append", Assert.Single(input.Placements).At);
-        Assert.Equal(storedInput, JsonSerializer.Serialize(input, Durable));
+        // #1155: Deliverables, appended last at 26.
+        Assert.Equal(storedInput[..^1] + ",\"Deliverables\":null}", JsonSerializer.Serialize(input, Durable));
         Assert.Equal(storedResult, JsonSerializer.Serialize(result, Durable));
     }
 
@@ -296,8 +297,8 @@ public class DurablePayloadReplayTests
 
         Assert.Null(descriptor.MacroPlacements);
         Assert.Equal(new[] { "closing" }, descriptor.Macros);
-        // #1027 appended Reads — the deliverable's edges at 25; #1154 Sources — its sources at 26.
-        Assert.Equal(stored[..^1] + ",\"MacroPlacements\":null,\"Check\":null,\"Reads\":null,\"Sources\":null}", JsonSerializer.Serialize(descriptor, Durable));
+        // #1027 appended Reads — the deliverable's edges at 25; #1154 Sources — its sources at 26; #1155 DeliverableReads.
+        Assert.Equal(stored[..^1] + ",\"MacroPlacements\":null,\"Check\":null,\"Reads\":null,\"Sources\":null,\"DeliverableReads\":null}", JsonSerializer.Serialize(descriptor, Durable));
     }
 
     [Fact]
@@ -400,7 +401,8 @@ public class DurablePayloadReplayTests
         var document = JsonSerializer.Deserialize<ConsultGenerationResultDocument>(stored, Durable)!;
 
         Assert.Null(document.Appended);
-        Assert.Equal(stored[..^1] + ",\"Appended\":null,\"Unsigned\":null}", JsonSerializer.Serialize(document, Durable));
+        // #1155 appended ComposedHash and Sources — the 26 document's.
+        Assert.Equal(stored[..^1] + ",\"Appended\":null,\"Unsigned\":null,\"ComposedHash\":null,\"Sources\":null}", JsonSerializer.Serialize(document, Durable));
     }
 
     [Fact]
@@ -450,7 +452,7 @@ public class DurablePayloadReplayTests
         Assert.Null(node.Reproducible);
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
         // #923 phase 2 appended AgentName/AgentVersion; #760 appended CustomSchemaHash; #955 appended Macros; #1001 the format identity; #1002 Reads; #1154 the flow row (Flow … Branch).
-        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"Reads\":null,\"With\":null,\"OnInvalid\":null,\"Flow\":null,\"Collection\":null,\"Expression\":null,\"Body\":null,\"Ret\":null,\"In\":null,\"Branch\":null}", JsonSerializer.Serialize(node, Durable));
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"Reads\":null,\"With\":null,\"OnInvalid\":null,\"Flow\":null,\"Collection\":null,\"Expression\":null,\"Body\":null,\"Ret\":null,\"In\":null,\"Branch\":null,\"DeliverableReads\":null}", JsonSerializer.Serialize(node, Durable));
     }
 
     [Fact]

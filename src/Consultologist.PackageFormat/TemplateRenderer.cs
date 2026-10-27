@@ -143,7 +143,12 @@ public sealed record TemplateRenderScope(
     IReadOnlySet<string>? SkippedNodes = null,
     // #1105/#1154: at 26 the item, snippet and macro objects carry `label`
     // (the header's) beside name. False is the 25 render.
-    bool Labelled = false);
+    bool Labelled = false,
+    // #1155 (v26 design § 3.1): the deliverables this render reads — id → the
+    // composed text (the sources' sections, before the deliverable's macros and
+    // the signature), null for one skipped by its `if` (the read is null; a
+    // guard sees it). Null is a render that reads none.
+    IReadOnlyDictionary<string, string?>? Deliverables = null);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -411,6 +416,25 @@ public static class TemplateRenderer
             ["name"] = scope.Profile.Name,
             [WorkflowMacroPlaceholders.SignatureFact] = scope.Profile.Signature,
         };
+
+        // #1155 (v26 design § 3.1): the sixth object — deliverable.<id>.content,
+        // the composed text; a skipped deliverable reads null. One member, the
+        // probe's; a renderer pipe refuses it as it refuses any non-node.
+        if (scope.Deliverables is { } composed)
+        {
+            var deliverable = new ClosedObject(subject, TemplateObjects.Deliverable);
+            foreach (var (id, text) in composed)
+            {
+                deliverable[id] = text is null
+                    ? null
+                    : new LazyMembersObject(subject, $"{TemplateObjects.Deliverable}.{id}", new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
+                    {
+                        [TemplateMembers.Content] = () => text,
+                    });
+            }
+
+            globals[TemplateObjects.Deliverable] = deliverable;
+        }
 
         foreach (var name in TemplatePipes.All)
         {

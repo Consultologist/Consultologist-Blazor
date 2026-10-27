@@ -152,4 +152,70 @@ public class V26RenderTests
         Assert.Null(ConsultRenderPayload.FlowRetsFor(Body, nodesById));
         Assert.Throws<InvalidOperationException>(() => ConsultRenderPayload.LoopsFor(Reader, nodesById, new Dictionary<string, NodeRunResult>(), collections));
     }
+
+    // ----- #1155: deliverable.<id>.content --------------------------------------------------
+
+    /// <summary>The minimal with a second deliverable `patient_letter` whose node `letter` reads deliverable.consult.content.</summary>
+    private static WorkflowPackage WithLetter(string prompt = "Dear doctor,\n{{ deliverable.consult.content }}") =>
+        V26JobStartTests.Package(
+            m => V26Package.WithNodes(m, new WorkflowNodeSpec("letter", "Letter", Prompt: "prompts/letter.md", Format: "prose")) with
+            {
+                Deliverables = m.Deliverables!.Append(new WorkflowDeliverableSpec("patient_letter", null, "Patient letter", Sources: new List<string> { "node.letter", "node.sections" })).ToList(),
+            },
+            files => files["prompts/letter.md"] = prompt);
+
+    [Fact]
+    public void ADeliverablesContent_RendersTheComposedText_AndASkippedOneReadsNull_UnderAGuard()
+    {
+        var package = WithLetter();
+        var composed = Input("letter", "prompts/letter.md") with { Deliverables = new Dictionary<string, string?> { ["consult"] = "## HPI\n\nThe history." } };
+        Assert.Equal("Dear doctor,\n## HPI\n\nThe history.", ConsultRenderPayload.RenderAt25(composed, package, package.SourceFiles!["prompts/letter.md"]));
+
+        var skipped = composed with { Deliverables = new Dictionary<string, string?> { ["consult"] = null } };
+        Assert.Equal("none", ConsultRenderPayload.RenderAt25(skipped, package, "{{ if deliverable.consult }}{{ deliverable.consult.content }}{{ else }}none{{ end }}"));
+
+        // Not threaded at all: the object does not exist — loud, never empty.
+        Assert.Throws<InvalidOperationException>(() => ConsultRenderPayload.RenderAt25(Input("letter", "prompts/letter.md"), package, package.SourceFiles!["prompts/letter.md"]));
+    }
+
+    [Fact]
+    public void ADeliverableRead_OutsideContent_IsLoud()
+    {
+        var package = WithLetter();
+        var input = Input("letter", "prompts/letter.md") with { Deliverables = new Dictionary<string, string?> { ["consult"] = "The note." } };
+
+        var ex = Assert.Throws<InvalidOperationException>(() => ConsultRenderPayload.RenderAt25(input, package, "{{ deliverable.consult.value }}"));
+
+        Assert.Equal("Prompt 'prompts/letter.md' reads deliverable.consult.value, which this render has no value for.", ex.Message);
+    }
+
+    [Fact]
+    public void ADeliverableMacro_ReadsAnotherDeliverablesContent()
+    {
+        // A second macro, placed on a second deliverable, reads the first deliverable's text (placed on `consult` itself it would be the cycle the validator refuses).
+        var package = V26JobStartTests.Package(
+            m => V26Package.WithNodes(m with
+                {
+                    Macros = m.Macros!.Append(new WorkflowMacroSpec("see_also", null, "macros/see_also.md")).ToList(),
+                    Deliverables = m.Deliverables!.Append(new WorkflowDeliverableSpec("patient_letter", null, "Patient letter",
+                        Sources: new List<string> { "node.letter", "node.sections" },
+                        Macros: new List<WorkflowDeliverableMacroSpec> { new("see_also", At: WorkflowDeliverableMacroSpec.Append) })).ToList(),
+                }, new WorkflowNodeSpec("letter", "Letter", Prompt: "prompts/letter.md", Format: "prose")),
+            files =>
+            {
+                files["prompts/letter.md"] = "Dear doctor.";
+                files["macros/see_also.md"] = V26Package.Header("See also", instruction: "Mention the note.") + "Closing after: {{ deliverable.consult.content | string.size }} chars.";
+            });
+        var input = new ConsultDeliverableMacrosActivityInput(
+            "patient_letter", package.Ref, new[] { new ConsultMacroPlacement("see_also", At: "append") },
+            new Dictionary<string, string> { ["notes"] = "Referral.", ["kind"] = "new" }, null,
+            new Dictionary<string, string>(), null,
+            Run, Profile,
+            Deliverables: new Dictionary<string, string?> { ["consult"] = "The note." });
+
+        var result = RenderDeliverableMacrosActivity.Render(input, package);
+
+        // The macro's header still rides the raw file (the store's header read is #1157's); the body renders the read.
+        Assert.EndsWith("Closing after: 9 chars.", Assert.Single(result.Append).Text);
+    }
 }

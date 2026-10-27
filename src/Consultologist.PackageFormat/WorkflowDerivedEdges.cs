@@ -118,12 +118,65 @@ public static class WorkflowDerivedEdges
         public IReadOnlySet<string> EdgesOf(string nodeId)
         {
             var edges = new HashSet<string>(StringComparer.Ordinal);
+
+            VisitNodeClosure(nodeId, refs => edges.UnionWith(EdgesIn(refs)));
+
+            // #1154: a case node switches on a node's value — read structurally
+            // (#1100), an edge all the same: the decision waits on it. A flow
+            // node's edges are what its DECISION reads, never its bodies (the
+            // engine attaches those itself, the taken body only); the validator's
+            // own map adds the bodies for the scope and cycle checks.
+            if (_nodes.TryGetValue(nodeId, out var node) && node.Node.Case is { } subject
+                && WorkflowFlowNodes.CaseNodeSubjectOf(subject) is { } subjectId && _nodes.ContainsKey(subjectId))
+            {
+                edges.Add(subjectId);
+            }
+
+            if (Parameters.TryGetValue(nodeId, out var parameters))
+            {
+                edges.UnionWith(parameters.Edges);
+            }
+
+            return edges;
+        }
+
+        /// <summary>
+        /// #1155 (v26 design § 3.1): the deliverable ids a node's prompt reads as
+        /// <c>deliverable.&lt;id&gt;.content</c>, closed exactly as <see cref="EdgesOf"/>
+        /// closes (the snippets and macro texts the prompt reads, its instances,
+        /// its conditions, the inline fills) — the engine threads each one's
+        /// composed text to the render. Empty for a node reading none.
+        /// </summary>
+        public IReadOnlySet<string> DeliverableReadsOf(string nodeId)
+        {
+            var reads = new HashSet<string>(StringComparer.Ordinal);
+            VisitNodeClosure(nodeId, refs => reads.UnionWith(refs.DeliverableReads));
+            return reads;
+        }
+
+        /// <summary>#1155: the deliverable ids a macro's TEXT reads, closed as <see cref="MacroEdges"/> closes — a deliverable instance of that macro reads them.</summary>
+        public IReadOnlySet<string> MacroDeliverableReads(string macroId)
+        {
+            var reads = new HashSet<string>(StringComparer.Ordinal);
+            VisitKey((TemplateKind.Macro, macroId), new HashSet<(TemplateKind, string)>(), refs => reads.UnionWith(refs.DeliverableReads));
+            return reads;
+        }
+
+        /// <summary>
+        /// The closure of what a node renders, each template once: its prompt and
+        /// the fan items it reads, its instances' texts, its own and its instances'
+        /// conditions (and a flow node's expression), and the fills of the inline
+        /// macros its prompt instructs — visited until no new slot (a fill never
+        /// reads a .prompt, § 5.2, so this settles).
+        /// </summary>
+        private void VisitNodeClosure(string nodeId, Action<TemplateReferences> take)
+        {
             var seen = new HashSet<(TemplateKind, string)>();
             var slots = new HashSet<string>(StringComparer.Ordinal);
 
             void Take(TemplateReferences refs)
             {
-                edges.UnionWith(EdgesIn(refs));
+                take(refs);
                 slots.UnionWith(refs.MacroPrompts);
                 slots.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
             }
@@ -153,19 +206,6 @@ public static class WorkflowDerivedEdges
                 Visit(condition.Walk.References, seen, Take);
             }
 
-            // #1154: a case node switches on a node's value — read structurally
-            // (#1100), an edge all the same: the decision waits on it. A flow
-            // node's edges are what its DECISION reads, never its bodies (the
-            // engine attaches those itself, the taken body only); the validator's
-            // own map adds the bodies for the scope and cycle checks.
-            if (node is not null && node.Node.Case is { } subject
-                && WorkflowFlowNodes.CaseNodeSubjectOf(subject) is { } subjectId && _nodes.ContainsKey(subjectId))
-            {
-                edges.Add(subjectId);
-            }
-
-            // A fill's text may itself read snippets and macro texts (never a
-            // .prompt — § 5.2 refuses it — so this settles); visit until no new slot.
             var pending = new Queue<string>(slots);
             while (pending.TryDequeue(out var slot))
             {
@@ -176,13 +216,6 @@ public static class WorkflowDerivedEdges
                     pending.Enqueue(added);
                 }
             }
-
-            if (Parameters.TryGetValue(nodeId, out var parameters))
-            {
-                edges.UnionWith(parameters.Edges);
-            }
-
-            return edges;
         }
 
         /// <summary>Every node's edges, keyed by node id — every node the walk was given, reads or none.</summary>
@@ -925,6 +958,51 @@ public static class WorkflowDerivedEdges
             // #1038: what the deliverable's own when and its instances' whens read
             // is read by the deliverable too — a root of its closure, kept by the prune.
             set.UnionWith(walk.DeliverableConditionReads(deliverable.Id));
+
+            reads[deliverable.Id] = set;
+        }
+
+        return reads;
+    }
+
+    /// <summary>
+    /// #1155 (v26 design § 3.1): every node's deliverable reads — node id → the
+    /// deliverable ids its prompt reads as <c>deliverable.&lt;id&gt;.content</c>,
+    /// sorted, closed as its edges are (see <see cref="Walk.DeliverableReadsOf"/>).
+    /// Every node the walk was given, reads or none. Empty sets below 26, where
+    /// the object does not exist. The job starter's call.
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlySet<string>> DeliverableReadsByNode(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats)
+    {
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        return nodes.ToDictionary(
+            node => node.Node.Id,
+            node => (IReadOnlySet<string>)new SortedSet<string>(walk.DeliverableReadsOf(node.Node.Id), StringComparer.Ordinal),
+            StringComparer.Ordinal);
+    }
+
+    /// <summary>#1155: each deliverable's deliverable reads — the union of its placed macros' (<see cref="Walk.MacroDeliverableReads"/>), sorted, keyed by deliverable id, every deliverable of the manifest.</summary>
+    public static IReadOnlyDictionary<string, IReadOnlySet<string>> DeliverableReadsByDeliverable(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats)
+    {
+        var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor);
+        var walk = WalkAll(manifest, files, nodes, snippets, contextFor);
+        var reads = new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal);
+
+        foreach (var deliverable in manifest.EffectiveDeliverables)
+        {
+            var set = new SortedSet<string>(StringComparer.Ordinal);
+
+            foreach (var entry in deliverable.Macros ?? new List<WorkflowDeliverableMacroSpec>())
+            {
+                set.UnionWith(walk.MacroDeliverableReads(entry.Id));
+            }
 
             reads[deliverable.Id] = set;
         }

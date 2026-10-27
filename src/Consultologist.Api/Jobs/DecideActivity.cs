@@ -166,6 +166,9 @@ public sealed class DecideActivity
         // skip, and nothing is recorded for a document that does not exist.
         var excludedMacros = new List<ConsultExcludedMacro>();
         var deliverableReads = ConsultGenerationJobStarter.DeliverableReads(narrowed);
+        // v26 (#1155): the deliverables each deliverable's macros and each node read.
+        var deliverableDeliverableReads = ConsultGenerationJobStarter.DeliverableDeliverableReads(narrowed);
+        var nodeDeliverableReads = ConsultGenerationJobStarter.NodeDeliverableReads(narrowed);
         var firingDescriptors = fireSet.Firing
             .Select(result =>
             {
@@ -173,7 +176,7 @@ public sealed class DecideActivity
                 excludedMacros.AddRange(judged.Excluded);
                 // The boundary never sees the request: the choice filter is
                 // the engine's (FilterDescriptorMacros), so no choices here.
-                return ConsultGenerationJobStarter.DescribeResult(result, judged.Macros, judged.Placements, null, deliverableReads?.GetValueOrDefault(result.Id));
+                return ConsultGenerationJobStarter.DescribeResult(result, judged.Macros, judged.Placements, null, deliverableReads?.GetValueOrDefault(result.Id), deliverableDeliverableReads?.GetValueOrDefault(result.Id));
             })
             .ToList();
 
@@ -190,7 +193,7 @@ public sealed class DecideActivity
             narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(
                 node, narrowed.SchemaContracts, narrowed.ContractAgents, narrowed.SourceFiles, narrowed.Manifest.Macros,
                 narrowed.Formats ?? engineFormats, narrowed.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), effectiveInputs, narrowed.Manifest,
-                flows, fireSet.Branches?.GetValueOrDefault(node.Id))).ToList(),
+                flows, fireSet.Branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id))).ToList(),
             skeleton.Items,
             skeleton.CollectionSets,
             skeleton.CollectionRosters,

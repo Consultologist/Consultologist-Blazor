@@ -445,7 +445,12 @@ public sealed record ConsultGenerationResultDocumentResponse(
     // block was chosen on the profile — produced unsigned, said by name.
     // Only true or null, never false: a signed-and-appended document stores
     // nothing here.
-    bool? Unsigned = null);
+    bool? Unsigned = null,
+    // v26 (#1155, design § 10): the composed text's hash (the sources' sections
+    // before macros and the signature — the 25 aggregator's agentOutputHash,
+    // moved here) and the sources it composed. Null below 26.
+    string? ComposedHash = null,
+    IReadOnlyList<string>? Sources = null);
 
 /// <summary>
 /// v11 #513 (provenance § 7): one block appended to a deliverable's assembled
@@ -621,7 +626,11 @@ public sealed record ConsultNodeDescriptor(
     IReadOnlyList<string>? Body = null,
     string? Ret = null,
     string? In = null,
-    string? Branch = null);
+    string? Branch = null,
+    // v26 (#1155, design § 3.1): the deliverables this node's prompt reads as
+    // deliverable.<id>.content, closed as its Reads are — the orchestrator
+    // threads each one's composed text. Sorted; null below 26 and when none.
+    IReadOnlyList<string>? DeliverableReads = null);
 
 /// <summary>
 /// v25 (B4 #1003, design § 3.5): a reply validated against its format after
@@ -700,7 +709,9 @@ public sealed record ConsultResultDescriptor(
     IReadOnlyList<string>? Reads = null,
     // v26 (#1154, design § 3): the deliverable's sources[] as bare node ids in
     // declared order; NodeId is empty at 26. Null below 26. Appended last.
-    IReadOnlyList<string>? Sources = null);
+    IReadOnlyList<string>? Sources = null,
+    // v26 (#1155): the deliverables its placed macros read. Null below 26 and when none.
+    IReadOnlyList<string>? DeliverableReads = null);
 
 /// <summary>
 /// v12 #619 (design § 4): one placed macro on one deliverable — the id and
@@ -752,7 +763,10 @@ public sealed record ConsultFailedDocument(
     string Label,
     string Reason,
     IReadOnlyList<string>? Uncovered = null,
-    IReadOnlyList<string>? Untested = null);
+    IReadOnlyList<string>? Untested = null,
+    // v26 (#1155): the composed text's hash — the check refused the document,
+    // the sections composed all the same. Null below 26.
+    string? ComposedHash = null);
 
 /// <summary>
 /// v12 #624 (design § 13): a check node's verdict — the boolean, the input

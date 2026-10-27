@@ -91,7 +91,11 @@ public sealed record ConsultPromptNodeActivityInput(
     // last, same positional-call rule.
     IReadOnlyDictionary<string, ConsultLoopPayload>? Loops = null,
     IReadOnlyDictionary<string, string>? FlowRets = null,
-    IReadOnlyList<string>? SkippedNodes = null);
+    IReadOnlyList<string>? SkippedNodes = null,
+    // v26 (#1155, design § 3.1): the deliverables this node reads as
+    // deliverable.<id>.content — id → the composed text, null for one skipped
+    // by its if. Null below 26 and when none. Appended last, same rule.
+    IReadOnlyDictionary<string, string?>? Deliverables = null);
 
 /// <summary>
 /// v26 (#1154): a loop as the orchestrator hands it to the activity — its

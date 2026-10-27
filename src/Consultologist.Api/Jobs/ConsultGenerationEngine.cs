@@ -232,6 +232,16 @@ public sealed class ConsultGenerationOrchestrator
         var pendingDeliverables = new Dictionary<string, (ConsultDeliverables.Deliverable Deliverable, IReadOnlyList<string> SourceRefs, List<ConsultAggregateRenderer.Part> Parts)>(StringComparer.Ordinal);
         var settledChecks = new Dictionary<string, ConsultCheckOutcome>(StringComparer.Ordinal);
         var failedDocuments = new List<ConsultFailedDocument>();
+        // v26 (#1155, design § 3): the deliverables composed from their sources —
+        // by result id, the text deliverable.<id>.content reads and the ladder
+        // stamped on the document at release; the failures beside them (a
+        // deliverable id, never a node id). Composed only once the graph is
+        // final — a deciding job's stage one holds the declared set, not the
+        // decided one.
+        var composedDeliverables = new Dictionary<string, ConsultDeliverableComposition.Composed>(StringComparer.Ordinal);
+        var failedDeliverables = new Dictionary<string, string>(StringComparer.Ordinal);
+        var deliverablesFinal = !deciding;
+        IReadOnlySet<string> RunDeliverableIds() => deliverables.Where(d => d.ResultId is not null).Select(d => d.ResultId!).ToHashSet(StringComparer.Ordinal);
         // v10 (#496): the skipped set the reply names — the starter's, or the boundary's.
         var skippedForReply = input.SkippedDocuments;
 
@@ -321,7 +331,9 @@ public sealed class ConsultGenerationOrchestrator
                         // nodes' returned nodes, the flows that took no branch.
                         Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, collections),
                         FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById),
-                        SkippedNodes: skippedNodes.Count > 0 ? skippedNodes.Order(StringComparer.Ordinal).ToList() : null),
+                        SkippedNodes: skippedNodes.Count > 0 ? skippedNodes.Order(StringComparer.Ordinal).ToList() : null,
+                        // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
+                        Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds())),
                     AgentActivityRetryOptions)] = (node.Id, item?["id"]);
                 return;
             }
@@ -517,13 +529,17 @@ public sealed class ConsultGenerationOrchestrator
                             placements,
                             new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
                             input.InputTypes is null ? null : new Dictionary<string, string>(input.InputTypes, StringComparer.Ordinal),
-                            (deliverable.Reads ?? Array.Empty<string>()).Append(deliverable.NodeId)
+                            // v26 (#1155): the sources' texts beside the reads (the
+                            // aggregator's below 26 — one id, the same filter).
+                            (deliverable.Reads ?? Array.Empty<string>()).Concat(deliverable.Sources ?? new[] { deliverable.NodeId })
                                 .Where(outputs.ContainsKey)
                                 .Distinct(StringComparer.Ordinal)
                                 .ToDictionary(id => id, id => outputs[id].Classification ?? outputs[id].RawOutput, StringComparer.Ordinal),
                             ConsultRenderPayload.FoldersFor(collections),
                             ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
-                            ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature)),
+                            ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
+                            // v26 (#1155, design § 3.1): the deliverables its macros read, composed.
+                            Deliverables: ConsultRenderPayload.DeliverableTextsFor(deliverable.DeliverableReads, composedDeliverables, RunDeliverableIds())),
                         AgentActivityRetryOptions);
 
                 var (text25, appended25) = ConsultMacroExpander.ComposeAt25(renderedMacros.Prepend, parts, renderedMacros.Append);
@@ -531,10 +547,14 @@ public sealed class ConsultGenerationOrchestrator
                     text25, appended25, deliverable.Signature == true, renderedMacros.SignatureRead, input.Signature);
                 recordedTexts[deliverable.ResultId!] = final25;
 
+                // v26 (#1155, design § 10): the composed text's hash and the sources
+                // on the document's row — the aggregator's agentOutputHash, moved.
+                var composed = composedDeliverables.GetValueOrDefault(deliverable.ResultId!);
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.CompleteResultDocument),
-                    new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, final25, deliverable.Ordinal, finalAppended25, unsigned25));
+                    new ConsultGenerationResultDocument(deliverable.ResultId!, deliverable.Label ?? deliverable.ResultId!, final25, deliverable.Ordinal, finalAppended25, unsigned25,
+                        ComposedHash: composed?.ComposedHash, Sources: composed is null ? null : deliverable.Sources));
                 return;
             }
 
@@ -663,7 +683,8 @@ public sealed class ConsultGenerationOrchestrator
         {
             foreach (var (resultId, pending) in pendingDeliverables.ToList())
             {
-                if (!ConsultCheckSettlement.IsReleaseReady(pending.Deliverable, outputs, settledChecks, out var outcome))
+                if (!ConsultCheckSettlement.IsReleaseReady(pending.Deliverable, outputs, settledChecks, out var outcome,
+                    skippedNodes, composedDeliverables.Keys.ToHashSet(StringComparer.Ordinal), RunDeliverableIds()))
                 {
                     continue;
                 }
@@ -681,7 +702,9 @@ public sealed class ConsultGenerationOrchestrator
                     pending.Deliverable.Label ?? resultId,
                     ConsultCheckSettlement.FailWithOf(nodesById[pending.Deliverable.CheckNodeId!]),
                     outcome.Uncovered,
-                    outcome.Untested);
+                    outcome.Untested,
+                    // v26 (#1155): the composed text's hash, refused or not.
+                    ComposedHash: composedDeliverables.GetValueOrDefault(resultId)?.ComposedHash);
                 failedDocuments.Add(failed);
                 await context.Entities.CallEntityAsync(
                     entityId,
@@ -886,6 +909,42 @@ public sealed class ConsultGenerationOrchestrator
                                 nameof(ConsultGenerationJobEntity.CompleteBlock),
                                 new BlockGenerationResult($"{deliverable.BlockPrefix}{flow.Id}", flow.Label, true, flowResult.RawOutput.Trim(), null));
                         }
+                    }
+                }
+
+                // v26 (#1155, design § 3): the deliverable's compose step — once
+                // every declared source has settled (a loop's row, an if/case's
+                // alias, a prose node), the parts in sources[] order through the
+                // aggregator's renderer and ladder; stashed for the release, which
+                // waits on the reads and the check as it did. No entity op here:
+                // the hash is stamped on the document at release.
+                if (deliverablesFinal)
+                {
+                    foreach (var deliverable in deliverables)
+                    {
+                        if (deliverable.Sources is null || deliverable.ResultId is null
+                            || composedDeliverables.ContainsKey(deliverable.ResultId) || failedDeliverables.ContainsKey(deliverable.ResultId))
+                        {
+                            continue;
+                        }
+
+                        var composedDeliverable = ConsultDeliverableComposition.TryCompose(
+                            deliverable, nodesById, outputs, FanItems, (node, itemId) => failedItems.Contains(FailedKey(node, itemId)));
+                        if (composedDeliverable is null)
+                        {
+                            continue;
+                        }
+
+                        progressed = true;
+
+                        if (composedDeliverable.Failure is { } failure)
+                        {
+                            failedDeliverables[deliverable.ResultId] = failure;
+                            continue;
+                        }
+
+                        composedDeliverables[deliverable.ResultId] = composedDeliverable;
+                        pendingDeliverables[deliverable.ResultId] = (deliverable, deliverable.Sources, composedDeliverable.Parts!);
                     }
                 }
             }
@@ -1202,6 +1261,7 @@ public sealed class ConsultGenerationOrchestrator
             collections = decision.CollectionSets;
             v6 = collections is { Count: > 0 };
             deliverables = ConsultDeliverables.Resolve(results, v6 ? resultNodeId : null, nodesById);
+            deliverablesFinal = true;
             totalBlockCount = items.Count;
             totalNodeCount = nodes.Count;
             skippedForReply = decision.Skipped.Count > 0 ? decision.Skipped : null;
@@ -1291,7 +1351,8 @@ public sealed class ConsultGenerationOrchestrator
             // Completed requires every declared deliverable produced; the error
             // is the first missing deliverable's, by result-set order
             // (package-format-v7.md).
-            (finalStatus, finalError) = ConsultDeliverables.FinalOutcome(deliverables, outputs, failedAggregators, failedDocuments);
+            (finalStatus, finalError) = ConsultDeliverables.FinalOutcome(deliverables, outputs, failedAggregators, failedDocuments,
+                composedDeliverables.Keys.ToHashSet(StringComparer.Ordinal), failedDeliverables);
         }
         else if (v6)
         {
@@ -1732,7 +1793,11 @@ internal static class ConsultDeliverables
         // loop, an if/case or a prose node each. SourceIds then holds the
         // COMPLETION keys: a loop's returned node (its items complete the
         // loop's blocks), an if/case's own id, a prose node's own. Null below 26.
-        IReadOnlyList<string>? Sources = null);
+        IReadOnlyList<string>? Sources = null,
+        // v26 (#1155, design § 3.1): the deliverables this deliverable's placed
+        // macros read as deliverable.<id>.content — its release waits on their
+        // composition. Null below 26 and when none.
+        IReadOnlyList<string>? DeliverableReads = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1768,7 +1833,8 @@ internal static class ConsultDeliverables
                         ? checkId
                         : null,
                     result.Reads,
-                    result.Sources))
+                    result.Sources,
+                    result.DeliverableReads))
                 .ToList();
         }
 
@@ -1815,9 +1881,17 @@ internal static class ConsultDeliverables
         IReadOnlyList<Deliverable> deliverables,
         IReadOnlyDictionary<string, NodeRunResult> outputs,
         IReadOnlyDictionary<string, string> failedAggregators,
-        IReadOnlyList<ConsultFailedDocument>? failedDocuments = null)
+        IReadOnlyList<ConsultFailedDocument>? failedDocuments = null,
+        // v26 (#1155): a 26 deliverable is produced when it COMPOSED from its
+        // sources (25's meaning — the aggregator's output); its failure is its own.
+        IReadOnlySet<string>? composedDeliverables = null,
+        IReadOnlyDictionary<string, string>? failedDeliverables = null)
     {
-        var missing = deliverables.Where(d => !outputs.ContainsKey(d.NodeId)).ToList();
+        bool Produced(Deliverable d) => d.Sources is null
+            ? outputs.ContainsKey(d.NodeId)
+            : d.ResultId is not null && composedDeliverables?.Contains(d.ResultId) == true;
+
+        var missing = deliverables.Where(d => !Produced(d)).ToList();
 
         if (missing.Count == 0)
         {
@@ -1833,7 +1907,10 @@ internal static class ConsultDeliverables
             return (ConsultGenerationJobStatuses.Completed, null);
         }
 
-        var error = failedAggregators.GetValueOrDefault(missing[0].NodeId)
+        var error = (missing[0].Sources is null
+                ? failedAggregators.GetValueOrDefault(missing[0].NodeId)
+                : failedDeliverables?.GetValueOrDefault(missing[0].ResultId ?? string.Empty))
+            ?? failedDeliverables?.Values.FirstOrDefault()
             ?? failedAggregators.Values.FirstOrDefault()
             ?? "The assembled documents could not be produced.";
         return (ConsultGenerationJobStatuses.Failed, error);

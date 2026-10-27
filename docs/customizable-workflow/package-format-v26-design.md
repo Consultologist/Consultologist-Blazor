@@ -401,9 +401,9 @@ carries its **`sources[]`**:
   goes with it (`example-two-documents`' note and letter stay distinct by their sources).
 - **Composition order** is unchanged: prepended deliverable macros → the sources in list order
   (a `for` source's items in item order; a 26 source boundary is the 25 part boundary — the
-  bytes a reader hashes do not move) → appended macros → the signature. The engine's
-  `ComposeDeliverable` takes a source list where it took an aggregator's; the part model
-  (`ForEachPart`/`ScalarPart`) is the same.
+  bytes a reader hashes do not move) → appended macros → the signature. The engine's compose step
+  (`ConsultDeliverableComposition.TryCompose`, as built by #1155) takes the deliverable's source list
+  where the aggregator arm took the node's; the part model (`ForEachPart`/`ScalarPart`) is the same.
 - `aggregate` on a node and `deliverables[].node` are refused with the replacement
   (*"deliverable 'consult' declares node, which is retired at specVersion 26; name its sources"*;
   *"node 'assemble_note' aggregates, which is retired at specVersion 26; a deliverable names its
@@ -1075,6 +1075,34 @@ is its header's label everywhere the engine names one. **Left to #1157**: the st
 (a macro's `label`/`instruction` at run time, a folder item's `if` and label from the store's own read) and
 the prompt loaded by path. #1155 composes the deliverable from `sources[]`; a deliverable macro reads a loop
 as text alone until then. #1154 closes.)*
+
+*(#1155, 2026-10-26 — the deliverable composes from `sources[]`, as § 3 and § 3.1 say. **The compose step is
+the deliverable's** (`ConsultDeliverableComposition.TryCompose`, pure; a third arm of the aggregators' pass after
+the flow arm, the ≤25 aggregator arm untouched): once every declared source has settled — a loop's own row,
+an if/case's alias, a prose node — the parts in `sources[]` order through the aggregator's renderer and ladder
+(a loop source → one `ForEachPart` from its returned node's items with those items' output hashes; an if/case
+or a prose node → a `ScalarPart` with its output hash), so the bytes and the hashes are the 25 aggregator's
+(pinned over the migrated `example-v12-constructs`: `consult` = the `standards` fan part then `patient_header`).
+Composition waits on the SOURCES only; the release waits on the reads and the check as it did. **The composed
+hash is stamped at release on the document's row** (decided 2026-10-26 over an own entity event):
+`ConsultGenerationResultDocument`, the state row, the response and the failed document carry `ComposedHash` and
+`Sources` (trailing, null below 26) — the aggregator's `agentOutputHash`, moved; storage version 8 is #1156's.
+**`deliverable.<id>.content` at render**: the walk gains the per-node accessor (`Walk.DeliverableReadsOf`,
+`MacroDeliverableReads`; `WorkflowDerivedEdges.DeliverableReadsByNode` / `DeliverableReadsByDeliverable` — the
+B8 name `DeliverableReads` keeps meaning deliverable id → its macros' node reads), closed as the edges are over
+the snippets and macro texts a prompt reads; the node and result descriptors carry `DeliverableReads`; the
+orchestrator threads `Deliverables` (id → the composed text; null for one skipped by its `if`) to the prompt
+activity and the deliverable-macro activity; the render's sixth object is a closed `{content}` per entry — the
+probe's set — and a skipped one reads null (`{{ if deliverable.x }}` guards it). Scheduling is unchanged: a
+reader's `Reads` are the sources (the walk's expansion), the deliverable composes on the pass its last source
+completes, the ready loop runs after. **The release holds** (`IsReleaseReady`): a read naming a flow that took no
+branch counts as settled (without it a 26 deliverable whose macro reads `node.<if>` never released); a read of
+another deliverable holds until it composes, or passes when it is not in the run. **`FinalOutcome` at 26**:
+produced = composed (25's meaning, decided 2026-10-26 over "released"); the failures in their own map by
+deliverable id. Limits, left as they are: a reader of `deliverable.<id>.content` inside the deciding closure
+(the mirror of #1154's two-decision-moment limit — the compose arm runs only once the graph is final); a
+deliverable macro's raw file still carries its header at render until #1157 reads the headers in the store;
+no 26 job runs before the bump (#1149), whose done-when is the dev run with equal hashes.)*
 
 ## 12. The editor
 

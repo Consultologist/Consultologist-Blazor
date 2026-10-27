@@ -814,10 +814,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var derivedEdges = DeriveEdges(package);
         // v26 (#1154): the flow nodes, for their rows and their bodies' fans.
         var flows = FlowsOf(package);
+        // v26 (#1155): the deliverables each node reads, for the render.
+        var nodeDeliverableReads = NodeDeliverableReads(package);
         // v25 (B4 #1003): the formats catalogue a node resolves against - the
         // package's own stamped version at 25, else the engine's pin, whose
         // generic custom agent a 22-24 custom-schema node now runs on.
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.SourceFiles, package.Manifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest, flows, branches?.GetValueOrDefault(node.Id))).ToList();
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.SourceFiles, package.Manifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest, flows, branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id))).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -861,6 +863,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // superseded by the decision's either way.
         var excludedMacros = new List<ConsultExcludedMacro>();
         var deliverableReads = DeliverableReads(package);
+        // v26 (#1155): the deliverables each deliverable's macros read.
+        var deliverableDeliverableReads = DeliverableDeliverableReads(package);
         var resultDescriptors = package.Results?
             .Select(result =>
             {
@@ -875,7 +879,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     excludedMacros.AddRange(judged.Excluded);
                 }
 
-                return DescribeResult(result, whenKept, whenPlacements, macroChoices.Resolved, deliverableReads?.GetValueOrDefault(result.Id));
+                return DescribeResult(result, whenKept, whenPlacements, macroChoices.Resolved, deliverableReads?.GetValueOrDefault(result.Id), deliverableDeliverableReads?.GetValueOrDefault(result.Id));
             })
             .ToList();
 
@@ -1870,6 +1874,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? WorkflowDerivedEdges.DeliverableReads(package.Manifest, package.SourceFiles, package.Formats)
             : null;
 
+    /// <summary>v26 (#1155, design § 3.1): each node's deliverable reads (deliverable.&lt;id&gt;.content, closed as its edges are); null below 26.</summary>
+    internal static IReadOnlyDictionary<string, IReadOnlySet<string>>? NodeDeliverableReads(WorkflowPackage package) =>
+        IsAt26(package) && package.SourceFiles is not null
+            ? WorkflowDerivedEdges.DeliverableReadsByNode(package.Manifest, package.SourceFiles, package.Formats)
+            : null;
+
+    /// <summary>v26 (#1155): each deliverable's deliverable reads — its placed macros'; null below 26.</summary>
+    internal static IReadOnlyDictionary<string, IReadOnlySet<string>>? DeliverableDeliverableReads(WorkflowPackage package) =>
+        IsAt26(package) && package.SourceFiles is not null
+            ? WorkflowDerivedEdges.DeliverableReadsByDeliverable(package.Manifest, package.SourceFiles, package.Formats)
+            : null;
+
     /// <summary>v25 (#1038, design § 16): the node ids every gating when reads — the deciding stage's frontier; null below 25.</summary>
     internal static IReadOnlySet<string>? GatingReads(WorkflowPackage package) =>
         IsAt25(package) && package.SourceFiles is not null
@@ -1919,7 +1935,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyList<string>? whenKept,
         IReadOnlyList<ConsultMacroPlacement>? whenPlacements,
         IReadOnlyDictionary<string, bool>? choices,
-        IReadOnlySet<string>? reads)
+        IReadOnlySet<string>? reads,
+        // v26 (#1155): the deliverables its placed macros read.
+        IReadOnlySet<string>? deliverableReads = null)
     {
         var kept = FilterMacros(whenKept, choices);
         return new ConsultResultDescriptor(
@@ -1932,7 +1950,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             result.Check,
             Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
             // v26 (#1154): the sources, as declared.
-            Sources: result.Sources);
+            Sources: result.Sources,
+            DeliverableReads: deliverableReads is { Count: > 0 } ? deliverableReads.Order(StringComparer.Ordinal).ToList() : null);
     }
 
     /// <summary>
@@ -3189,7 +3208,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // v26 (#1154): the flow nodes resolved, and the branch this node took
         // when it is an if/case decided by the fire set.
         WorkflowFlowNodes.Resolved? flows = null,
-        string? branch = null)
+        string? branch = null,
+        // v26 (#1155): the deliverables this node's prompt reads.
+        IReadOnlySet<string>? deliverableReads = null)
     {
         // v26 (#1154, design § 1.5): a flow node is structural — no format, no
         // prompt — and its row carries its kind, its bodies and its decision.
@@ -3206,7 +3227,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the identity travels. An aggregator declares no format.
         if (node.Format is { } formatId)
         {
-            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads, effectiveInputs, manifest, flows);
+            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads, effectiveInputs, manifest, flows, deliverableReads);
         }
 
         // v10 (#495): a classifier's contract is implied by its kind — the one
@@ -3299,7 +3320,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlySet<string>? reads,
         IReadOnlyDictionary<string, string>? effectiveInputs,
         WorkflowPackageManifest? manifest,
-        WorkflowFlowNodes.Resolved? flows = null)
+        WorkflowFlowNodes.Resolved? flows = null,
+        IReadOnlySet<string>? deliverableReads = null)
     {
         string? producer = null;
         string? formatHash = null;
@@ -3385,7 +3407,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
             With: resolved.With,
             OnInvalid: node.OnInvalid,
-            In: flows?.Owner.GetValueOrDefault(node.Id));
+            In: flows?.Owner.GetValueOrDefault(node.Id),
+            // v26 (#1155): the deliverables its prompt reads, sorted.
+            DeliverableReads: deliverableReads is { Count: > 0 } ? deliverableReads.Order(StringComparer.Ordinal).ToList() : null);
     }
 
     /// <summary>

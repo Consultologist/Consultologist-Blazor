@@ -210,4 +210,61 @@ public class WorkflowV26DeliverableTests
         Assert.DoesNotContain(errors, e => e.Contains("failed strict rendering", StringComparison.Ordinal));
         Assert.Empty(errors);
     }
+
+    // ----- #1155: which deliverable a node reads, closed as its edges are --------------------
+
+    [Fact]
+    public void DeliverableReadsByNode_ClosesOverTheSnippetsAndMacroTextsThePromptReads_AndIsEmptyBelow26()
+    {
+        var (manifest, files) = V26Package.Minimal();
+        manifest = V26Package.WithNodes(manifest,
+            new WorkflowNodeSpec("letter", "Letter", Prompt: "prompts/letter.md", Format: "prose"),
+            new WorkflowNodeSpec("cover", "Cover", Prompt: "prompts/cover.md", Format: "prose"));
+        manifest = manifest with
+        {
+            Snippets = new Dictionary<string, string>(manifest.Snippets!) { ["summary"] = "snippets/summary.md" },
+            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("patient_letter", null, "Patient letter", Sources: new List<string> { "node.letter", "node.cover", "node.sections" })).ToList(),
+        };
+        files["prompts/letter.md"] = "Dear doctor,\n{{ deliverable.consult.content }}";
+        // The read sits in a snippet the prompt reads — closed over, as the edges are.
+        files["snippets/summary.md"] = V26Package.Header("Summary") + "In short: {{ deliverable.consult.content }}";
+        files["prompts/cover.md"] = "{{ snippet.summary.content }}";
+        Assert.Empty(V26Package.FlowErrors((manifest, files)));
+
+        var byNode = WorkflowDerivedEdges.DeliverableReadsByNode(manifest, files, V25Package.Catalog());
+
+        Assert.Equal(new[] { "consult" }, byNode["letter"]);
+        Assert.Equal(new[] { "consult" }, byNode["cover"]);
+        Assert.Empty(byNode["assessment"]);
+        Assert.Empty(byNode["sections"]);
+        // The edges still expand the read to the sources (the scheduler's view).
+        Assert.Equal(new[] { "assessment", "sections" }, WorkflowDerivedEdges.Derive(manifest, files, V25Package.Catalog())["cover"].Order());
+
+        var (at25, files25) = V25Package.Minimal();
+        Assert.All(WorkflowDerivedEdges.DeliverableReadsByNode(at25, files25, V25Package.Catalog()).Values, reads => Assert.Empty(reads));
+    }
+
+    [Fact]
+    public void DeliverableReadsByDeliverable_IsThePlacedMacrosReads()
+    {
+        var (manifest, files) = V26Package.Minimal();
+        manifest = V26Package.WithNodes(manifest, new WorkflowNodeSpec("letter", "Letter", Prompt: "prompts/letter.md", Format: "prose"));
+        manifest = manifest with
+        {
+            Macros = manifest.Macros!.Append(new WorkflowMacroSpec("see_also", null, "macros/see_also.md")).ToList(),
+            Deliverables = manifest.Deliverables!.Append(new WorkflowDeliverableSpec("patient_letter", null, "Patient letter",
+                Sources: new List<string> { "node.letter", "node.sections" },
+                Macros: new List<WorkflowDeliverableMacroSpec> { new("see_also", At: WorkflowDeliverableMacroSpec.Append) })).ToList(),
+        };
+        files["prompts/letter.md"] = "Dear doctor.";
+        files["macros/see_also.md"] = V26Package.Header("See also", instruction: "Mention the note.") + "See also: {{ deliverable.consult.content }}";
+        Assert.Empty(V26Package.FlowErrors((manifest, files)));
+
+        var byDeliverable = WorkflowDerivedEdges.DeliverableReadsByDeliverable(manifest, files, V25Package.Catalog());
+
+        Assert.Equal(new[] { "consult" }, byDeliverable["patient_letter"]);
+        Assert.Empty(byDeliverable["consult"]);
+        // The B8 map still expands the placed macro's read to the sources — the release's node reads.
+        Assert.Equal(new[] { "assessment", "sections" }, WorkflowDerivedEdges.DeliverableReads(manifest, files, V25Package.Catalog())["patient_letter"].Order());
+    }
 }
