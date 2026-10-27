@@ -144,7 +144,14 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                     PlacementsAt25(deliverable.Macros),
                     deliverable.Check,
                     MacroConditionsAt25(deliverable.Macros),
-                    When: string.IsNullOrWhiteSpace(deliverable.When) ? null : deliverable.When))
+                    // #1154: at 26 the gate is keyed `if` (`when` is retired); either
+                    // rides as the one text the boundary judges.
+                    When: !string.IsNullOrWhiteSpace(deliverable.If) ? deliverable.If
+                        : string.IsNullOrWhiteSpace(deliverable.When) ? null : deliverable.When,
+                    // #1154 (v26 design § 3): the sources as bare ids, declared order.
+                    Sources: deliverable.Sources is { Count: > 0 } sources
+                        ? sources.Select(source => TemplateObjectReference.NodeIdOf(source) ?? source).ToList()
+                        : null))
                 .ToList();
         }
 

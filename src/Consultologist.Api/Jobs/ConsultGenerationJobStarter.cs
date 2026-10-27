@@ -704,6 +704,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ? StartScope(package, inputs.Effective, inputs.Supplied, jobId, _engine.ApiHost)
             : null;
         var skipped = new List<ConsultSkippedDocument>();
+        // v26 (#1154): the branches the start-time decision took, for the rows.
+        IReadOnlyDictionary<string, string>? branches = null;
         // #434: the deliverables as declared, before the fire set narrows
         // package.Results — the born-Failed record lists every one of them.
         var declaredResults = package.Results ?? new List<WorkflowResolvedResult>();
@@ -712,6 +714,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         {
             var fireSet = DecideFireSet(package, inputs.Supplied, classifications: null, startScope);
             skipped = fireSet.Skipped;
+            branches = fireSet.Branches;
 
             if (fireSet.Firing.Count == 0)
             {
@@ -807,17 +810,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var resolvedPackageRef = package.Ref;
         // The per-section step list is the forEach chain, in manifest order — the
         // display/progress skeleton the section-prose-step events hang off.
-        var sectionSteps = deciding
-            ? null
-            : package.Nodes
-                .Where(node => node.ForEach != null)
-                .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
-                .ToList();
+        var sectionSteps = deciding ? null : ChainSteps(package);
         var derivedEdges = DeriveEdges(package);
+        // v26 (#1154): the flow nodes, for their rows and their bodies' fans.
+        var flows = FlowsOf(package);
         // v25 (B4 #1003): the formats catalogue a node resolves against - the
         // package's own stamped version at 25, else the engine's pin, whose
         // generic custom agent a 22-24 custom-schema node now runs on.
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.SourceFiles, package.Manifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest)).ToList();
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.SourceFiles, package.Manifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest, flows, branches?.GetValueOrDefault(node.Id))).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -1119,8 +1119,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         return (hash, version);
     }
 
-    /// <summary>The fire set, decided once: the results that hold, the rest with each condition's sentence, the nodes pruned to the firing closure (#355).</summary>
-    internal sealed record FireSetDecision(WorkflowPackage Package, List<WorkflowResolvedResult> Firing, List<ConsultSkippedDocument> Skipped);
+    /// <summary>The fire set, decided once: the results that hold, the rest with each condition's sentence, the nodes pruned to the firing closure (#355). v26 (#1154): the branch each if/case node took, by flow node id — null below 26.</summary>
+    internal sealed record FireSetDecision(WorkflowPackage Package, List<WorkflowResolvedResult> Firing, List<ConsultSkippedDocument> Skipped, IReadOnlyDictionary<string, string>? Branches = null);
 
     /// <summary>
     /// The one code path that decides a fire set — at start (v8) or at the
@@ -1194,12 +1194,53 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // v25 (B3 #1002): a template's reads are edges too — the cascade and
         // the prune below see them through the validator's own walk.
         var derived = DeriveEdges(package);
-        var edges = WorkflowNodeClosure.Edges(nodes, derived);
+        var edges = WorkflowNodeClosure.Edges(nodes, derived).ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+        // v26 (#1154, design § 1): an if/case node is decided here, where a 25
+        // node's when was — at start when its expression reads inputs and run
+        // facts, at the boundary when it reads a node's value or the profile
+        // (its reads are gating reads, so stage one ran them). The untaken
+        // bodies are PRUNED — a set of their own, never `gated`, so the cascade
+        // below does not fire on them; the flow node's row stays and carries
+        // the branch. A flow node's derived edges are its decision's reads;
+        // its bodies join the map here, the taken body only, so the prune keeps
+        // what runs and drops what the decision excluded. A loop's body joins
+        // whole: a loop is never decided.
+        var flows = FlowsOf(package);
+        var branches = new Dictionary<string, string>(StringComparer.Ordinal);
+        var pruned = new HashSet<string>(StringComparer.Ordinal);
+        var skippedFlows = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var flow in flows.Flows.Values)
+        {
+            IEnumerable<string> kept;
+            if (flow.Kind == WorkflowFlowNodes.Kind.For)
+            {
+                kept = flow.BodyNodeIds;
+            }
+            else
+            {
+                var outcome = scope!.Decide(flow);
+                branches[flow.Node.Id] = outcome.Branch;
+                kept = outcome.Taken?.Nodes ?? Array.Empty<string>();
+                if (outcome.Skipped)
+                {
+                    skippedFlows.Add(flow.Node.Id);
+                }
+
+                pruned.UnionWith(flow.BodyNodeIds.Except(kept, StringComparer.Ordinal));
+            }
+
+            var targets = edges.TryGetValue(flow.Node.Id, out var existing) ? existing : edges[flow.Node.Id] = new HashSet<string>(StringComparer.Ordinal);
+            targets.UnionWith(kept);
+        }
+
         // v25 (B8 #1027): a deliverable's placed macros read nodes too — the
-        // deliverable's own edges, rooted beside its aggregator.
+        // deliverable's own edges, rooted beside its aggregator. v26 (#1154):
+        // rooted at its sources, where it names them.
         var deliverableReads = DeliverableReads(package);
         IEnumerable<string> RootsOf(WorkflowResolvedResult result) =>
-            new[] { result.NodeId }.Concat(deliverableReads?.GetValueOrDefault(result.Id) ?? (IEnumerable<string>)Array.Empty<string>());
+            (result.Sources is { Count: > 0 } sources ? sources : new[] { result.NodeId })
+                .Concat(deliverableReads?.GetValueOrDefault(result.Id) ?? (IEnumerable<string>)Array.Empty<string>());
 
         foreach (var result in package.Results ?? new List<WorkflowResolvedResult>())
         {
@@ -1218,6 +1259,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     result.Id,
                     result.Label,
                     WorkflowResultConditions.Explain(result.Condition!, supplied, classifications)));
+                continue;
+            }
+
+            // v26 (#1154, design § 1.3, § 10): a deliverable whose source took
+            // no branch is skipped with the reason naming the branch.
+            if (skippedFlows.Count > 0 && result.Sources?.FirstOrDefault(skippedFlows.Contains) is { } noneFlow)
+            {
+                skipped.Add(new ConsultSkippedDocument(result.Id, result.Label, $"source node.{noneFlow} took no branch"));
                 continue;
             }
 
@@ -1241,7 +1290,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         if (firing.Count == 0)
         {
-            return new FireSetDecision(package, firing, skipped);
+            return new FireSetDecision(package, firing, skipped, branches.Count > 0 ? branches : null);
         }
 
         var narrowed = package with { Results = firing };
@@ -1257,7 +1306,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // v18 (#822): also prune when a node was gated even if no deliverable
         // was skipped — a gated check must be dropped, and any node that fed
         // only it becomes an orphan the closure removes.
-        if (skipped.Count > 0 || gated.Count > 0)
+        if (skipped.Count > 0 || gated.Count > 0 || pruned.Count > 0)
         {
             // v12 #624: a check chain hangs OFF the firing result rather than
             // feeding it (of/in edges point check → operands), so the walk
@@ -1270,16 +1319,16 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 .Where(check => check != null)
                 .Select(check => ConsultCheckRefs.NodeIdOf(check!))
                 .Where(check => !gated.Contains(check));
-            var reachable = WorkflowNodeClosure.Reachable(
-                firing.SelectMany(RootsOf).Concat(checkRoots),
-                WorkflowNodeClosure.Edges(narrowed.Nodes!, derived));
+            // v26 (#1154): the map with the taken bodies attached (above) — a
+            // loop's body is reachable through the loop a deliverable sources.
+            var reachable = WorkflowNodeClosure.Reachable(firing.SelectMany(RootsOf).Concat(checkRoots), edges);
             var live = narrowed.Nodes!
-                .Where(node => (reachable.Contains(node.Id) || WorkflowNodeRoles.IsClassifierOf(node, package)) && !gated.Contains(node.Id))
+                .Where(node => (reachable.Contains(node.Id) || WorkflowNodeRoles.IsClassifierOf(node, package)) && !gated.Contains(node.Id) && !pruned.Contains(node.Id))
                 .ToList();
             narrowed = narrowed with { Nodes = live };
         }
 
-        return new FireSetDecision(narrowed, firing, skipped);
+        return new FireSetDecision(narrowed, firing, skipped, branches.Count > 0 ? branches : null);
     }
 
     /// <summary>
@@ -1297,7 +1346,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             .ToDictionary(
                 entry => entry.Key,
                 entry => (IReadOnlyList<IReadOnlyDictionary<string, string>>)entry.Value.Items
-                    .Where(item => item.When is null
+                    // v26 (#1154, design § 2.1): the gate keyed `if`, judged with
+                    // the item in hand (the rule allows inputs and item.id).
+                    .Where(item => item.If is { } gate
+                        ? scope!.WithItem(entry.Key, item).Holds($"Snippet folder '{entry.Key}' item '{item.Id}' if", gate)
+                        : item.When is null
                         || (scope is not null
                             ? scope.Holds($"Snippet folder '{entry.Key}' item '{item.Id}' condition", item.When)
                             : !WorkflowResultConditions.TryParseExpression(item.When, out var when, out _)
@@ -1324,9 +1377,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // array of objects fans its elements as carriers.
         var inputsById = (package.Manifest.Inputs ?? new List<WorkflowInputSpec>())
             .ToDictionary(input => input.Id, StringComparer.Ordinal);
+        // v26 (#1154): a loop over an array input is the fan, keyed by its
+        // collection as a 25 forEach spelled it.
         var inputFans = package.Nodes
             .Where(node => WorkflowInputFans.IsInputFan(node.ForEach))
             .Select(node => node.ForEach!)
+            .Concat(package.Nodes.Select(node => WorkflowFlowNodes.CollectionOf(node.For)).Where(WorkflowInputFans.IsInputFan).Select(c => c!))
             .Distinct(StringComparer.Ordinal)
             .ToDictionary(
                 key => key,
@@ -1396,7 +1452,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 entry.Value
                     .Select(item => new ConsultCollectionItem(
                         item.GetValueOrDefault("id", string.Empty),
-                        item.GetValueOrDefault("name", item.GetValueOrDefault("id", string.Empty))))
+                        // v26 (#1154): a 26 folder item carries its header's label where a 25 item carried name.
+                        item.ContainsKey("id") ? WorkflowPackageBlocks.ItemName(item) : string.Empty))
                     .ToList()))
             .ToList();
 
@@ -1873,7 +1930,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             result.Signature,
             FilterPlacements(whenPlacements, kept),
             result.Check,
-            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null);
+            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
+            // v26 (#1154): the sources, as declared.
+            Sources: result.Sources);
     }
 
     /// <summary>
@@ -3126,8 +3185,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats = null,
         IReadOnlySet<string>? reads = null,
         IReadOnlyDictionary<string, string>? effectiveInputs = null,
-        WorkflowPackageManifest? manifest = null)
+        WorkflowPackageManifest? manifest = null,
+        // v26 (#1154): the flow nodes resolved, and the branch this node took
+        // when it is an if/case decided by the fire set.
+        WorkflowFlowNodes.Resolved? flows = null,
+        string? branch = null)
     {
+        // v26 (#1154, design § 1.5): a flow node is structural — no format, no
+        // prompt — and its row carries its kind, its bodies and its decision.
+        if (flows is not null && flows.Flows.TryGetValue(node.Id, out var flow))
+        {
+            return DescribeFlowNodeAt26(flow, reads, branch);
+        }
+
         // v25 (B2 #1001, design § 3.7): a node that declares a format is
         // resolved from its package's own stamped formats version — the stamp
         // first (hash, producer, agent or op as recorded at publish), else the
@@ -3136,7 +3206,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the identity travels. An aggregator declares no format.
         if (node.Format is { } formatId)
         {
-            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads, effectiveInputs, manifest);
+            return DescribeNodeAt25(node, formatId, formats, stampedFormats, macroFiles, macros, reads, effectiveInputs, manifest, flows);
         }
 
         // v10 (#495): a classifier's contract is implied by its kind — the one
@@ -3228,7 +3298,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyList<WorkflowMacroSpec>? macros,
         IReadOnlySet<string>? reads,
         IReadOnlyDictionary<string, string>? effectiveInputs,
-        WorkflowPackageManifest? manifest)
+        WorkflowPackageManifest? manifest,
+        WorkflowFlowNodes.Resolved? flows = null)
     {
         string? producer = null;
         string? formatHash = null;
@@ -3288,7 +3359,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // v25 (B5 #1004, design § 3.6): the sentence lives on the node at 25
             // (output is refused); judged on the reply in the activity.
             FailIfEmpty: node.FailIfEmpty,
-            ForEach: node.ForEach,
+            // v26 (#1154, design § 1.4): a body node fans under its loop — the
+            // loop's collection is its forEach, so it runs once per item and
+            // reads its siblings item-aligned as a 25 fanned node did.
+            ForEach: node.ForEach ?? (flows is not null && flows.Owner.TryGetValue(node.Id, out var ownerId) && flows.Flows.TryGetValue(ownerId, out var owner) ? owner.Collection : null),
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
             Aggregate: node.Aggregate,
             // v25 (B8 #1027): an enum format's own answer set when no with
@@ -3310,7 +3384,64 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Op: op,
             Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
             With: resolved.With,
-            OnInvalid: node.OnInvalid);
+            OnInvalid: node.OnInvalid,
+            In: flows?.Owner.GetValueOrDefault(node.Id));
+    }
+
+    /// <summary>
+    /// v26 (#1154, design § 1.5, § 10): a flow node's row — kind, collection or
+    /// expression, body, ret (the taken body's for an if/case, null while
+    /// undecided or when none) and the branch taken. Its Reads are what its
+    /// decision reads (an if's expression, a case's subject), never its bodies.
+    /// </summary>
+    internal static ConsultNodeDescriptor DescribeFlowNodeAt26(WorkflowFlowNodes.Flow flow, IReadOnlySet<string>? reads, string? branch)
+    {
+        var taken = flow.Kind == WorkflowFlowNodes.Kind.For
+            ? flow.Bodies.FirstOrDefault()
+            : branch is null ? null : flow.Bodies.FirstOrDefault(body => WorkflowFlowDecision.BranchLabel(body) == branch);
+
+        return new ConsultNodeDescriptor(
+            flow.Node.Id,
+            flow.Node.Label,
+            ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(flow.Node.Id, flow.Node.Id),
+            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
+            Flow: flow.Kind switch { WorkflowFlowNodes.Kind.For => "for", WorkflowFlowNodes.Kind.If => "if", _ => "case" },
+            Collection: flow.Collection,
+            Expression: flow.Expression,
+            Body: flow.BodyNodeIds.Distinct(StringComparer.Ordinal).ToList(),
+            Ret: taken?.RetNodeId,
+            Branch: branch);
+    }
+
+    /// <summary>v26 (#1154): a package at 26 — its manifest says so (26 keeps formats on its plain nodes, so <see cref="IsAt25"/> holds there too, rightly, for every 25 path).</summary>
+    internal static bool IsAt26(WorkflowPackage package) => package.Manifest.SpecVersion >= 26;
+
+    /// <summary>v26 (#1154): the flow nodes resolved as the validator resolved them (its sentences discarded: the package was validated at publish); none below 26.</summary>
+    internal static WorkflowFlowNodes.Resolved FlowsOf(WorkflowPackage package)
+    {
+        if (!IsAt26(package))
+        {
+            return WorkflowFlowNodes.Resolved.None;
+        }
+
+        var inputsById = (package.Manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .GroupBy(input => input.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        return WorkflowFlowNodes.Resolve(
+            package.Manifest,
+            package.Data ?? new WorkflowPackageData(new Dictionary<string, string>(), new Dictionary<string, WorkflowDataCollection>()),
+            inputsById,
+            new List<string>());
+    }
+
+    /// <summary>The per-section step list: the forEach chain in manifest order; v26 (#1154) the loops' body nodes, which fan under their loops.</summary>
+    internal static List<ConsultItemStepDescriptor> ChainSteps(WorkflowPackage package)
+    {
+        var flows = FlowsOf(package);
+        return package.Nodes
+            .Where(node => node.ForEach != null || (flows.Owner.TryGetValue(node.Id, out var owner) && flows.IsLoop(owner)))
+            .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
+            .ToList();
     }
 
     /// <summary>The spec of a node's format: a package-local file (via the manifest's formats[] and the source files) or the catalogue's; null when neither resolves.</summary>
