@@ -1031,6 +1031,32 @@ the skipped row, the scheduler's skipped set; to PR 3: the loop read at render (
 text), the `label` member at run time. #1155 composes the deliverable; #1157 reads the headers and the
 prompts in the store.)*
 
+*(#1154, PR 2 of 3, 2026-10-26 — the engine loop, as § 1.3 says. A flow node is structural: the ready loop
+never starts it and the expected-instance count leaves it out; it settles on the aggregators' pass
+(`ConsultFlowCompletion.TryCompose`, pure over the snapshot and the outputs). **A loop completes as the 25
+aggregator over one fan source did**: once every item of its returned node has an output, `outputs[loop]`
+is `ConsultAggregateRenderer.Render` over those items in item order with the aggregator's ladder
+(`ComputeAggregateInputHash` over the items' output hashes, the SHA-256 of the render as output and agent-output
+hash, definition 6) — byte-for-byte the #1065 identity the migration relies on (pinned); a failed item fails
+the loop with the aggregator's sentence. **An if/case completes as its taken body's returned node did** —
+`outputs[flow]` IS that node's result (the alias; its row carries no hash, the returned node's does). A
+reader of a loop waits on the loop's own row, not its items (its descriptor's `ForEach` is null, so
+`InstanceKey` is the bare id). **No branch taken = skipped**: `MarkSkippedFlowsAsync` runs once the graph is
+final (at start for a non-deciding job, after the boundary for a deciding one) — the row's status Skipped
+with the reason *"took no branch"* (`MarkNodeSkipped`, new on the entity; the branch "none" rides the
+descriptor), the counts moved on; `InstanceReady` takes the skipped set (a skipped dependency is satisfied)
+and `NodeTextsFor` omits the read — the render's null is PR 3's. The deliverable table (`ConsultDeliverables`)
+carries `Sources` as declared and `SourceIds` as the COMPLETION keys (a loop's returned node, an if/case's own
+id, a prose node's own); a block is named by the loop (`BlockNodeOf`: the returned body node → its loop) at the
+item's completion and at its failure, an if/case source's one block completes with the flow; a 26 item's
+display name is its header's label (`WorkflowPackageBlocks.ItemName`, in the engine's `ItemName` too — the
+`## {Name}` heading bytes). Known limit, left as it is: a gating condition reading an if/case node whose own
+expression reads a node (two decision moments in one job) — stage one holds the flow undecided, the boundary's
+judge finds no output; the validator allows the read (§ 1.3) and no public package writes it; a follow-up if
+one does. Left to PR 3: the loop read at render (`{{ for e in node.<loop> }}`), a skipped flow reading null,
+the `label` member. #1155: `FinalOutcome`, `pendingDeliverables` and the compose step from `sources[]` — a 26
+job cannot complete its deliverable until then (none runs before the bump).)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
