@@ -1027,3 +1027,30 @@ fluent-select.branch-table__pick {
 	align-items: center;
 	gap: 0.5rem;
 }
+
+/* v26 (#1159): a case branch's value chips and the nav's body tag. */
+.case-branch__values {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.4rem;
+	margin-bottom: 0.5rem;
+}
+
+.case-branch__chip {
+	display: inline-flex;
+	align-items: center;
+	gap: 0.15rem;
+	padding: 0.1rem 0.25rem 0.1rem 0.5rem;
+	border: 1px solid var(--neutral-stroke-rest);
+	border-radius: 999px;
+}
+
+.case-unrouted {
+	display: block;
+	margin-top: 0.25rem;
+}
+
+.editor-nav__tag {
+	font-size: 0.85em;
+}

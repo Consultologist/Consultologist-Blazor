@@ -387,13 +387,17 @@
                         <EmptyState Compact Class="editor-nav__empty" Description="No nodes yet." />
                     }
                     @* v26 (#1160): a loop's body nests beneath it in body order; a ≤25 list is flat. *@
-                    @foreach (var (navNode, nested) in NavNodeRows())
+                    @foreach (var (navNode, nested, bodyTag) in NavNodeRows())
                     {
                         <button type="button"
                                 class="editor-nav__item @(nested ? "editor-nav__item--nested" : "") @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(NodeKeyFor(navNode.Id))">
                             <span class="editor-nav__dot">@(NodeHasPending(navNode) ? "●" : "")</span>
                             <span>@navNode.Label</span>
+                            @if (bodyTag != null)
+                            {
+                                <span class="muted-text editor-nav__tag"> · @bodyTag</span>
+                            }
                         </button>
                     }
                     @foreach (var removedNode in RemovedNodes)
@@ -2264,6 +2268,9 @@
                                             @* v26 (#1160): a loop replaces the aggregator here — a deliverable's
                                                sources gather at 26 (design § 1), so nothing aggregates. *@
                                             <FluentOption TOption="string" Value="@LoopChoice">for — a loop: its body runs once per item, no prompt</FluentOption>
+                                            @* v26 (#1159): the other two flow nodes. *@
+                                            <FluentOption TOption="string" Value="@IfChoice">if — a condition: its then body runs when it holds, else its else body</FluentOption>
+                                            <FluentOption TOption="string" Value="@CaseChoice">case — a switch over an enum: one branch per set of values</FluentOption>
                                         }
                                         else
                                         {
@@ -2322,16 +2329,30 @@
                                     </FluentSelect>
                                 </label>
                             }
-                            else if (At26)
+                            else if (At26 && newNodeFormat == CaseChoice)
                             {
-                                @* v26: a plain node is placed in a loop, not given a fan key. *@
+                                @* v26 (#1159): a case is born over its subject (explicit init: refused unchosen). *@
+                                <label class="input-field">
+                                    <span>over — what the case switches on</span>
+                                    <FluentSelect TOption="string" class="binding-row__select new-case-subject" @bind-Value="newNodeCase" aria-label="New case subject">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptions)
+                                        {
+                                            <FluentOption TOption="string" Value="@subject">@subjectLabel</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                            }
+                            else if (At26 && newNodeFormat != IfChoice)
+                            {
+                                @* v26: a plain node is placed in a body, not given a fan key (#1159: any body). *@
                                 <label class="input-field">
                                     <span>in</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-node-loop" @bind-Value="newNodeLoop" aria-label="New node loop">
-                                        <FluentOption TOption="string" Value="">— not in a loop —</FluentOption>
-                                        @foreach (var loop in EffectiveLoops)
+                                        <FluentOption TOption="string" Value="">— not in a body —</FluentOption>
+                                        @foreach (var body in EffectiveBodies)
                                         {
-                                            <FluentOption TOption="string" Value="@loop.Id">@loop.Label (@(loop.Collection ?? loop.For))</FluentOption>
+                                            <FluentOption TOption="string" Value="@body.Key">@body.Label</FluentOption>
                                         }
                                     </FluentSelect>
                                 </label>
@@ -2496,7 +2517,7 @@
                                             <span class="muted-text loop-body__ret">· returned</span>
                                         }
                                         <FluentButton Appearance="Appearance.Stealth" Class="loop-body__remove" Title="@($"Take '{bodyId}' out of the loop")"
-                                                      @onclick="() => OnLoopChangedAsync(new WorkflowNodeSummary.LoopPlacement(bodyId, null))">Remove from loop</FluentButton>
+                                                      @onclick="() => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(bodyId, null))">Remove from loop</FluentButton>
                                     </li>
                                 }
                             </ul>
@@ -2504,7 +2525,7 @@
                                            AriaLabel="@($"Add a node to the body of {selectedLoop.Id}")"
                                            Resting="add a node to the body…"
                                            Choices="@LoopBodyChoices(selectedLoop)"
-                                           OnPick="@(v => OnLoopChangedAsync(new WorkflowNodeSummary.LoopPlacement(v, selectedLoop.Id)))" />
+                                           OnPick="@(v => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(v, selectedLoop.Id)))" />
                         </div>
                         <div class="node-section">
                             <span class="node-section__head">Returns</span>
@@ -2525,6 +2546,170 @@
                                 </label>
                             </div>
                         </div>
+                    }
+                    else if (At26 && SelectedNode() is { IsIf: true } selectedIf)
+                    {
+                        @* v26 (#1159, design § 12): an if node's pane — structural: its label, its
+                           condition (the 25 node-when builder, writing the node's if), its then body
+                           and, once added, its else body — each the loop pane's body idiom with a ret
+                           picker resting "choose…" (explicit init; the desk refuses by sentence). *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@selectedIf.Label</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedIf.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedIf)</span>
+                                </p>
+                            </div>
+                            <div class="pane-header__actions">
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveNodeAsync(selectedIf.Id)">Remove if</FluentButton>
+                                @PaneDiscardButton(NodeKeyFor(selectedIf.Id), NodeCanDiscard(selectedIf), () => RevertNodeEdits(selectedIf.Id, null))
+                            </div>
+                        </div>
+                        <div class="node-section">
+                            <span class="node-section__head">Identity</span>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>label</span>
+                                    <FluentTextField Value="@selectedIf.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedIf, v))" aria-label="If label" />
+                                </label>
+                            </div>
+                        </div>
+                        <div class="node-section">
+                            <span class="node-section__head">Condition</span>
+                            <div class="node-when-editor node-if-editor">
+                                <p class="muted-text">Decided once, before anything runs: when it holds the then body runs, otherwise the else body (or nothing). The outside reads the taken body's returned node as <code>node.@selectedIf.Id</code>.</p>
+                                @ConditionField(("", IfConditionTarget(selectedIf), "choose…"))
+                            </div>
+                        </div>
+                        @foreach (var body in selectedIf.Bodies())
+                        {
+                            @BodySection(body, body.Ref.IsThen ? "Then" : "Else", null)
+                        }
+                        <div class="node-section">
+                            @if (selectedIf.Else == null)
+                            {
+                                <FluentButton Appearance="Appearance.Outline" Class="flow-add-else" @onclick="() => AddElseAsync(selectedIf)">+ else body</FluentButton>
+                            }
+                            else
+                            {
+                                <FluentButton Appearance="Appearance.Stealth" Class="flow-remove-else" @onclick="() => RemoveElseAsync(selectedIf)">Remove else</FluentButton>
+                            }
+                        </div>
+                    }
+                    else if (At26 && SelectedNode() is { IsCase: true } selectedCase)
+                    {
+                        @* v26 (#1159, design § 12): a case node's pane — its subject (an enum input or
+                           an enum-format node's value), one row per branch (its value chips, its body,
+                           its ret — the user's decision over the text table's row-per-value), an
+                           optional else; "+ branch" appends an empty branch the desk names until filled. *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@selectedCase.Label</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedCase.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedCase)</span>
+                                </p>
+                            </div>
+                            <div class="pane-header__actions">
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveNodeAsync(selectedCase.Id)">Remove case</FluentButton>
+                                @PaneDiscardButton(NodeKeyFor(selectedCase.Id), NodeCanDiscard(selectedCase), () => RevertNodeEdits(selectedCase.Id, null))
+                            </div>
+                        </div>
+                        <div class="node-section">
+                            <span class="node-section__head">Identity</span>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>label</span>
+                                    <FluentTextField Value="@selectedCase.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedCase, v))" aria-label="Case label" />
+                                </label>
+                                <label class="node-field">
+                                    <span>over</span>
+                                    <FluentSelect TOption="string" class="binding-row__select case-subject"
+                                                  Value="@(selectedCase.Case ?? string.Empty)"
+                                                  ValueChanged="@(v => OnCaseSubjectChangedAsync(selectedCase, v))"
+                                                  aria-label="Case subject">
+                                        @if (selectedCase.Case is not { Length: > 0 } authoredSubject || CaseSubjectOptions.All(o => o.Subject != authoredSubject))
+                                        {
+                                            <FluentOption TOption="string" Value="@(selectedCase.Case ?? string.Empty)">@(string.IsNullOrEmpty(selectedCase.Case) ? "choose…" : selectedCase.Case)</FluentOption>
+                                        }
+                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptions)
+                                        {
+                                            <FluentOption TOption="string" Value="@subject">@subjectLabel</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                            </div>
+                        </div>
+                        var unrouted = UnroutedCaseValues(selectedCase);
+                        var caseBranches = selectedCase.Branches ?? Array.Empty<WorkflowManifestReader.BranchView>();
+                        <div class="node-section">
+                            <span class="node-section__head">Branches</span>
+                            <p class="muted-text">
+                                The first branch listing the value runs; each value takes one branch.
+                                @if (unrouted.Count > 0)
+                                {
+                                    <span class="case-unrouted">Not routed: @(string.Join(", ", unrouted)) — the else body, or no branch, takes them.</span>
+                                }
+                            </p>
+                            @if (caseBranches.Count == 0)
+                            {
+                                <p class="muted-text">No branches yet — a case runs one branch per set of values.</p>
+                            }
+                        </div>
+                        @for (var branchIndex = 0; branchIndex < caseBranches.Count; branchIndex++)
+                        {
+                            var index = branchIndex;
+                            var branch = caseBranches[index];
+                            var branchBody = selectedCase.Bodies().First(b => b.Ref.BranchIndex == index);
+                            <div class="node-section case-branch" data-branch="@index">
+                                <span class="node-section__head">Branch @(index + 1)</span>
+                                <div class="case-branch__values">
+                                    <span class="muted-text">when</span>
+                                    @foreach (var value in branch.When)
+                                    {
+                                        var chipValue = value;
+                                        <span class="chip case-branch__chip">
+                                            <code>@chipValue</code>
+                                            <FluentButton Appearance="Appearance.Stealth" Class="case-branch__chip-remove" Title="@($"Drop '{chipValue}' from branch {index + 1}")"
+                                                          @onclick="() => RemoveBranchValueAsync(selectedCase, index, chipValue)">✕</FluentButton>
+                                        </span>
+                                    }
+                                    @if (branch.When.Count == 0)
+                                    {
+                                        <span class="muted-text">— lists no value yet —</span>
+                                    }
+                                    <OneShotSelect Class="binding-row__select case-branch__add-value"
+                                                   AriaLabel="@($"Add a value to branch {index + 1} of {selectedCase.Id}")"
+                                                   Resting="add a value…"
+                                                   Choices="@(unrouted.Select(v => new OneShotChoice(v, v)).ToList())"
+                                                   OnPick="@(v => AddBranchValueAsync(selectedCase, index, v))" />
+                                    <FluentButton Appearance="Appearance.Stealth" Class="case-branch__remove" @onclick="() => RemoveBranchAsync(selectedCase, index)">Remove branch</FluentButton>
+                                </div>
+                                @BodySection(branchBody, "Body", null)
+                            </div>
+                        }
+                        <div class="node-section">
+                            <FluentButton Appearance="Appearance.Outline" Class="case-add-branch" @onclick="() => AddBranchAsync(selectedCase)">+ branch</FluentButton>
+                            @if (selectedCase.Else == null)
+                            {
+                                <FluentButton Appearance="Appearance.Outline" Class="flow-add-else" @onclick="() => AddElseAsync(selectedCase)">+ else body</FluentButton>
+                            }
+                            else
+                            {
+                                <FluentButton Appearance="Appearance.Stealth" Class="flow-remove-else" @onclick="() => RemoveElseAsync(selectedCase)">Remove else</FluentButton>
+                            }
+                        </div>
+                        @if (selectedCase.Bodies().FirstOrDefault(b => b.Ref.IsElse) is { } elseBody)
+                        {
+                            @BodySection(elseBody, "Else", "Runs when no branch lists the value.")
+                        }
                     }
                     else if (SelectedNode() is { } selectedNode)
                     {
@@ -2567,7 +2752,8 @@
                         @* #952: the node's gate — its "Produced when" — leads the pane, right after
                            the header, resting quietly as "Always run" when ungated (#936 ConditionField).
                            A classifier always runs to make its decision, so it carries none. *@
-                        @if (EffectiveSpecVersion >= 18 && !selectedNode.IsClassifier)
+                        @* v26 (#1159): a node's gate is an if node whose body holds it — "Runs when" goes at 26. *@
+                        @if (EffectiveSpecVersion >= 18 && !selectedNode.IsClassifier && !At26)
                         {
                             <div class="node-section">
                                 <span class="node-section__head">Runs when</span>
@@ -2594,7 +2780,7 @@
                                              FormatOptions="@FormatOptions"
                                              OnOpenFormat="OpenFormatPane"
                                              NodeOperandOptions="@NodeOperandChoices"
-                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id) || loopEdits.ContainsKey(id))"
+                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id) || loopEdits.ContainsKey(id) || flowEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
                                              OnBindingChanged="OnBindingChangedAsync"
@@ -2602,9 +2788,9 @@
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
                                              At26="@At26"
-                                             Loops="@EffectiveLoops"
-                                             LoopOf="@LoopIdOf"
-                                             OnLoopChanged="OnLoopChangedAsync"
+                                             Bodies="@EffectiveBodies"
+                                             BodyOf="@BodyKeyOf"
+                                             OnPlacementChanged="OnPlacementChangedAsync"
                                              ObjectSpelling="At25"
                                              ReadsSection="@NodeReadsSection(selectedNode)"
                                              OnNodeRemoved="RemoveNodeAsync" />
@@ -4860,6 +5046,9 @@
             // v26 (#1160): a loop's tuple — its own dict, the whole tuple per loop.
             new("loopEdits", () => loopEdits.Count, loopEdits.Clear,
                 () => $"{loopEdits.Count} {Plural(loopEdits.Count, "loop")}", () => loopEdits.Count > 0),
+            // v26 (#1159): an if/case node's tuple — its own dict, the whole tuple per node.
+            new("flowEdits", () => flowEdits.Count, flowEdits.Clear,
+                () => $"{flowEdits.Count} {Plural(flowEdits.Count, "flow node")}", () => flowEdits.Count > 0),
             // v10 (#498): a condition with a clause not yet chosen — held, never
             // written, and named until it is.
             new("conditionDrafts", () => conditionDrafts.Count, conditionDrafts.Clear,
@@ -7727,7 +7916,22 @@
         public List<string>? Nodes { get; set; }
         public string? Ret { get; set; }
 
+        // v26 (#1159): an if (born with an empty condition and an empty then) or a case
+        // (born over its subject with no branches) — the pane fills them; the desk names
+        // what is missing.
+        public string? If { get; set; }
+        public string? Case { get; set; }
+        public FlowBody? Then { get; set; }
+        public FlowBody? Else { get; set; }
+        public List<FlowBranch>? Branches { get; set; }
+
         public bool IsLoop => For != null;
+
+        public bool IsIf => If != null;
+
+        public bool IsCase => Case != null;
+
+        public bool IsFlow => IsLoop || IsIf || IsCase;
 
         public bool IsClassifier => Kind == ClassifierKind;
 
@@ -7736,7 +7940,7 @@
         public bool IsTemplate => Kind == TemplateKind;
 
         /// <summary>Whether the node mints or names a prompt: never for an aggregator, a check or a computed format.</summary>
-        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed && !IsLoop;
+        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed && !IsFlow;
     }
 
     // v25 (C1 #1007): the "+ Node" form's format choice; this word is the aggregator.
@@ -7749,7 +7953,7 @@
     private string newNodeLoop = string.Empty;
 
     private bool NewNodeTakesPrompt =>
-        newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice && newNodeFormat != LoopChoice
+        newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice && newNodeFormat != LoopChoice && newNodeFormat != IfChoice && newNodeFormat != CaseChoice
         && FormatOptions.FirstOrDefault(f => f.Id == newNodeFormat)?.Computed != true;
 
     /// <summary>The one node kind a manifest spells (v10): prompt is the default and aggregator a property.</summary>
@@ -8707,7 +8911,12 @@
         OnInvalid: added.OnInvalid,
         For: added.For,
         Nodes: added.Nodes,
-        Ret: added.Ret);
+        Ret: added.Ret,
+        If: added.If,
+        Case: added.Case,
+        Then: added.Then == null ? null : new WorkflowManifestReader.BodyView(added.Then.Nodes, added.Then.Ret),
+        Else: added.Else == null ? null : new WorkflowManifestReader.BodyView(added.Else.Nodes, added.Else.Ret),
+        Branches: added.Branches?.Select(b => new WorkflowManifestReader.BranchView(b.When, b.Nodes, b.Ret)).ToList());
 
     // Pending v7 declarations, each the whole list when dirty (the
     // aggregate-source idiom) and null when unchanged.
@@ -11458,31 +11667,35 @@
     /// <summary>v26: what a loop may iterate — every folder and array input in the 25 fan spelling.</summary>
     private IReadOnlyList<string> LoopCollectionOptions => WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, at25: true);
 
-    /// <summary>v26: the plain nodes a loop's body may take — in no loop, not a loop, not an aggregator.</summary>
-    private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) =>
-        EffectiveNodes
-            .Where(n => !n.IsLoop && n.Aggregate == null && LoopIdOf(n.Id) == null)
-            .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id})"))
-            .ToList();
+    /// <summary>v26: the plain nodes a loop's body may take — the same set any body takes (#1159).</summary>
+    private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) => BodyChoices();
 
-    /// <summary>v26: the nav's Nodes rows — loops with their body nested beneath, nodes in no loop at the top level.</summary>
-    private IEnumerable<(WorkflowManifestReader.NodeView Node, bool Nested)> NavNodeRows()
+    /// <summary>
+    /// v26: the nav's Nodes rows — every flow node with its bodies nested beneath in body
+    /// order (#1159: an if's then and else, a case's branches and else carry a tag so two
+    /// bodies read apart), nodes in no body at the top level.
+    /// </summary>
+    private IEnumerable<(WorkflowManifestReader.NodeView Node, bool Nested, string? Tag)> NavNodeRows()
     {
         if (!At26)
         {
-            foreach (var node in EffectiveNodes) { yield return (node, false); }
+            foreach (var node in EffectiveNodes) { yield return (node, false, null); }
             yield break;
         }
 
-        foreach (var node in EffectiveNodes.Where(n => n.IsLoop || LoopIdOf(n.Id) == null))
+        foreach (var node in EffectiveNodes.Where(n => n.IsFlow || BodyKeyOf(n.Id) == null))
         {
-            yield return (node, false);
-            if (!node.IsLoop) { continue; }
-            foreach (var bodyId in node.Nodes ?? Array.Empty<string>())
+            yield return (node, false, null);
+            if (!node.IsFlow) { continue; }
+            foreach (var body in node.Bodies())
             {
-                if (EffectiveNodes.FirstOrDefault(n => n.Id == bodyId) is { } bodyNode)
+                var tag = body.Ref.IsLoop ? null : body.Ref.IsThen ? "then" : body.Ref.IsElse ? "else" : body.Label[(node.Label.Length + 3)..];
+                foreach (var bodyId in body.Nodes)
                 {
-                    yield return (bodyNode, true);
+                    if (EffectiveNodes.FirstOrDefault(n => n.Id == bodyId) is { } bodyNode)
+                    {
+                        yield return (bodyNode, true, tag);
+                    }
                 }
             }
         }
@@ -11519,40 +11732,6 @@
         }
     }
 
-    /// <summary>
-    /// v26 (#1160): place a node in a loop (or in none): out of its current loop's body
-    /// — clearing that loop's ret when it named the node (explicit init: the desk says
-    /// the loop returns nothing until a new ret is picked) — and onto the end of the
-    /// chosen loop's body. A no-op when the node is already there.
-    /// </summary>
-    private void PlaceInLoop(string nodeId, string? loopId)
-    {
-        var current = WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, nodeId);
-        if (current?.Id == loopId)
-        {
-            return;
-        }
-
-        if (current != null)
-        {
-            var body = (current.Nodes ?? Array.Empty<string>()).Where(id => id != nodeId).ToList();
-            SetLoop(current.Id, current.Label, current.For!, body, current.RetNodeId == nodeId ? null : current.Ret);
-        }
-
-        if (loopId != null && EffectiveNodes.FirstOrDefault(n => n.Id == loopId && n.IsLoop) is { } target)
-        {
-            var body = (target.Nodes ?? Array.Empty<string>()).ToList();
-            body.Add(nodeId);
-            SetLoop(target.Id, target.Label, target.For!, body, target.Ret);
-        }
-    }
-
-    private async Task OnLoopChangedAsync(WorkflowNodeSummary.LoopPlacement placement)
-    {
-        PlaceInLoop(placement.NodeId, placement.LoopId);
-        await PendingChangedAsync();
-    }
-
     private async Task OnLoopLabelChangedAsync(WorkflowManifestReader.NodeView loop, string? label)
     {
         if (string.IsNullOrWhiteSpace(label)) { return; }
@@ -11573,6 +11752,369 @@
         await PendingChangedAsync();
     }
 
+    // v26 (#1159, design § 12): an if/case node's effective tuple — label, condition or
+    // subject, then/else bodies, branches — its own dict (the loopEdits idiom), the whole
+    // tuple on every emission, self-removing when equal to the loaded node. A pending
+    // flow node (AddedNode.If/Case != null) is mutated directly instead.
+    private readonly Dictionary<string, FlowChange> flowEdits = new(StringComparer.Ordinal);
+
+    private sealed record FlowBody(List<string> Nodes, string? Ret);
+
+    private sealed record FlowBranch(List<string> When, List<string> Nodes, string? Ret);
+
+    private sealed record FlowChange(string Label, string? If, string? Case, FlowBody? Then, FlowBody? Else, List<FlowBranch>? Branches);
+
+    private const string IfChoice = "if";
+    private const string CaseChoice = "case";
+
+    /// <summary>v26 (#1159): the "+ Node" form's case subject (input.&lt;id&gt; or node.&lt;id&gt;.value; "" = unchosen).</summary>
+    private string newNodeCase = string.Empty;
+
+    /// <summary>v26: every body a plain node may be placed in, across every flow node, in node order.</summary>
+    private IReadOnlyList<WorkflowManifestReader.FlowBodyView> EffectiveBodies =>
+        At26 ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).ToList() : Array.Empty<WorkflowManifestReader.FlowBodyView>();
+
+    /// <summary>v26: the key of the body holding the node, or null.</summary>
+    private string? BodyKeyOf(string nodeId) => WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId)?.Key;
+
+    /// <summary>v26: the plain nodes any body may take — in no body, not a flow node, not an aggregator.</summary>
+    private IReadOnlyList<OneShotChoice> BodyChoices() =>
+        EffectiveNodes
+            .Where(n => !n.IsFlow && n.Aggregate == null && BodyKeyOf(n.Id) == null)
+            .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id})"))
+            .ToList();
+
+    /// <summary>v26 (#1159): what a case may switch on — enum inputs as input.&lt;id&gt;, enum-format nodes as node.&lt;id&gt;.value.</summary>
+    private IReadOnlyList<(string Subject, string Label)> CaseSubjectOptions =>
+        EffectiveInputs.Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum)
+            .Select(input => ($"input.{input.Id}", $"input.{input.Id} — {input.Label}"))
+            .Concat(EffectiveNodes.Where(n => !n.IsFlow && ClassifierLike(n)).Select(n => ($"node.{n.Id}.value", $"node.{n.Id}.value — {n.Label}")))
+            .ToList();
+
+    /// <summary>v26 (#1159): the values a case subject declares — the input's, or the enum-format node's; empty when unknown.</summary>
+    private IReadOnlyList<string> CaseValuesOf(string? subject)
+    {
+        if (string.IsNullOrEmpty(subject)) { return Array.Empty<string>(); }
+        if (subject.StartsWith("input.", StringComparison.Ordinal))
+        {
+            return EffectiveInputs.FirstOrDefault(i => i.Id == subject["input.".Length..])?.Values ?? Array.Empty<string>();
+        }
+
+        if (subject.StartsWith("node.", StringComparison.Ordinal) && subject.EndsWith(".value", StringComparison.Ordinal))
+        {
+            var nodeId = subject["node.".Length..^".value".Length];
+            return EffectiveNodes.FirstOrDefault(n => n.Id == nodeId) is { } node ? ClassifierValues(node) ?? Array.Empty<string>() : Array.Empty<string>();
+        }
+
+        return Array.Empty<string>();
+    }
+
+    /// <summary>v26: a view's flow tuple, lists copied (the mutable working form).</summary>
+    private static FlowChange FlowChangeOf(WorkflowManifestReader.NodeView node) => new(
+        node.Label,
+        node.If,
+        node.Case,
+        node.Then == null ? null : new FlowBody(node.Then.Nodes.ToList(), node.Then.Ret),
+        node.Else == null ? null : new FlowBody(node.Else.Nodes.ToList(), node.Else.Ret),
+        node.Branches?.Select(b => new FlowBranch(b.When.ToList(), b.Nodes.ToList(), b.Ret)).ToList());
+
+    /// <summary>v26 (#1159): write an if/case node's members onto its manifest object — both casings removed first.</summary>
+    private static void WriteFlowMembers(System.Text.Json.Nodes.JsonObject target, FlowChange change)
+    {
+        foreach (var key in new[] { "if", "If", "case", "Case", "then", "Then", "else", "Else", "branches", "Branches" }) { target.Remove(key); }
+
+        static System.Text.Json.Nodes.JsonArray Ids(IEnumerable<string> ids) =>
+            new(ids.Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray());
+
+        static System.Text.Json.Nodes.JsonObject BodyObject(FlowBody body)
+        {
+            var o = new System.Text.Json.Nodes.JsonObject { ["nodes"] = Ids(body.Nodes) };
+            if (body.Ret != null) { o["ret"] = body.Ret; }
+            return o;
+        }
+
+        if (change.If != null)
+        {
+            target["if"] = change.If;
+            target["then"] = BodyObject(change.Then ?? new FlowBody(new List<string>(), null));
+        }
+
+        if (change.Case != null)
+        {
+            target["case"] = change.Case;
+            target["branches"] = new System.Text.Json.Nodes.JsonArray((change.Branches ?? new List<FlowBranch>()).Select(b =>
+            {
+                var o = new System.Text.Json.Nodes.JsonObject { ["when"] = Ids(b.When), ["nodes"] = Ids(b.Nodes) };
+                if (b.Ret != null) { o["ret"] = b.Ret; }
+                return (System.Text.Json.Nodes.JsonNode?)o;
+            }).ToArray());
+        }
+
+        if (change.Else != null)
+        {
+            target["else"] = BodyObject(change.Else);
+        }
+    }
+
+    private static bool FlowBodyEquals(FlowBody? a, FlowBody? b) =>
+        a == null ? b == null : b != null && a.Ret == b.Ret && a.Nodes.SequenceEqual(b.Nodes, StringComparer.Ordinal);
+
+    private static bool FlowChangeEquals(FlowChange a, FlowChange b) =>
+        a.Label == b.Label && a.If == b.If && a.Case == b.Case
+        && FlowBodyEquals(a.Then, b.Then) && FlowBodyEquals(a.Else, b.Else)
+        && (a.Branches == null ? b.Branches == null
+            : b.Branches != null && a.Branches.Count == b.Branches.Count
+              && a.Branches.Zip(b.Branches).All(pair => pair.First.Ret == pair.Second.Ret
+                  && pair.First.When.SequenceEqual(pair.Second.When, StringComparer.Ordinal)
+                  && pair.First.Nodes.SequenceEqual(pair.Second.Nodes, StringComparer.Ordinal)));
+
+    /// <summary>
+    /// v26 (#1159): record an if/case node's effective tuple — a pending node is mutated,
+    /// a loaded one gets a flowEdits entry that self-removes when it equals the manifest's.
+    /// </summary>
+    private void SetFlow(string nodeId, FlowChange change)
+    {
+        if (addedNodes.FirstOrDefault(a => a.Id == nodeId) is { } added)
+        {
+            added.Label = change.Label;
+            added.If = change.If;
+            added.Case = change.Case;
+            added.Then = change.Then;
+            added.Else = change.Else;
+            added.Branches = change.Branches;
+            return;
+        }
+
+        if (nodes.FirstOrDefault(n => n.Id == nodeId) is not { } loaded || !(loaded.IsIf || loaded.IsCase))
+        {
+            return;
+        }
+
+        if (FlowChangeEquals(FlowChangeOf(loaded), change))
+        {
+            flowEdits.Remove(nodeId);
+        }
+        else
+        {
+            flowEdits[nodeId] = change;
+        }
+    }
+
+    /// <summary>v26: one body of a flow tuple, rewritten — then, else or branch:&lt;n&gt;.</summary>
+    private static FlowChange WithBody(FlowChange change, WorkflowManifestReader.FlowBodyRef body, Func<FlowBody, FlowBody> rewrite)
+    {
+        if (body.IsThen) { return change with { Then = rewrite(change.Then ?? new FlowBody(new List<string>(), null)) }; }
+        if (body.IsElse) { return change with { Else = rewrite(change.Else ?? new FlowBody(new List<string>(), null)) }; }
+        if (body.BranchIndex is { } index && change.Branches != null && index < change.Branches.Count)
+        {
+            var branches = change.Branches.ToList();
+            var branch = branches[index];
+            var rewritten = rewrite(new FlowBody(branch.Nodes, branch.Ret));
+            branches[index] = branch with { Nodes = rewritten.Nodes, Ret = rewritten.Ret };
+            return change with { Branches = branches };
+        }
+
+        return change;
+    }
+
+    /// <summary>
+    /// v26 (#1159): the one mover — place a node in a body (of any flow node) or in none:
+    /// out of its current body (clearing that body's ret when it named the node — explicit
+    /// init: the desk says the body returns nothing until a new ret is picked) and onto the
+    /// end of the chosen one. A no-op when the node is already there. #1160's PlaceInLoop
+    /// is this with a loop's key.
+    /// </summary>
+    private void PlaceInBody(string nodeId, string? bodyKey)
+    {
+        var current = WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId);
+        if (current?.Key == bodyKey)
+        {
+            return;
+        }
+
+        if (current != null)
+        {
+            RewriteBody(current.Ref, body => new FlowBody(body.Nodes.Where(id => id != nodeId).ToList(), WorkflowManifestReader.RetNodeIdOf(body.Ret) == nodeId ? null : body.Ret));
+        }
+
+        if (bodyKey != null)
+        {
+            RewriteBody(WorkflowManifestReader.FlowBodyRef.Parse(bodyKey), body =>
+            {
+                var nodesInBody = body.Nodes.ToList();
+                nodesInBody.Add(nodeId);
+                return new FlowBody(nodesInBody, body.Ret);
+            });
+        }
+    }
+
+    /// <summary>v26: rewrite one addressed body — a loop's through SetLoop, an if/case's through SetFlow.</summary>
+    private void RewriteBody(WorkflowManifestReader.FlowBodyRef body, Func<FlowBody, FlowBody> rewrite)
+    {
+        if (EffectiveNodes.FirstOrDefault(n => n.Id == body.FlowId && n.IsFlow) is not { } flow)
+        {
+            return;
+        }
+
+        if (flow.IsLoop)
+        {
+            var rewritten = rewrite(new FlowBody((flow.Nodes ?? Array.Empty<string>()).ToList(), flow.Ret));
+            SetLoop(flow.Id, flow.Label, flow.For!, rewritten.Nodes, rewritten.Ret);
+            return;
+        }
+
+        SetFlow(flow.Id, WithBody(FlowChangeOf(flow), body, rewrite));
+    }
+
+    private void PlaceInLoop(string nodeId, string? loopId) => PlaceInBody(nodeId, loopId);
+
+    private async Task OnPlacementChangedAsync(WorkflowNodeSummary.BodyPlacement placement)
+    {
+        PlaceInBody(placement.NodeId, placement.BodyKey);
+        await PendingChangedAsync();
+    }
+
+    private async Task OnFlowLabelChangedAsync(WorkflowManifestReader.NodeView node, string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label)) { return; }
+        SetFlow(node.Id, FlowChangeOf(node) with { Label = label.Trim() });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v26 (#1159): the if node's condition — the 25 node-when builder, writing the node's if.</summary>
+    private ConditionTarget IfConditionTarget(WorkflowManifestReader.NodeView node) =>
+        new($"node-if:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.If) ? null : node.If,
+            text => SetFlow(node.Id, FlowChangeOf(node) with { If = text ?? string.Empty }));
+
+    private async Task OnBodyRetChangedAsync(string bodyKey, string? bodyNodeId)
+    {
+        RewriteBody(WorkflowManifestReader.FlowBodyRef.Parse(bodyKey), body => new FlowBody(body.Nodes, string.IsNullOrEmpty(bodyNodeId) ? null : $"node.{bodyNodeId}"));
+        await PendingChangedAsync();
+    }
+
+    private async Task AddElseAsync(WorkflowManifestReader.NodeView node)
+    {
+        SetFlow(node.Id, FlowChangeOf(node) with { Else = new FlowBody(new List<string>(), null) });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v26: drop the else body — its nodes fall out to the top level.</summary>
+    private async Task RemoveElseAsync(WorkflowManifestReader.NodeView node)
+    {
+        SetFlow(node.Id, FlowChangeOf(node) with { Else = null });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnCaseSubjectChangedAsync(WorkflowManifestReader.NodeView node, string? subject)
+    {
+        if (string.IsNullOrEmpty(subject)) { return; }
+        SetFlow(node.Id, FlowChangeOf(node) with { Case = subject });
+        await PendingChangedAsync();
+    }
+
+    private async Task AddBranchAsync(WorkflowManifestReader.NodeView node)
+    {
+        var change = FlowChangeOf(node);
+        var branches = (change.Branches ?? new List<FlowBranch>()).ToList();
+        branches.Add(new FlowBranch(new List<string>(), new List<string>(), null));
+        SetFlow(node.Id, change with { Branches = branches });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v26: drop a branch — its nodes fall out to the top level.</summary>
+    private async Task RemoveBranchAsync(WorkflowManifestReader.NodeView node, int index)
+    {
+        var change = FlowChangeOf(node);
+        var branches = (change.Branches ?? new List<FlowBranch>()).ToList();
+        if (index < branches.Count) { branches.RemoveAt(index); }
+        SetFlow(node.Id, change with { Branches = branches });
+        await PendingChangedAsync();
+    }
+
+    private async Task AddBranchValueAsync(WorkflowManifestReader.NodeView node, int index, string value)
+    {
+        if (string.IsNullOrEmpty(value)) { return; }
+        var change = FlowChangeOf(node);
+        var branches = (change.Branches ?? new List<FlowBranch>()).ToList();
+        if (index >= branches.Count) { return; }
+        var when = branches[index].When.ToList();
+        if (!when.Contains(value, StringComparer.Ordinal)) { when.Add(value); }
+        branches[index] = branches[index] with { When = when };
+        SetFlow(node.Id, change with { Branches = branches });
+        await PendingChangedAsync();
+    }
+
+    private async Task RemoveBranchValueAsync(WorkflowManifestReader.NodeView node, int index, string value)
+    {
+        var change = FlowChangeOf(node);
+        var branches = (change.Branches ?? new List<FlowBranch>()).ToList();
+        if (index >= branches.Count) { return; }
+        branches[index] = branches[index] with { When = branches[index].When.Where(v => v != value).ToList() };
+        SetFlow(node.Id, change with { Branches = branches });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v26: the subject's values no branch of the node lists yet.</summary>
+    private IReadOnlyList<string> UnroutedCaseValues(WorkflowManifestReader.NodeView node)
+    {
+        var listed = (node.Branches ?? Array.Empty<WorkflowManifestReader.BranchView>()).SelectMany(b => b.When).ToHashSet(StringComparer.Ordinal);
+        return CaseValuesOf(node.Case).Where(v => !listed.Contains(v)).ToList();
+    }
+
+    /// <summary>
+    /// v26 (#1159): one body's section — the loop pane's body idiom (rows linking to the
+    /// node's pane, the returned one badged, Remove from body, a one-shot add) and its ret
+    /// picker resting "choose…" (explicit init: the desk says the body returns nothing).
+    /// </summary>
+    private RenderFragment BodySection(WorkflowManifestReader.FlowBodyView body, string head, string? note) => @<text>
+        <div class="node-section flow-body" data-body="@body.Key">
+            <span class="node-section__head">@head</span>
+            @if (note != null)
+            {
+                <p class="muted-text">@note</p>
+            }
+            @if (body.Nodes.Count == 0)
+            {
+                <p class="muted-text loop-body__empty">No body yet — nothing runs here until a node is added.</p>
+            }
+            <ul class="loop-body">
+                @foreach (var bodyId in body.Nodes)
+                {
+                    var bodyNode = EffectiveNodes.FirstOrDefault(n => n.Id == bodyId);
+                    <li class="loop-body__row">
+                        <button type="button" class="snippet-readers__row" title="@($"node '{bodyId}' — open its pane")" @onclick="() => Select(NodeKeyFor(bodyId))">@(bodyNode?.Label ?? bodyId)</button>
+                        @if (body.RetNodeId == bodyId)
+                        {
+                            <span class="muted-text loop-body__ret">· returned</span>
+                        }
+                        <FluentButton Appearance="Appearance.Stealth" Class="loop-body__remove" Title="@($"Take '{bodyId}' out of this body")"
+                                      @onclick="() => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(bodyId, null))">Remove from body</FluentButton>
+                    </li>
+                }
+            </ul>
+            <OneShotSelect Class="binding-row__select loop-body-add"
+                           AriaLabel="@($"Add a node to {body.Label}")"
+                           Resting="add a node to the body…"
+                           Choices="@BodyChoices()"
+                           OnPick="@(v => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(v, body.Key)))" />
+            <div class="node-fields">
+                <label class="node-field">
+                    <span>ret</span>
+                    <FluentSelect TOption="string" class="binding-row__select loop-ret"
+                                  Value="@(body.RetNodeId ?? string.Empty)"
+                                  ValueChanged="@(v => OnBodyRetChangedAsync(body.Key, v))"
+                                  aria-label="@($"Ret of {body.Label}")">
+                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                        @foreach (var bodyId in body.Nodes)
+                        {
+                            <FluentOption TOption="string" Value="@bodyId">@bodyId</FluentOption>
+                        }
+                    </FluentSelect>
+                </label>
+            </div>
+        </div>
+    </text>;
+
     private ConditionTarget NodeConditionTarget(WorkflowManifestReader.NodeView node) =>
         new($"node-when:{node.Id}", node.Id, NodeWhenValue(node), text => SetNodeWhen(node.Id, text));
 
@@ -11580,6 +12122,8 @@
     // format and its producer (the record's ContractLabel idiom).
     private string NodeKindLabel(WorkflowManifestReader.NodeView node) =>
         At26 && node.IsLoop ? $"loop over {node.Collection ?? node.For}"
+        : At26 && node.IsIf ? $"if · {(string.IsNullOrWhiteSpace(node.If) ? "no condition yet" : node.If)}"
+        : At26 && node.IsCase ? $"case · over {(string.IsNullOrWhiteSpace(node.Case) ? "nothing yet" : node.Case)}"
         : EffectiveSpecVersion >= 25 && node.Aggregate == null
             ? node.Format == null ? "no format yet"
                 : FormatOptions.FirstOrDefault(f => f.Id == node.Format) is { } format ? $"{format.Id} · {format.Producer}" : node.Format
@@ -12568,6 +13112,20 @@
                     n = n with { Label = loop.Label, For = loop.For, Nodes = loop.Nodes, Ret = loop.Ret };
                 }
 
+                // v26 (#1159): an if/case node's pending tuple rides too.
+                if (flowEdits.TryGetValue(n.Id, out var flow))
+                {
+                    n = n with
+                    {
+                        Label = flow.Label,
+                        If = flow.If,
+                        Case = flow.Case,
+                        Then = flow.Then == null ? null : new WorkflowManifestReader.BodyView(flow.Then.Nodes, flow.Then.Ret),
+                        Else = flow.Else == null ? null : new WorkflowManifestReader.BodyView(flow.Else.Nodes, flow.Else.Ret),
+                        Branches = flow.Branches?.Select(b => new WorkflowManifestReader.BranchView(b.When, b.Nodes, b.Ret)).ToList()
+                    };
+                }
+
                 return n with { IsResult = DeliverableRootIds.Contains(n.Id) };
             })
             .Concat(addedNodes.Select(AddedNodeView))
@@ -12774,6 +13332,7 @@
         || nodeMacroEdits.ContainsKey(node.Id)
         || aggregateEdits.ContainsKey(node.Id)
         || loopEdits.ContainsKey(node.Id)
+        || flowEdits.ContainsKey(node.Id)
         || addedNodes.Any(a => a.Id == node.Id)
         || bindingEdits.Keys.Any(key => key.StartsWith(node.Id + "\n", StringComparison.Ordinal))
         || (node.Prompt != null && HasVariableEdits(node.Prompt));
@@ -12783,24 +13342,33 @@
         var at25 = EffectiveSpecVersion >= 25;
         if (at25 && newNodeFormat.Length == 0)
         {
-            newNodeError = At26 ? "Choose a format — or a loop." : "Choose a format — or aggregator.";
+            newNodeError = At26 ? "Choose a format — or for, if or case." : "Choose a format — or aggregator.";
             return;
         }
 
-        // v26 (#1160): a loop is a flow node — no format, no prompt; the aggregator
-        // choice is not offered at 26 (the user's decision, design § 12).
+        // v26 (#1160/#1159): a flow node (for, if, case) is structural — no format, no
+        // prompt; the aggregator choice is not offered at 26 (the user's decision, design § 12).
         var loop = At26 && newNodeFormat == LoopChoice;
+        var ifNode = At26 && newNodeFormat == IfChoice;
+        var caseNode = At26 && newNodeFormat == CaseChoice;
+        var flow = loop || ifNode || caseNode;
         var aggregator = at25 ? !At26 && newNodeFormat == AggregatorChoice : newNodeKind == "aggregator";
         var classifier = !at25 && newNodeKind == ClassifierKind;
         var check = !at25 && newNodeKind == CheckKind;
         var template = !at25 && newNodeKind == TemplateKind;
-        var format = at25 && !aggregator && !loop ? newNodeFormat : null;
+        var format = at25 && !aggregator && !flow ? newNodeFormat : null;
         var computed = format != null && FormatOptions.FirstOrDefault(f => f.Id == format)?.Computed == true;
-        var promptRef = aggregator || check || computed || loop || newNodePrompt.Length == 0 ? null : newNodePrompt;
+        var promptRef = aggregator || check || computed || flow || newNodePrompt.Length == 0 ? null : newNodePrompt;
 
         if (loop && newNodeForEach.Length == 0)
         {
             newNodeError = "Choose what the loop iterates.";
+            return;
+        }
+
+        if (caseNode && newNodeCase.Length == 0)
+        {
+            newNodeError = "Choose what the case switches on.";
             return;
         }
 
@@ -12835,7 +13403,7 @@
 
         // Only a freshly minted prompt (named after the node) can collide
         // with an existing prompt id.
-        if (promptRef == null && !aggregator && !check && !computed && !loop && EffectivePrompts.Any(p => p.Id == id))
+        if (promptRef == null && !aggregator && !check && !computed && !flow && EffectivePrompts.Any(p => p.Id == id))
         {
             newNodeError = $"A prompt named '{id}' already exists — choose it in the prompt field, or pick another node id.";
             return;
@@ -12868,16 +13436,22 @@
             Computed = computed,
             // v26: a loop's collection and empty body; ret unchosen.
             For = loop ? WorkflowManifestReader.NodeView.LoopPrefix + newNodeForEach : null,
-            Nodes = loop ? new List<string>() : null
+            Nodes = loop ? new List<string>() : null,
+            // v26 (#1159): an if's empty condition and then; a case's subject and no branches.
+            If = ifNode ? string.Empty : null,
+            Then = ifNode ? new FlowBody(new List<string>(), null) : null,
+            Case = caseNode ? newNodeCase : null,
+            Branches = caseNode ? new List<FlowBranch>() : null
         });
-        // v26: a plain node born "in" a loop joins that loop's body.
-        if (At26 && !loop && newNodeLoop.Length > 0)
+        // v26: a plain node born "in" a body joins it (#1159: any body).
+        if (At26 && !flow && newNodeLoop.Length > 0)
         {
-            PlaceInLoop(id, newNodeLoop);
+            PlaceInBody(id, newNodeLoop);
         }
         newNodeId = newNodeLabel = null;
         newNodeForEach = string.Empty;
         newNodeLoop = string.Empty;
+        newNodeCase = string.Empty;
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
         newNodePrompt = string.Empty;
@@ -12889,7 +13463,7 @@
         // Land on the next step: the aggregator's source list or an existing
         // prompt's bindings on the node card, or the new prompt's text —
         // a check has no prompt, so its card is the destination.
-        selectedKey = aggregator || check || computed || loop || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
+        selectedKey = aggregator || check || computed || flow || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
         await PendingChangedAsync();
     }
 
@@ -12904,7 +13478,7 @@
         // nodes[] must not name a node that is gone); a loop's own pending tuple goes.
         if (At26)
         {
-            PlaceInLoop(nodeId, null);
+            PlaceInBody(nodeId, null);
         }
 
         if (added != null)
@@ -12917,6 +13491,7 @@
             nodeEdits.Remove(nodeId);
             aggregateEdits.Remove(nodeId);
             loopEdits.Remove(nodeId);
+            flowEdits.Remove(nodeId);
         }
         else
         {
@@ -14001,7 +14576,9 @@
         // v25 (C1 #1007): trailing.
         string? Format = null, Dictionary<string, JsonElement>? With = null, string? OnInvalid = null, bool Computed = false,
         // v26 (#1160): a pending loop's tuple. Trailing.
-        string? For = null, List<string>? Nodes = null, string? Ret = null);
+        string? For = null, List<string>? Nodes = null, string? Ret = null,
+        // v26 (#1159): a pending if/case node's tuple. Trailing.
+        string? If = null, string? Case = null, FlowBody? Then = null, FlowBody? Else = null, List<FlowBranch>? Branches = null);
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
@@ -14022,6 +14599,9 @@
 
     // v26 (#1160): a loop's pending tuple.
     private sealed record DraftLoopEdit(string LoopId, string Label, string For, List<string> Nodes, string? Ret);
+
+    // v26 (#1159): an if/case node's pending tuple.
+    private sealed record DraftFlowEdit(string NodeId, string Label, string? If, string? Case, FlowBody? Then, FlowBody? Else, List<FlowBranch>? Branches);
 
     // v23 (#955): a node's macro attachments persisted in the draft — the whole
     // list per node, mirroring nodeMacroEdits.
@@ -14103,7 +14683,9 @@
         // #1103: pending folder item orders (folder id → item ids). Trailing optional.
         Dictionary<string, List<string>>? ItemOrders = null,
         // v26 (#1160): pending loop tuples. Trailing optional.
-        List<DraftLoopEdit>? LoopEdits = null);
+        List<DraftLoopEdit>? LoopEdits = null,
+        // v26 (#1159): pending if/case tuples. Trailing optional.
+        List<DraftFlowEdit>? FlowEdits = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -14552,7 +15134,12 @@
                     Computed = draftAddedNode.Computed,
                     For = draftAddedNode.For,
                     Nodes = draftAddedNode.For == null ? null : draftAddedNode.Nodes ?? new List<string>(),
-                    Ret = draftAddedNode.Ret
+                    Ret = draftAddedNode.Ret,
+                    If = draftAddedNode.If,
+                    Case = draftAddedNode.Case,
+                    Then = draftAddedNode.If == null ? null : draftAddedNode.Then ?? new FlowBody(new List<string>(), null),
+                    Else = draftAddedNode.Else,
+                    Branches = draftAddedNode.Case == null ? null : draftAddedNode.Branches ?? new List<FlowBranch>()
                 });
             }
         }
@@ -14687,6 +15274,15 @@
             }
         }
 
+        // v26 (#1159): rehydrate pending if/case tuples — only onto a flow node the manifest still holds.
+        foreach (var draftFlow in payload.FlowEdits ?? new List<DraftFlowEdit>())
+        {
+            if (nodes.Any(n => n.Id == draftFlow.NodeId && (n.IsIf || n.IsCase)) && !string.IsNullOrWhiteSpace(draftFlow.Label))
+            {
+                flowEdits[draftFlow.NodeId] = new FlowChange(draftFlow.Label, draftFlow.If, draftFlow.Case, draftFlow.Then, draftFlow.Else, draftFlow.Branches);
+            }
+        }
+
         // v18 (#822): rehydrate pending node whens (its own dict).
         foreach (var draftNodeWhen in draftNodeWhenEdits ?? new List<DraftNodeWhen>())
         {
@@ -14787,7 +15383,7 @@
             nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith,
                 edit.Format, edit.With == null ? null : new Dictionary<string, JsonElement>(edit.With, StringComparer.Ordinal), edit.OnInvalid)).ToList(),
             addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw,
-                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret)).ToList(),
+                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret, a.If, a.Case, a.Then, a.Else, a.Branches)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -14828,7 +15424,8 @@
             itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList(),
             macroInstructionEdits.Select(pair => new DraftMacroInstruction(pair.Key, pair.Value)).ToList(),
             itemOrderEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal),
-            loopEdits.Select(pair => new DraftLoopEdit(pair.Key, pair.Value.Label, pair.Value.For, pair.Value.Nodes.ToList(), pair.Value.Ret)).ToList());
+            loopEdits.Select(pair => new DraftLoopEdit(pair.Key, pair.Value.Label, pair.Value.For, pair.Value.Nodes.ToList(), pair.Value.Ret)).ToList(),
+            flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -15398,8 +15995,10 @@
         nodeWhenEdits.Remove(nodeId);
         conditionDrafts.Remove($"node-when:{nodeId}");
         aggregateEdits.Remove(nodeId);
-        // v26 (#1160): a loop's pending tuple.
+        // v26 (#1160): a loop's pending tuple; #1159: an if/case node's.
         loopEdits.Remove(nodeId);
+        flowEdits.Remove(nodeId);
+        conditionDrafts.Remove($"node-if:{nodeId}");
         // v23 (#955): a node's macro attachments and any in-progress macro-when
         // condition drafts.
         nodeMacroEdits.Remove(nodeId);
@@ -16261,6 +16860,20 @@
                 continue;
             }
 
+            // v26 (#1159): an if or case — its condition/subject and bodies as they stand;
+            // ret only once chosen; else only once added; never a format.
+            if (addedNode.IsIf || addedNode.IsCase)
+            {
+                var flow26 = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = addedNode.Id,
+                    ["label"] = addedNode.Label
+                };
+                WriteFlowMembers(flow26, new FlowChange(addedNode.Label, addedNode.If, addedNode.Case, addedNode.Then, addedNode.Else, addedNode.Branches));
+                nodesArray.Add(flow26);
+                continue;
+            }
+
             if (addedNode.Format != null)
             {
                 if (addedNode.HasPrompt && addedNode.PromptRef == null
@@ -16888,6 +17501,19 @@
             loopObject["for"] = pair.Value.For;
             loopObject["nodes"] = new System.Text.Json.Nodes.JsonArray(pair.Value.Nodes.Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray());
             if (pair.Value.Ret != null) { loopObject["ret"] = pair.Value.Ret; }
+        }
+
+        // v26 (#1159): an if/case node's tuple — label, if/case, then/else/branches written
+        // whole, both casings removed first (the #864 lesson); else removed when dropped.
+        foreach (var pair in flowEdits)
+        {
+            if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } flowObject)
+            {
+                continue;
+            }
+
+            flowObject[flowObject.ContainsKey("Label") ? "Label" : "label"] = pair.Value.Label;
+            WriteFlowMembers(flowObject, pair.Value);
         }
 
         // v23 (#955): a node's macro attachments — the whole list, each a bare id
