@@ -39,6 +39,20 @@ internal static class WorkflowFlowNodes
 
         public string BodySubject(Body body) => Kind == Kind.For ? Subject : $"{Subject} {body.Label}";
 
+        /// <summary>
+        /// #1154: a loop's collection as a 25 <c>forEach</c> spells it —
+        /// <c>snippet.&lt;folder&gt;</c> or <c>input.&lt;id&gt;</c> — the fan string the
+        /// engine's skeleton keys by, so a body node fans as a 25 node did; null
+        /// for an if or case node.
+        /// </summary>
+        public string? Collection =>
+            Kind == Kind.For && Node.For is { } text && text.StartsWith(LoopPrefix, StringComparison.Ordinal) && text.Length > LoopPrefix.Length
+                ? text[LoopPrefix.Length..]
+                : null;
+
+        /// <summary>#1154: the node a case switches on (<c>node.&lt;id&gt;.value</c>), or null — an enum input, or not a case.</summary>
+        public string? SubjectNodeId => Kind == Kind.Case && Expression is { } subject ? CaseNodeSubjectOf(subject) : null;
+
         public TemplateFlowKind TemplateKind => Kind switch { Kind.For => TemplateFlowKind.For, Kind.If => TemplateFlowKind.If, _ => TemplateFlowKind.Case };
     }
 
@@ -259,6 +273,20 @@ internal static class WorkflowFlowNodes
         return new Resolved(flows, owner);
     }
 
+    /// <summary><c>node.&lt;id&gt;.value</c> → the id; anything else → null. A case subject names a node this way or an enum input.</summary>
+    public static string? CaseNodeSubjectOf(string subject) =>
+        TemplateObjectReference.TryParse(subject, out var obj, out var id, out var rest)
+            && obj == TemplateObjects.Node
+            && rest.TrimStart('.') == TemplateMembers.Value
+            ? id
+            : null;
+
+    private const string LoopPrefix = "item in ";
+
+    /// <summary>#1154: a <c>for</c> text's collection as a 25 <c>forEach</c> spells it, or null when the text is not the grammar.</summary>
+    public static string? CollectionOf(string? @for) =>
+        @for is { } text && text.StartsWith(LoopPrefix, StringComparison.Ordinal) && text.Length > LoopPrefix.Length ? text[LoopPrefix.Length..] : null;
+
     /// <summary><c>for: "item in snippet.&lt;folder&gt;"</c> or <c>"item in input.&lt;id&gt;"</c> (an array); the fan the loop's body runs under.</summary>
     private static (TemplateFan? Fan, WorkflowDataCollection? Folder) ResolveLoopCollection(
         string loopId,
@@ -267,7 +295,7 @@ internal static class WorkflowFlowNodes
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         List<string> errors)
     {
-        const string prefix = "item in ";
+        const string prefix = LoopPrefix;
         var grammar = $"Loop '{loopId}' iterates '{text}'; a loop iterates \"item in snippet.<folder>\" or \"item in input.<id>\".";
 
         if (!text.StartsWith(prefix, StringComparison.Ordinal) || text.Length == prefix.Length)

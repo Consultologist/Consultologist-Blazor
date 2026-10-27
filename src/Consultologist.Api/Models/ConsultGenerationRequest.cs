@@ -606,7 +606,22 @@ public sealed record ConsultNodeDescriptor(
     // (fail | retry | flag; retry reserved, runs as fail). A values parameter
     // resolves into Values above. Null below 25. Appended last, same rule.
     IReadOnlyDictionary<string, string>? With = null,
-    string? OnInvalid = null);
+    string? OnInvalid = null,
+    // v26 (#1154, design § 1.5, § 10): a flow node's row — its kind (for | if |
+    // case), a loop's collection as a 25 forEach spells it, an if's expression
+    // or a case's subject, its body node ids, the node it returns (a loop's; for
+    // an if/case the TAKEN body's, null while undecided or when none), and the
+    // branch the decision took ("then" | "else" | "<v1, v2>" | "none"). On a
+    // body node, In names the flow node it runs inside (its ForEach is its
+    // loop's collection, so it fans as a 25 node did). Null below 26. Appended
+    // last, same positional-call rule.
+    string? Flow = null,
+    string? Collection = null,
+    string? Expression = null,
+    IReadOnlyList<string>? Body = null,
+    string? Ret = null,
+    string? In = null,
+    string? Branch = null);
 
 /// <summary>
 /// v25 (B4 #1003, design § 3.5): a reply validated against its format after
@@ -682,7 +697,10 @@ public sealed record ConsultResultDescriptor(
     // once every one has settled, and the fire-set cascade skips it when one
     // was gated. Sorted; null below 25 and when its macros read no node.
     // Appended last, same rule.
-    IReadOnlyList<string>? Reads = null);
+    IReadOnlyList<string>? Reads = null,
+    // v26 (#1154, design § 3): the deliverable's sources[] as bare node ids in
+    // declared order; NodeId is empty at 26. Null below 26. Appended last.
+    IReadOnlyList<string>? Sources = null);
 
 /// <summary>
 /// v12 #619 (design § 4): one placed macro on one deliverable — the id and

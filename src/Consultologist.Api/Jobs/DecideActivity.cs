@@ -181,20 +181,20 @@ public sealed class DecideActivity
         // starter described stage one's — the stamp, the derived edges (a 25
         // node's only dependencies) and the effective inputs.
         var derivedEdges = ConsultGenerationJobStarter.DeriveEdges(narrowed);
+        // v26 (#1154): the flow rows and the branches the boundary decided.
+        var flows = ConsultGenerationJobStarter.FlowsOf(narrowed);
 
         return new ConsultDecisionResult(
             firingDescriptors,
             fireSet.Skipped,
             narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(
                 node, narrowed.SchemaContracts, narrowed.ContractAgents, narrowed.SourceFiles, narrowed.Manifest.Macros,
-                narrowed.Formats ?? engineFormats, narrowed.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), effectiveInputs, narrowed.Manifest)).ToList(),
+                narrowed.Formats ?? engineFormats, narrowed.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), effectiveInputs, narrowed.Manifest,
+                flows, fireSet.Branches?.GetValueOrDefault(node.Id))).ToList(),
             skeleton.Items,
             skeleton.CollectionSets,
             skeleton.CollectionRosters,
-            narrowed.Nodes!
-                .Where(node => node.ForEach != null)
-                .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
-                .ToList(),
+            ConsultGenerationJobStarter.ChainSteps(narrowed),
             Array.Empty<string>(),
             excludedMacros.Count > 0 ? excludedMacros : null);
     }

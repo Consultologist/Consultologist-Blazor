@@ -1003,6 +1003,34 @@ whose version is outside `supported` under `any/` and lets `SHAPE_BLIND` name on
 engine replays every indexed vector through the public validator; the vectors stay generated-and-held in the
 engine (116 cases, pinned through the seam) and #1149's body carries that half. Layer A is complete.)*
 
+*(#1154, PR 1 of 3, 2026-10-26 — the engine's starter over the SAME skeleton, as § 1.4 and § 14 say. A loop
+is the fan it replaces: its body nodes' descriptors carry the loop's collection as their `forEach`
+(`snippet.<folder>` | `input.<id>`, `WorkflowFlowNodes.Flow.Collection`) and `In` names the loop, so
+`InstanceKey`, `InstanceReady`, `FanItems` and the chain steps run unchanged; the flow node has a row of its
+own (`Flow`, `Collection` | `Expression`, `Body`, `Ret`, `Branch` on `ConsultNodeDescriptor`, appended last).
+An `if`/`case` is decided where a 25 `when` was — `DecideFireSet` at start when its expression reads inputs
+and run facts, the boundary (`DecideActivity.Decide`) when it reads a node's value or the profile: a flow
+node's derived edges are its DECISION's reads (`Walk.EdgesOf` adds a case's subject, read structurally;
+`GatingReads` the subjects, `GatingReadsProfile` the `Flow` site), never its bodies, so stage one runs what
+the decision needs and not both branches; the engine attaches the taken body to the prune's map itself. The
+judge is `WorkflowFlowDecision.Decide` (new; an `if` through `WorkflowConditionAt25.Holds`, a `case` by
+evaluating its subject and taking the first branch whose `when` lists the value, else `else`, else none);
+the branch the record names is "then" | "else" | "<v1, v2>" | "none". The untaken bodies are PRUNED (a set
+of their own, never `gated` — the cascade does not fire on them); the row stays with its branch; a
+deliverable sourcing a flow that took no branch is skipped *"source node.<id> took no branch"*. **Blocks come
+from `deliverables[].sources[]`** (`WorkflowPackageBlocks.ResolveSourceBlocks`; `WorkflowResolvedResult.Sources`,
+the deliverable's `if` riding as its `When` text): a loop source one block per settled item **named by the
+loop** — `consult:standards:hpi` (decided 2026-10-26 over the returned node's name: the source as declared;
+the body node that completes the block is the engine's concern, PR 2) — an if/case or prose source one block.
+A folder item's `if` is judged at start with the item in hand (`ConsultConditionScope.WithItem`; the rule
+allows `item.id`); a 26 item's roster name is its header's label. Pinned by the offline half of the done-when
+(`V26SkeletonIdentityTests`): each public package and its migrated twin resolve the same block count, names
+and items, collections and rosters, and decide the same fire set over the same inputs — the ids differing
+only in the loop's name. Left to PR 2: the loop's completion as the aggregator's bytes, the if/case alias,
+the skipped row, the scheduler's skipped set; to PR 3: the loop read at render (until then a loop reads as
+text), the `label` member at run time. #1155 composes the deliverable; #1157 reads the headers and the
+prompts in the store.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,

@@ -80,4 +80,19 @@ public class WorkflowPackageBlocksTests
 
     private static WorkflowInputSpec manifestInput(WorkflowPackage package, string id) =>
         package.Manifest.Inputs!.Single(input => input.Id == id);
+
+    // #1154 (v26): the blocks come from the deliverables' sources, a loop's
+    // named by the loop; the Current endpoint's read (no request) takes a
+    // snippet folder whole.
+
+    [Fact]
+    public void Resolve_V26Package_ExpandsSources_NamingTheLoop()
+    {
+        var package = V26JobStartTests.Package();
+
+        var blocks = WorkflowPackageBlocks.Resolve(package);
+
+        Assert.Equal(new[] { "consult:assessment", "consult:sections:hpi", "consult:sections:plan" }, blocks.Select(b => b.Id));
+        Assert.Equal(new[] { "Assessment", "HPI", "Plan" }, blocks.Select(b => b.Name));
+    }
 }

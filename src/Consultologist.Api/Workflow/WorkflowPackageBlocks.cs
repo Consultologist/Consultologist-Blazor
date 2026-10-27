@@ -23,6 +23,11 @@ public static class WorkflowPackageBlocks
         WorkflowPackage package,
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? inputFans = null)
     {
+        if (package.Manifest.SpecVersion >= 26)
+        {
+            return ResolveSourceBlocks(package, inputFans);
+        }
+
         if (package.Manifest.SpecVersion >= 7)
         {
             return ResolveResultSetBlocks(package, inputFans);
@@ -96,6 +101,73 @@ public static class WorkflowPackageBlocks
 
         return blocks;
     }
+
+    /// <summary>
+    /// v26 (#1154, design § 3): the deliverables' blocks from their sources[],
+    /// in result-set then source order. A loop source contributes one block
+    /// per item, named by the LOOP — "resultId:loopId:itemId" — the source as
+    /// the deliverable declares it (the body node that completes the block is
+    /// the engine's concern); an if/case or a plain prose source one block,
+    /// "resultId:nodeId". The items are the settled ones the starter hands in
+    /// by the loop's collection (a snippet folder's items whole for the
+    /// Current endpoint, which has no request to settle them by; an array
+    /// input's none, as at 9).
+    /// </summary>
+    public static IReadOnlyList<WorkflowDeliverableBlock> ResolveSourceBlocks(
+        WorkflowPackage package,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? inputFans = null)
+    {
+        var results = package.Results
+            ?? throw new InvalidOperationException($"Package {package.Ref} resolved no result set (specVersion 26 requires one).");
+        var nodesById = (package.Nodes ?? new List<WorkflowNodeSpec>()).ToDictionary(node => node.Id, StringComparer.Ordinal);
+        var blocks = new List<WorkflowDeliverableBlock>();
+
+        foreach (var result in results)
+        {
+            foreach (var sourceId in result.Sources ?? new List<string>())
+            {
+                var source = nodesById.GetValueOrDefault(sourceId)
+                    ?? throw new InvalidOperationException($"Package {package.Ref} deliverable '{result.Id}' sources unknown node '{sourceId}'.");
+
+                if (WorkflowFlowNodes.CollectionOf(source.For) is not { } collection)
+                {
+                    blocks.Add(new WorkflowDeliverableBlock($"{result.Id}:{sourceId}", source.Label, string.Empty));
+                    continue;
+                }
+
+                IEnumerable<IReadOnlyDictionary<string, string>> items;
+                if (inputFans?.GetValueOrDefault(collection) is { } settled)
+                {
+                    items = settled;
+                }
+                else if (WorkflowInputFans.IsInputFan(collection))
+                {
+                    continue; // before a job exists there is no request and so no items
+                }
+                else
+                {
+                    var folderId = WorkflowFanSources.CollectionIdOf(collection);
+                    var folder = package.Data?.Collections.GetValueOrDefault(folderId)
+                        ?? throw new InvalidOperationException($"Package {package.Ref} has no snippet folder '{folderId}'.");
+                    items = folder.Items.Select(item => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(item.Fields, StringComparer.Ordinal) { ["id"] = item.Id });
+                }
+
+                foreach (var item in items)
+                {
+                    blocks.Add(new WorkflowDeliverableBlock(
+                        $"{result.Id}:{sourceId}:{item["id"]}",
+                        ItemName(item),
+                        item.GetValueOrDefault("content", string.Empty)));
+                }
+            }
+        }
+
+        return blocks;
+    }
+
+    /// <summary>A settled item's display name: its 25 name, its 26 label, else its id.</summary>
+    internal static string ItemName(IReadOnlyDictionary<string, string> item) =>
+        item.GetValueOrDefault("name") ?? item.GetValueOrDefault("label") ?? item["id"];
 
     private static IEnumerable<WorkflowDeliverableBlock> ExpandAggregator(
         WorkflowPackage package,

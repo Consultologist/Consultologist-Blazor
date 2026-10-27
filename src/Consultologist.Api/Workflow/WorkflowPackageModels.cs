@@ -37,7 +37,14 @@ public sealed record WorkflowResolvedResult(
     // v25 (#1038, design § 16): the deliverable's when as the package wrote it —
     // a Scriban expression the engine judges over the render scope at the
     // boundary; Condition stays null at 25. Null below 25 and when unset.
-    string? When = null);
+    // v26 (#1154, design § 3): the deliverable's `if` rides here too — the one
+    // text the engine judges at the boundary, whichever key spelled it.
+    string? When = null,
+    // v26 (#1154, design § 3): the deliverable's sources[] as bare node ids in
+    // declared order — a loop, an if/case or a prose node each; the skeleton's
+    // blocks and the fire set's roots come from them, as they came from the
+    // aggregator's sources. Null below 26.
+    IReadOnlyList<string>? Sources = null);
 
 /// <summary>
 /// One when-gated macro entry of a resolved result (v12 § 14). v25 (B8 #1027):

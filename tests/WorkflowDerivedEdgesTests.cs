@@ -444,4 +444,23 @@ public class WorkflowMacroMechanicsTests
         Assert.DoesNotContain("<id>", prompt);
         Assert.DoesNotContain("[[slot:", prompt);
     }
+
+    // #1154 (v26): a flow node's edges are its decision's reads — an if's
+    // expression, a case's subject — never its bodies (the engine attaches
+    // the taken body itself); the case subject is an edge though it is read
+    // structurally.
+
+    [Fact]
+    public void At26_AFlowNodesEdges_AreItsDecisionsReads_NotItsBodies()
+    {
+        var (manifest, files) = V26Package.Minimal();
+        manifest = V26JobStartTests.WithTriage(V26JobStartTests.WithRoute(manifest, onNode: true));
+
+        var edges = WorkflowDerivedEdges.Derive(manifest, files, V25Package.Catalog());
+
+        Assert.Equal(new[] { "scope" }, edges["route"].Order());
+        Assert.Empty(edges["triage"]);
+        Assert.Empty(edges["sections"]);
+        Assert.Equal(new[] { "scope" }, WorkflowDerivedEdges.GatingReads(manifest, files, V25Package.Catalog()).Order());
+    }
 }

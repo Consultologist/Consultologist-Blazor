@@ -21,15 +21,31 @@ internal sealed record ConsultConditionScope(
     IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? Folders,
     TemplateRunFacts Run,
     TemplateProfileFacts Profile,
-    WorkflowPackage Package)
+    WorkflowPackage Package,
+    // v26 (#1154, design § 2.1): the folder item whose own `if` is judged —
+    // the scope then carries `item` (its id; the rule allows item.id only).
+    IReadOnlyDictionary<string, string>? Item = null,
+    string? ItemFan = null)
 {
     private TemplateRenderScope? _scope;
 
     private TemplateRenderScope Scope =>
-        _scope ??= ConsultRenderPayload.ScopeFor(Variables, VariableTypes, NodeTexts, Folders, null, null, Run, Profile, Package);
+        _scope ??= ConsultRenderPayload.ScopeFor(Variables, VariableTypes, NodeTexts, Folders, Item, ItemFan, Run, Profile, Package);
 
     /// <summary>Whether the condition holds over this scope; loud, with the subject, on anything the validator did not promise.</summary>
     public bool Holds(string subject, string when) => WorkflowConditionAt25.Holds(subject, when, Scope, TemplatePipes.Engine);
+
+    /// <summary>v26 (#1154, design § 1): an if or case node decided over this scope — the body taken and the branch the record names.</summary>
+    public WorkflowFlowDecision.Outcome Decide(WorkflowFlowNodes.Flow flow) => WorkflowFlowDecision.Decide(flow, Scope, TemplatePipes.Engine);
+
+    /// <summary>v26 (#1154): the scope with a folder item in hand, for the item's own `if`.</summary>
+    public ConsultConditionScope WithItem(string folderId, WorkflowDataItem item) =>
+        this with
+        {
+            Item = new Dictionary<string, string>(item.Fields, StringComparer.Ordinal) { ["id"] = item.Id },
+            ItemFan = WorkflowFanSources.SnippetPrefix + folderId,
+            _scope = null,
+        };
 
     public static string Reason(string when) => WorkflowConditionAt25.Reason(when);
 
