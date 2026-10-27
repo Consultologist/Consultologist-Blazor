@@ -378,10 +378,11 @@
                     {
                         <EmptyState Compact Class="editor-nav__empty" Description="No nodes yet." />
                     }
-                    @foreach (var navNode in EffectiveNodes)
+                    @* v26 (#1160): a loop's body nests beneath it in body order; a ≤25 list is flat. *@
+                    @foreach (var (navNode, nested) in NavNodeRows())
                     {
                         <button type="button"
-                                class="editor-nav__item @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
+                                class="editor-nav__item @(nested ? "editor-nav__item--nested" : "") @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(NodeKeyFor(navNode.Id))">
                             <span class="editor-nav__dot">@(NodeHasPending(navNode) ? "●" : "")</span>
                             <span>@navNode.Label</span>
@@ -2246,7 +2247,16 @@
                                     <span>format</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-node-format" @bind-Value="newNodeFormat" aria-label="New node format">
                                         <FluentOption TOption="string" Value="">choose…</FluentOption>
-                                        <FluentOption TOption="string" Value="@AggregatorChoice">aggregator — collects other nodes' outputs in order, no prompt</FluentOption>
+                                        @if (At26)
+                                        {
+                                            @* v26 (#1160): a loop replaces the aggregator here — a deliverable's
+                                               sources gather at 26 (design § 1), so nothing aggregates. *@
+                                            <FluentOption TOption="string" Value="@LoopChoice">for — a loop: its body runs once per item, no prompt</FluentOption>
+                                        }
+                                        else
+                                        {
+                                            <FluentOption TOption="string" Value="@AggregatorChoice">aggregator — collects other nodes' outputs in order, no prompt</FluentOption>
+                                        }
                                         @foreach (var format in FormatOptions)
                                         {
                                             <FluentOption TOption="string" Value="@format.Id">@format.Id — @format.Producer</FluentOption>
@@ -2286,6 +2296,34 @@
                                 <span>label@(newNodePrompt.Length > 0 ? " — optional, defaults to the prompt's name" : "")</span>
                                 <FluentTextField @bind-Value="newNodeLabel" Placeholder="Summarizing guidelines" />
                             </label>
+                            @if (At26 && newNodeFormat == LoopChoice)
+                            {
+                                @* v26 (#1160): a loop is born over its collection (explicit init: refused unchosen). *@
+                                <label class="input-field">
+                                    <span>over — what the loop iterates</span>
+                                    <FluentSelect TOption="string" class="binding-row__select new-loop-collection" @bind-Value="newNodeForEach" aria-label="New loop collection">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        @foreach (var option in LoopCollectionOptions)
+                                        {
+                                            <FluentOption TOption="string" Value="@option">@option</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                            }
+                            else if (At26)
+                            {
+                                @* v26: a plain node is placed in a loop, not given a fan key. *@
+                                <label class="input-field">
+                                    <span>in</span>
+                                    <FluentSelect TOption="string" class="binding-row__select new-node-loop" @bind-Value="newNodeLoop" aria-label="New node loop">
+                                        <FluentOption TOption="string" Value="">— not in a loop —</FluentOption>
+                                        @foreach (var loop in EffectiveLoops)
+                                        {
+                                            <FluentOption TOption="string" Value="@loop.Id">@loop.Label (@(loop.Collection ?? loop.For))</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                            }
                             @if (EffectiveSpecVersion < 25 && newNodeKind == CheckKind)
                             {
                                 @* Explicit init: of and in start unchosen; the desk
@@ -2379,6 +2417,103 @@
                             </FluentButton>
                         </div>
                     }
+                    else if (At26 && SelectedNode() is { IsLoop: true } selectedLoop)
+                    {
+                        @* v26 (#1160, design § 12): a loop's pane — structural, so no format, prompt,
+                           with or gate sections: its label and collection, its body in run order
+                           (each a link to the node's pane; the returned one badged; a Remove-from-loop
+                           per row and a one-shot "add a node to the body"), and its ret picker —
+                           resting "choose…" when unset (explicit init; publish stays open and the
+                           desk refuses with the validator's own "returns nothing" sentence). *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@selectedLoop.Label</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedLoop.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedLoop)</span>
+                                </p>
+                            </div>
+                            <div class="pane-header__actions">
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveNodeAsync(selectedLoop.Id)">Remove loop</FluentButton>
+                                @PaneDiscardButton(NodeKeyFor(selectedLoop.Id), NodeCanDiscard(selectedLoop), () => RevertNodeEdits(selectedLoop.Id, null))
+                            </div>
+                        </div>
+                        <div class="node-section">
+                            <span class="node-section__head">Identity</span>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>label</span>
+                                    <FluentTextField Value="@selectedLoop.Label" ValueChanged="@(v => OnLoopLabelChangedAsync(selectedLoop, v))" aria-label="Loop label" />
+                                </label>
+                                <label class="node-field">
+                                    <span>over</span>
+                                    <FluentSelect TOption="string" class="binding-row__select loop-collection"
+                                                  Value="@(selectedLoop.Collection ?? string.Empty)"
+                                                  ValueChanged="@(v => OnLoopCollectionChangedAsync(selectedLoop, v))"
+                                                  aria-label="Loop collection">
+                                        @if (selectedLoop.Collection is not { } authoredCollection || !LoopCollectionOptions.Contains(authoredCollection))
+                                        {
+                                            <FluentOption TOption="string" Value="@(selectedLoop.Collection ?? string.Empty)">@(selectedLoop.Collection ?? selectedLoop.For)</FluentOption>
+                                        }
+                                        @foreach (var option in LoopCollectionOptions)
+                                        {
+                                            <FluentOption TOption="string" Value="@option">@option</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="node-section">
+                            <span class="node-section__head">Body</span>
+                            <p class="muted-text">Runs once per item of <code>@(selectedLoop.Collection ?? selectedLoop.For)</code>, in this order; each body node reads the item as <code>item</code>. A node joins or leaves a body from its own pane's "in" picker too.</p>
+                            @if ((selectedLoop.Nodes?.Count ?? 0) == 0)
+                            {
+                                <p class="muted-text loop-body__empty">No body yet — the loop runs nothing until a node is added.</p>
+                            }
+                            <ul class="loop-body">
+                                @foreach (var bodyId in selectedLoop.Nodes ?? Array.Empty<string>())
+                                {
+                                    var bodyNode = EffectiveNodes.FirstOrDefault(n => n.Id == bodyId);
+                                    <li class="loop-body__row">
+                                        <button type="button" class="snippet-readers__row" title="@($"node '{bodyId}' — open its pane")" @onclick="() => Select(NodeKeyFor(bodyId))">@(bodyNode?.Label ?? bodyId)</button>
+                                        @if (selectedLoop.RetNodeId == bodyId)
+                                        {
+                                            <span class="muted-text loop-body__ret">· returned</span>
+                                        }
+                                        <FluentButton Appearance="Appearance.Stealth" Class="loop-body__remove" Title="@($"Take '{bodyId}' out of the loop")"
+                                                      @onclick="() => OnLoopChangedAsync(new WorkflowNodeSummary.LoopPlacement(bodyId, null))">Remove from loop</FluentButton>
+                                    </li>
+                                }
+                            </ul>
+                            <OneShotSelect Class="binding-row__select loop-body-add"
+                                           AriaLabel="@($"Add a node to the body of {selectedLoop.Id}")"
+                                           Resting="add a node to the body…"
+                                           Choices="@LoopBodyChoices(selectedLoop)"
+                                           OnPick="@(v => OnLoopChangedAsync(new WorkflowNodeSummary.LoopPlacement(v, selectedLoop.Id)))" />
+                        </div>
+                        <div class="node-section">
+                            <span class="node-section__head">Returns</span>
+                            <p class="muted-text">The body node whose output the outside reads as <code>node.@selectedLoop.Id</code> — one per item.</p>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>ret</span>
+                                    <FluentSelect TOption="string" class="binding-row__select loop-ret"
+                                                  Value="@(selectedLoop.RetNodeId ?? string.Empty)"
+                                                  ValueChanged="@(v => OnLoopRetChangedAsync(selectedLoop, v))"
+                                                  aria-label="Loop ret">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        @foreach (var bodyId in selectedLoop.Nodes ?? Array.Empty<string>())
+                                        {
+                                            <FluentOption TOption="string" Value="@bodyId">@bodyId</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                            </div>
+                        </div>
+                    }
                     else if (SelectedNode() is { } selectedNode)
                     {
                         @* #948: a single header with the #946 identity strip (the card's own
@@ -2447,13 +2582,17 @@
                                              FormatOptions="@FormatOptions"
                                              OnOpenFormat="OpenFormatPane"
                                              NodeOperandOptions="@NodeOperandChoices"
-                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id))"
+                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id) || loopEdits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
                                              OnBindingChanged="OnBindingChangedAsync"
                                              OnVariableAdded="OnVariableAddedAsync"
                                              OnNodeChanged="OnNodeChangedAsync"
                                              OnAggregateChanged="OnAggregateChangedAsync"
+                                             At26="@At26"
+                                             Loops="@EffectiveLoops"
+                                             LoopOf="@LoopIdOf"
+                                             OnLoopChanged="OnLoopChangedAsync"
                                              ObjectSpelling="At25"
                                              ReadsSection="@NodeReadsSection(selectedNode)"
                                              OnNodeRemoved="RemoveNodeAsync" />
@@ -2473,8 +2612,8 @@
                                     <p class="muted-text">Shared prompt <code>@promptView.File</code> — also used by @(string.Join(", ", alsoUsedBy.Select(n => $"'{n}'"))). Editing here changes it for all of them.</p>
                                 }
                                 <WorkflowEditorPane ShowHeader="false" EditLabel="Prompt text"
-                                                    EditorExtra="@(At25 ? InsertReferencePalette((promptView.File, selectedNode.ForEach != null ? selectedNode : null, false)) : null)"
-                                                    Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(promptView.File, $"Prompt '{nodePrompt}'", GetText(promptView.File), selectedNode.ForEach != null ? selectedNode : null)) : null)"
+                                                    EditorExtra="@(At25 ? InsertReferencePalette((promptView.File, WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null, false)) : null)"
+                                                    Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(promptView.File, $"Prompt '{nodePrompt}'", GetText(promptView.File), WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null)) : null)"
                                                     Text="@GetText(promptView.File)"
                                                     Raw="@EffectivePromptRaw(nodePrompt)"
                                                     TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">
@@ -4690,6 +4829,9 @@
             // list per node (the resultsEdit shape).
             new("nodeMacroEdits", () => nodeMacroEdits.Count, nodeMacroEdits.Clear,
                 () => $"{nodeMacroEdits.Count} node {Plural(nodeMacroEdits.Count, "macro list")}", () => nodeMacroEdits.Count > 0),
+            // v26 (#1160): a loop's tuple — its own dict, the whole tuple per loop.
+            new("loopEdits", () => loopEdits.Count, loopEdits.Clear,
+                () => $"{loopEdits.Count} {Plural(loopEdits.Count, "loop")}", () => loopEdits.Count > 0),
             // v10 (#498): a condition with a clause not yet chosen — held, never
             // written, and named until it is.
             new("conditionDrafts", () => conditionDrafts.Count, conditionDrafts.Clear,
@@ -5217,8 +5359,8 @@
         if (folder)
         {
             rows.AddRange(EffectiveNodes
-                .Where(node => node.ForEach == FanRef(id))
-                .Select(node => new TemplateReadRow($"Node '{NodeLabelOrId(node)}'", $"{NodeKeyPrefix}{node.Id}", "", null, "fans it")));
+                .Where(node => (At26 && node.IsLoop ? node.Collection : node.ForEach) == FanRef(id))
+                .Select(node => new TemplateReadRow($"Node '{NodeLabelOrId(node)}'", $"{NodeKeyPrefix}{node.Id}", "", null, At26 && node.IsLoop ? "loops over it" : "fans it")));
         }
 
         return rows;
@@ -5233,7 +5375,7 @@
         @{
             var runners = NodesUsingPrompt(prompt.Id)
                 .Select(node => new TemplateReadRow($"Node '{NodeLabelOrId(node)}'", $"{NodeKeyPrefix}{node.Id}", "", null,
-                    node.ForEach is { } fan ? $"runs this prompt for each item of {fan}" : "runs this prompt"))
+                    WorkflowManifestReader.NodeView.EffectiveFan(node, EffectiveNodes) is { } fan ? $"runs this prompt for each item of {fan}" : "runs this prompt"))
                 .ToList();
         }
         @if (runners.Count > 0)
@@ -5438,7 +5580,7 @@
         }
 
         var sites = walk.PromptReadSitesOf(node.Id);
-        var folder = FanFolderOf(node.ForEach);
+        var folder = FanFolderOf(WorkflowManifestReader.NodeView.EffectiveFan(node, EffectiveNodes));
         var fanItems = NodeFanItems(node);
 
         foreach (var macroGroup in sites.GroupBy(s => s.Macro, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
@@ -5805,7 +5947,7 @@
 
     /// <summary>The first node using this prompt that fans — the only reader whose template may read item.*.</summary>
     private WorkflowManifestReader.NodeView? FanningReaderOf(string promptId) =>
-        EffectiveNodes.FirstOrDefault(n => n.Prompt == promptId && n.ForEach != null);
+        EffectiveNodes.FirstOrDefault(n => n.Prompt == promptId && WorkflowManifestReader.NodeView.EffectiveFan(n, EffectiveNodes) != null);
 
     /// <summary>A format's schema as a JsonNode — the package's own file, or the catalogue's entry — or null.</summary>
     private System.Text.Json.Nodes.JsonNode? FormatSchemaOf(string formatId)
@@ -5894,7 +6036,7 @@
             choices.Add(new ReferenceChoice($"{{{{ for s in snippet.{folder.Id} }}}}\n{{{{ s.content }}}}\n{{{{ end }}}}", $"for s in snippet.{folder.Id} (each item)", "snippets"));
         }
 
-        if (fanNode is { ForEach: { } forEach })
+        if (fanNode != null && WorkflowManifestReader.NodeView.EffectiveFan(fanNode, EffectiveNodes) is { } forEach)
         {
             var members = PF.WorkflowFanSources.IsSnippetFan(forEach) ? new[] { "id", "name", "content" } : new[] { "id", "name", "value" };
             foreach (var member in members)
@@ -7551,6 +7693,14 @@
         public string? OnInvalid { get; set; }
         public bool Computed { get; set; }
 
+        // v26 (#1160): a loop — born with its collection and an empty body; ret
+        // stays null until picked (explicit init; the desk says it returns nothing).
+        public string? For { get; set; }
+        public List<string>? Nodes { get; set; }
+        public string? Ret { get; set; }
+
+        public bool IsLoop => For != null;
+
         public bool IsClassifier => Kind == ClassifierKind;
 
         public bool IsCheck => Kind == CheckKind;
@@ -7558,15 +7708,20 @@
         public bool IsTemplate => Kind == TemplateKind;
 
         /// <summary>Whether the node mints or names a prompt: never for an aggregator, a check or a computed format.</summary>
-        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed;
+        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed && !IsLoop;
     }
 
     // v25 (C1 #1007): the "+ Node" form's format choice; this word is the aggregator.
     private const string AggregatorChoice = "aggregator";
     private string newNodeFormat = string.Empty;
 
+    // v26 (#1160): the "+ Node" form's loop choice (a flow node, no format) and the
+    // loop a plain node is born into (its id; "" = none).
+    private const string LoopChoice = "for";
+    private string newNodeLoop = string.Empty;
+
     private bool NewNodeTakesPrompt =>
-        newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice
+        newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice && newNodeFormat != LoopChoice
         && FormatOptions.FirstOrDefault(f => f.Id == newNodeFormat)?.Computed != true;
 
     /// <summary>The one node kind a manifest spells (v10): prompt is the default and aggregator a property.</summary>
@@ -8521,7 +8676,10 @@
         FailWith: added.FailWith,
         Format: added.Format,
         With: added.With,
-        OnInvalid: added.OnInvalid);
+        OnInvalid: added.OnInvalid,
+        For: added.For,
+        Nodes: added.Nodes,
+        Ret: added.Ret);
 
     // Pending v7 declarations, each the whole list when dirty (the
     // aggregate-source idiom) and null when unchanged.
@@ -11252,13 +11410,149 @@
     /// </summary>
     private readonly Dictionary<string, string?> nodeWhenEdits = new(StringComparer.Ordinal);
 
+    // v26 (#1160, design § 12): a loop's effective tuple — label, collection, body and
+    // ret — its own dict (the nodeWhenEdits idiom), the whole tuple on every emission
+    // (the NodeChange idiom), self-removing when equal to the loaded loop. A pending
+    // loop (AddedNode.For != null) is mutated directly instead.
+    private readonly Dictionary<string, LoopChange> loopEdits = new(StringComparer.Ordinal);
+
+    private sealed record LoopChange(string Label, string For, List<string> Nodes, string? Ret);
+
+    private bool At26 => EffectiveSpecVersion >= 26;
+
+    /// <summary>v26: the loops among the effective nodes.</summary>
+    private IReadOnlyList<WorkflowManifestReader.NodeView> EffectiveLoops =>
+        At26 ? EffectiveNodes.Where(n => n.IsLoop).ToList() : Array.Empty<WorkflowManifestReader.NodeView>();
+
+    /// <summary>v26: the id of the loop whose body holds the node, or null.</summary>
+    private string? LoopIdOf(string nodeId) => WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, nodeId)?.Id;
+
+    /// <summary>v26: what a loop may iterate — every folder and array input in the 25 fan spelling.</summary>
+    private IReadOnlyList<string> LoopCollectionOptions => WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, at25: true);
+
+    /// <summary>v26: the plain nodes a loop's body may take — in no loop, not a loop, not an aggregator.</summary>
+    private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) =>
+        EffectiveNodes
+            .Where(n => !n.IsLoop && n.Aggregate == null && LoopIdOf(n.Id) == null)
+            .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id})"))
+            .ToList();
+
+    /// <summary>v26: the nav's Nodes rows — loops with their body nested beneath, nodes in no loop at the top level.</summary>
+    private IEnumerable<(WorkflowManifestReader.NodeView Node, bool Nested)> NavNodeRows()
+    {
+        if (!At26)
+        {
+            foreach (var node in EffectiveNodes) { yield return (node, false); }
+            yield break;
+        }
+
+        foreach (var node in EffectiveNodes.Where(n => n.IsLoop || LoopIdOf(n.Id) == null))
+        {
+            yield return (node, false);
+            if (!node.IsLoop) { continue; }
+            foreach (var bodyId in node.Nodes ?? Array.Empty<string>())
+            {
+                if (EffectiveNodes.FirstOrDefault(n => n.Id == bodyId) is { } bodyNode)
+                {
+                    yield return (bodyNode, true);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// v26: record a loop's effective tuple — a pending loop is mutated, a loaded one
+    /// gets a loopEdits entry that self-removes when it equals the manifest's.
+    /// </summary>
+    private void SetLoop(string loopId, string label, string forText, List<string> body, string? ret)
+    {
+        if (addedNodes.FirstOrDefault(a => a.Id == loopId) is { } added)
+        {
+            added.Label = label;
+            added.For = forText;
+            added.Nodes = body;
+            added.Ret = ret;
+            return;
+        }
+
+        if (nodes.FirstOrDefault(n => n.Id == loopId) is not { } loaded)
+        {
+            return;
+        }
+
+        if (loaded.Label == label && loaded.For == forText && loaded.Ret == ret
+            && (loaded.Nodes ?? Array.Empty<string>()).SequenceEqual(body, StringComparer.Ordinal))
+        {
+            loopEdits.Remove(loopId);
+        }
+        else
+        {
+            loopEdits[loopId] = new LoopChange(label, forText, body, ret);
+        }
+    }
+
+    /// <summary>
+    /// v26 (#1160): place a node in a loop (or in none): out of its current loop's body
+    /// — clearing that loop's ret when it named the node (explicit init: the desk says
+    /// the loop returns nothing until a new ret is picked) — and onto the end of the
+    /// chosen loop's body. A no-op when the node is already there.
+    /// </summary>
+    private void PlaceInLoop(string nodeId, string? loopId)
+    {
+        var current = WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, nodeId);
+        if (current?.Id == loopId)
+        {
+            return;
+        }
+
+        if (current != null)
+        {
+            var body = (current.Nodes ?? Array.Empty<string>()).Where(id => id != nodeId).ToList();
+            SetLoop(current.Id, current.Label, current.For!, body, current.RetNodeId == nodeId ? null : current.Ret);
+        }
+
+        if (loopId != null && EffectiveNodes.FirstOrDefault(n => n.Id == loopId && n.IsLoop) is { } target)
+        {
+            var body = (target.Nodes ?? Array.Empty<string>()).ToList();
+            body.Add(nodeId);
+            SetLoop(target.Id, target.Label, target.For!, body, target.Ret);
+        }
+    }
+
+    private async Task OnLoopChangedAsync(WorkflowNodeSummary.LoopPlacement placement)
+    {
+        PlaceInLoop(placement.NodeId, placement.LoopId);
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLoopLabelChangedAsync(WorkflowManifestReader.NodeView loop, string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label)) { return; }
+        SetLoop(loop.Id, label.Trim(), loop.For!, (loop.Nodes ?? Array.Empty<string>()).ToList(), loop.Ret);
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLoopCollectionChangedAsync(WorkflowManifestReader.NodeView loop, string? collection)
+    {
+        if (string.IsNullOrEmpty(collection)) { return; }
+        SetLoop(loop.Id, loop.Label, WorkflowManifestReader.NodeView.LoopPrefix + collection, (loop.Nodes ?? Array.Empty<string>()).ToList(), loop.Ret);
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLoopRetChangedAsync(WorkflowManifestReader.NodeView loop, string? bodyId)
+    {
+        SetLoop(loop.Id, loop.Label, loop.For!, (loop.Nodes ?? Array.Empty<string>()).ToList(), string.IsNullOrEmpty(bodyId) ? null : $"node.{bodyId}");
+        await PendingChangedAsync();
+    }
+
     private ConditionTarget NodeConditionTarget(WorkflowManifestReader.NodeView node) =>
         new($"node-when:{node.Id}", node.Id, NodeWhenValue(node), text => SetNodeWhen(node.Id, text));
 
     // #948: the node's kind as it reads in the pane's identity strip; v25: the
     // format and its producer (the record's ContractLabel idiom).
     private string NodeKindLabel(WorkflowManifestReader.NodeView node) =>
-        EffectiveSpecVersion >= 25 && node.Aggregate == null
+        At26 && node.IsLoop ? $"loop over {node.Collection ?? node.For}"
+        : EffectiveSpecVersion >= 25 && node.Aggregate == null
             ? node.Format == null ? "no format yet"
                 : FormatOptions.FirstOrDefault(f => f.Id == node.Format) is { } format ? $"{format.Id} · {format.Producer}" : node.Format
         : node.IsClassifier ? "classifier"
@@ -11494,7 +11788,8 @@
     private IReadOnlyList<WorkflowManifestReader.DataItemView> NodeFanItems(WorkflowManifestReader.NodeView node)
     {
         // data:<collection> below 25, snippet.<folder> at 25 (#1008) — one folder, two spellings.
-        if (FanFolderOf(node.ForEach) is not { } collectionId)
+        // v26 (#1160): a body node fans through its loop — EffectiveFan answers at both versions.
+        if (FanFolderOf(WorkflowManifestReader.NodeView.EffectiveFan(node, EffectiveNodes)) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
         }
@@ -11507,8 +11802,8 @@
 
     /// <summary>v24 (#957): the item fields a fan node's item map carries — a data: collection's
     /// id/name/content, an input fan's id/name/value; none for a node that does not fan.</summary>
-    private static IReadOnlyList<string> FanItemFields(WorkflowManifestReader.NodeView node) =>
-        node.ForEach is not { } forEach ? Array.Empty<string>()
+    private IReadOnlyList<string> FanItemFields(WorkflowManifestReader.NodeView node) =>
+        WorkflowManifestReader.NodeView.EffectiveFan(node, EffectiveNodes) is not { } forEach ? Array.Empty<string>()
         : forEach.StartsWith("data:", StringComparison.Ordinal) ? DataFanFields
         : PF.WorkflowFanSources.IsSnippetFan(forEach) ? SnippetFanFields
         : PF.WorkflowInputFans.ItemFields;
@@ -11522,7 +11817,7 @@
     private IEnumerable<WorkflowManifestReader.NodeView> FanNodesComposing(string macroId) =>
         EffectiveSpecVersion < 23
             ? Enumerable.Empty<WorkflowManifestReader.NodeView>()
-            : EffectiveNodes.Where(node => node.ForEach != null && EffectiveNodeMacros(node).Any(entry => entry.Id == macroId));
+            : EffectiveNodes.Where(node => WorkflowManifestReader.NodeView.EffectiveFan(node, EffectiveNodes) != null && EffectiveNodeMacros(node).Any(entry => entry.Id == macroId));
 
     /// <summary>v23 § (#955): a node macro entry's when — keyed by node id and
     /// position (one macro may sit both before and after), the entry's own write.
@@ -12088,7 +12383,7 @@
         }
 
         var anchorNodeId = anchor.StartsWith("node:", StringComparison.Ordinal) ? anchor["node:".Length..] : anchor;
-        if (FanFolderOf(EffectiveNodes.FirstOrDefault(n => n.Id == anchorNodeId)?.ForEach) is not { } collectionId)
+        if (FanFolderOf(EffectiveNodes.FirstOrDefault(n => n.Id == anchorNodeId) is { } anchorNode ? WorkflowManifestReader.NodeView.EffectiveFan(anchorNode, EffectiveNodes) : null) is not { } collectionId)
         {
             return Array.Empty<WorkflowManifestReader.DataItemView>();
         }
@@ -12237,6 +12532,12 @@
                 if (aggregateEdits.TryGetValue(n.Id, out var sources))
                 {
                     n = n with { Aggregate = sources };
+                }
+
+                // v26 (#1160): a loop's pending tuple rides too.
+                if (loopEdits.TryGetValue(n.Id, out var loop))
+                {
+                    n = n with { Label = loop.Label, For = loop.For, Nodes = loop.Nodes, Ret = loop.Ret };
                 }
 
                 return n with { IsResult = DeliverableRootIds.Contains(n.Id) };
@@ -12444,6 +12745,7 @@
         || nodeWhenEdits.ContainsKey(node.Id)
         || nodeMacroEdits.ContainsKey(node.Id)
         || aggregateEdits.ContainsKey(node.Id)
+        || loopEdits.ContainsKey(node.Id)
         || addedNodes.Any(a => a.Id == node.Id)
         || bindingEdits.Keys.Any(key => key.StartsWith(node.Id + "\n", StringComparison.Ordinal))
         || (node.Prompt != null && HasVariableEdits(node.Prompt));
@@ -12453,17 +12755,26 @@
         var at25 = EffectiveSpecVersion >= 25;
         if (at25 && newNodeFormat.Length == 0)
         {
-            newNodeError = "Choose a format — or aggregator.";
+            newNodeError = At26 ? "Choose a format — or a loop." : "Choose a format — or aggregator.";
             return;
         }
 
-        var aggregator = at25 ? newNodeFormat == AggregatorChoice : newNodeKind == "aggregator";
+        // v26 (#1160): a loop is a flow node — no format, no prompt; the aggregator
+        // choice is not offered at 26 (the user's decision, design § 12).
+        var loop = At26 && newNodeFormat == LoopChoice;
+        var aggregator = at25 ? !At26 && newNodeFormat == AggregatorChoice : newNodeKind == "aggregator";
         var classifier = !at25 && newNodeKind == ClassifierKind;
         var check = !at25 && newNodeKind == CheckKind;
         var template = !at25 && newNodeKind == TemplateKind;
-        var format = at25 && !aggregator ? newNodeFormat : null;
+        var format = at25 && !aggregator && !loop ? newNodeFormat : null;
         var computed = format != null && FormatOptions.FirstOrDefault(f => f.Id == format)?.Computed == true;
-        var promptRef = aggregator || check || computed || newNodePrompt.Length == 0 ? null : newNodePrompt;
+        var promptRef = aggregator || check || computed || loop || newNodePrompt.Length == 0 ? null : newNodePrompt;
+
+        if (loop && newNodeForEach.Length == 0)
+        {
+            newNodeError = "Choose what the loop iterates.";
+            return;
+        }
 
         // With an existing prompt chosen, the node defaults to the prompt's
         // own name — the house convention (node and prompt sharing an id is
@@ -12496,7 +12807,7 @@
 
         // Only a freshly minted prompt (named after the node) can collide
         // with an existing prompt id.
-        if (promptRef == null && !aggregator && !check && !computed && EffectivePrompts.Any(p => p.Id == id))
+        if (promptRef == null && !aggregator && !check && !computed && !loop && EffectivePrompts.Any(p => p.Id == id))
         {
             newNodeError = $"A prompt named '{id}' already exists — choose it in the prompt field, or pick another node id.";
             return;
@@ -12511,7 +12822,7 @@
         {
             Id = id,
             Label = label,
-            ForEach = aggregator || classifier || check || computed || newNodeForEach.Length == 0 ? null : newNodeForEach,
+            ForEach = At26 || aggregator || classifier || check || computed || newNodeForEach.Length == 0 ? null : newNodeForEach,
             OutputSchema = aggregator || classifier || check || at25 || newNodeOutput.Length == 0 ? null : newNodeOutput,
             Aggregate = aggregator ? new List<string>() : null,
             PromptRef = promptRef,
@@ -12526,10 +12837,19 @@
             // v25: born with its format alone — with and onInvalid are the pane's
             // (explicit init; the desk names what is missing).
             Format = format,
-            Computed = computed
+            Computed = computed,
+            // v26: a loop's collection and empty body; ret unchosen.
+            For = loop ? WorkflowManifestReader.NodeView.LoopPrefix + newNodeForEach : null,
+            Nodes = loop ? new List<string>() : null
         });
+        // v26: a plain node born "in" a loop joins that loop's body.
+        if (At26 && !loop && newNodeLoop.Length > 0)
+        {
+            PlaceInLoop(id, newNodeLoop);
+        }
         newNodeId = newNodeLabel = null;
         newNodeForEach = string.Empty;
+        newNodeLoop = string.Empty;
         newNodeOutput = string.Empty;
         newNodeKind = "prompt";
         newNodePrompt = string.Empty;
@@ -12541,7 +12861,7 @@
         // Land on the next step: the aggregator's source list or an existing
         // prompt's bindings on the node card, or the new prompt's text —
         // a check has no prompt, so its card is the destination.
-        selectedKey = aggregator || check || computed || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
+        selectedKey = aggregator || check || computed || loop || promptRef != null ? NodeKeyFor(id) : AddedPromptFile(id);
         await PendingChangedAsync();
     }
 
@@ -12552,6 +12872,13 @@
             ? added.PromptRef ?? added.Id
             : nodes.FirstOrDefault(n => n.Id == nodeId)?.Prompt;
 
+        // v26 (#1160): a body node leaves its loop's body as it goes (the loop's
+        // nodes[] must not name a node that is gone); a loop's own pending tuple goes.
+        if (At26)
+        {
+            PlaceInLoop(nodeId, null);
+        }
+
         if (added != null)
         {
             addedNodes.Remove(added);
@@ -12561,6 +12888,7 @@
             removedNodeIds.Add(nodeId);
             nodeEdits.Remove(nodeId);
             aggregateEdits.Remove(nodeId);
+            loopEdits.Remove(nodeId);
         }
         else
         {
@@ -13636,7 +13964,9 @@
 
     private sealed record DraftAddedNode(string Id, string Label, string? ForEach, string? OutputSchema, string? FailIfEmpty, string PromptText, List<string>? Aggregate = null, string? PromptRef = null, string? Kind = null, List<string>? Values = null, bool Reproducible = false, string? Op = null, string? Of = null, string? In = null, string? FailWith = null, bool Raw = false,
         // v25 (C1 #1007): trailing.
-        string? Format = null, Dictionary<string, JsonElement>? With = null, string? OnInvalid = null, bool Computed = false);
+        string? Format = null, Dictionary<string, JsonElement>? With = null, string? OnInvalid = null, bool Computed = false,
+        // v26 (#1160): a pending loop's tuple. Trailing.
+        string? For = null, List<string>? Nodes = null, string? Ret = null);
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
@@ -13654,6 +13984,9 @@
     // v18 (#822): a pending node when — its own list, mirroring how the dict is
     // kept apart from nodeEdits. A null When is a clearing.
     private sealed record DraftNodeWhen(string NodeId, string? When);
+
+    // v26 (#1160): a loop's pending tuple.
+    private sealed record DraftLoopEdit(string LoopId, string Label, string For, List<string> Nodes, string? Ret);
 
     // v23 (#955): a node's macro attachments persisted in the draft — the whole
     // list per node, mirroring nodeMacroEdits.
@@ -13733,7 +14066,9 @@
         // v25 (C3 #1009): pending macro instructions. Trailing optional.
         List<DraftMacroInstruction>? MacroInstructions = null,
         // #1103: pending folder item orders (folder id → item ids). Trailing optional.
-        Dictionary<string, List<string>>? ItemOrders = null);
+        Dictionary<string, List<string>>? ItemOrders = null,
+        // v26 (#1160): pending loop tuples. Trailing optional.
+        List<DraftLoopEdit>? LoopEdits = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -14179,7 +14514,10 @@
                     Format = draftAddedNode.Format,
                     With = draftAddedNode.With,
                     OnInvalid = draftAddedNode.OnInvalid,
-                    Computed = draftAddedNode.Computed
+                    Computed = draftAddedNode.Computed,
+                    For = draftAddedNode.For,
+                    Nodes = draftAddedNode.For == null ? null : draftAddedNode.Nodes ?? new List<string>(),
+                    Ret = draftAddedNode.Ret
                 });
             }
         }
@@ -14304,6 +14642,16 @@
                 draftNodeEdit.Of, draftNodeEdit.In, draftNodeEdit.FailWith, draftNodeEdit.Format, draftNodeEdit.With, draftNodeEdit.OnInvalid);
         }
 
+        // v26 (#1160): rehydrate pending loop tuples (its own dict) — only onto a
+        // loop the manifest still holds.
+        foreach (var draftLoop in payload.LoopEdits ?? new List<DraftLoopEdit>())
+        {
+            if (nodes.Any(n => n.Id == draftLoop.LoopId && n.IsLoop) && !string.IsNullOrWhiteSpace(draftLoop.For))
+            {
+                loopEdits[draftLoop.LoopId] = new LoopChange(draftLoop.Label, draftLoop.For, draftLoop.Nodes ?? new List<string>(), draftLoop.Ret);
+            }
+        }
+
         // v18 (#822): rehydrate pending node whens (its own dict).
         foreach (var draftNodeWhen in draftNodeWhenEdits ?? new List<DraftNodeWhen>())
         {
@@ -14396,7 +14744,7 @@
             nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith,
                 edit.Format, edit.With == null ? null : new Dictionary<string, JsonElement>(edit.With, StringComparer.Ordinal), edit.OnInvalid)).ToList(),
             addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw,
-                a.Format, a.With, a.OnInvalid, a.Computed)).ToList(),
+                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -14436,7 +14784,8 @@
             removedFormatIds.ToList(),
             itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList(),
             macroInstructionEdits.Select(pair => new DraftMacroInstruction(pair.Key, pair.Value)).ToList(),
-            itemOrderEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal));
+            itemOrderEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal),
+            loopEdits.Select(pair => new DraftLoopEdit(pair.Key, pair.Value.Label, pair.Value.For, pair.Value.Nodes.ToList(), pair.Value.Ret)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -15006,6 +15355,8 @@
         nodeWhenEdits.Remove(nodeId);
         conditionDrafts.Remove($"node-when:{nodeId}");
         aggregateEdits.Remove(nodeId);
+        // v26 (#1160): a loop's pending tuple.
+        loopEdits.Remove(nodeId);
         // v23 (#955): a node's macro attachments and any in-progress macro-when
         // condition drafts.
         nodeMacroEdits.Remove(nodeId);
@@ -15852,6 +16203,21 @@
             // v25 (C1 #1007): a node with a format — prompt and bindings only when the
             // format takes a prompt; format, with, onInvalid and a top-level failIfEmpty;
             // never kind, output or values.
+            // v26 (#1160): a loop — id, label, for, nodes; ret only once chosen; never a format.
+            if (addedNode.For != null)
+            {
+                var loop26 = new System.Text.Json.Nodes.JsonObject
+                {
+                    ["id"] = addedNode.Id,
+                    ["label"] = addedNode.Label,
+                    ["for"] = addedNode.For,
+                    ["nodes"] = new System.Text.Json.Nodes.JsonArray((addedNode.Nodes ?? new List<string>()).Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray())
+                };
+                if (addedNode.Ret != null) { loop26["ret"] = addedNode.Ret; }
+                nodesArray.Add(loop26);
+                continue;
+            }
+
             if (addedNode.Format != null)
             {
                 if (addedNode.HasPrompt && addedNode.PromptRef == null
@@ -15873,9 +16239,11 @@
                     ["label"] = addedNode.Label
                 };
                 // Bindings are retired at 25: a template's reads are derived.
+                // v26 (#1102, here for #1160): prompt is the FILE — prompts[] is retired,
+                // so a node born at 26 names the file it minted.
                 if (addedNode.HasPrompt)
                 {
-                    node25["prompt"] = addedNode.PromptRef ?? addedNode.Id;
+                    node25["prompt"] = At26 ? addedNode.PromptRef ?? AddedPromptFile(addedNode.Id) : addedNode.PromptRef ?? addedNode.Id;
                 }
 
                 if (addedNode.ForEach != null) { node25["forEach"] = addedNode.ForEach; }
@@ -16461,6 +16829,22 @@
             {
                 nodeObject[nodeObject.ContainsKey("When") ? "When" : "when"] = pair.Value;
             }
+        }
+
+        // v26 (#1160): a loop's tuple — label, for, nodes and ret written whole, both
+        // casings removed first (the #864 lesson); ret removed when unchosen.
+        foreach (var pair in loopEdits)
+        {
+            if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } loopObject)
+            {
+                continue;
+            }
+
+            loopObject[loopObject.ContainsKey("Label") ? "Label" : "label"] = pair.Value.Label;
+            foreach (var key in new[] { "for", "For", "nodes", "Nodes", "ret", "Ret" }) { loopObject.Remove(key); }
+            loopObject["for"] = pair.Value.For;
+            loopObject["nodes"] = new System.Text.Json.Nodes.JsonArray(pair.Value.Nodes.Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray());
+            if (pair.Value.Ret != null) { loopObject["ret"] = pair.Value.Ret; }
         }
 
         // v23 (#955): a node's macro attachments — the whole list, each a bare id

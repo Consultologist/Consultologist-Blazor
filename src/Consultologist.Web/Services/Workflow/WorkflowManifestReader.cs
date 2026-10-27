@@ -49,9 +49,42 @@ public static class WorkflowManifestReader
         // values and the check's members, which stay readable for the ≤24 panes.
         string? Format = null,
         IReadOnlyDictionary<string, JsonElement>? With = null,
-        string? OnInvalid = null)
+        string? OnInvalid = null,
+        // v26 (#1160, design § 1): a loop — `for` ("item in snippet.<folder>" |
+        // "item in input.<id>"), its body node ids and the node it returns
+        // ("node.<id>"). Null on every node below 26 and on a plain node at 26.
+        string? For = null,
+        IReadOnlyList<string>? Nodes = null,
+        string? Ret = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
+
+        /// <summary>v26 (#1160): a flow node of kind for.</summary>
+        public bool IsLoop => For is not null;
+
+        /// <summary>v26: the grammar's prefix — spelled once client-side (the library's reader is internal).</summary>
+        public const string LoopPrefix = "item in ";
+
+        /// <summary>v26: what the loop iterates in the 25 fan spelling (snippet.&lt;folder&gt; / input.&lt;id&gt;), or null.</summary>
+        public string? Collection =>
+            For is { } text && text.StartsWith(LoopPrefix, StringComparison.Ordinal) && text.Length > LoopPrefix.Length
+                ? text[LoopPrefix.Length..].Trim()
+                : null;
+
+        /// <summary>v26: the returned body node's id (ret is "node.&lt;id&gt;"), or null.</summary>
+        public string? RetNodeId =>
+            Ret is { } ret && ret.StartsWith("node.", StringComparison.Ordinal) && ret.Length > 5 ? ret[5..] : null;
+
+        /// <summary>v26 (#1160): the loop whose body holds the node, or null — a node runs in one body.</summary>
+        public static NodeView? LoopOf(IEnumerable<NodeView> nodes, string nodeId) =>
+            nodes.FirstOrDefault(candidate => candidate.IsLoop && candidate.Nodes is { } body && body.Contains(nodeId, StringComparer.Ordinal));
+
+        /// <summary>
+        /// v26 (#1160): what the node fans over, in the 25 spelling — its own forEach below 26,
+        /// its loop's collection at 26 — so every site that types item.* reads one answer.
+        /// </summary>
+        public static string? EffectiveFan(NodeView node, IEnumerable<NodeView> nodes) =>
+            node.ForEach ?? LoopOf(nodes, node.Id)?.Collection;
 
         public bool IsCheck => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Check;
 
@@ -279,7 +312,11 @@ public static class WorkflowManifestReader
                 ReadNodeMacroEntries(node),
                 ReadString(node, "format"),
                 ReadWith(node),
-                ReadString(node, "onInvalid")));
+                ReadString(node, "onInvalid"),
+                // v26 (#1160): the loop's three members.
+                ReadString(node, "for"),
+                ReadStringArray(node, "nodes"),
+                ReadString(node, "ret")));
         }
 
         return nodes;
@@ -445,7 +482,33 @@ public static class WorkflowManifestReader
                 {
                     using var index = JsonDocument.Parse(indexJson);
 
-                    if (index.RootElement.TryGetProperty("items", out var itemsElement) && itemsElement.ValueKind == JsonValueKind.Array)
+                    // v26 (#1160): a folder's index.json is an ordered list [{ id, file }];
+                    // name and the gate live in the item file's header (design § 6). Read
+                    // so a 26 package loads; the header fields as a write target are #1163's.
+                    if (index.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in index.RootElement.EnumerateArray())
+                        {
+                            var file = item.ValueKind == JsonValueKind.Object ? ReadString(item, "file") : null;
+                            if (string.IsNullOrWhiteSpace(file))
+                            {
+                                continue;
+                            }
+
+                            var id = ReadString(item, "id") ?? file;
+                            Consultologist.PackageFormat.WorkflowTextHeader? header = null;
+                            if (files.TryGetValue(directory + file, out var itemText)
+                                && Consultologist.PackageFormat.WorkflowTextHeaders.Split(itemText).HeaderJson is { } headerJson)
+                            {
+                                header = Consultologist.PackageFormat.WorkflowTextHeaders.Parse(
+                                    Consultologist.PackageFormat.WorkflowTextKind.Snippet, directory + file, headerJson, new List<string>());
+                            }
+
+                            items.Add(new DataItemView(id, header?.Label ?? id, directory + file, string.IsNullOrWhiteSpace(header?.If) ? null : header!.If));
+                        }
+                    }
+                    else if (index.RootElement.ValueKind == JsonValueKind.Object
+                        && index.RootElement.TryGetProperty("items", out var itemsElement) && itemsElement.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var item in itemsElement.EnumerateArray())
                         {
