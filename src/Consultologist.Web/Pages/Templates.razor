@@ -89,8 +89,8 @@
                     {
                         <FluentButton Appearance="Appearance.Outline"
                                       Disabled="@isPublishing"
-                                      @onclick="() => UpgradeSpecVersionTo(RunnableSpecVersion)">
-                            Upgrade to specVersion @RunnableSpecVersion
+                                      @onclick="() => UpgradeSpecVersionTo(UpgradeTarget)">
+                            Upgrade to specVersion @UpgradeTarget
                         </FluentButton>
                     }
                     @if (OffersNewestUpgrade)
@@ -4204,7 +4204,12 @@
     /// (#500), eleven (#566), twelve (#623) and every bump since, twenty-five
     /// (#1018) included. The mechanism stays for the next format.
     /// </summary>
-    internal const int RunnableSpecVersion = 25;
+    // #1149: the engine runs 26 while this editor still authors up to 25
+    // (NewestSpecVersion) — the opposite gap to the one the comment above
+    // describes: no "Upgrade to 26" button is offered until the editor's own
+    // chain to 26 lands (Milestone 33, #1164). SpecVersionMirrorTests pins
+    // the lag by name.
+    internal const int RunnableSpecVersion = 26;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -4629,9 +4634,16 @@
         // what hides the buttons once one has been pressed.
         content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
 
+    // #1149: the rung this editor's one button reaches — the newest format it
+    // can author AND the engine runs. Equal to both ceilings when they meet;
+    // the authoring ceiling while the engine runs ahead (26 since #1149, the
+    // editor's chain to it #1164's); the runnable ceiling while the registry
+    // accepts ahead of the engine (#492's gap, the second button below).
+    private static int UpgradeTarget => Math.Min(RunnableSpecVersion, NewestSpecVersion);
+
     // #429: one button per rung while the ceilings differ (#492 reopened
     // the gap: 10 is publishable, 9 is the newest that runs).
-    private bool OffersRunnableUpgrade => CanUpgradeTo(RunnableSpecVersion);
+    private bool OffersRunnableUpgrade => CanUpgradeTo(UpgradeTarget);
 
     private bool OffersNewestUpgrade => RunnableSpecVersion < NewestSpecVersion && CanUpgradeTo(NewestSpecVersion);
 
@@ -8589,7 +8601,7 @@
             {
                 errors.Add(
                     $"Input {string.Join(", ", typed)} declares a type or values, which requires specVersion 8. "
-                    + $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.");
+                    + $"Use \"Upgrade to specVersion {UpgradeTarget}\" and publish.");
             }
 
             var conditional = EffectiveResults
@@ -8602,7 +8614,7 @@
             {
                 errors.Add(
                     $"Deliverable {string.Join(", ", conditional)} declares when, which requires specVersion 8. "
-                    + $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.");
+                    + $"Use \"Upgrade to specVersion {UpgradeTarget}\" and publish.");
             }
         }
 
@@ -8611,7 +8623,7 @@
         if (EffectiveSpecVersion < 9)
         {
             // A v9 form wants the rung that runs, not the newest publishable one.
-            var upgrade = $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.";
+            var upgrade = $"Use \"Upgrade to specVersion {UpgradeTarget}\" and publish.";
 
             errors.AddRange(inputs
                 .Where(WorkflowInputTypes.RequiresV9)
@@ -9942,7 +9954,7 @@
         if (EffectiveSpecVersion < 9)
         {
             // A v9 form wants the rung that runs, not the newest publishable one.
-            var upgrade = $"Use \"Upgrade to specVersion {RunnableSpecVersion}\" and publish.";
+            var upgrade = $"Use \"Upgrade to specVersion {UpgradeTarget}\" and publish.";
 
             if (!string.IsNullOrEmpty(title))
             {
