@@ -52,7 +52,8 @@ public sealed record WorkflowResolvedResult(
 /// below 25. v25 (#1038): <c>When</c> is the text the engine judges over the render
 /// scope, and <c>Condition</c> is null; below 25 the reverse.
 /// </summary>
-public sealed record WorkflowResolvedMacroCondition(string MacroId, WorkflowConditionExpression? Condition, string? At = null, string? When = null);
+/// v26 (#1175): <c>If</c> is the gate keyed `if` — the same text, judged under the 26 subject.
+public sealed record WorkflowResolvedMacroCondition(string MacroId, WorkflowConditionExpression? Condition, string? At = null, string? When = null, string? If = null);
 
 public sealed record WorkflowPackage(
     WorkflowPackageManifest Manifest,

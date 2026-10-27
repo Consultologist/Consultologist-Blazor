@@ -673,7 +673,11 @@ public sealed record ConsultNodeMacroDescriptor(
     bool After,
     string? When = null,
     string? ForItem = null,
-    IReadOnlyList<string>? Reads = null);
+    IReadOnlyList<string>? Reads = null,
+    // v26 (#1175, design § 2.3): the instance's gate keyed `if` — judged over the
+    // node's scope before the render (the inline read) and at completion (the
+    // placement). Null below 26, where When carries the gate. Appended last.
+    string? If = null);
 
 /// <summary>
 /// One deliverable of a v7 job, snapshotted from the resolved package's result

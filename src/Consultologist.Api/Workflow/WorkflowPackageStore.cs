@@ -206,9 +206,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// <summary>B8 #1027: a 25 entry's when, keyed by its identity (id, at) — two gates on one id are two instances.</summary>
     private static IReadOnlyList<WorkflowResolvedMacroCondition>? MacroConditionsAt25(IReadOnlyList<WorkflowDeliverableMacroSpec>? macros)
     {
+        // v26 (#1175): the gate keyed `if` rides beside the 25 `when`.
         var conditions = (macros ?? Array.Empty<WorkflowDeliverableMacroSpec>())
-            .Where(entry => entry.When != null)
-            .Select(entry => new WorkflowResolvedMacroCondition(entry.Id, null, entry.At ?? WorkflowDeliverableMacroSpec.Append, When: entry.When))
+            .Where(entry => entry.When != null || entry.If != null)
+            .Select(entry => new WorkflowResolvedMacroCondition(entry.Id, null, entry.At ?? WorkflowDeliverableMacroSpec.Append, When: entry.When, If: entry.If))
             .ToList();
         return conditions.Count == 0 ? null : conditions;
     }

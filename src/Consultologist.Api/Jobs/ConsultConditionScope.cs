@@ -28,9 +28,20 @@ internal sealed record ConsultConditionScope(
     string? ItemFan = null)
 {
     private TemplateRenderScope? _scope;
+    private IReadOnlySet<string>? _inert;
 
     private TemplateRenderScope Scope =>
         _scope ??= ConsultRenderPayload.ScopeFor(Variables, VariableTypes, NodeTexts, Folders, Item, ItemFan, Run, Profile, Package);
+
+    /// <summary>v26 (#1177): the macros whose own gate (the header's `if`) does not hold over this scope — none below 26.</summary>
+    private IReadOnlySet<string> Inert =>
+        _inert ??= Package.Manifest.SpecVersion >= 26
+            ? WorkflowInlineGates.Inert(Scope.Macros.Values.Select(macro => (macro.Id, macro.If)), Scope, TemplatePipes.Engine)
+            : TemplateReferenceContext.NoIds;
+
+    /// <summary>v26 (#1177): the header gate's reason when the macro is inert; null when it is live (or has no gate).</summary>
+    public string? InertReason(string macroId) =>
+        Inert.Contains(macroId) ? WorkflowConditionAt25.Reason(Scope.Macros[macroId].If!) : null;
 
     /// <summary>Whether the condition holds over this scope; loud, with the subject, on anything the validator did not promise.</summary>
     public bool Holds(string subject, string when) => WorkflowConditionAt25.Holds(subject, when, Scope, TemplatePipes.Engine);
@@ -45,13 +56,14 @@ internal sealed record ConsultConditionScope(
             Item = new Dictionary<string, string>(item.Fields, StringComparer.Ordinal) { ["id"] = item.Id },
             ItemFan = WorkflowFanSources.SnippetPrefix + folderId,
             _scope = null,
+            _inert = null,
         };
 
     public static string Reason(string when) => WorkflowConditionAt25.Reason(when);
 
     /// <summary>The scope with the folders settled — folder items are judged over a folder-less scope first (their whens read inputs only), then the fans and the gating whens see the settled set.</summary>
     public ConsultConditionScope WithFolders(IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> folders) =>
-        this with { Folders = folders, _scope = null };
+        this with { Folders = folders, _scope = null, _inert = null };
 
     /// <summary>The declared input types, every input (the renderer types a text as text).</summary>
     public static IReadOnlyDictionary<string, string>? TypesOf(WorkflowPackage package) =>

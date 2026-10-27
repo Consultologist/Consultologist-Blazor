@@ -43,7 +43,7 @@ internal static class ConsultNodeCompletion
         WorkflowPackage package,
         IReadOnlySet<string> promptReads)
     {
-        var nodeId = NodeIdOf(input.NodeId);
+        var nodeId = ConsultGatedScope.NodeIdOf(input.NodeId);
         var itemId = input.Item?.GetValueOrDefault("id");
         var node = package.Nodes?.FirstOrDefault(n => string.Equals(n.Id, nodeId, StringComparison.Ordinal));
         var formatType = ConsultRenderPayload.FormatTypeOf(package, node);
@@ -63,7 +63,9 @@ internal static class ConsultNodeCompletion
             return settled;
         }
 
-        var scope = ConsultRenderPayload.ScopeAt25(input, package);
+        // v26 (#1175, #1177): the same gated scope the prompt rendered over — the
+        // reply's template render and the instances' texts see the sets.
+        var scope = ConsultGatedScope.Judge(input, package);
         var sanctioned = SanctionedBy(package, nodeId, itemId);
 
         foreach (var read in promptReads.Order(StringComparer.Ordinal))
@@ -93,13 +95,23 @@ internal static class ConsultNodeCompletion
                 continue;
             }
 
+            // v26 (#1177, design § 2.2): the macro's own gate first — the source
+            // is the ceiling; the header's text is the reason.
+            if (scope.InertMacros?.Contains(instance.Id) == true)
+            {
+                excluded.Add(new ConsultNodeExclusion(WorkflowNodeCompletion.MacroKind, instance.Id, WorkflowConditionAt25.Reason(scope.Macros[instance.Id].If!)));
+                continue;
+            }
+
             // v25 (#1038, design § 16): judged over the same scope the instance
             // renders over — the item, the node texts, the facts — never the ≤24
-            // tree; the fixed reason form (provenance@v2026.10.2).
-            if (instance.When != null
-                && !WorkflowConditionAt25.Holds($"Node '{nodeId}' macro '{instance.Id}' condition", instance.When, scope, TemplatePipes.Engine))
+            // tree; the fixed reason form (provenance@v2026.10.2). v26 (#1175):
+            // the gate keyed `if`, under the 26 subject.
+            var gate = instance.If ?? instance.When;
+            if (gate != null
+                && !WorkflowConditionAt25.Holds($"Node '{nodeId}' macro '{instance.Id}' {(instance.If is not null ? "if" : "condition")}", gate, scope, TemplatePipes.Engine))
             {
-                excluded.Add(new ConsultNodeExclusion(WorkflowNodeCompletion.MacroKind, instance.Id, WorkflowConditionAt25.Reason(instance.When)));
+                excluded.Add(new ConsultNodeExclusion(WorkflowNodeCompletion.MacroKind, instance.Id, WorkflowConditionAt25.Reason(gate)));
                 continue;
             }
 
@@ -159,11 +171,6 @@ internal static class ConsultNodeCompletion
     }
 
     /// <summary>The bare node id of an instance key (<c>node:item</c> on a fan).</summary>
-    private static string NodeIdOf(string instanceKey)
-    {
-        var colon = instanceKey.IndexOf(':');
-        return colon < 0 ? instanceKey : instanceKey[..colon];
-    }
 
     /// <summary>The inline macros the package's walk says this prompt reaches — the validator's closure, for this instance (B5: the static half).</summary>
     private static IReadOnlySet<string> SanctionedBy(WorkflowPackage package, string nodeId, string? itemId)
