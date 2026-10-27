@@ -96,8 +96,14 @@ public record ConsultGenerationRequest(
     // last, wire-compat.
     Dictionary<string, InputFilePayload>? InputFormFiles = null);
 
-/// <summary>#510: one deliverable of one of the account's completed runs.</summary>
-public sealed record ConsultInputRef(string JobId, string ResultId);
+/// <summary>
+/// #510: one deliverable of one of the account's completed runs. #1144:
+/// Position is the element's index in the COMBINED array of a mixed
+/// array&lt;text&gt; input (typed rows, documents, previous-run deliverables in
+/// one order — the order sent); absent, the deliverable is appended after
+/// the typed rows and the documents as it always was. Appended last, wire-compat.
+/// </summary>
+public sealed record ConsultInputRef(string JobId, string ResultId, int? Position = null);
 
 /// <summary>#540: one of the account's held form responses.</summary>
 public sealed record ConsultInputFormRef(string FormId, string ResponseId);
@@ -110,8 +116,12 @@ public sealed record ConsultInputFormRef(string FormId, string ResponseId);
 /// No filename: it can itself be PHI ("Smith_John_referral.pdf"), the parser
 /// dispatches on content anyway, and a request-scoped one would land in
 /// Functions request logging.
+///
+/// #1144: Position is the element's index in the COMBINED array of a mixed
+/// array&lt;text&gt; input (the order sent); absent, the document is appended
+/// after the typed rows as it always was. Appended last, wire-compat.
 /// </summary>
-public sealed record InputFilePayload(string ContentType, byte[] Content);
+public sealed record InputFilePayload(string ContentType, byte[] Content, int? Position = null);
 
 /// <summary>
 /// #238: what the server observed about where an input's text came from.

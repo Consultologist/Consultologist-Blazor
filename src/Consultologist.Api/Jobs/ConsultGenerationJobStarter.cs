@@ -1634,10 +1634,77 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     // #874: the elements a previous-run reference resolved to, kept beside
     // their positional origins so a downstream owner can fold them into a
     // mixed array<text> input (typed rows → documents → previous-run) rather
-    // than overwriting the input the way a standalone reference does.
+    // than overwriting the input the way a standalone reference does. #1144:
+    // each reference's requested Position rides along (null = append).
     internal sealed record RefGroup(
         IReadOnlyList<ConsultInputValue> Elements,
-        IReadOnlyList<ConsultInputOrigin> Origins);
+        IReadOnlyList<ConsultInputOrigin> Origins,
+        IReadOnlyList<int?> Positions);
+
+    /// <summary>
+    /// #1144: one element of a mixed array&lt;text&gt; input before placement —
+    /// its value, its origin and the position the request asked for (null:
+    /// append in today's order).
+    /// </summary>
+    internal readonly record struct PlacedElement(ConsultInputValue Element, ConsultInputOrigin Origin, int? Position);
+
+    /// <summary>
+    /// #1144: the one placement rule for a mixed array&lt;text&gt; input. The
+    /// combined array has typed.Count + placed.Count slots. An entry WITH a
+    /// position is placed in ascending position (stable: documents before
+    /// previous-run, list order on ties) at the first free slot at or after it
+    /// (clamped to the last slot; none free after it → the last free slot). The
+    /// typed rows then fill the remaining free slots in order, followed by the
+    /// unpositioned documents and the unpositioned previous-run elements — so a
+    /// request carrying no positions at all combines exactly as before (#872/
+    /// #874: typed → documents → previous-run), and every element's origin
+    /// rides with it to its actual index (the record's origins are positional).
+    /// </summary>
+    /// <summary>#872: a typed row's positional origin — its text digest, nothing else.</summary>
+    internal static ConsultInputOrigin TypedOrigin(ConsultInputValue element) =>
+        new(ConsultInputOriginKinds.Typed, null, null, false,
+            TextSha256: ConsultGenerationProvenance.Sha256Hex(
+                CanonicalText.Normalize(element.HasCanonical ? element.Canonical : element.AsJson())));
+
+    internal static (List<ConsultInputValue> Elements, List<ConsultInputOrigin> Origins) PlaceElements(
+        IReadOnlyList<ConsultInputValue> typed,
+        IReadOnlyList<PlacedElement> placed)
+    {
+        var count = typed.Count + placed.Count;
+        var slots = new PlacedElement?[count];
+
+        var positioned = placed
+            .Select((entry, order) => (entry, order))
+            .Where(pair => pair.entry.Position is not null)
+            .OrderBy(pair => Math.Clamp(pair.entry.Position!.Value, 0, Math.Max(count - 1, 0)))
+            .ThenBy(pair => pair.order)
+            .ToList();
+        foreach (var (entry, _) in positioned)
+        {
+            var wanted = Math.Clamp(entry.Position!.Value, 0, Math.Max(count - 1, 0));
+            var slot = Array.FindIndex(slots, wanted, s => s is null);
+            if (slot < 0)
+            {
+                slot = Array.FindLastIndex(slots, s => s is null);
+            }
+
+            slots[slot] = entry;
+        }
+
+        var filler = typed.Select(element => new PlacedElement(element, TypedOrigin(element), null))
+            .Concat(placed.Where(entry => entry.Position is null))
+            .GetEnumerator();
+        for (var i = 0; i < count; i++)
+        {
+            if (slots[i] is null)
+            {
+                filler.MoveNext();
+                slots[i] = filler.Current;
+            }
+        }
+
+        return (slots.Select(s => s!.Value.Element).ToList(), slots.Select(s => s!.Value.Origin).ToList());
+    }
 
     internal sealed record InputRefResolution(
         ConsultGenerationRequest Request,
@@ -1683,9 +1750,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         {
             var texts = new List<ConsultInputValue>();
             var inputOrigins = new List<ConsultInputOrigin>();
+            // #1144: the positions the request asked for, one per reference.
+            var positions = new List<int?>();
 
             foreach (var reference in refs)
             {
+                positions.Add(reference.Position);
                 if (!sources.TryGetValue(reference.JobId, out var source))
                 {
                     var entity = await entities.GetEntityAsync<ConsultGenerationJobState>(
@@ -1765,7 +1835,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // downstream, the way it is for files.
             if (request.Inputs?.ContainsKey(id) == true || request.InputFiles?.ContainsKey(id) == true)
             {
-                refGroups[id] = new RefGroup(texts, inputOrigins);
+                refGroups[id] = new RefGroup(texts, inputOrigins, positions);
             }
             else
             {
@@ -2476,11 +2546,6 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the input, and the raw (pre-normalisation) length the aggregate cap
         // counts — both shared by the file-loop combine and the ref-only
         // post-loop so the two assemble a mixed input identically.
-        static ConsultInputOrigin TypedOrigin(ConsultInputValue element) =>
-            new(ConsultInputOriginKinds.Typed, null, null, false,
-                TextSha256: ConsultGenerationProvenance.Sha256Hex(
-                    CanonicalText.Normalize(element.HasCanonical ? element.Canonical : element.AsJson())));
-
         static int RawLength(ConsultInputValue element) =>
             (element.HasCanonical ? element.Canonical : element.AsJson()).Length;
 
@@ -2690,23 +2755,20 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
                 // typedElements: computed above, ahead of the loop, to seed
                 // the aggregate cap with the same rows this combines.
-                var refCount = refGroup?.Elements.Count ?? 0;
-                var combined = new List<ConsultInputValue>(typedElements.Count + texts.Count + refCount);
-                var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + inputOrigins.Count + refCount);
-                foreach (var element in typedElements)
-                {
-                    combined.Add(element);
-                    combinedOrigins.Add(TypedOrigin(element));
-                }
-                combined.AddRange(texts);
-                combinedOrigins.AddRange(inputOrigins);
+                // #1144: the order is the order sent — each document's and each
+                // reference's requested position places it among the typed rows
+                // (PlaceElements); no positions, today's typed → documents →
+                // previous-run.
+                var placed = texts
+                    .Select((text, index) => new PlacedElement(text, inputOrigins[index], documents[index].Position))
+                    .ToList();
                 if (refGroup != null)
                 {
-                    combined.AddRange(refGroup.Elements);
-                    combinedOrigins.AddRange(refGroup.Origins);
+                    placed.AddRange(refGroup.Elements.Select((element, index) => new PlacedElement(element, refGroup.Origins[index], refGroup.Positions[index])));
                     combinedRefIds.Add(id);
                 }
 
+                var (combined, combinedOrigins) = PlaceElements(typedElements, placed);
                 inputs[id] = ConsultInputValue.OfArray(combined);
                 origins[id] = combinedOrigins;
             }
@@ -2785,15 +2847,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     request, null, detail, null, ConsultGenerationJobStartError.InputTooLong, SenderSafeError: detail);
             }
 
-            var combined = new List<ConsultInputValue>(typedElements.Count + refGroup.Elements.Count);
-            var combinedOrigins = new List<ConsultInputOrigin>(typedElements.Count + refGroup.Origins.Count);
-            foreach (var element in typedElements)
-            {
-                combined.Add(element);
-                combinedOrigins.Add(TypedOrigin(element));
-            }
-            combined.AddRange(refGroup.Elements);
-            combinedOrigins.AddRange(refGroup.Origins);
+            // #1144: the references take their requested positions among the
+            // typed rows (PlaceElements); none, appended as before.
+            var (combined, combinedOrigins) = PlaceElements(
+                typedElements,
+                refGroup.Elements.Select((element, index) => new PlacedElement(element, refGroup.Origins[index], refGroup.Positions[index])).ToList());
 
             inputs[id] = ConsultInputValue.OfArray(combined);
             origins[id] = combinedOrigins;
