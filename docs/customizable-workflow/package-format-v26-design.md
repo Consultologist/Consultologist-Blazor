@@ -1335,6 +1335,19 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   **ordered sources list** (pick a node, arrows, remove); "Composed as" (#1081) names the sources;
   "Delivers →" on the node pane goes, replaced by *"Sourced by deliverable 'd'"* on a node that
   is one.
+  *(As built by #1161: `ResultView` carries `sources` and `if` (a macro entry its `if`), and
+  `SourceNodeIds` is the one answer every reader keys on — the roots, "Composed as", "Also
+  placed on nodes", the carrying walk. The card's **Sources** section is the aggregator's
+  source-list idiom: numbered rows linking to the node's pane, move up/down, remove, and a
+  one-shot "+ add source…" that offers only what can compose prose — every flow node (its ret is
+  the desk's to judge: a case returning a medication_list is refused by the validator's own
+  sentence) and a top-level plain node of a text-typed format; never a body node, an enum, an
+  object, a check, or a node already listed (decided 2026-10-27). "+ Deliverable" births
+  `sources: []` (explicit init; the desk says "names no sources"). The gate section reads **if**
+  and rests **Always**, the deliverable macro rows' gate reads **if** too, and both write `if`
+  (never `when`); the composer never writes `node` at 26. "Delivers →" became *"Sourced by
+  deliverable 'd'"* on the node, loop, if and case panes. A macro's label at 26 lives in its file
+  header and shows as its id in "Composed as" until #1163 reads the headers.)*
 - **The Prompts nav** goes at 26; the node pane holds the prompt editor, its Reads rows and its
   preview (one `TemplatePreviewScope` owner). "Prompt 'p' reads" rows read "Node 'x''s prompt".
 - **Label, instruction, optional, default and `if`** of a snippet, folder item or macro are

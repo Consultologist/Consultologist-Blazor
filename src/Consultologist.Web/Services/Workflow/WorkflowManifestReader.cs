@@ -278,16 +278,30 @@ public static class WorkflowManifestReader
         IReadOnlyList<ResultMacroView>? Macros = null,
         bool? Signature = null,
         // v12 § 13 (#621): the deliverable's check gate (node:<id>).
-        string? Check = null);
+        string? Check = null,
+        // v26 (#1161, design § 3): what the deliverable composes — node.<id> refs in
+        // order (node and the aggregator fold into it) — and its gate keyed if (when is
+        // retired). Null on every deliverable below 26.
+        IReadOnlyList<string>? Sources = null,
+        string? If = null)
+    {
+        /// <summary>The node ids the deliverable composes — its sources at 26, its node below.</summary>
+        public IReadOnlyList<string> SourceNodeIds =>
+            Sources != null
+                ? Sources.Select(source => TemplateObjectReference.NodeIdOf(source) ?? source).ToList()
+                : TemplateObjectReference.NodeIdOf(Node) is { } nodeId ? new[] { nodeId } : Array.Empty<string>();
+    }
 
     /// <summary>
     /// One entry of a deliverable's macro list (v12 § 4/§ 14) — the mirror
     /// of WorkflowDeliverableMacroSpec, IsBare discipline included: a bare entry
     /// writes the v11 string, an adorned one the object, and When counts.
     /// </summary>
-    public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null, string? At = null)
+    public sealed record ResultMacroView(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null, string? At = null,
+        // v26 (#1161): the entry's gate keyed if (when is retired at 26).
+        string? If = null)
     {
-        public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null && At is null;
+        public bool IsBare => Before is null && After is null && When is null && ForItem is null && Slot is null && At is null && If is null;
 
         // v20 (#863): the model places this macro inline via a [[slot:<id>]]
         // marker; it names no anchor. Mirror of WorkflowDeliverableMacroSpec.IsSlot.
@@ -833,7 +847,10 @@ public static class WorkflowManifestReader
                 ReadString(result, "when"),
                 ReadMacroEntries(result),
                 ReadBool(result, "signature"),
-                ReadString(result, "check")));
+                ReadString(result, "check"),
+                // v26 (#1161): sources and the if gate.
+                ReadStringArray(result, "sources"),
+                ReadString(result, "if")));
         }
 
         return results;
@@ -903,6 +920,15 @@ public static class WorkflowManifestReader
                 if (StripNodePrefix(ReadString(result, "node")) is { } nodeId)
                 {
                     ids.Add(nodeId);
+                }
+
+                // v26 (#1161): every source is a root.
+                foreach (var source in ReadStringArray(result, "sources") ?? Array.Empty<string>())
+                {
+                    if (StripNodePrefix(source) is { } sourceId)
+                    {
+                        ids.Add(sourceId);
+                    }
                 }
             }
 
@@ -994,7 +1020,8 @@ public static class WorkflowManifestReader
                     ReadString(item, "when"),
                     ReadString(item, "forItem"),
                     ReadBool(item, "slot"),
-                    ReadString(item, "at")));
+                    ReadString(item, "at"),
+                    ReadString(item, "if")));
             }
         }
 
