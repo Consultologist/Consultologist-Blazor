@@ -28,7 +28,7 @@ public static partial class WorkflowPackageValidator
     /// invariant is Supported ⊆ Accepted, held by SpecVersionSetTests, and both
     /// are checked against the published spec-versions.json there too.
     /// </summary>
-    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25 };
+    public static readonly IReadOnlyList<int> AcceptedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 };
 
     /// <summary>
     /// "5, 6, 7 or 8" — the order a sentence reads in, which is not what
