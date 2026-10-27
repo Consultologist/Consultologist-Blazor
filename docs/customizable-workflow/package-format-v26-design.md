@@ -1243,6 +1243,26 @@ gates on the account's minimum; outcomes `audio-not-enabled` (415), `stt-unavail
 no ladder moves). **Left:** provisioning on the user's word (the recipe in CONFIGURATION.md; dev first, then
 a live preview with a fictional recording), the release that carries the engine half.)*
 
+*(#1149, 2026-10-27 — the bump, engine + registry; **the content half waits for Milestone 33** (decided
+2026-10-27: the editor's panes and chain for 26 are #1159–#1164, so the seven public packages and the
+prod/operator pins stay at 25 until then, and `Templates.NewestSpecVersion` stays 25 while
+`RunnableSpecVersion` is 26 — `SpecVersionMirrorTests` pins the lag by name, and the editor's one button
+targets `min(Runnable, Newest)` so "Upgrade to specVersion 25" keeps showing and no 26 button is offered).
+**Engine:** `AcceptedSpecVersions` and `SupportedSpecVersions` += 26; the migration runner's 26 stage now
+validates at 26 before writing; the next-is-refused tests moved to 27. **Registry (`package-format
+v2026.10.12`):** `spec-versions.json` lists 26 with the document and the generated schema; `conformance/v26/`
+holds 113 vectors (19 valid, 94 invalid: 5 schema-caught, 89 `SHAPE_BLIND` — the flow bodies, the gates'
+expressions, the sources, the headers and every template read are relations and file facts) and eight
+below-26 gates sit under `v25/` (`invalid-<key>-at-v25`, each one sentence, all caught by the 25 schema); the
+`any` case's sentence gains 26; the README's counts. **Three facts the export surfaced:** the 26 schema still
+required a deliverable's retired `node` — it now requires `sources` and keeps `node` as a property so a
+25-shaped manifest is refused by sentence, not shape; the typed writer spells a 25 manifest's macros as the
+list and a 26 manifest's as the bare map, so four manifest-side macro refusals (the map below 26; the list, a
+label or an instruction beside the map at 26) can carry no vector and stay pinned in the engine's suite
+alone; and the `if` gate case must read an input the 25 minimal declares, or it carries two sentences. **Left
+(each on the user's word):** the engine release; a 26 smoke on an account-owned migrated copy of
+`test/general`; the M33 issue for the republish and the pins.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
@@ -1331,8 +1351,10 @@ The 25 shape, one layer per PR, each green on its own; the bump is the last sub-
   header stripped before render; the prompt loaded by path; `ApplyPipe` on the object; record
   storage 8 (§ 10); `SupportedSpecVersions` += 26; an engine release.
 - **C — editor**: § 12; the one-button upgrade.
-- **The bump** (the 26 `#1018`, filed from this doc): both sets and `Templates.NewestSpecVersion`
-  += 26 together; the registry lists 26; the seven packages republish; the pins move.
+- **The bump** (the 26 `#1018`, filed from this doc): both sets += 26 together; the registry lists
+  26 — *landed 2026-10-27 (#1149) ahead of C, with the editor's authoring ceiling
+  (`Templates.NewestSpecVersion`) held at 25 by name until #1164*; the seven packages republish and
+  the pins move **after C** (Milestone 33's closing step).
 - **Siblings:** #1063 audio (engine + Create page) rides B's release or its own; #1144
   (`array<text>` element order) is an engine and provenance matter, **not a 26 item**; the
   Milestone 31 editor rows keep landing at 25 and are re-keyed by C.
