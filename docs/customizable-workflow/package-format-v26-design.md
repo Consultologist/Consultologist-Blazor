@@ -1350,6 +1350,20 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   header and shows as its id in "Composed as" until #1163 reads the headers.)*
 - **The Prompts nav** goes at 26; the node pane holds the prompt editor, its Reads rows and its
   preview (one `TemplatePreviewScope` owner). "Prompt 'p' reads" rows read "Node 'x''s prompt".
+  *(As built by #1162: the editor's prompt model at 26 is DERIVED from the nodes — one
+  `PromptView` per prompted node, keyed by the file on both Id and File, so every id-keyed site
+  matches a node's `Prompt` (now a path) and `TemplateWalkOf(file)` finds exactly one owner: the
+  node. The nav's Prompts group, "+ Prompt", the add pane's prompt select and the node card's
+  prompt select go at 26; a node always mints `prompts/<id>.md` (an existing file refuses the id),
+  lands on its own pane, and the pane's discard reverts the text. The node pane's Reads section
+  gains **Read by** — every node whose prompt reads `node.<id>`; a deliverable sourcing it is the
+  #1161 "Sourced by" line. The walk's subject stays the library's *"Node 'x' prompt"* (a wording
+  change would move the conformance vectors); the Renderers/Formats rows link to the node pane.
+  The desk says *"Node 'x' prompt has no text yet — write it on the node's pane."* A #1160
+  leftover closed on the way: the preview's "preview as item" picks on a body node now resolve
+  the folder through its loop (`EffectiveFan`), so one owner also means one item scope. **Not built:**
+  a node-id rename — none exists at any version, so "renaming a node offers to rename the file"
+  waits on a rename feature of its own.)*
 - **Label, instruction, optional, default and `if`** of a snippet, folder item or macro are
   edited where they are today (the macro pane's top fields, the folder item's row, the snippet
   pane's header); their **write target is the file's header**, not the manifest — the editor
