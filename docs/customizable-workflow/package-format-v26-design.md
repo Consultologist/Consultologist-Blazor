@@ -886,7 +886,7 @@ instance holding reads. The renderer's scope carries the set (`TemplateRenderSco
 suppressed `macro.<id>.prompt` renders **empty — no instruction, no mechanics sentence, no read recorded**;
 null is the 25 render. `.content` is untouched (a placement's skip is completion's; a text's `.content` read
 is the macro's own `if`, #1090). Decided 2026-10-26: the engine half — the descriptor carrying `if`, the activity
-judging before the render, completion excluding by `if` — is **#1175** (layer B, after #1157); an instruction
+judging before the render, completion excluding by `if` — is **#1175** (layer B, after #1157; landed 2026-10-27); an instruction
 template that renders empty keeps today's sentence until #1096; the preview's node context is the editor's
 (M33).)*
 
@@ -900,7 +900,7 @@ the gate compares. `WorkflowInlineGates.Inert(macros, scope)` is the judgement b
 scope's `InertMacros` empties **both** `.prompt` (no instruction, no mechanics sentence) and `.content` (no
 blank block), recording no read; it composes by AND with the instance gate's set. Decided 2026-10-26: the engine
 half — the inert render judged before the prompt, an inert macro's placements skipped into `excluded[]` /
-`excludedMacros` with the header's text — is **#1177** (layer B, beside #1175, after #1157); the desk's
+`excludedMacros` with the header's text — is **#1177** (layer B, beside #1175, after #1157; landed 2026-10-27); the desk's
 "never fires" warning is the editor's (M33); the migration's lifting of a uniform text guard is #1152's.)*
 
 *(#1094, 2026-10-26 — the snippet's and the folder item's gate, as § 2.1 and § 5.4 say; the library half. A
@@ -1131,6 +1131,30 @@ bytes — the assessment prompt (by id, by path), a fanned item (name, label), t
 `.content`. Decided 2026-10-27: the macro's own gate is CARRIED here and judged by #1177 beside #1175's
 instance gate, over one scope. The bump (#1149) lifts `SupportedSpecVersions` AND `AcceptedSpecVersions`;
 until then `Materialise` takes the accepted set and no 26 package loads live.)*
+
+*(#1175 + #1177, 2026-10-27 — the instance gate and the macro's own gate at run time, as § 2.2–2.4 say; one PR,
+both engine halves (decided 2026-10-27: judged over one scope in one place). `ConsultNodeMacroDescriptor`
+carries the instance's `if` (both describe paths; durable, trailing). **One judgement**,
+`ConsultGatedScope.Judge(input, package)`: the node's scope (`ScopeAt25`) with `InertMacros` =
+`WorkflowInlineGates.Inert` over the macros' header gates (carried on the macro source by #1157) and
+`SuppressedPrompts` = `WorkflowInlineGates.Suppressed` over the instances' `if` — **at 26 only**: a 25 instance's
+`when` never suppressed the inline read (the text guard was the author's tool), so below 26 the scope is the one it
+was and the bytes are pinned. `ConsultRenderPayload.RenderAt25` renders through it, so the activity's render and
+its template early return are gated with no caller able to forget; the completion builds the same gated scope
+(the reply's template render and the instances' texts see the sets) — judged twice, pure, before the model call.
+**Completion's order**: the item anchor → inert first (the source is the ceiling; the header's text is the reason)
+→ the instance's gate `if ?? when` under the "if" / "condition" subject → render; `excluded[]` unchanged. **The
+deliverable side**: `WorkflowResolvedMacroCondition.If` (the store keeps an entry with `when` or `if`);
+`ConsultConditionScope.InertReason` memoised (reset with the folders and the item); `DecidePlacementWhens` judges
+inert over the live placements BEFORE the ≤24 fallback — a 26 deliverable placing an inert macro with no instance
+gate carries no macro condition and the fallback would have kept it (pinned) — then the instance's gate under the
+26 subject; `excludedMacros` unchanged; the deliverable-macro render carries the inert set too, so a placed macro's
+text reading an inert macro's `.content` gets empty ("a macro gated off is off everywhere"). Pinned: a suppressed
+read renders empty with no mechanics sentence and the placement is excluded by the `if` text; any instance holding
+reads; no instance reads as today; `item.id` per item; an inert macro's `.prompt` and `.content` empty and its
+placement excluded with the header's text; inert + a holding instance is inert; a live macro + a failing instance
+is suppressed, its `.content` still composing inline; a 25 `when` does not suppress. Left to #1179 (the snippet's
+and the folder item's gate — `InertSnippets`, the starter's fan filter), #1182 (macro folders), the bump.)*
 
 ## 12. The editor
 
