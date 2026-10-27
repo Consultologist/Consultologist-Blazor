@@ -1104,6 +1104,34 @@ deliverable id. Limits, left as they are: a reader of `deliverable.<id>.content`
 deliverable macro's raw file still carries its header at render until #1157 reads the headers in the store;
 no 26 job runs before the bump (#1149), whose done-when is the dev run with equal hashes.)*
 
+*(#1157, 2026-10-27 — the header stripped before render and the prompt loaded by path, as § 4 and § 5 say.
+**The store splits once, after validation** (`WorkflowPackageStore.Materialise`, the pure half of a load,
+reachable by tests without blobs): at 26 the download set adds the nodes' prompt files and skips a macro entry
+ending in `/` (a folder — #1182 gathers it; `Validate` refuses the missing index loud until then), a folder's
+`index.json` is read in its version's shape (`ItemFilesOf`: the ≤25 object or the 26 list), then
+`WorkflowTextHeaders.Resolve` runs ONCE and rides the package as **`WorkflowPackage.Texts`** beside the raw form —
+`Manifest` and `SourceFiles` stay as published (the walk resolves the headers itself from the raw files and
+the resolver is not idempotent: run over bodies it finds no header and drops every gate; the content endpoint
+round-trips the files whole; publish compares raw), `EffectiveManifest`/`TextFiles`/`TextOf` give the
+resolved form. The prompts are keyed by PATH at 26 (one `WorkflowPromptTemplate` per distinct `nodes[].prompt`,
+no variables, no prelude, never raw), so the activity's lookup is the one it was — the descriptor's `PromptId`
+was the path already; the data resolves through the headers (an item's label and gate on the item, the
+bodies as content). **The readers switched**: the render scope's macros are the effective manifest's (label,
+instruction, optional, default from the header) over the bodies, with the header's `if` carried on
+`TemplateMacroSource.If` for #1177's judge — so every render site (the prompt activity, the completion, the
+deliverable-macro activity, the condition scope) sees bodies and the #1155 limit closes; the starter's
+`macroTexts`, `ResolveMacroChoices` (a per-run choice on an optional macro works at 26) and the Current
+endpoint's optional macros read the effective manifest; `DescribeNode` takes the text files (a format or
+schema file is byte-identical in both maps). The publisher's relabel warning resolves the new version through
+the headers at 26 (it was silently dead there: the 25-shape resolve saw every headered text as changed and the
+26 index as no folder). **`macro.<id>.instruction` at render** (26): the instruction rendered over the scope
+without the mechanics sentence, the same read as `.prompt` (recorded; empty when suppressed or inert).
+Pinned by the done-when: the 25 minimal and its migrated twin, each loaded the store's way, render the same
+bytes — the assessment prompt (by id, by path), a fanned item (name, label), the macro's `.prompt` and
+`.content`. Decided 2026-10-27: the macro's own gate is CARRIED here and judged by #1177 beside #1175's
+instance gate, over one scope. The bump (#1149) lifts `SupportedSpecVersions` AND `AcceptedSpecVersions`;
+until then `Materialise` takes the accepted set and no 26 package loads live.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
