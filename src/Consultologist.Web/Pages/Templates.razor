@@ -188,13 +188,13 @@
                     @* #815: step back and forward through committed edits. *@
                     <FluentButton Appearance="Appearance.Outline"
                                   Class="undo-button"
-                                  Disabled="@(undoStack.Count == 0 || isPublishing)"
+                                  Disabled="@(undoStack.Count == 0 || isPublishing || ReadOnlyAboveCeiling)"
                                   @onclick="UndoAsync">
                         Undo
                     </FluentButton>
                     <FluentButton Appearance="Appearance.Outline"
                                   Class="redo-button"
-                                  Disabled="@(redoStack.Count == 0 || isPublishing)"
+                                  Disabled="@(redoStack.Count == 0 || isPublishing || ReadOnlyAboveCeiling)"
                                   @onclick="RedoAsync">
                         Redo
                     </FluentButton>
@@ -210,7 +210,7 @@
                                    MainAppearance="Appearance.Outline"
                                    BackOutAppearance="Appearance.Outline"
                                    BackOutClass="cancel-armed-button"
-                                   Disabled="@((!imported && upgradedFrom == null && PendingCount == 0) || isPublishing)"
+                                   Disabled="@((!imported && upgradedFrom == null && PendingCount == 0) || isPublishing || ReadOnlyAboveCeiling)"
                                    OnClick="DiscardAsync"
                                    OnBackOut="CancelToolbarArm" />
                     <ConfirmButton Armed="revertArmed"
@@ -219,7 +219,7 @@
                                    MainAppearance="Appearance.Outline"
                                    BackOutAppearance="Appearance.Outline"
                                    BackOutClass="cancel-armed-button"
-                                   Disabled="@isPublishing"
+                                   Disabled="@(isPublishing || ReadOnlyAboveCeiling)"
                                    OnClick="RevertToDefaultAsync"
                                    OnBackOut="CancelToolbarArm" />
                     <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
@@ -237,7 +237,7 @@
                        input, no drop zone. The handler is unchanged (OnInputFileChange hands
                        it the same InputFileChangeEventArgs; the component's own size/count
                        filtering is bypassed, so ImportPackageAsync stays the authority). *@
-                    <FluentButton Id="editor-import-trigger" Appearance="Appearance.Stealth"
+                    <FluentButton Id="editor-import-trigger" Appearance="Appearance.Stealth" Disabled="@ReadOnlyAboveCeiling"
                                   IconStart="@(new Icons.Regular.Size20.ArrowUpload())"
                                   Title="Import a package .zip into the editor for this session">Import package…</FluentButton>
                     <FluentInputFile AnchorId="editor-import-trigger" DragDropZoneVisible="false"
@@ -291,6 +291,14 @@
             {
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
                     specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it.
+                </FluentMessageBar>
+            }
+            @* #1209: the reverse gap — a package above what this editor AUTHORS (not
+               above what the engine runs). Said up front; reading only. *@
+            @if (ReadOnlyAboveCeiling)
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="read-only-notice">
+                    This package is at specVersion @LoadedSpecVersion; this editor authors up to @NewestSpecVersion. Reading only; #1159–#1164 bring the 26 panes.
                 </FluentMessageBar>
             }
             @if (migrationNotice is { Length: > 0 })
@@ -745,7 +753,11 @@
                     </button>
                 </nav>
 
-                <section class="content-card editor-pane">
+                @* #1209: inert while read-only — one attribute blocks every click, key and
+                   focus inside the pane (Fluent web components included); the nav stays live
+                   so every pane can still be read. bUnit does not honour it: pinned in markup,
+                   verified live (the #510 idiom). *@
+                <section class="content-card editor-pane" inert="@ReadOnlyAboveCeiling">
                     @if (selectedKey != null && selectedKey.StartsWith(NewKeyPrefix, StringComparison.Ordinal))
                     {
                         var newCollection = selectedKey[NewKeyPrefix.Length..];
@@ -4369,6 +4381,22 @@
     private int LoadedSpecVersion => content?.SpecVersion ?? 0;
 
     /// <summary>
+    /// #1209 (interim, Milestone 33): the loaded package is ABOVE the editor's authoring
+    /// ceiling — the engine runs 26 while the panes author up to 25 (#1149's lag) — so
+    /// it opens readable and un-editable with a banner; every edit door is refused by
+    /// name (publish, draft, history, undo/redo, discard/revert, import, the pane
+    /// itself inert). Retired whole by #1164 when the ceilings meet again.
+    /// </summary>
+    private bool ReadOnlyAboveCeiling => content != null && LoadedSpecVersion > NewestSpecVersion && !AuthorsAboveCeiling;
+
+    /// <summary>
+    /// #1209: the test seam — a 26-pane test (#1160's loop pane, #1159–#1163's to come)
+    /// authors above the ceiling ON PURPOSE. Never set by a route (the page takes no
+    /// parameters); removed with the gate by #1164.
+    /// </summary>
+    [Parameter] public bool AuthorsAboveCeiling { get; set; }
+
+    /// <summary>
     /// Whether the loaded package is the account's own fork. False means the
     /// editor is holding repo-owned content — legitimate, and how a fork is
     /// started or restarted, but it makes Publish mean something other than
@@ -4411,7 +4439,7 @@
     // when the name is typed) and survives reload. Null when not an import.
     private string? importZipBase64;
 
-    private bool CanPublish => content != null && !isPublishing && (imported || upgradedFrom != null || PendingCount > 0);
+    private bool CanPublish => content != null && !isPublishing && !ReadOnlyAboveCeiling && (imported || upgradedFrom != null || PendingCount > 0);
 
     /// <summary>
     /// The ref this editor is holding. Since #411 it is NOT the consult pin:
@@ -13881,7 +13909,8 @@
             // C6 (#1012): an unpublished upgrade of THIS package held in this browser
             // takes its place; the notice it was given comes back with it.
             string? storedNotice = null;
-            if (storedImport == null && content != null && await ReadStoredUpgradeAsync() is { } storedUpgrade
+            // #1209: nothing pending is restored onto a read-only package.
+            if (storedImport == null && content != null && !ReadOnlyAboveCeiling && await ReadStoredUpgradeAsync() is { } storedUpgrade
                 && storedUpgrade.Name == content.Name && storedUpgrade.PackageVersion == content.Version)
             {
                 try
@@ -13898,13 +13927,19 @@
             ProjectLoadedContent();
             // v25 (C1 #1007): the formats catalogue, read once a 25 package is loaded.
             await LoadFormatsCatalogAsync();
-            await RestoreDraftAsync();
+            if (!ReadOnlyAboveCeiling)
+            {
+                await RestoreDraftAsync();
+            }
             if (storedNotice != null)
             {
                 migrationNotice = storedNotice;
             }
             // #815: restore the undo/redo history for this package (or start fresh).
-            await RestoreHistoryAsync();
+            if (!ReadOnlyAboveCeiling)
+            {
+                await RestoreHistoryAsync();
+            }
 
             // Keep the selection when the pane still exists; otherwise open on
             // Graph — the overview, and the right landing for a cold load or a
@@ -14699,6 +14734,14 @@
     /// </summary>
     private async Task PendingChangedAsync()
     {
+        // #1209: read-only above the ceiling — no snapshot, no history, no draft
+        // written or removed (the belt under the inert pane: bUnit fires handlers a
+        // browser cannot).
+        if (ReadOnlyAboveCeiling)
+        {
+            return;
+        }
+
         walkTick++;
         publishSuccess = null;
         publishWarnings.Clear();
@@ -14866,7 +14909,7 @@
 
     private async Task UndoAsync()
     {
-        if (undoStack.Count == 0)
+        if (undoStack.Count == 0 || ReadOnlyAboveCeiling)
         {
             return;
         }
@@ -14879,7 +14922,7 @@
 
     private async Task RedoAsync()
     {
-        if (redoStack.Count == 0)
+        if (redoStack.Count == 0 || ReadOnlyAboveCeiling)
         {
             return;
         }
@@ -15724,7 +15767,7 @@
 
     private async Task ImportPackageAsync(InputFileChangeEventArgs args)
     {
-        if (args.FileCount == 0)
+        if (args.FileCount == 0 || ReadOnlyAboveCeiling)
         {
             return;
         }
