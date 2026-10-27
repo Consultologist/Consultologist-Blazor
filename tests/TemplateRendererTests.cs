@@ -364,4 +364,31 @@ public class TemplateRendererTests
         Assert.StartsWith("Prompt 'p' failed to render", ex.Message, StringComparison.Ordinal);
         Assert.Contains("not valid concept-list JSON", ex.Message, StringComparison.Ordinal);
     }
+
+    // #1157 (v26 design § 5.2): macro.<id>.instruction — the instruction as text,
+    // the same read as .prompt (recorded, suppressed with it), without the
+    // mechanics sentence.
+
+    [Fact]
+    public void Instruction_IsTheInstructionWithoutTheSentence_AndTheSameRead()
+    {
+        var macros = new Dictionary<string, TemplateMacroSource>
+        {
+            ["closing"] = new("closing", "Closing", "Closing.", "Say goodbye to {{ profile.name }}."),
+        };
+        var scope = Scope(macros: macros) with { Labelled = true };
+        var trace = new TemplateRenderer.TemplateRenderTrace();
+
+        var rendered = TemplateRenderer.Render("Prompt 'p'", "{{ macro.closing.instruction }}|{{ macro.closing.prompt }}", scope, null, trace);
+
+        Assert.Equal("Say goodbye to Dr Example.|" + WorkflowMacroMechanics.Prompt("closing", "Say goodbye to Dr Example."), rendered);
+        Assert.Equal(new[] { "closing" }, trace.PromptReads);
+
+        var suppressed = scope with { SuppressedPrompts = new HashSet<string>(StringComparer.Ordinal) { "closing" } };
+        Assert.Equal("|", TemplateRenderer.Render("Prompt 'p'", "{{ macro.closing.instruction }}|{{ macro.closing.prompt }}", suppressed));
+        var inert = scope with { InertMacros = new HashSet<string>(StringComparer.Ordinal) { "closing" } };
+        Assert.Equal("|", TemplateRenderer.Render("Prompt 'p'", "{{ macro.closing.instruction }}|{{ macro.closing.prompt }}", inert));
+        // Below 26 the member does not exist.
+        Assert.Throws<InvalidOperationException>(() => TemplateRenderer.Render("Prompt 'p'", "{{ macro.closing.instruction }}", Scope(macros: macros)));
+    }
 }

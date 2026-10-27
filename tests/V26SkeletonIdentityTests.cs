@@ -26,9 +26,10 @@ public class V26SkeletonIdentityTests
     private static WorkflowPackage Load(WorkflowPackageManifest manifest, Dictionary<string, string> files)
     {
         var errors = new List<string>();
-        var data = manifest.SpecVersion >= 26
-            ? WorkflowDataResolver.ResolveContent(manifest, WorkflowTextHeaders.Resolve(manifest, files, errors), errors)
-            : WorkflowDataResolver.ResolveContent(manifest, files, errors);
+        var texts = manifest.SpecVersion >= 26 ? WorkflowTextHeaders.Resolve(manifest, files, errors) : null;
+        var data = texts is null
+            ? WorkflowDataResolver.ResolveContent(manifest, files, errors)
+            : WorkflowDataResolver.ResolveContent(texts.Manifest, texts, errors);
         Assert.Empty(errors);
 
         return new WorkflowPackage(
@@ -38,7 +39,8 @@ public class V26SkeletonIdentityTests
             SourceFiles: files,
             Results: WorkflowPackageStore.ResolveResultSet(manifest),
             Formats: TestFormats.Catalog,
-            FormatsRef: TestFormats.Catalog.ResolvedRef);
+            FormatsRef: TestFormats.Catalog.ResolvedRef,
+            Texts: texts);
     }
 
     /// <summary>One value per declared input, by type — enough for every condition to decide.</summary>
