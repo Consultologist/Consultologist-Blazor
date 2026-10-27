@@ -469,7 +469,8 @@ public class DurablePayloadReplayTests
 
         Assert.Null(macro.ForItem);
         Assert.Null(macro.Reads);
-        Assert.Equal(stored[..^1] + ",\"ForItem\":null,\"Reads\":null}", JsonSerializer.Serialize(macro, Durable));
+        // v26 #1175 appends If — the instance's gate keyed `if`.
+        Assert.Equal(stored[..^1] + ",\"ForItem\":null,\"Reads\":null,\"If\":null}", JsonSerializer.Serialize(macro, Durable));
     }
 
     [Fact]
