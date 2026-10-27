@@ -24,6 +24,8 @@ public class ProvenanceMirrorTests
     [InlineData(typeof(ApiModels.ConsultTokenUsage), typeof(WebAI.ConsultTokenUsage))]
     // #540: the form-response reference the picker sends beside the value.
     [InlineData(typeof(ApiModels.ConsultInputFormRef), typeof(WebAI.ConsultInputFormRef))]
+    // #1144: the previous-run reference carries its position in a several input.
+    [InlineData(typeof(ApiModels.ConsultInputRef), typeof(WebAI.ConsultInputRef))]
     public void TheMirroredRecords_ExposeTheSameProperties(Type api, Type web)
     {
         // #551: a mirrored record may itself carry a mirrored record — the

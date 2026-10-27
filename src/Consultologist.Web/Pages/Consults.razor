@@ -246,7 +246,7 @@
                                                     <span class="muted-text">@loaded.RunName</span>
                                                     <FluentButton Appearance="Appearance.Stealth"
                                                                   Title="Remove this loaded deliverable"
-                                                                  @onclick="() => RemoveLoaded(currentField, index)">Remove</FluentButton>
+                                                                  @onclick="() => RemoveLoaded(currentField, loaded)">Remove</FluentButton>
                                                 </span>
                                                 <div class="input-field__preview">@loaded.Text</div>
                                             </div>
@@ -338,84 +338,122 @@
                                        absent; an empty row names itself and holds the
                                        run rather than being dropped. *@
                                     <div class="input-field__group" @onclick:stopPropagation="true">
-                                        @for (var i = 0; i < field.Rows.Count; i++)
+                                        @* #1143/#1144: a several input's entries are ONE numbered list in the order
+                                           sent — typed rows, document chips and loaded chips interleaved as the
+                                           clinician arranged them (Entries), then the unchosen row in "+ Add
+                                           entry"'s slot. Every kind moves past every other; each document's and
+                                           each loaded deliverable's position travels on the wire. Any other array
+                                           holds typed rows only, so this loop is its row list as before. *@
+                                        @{
+                                            var entries = field.Entries;
+                                        }
+                                        @for (var i = 0; i < entries.Count; i++)
                                         {
                                             var index = i;
-                                            var row = field.Rows[index];
+                                            var entry = entries[index];
                                             var currentField = field;
-                                            <div class="input-field__row" @key="row">
-                                                <span class="muted-text input-field__row-number">@(index + 1).</span>
-                                                <div class="input-field__row-body">
-                                                    @StructureControl(row)
+                                            var isFirst = index == 0;
+                                            var isLast = index == entries.Count - 1;
+                                            if (entry.Typed is { } row)
+                                            {
+                                                <div class="input-field__row" @key="row">
+                                                    <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                    <div class="input-field__row-body">
+                                                        @StructureControl(row)
+                                                    </div>
+                                                    @* preventDefault (#1137): inside the input's <label>, a Remove whose
+                                                       button the re-render drops is a label activation — a synthetic click
+                                                       on the first labelable control, which with no rows left is "+ Add
+                                                       entry": the row came straight back. FluentButton's OnClick cannot
+                                                       carry the modifier, so the wrapper does (#510's lesson). *@
+                                                    <span class="input-field__row-buttons" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                                      aria-label="@($"Move entry {index + 1} up")"
+                                                                      Disabled="@isFirst"
+                                                                      IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                                      OnClick="@(() => MoveEntry(currentField, index, -1))" />
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                                      aria-label="@($"Move entry {index + 1} down")"
+                                                                      Disabled="@isLast"
+                                                                      IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                                      OnClick="@(() => MoveEntry(currentField, index, +1))" />
+                                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove entry"
+                                                                      aria-label="@($"Remove entry {index + 1}")"
+                                                                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                      OnClick="@(() => currentField.RemoveRow(row))" />
+                                                    </span>
                                                 </div>
-                                                @* preventDefault (#1137): inside the input's <label>, a Remove whose
-                                                   button the re-render drops is a label activation — a synthetic click
-                                                   on the first labelable control, which with no rows left is "+ Add
-                                                   entry": the row came straight back. FluentButton's OnClick cannot
-                                                   carry the modifier, so the wrapper does (#510's lesson). *@
-                                                <span class="input-field__row-buttons" @onclick:preventDefault="true" @onclick:stopPropagation="true">
-                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
-                                                                  aria-label="@($"Move entry {index + 1} up")"
-                                                                  Disabled="@(index == 0)"
-                                                                  IconStart="@(new Icons.Regular.Size20.ArrowUp())"
-                                                                  OnClick="@(() => currentField.MoveRow(index, -1))" />
-                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
-                                                                  aria-label="@($"Move entry {index + 1} down")"
-                                                                  Disabled="@(index == currentField.Rows.Count - 1)"
-                                                                  IconStart="@(new Icons.Regular.Size20.ArrowDown())"
-                                                                  OnClick="@(() => currentField.MoveRow(index, +1))" />
-                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove entry"
-                                                                  aria-label="@($"Remove entry {index + 1}")"
-                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                                  OnClick="@(() => currentField.RemoveRow(index))" />
-                                                </span>
-                                            </div>
+                                            }
+                                            else if (entry.Document is { } document)
+                                            {
+                                                @* #428/#429/#872: a document chip, numbered in the one order. The
+                                                   wrapper carries preventDefault (#510): a Remove whose chip the
+                                                   re-render drops is a label activation otherwise. *@
+                                                <div class="input-field__document" @key="entry" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                    <span class="input-field__chip">
+                                                        <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                        <span class="input-field__chip-name">@document.FileName</span>
+                                                        @if (document.PageCount is { } pages)
+                                                        {
+                                                            <span class="muted-text">@pages page@(pages == 1 ? "" : "s")</span>
+                                                        }
+                                                        <span class="input-field__row-buttons">
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                                          aria-label="@($"Move {document.FileName} up")"
+                                                                          Disabled="@isFirst"
+                                                                          IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                                          OnClick="@(() => MoveEntry(currentField, index, -1))" />
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                                          aria-label="@($"Move {document.FileName} down")"
+                                                                          Disabled="@isLast"
+                                                                          IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                                          OnClick="@(() => MoveEntry(currentField, index, +1))" />
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove this file"
+                                                                          aria-label="@($"Remove {document.FileName}")"
+                                                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                          OnClick="@(() => RemoveDocument(currentField, document))" />
+                                                        </span>
+                                                    </span>
+                                                    <div class="input-field__preview">@document.PreviewText</div>
+                                                </div>
+                                            }
+                                            else if (entry.Loaded is { } loaded)
+                                            {
+                                                @* #874: a previous-run deliverable in the same input as the typed
+                                                   rows and documents — one chip per deliverable, its text shown as a
+                                                   preview, movable and removable on its own (#1144). What runs is
+                                                   the server's copy of that run's text. The wrapper carries
+                                                   preventDefault (#510). *@
+                                                <div class="input-field__document input-field__loaded" @key="entry" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                                    <span class="input-field__chip">
+                                                        <span class="muted-text input-field__row-number">@(index + 1).</span>
+                                                        <span class="input-field__chip-name">@loaded.Label</span>
+                                                        <span class="muted-text">@loaded.RunName</span>
+                                                        <span class="input-field__row-buttons">
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                                          aria-label="@($"Move {loaded.Label} up")"
+                                                                          Disabled="@isFirst"
+                                                                          IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                                          OnClick="@(() => MoveEntry(currentField, index, -1))" />
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                                          aria-label="@($"Move {loaded.Label} down")"
+                                                                          Disabled="@isLast"
+                                                                          IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                                          OnClick="@(() => MoveEntry(currentField, index, +1))" />
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove this loaded deliverable"
+                                                                          aria-label="@($"Remove {loaded.Label}")"
+                                                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                          OnClick="@(() => RemoveLoaded(currentField, loaded))" />
+                                                        </span>
+                                                    </span>
+                                                    <div class="input-field__preview">@loaded.Text</div>
+                                                </div>
+                                            }
                                         }
                                         @if (field.TakesSeveralDocuments)
                                         {
-                                            @* #1143: a several input's entries are one numbered list in the wire's order —
-                                               typed rows above, then document chips, then loaded chips, then the unchosen
-                                               row in "+ Add entry"'s slot. *@
                                             @if (field.HasFile)
                                             {
-                                                @* #428/#429/#872: several documents, in the order
-                                                   chosen — the order the elements hash in. Typed
-                                                   rows are kept above, side by side with these;
-                                                   "Remove all" gives the rows the field back. *@
-                                                <div class="input-field__documents" @onclick:stopPropagation="true">
-                                                    @for (var i = 0; i < field.Documents.Count; i++)
-                                                    {
-                                                        var index = i;
-                                                        var document = field.Documents[index];
-                                                        var currentField = field;
-                                                        <div class="input-field__document" @key="document" @onclick:preventDefault="true" @onclick:stopPropagation="true">
-                                                            <span class="input-field__chip">
-                                                                <span class="muted-text input-field__row-number">@(currentField.DocumentOrdinal(index)).</span>
-                                                                <span class="input-field__chip-name">@document.FileName</span>
-                                                                @if (document.PageCount is { } pages)
-                                                                {
-                                                                    <span class="muted-text">@pages page@(pages == 1 ? "" : "s")</span>
-                                                                }
-                                                                <span class="input-field__row-buttons">
-                                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
-                                                                                  aria-label="@($"Move {document.FileName} up")"
-                                                                                  Disabled="@(index == 0)"
-                                                                                  IconStart="@(new Icons.Regular.Size20.ArrowUp())"
-                                                                                  OnClick="@(() => MoveDocument(currentField, index, -1))" />
-                                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
-                                                                                  aria-label="@($"Move {document.FileName} down")"
-                                                                                  Disabled="@(index == currentField.Documents.Count - 1)"
-                                                                                  IconStart="@(new Icons.Regular.Size20.ArrowDown())"
-                                                                                  OnClick="@(() => MoveDocument(currentField, index, +1))" />
-                                                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove this file"
-                                                                                  aria-label="@($"Remove {document.FileName}")"
-                                                                                  IconStart="@(new Icons.Regular.Size20.Dismiss())"
-                                                                                  OnClick="@(() => RemoveDocument(currentField, index))" />
-                                                                </span>
-                                                            </span>
-                                                            <div class="input-field__preview">@document.PreviewText</div>
-                                                        </div>
-                                                    }
                                                 @* #1143: "Remove all" and its hint go with the chips they act on. The
                                                    wrapper is the button's own (#1137): with no typed rows the label's
                                                    first labelable control is then the unchosen row's text door. *@
@@ -429,37 +467,12 @@
                                                         Looks wrong? Remove that file, or add a typed entry alongside the rest.
                                                     </span>
                                                 </div>
-                                                </div>
                                             }
                                             @if (field.HasLoaded)
                                             {
-                                                @* #874: previous-run deliverables in the same
-                                                   input as the typed rows and documents above —
-                                                   one chip per deliverable, its text shown as a
-                                                   preview, removable on its own. What runs is the
-                                                   server's copy of that run's text. *@
-                                                <div class="input-field__documents" @onclick:stopPropagation="true">
-                                                    @for (var i = 0; i < field.Loaded.Count; i++)
-                                                    {
-                                                        var index = i;
-                                                        var loaded = field.Loaded[index];
-                                                        var currentField = field;
-                                                        <div class="input-field__document input-field__loaded" @onclick:preventDefault="true" @onclick:stopPropagation="true">
-                                                            <span class="input-field__chip">
-                                                                <span class="muted-text input-field__row-number">@(currentField.LoadedOrdinal(index)).</span>
-                                                                <span class="input-field__chip-name">@loaded.Label</span>
-                                                                <span class="muted-text">@loaded.RunName</span>
-                                                                <FluentButton Appearance="Appearance.Stealth"
-                                                                              Title="Remove this loaded deliverable"
-                                                                              @onclick="() => RemoveLoaded(currentField, index)">Remove</FluentButton>
-                                                            </span>
-                                                            <div class="input-field__preview">@loaded.Text</div>
-                                                        </div>
-                                                    }
-                                                    <span class="muted-text input-field__hint">
-                                                        The run will use this text exactly as that run produced it. To change it, remove it and add a typed entry instead.
-                                                    </span>
-                                                </div>
+                                                <span class="muted-text input-field__hint">
+                                                    The run will use this text exactly as that run produced it. To change it, remove it and add a typed entry instead.
+                                                </span>
                                             }
                                         }
                                         @if (!field.ShowsChooser)
@@ -2882,15 +2895,17 @@
     scheduleConfirmation = null;
   }
 
-  private void MoveDocument(ConsultInputField field, int index, int delta)
+  // #1144: one move for every kind of row — the field's sequence is the order.
+  // A move is an edit of what runs, so the schedule confirmation resets.
+  private void MoveEntry(ConsultInputField field, int index, int delta)
   {
-    (field.Documents[index], field.Documents[index + delta]) = (field.Documents[index + delta], field.Documents[index]);
+    field.MoveEntry(index, delta);
     scheduleConfirmation = null;
   }
 
-  private void RemoveDocument(ConsultInputField field, int index)
+  private void RemoveDocument(ConsultInputField field, AttachedDocument document)
   {
-    field.Documents.RemoveAt(index);
+    field.RemoveDocument(document);
     scheduleConfirmation = null;
   }
 
@@ -3071,9 +3086,9 @@
     scheduleConfirmation = null;
   }
 
-  private void RemoveLoaded(ConsultInputField field, int index)
+  private void RemoveLoaded(ConsultInputField field, LoadedDeliverable loaded)
   {
-    field.Loaded.RemoveAt(index);
+    field.RemoveLoaded(loaded);
     scheduleConfirmation = null;
   }
 
@@ -3136,14 +3151,21 @@
       .ToDictionary(field => field.Id, field => field.Supplied!, StringComparer.Ordinal);
 
   // #510: the references. The server copies each run's text and records the
-  // origin; the text the form showed was only a preview.
+  // origin; the text the form showed was only a preview. #1144: in a several
+  // input each reference carries its position in the one order (Entries); a
+  // single text input sends the reference it always did.
   private Dictionary<string, IReadOnlyList<ConsultInputRef>>? SuppliedRefs()
   {
     var refs = inputFields
       .Where(field => field.HasLoaded)
       .ToDictionary(
         field => field.Id,
-        field => (IReadOnlyList<ConsultInputRef>)field.Loaded.Select(loaded => loaded.Reference).ToList(),
+        field => (IReadOnlyList<ConsultInputRef>)(field.TakesSeveralDocuments
+          ? field.Entries.Select((entry, index) => (entry, index))
+              .Where(pair => pair.entry.Loaded is not null)
+              .Select(pair => pair.entry.Loaded!.Reference with { Position = pair.index })
+              .ToList()
+          : field.Loaded.Select(loaded => loaded.Reference).ToList()),
         StringComparer.Ordinal);
     // Null, not empty: a request with nothing loaded is the request it always was.
     return refs.Count > 0 ? refs : null;
@@ -3151,15 +3173,21 @@
 
   // #236: the attached documents. The file travels rather than its text, so
   // the server extracts it and the record says what read it. #428: an input
-  // lists its documents, in the order chosen.
+  // lists its documents, in the order chosen. #1144: in a several input each
+  // document carries its position in the one order (Entries) — the server
+  // places it among the typed rows there; a single text input sends the file
+  // it always did (no position).
   private Dictionary<string, IReadOnlyList<InputFilePayload>> SuppliedFiles() =>
     inputFields
       .Where(field => field.HasFile)
       .ToDictionary(
         field => field.Id,
-        field => (IReadOnlyList<InputFilePayload>)field.Documents
-          .Select(document => new InputFilePayload(document.ContentType, document.Content))
-          .ToList(),
+        field => (IReadOnlyList<InputFilePayload>)(field.TakesSeveralDocuments
+          ? field.Entries.Select((entry, index) => (entry, index))
+              .Where(pair => pair.entry.Document is not null)
+              .Select(pair => new InputFilePayload(pair.entry.Document!.ContentType, pair.entry.Document.Content, pair.index))
+              .ToList()
+          : field.Documents.Select(document => new InputFilePayload(document.ContentType, document.Content)).ToList()),
         StringComparer.Ordinal);
 
   // What every display surface and memento shows: the text that ran,
@@ -3985,6 +4013,35 @@
   /// draft bar and the re-attach memento both need the input text, and this
   /// is the client's only copy.
   /// </summary>
+  /// <summary>
+  /// #1144: one row of a several input, whichever kind — a class, so the
+  /// markup's @@key and every lookup are by reference (the storage items are
+  /// records with value equality). Exactly one of the three is set.
+  /// </summary>
+  private sealed class ArrayEntry
+  {
+    private ArrayEntry(ConsultInputNode? typed, AttachedDocument? document, LoadedDeliverable? loaded)
+    {
+      Typed = typed;
+      Document = document;
+      Loaded = loaded;
+    }
+
+    public ConsultInputNode? Typed { get; }
+    public AttachedDocument? Document { get; }
+    public LoadedDeliverable? Loaded { get; }
+
+    public static ArrayEntry Of(ConsultInputNode typed) => new(typed, null, null);
+    public static ArrayEntry Of(AttachedDocument document) => new(null, document, null);
+    public static ArrayEntry Of(LoadedDeliverable loaded) => new(null, null, loaded);
+
+    /// <summary>Whether the item this entry points at is still in the field's storage.</summary>
+    public bool IsStillIn(ConsultInputField field) =>
+      Typed is { } typed ? field.Rows.Any(row => ReferenceEquals(row, typed))
+      : Document is { } document ? field.Documents.Any(candidate => ReferenceEquals(candidate, document))
+      : field.Loaded.Any(candidate => ReferenceEquals(candidate, Loaded));
+  }
+
   private sealed record AttachedDocument(
     string FileName,
     string ContentType,
@@ -4143,11 +4200,79 @@
 
     public void DismissChooser() => wantsChooser = false;
 
-    // Numbering runs through every kind in the wire's order (EffectiveValue:
-    // typed → documents → previous-run), then the unchosen row.
-    public int DocumentOrdinal(int index) => Rows.Count + index + 1;
-    public int LoadedOrdinal(int index) => Rows.Count + Documents.Count + index + 1;
-    public int ChooserOrdinal => Rows.Count + Documents.Count + Loaded.Count + 1;
+    // #1144: ONE order for every kind of row. Membership is the storage lists'
+    // truth (Rows, Documents, Loaded); order is the sequence's. Reconciled on
+    // read: an item gone from its list leaves, a new one joins last in the
+    // default order (typed → documents → previous-run — the order every path
+    // sent before, so an untouched field is byte-identical). Every add path
+    // (ChooseText, a drop, a link, LoadDeliverable, Restore) and every remove
+    // path (RemoveRow, RemoveDocument, RemoveLoaded, Remove all, Clear) is
+    // therefore covered here, once. The storage items are records (value
+    // equality — the same deliverable loaded twice is two equal values), so
+    // every lookup is by reference.
+    private readonly List<ArrayEntry> entries = new();
+
+    public IReadOnlyList<ArrayEntry> Entries
+    {
+      get
+      {
+        entries.RemoveAll(entry => !entry.IsStillIn(this));
+        foreach (var row in Rows)
+        {
+          if (!entries.Any(entry => ReferenceEquals(entry.Typed, row))) entries.Add(ArrayEntry.Of(row));
+        }
+        foreach (var document in Documents)
+        {
+          if (!entries.Any(entry => ReferenceEquals(entry.Document, document))) entries.Add(ArrayEntry.Of(document));
+        }
+        foreach (var loaded in Loaded)
+        {
+          if (!entries.Any(entry => ReferenceEquals(entry.Loaded, loaded))) entries.Add(ArrayEntry.Of(loaded));
+        }
+
+        return entries;
+      }
+    }
+
+    /// <summary>
+    /// #1144: a row of any kind moves past a row of any other. The storage
+    /// lists are rewritten in the sequence's relative order afterwards, so the
+    /// typed value (Supplied), Problem's "row N", EffectiveText and the sent
+    /// positions all read one order. The SAME list instances are refilled —
+    /// Rows is Root.Rows — so @@key and focus keep their objects.
+    /// </summary>
+    public void MoveEntry(int index, int delta)
+    {
+      var ordered = Entries;
+      var target = index + delta;
+      if (index < 0 || index >= ordered.Count || target < 0 || target >= ordered.Count)
+      {
+        return;
+      }
+
+      (entries[index], entries[target]) = (entries[target], entries[index]);
+      Rows.Clear();
+      Rows.AddRange(entries.Where(entry => entry.Typed is not null).Select(entry => entry.Typed!));
+      Documents.Clear();
+      Documents.AddRange(entries.Where(entry => entry.Document is not null).Select(entry => entry.Document!));
+      Loaded.Clear();
+      Loaded.AddRange(entries.Where(entry => entry.Loaded is not null).Select(entry => entry.Loaded!));
+    }
+
+    public void RemoveDocument(AttachedDocument document)
+    {
+      var index = Documents.FindIndex(candidate => ReferenceEquals(candidate, document));
+      if (index >= 0) Documents.RemoveAt(index);
+    }
+
+    public void RemoveLoaded(LoadedDeliverable loaded)
+    {
+      var index = Loaded.FindIndex(candidate => ReferenceEquals(candidate, loaded));
+      if (index >= 0) Loaded.RemoveAt(index);
+    }
+
+    // Numbering runs through every kind in the one order, then the unchosen row.
+    public int ChooserOrdinal => Entries.Count + 1;
 
     // The single-document view the markup still renders (#429 PR A keeps it
     // until the multi-file input lands).
@@ -4194,6 +4319,21 @@
           return null;
         }
 
+        // #1144: a several input's rows are numbered in the one order, so an
+        // empty typed row is named by the number on screen, not its place
+        // among the typed rows alone.
+        if (TakesSeveralDocuments)
+        {
+          var ordered = Entries;
+          for (var index = 0; index < ordered.Count; index++)
+          {
+            if (ordered[index].Typed is { IsEmpty: true })
+            {
+              return $"{Label} row {index + 1} is empty; fill it in or remove it.";
+            }
+          }
+        }
+
         return Root.Problem(Label);
       }
     }
@@ -4232,15 +4372,18 @@
 
     public ConsultInputNode AddRow() => Root.AddRow();
 
-    public void RemoveRow(int index) => Root.RemoveRow(index);
-
-    public void MoveRow(int index, int delta) => Root.MoveRow(index, delta);
+    public void RemoveRow(ConsultInputNode row)
+    {
+      var index = Rows.FindIndex(candidate => ReferenceEquals(candidate, row));
+      if (index >= 0) Root.RemoveRow(index);
+    }
 
     public void Clear()
     {
       Root.Clear();
       Documents.Clear();
       Loaded.Clear();
+      entries.Clear();
       FileError = null;
       FileWarning = null;
       AcknowledgedShort = false;
@@ -4262,6 +4405,9 @@
       Root.CopyFrom(previous.Root);
       Documents.AddRange(previous.Documents);
       Loaded.AddRange(previous.Loaded);
+      // #1144: the items are shared by reference, so the previous order survives
+      // a same-shape package switch; the reconcile then finds nothing missing.
+      entries.AddRange(previous.entries.Where(entry => entry.IsStillIn(this)));
       wantsChooser = previous.wantsChooser;
     }
 
@@ -4269,9 +4415,10 @@
     /// What this input ran on, as a value: documents as the text read, one
     /// element each for an array. #872/#874: a several (array&lt;text&gt;) input
     /// combines its typed rows, its documents AND its previous-run
-    /// deliverables into one array, in the order the engine assembles them
-    /// (typed → documents → previous-run). A single-value input stays
-    /// one-or-the-other.
+    /// deliverables into one array — #1144: in the one order the clinician
+    /// arranged (Entries), which is the order sent and the order the engine
+    /// places them in. A typed portion that is not yet valid is left out, as
+    /// before. A single-value input stays one-or-the-other.
     /// </summary>
     public ConsultInputValue EffectiveValue
     {
@@ -4279,10 +4426,14 @@
       {
         if (TakesSeveralDocuments)
         {
-          return ConsultInputValue.OfArray(
-            (Supplied?.Elements ?? Array.Empty<ConsultInputValue>())
-              .Concat(Documents.Select(document => ConsultInputValue.OfText(document.PreviewText)))
-              .Concat(Loaded.Select(loaded => ConsultInputValue.OfText(loaded.Text))));
+          var typedOk = Supplied is not null;
+          return ConsultInputValue.OfArray(Entries
+            .Select(entry =>
+              entry.Typed is { } row ? (typedOk ? row.Supplied(requireTouched: false) : null)
+              : entry.Document is { } document ? ConsultInputValue.OfText(document.PreviewText)
+              : ConsultInputValue.OfText(entry.Loaded!.Text))
+            .Where(element => element is not null)
+            .Select(element => element!));
         }
 
         if (HasFile)

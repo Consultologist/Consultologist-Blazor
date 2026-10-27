@@ -610,6 +610,25 @@ POST /api/ConsultGenerationJobs
 > and the rows show in that order; a document row among the typed rows
 > is #1144.
 
+> **The order is the order sent (#1144, 2026-10-27).** The three kinds
+> of row share **one order**: Up and Down on every row — typed, document
+> or previous-run — move it past any other, and the numbering, the
+> preview and the memento read that one sequence. On the wire a several
+> input sends each document's and each previous-run reference's
+> `position` (a trailing optional on `inputFiles[id][]` and
+> `inputRefs[id][]`): its index in the combined array. The server places
+> them (`PlaceElements`): an entry with a position takes the first free
+> slot at or after it (ascending; documents before references, list order
+> on ties; a position past the end clamps to the last slot), and the typed
+> rows fill the remaining slots in their order, followed by any
+> unpositioned documents and references — so a request carrying no
+> positions (an older client, email, the satellites, a form response, a
+> rerun) combines exactly as before. Every element's origin rides with it
+> to its actual index: `inputOrigins` was positional already, so the
+> provenance contract does not change, and the effective-input hash is
+> over the elements in the order sent, as it always was. A single text
+> input sends no position (its request is byte-identical).
+
 ### Questionnaire file (#991, 2026-10-17)
 
 An object input declared `expectedContent: form` takes a **questionnaire response saved as a

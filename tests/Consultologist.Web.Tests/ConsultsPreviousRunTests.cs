@@ -257,7 +257,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         ChooseNote(page, 0);
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
 
-        page.FindAll(".input-field__loaded fluent-button").First(b => b.TextContent.Contains("Remove")).Click();
+        page.Find(".input-field__loaded fluent-button[title='Remove this loaded deliverable']").Click();
 
         page.WaitForAssertion(() => Assert.Empty(page.FindAll(".input-field__loaded")));
     }
@@ -273,7 +273,7 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
         page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
         Assert.Null(Chooser(page));
 
-        page.FindAll(".input-field__loaded fluent-button").First(b => b.TextContent.Contains("Remove")).Click();
+        page.Find(".input-field__loaded fluent-button[title='Remove this loaded deliverable']").Click();
 
         page.WaitForAssertion(() => Assert.Empty(page.FindAll(".input-field__loaded")));
         Assert.NotNull(Chooser(page));
@@ -294,6 +294,37 @@ public class ConsultsPreviousRunTests : ClientRenderTestContext
 
         Assert.Equal("2.", page.Find(".input-field__loaded .input-field__row-number").TextContent.Trim());
         Assert.Equal(new[] { "1.", "2." }, page.FindAll(".input-field__row-number").Select(n => n.TextContent.Trim()));
+
+        // #1144: the reference carries its position in the one order.
+        CaptureSubmit();
+        page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
+        page.FindAll("fluent-button").Last().Click();
+        page.WaitForAssertion(() => Assert.NotNull(sentRefs));
+        Assert.Equal(new ConsultInputRef(HeldRun, "consult", 1), Assert.Single(sentRefs!["prior_notes"]));
+    }
+
+    [Fact]
+    public void ALoadedChipMovedAboveATypedRow_IsNumberedFirst_AndSentAtPositionZero()
+    {
+        WithRuns();
+        CaptureSubmit();
+        var page = Rendered(this);
+        page.FindAll("fluent-text-area")[0].Change("Referral text, long enough to be a referral and pass the floor for content.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("A prior typed note.");
+        ChooseNote(page, 1);
+        page.WaitForAssertion(() => Assert.NotEmpty(page.FindAll(".input-field__loaded")));
+
+        var chip = page.Find(".input-field__loaded");
+        Assert.True(chip.HasAttribute("blazor:onclick:preventdefault"));
+        chip.QuerySelector("fluent-button[title='Move up']")!.Click();
+
+        page.WaitForAssertion(() => Assert.Equal("1.", page.Find(".input-field__loaded .input-field__row-number").TextContent.Trim()));
+        page.FindAll("fluent-button").Last().Click();
+
+        page.WaitForAssertion(() => Assert.NotNull(sentRefs));
+        Assert.Equal(new ConsultInputRef(HeldRun, "consult", 0), Assert.Single(sentRefs!["prior_notes"]));
+        Assert.Equal("A prior typed note.", Assert.Single(sentInputs!["prior_notes"].Elements!).Canonical);
     }
 
     [Fact]

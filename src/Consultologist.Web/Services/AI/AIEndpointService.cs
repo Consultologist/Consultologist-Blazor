@@ -521,15 +521,19 @@ public record ConsultGenerationRequest(
     // form-response origin.
     Dictionary<string, InputFilePayload>? InputFormFiles = null);
 
-/// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef.</summary>
-public sealed record ConsultInputRef(string JobId, string ResultId);
+/// <summary>Mirrors Consultologist.Api.Models.ConsultInputRef. #1144: Position
+/// is the element's index in the combined array of a several input; null for a
+/// single text input.</summary>
+public sealed record ConsultInputRef(string JobId, string ResultId, int? Position = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputFormRef.</summary>
 public sealed record ConsultInputFormRef(string FormId, string ResponseId);
 
 /// <summary>Mirrors Consultologist.Api.Models.InputFilePayload. byte[] rides
-/// the JSON body as base64; no filename is sent.</summary>
-public sealed record InputFilePayload(string ContentType, byte[] Content);
+/// the JSON body as base64; no filename is sent. #1144: Position is the
+/// element's index in the combined array of a several input; null for a single
+/// text input.</summary>
+public sealed record InputFilePayload(string ContentType, byte[] Content, int? Position = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultInputOrigin. Absence
 /// means "not recorded", never "typed". One per document, positionally, since

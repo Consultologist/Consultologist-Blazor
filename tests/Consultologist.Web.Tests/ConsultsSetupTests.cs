@@ -1285,6 +1285,8 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal(
             new[] { "Second note.", "First note." },
             documents.Select(document => System.Text.Encoding.UTF8.GetString(document.Content)));
+        // #1144: each document's position in the one order rides along.
+        Assert.Equal(new int?[] { 0, 1 }, documents.Select(document => document.Position));
         Assert.False(sentInputs!.ContainsKey("prior_notes"));
     }
 
@@ -1335,7 +1337,178 @@ public class ConsultsTypedIntakeTests : ClientRenderTestContext
         Assert.Equal("Typed row.", typed.Elements![0].Canonical);
 
         Assert.True(sentFiles!.ContainsKey("prior_notes"));
-        Assert.Single(sentFiles["prior_notes"]);
+        // #1144: the document sits after the typed row — position 1.
+        Assert.Equal(1, Assert.Single(sentFiles["prior_notes"]).Position);
+    }
+
+    // ----- #1144: the element order is the order sent ---------------------------------------------
+
+    private static IEnumerable<string> EntryKinds(IRenderedComponent<Consults> page) =>
+        page.FindAll(".input-field__row:not(.input-field__row--unchosen), .input-field__document")
+            .Select(element => element.ClassList.Contains("input-field__document") ? "document" : "typed");
+
+    private IRenderedComponent<Consults> TypedRowAndOneDocument()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Typed row.");
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
+        Assert.Equal(new[] { "typed", "document" }, EntryKinds(page));
+        return page;
+    }
+
+    [Fact]
+    public void ADocumentMovedAboveATypedRow_IsNumberedFirst_AndSentAtPositionZero()
+    {
+        var page = TypedRowAndOneDocument();
+
+        // The chip's Move up is the second "Move up" on the page (the typed row's is first, disabled).
+        page.FindAll("fluent-button[title='Move up']")[1].Click();
+
+        Assert.Equal(new[] { "document", "typed" }, EntryKinds(page));
+        Assert.Equal(new[] { "1.", "2." }, RowNumbers(page));
+        Assert.Equal("1.", page.Find(".input-field__document .input-field__row-number").TextContent.Trim());
+
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(0, Assert.Single(sentFiles!["prior_notes"]).Position);
+        Assert.Equal("Typed row.", Assert.Single(sentInputs!["prior_notes"].Elements!).Canonical);
+    }
+
+    [Fact]
+    public void ATypedRowsDownArrow_IsLive_WhenADocumentFollows()
+    {
+        var page = TypedRowAndOneDocument();
+
+        var down = page.FindAll("fluent-button[title='Move down']")[0];
+        Assert.False(down.HasAttribute("disabled"));
+        down.Click();
+
+        Assert.Equal(new[] { "document", "typed" }, EntryKinds(page));
+        page.FindAll("fluent-button").Last().Click();
+        Assert.Equal(0, Assert.Single(sentFiles!["prior_notes"]).Position);
+    }
+
+    [Fact]
+    public void TypedRowsAroundADocument_KeepTheirRelativeOrder()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Row A.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[2].Change("Row B.");
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
+
+        // Up past Row B, then up past Row A, then back down once: the typed rows
+        // never change places with each other, only with the chip.
+        page.FindAll("fluent-button[title='Move up']")[2].Click();
+        Assert.Equal(new[] { "typed", "document", "typed" }, EntryKinds(page));
+        page.FindAll("fluent-button[title='Move up']")[1].Click();
+        Assert.Equal(new[] { "document", "typed", "typed" }, EntryKinds(page));
+        page.FindAll("fluent-button[title='Move down']")[0].Click();
+        Assert.Equal(new[] { "typed", "document", "typed" }, EntryKinds(page));
+        Assert.Equal(new[] { "Row A.", "Row B." }, new[] { FieldText(page, 1), FieldText(page, 2) });
+
+        page.FindAll("fluent-button").Last().Click();
+        Assert.Equal(new[] { "Row A.", "Row B." }, sentInputs!["prior_notes"].Elements!.Select(e => e.Canonical));
+        Assert.Equal(1, Assert.Single(sentFiles!["prior_notes"]).Position);
+    }
+
+    [Fact]
+    public void SwappingTwoTypedRows_StillReordersWhatIsSent_WithADocumentBelow()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Row A.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[2].Change("Row B.");
+        DropOnNotes(page, InputFileContent.CreateFromText("First note.", "first.txt"));
+
+        page.FindAll("fluent-button[title='Move up']")[1].Click();
+
+        page.FindAll("fluent-button").Last().Click();
+        Assert.Equal(new[] { "Row B.", "Row A." }, sentInputs!["prior_notes"].Elements!.Select(e => e.Canonical));
+        Assert.Equal(2, Assert.Single(sentFiles!["prior_notes"]).Position);
+    }
+
+    [Fact]
+    public void RemovingADocumentAmongTypedRows_KeepsTheOthersOrder_AndRemoveAllKeepsTheTypedOrder()
+    {
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: WithNotes(), specVersion: 9);
+        WithExtractionOfEachFile();
+        CaptureSubmitWithFiles();
+        var page = Render<Consults>();
+        page.FindAll("fluent-text-area")[0].Change("62F, cough and weight loss over three months, for assessment.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[1].Change("Row A.");
+        AddTextRow(page);
+        page.FindAll("fluent-text-area")[2].Change("Row B.");
+        DropOnNotes(page,
+            InputFileContent.CreateFromText("First note.", "first.txt"),
+            InputFileContent.CreateFromText("Second note.", "second.txt"));
+        page.FindAll("fluent-button[title='Move up']")[2].Click();   // first.txt above Row B
+        page.FindAll("fluent-button[title='Move up']")[3].Click();   // second.txt above Row B
+        page.FindAll("fluent-button[title='Move up']")[2].Click();   // second.txt above first.txt
+        Assert.Equal(new[] { "typed", "document", "document", "typed" }, EntryKinds(page));
+        Assert.Equal(new[] { "second.txt", "first.txt" }, ChipNames(page));
+
+        page.FindAll("fluent-button[title='Remove this file']")[0].Click();
+        Assert.Equal(new[] { "typed", "document", "typed" }, EntryKinds(page));
+        Assert.Equal(new[] { "1.", "2.", "3." }, RowNumbers(page));
+        Assert.Equal(new[] { "first.txt" }, ChipNames(page));
+
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Remove all")).Click();
+        Assert.Equal(new[] { "typed", "typed" }, EntryKinds(page));
+        page.FindAll("fluent-button").Last().Click();
+        Assert.Equal(new[] { "Row A.", "Row B." }, sentInputs!["prior_notes"].Elements!.Select(e => e.Canonical));
+    }
+
+    [Fact]
+    public void Numbering_FollowsTheOrderAfterAMove_AndTheUnchosenRowStaysLast()
+    {
+        var page = TypedRowAndOneDocument();
+        page.FindAll("fluent-button[title='Move up']")[1].Click();
+        page.Find(".input-field__add").Click();
+
+        Assert.Equal(new[] { "1.", "2.", "3." }, RowNumbers(page));
+        Assert.NotNull(Chooser(page));
+        Assert.Equal("3.", Chooser(page)!.QuerySelector(".input-field__row-number")!.TextContent.Trim());
+    }
+
+    [Fact]
+    public void TheMemento_HoldsTheInterleavedOrder()
+    {
+        var page = TypedRowAndOneDocument();
+        page.FindAll("fluent-button[title='Move up']")[1].Click();
+
+        page.FindAll("fluent-button").Last().Click();
+
+        Assert.Equal(
+            new[] { "First note.", "Typed row." },
+            JobSession.Current!.Values["prior_notes"].Elements!.Select(e => e.Canonical));
+    }
+
+    [Fact]
+    public void TheChipsArrows_SitInsideTheGuardedChip()
+    {
+        var page = TypedRowAndOneDocument();
+
+        var chip = page.Find(".input-field__document");
+        Assert.True(chip.HasAttribute("blazor:onclick:preventdefault"));
+        Assert.Equal(3, chip.QuerySelectorAll(".input-field__row-buttons fluent-button").Length);
     }
 
     [Fact]
