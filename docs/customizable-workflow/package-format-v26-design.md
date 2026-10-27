@@ -1197,6 +1197,28 @@ be published — `macros/<folder>/<file>` joins the admitted shapes, the folder 
 folder's. A macro's gate is the reader's edge, not a gating read (it is judged at the render, never at the
 boundary). Left to the record (#1156) and the bump (#1149).)*
 
+*(#1156, 2026-10-27 — the provenance record at storage 8, as § 1.5 and § 10 say; two PRs in two repos, in
+order: the registry first (`consultologist-provenance` PR #41 publishes `provenance@v2026.10.7` on merge:
+`recordStorageVersions` += 8, the record's `nodes` row at 8, a flow row's instance in `nodeOutputs`, a
+document's `sources` and `composedHash`, the branch spelling, hash-definitions § 4's one sentence that a `for`
+node is the aggregator it describes), then the engine with the submodule bumped to that merge (the
+ladder-equality test pins the two together). **Two decisions (2026-10-27):** the flow row's discriminator is
+spelled **`kind`** on the wire and the engine's property is **renamed `Kind`** — `Flow` was #1154's naming
+slip, not a design choice, and no 26 record exists (26 is inert until the bump; the Durable replay pin was
+the only site); the nodes row **follows the design** — `prompt` (the path) in place of `promptId`, `forEach`
+and `aggregate` absent, a body node's `in` and the loop row's `collection` saying what they said. **The finding
+that shaped it:** `ForEach` and `PromptId` are the orchestrator's working fields (the scheduler fans a body
+node through `ForEach` at fifteen sites; the activity input takes `PromptId`), so the entity keeps them and the
+**served record** projects (`ConsultNodeDescriptor.AsRecordRowAt8`, applied in `ToResponse` at 26) — the
+contract is the served record ("field names are as served"), and `ToResponse` already projected (documents
+withheld unless Completed). The row gains `Prompt` (the path, set at 26 beside `PromptId`) and `Count` (a loop
+row's settled fan — the collection sets the starter and the boundary hold; an item gated off at job start is
+not counted). **The stamp:** one entity helper (`Stamp(state, at25)`) at the nine sites writes 8 when the
+package is at 26, else what the path wrote (6 for a node, 7 for a deliverable); `Seed` stamps 8 at creation,
+so a 26 record never says 2, 6 or 7 — the registry's sentence. A 25 run still writes 6/7 (the existing pins
+unchanged). History's DAG reads `forEach`/`promptId` to mark a fanned node and loses the marker for 26 runs
+until a Web follow-up — noted, not filed. Left to the bump (#1149).)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,
