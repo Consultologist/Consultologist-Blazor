@@ -144,7 +144,7 @@ internal static class ConsultRenderPayload
 
         foreach (var readId in node.Reads ?? Array.Empty<string>())
         {
-            if (nodesById.GetValueOrDefault(readId) is not { Flow: ConsultNodeFlows.For, Collection: { } collection, Ret: { } ret } loop)
+            if (nodesById.GetValueOrDefault(readId) is not { Kind: ConsultNodeFlows.For, Collection: { } collection, Ret: { } ret } loop)
             {
                 continue;
             }
@@ -173,7 +173,7 @@ internal static class ConsultRenderPayload
     {
         var rets = (node.Reads ?? Array.Empty<string>())
             .Select(readId => (readId, nodesById.GetValueOrDefault(readId)))
-            .Where(pair => pair.Item2 is { Flow: not null, Ret: not null })
+            .Where(pair => pair.Item2 is { Kind: not null, Ret: not null })
             .ToDictionary(pair => pair.readId, pair => pair.Item2!.Ret!, StringComparer.Ordinal);
         return rets.Count > 0 ? rets : null;
     }

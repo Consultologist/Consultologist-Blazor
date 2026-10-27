@@ -149,12 +149,12 @@ public class V26JobStartTests
             package.Nodes!.First(n => n.Id == "section_notes"), null, formats: package.Formats, reads: derived["section_notes"], flows: flows);
         Assert.Equal("snippet.sections", body.ForEach);
         Assert.Equal("sections", body.In);
-        Assert.Null(body.Flow);
+        Assert.Null(body.Kind);
         Assert.Equal("prose", body.Format);
 
         var loop = ConsultGenerationJobStarter.DescribeNode(
             package.Nodes!.First(n => n.Id == "sections"), null, formats: package.Formats, reads: derived["sections"], flows: flows);
-        Assert.Equal(("for", "snippet.sections", "section_notes"), (loop.Flow, loop.Collection, loop.Ret));
+        Assert.Equal(("for", "snippet.sections", "section_notes"), (loop.Kind, loop.Collection, loop.Ret));
         Assert.Equal(new[] { "section_notes" }, loop.Body);
         Assert.Null(loop.Reads);
         Assert.Null(loop.Format);
@@ -186,7 +186,7 @@ public class V26JobStartTests
 
         var flows = ConsultGenerationJobStarter.FlowsOf(package);
         var row = ConsultGenerationJobStarter.DescribeNode(package.Nodes!.First(n => n.Id == "triage"), null, formats: package.Formats, flows: flows, branch: @else.Branches["triage"]);
-        Assert.Equal(("if", "input.kind == \"new\"", "brief_update", "else"), (row.Flow, row.Expression, row.Ret, row.Branch));
+        Assert.Equal(("if", "input.kind == \"new\"", "brief_update", "else"), (row.Kind, row.Expression, row.Ret, row.Branch));
         Assert.Equal(new[] { "full_workup", "brief_update" }, row.Body);
     }
 
@@ -238,7 +238,7 @@ public class V26JobStartTests
             nodeTexts: new Dictionary<string, string> { ["scope"] = "out_of_scope" }, run: facts.Run, profile: facts.Profile);
 
         var route = decision.Nodes.First(n => n.Id == "route");
-        Assert.Equal(("case", "node.scope.value", "letter", "out_of_scope"), (route.Flow, route.Expression, route.Ret, route.Branch));
+        Assert.Equal(("case", "node.scope.value", "letter", "out_of_scope"), (route.Kind, route.Expression, route.Ret, route.Branch));
         Assert.Equal(new[] { "scope" }, route.Reads);
         Assert.Contains(decision.Nodes, n => n.Id == "letter");
         Assert.DoesNotContain(decision.Nodes, n => n.Id == "plan");
@@ -333,5 +333,53 @@ public class V26JobStartTests
         var closing = scope.Macros["closing"];
         Assert.Equal(("closing", "Closing", "Closing: {{ profile.name }}.", "Add a closing line if the plan changed.", "input.kind == \"new\""), (closing.Id, closing.Name, closing.Text, closing.Instruction, closing.If));
         Assert.True(scope.Labelled);
+    }
+
+    // ----- the record's rows at storage 8 (#1156) ----------------------------------------------
+
+    [Fact]
+    public void ALoopRow_CarriesTheSettledCount_AndAPromptNodeItsPromptByPath()
+    {
+        var package = Package();
+        var flows = ConsultGenerationJobStarter.FlowsOf(package);
+        var skeleton = ConsultGenerationJobStarter.ResolveSkeleton(package, NewPatient, Scope(package, NewPatient));
+
+        var loop = ConsultGenerationJobStarter.DescribeNode(
+            package.Nodes!.First(n => n.Id == "sections"), null, formats: package.Formats, flows: flows, collectionSets: skeleton.CollectionSets);
+        Assert.Equal(("for", 2), (loop.Kind, loop.Count));
+        Assert.Null(ConsultGenerationJobStarter.DescribeNode(package.Nodes!.First(n => n.Id == "sections"), null, formats: package.Formats, flows: flows).Count);
+
+        // The count is the SETTLED fan's: an item gated off at job start is not counted.
+        var gated = Package(withFiles: files => files["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "input.kind == \"new\" && item.id == \"plan\"") + "Plan.");
+        var settled = ConsultGenerationJobStarter.ResolveSkeleton(gated, FollowUp, Scope(gated, FollowUp));
+        var settledLoop = ConsultGenerationJobStarter.DescribeNode(
+            gated.Nodes!.First(n => n.Id == "sections"), null, formats: gated.Formats, flows: ConsultGenerationJobStarter.FlowsOf(gated), collectionSets: settled.CollectionSets);
+        Assert.Equal(1, settledLoop.Count);
+
+        var body = ConsultGenerationJobStarter.DescribeNode(
+            package.Nodes!.First(n => n.Id == "section_notes"), null, formats: package.Formats, flows: flows, manifest: package.Manifest);
+        Assert.Equal(("prompts/section.md", "prompts/section.md", "snippet.sections"), (body.Prompt, body.PromptId, body.ForEach));
+        Assert.Null(body.Count);
+
+        // The served row (storage 8): prompt by path, no promptId / forEach / aggregate; in and the loop say the rest.
+        var row = body.AsRecordRowAt8();
+        Assert.Equal(("prompts/section.md", null, null, null, "sections"), (row.Prompt, row.PromptId, row.ForEach, row.Aggregate, row.In));
+        var json = System.Text.Json.JsonSerializer.Serialize(loop.AsRecordRowAt8(), new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web) { DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull });
+        Assert.Contains("\"kind\":\"for\"", json);
+        Assert.Contains("\"count\":2", json);
+        Assert.DoesNotContain("\"flow\"", json);
+    }
+
+    [Fact]
+    public void Below26_APromptNodeHasNoPromptPath_AndTheRowIsServedAsIs()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        var package = WorkflowPackageStoreMaterialiseTests.Load(manifest, files);
+        var node = package.Nodes!.First(n => n.Prompt is not null);
+
+        var descriptor = ConsultGenerationJobStarter.DescribeNode(node, null, formats: package.Formats, manifest: package.Manifest);
+
+        Assert.Null(descriptor.Prompt);
+        Assert.Equal(node.Prompt, descriptor.PromptId);
     }
 }

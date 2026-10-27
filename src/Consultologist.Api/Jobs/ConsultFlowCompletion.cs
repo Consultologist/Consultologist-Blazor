@@ -35,7 +35,7 @@ internal static class ConsultFlowCompletion
             return null; // undecided, or no branch taken: the skipped set's
         }
 
-        if (flow.Flow != ConsultNodeFlows.For)
+        if (flow.Kind != ConsultNodeFlows.For)
         {
             return outputs.TryGetValue(ret.Id, out var branch) ? new Composed(branch, null) : null;
         }

@@ -42,7 +42,7 @@ internal static class ConsultDeliverableComposition
             var source = nodesById.GetValueOrDefault(sourceId)
                 ?? throw new InvalidOperationException($"Deliverable '{deliverable.ResultId}' sources node '{sourceId}', which the job does not carry.");
 
-            if (source.Flow == ConsultNodeFlows.For)
+            if (source.Kind == ConsultNodeFlows.For)
             {
                 var ret = source.Ret is { } retId && nodesById.TryGetValue(retId, out var returned)
                     ? returned

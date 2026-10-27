@@ -124,8 +124,8 @@ public class V26RenderTests
     // ----- the orchestrator's half -------------------------------------------------------
 
     private static readonly ConsultNodeDescriptor Body = new("section_notes", "Section notes", ForEach: "snippet.sections", Format: "prose", In: "sections");
-    private static readonly ConsultNodeDescriptor Loop = new("sections", "Sections", Flow: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes");
-    private static readonly ConsultNodeDescriptor Triage = new("triage", "Triage", Flow: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup" }, Ret: "full_workup", Branch: "then");
+    private static readonly ConsultNodeDescriptor Loop = new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes");
+    private static readonly ConsultNodeDescriptor Triage = new("triage", "Triage", Kind: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup" }, Ret: "full_workup", Branch: "then");
     private static readonly ConsultNodeDescriptor Reader = new("summary", "Summary", Format: "prose", Reads: new[] { "sections", "triage" });
 
     [Fact]

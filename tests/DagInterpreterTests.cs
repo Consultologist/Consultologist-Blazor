@@ -240,7 +240,7 @@ public class ConsultNodeSchedulerTests
     public void At26_AReaderOfALoop_WaitsOnTheLoopRow_NotTheItems()
     {
         var body = new ConsultNodeDescriptor("section_notes", "Section notes", ForEach: "snippet.sections", Format: "prose", In: "sections");
-        var loop = new ConsultNodeDescriptor("sections", "Sections", Flow: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes");
+        var loop = new ConsultNodeDescriptor("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes");
         var reader = new ConsultNodeDescriptor("summary", "Summary", Format: "prose", Reads: new[] { "sections" });
         var nodesById = new[] { body, loop, reader }.ToDictionary(n => n.Id, StringComparer.Ordinal);
 
@@ -252,7 +252,7 @@ public class ConsultNodeSchedulerTests
     [Fact]
     public void At26_AFlowNodesDependencies_AreItsDecisionsReads_NotItsBodies()
     {
-        var route = new ConsultNodeDescriptor("route", "Route", Reads: new[] { "scope" }, Flow: "case", Expression: "node.scope.value", Body: new[] { "plan", "letter" });
+        var route = new ConsultNodeDescriptor("route", "Route", Reads: new[] { "scope" }, Kind: "case", Expression: "node.scope.value", Body: new[] { "plan", "letter" });
 
         Assert.Equal(new[] { "scope" }, ConsultNodeScheduler.NodeDependencies(route));
     }
@@ -260,7 +260,7 @@ public class ConsultNodeSchedulerTests
     [Fact]
     public void At26_ASkippedDependency_IsSatisfied()
     {
-        var triage = new ConsultNodeDescriptor("triage", "Triage", Flow: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup" }, Branch: "none");
+        var triage = new ConsultNodeDescriptor("triage", "Triage", Kind: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup" }, Branch: "none");
         var reader = new ConsultNodeDescriptor("summary", "Summary", Format: "prose", Reads: new[] { "triage", "extract" });
         var nodesById = new[] { triage, reader, new ConsultNodeDescriptor("extract", "Extract", Format: "concept_list") }.ToDictionary(n => n.Id, StringComparer.Ordinal);
         var skipped = new HashSet<string>(StringComparer.Ordinal) { "triage" };
@@ -1003,8 +1003,8 @@ public class ConsultGenerationNodeEntityTests
     {
         // The confusion #373 exists to end: two unrelated ladders that collide
         // at 7 by coincidence. SchemaVersion is stamped 6 or 7 by whichever
-        // code path produced the record and is never 8 — so a v8 job used to
-        // display "schema v7".
+        // code path produced the record below specVersion 26 (and 8 by every
+        // path of a 26 job — #1156) — so a v8 job used to display "schema v7".
         var (entity, state) = CreateEntity();
 
         entity.Initialize(new ConsultGenerationJobInitialize(
@@ -1122,6 +1122,60 @@ public class ConsultGenerationNodeEntityTests
 
         Assert.Equal(ConsultGenerationNodeStatuses.Completed, state().NodeOutputs!["sections"].Status);
         Assert.Equal(state().TotalStageCount, state().CompletedStageCount);
+    }
+
+    // ----- record storage 8 (#1156): a 26 job stamps 8 on every path ------------------------------
+
+    private static (ConsultGenerationJobEntity Entity, Func<ConsultGenerationJobState> State) CreateEntityAt(int specVersion)
+    {
+        var (entity, state) = CreateEntity();
+        entity.Initialize(new ConsultGenerationJobInitialize("job-1", "user-1", new[] { Item("hpi", "History of Present Illness") }, PackageSpecVersion: specVersion)).GetAwaiter().GetResult();
+        return (entity, state);
+    }
+
+    [Fact]
+    public void A26Job_IsAtStorage8_FromItsCreation_AndOnEveryPath()
+    {
+        var (entity, state) = CreateEntityAt(26);
+        Assert.Equal(8, state().SchemaVersion);
+
+        entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate("extract", "Extract", null, "i", "o", 1, 3));
+        Assert.Equal(8, state().SchemaVersion);
+        entity.MarkNodeSkipped(new ConsultGenerationNodeSkip("triage", "Triage", "took no branch", 2, 3));
+        Assert.Equal(8, state().SchemaVersion);
+        entity.RecordFailedDocument(new ConsultFailedDocument("letter", "Letter", "The plan must cover the referral.", ComposedHash: "abc"));
+        Assert.Equal(8, state().SchemaVersion);
+        entity.CompleteResultDocument(new ConsultGenerationResultDocument("consult_note", "Consultation note", "The note.", 0)).GetAwaiter().GetResult();
+        Assert.Equal(8, state().SchemaVersion);
+        entity.MarkNodeFailed(new ConsultGenerationNodeFailure("assessment", "Assessment", ConsultGenerationNodeStatuses.Failed, "boom", Array.Empty<ConsultItemStepDescriptor>())).GetAwaiter().GetResult();
+        Assert.Equal(8, state().SchemaVersion);
+    }
+
+    [Fact]
+    public void A25Job_StillStampsTheShapeItsPathWrote()
+    {
+        var (entity, state) = CreateEntityAt(25);
+        Assert.Equal(2, state().SchemaVersion);
+
+        entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate("extract", "Extract", null, "i", "o", 1, 3));
+        Assert.Equal(6, state().SchemaVersion);
+        entity.CompleteResultDocument(new ConsultGenerationResultDocument("consult_note", "Consultation note", "The note.", 0)).GetAwaiter().GetResult();
+        Assert.Equal(7, state().SchemaVersion);
+    }
+
+    [Fact]
+    public void A26JobsResponse_ServesTheStorage8Rows()
+    {
+        var (entity, state) = CreateEntityAt(26);
+        var working = new ConsultNodeDescriptor("section_notes", "Section notes", "prompts/section.md", ForEach: "snippet.sections", In: "sections", Format: "prose", Prompt: "prompts/section.md");
+        state().Nodes = new List<ConsultNodeDescriptor> { working, new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes", Count: 2) };
+
+        var served = state().ToResponse().Nodes!;
+
+        Assert.Equal((null, null, "prompts/section.md", "sections"), (served[0].PromptId, served[0].ForEach, served[0].Prompt, served[0].In));
+        Assert.Equal(("for", 2), (served[1].Kind, served[1].Count));
+        // The entity keeps its working fields.
+        Assert.Equal("snippet.sections", state().Nodes![0].ForEach);
     }
 }
 

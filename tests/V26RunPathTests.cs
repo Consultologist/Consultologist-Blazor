@@ -19,9 +19,9 @@ namespace Consultologist.Api.Tests;
 public class V26RunPathTests
 {
     private static readonly ConsultNodeDescriptor Body = new("section_notes", "Section notes", ForEach: "snippet.sections", Format: "prose", In: "sections");
-    private static readonly ConsultNodeDescriptor Loop = new("sections", "Sections", Flow: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes");
+    private static readonly ConsultNodeDescriptor Loop = new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "section_notes");
     private static readonly ConsultNodeDescriptor FullWorkup = new("full_workup", "Full work-up", Format: "prose", In: "triage");
-    private static readonly ConsultNodeDescriptor Triage = new("triage", "Triage", Flow: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup", "brief_update" }, Ret: "full_workup", Branch: "then");
+    private static readonly ConsultNodeDescriptor Triage = new("triage", "Triage", Kind: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup", "brief_update" }, Ret: "full_workup", Branch: "then");
     private static readonly ConsultNodeDescriptor Assessment = new("assessment", "Assessment", Format: "prose");
 
     private static readonly IReadOnlyList<IReadOnlyDictionary<string, string>> Items = new[]
