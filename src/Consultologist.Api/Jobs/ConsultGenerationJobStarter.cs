@@ -1975,20 +1975,46 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // v25 (#1038): the render scope a 25 placement's when is judged over.
         ConsultConditionScope? scope = null)
     {
-        if (result.MacroConditions is not { Count: > 0 } conditions || conditions.All(c => c.At is null) || result.MacroPlacements is null)
+        var refused = new List<ConsultExcludedMacro>();
+
+        // v26 (#1177, design § 2.2): the macro's own gate first — the source is
+        // the ceiling. Judged BEFORE the ≤24 fallback below: a 26 deliverable
+        // placing an inert macro with no instance gate at all carries no macro
+        // condition, and the fallback would keep it. Below 26 nothing is inert.
+        var live = result.MacroPlacements;
+        if (scope is not null && live is not null)
+        {
+            var kept = new List<ConsultMacroPlacement>();
+            foreach (var placement in live)
+            {
+                if (scope.InertReason(placement.Id) is { } inertReason)
+                {
+                    refused.Add(new ConsultExcludedMacro(result.Id, placement.Id, inertReason));
+                    continue;
+                }
+
+                kept.Add(placement);
+            }
+
+            live = kept;
+        }
+
+        var conditions = result.MacroConditions;
+        if (live is null || (refused.Count == 0 && (conditions is not { Count: > 0 } || conditions.All(c => c.At is null))))
         {
             var (macros, excluded) = DecideMacroWhens(result, supplied, classifications);
             return (macros, excluded, result.MacroPlacements);
         }
 
-        var refused = new List<ConsultExcludedMacro>();
         var keptPlacements = new List<ConsultMacroPlacement>();
 
-        foreach (var placement in result.MacroPlacements)
+        foreach (var placement in live)
         {
-            var gate = conditions.FirstOrDefault(c => string.Equals(c.MacroId, placement.Id, StringComparison.Ordinal) && string.Equals(c.At, placement.At, StringComparison.Ordinal));
+            var gate = conditions?.FirstOrDefault(c => string.Equals(c.MacroId, placement.Id, StringComparison.Ordinal) && string.Equals(c.At, placement.At, StringComparison.Ordinal));
+            // v26 (#1175): the gate keyed `if`, judged under the 26 subject; a 25 when as it was.
+            var gateText = gate?.If ?? gate?.When;
 
-            if (gate is { When: { } gateWhen })
+            if (gateText is not null)
             {
                 // v25 (#1038): judged over the scope; the fixed reason form.
                 if (scope is null)
@@ -1996,9 +2022,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     throw new InvalidOperationException($"Deliverable '{result.Id}' macro '{placement.Id}' carries a specVersion 25 condition, and no render scope was given to judge it.");
                 }
 
-                if (!scope.Holds($"Deliverable '{result.Id}' macro '{placement.Id}' condition", gateWhen))
+                if (!scope.Holds($"Deliverable '{result.Id}' macro '{placement.Id}' {(gate!.If is not null ? "if" : "condition")}", gateText))
                 {
-                    refused.Add(new ConsultExcludedMacro(result.Id, placement.Id, ConsultConditionScope.Reason(gateWhen)));
+                    refused.Add(new ConsultExcludedMacro(result.Id, placement.Id, ConsultConditionScope.Reason(gateText)));
                     continue;
                 }
             }
@@ -3313,7 +3339,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // expanded — a scheduling dependency the Phase 1 snapshot missed).
             Macros: node.Macros?
                 .Select(macro => new ConsultNodeMacroDescriptor(
-                    macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles)))
+                    macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles), macro.If))
                 .ToList());
     }
 
@@ -3405,7 +3431,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             CustomSchemaHash: producer == WorkflowFormatProducers.Custom ? formatHash : null,
             Macros: node.Macros?
                 .Select(macro => new ConsultNodeMacroDescriptor(
-                    macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles)))
+                    macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles), macro.If))
                 .ToList(),
             Format: formatId,
             Producer: producer,

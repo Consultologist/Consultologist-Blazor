@@ -92,6 +92,14 @@ public sealed class RenderDeliverableMacrosActivity
         var scope = ConsultRenderPayload.ScopeFor(
             input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, item: null, forEach: null, input.Run, input.Profile, package,
             deliverables: input.Deliverables);
+        // v26 (#1177, design § 2.2): a macro gated off is off everywhere — a placed
+        // macro's text reading an inert macro's .content gets empty. (An inert
+        // macro's own placement never reaches here: the fire set excluded it.)
+        if (package.Manifest.SpecVersion >= 26)
+        {
+            scope = scope with { InertMacros = WorkflowInlineGates.Inert(scope.Macros.Values.Select(macro => (macro.Id, macro.If)), scope, TemplatePipes.Engine) };
+        }
+
         var prepend = new List<ConsultRenderedMacro>();
         var append = new List<ConsultRenderedMacro>();
 

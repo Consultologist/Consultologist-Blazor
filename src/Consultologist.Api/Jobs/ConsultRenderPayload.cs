@@ -80,8 +80,10 @@ internal static class ConsultRenderPayload
     /// record says.
     /// </summary>
     /// <param name="trace">B5 #1004: when given, what this render read — its macro.&lt;id&gt;.prompt reads are the inline macros the prompt that ran instructed.</param>
+    // v26 (#1175, #1177): the scope with the macro gates judged — every caller
+    // renders gated; below 26 the scope is the one it was.
     public static string RenderAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package, string promptText, TemplateRenderer.TemplateRenderTrace? trace = null) =>
-        TemplateRenderer.Render($"Prompt '{input.PromptId}'", promptText, ScopeAt25(input, package), TemplatePipes.Engine, trace);
+        TemplateRenderer.Render($"Prompt '{input.PromptId}'", promptText, ConsultGatedScope.Judge(input, package), TemplatePipes.Engine, trace);
 
     /// <summary>The 25 scope, completed from the payload and the package — what the prompt renders over, and (B5 #1004) what its instances and fills render over at completion.</summary>
     public static TemplateRenderScope ScopeAt25(ConsultPromptNodeActivityInput input, WorkflowPackage package)
