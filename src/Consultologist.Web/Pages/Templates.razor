@@ -1764,6 +1764,8 @@
                                                value="@deliverable.Label"
                                                @onchange="args => RelabelResultAsync(deliverable, args.Value?.ToString())"
                                                aria-label="@($"Label for deliverable {deliverable.Id}")" />
+                                        @if (!At26)
+                                        {
                                         <FluentSelect TOption="string" class="binding-row__select"
                                                 Value="@deliverable.Node"
                                                 ValueChanged="@(v => RepointResultAsync(deliverable, v))"
@@ -1773,7 +1775,12 @@
                                                 <FluentOption TOption="string" Value="@NodeRef(candidate.Id)">@candidate.Label</FluentOption>
                                             }
                                         </FluentSelect>
-                                        @if (At25)
+                                        }
+                                        @if (At26)
+                                        {
+                                            @* v26 (#1161): no node select — the sources list below is the deliverable. *@
+                                        }
+                                        else if (At25)
                                         {
                                             @* #1081: the aggregator's pane is a click away, as the macro rows' owners are. *@
                                             var aggregatorId = NodeIdOf(deliverable.Node);
@@ -1792,6 +1799,56 @@
                                         }
                                         </div>
 
+                                        @if (At26)
+                                        {
+                                            @* v26 (#1161, design § 3/§ 12): the ORDERED SOURCES LIST — what the deliverable
+                                               composes, in order (the aggregator's source-list idiom): each a link to the
+                                               node's pane, arrows, remove; a one-shot "+ add source…" over what can compose
+                                               prose (every flow node; a top-level plain node of a text format — the user's
+                                               decision). Empty = explicit init; the desk says "names no sources". *@
+                                            <section class="deliverable-section deliverable-sources" data-sources-for="@deliverable.Id">
+                                                <span class="deliverable-section__head">Sources</span>
+                                                <p class="muted-text">Composed in this order — a loop contributes one section per item, an if or case the branch it took.</p>
+                                                @{ var sourceIds = deliverable.SourceNodeIds; }
+                                                @if (sourceIds.Count == 0)
+                                                {
+                                                    <p class="muted-text deliverable-sources__empty">No sources yet — a deliverable composes one or more nodes.</p>
+                                                }
+                                                <ul class="binding-list deliverable-sources__list">
+                                                    @for (var sourceIndex = 0; sourceIndex < sourceIds.Count; sourceIndex++)
+                                                    {
+                                                        var index = sourceIndex;
+                                                        var sourceId = sourceIds[index];
+                                                        var sourceNode = EffectiveNodes.FirstOrDefault(n => n.Id == sourceId);
+                                                        <li class="binding-row deliverable-source" data-source="@sourceId">
+                                                            <span class="muted-text">@(index + 1).</span>
+                                                            <button type="button" class="snippet-readers__row" title="@($"node '{sourceId}' — open its pane")" @onclick="() => Select(NodeKeyPrefix + sourceId)">@(sourceNode?.Label ?? sourceId)</button>
+                                                            <code>@sourceId</code>
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                                          aria-label="@($"Move source {index + 1} up of deliverable {deliverable.Id}")"
+                                                                          Disabled="@(index == 0)"
+                                                                          IconStart="@(new Icons.Regular.Size20.ArrowUp())"
+                                                                          @onclick="() => MoveResultSourceAsync(deliverable, index, -1)" />
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                                          aria-label="@($"Move source {index + 1} down of deliverable {deliverable.Id}")"
+                                                                          Disabled="@(index == sourceIds.Count - 1)"
+                                                                          IconStart="@(new Icons.Regular.Size20.ArrowDown())"
+                                                                          @onclick="() => MoveResultSourceAsync(deliverable, index, 1)" />
+                                                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Remove source"
+                                                                          aria-label="@($"Remove source {index + 1} of deliverable {deliverable.Id}")"
+                                                                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                                                          @onclick="() => RemoveResultSourceAsync(deliverable, index)" />
+                                                        </li>
+                                                    }
+                                                </ul>
+                                                <OneShotSelect Class="binding-row__select deliverable-source-add"
+                                                               AriaLabel="@($"Add a source to deliverable {deliverable.Id}")"
+                                                               Resting="+ add source…"
+                                                               Choices="@DeliverableSourceChoices(deliverable)"
+                                                               OnPick="@(v => AppendResultSourceAsync(deliverable, v))" />
+                                            </section>
+                                        }
+
                                         @* v8: when this deliverable is produced. Three controls
                                            rather than a text field — the literal follows the
                                            chosen operand's type, which is what makes the closed
@@ -1800,11 +1857,14 @@
                                            or the count of an array, and a number or a date may
                                            be ordered. *@
                                         <section class="deliverable-section" data-when-for="@deliverable.Id">
-                                            <span class="deliverable-section__head">Produced when</span>
+                                            @* v26 (#1161): the gate is keyed if — label only; the builder is 25's. *@
+                                            <span class="deliverable-section__head">@(At26 ? "if" : "Produced when")</span>
                                             @if (ConditionOperands.Count == 0)
                                         {
                                             <span class="muted-text">
-                                                @(At25
+                                                @(At26
+                                                    ? "Always. Declare an input (enum, boolean, number, date, object or array) or an enum-format node to gate it."
+                                                    : At25
                                                     ? "Always produced. Declare an input (enum, boolean, number, date, object or array) or an enum-format node to make it conditional."
                                                     : EffectiveSpecVersion >= 9
                                                         ? "Always produced. Declare an enum, boolean, number, date, object or array input to make it conditional."
@@ -1816,7 +1876,7 @@
                                             @* v10 (#498): the expression builder — one clause is
                                                the v9 editor exactly; at 10 clauses join, group and
                                                negate, and a number may carry one arithmetic term. *@
-                                            @ConditionField(("", DeliverableConditionTarget(deliverable), "Always produced"))
+                                            @ConditionField(("", DeliverableConditionTarget(deliverable), At26 ? "Always" : "Always produced"))
                                         }
                                         </section>
 
@@ -1935,7 +1995,7 @@
                                                        line beneath the control row — so the rows stay aligned and
                                                        the condition builder has room to expand. *@
                                                     <span class="result-macro-when">
-                                                        @ConditionField(("Gated when", MacroWhenTarget(deliverable, macroIndex), "Always produced"))
+                                                        @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(deliverable, macroIndex), At26 ? "Always" : "Always produced"))
                                                     </span>
                                                 }
                                                 </div>
@@ -1943,8 +2003,8 @@
                                             @if (At25)
                                             {
                                                 @* #1081: what the engine composes, in order — prepended macros, the
-                                                   aggregator's sections, appended macros, the signature — each a link,
-                                                   a gated item carrying its condition. *@
+                                                   aggregator's sections (#1161: the deliverable's sources at 26), appended
+                                                   macros, the signature — each a link, a gated item carrying its condition. *@
                                                 var composition = DeliverableComposition(deliverable);
                                                 <div class="muted-text deliverable-composed" aria-label="@($"Composition of deliverable {deliverable.Id}")">
                                                     Composed as:
@@ -2474,6 +2534,7 @@
                                 @PaneDiscardButton(NodeKeyFor(selectedLoop.Id), NodeCanDiscard(selectedLoop), () => RevertNodeEdits(selectedLoop.Id, null))
                             </div>
                         </div>
+                        @SourcedByRows(selectedLoop.Id)
                         <div class="node-section">
                             <span class="node-section__head">Identity</span>
                             <div class="node-fields">
@@ -2569,6 +2630,7 @@
                                 @PaneDiscardButton(NodeKeyFor(selectedIf.Id), NodeCanDiscard(selectedIf), () => RevertNodeEdits(selectedIf.Id, null))
                             </div>
                         </div>
+                        @SourcedByRows(selectedIf.Id)
                         <div class="node-section">
                             <span class="node-section__head">Identity</span>
                             <div class="node-fields">
@@ -2622,6 +2684,7 @@
                                 @PaneDiscardButton(NodeKeyFor(selectedCase.Id), NodeCanDiscard(selectedCase), () => RevertNodeEdits(selectedCase.Id, null))
                             </div>
                         </div>
+                        @SourcedByRows(selectedCase.Id)
                         <div class="node-section">
                             <span class="node-section__head">Identity</span>
                             <div class="node-fields">
@@ -2738,7 +2801,11 @@
                         </div>
                         @* #1081: an aggregator's pane names the deliverable(s) it feeds, each a link
                            to its card — the Deliverables pane's "Also placed on nodes" idiom, reversed. *@
-                        @if (At25 && EffectiveResults.Where(r => NodeIdOf(r.Node) == selectedNode.Id).ToList() is { Count: > 0 } delivers)
+                        @if (At26)
+                        {
+                            @SourcedByRows(selectedNode.Id)
+                        }
+                        else if (At25 && EffectiveResults.Where(r => NodeIdOf(r.Node) == selectedNode.Id).ToList() is { Count: > 0 } delivers)
                         {
                             <p class="muted-text node-delivers">
                                 Delivers →
@@ -3043,7 +3110,7 @@
                                                           @onclick="() => RemoveResultMacroAsync(result, entry.Id)" />
                                         </div>
                                         <span class="result-macro-when">
-                                            @ConditionField(("Gated when", MacroWhenTarget(result, entry), "Always produced"))
+                                            @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(result, entry), At26 ? "Always" : "Always produced"))
                                         </span>
                                     </div>
                                 }
@@ -3500,7 +3567,7 @@
                                             @if (EffectiveSpecVersion >= 12)
                                             {
                                                 <span class="result-macro-when">
-                                                    @ConditionField(("Gated when", MacroWhenTarget(result, entry), "Always produced"))
+                                                    @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(result, entry), At26 ? "Always" : "Always produced"))
                                                 </span>
                                             }
                                             @if (EffectiveSpecVersion >= 20 && entry.IsSlot)
@@ -3691,7 +3758,7 @@
                                                                   @onclick="() => RemoveResultMacroAsync(instanceResult, instanceIndex)" />
                                                 </span>
                                                 <span class="result-macro-when">
-                                                    @ConditionField(("Gated when", MacroWhenTarget(instanceResult, instanceIndex), "Always produced"))
+                                                    @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(instanceResult, instanceIndex), At26 ? "Always" : "Always produced"))
                                                 </span>
                                             </div>
                                         }
@@ -6488,7 +6555,7 @@
         var entries = result.Macros ?? Array.Empty<WorkflowManifestReader.ResultMacroView>();
 
         CompositionPart MacroPart(WorkflowManifestReader.ResultMacroView entry, string suffix) =>
-            new(MacroLabel(entry.Id) + suffix, EffectiveMacros.FirstOrDefault(m => m.Id == entry.Id)?.File, entry.When, $"macro '{entry.Id}' — edit on its pane");
+            new(MacroLabel(entry.Id) + suffix, EffectiveMacros.FirstOrDefault(m => m.Id == entry.Id)?.File, At26 ? entry.If : entry.When, $"macro '{entry.Id}' — edit on its pane");
 
         parts.AddRange(entries.Where(e => e.At == PF.WorkflowDeliverableMacroSpec.Prepend).Select(e => MacroPart(e, string.Empty)));
 
@@ -6496,7 +6563,8 @@
         {
             var sourceId = NodeIdOf(source);
             var sourceNode = EffectiveNodes.FirstOrDefault(n => n.Id == sourceId);
-            parts.Add(new CompositionPart(sourceNode?.Label ?? sourceId, NodeKeyPrefix + sourceId, sourceNode?.When, $"node '{sourceId}' — its section"));
+            // v26 (#1161): a source's gate is its own if (an if node's condition); a loop or case has none to show.
+            parts.Add(new CompositionPart(sourceNode?.Label ?? sourceId, NodeKeyPrefix + sourceId, At26 ? (sourceNode is { IsIf: true } ? sourceNode.If : null) : sourceNode?.When, $"node '{sourceId}' — its section"));
         }
 
         parts.AddRange(entries.Where(e => e.At == PF.WorkflowDeliverableMacroSpec.Append).Select(e => MacroPart(e, string.Empty)));
@@ -6718,7 +6786,7 @@
                 continue;
             }
 
-            results.AddRange(EffectiveResults.Where(r => NodeIdOf(r.Node) == nodeId));
+            results.AddRange(EffectiveResults.Where(r => r.SourceNodeIds.Contains(nodeId, StringComparer.Ordinal)));
             foreach (var downstream in EffectiveNodes)
             {
                 var aggregates = downstream.Aggregate?.Any(source => NodeIdOf(source) == nodeId || source == $"node:{nodeId}") == true;
@@ -12188,13 +12256,14 @@
 
     /// <summary>The deliverable's own condition — key and subject are the result id; writes land on the result's When.</summary>
     private ConditionTarget DeliverableConditionTarget(WorkflowManifestReader.ResultView result) =>
-        new(result.Id, result.Id, result.When, text =>
+        new(result.Id, result.Id, At26 ? result.If : result.When, text =>
         {
             var results = MutableResults();
             var index = results.FindIndex(existing => existing.Id == result.Id);
             if (index >= 0)
             {
-                results[index] = results[index] with { When = text };
+                // v26 (#1161): the gate is keyed if.
+                results[index] = At26 ? results[index] with { If = text } : results[index] with { When = text };
             }
         });
 
@@ -12209,14 +12278,15 @@
         var entry = entries[entryIndex];
         var twice = entries.Count(e => e.Id == entry.Id) > 1;
         var subject = twice ? $"{result.Id} macro {entry.Id} {entry.At}" : $"{result.Id} macro {entry.Id}";
-        return new($"{result.Id}\n{entryIndex}", subject, entry.When, text =>
+        return new($"{result.Id}\n{entryIndex}", subject, At26 ? entry.If : entry.When, text =>
         {
             var results = MutableResults();
             var index = results.FindIndex(existing => existing.Id == result.Id);
             if (index >= 0 && results[index].Macros is { } current && entryIndex < current.Count)
             {
                 var list = current.ToList();
-                list[entryIndex] = list[entryIndex] with { When = text };
+                // v26 (#1161): the entry's gate is keyed if.
+                list[entryIndex] = At26 ? list[entryIndex] with { If = text } : list[entryIndex] with { When = text };
                 results[index] = results[index] with { Macros = list };
             }
         });
@@ -12739,6 +12809,15 @@
             return;
         }
 
+        // v26 (#1161): born with no sources — explicit init; the desk says "names no sources".
+        if (At26)
+        {
+            MutableResults().Add(new WorkflowManifestReader.ResultView(id, string.Empty, id, Sources: new List<string>()));
+            newResultId = string.Empty;
+            await CommitDeclarationAsync();
+            return;
+        }
+
         var free = DeliverableCandidates.FirstOrDefault(candidate =>
             EffectiveResults.All(result => NodeIdOf(result.Node) != candidate.Id));
 
@@ -12909,7 +12988,89 @@
 
     /// <summary>This deliverable's aggregator's effective sources — the only legal placement anchors (§ 4).</summary>
     private IReadOnlyList<string> DeliverableAggregateSources(WorkflowManifestReader.ResultView result) =>
-        EffectiveNodes.FirstOrDefault(n => n.Id == NodeIdOf(result.Node))?.Aggregate ?? Array.Empty<string>();
+        // v26 (#1161): the deliverable's own sources, in the 25 node: spelling the callers key on.
+        At26
+            ? result.SourceNodeIds.Select(id => $"node:{id}").ToList()
+            : EffectiveNodes.FirstOrDefault(n => n.Id == NodeIdOf(result.Node))?.Aggregate ?? Array.Empty<string>();
+
+    /// <summary>
+    /// v26 (#1161): what a deliverable may source — every flow node (its ret is the desk's to
+    /// judge) and a top-level plain node of a text format (prose, rendered) — never a body
+    /// node, an enum/object node, a check, or a node already listed (the user's decision).
+    /// </summary>
+    private IReadOnlyList<OneShotChoice> DeliverableSourceChoices(WorkflowManifestReader.ResultView result)
+    {
+        var listed = result.SourceNodeIds.ToHashSet(StringComparer.Ordinal);
+        return DeliverableSourceNodes
+            .Where(n => !listed.Contains(n.Id))
+            .Select(n => new OneShotChoice(n.Id, n.IsFlow ? $"{n.Label} ({n.Id}, {(n.IsLoop ? "loop" : n.IsIf ? "if" : "case")})" : $"{n.Label} ({n.Id})"))
+            .ToList();
+    }
+
+    /// <summary>v26: the nodes that can compose prose — the candidate set behind the picker and "+ Deliverable".</summary>
+    private IReadOnlyList<WorkflowManifestReader.NodeView> DeliverableSourceNodes =>
+        EffectiveNodes
+            .Where(n => n.IsFlow
+                || (n.Aggregate == null && BodyKeyOf(n.Id) == null && n.Format != null
+                    && FormatOptions.FirstOrDefault(f => f.Id == n.Format)?.Type == WorkflowInputTypes.Text))
+            .ToList();
+
+    /// <summary>v26 (#1161): the deliverables whose sources name the node.</summary>
+    private IReadOnlyList<WorkflowManifestReader.ResultView> DeliverablesSourcing(string nodeId) =>
+        EffectiveResults.Where(r => r.SourceNodeIds.Contains(nodeId, StringComparer.Ordinal)).ToList();
+
+    /// <summary>v26 (#1161): "Sourced by deliverable 'd'" on a node that is one — "Delivers →" reversed, per deliverable a link to its card.</summary>
+    private RenderFragment SourcedByRows(string nodeId) => @<text>
+        @if (DeliverablesSourcing(nodeId) is { Count: > 0 } sourcing)
+        {
+            <p class="muted-text node-sourced-by">
+                Sourced by
+                @for (var sourcedIndex = 0; sourcedIndex < sourcing.Count; sourcedIndex++)
+                {
+                    var sourced = sourcing[sourcedIndex];
+                    <span> deliverable '<button type="button" class="snippet-readers__row" title="@($"deliverable '{sourced.Id}' — open its card")" @onclick="() => Select(ResultsKeyFor(sourced.Id))">@sourced.Id</button>'@(sourcedIndex < sourcing.Count - 1 ? "," : "")</span>
+                }
+            </p>
+        }
+    </text>;
+
+    private async Task MoveResultSourceAsync(WorkflowManifestReader.ResultView result, int index, int delta)
+    {
+        var results = MutableResults();
+        var at = results.FindIndex(existing => existing.Id == result.Id);
+        if (at < 0) { return; }
+        var sources = (results[at].Sources ?? Array.Empty<string>()).ToList();
+        var target = index + delta;
+        if (index < 0 || index >= sources.Count || target < 0 || target >= sources.Count) { return; }
+        (sources[index], sources[target]) = (sources[target], sources[index]);
+        results[at] = results[at] with { Sources = sources };
+        await CommitDeclarationAsync();
+    }
+
+    private async Task RemoveResultSourceAsync(WorkflowManifestReader.ResultView result, int index)
+    {
+        var results = MutableResults();
+        var at = results.FindIndex(existing => existing.Id == result.Id);
+        if (at < 0) { return; }
+        var sources = (results[at].Sources ?? Array.Empty<string>()).ToList();
+        if (index < 0 || index >= sources.Count) { return; }
+        sources.RemoveAt(index);
+        results[at] = results[at] with { Sources = sources };
+        await CommitDeclarationAsync();
+    }
+
+    private async Task AppendResultSourceAsync(WorkflowManifestReader.ResultView result, string nodeId)
+    {
+        if (string.IsNullOrEmpty(nodeId)) { return; }
+        var results = MutableResults();
+        var at = results.FindIndex(existing => existing.Id == result.Id);
+        if (at < 0) { return; }
+        var sources = (results[at].Sources ?? Array.Empty<string>()).ToList();
+        var reference = PF.TemplateObjectReference.Node(nodeId);
+        if (!sources.Contains(reference, StringComparer.Ordinal)) { sources.Add(reference); }
+        results[at] = results[at] with { Sources = sources };
+        await CommitDeclarationAsync();
+    }
 
     // v12 § 4 (#621): the placement rides the entry; choosing 'appended'
     // with no when returns the entry to the bare v11 form.
@@ -13151,7 +13312,8 @@
     // results must each name one), forEach nodes in v5 where the fan itself
     // was the deliverable.
     private IReadOnlyList<WorkflowManifestReader.NodeView> DeliverableCandidates =>
-        (EffectiveSpecVersion >= 6
+        At26 ? DeliverableSourceNodes
+        : (EffectiveSpecVersion >= 6
             ? EffectiveNodes.Where(n => n.Aggregate != null)
             : EffectiveNodes.Where(n => n.ForEach != null)).ToList();
 
@@ -13173,8 +13335,8 @@
     private IReadOnlyList<string> DeliverableRootIds =>
         EffectiveResults.Count > 0
             ? EffectiveResults
-                .Select(result => NodeIdOf(result.Node))
-                .OfType<string>()
+                .SelectMany(result => result.SourceNodeIds)
+                .Distinct(StringComparer.Ordinal)
                 .ToList()
             : EffectiveResultRef is { } singleRef && NodeIdOf(singleRef) is { } singleId
                 ? new List<string> { singleId }
@@ -14734,9 +14896,13 @@
         // v12 (#621): the whole entries and the check gate — trailing, so an
         // old draft restores (its Macros ids become bare entries) and an old
         // client reading a new draft degrades the same way.
-        List<DraftResultMacro>? MacroEntries = null, string? Check = null);
+        List<DraftResultMacro>? MacroEntries = null, string? Check = null,
+        // v26 (#1161): sources and the if gate. Trailing.
+        List<string>? Sources = null, string? If = null);
 
-    private sealed record DraftResultMacro(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null, string? At = null);
+    private sealed record DraftResultMacro(string Id, string? Before = null, string? After = null, string? When = null, string? ForItem = null, bool? Slot = null, string? At = null,
+        // v26 (#1161): the entry's if gate. Trailing.
+        string? If = null);
 
     private async Task RestoreDraftAsync()
     {
@@ -15220,16 +15386,21 @@
                 .ToList();
         }
 
+        // v26 (#1161): a 26 draft deliverable has no node — its sources must all still exist.
         if (IsV7 && draftResults is { Count: > 0 }
-            && draftResults.All(result => EffectiveNodes.Any(node => node.Id == NodeIdOf(result.Node))))
+            && draftResults.All(result => result.Sources != null
+                ? result.Sources.All(source => EffectiveNodes.Any(node => node.Id == NodeIdOf(source)))
+                : EffectiveNodes.Any(node => node.Id == NodeIdOf(result.Node))))
         {
             resultsEdit = draftResults
                 .Select(result => new WorkflowManifestReader.ResultView(
                     result.Id, result.Node, result.Label, result.When,
-                    result.MacroEntries?.Select(e => new WorkflowManifestReader.ResultMacroView(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At)).ToList()
+                    result.MacroEntries?.Select(e => new WorkflowManifestReader.ResultMacroView(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At, e.If)).ToList()
                         ?? (IReadOnlyList<WorkflowManifestReader.ResultMacroView>?)result.Macros?.Select(id => new WorkflowManifestReader.ResultMacroView(id)).ToList(),
                     result.Signature,
-                    result.Check))
+                    result.Check,
+                    result.Sources,
+                    result.If))
                 .ToList();
         }
 
@@ -15397,8 +15568,10 @@
                 r.Id, r.Node, r.Label, r.When,
                 r.Macros?.Select(e => e.Id).ToList(),
                 r.Signature,
-                r.Macros?.Select(e => new DraftResultMacro(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At)).ToList(),
-                r.Check)).ToList(),
+                r.Macros?.Select(e => new DraftResultMacro(e.Id, e.Before, e.After, e.When, e.ForItem, e.Slot, e.At, e.If)).ToList(),
+                r.Check,
+                r.Sources?.ToList(),
+                r.If)).ToList(),
             new Dictionary<string, string>(addedScalars, StringComparer.Ordinal),
             specVersionBump,
             titleEdit,
@@ -17241,16 +17414,25 @@
                 resultsToWrite
                     .Select(result =>
                     {
-                        var node = new System.Text.Json.Nodes.JsonObject
+                        var node = new System.Text.Json.Nodes.JsonObject { ["id"] = result.Id };
+                        // v26 (#1161): node and when are retired — sources and if carry the deliverable.
+                        if (!At26)
                         {
-                            ["id"] = result.Id,
-                            ["node"] = result.Node,
-                            ["label"] = result.Label
-                        };
+                            node["node"] = result.Node;
+                        }
+                        node["label"] = result.Label;
+                        if (At26)
+                        {
+                            node["sources"] = new System.Text.Json.Nodes.JsonArray((result.Sources ?? Array.Empty<string>()).Select(s => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(s)).ToArray());
+                            if (!string.IsNullOrWhiteSpace(result.If))
+                            {
+                                node["if"] = result.If;
+                            }
+                        }
 
                         // The raw string as authored: a row nobody edited keeps
                         // its original text rather than being normalised.
-                        if (!string.IsNullOrWhiteSpace(result.When))
+                        if (!At26 && !string.IsNullOrWhiteSpace(result.When))
                         {
                             node["when"] = result.When;
                         }
@@ -17283,9 +17465,10 @@
                                     if (entry.At != null) { adorned["at"] = entry.At; } // v25 (C3 #1009) — first after id, per the converter's member order
                                     if (entry.Before != null) { adorned["before"] = entry.Before; }
                                     if (entry.After != null) { adorned["after"] = entry.After; }
-                                    if (entry.When != null) { adorned["when"] = entry.When; }
+                                    if (entry.When != null && !At26) { adorned["when"] = entry.When; }
                                     if (entry.ForItem != null) { adorned["forItem"] = entry.ForItem; } // #845
                                     if (entry.Slot == true) { adorned["slot"] = true; } // #863 — last key, per the converter's member order
+                                    if (entry.If != null && At26) { adorned["if"] = entry.If; } // v26 (#1161)
                                     return (System.Text.Json.Nodes.JsonNode?)adorned;
                                 }).ToArray());
                         }
