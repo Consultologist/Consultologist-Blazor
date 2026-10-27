@@ -255,11 +255,20 @@ internal static class ConsultRenderPayload
                     : throw new InvalidOperationException($"The payload carries loop '{pair.Key}' but not its composed text.")),
             StringComparer.Ordinal);
 
-        var macros = (manifest.Macros ?? new List<WorkflowMacroSpec>())
-            .Where(macro => macro.File is not null && package.SourceFiles is not null && package.SourceFiles.ContainsKey(macro.File))
+        // v26 (#1157, design § 5): a macro's label and instruction are its
+        // header's and its text is the body — the store's split, carried on the
+        // package; a folder entry (#1182) is no flat macro. The header's `if`
+        // rides beside them for the engine's judge (#1177).
+        var macros = (package.EffectiveManifest.Macros ?? new List<WorkflowMacroSpec>())
+            .Where(macro => macro.File is { } file && !file.EndsWith('/') && package.TextFiles is not null && package.TextFiles.ContainsKey(file))
             .ToDictionary(
                 macro => macro.Id,
-                macro => new TemplateMacroSource(macro.Id, macro.Label, package.SourceFiles![macro.File!], macro.Instruction ?? string.Empty),
+                macro => new TemplateMacroSource(
+                    macro.Id,
+                    macro.Label ?? macro.Id,
+                    package.TextOf(macro.File!),
+                    macro.Instruction ?? string.Empty,
+                    package.Texts?.Headers.GetValueOrDefault(macro.File!)?.If),
                 StringComparer.Ordinal);
 
         return new TemplateRenderScope(

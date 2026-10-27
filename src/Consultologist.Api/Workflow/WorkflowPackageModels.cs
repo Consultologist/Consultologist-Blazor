@@ -82,11 +82,32 @@ public sealed record WorkflowPackage(
     // pin — and that catalogue's concrete ref. Null below 25 and for bare
     // fixtures; the starter reads each node's agent, binding or op from it.
     WorkflowFormatCatalog? Formats = null,
-    string? FormatsRef = null)
+    string? FormatsRef = null,
+    // v26 (#1157, design § 5): the header split, done ONCE at load — the
+    // manifest with each macro's label, instruction, optional and default from
+    // its header, every file with the snippet and macro headers stripped (a
+    // prompt file carries none), and the headers by path (a macro's and an
+    // item's `if` live there). Null below 26. Manifest and SourceFiles above
+    // stay AS PUBLISHED: the walk (WorkflowDerivedEdges, TemplatePreviewScope)
+    // resolves the headers itself from the raw files and the resolver is not
+    // idempotent (run over bodies it finds no header and drops every gate); the
+    // content endpoint round-trips the files whole; publish compares raw. A
+    // render, a choice, a snapshot reads the effective form below.
+    WorkflowResolvedTexts? Texts = null)
 {
     public string Ref => $"{Manifest.Name}@{Manifest.Version}";
 
     public bool HasPrompts => Prompts is { Count: > 0 };
+
+    /// <summary>v26 (#1157): the manifest with the headers' facts on its macros at 26; the manifest itself below.</summary>
+    public WorkflowPackageManifest EffectiveManifest => Texts?.Manifest ?? Manifest;
+
+    /// <summary>v26 (#1157): the files as a render reads them — bodies at 26 (a prompt, a format, a schema file unchanged); the source files below.</summary>
+    public IReadOnlyDictionary<string, string>? TextFiles => Texts?.Files ?? SourceFiles;
+
+    /// <summary>v26 (#1157): one file as a render reads it.</summary>
+    public string TextOf(string path) =>
+        (TextFiles ?? throw new InvalidOperationException($"Package {Ref} carries no files."))[path];
 }
 
 public sealed record WorkflowPackageBlockResponse(string Id, string Name);

@@ -36,11 +36,11 @@ public class V26JobStartTests
         ConsultGenerationJobStarter.StartScope(package, Effective(supplied), supplied, "job00000000");
 
     /// <summary>
-    /// The design's minimal 26 package as the store will hand it to the starter
-    /// once the bump runs it: the manifest and files as published (the walk
-    /// resolves the headers itself), the snippets resolved THROUGH the headers
-    /// (an item's label and gate on the item — the store's own read is #1157's),
-    /// the deliverables resolved by the store's resolver, the fixture catalogue.
+    /// The design's minimal 26 package as the store hands it to the starter
+    /// (#1157): the manifest and files as published (the walk resolves the
+    /// headers itself), the texts split once beside them, the snippets resolved
+    /// THROUGH the headers (an item's label and gate on the item), the
+    /// deliverables resolved by the store's resolver, the fixture catalogue.
     /// </summary>
     internal static WorkflowPackage Package(
         Func<WorkflowPackageManifest, WorkflowPackageManifest>? change = null,
@@ -64,7 +64,8 @@ public class V26JobStartTests
             SourceFiles: files,
             Results: WorkflowPackageStore.ResolveResultSet(manifest),
             Formats: V25Package.Catalog(),
-            FormatsRef: V25Package.Catalog().ResolvedRef);
+            FormatsRef: V25Package.Catalog().ResolvedRef,
+            Texts: texts);
     }
 
     private static WorkflowFlowBodySpec Body(string? ret, params string[] nodes) => new(nodes.ToList(), ret);
@@ -303,5 +304,34 @@ public class V26JobStartTests
         var empty = ConsultGenerationJobStarter.ResolveSkeleton(package, NewPatient, Scope(package, NewPatient));
         Assert.Equal(new[] { "'Prior notes'" }, empty.EmptyFanLabels);
         Assert.Empty(empty.Items);
+    }
+
+    // ----- #1157: the header's facts reach the run ----------------------------------------
+
+    [Fact]
+    public void AnOptionalMacro_At26_TakesItsChoiceFromTheHeader()
+    {
+        var package = Package(withFiles: files => files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.", optional: true, @default: false) + "Closing: {{ profile.name }}.");
+        var request = new ConsultGenerationRequest(null, Inputs: NewPatient, MacroChoices: new Dictionary<string, bool> { ["closing"] = true });
+
+        var resolved = ConsultGenerationJobStarter.ResolveMacroChoices(request, package.EffectiveManifest);
+        Assert.Null(resolved.Error);
+        Assert.True(resolved.Resolved!["closing"]);
+
+        // The raw manifest knows nothing of the header: the choice is refused there.
+        Assert.Contains("not optional", ConsultGenerationJobStarter.ResolveMacroChoices(request, package.Manifest).Error, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRenderScopesMacro_IsTheBody_WithTheHeadersFacts_AndItsGate()
+    {
+        var package = Package(withFiles: files => files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.", @if: "input.kind == \"new\"") + "Closing: {{ profile.name }}.");
+
+        var scope = ConsultRenderPayload.ScopeFor(Effective(NewPatient), ConsultConditionScope.TypesOf(package), new Dictionary<string, string>(), null, null, null,
+            new TemplateRunFacts("2026-10-27", "job", package.Ref, "host"), new TemplateProfileFacts("Dr Example", string.Empty), package);
+
+        var closing = scope.Macros["closing"];
+        Assert.Equal(("closing", "Closing", "Closing: {{ profile.name }}.", "Add a closing line if the plan changed.", "input.kind == \"new\""), (closing.Id, closing.Name, closing.Text, closing.Instruction, closing.If));
+        Assert.True(scope.Labelled);
     }
 }

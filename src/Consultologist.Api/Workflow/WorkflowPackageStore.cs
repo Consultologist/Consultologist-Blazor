@@ -101,7 +101,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             : results.Count == 1 ? results[0].NodeId : null;
         var schemaContracts = loaded.SchemaContracts;
 
-        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef);
+        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef, Texts: loaded.Texts);
 
         _packageCache.TryAdd(cacheKey, package);
         _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, prompts?.Count ?? 0);
@@ -221,15 +221,28 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// reports them coherently); everything else fails loud on 404. Validation
     /// failures throw — the engine's fail-loud enforcement point.
     /// </summary>
-    private async Task<(Dictionary<string, WorkflowPromptTemplate> Prompts, Dictionary<string, string> SchemaContracts, WorkflowPackageData? Data, Dictionary<string, string> Files, WorkflowPackageStamp? Stamp, IReadOnlyDictionary<string, OutputContractEntry> ContractAgents, string CatalogRef, WorkflowFormatCatalog Formats, string FormatsRef)> LoadPromptsAsync(
-        string name,
-        string version,
-        WorkflowPackageManifest manifest,
-        CancellationToken cancellationToken)
-    {
-        var packageRef = $"{name}@{version}";
-        var files = new Dictionary<string, string>(StringComparer.Ordinal);
-        var paths = (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.File)
+    /// <summary>What a load holds beside the manifest — the blob half's result, materialised by <see cref="Materialise"/>.</summary>
+    internal sealed record LoadedPackage(
+        Dictionary<string, WorkflowPromptTemplate> Prompts,
+        Dictionary<string, string> SchemaContracts,
+        WorkflowPackageData? Data,
+        Dictionary<string, string> Files,
+        WorkflowPackageStamp? Stamp,
+        IReadOnlyDictionary<string, OutputContractEntry> ContractAgents,
+        string CatalogRef,
+        WorkflowFormatCatalog Formats,
+        string FormatsRef,
+        // v26 (#1157): the header split, once; null below 26.
+        WorkflowResolvedTexts? Texts);
+
+    /// <summary>
+    /// The root files a manifest names, to download one by one (a miss is
+    /// loud: the publish closure referenced each). v26 (#1157, design § 4): a
+    /// node names its prompt file; a macro entry ending in '/' is a FOLDER,
+    /// gathered by its index as a snippet folder is (#1182), never a blob.
+    /// </summary>
+    internal static IEnumerable<string> RootFilesOf(WorkflowPackageManifest manifest) =>
+        (manifest.Prompts ?? new List<WorkflowPromptSpec>()).Select(p => p.File)
             .Concat((manifest.Preludes ?? new Dictionary<string, string>()).Values)
             .Concat((manifest.Schemas ?? new Dictionary<string, string>()).Values)
             // v22 #760: a custom schema's inline body is a package file like a
@@ -239,21 +252,34 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             .Concat((manifest.CustomSchemas ?? new Dictionary<string, string>()).Values)
             // v11 #513: macro templates are package files like prompts — they
             // must be in SourceFiles for the starter to snapshot.
-            .Concat((manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.File))
+            .Concat((manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.File).Where(file => !file.EndsWith('/')))
             // v25 (B2 #1001): a package-local format file is a package file like
             // a custom schema — the load-time validator reads it, the starter
             // snapshots it.
             .Concat((manifest.Formats ?? new List<WorkflowFormatReference>()).Select(f => f.File))
+            // v26 (#1157, design § 4): the nodes' prompt files.
+            .Concat(manifest.SpecVersion >= 26
+                ? (manifest.Nodes ?? new List<WorkflowNodeSpec>()).Select(n => n.Prompt).OfType<string>()
+                : Enumerable.Empty<string>())
             .Distinct(StringComparer.Ordinal);
 
-        foreach (var path in paths)
+    private async Task<LoadedPackage> LoadPromptsAsync(
+        string name,
+        string version,
+        WorkflowPackageManifest manifest,
+        CancellationToken cancellationToken)
+    {
+        var packageRef = $"{name}@{version}";
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var path in RootFilesOf(manifest))
         {
             files[path] = await DownloadTextAsync(name, $"{name}/{version}/{path}", cancellationToken);
         }
 
-        await GatherDataFilesAsync(name, version, manifest.Data, files, cancellationToken);
+        await GatherDataFilesAsync(name, version, manifest.Data, files, manifest.SpecVersion, cancellationToken);
         // v25 (B2 #1001): snippets are the same table shape as data.
-        await GatherDataFilesAsync(name, version, manifest.Snippets, files, cancellationToken);
+        await GatherDataFilesAsync(name, version, manifest.Snippets, files, manifest.SpecVersion, cancellationToken);
 
         // #433: the publication stamp, when the version has one — every version
         // published before it has none, and those keep re-matching as they
@@ -277,49 +303,99 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             ? await _formatsResolver.GetAsync(formatsRef, cancellationToken)
             : _formats;
 
+        return Materialise(packageRef, manifest, files, stamp, catalog, formats, WorkflowPackageValidator.AcceptedSpecVersions, _logger);
+    }
+
+    /// <summary>
+    /// The pure half of a load, after the blobs: validate, then the prompts,
+    /// the contracts, the data. v26 (#1157, design § 4, § 5): at 26 the header
+    /// split is done HERE, once — the texts ride the package beside the raw
+    /// files (see <see cref="WorkflowPackage.Texts"/>), the data resolves
+    /// through the headers (an item's label and gate), and a node's prompt is
+    /// keyed by its PATH, so the activity's lookup is the one it was.
+    /// </summary>
+    internal static LoadedPackage Materialise(
+        string packageRef,
+        WorkflowPackageManifest manifest,
+        Dictionary<string, string> files,
+        WorkflowPackageStamp? stamp,
+        OutputContractCatalog catalog,
+        WorkflowFormatCatalog formats,
+        IReadOnlyCollection<int> accepted,
+        ILogger? logger = null)
+    {
         var catalogSchemas = catalog.Entries.Values
             .Where(entry => entry.SchemaJson != null)
             .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
-        var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas, stamp?.Contracts, formats);
+        var result = WorkflowPackageValidator.Validate(manifest, files, catalogSchemas, stamp?.Contracts, formats, accepted);
 
         foreach (var warning in result.Warnings)
         {
-            _logger.LogWarning("Workflow package {Name}@{Version}: {Warning}", name, version, warning);
+            logger?.LogWarning("Workflow package {Package}: {Warning}", packageRef, warning);
         }
 
         if (!result.IsValid)
         {
             throw new WorkflowPackageContentException(
-                $"Workflow package {name}@{version} failed specVersion-{manifest.SpecVersion} validation: {string.Join(" | ", result.Errors)}");
+                $"Workflow package {packageRef} failed specVersion-{manifest.SpecVersion} validation: {string.Join(" | ", result.Errors)}");
         }
 
-        var prompts = manifest.Prompts!.ToDictionary(
-            prompt => prompt.Id,
-            prompt => new WorkflowPromptTemplate(
-                prompt.Id,
-                files[prompt.File],
-                prompt.Variables,
-                prompt.Prelude is null ? null : files[manifest.Preludes![prompt.Prelude]],
-                // v15 (#731): a raw prompt renders verbatim.
-                prompt.Raw == true),
-            StringComparer.Ordinal);
+        // v26 (#1157): the one split. The validator ran the same resolution and
+        // accepted the package, so a sentence here is an engine fault, said loud.
+        WorkflowResolvedTexts? texts = null;
+        if (manifest.SpecVersion >= 26)
+        {
+            var headerErrors = new List<string>();
+            texts = WorkflowTextHeaders.Resolve(manifest, files, headerErrors);
+            if (headerErrors.Count > 0)
+            {
+                throw new WorkflowPackageContentException(
+                    $"Workflow package {packageRef} failed its header read after validation: {string.Join(" | ", headerErrors)}");
+            }
+        }
+
+        var prompts = texts is null
+            ? manifest.Prompts!.ToDictionary(
+                prompt => prompt.Id,
+                prompt => new WorkflowPromptTemplate(
+                    prompt.Id,
+                    files[prompt.File],
+                    prompt.Variables,
+                    prompt.Prelude is null ? null : files[manifest.Preludes![prompt.Prelude]],
+                    // v15 (#731): a raw prompt renders verbatim.
+                    prompt.Raw == true),
+                StringComparer.Ordinal)
+            // v26 (#1157, design § 4): a node names its prompt file — one template
+            // per distinct path, keyed by it (two nodes may name one file); no
+            // variables, no prelude, never raw at 26.
+            : (manifest.Nodes ?? new List<WorkflowNodeSpec>())
+                .Select(node => node.Prompt)
+                .OfType<string>()
+                .Distinct(StringComparer.Ordinal)
+                .ToDictionary(
+                    path => path,
+                    path => new WorkflowPromptTemplate(path, texts.Files[path], Array.Empty<string>(), null, false),
+                    StringComparer.Ordinal);
 
         var schemaContracts = ResolveContracts(packageRef, manifest, files, stamp, catalog);
 
         if (manifest.Schemas is { Count: > 0 } || manifest.CustomSchemas is { Count: > 0 })
         {
-            _logger.LogInformation(
+            logger?.LogInformation(
                 "Workflow package {Package} contracts resolved from {Source}.",
                 packageRef,
                 stamp is null ? $"schema match against {catalog.ResolvedRef}" : $"publication stamp ({stamp.CatalogRef})");
         }
 
         // Post-validation resolve: the validator has already guaranteed integrity,
-        // so this collects no errors.
-        var data = WorkflowDataResolver.ResolveContent(manifest, files, new List<string>());
+        // so this collects no errors. v26: through the headers — an item's label
+        // and gate on the item, the bodies as content.
+        var data = texts is null
+            ? WorkflowDataResolver.ResolveContent(manifest, files, new List<string>())
+            : WorkflowDataResolver.ResolveContent(texts.Manifest, texts, new List<string>());
 
-        return (prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef, formats, formats.ResolvedRef);
+        return new LoadedPackage(prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef, formats, formats.ResolvedRef, texts);
     }
 
     /// <summary>
@@ -406,9 +482,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         string version,
         IReadOnlyDictionary<string, string>? table,
         Dictionary<string, string> files,
+        int specVersion,
         CancellationToken cancellationToken)
     {
-        foreach (var (_, path) in table ?? new Dictionary<string, string>())
+        foreach (var (folderId, path) in table ?? new Dictionary<string, string>())
         {
             if (!path.EndsWith('/'))
             {
@@ -423,23 +500,41 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                 continue;
             }
 
-            WorkflowDataIndexFile? index;
-            try
+            foreach (var file in ItemFilesOf(files[indexPath], folderId, specVersion))
             {
-                index = JsonSerializer.Deserialize<WorkflowDataIndexFile>(files[indexPath], JsonOptions);
+                await TryAddBlobAsync(files, name, version, path + file, cancellationToken);
             }
-            catch (JsonException)
-            {
-                continue;
-            }
+        }
+    }
 
-            foreach (var item in index?.Items ?? new List<WorkflowDataIndexItem>())
-            {
-                if (!string.IsNullOrWhiteSpace(item.File))
-                {
-                    await TryAddBlobAsync(files, name, version, path + item.File, cancellationToken);
-                }
-            }
+    /// <summary>
+    /// The item files a folder's index names, in its version's shape: the
+    /// ≤25 object (<c>{ fields, items: [{ id, name, file, when? }] }</c>) or
+    /// the 26 ordered list (<c>[{ id, file }]</c>, #1157 — design § 5.2). An
+    /// index that is neither names nothing; the validator says why.
+    /// </summary>
+    internal static IReadOnlyList<string> ItemFilesOf(string indexJson, string folderId, int specVersion)
+    {
+        if (specVersion >= 26)
+        {
+            return WorkflowTextHeaders.ReadIndexAt26(indexJson, folderId, "Snippet", new List<string>())?
+                .Select(item => item.File)
+                .Where(file => !string.IsNullOrWhiteSpace(file))
+                .ToList()
+                ?? new List<string>();
+        }
+
+        try
+        {
+            return (JsonSerializer.Deserialize<WorkflowDataIndexFile>(indexJson, JsonOptions)?.Items ?? new List<WorkflowDataIndexItem>())
+                .Select(item => item.File)
+                .Where(file => !string.IsNullOrWhiteSpace(file))
+                .Select(file => file!)
+                .ToList();
+        }
+        catch (JsonException)
+        {
+            return new List<string>();
         }
     }
 
