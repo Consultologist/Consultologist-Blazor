@@ -493,6 +493,26 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State = state;
     }
 
+    /// <summary>
+    /// v26 (#1154, design § 1.5): a flow node that took no branch — its row
+    /// Skipped with the reason, the counts moved on; the branch "none" rides
+    /// its descriptor in the nodes snapshot. No block, no hash, no failure.
+    /// </summary>
+    public void MarkNodeSkipped(ConsultGenerationNodeSkip input)
+    {
+        var state = EnsureState();
+        state.SchemaVersion = 6;
+
+        var node = state.GetOrAddNodeOutput(input.NodeId, input.Label);
+        node.Status = ConsultGenerationNodeStatuses.Skipped;
+        node.CompletedAtUtc = DateTimeOffset.UtcNow;
+
+        state.CompletedStageCount = input.CompletedNodeCount;
+        state.TotalStageCount = input.TotalNodeCount;
+        state.History.Add(new JobHistoryEvent("skipped", input.Label, input.Reason, DateTimeOffset.UtcNow));
+        State = state;
+    }
+
     public async Task MarkNodeFailed(ConsultGenerationNodeFailure input)
     {
         var state = EnsureState();
@@ -1207,6 +1227,14 @@ public sealed record ConsultGenerationDecisionFailure(
     IReadOnlyList<ConsultSkippedDocument>? SkippedDocuments = null,
     // #639: the deciding-stage failure's frames. Appended last.
     string? FailureStack = null);
+
+/// <summary>v26 (#1154): a flow node skipped because it took no branch — the entity's row and the counts.</summary>
+public sealed record ConsultGenerationNodeSkip(
+    string NodeId,
+    string Label,
+    string Reason,
+    int CompletedNodeCount,
+    int TotalNodeCount);
 
 public sealed record ConsultGenerationNodeFailure(
     string NodeId,
