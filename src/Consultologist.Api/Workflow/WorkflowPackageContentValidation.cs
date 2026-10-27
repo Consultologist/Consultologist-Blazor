@@ -25,6 +25,9 @@ internal static class WorkflowPackageContentValidation
     // rule), so its directory segment takes the underscore data's never did —
     // the editor names a folder snippets/<id>/, as it names data/<id>/ today.
     private static readonly Regex RootFilePattern = new("^(prompts|schemas|macros|formats)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+    // v26 (#1182, design § 5.3): a macro folder's files — macros/<folder>/<file>, the
+    // folder id snake_case as a snippet folder's is.
+    private static readonly Regex MacroFolderFilePattern = new("^macros/[a-z0-9_]+/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
     private static readonly Regex DataFilePattern = new("^(data/[a-z0-9-]+|snippets/[a-z0-9_-]+)/[A-Za-z0-9._-]+$", RegexOptions.Compiled);
 
     /// <summary>
@@ -57,10 +60,10 @@ internal static class WorkflowPackageContentValidation
             // Blob names are a flat namespace, so dot segments carry no traversal
             // semantics there — this is defense in depth for any future
             // filesystem-backed consumer of registry paths.
-            if ((!RootFilePattern.IsMatch(path) && !DataFilePattern.IsMatch(path) && !DataValuePattern.IsMatch(path))
+            if ((!RootFilePattern.IsMatch(path) && !MacroFolderFilePattern.IsMatch(path) && !DataFilePattern.IsMatch(path) && !DataValuePattern.IsMatch(path))
                 || path.Split('/').Any(segment => segment.Trim('.').Length == 0))
             {
-                errors.Add($"File path '{path}' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, formats/<file>, data/<collection>/<file>, data/<file>, snippets/<folder>/<file>, or snippets/<file>.");
+                errors.Add($"File path '{path}' is not allowed: expected prompts/<file>, schemas/<file>, macros/<file>, macros/<folder>/<file>, formats/<file>, data/<collection>/<file>, data/<file>, snippets/<folder>/<file>, or snippets/<file>.");
                 continue;
             }
 

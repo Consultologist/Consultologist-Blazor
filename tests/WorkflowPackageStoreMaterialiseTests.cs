@@ -38,7 +38,7 @@ public class WorkflowPackageStoreMaterialiseTests
     {
         var loaded = WorkflowPackageStore.Materialise($"{manifest.Name}@{manifest.Version}", manifest, files, null, Catalog, V25Package.Catalog(), V26Package.Accepting26);
         return new WorkflowPackage(manifest, loaded.Prompts, manifest.Nodes, loaded.SchemaContracts, loaded.Data, null, loaded.Files,
-            WorkflowPackageStore.ResolveResultSet(manifest), loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef, Texts: loaded.Texts);
+            WorkflowPackageStore.ResolveResultSet(manifest), loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef, Texts: loaded.Texts, MacroFolders: loaded.MacroFolders);
     }
 
     /// <summary>The 25 minimal and its migrated 26 twin, each loaded the store's way.</summary>
@@ -204,5 +204,35 @@ public class WorkflowPackageStoreMaterialiseTests
         // Only the header's label changed: the text the model sees did not — no warning.
         var labelled = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["snippets/standards.md"] = V26Package.Header("Regional standards") + "Follow the local standards." };
         Assert.Empty(WorkflowPackagePublisher.RelabelledWithoutContentChange(parent, manifest, labelled));
+    }
+
+    // ----- #1182: a macro folder ---------------------------------------------------------------
+
+    [Fact]
+    public void TheMacroFolderTable_NamesTheFolders_AndSkipsTheFlatEntries()
+    {
+        var (manifest, files) = WorkflowV26MacroFolderTests.WithFolder();
+
+        Assert.Equal(new Dictionary<string, string> { ["section_notes"] = "macros/section_notes/" }, WorkflowPackageStore.MacroFolderTableOf(manifest));
+        Assert.Null(WorkflowPackageStore.MacroFolderTableOf(V26Package.Minimal().Manifest));
+        Assert.Equal(new[] { "hpi.md", "plan.md" }, WorkflowPackageStore.ItemFilesOf(files["macros/section_notes/index.json"], "section_notes", 26, "Macro"));
+    }
+
+    [Fact]
+    public void A26PackageWithAMacroFolder_MaterialisesItsFolder_BesideTheFlatMacros()
+    {
+        var (manifest, files) = WorkflowV26MacroFolderTests.WithFolder();
+        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @if: "input.kind == \"follow_up\"", optional: true) + "Plan noted.";
+        var package = Load(manifest, files);
+
+        var folder = Assert.Single(package.MacroFolders!.Collections).Value;
+        Assert.Equal(new[] { "hpi", "plan" }, folder.Items.Select(item => item.Id));
+        var plan = folder.Items[1];
+        Assert.Equal(("Plan notes", "Note the plan.", "input.kind == \"follow_up\"", true, "Plan noted."), (plan.Header!.Label, plan.Header.Instruction, plan.If, plan.Header.Optional, plan.Fields["content"]));
+        Assert.Equal("Closing", package.EffectiveManifest.Macros!.First(m => m.Id == "closing").Label);
+        // The folder's files are bodies in the texts and raw in the source files.
+        Assert.Equal("Plan noted.", package.TextOf("macros/section_notes/plan.md"));
+        Assert.StartsWith("{", package.SourceFiles!["macros/section_notes/plan.md"], StringComparison.Ordinal);
+        Assert.Null(Load(V26Package.Minimal().Manifest, V26Package.Minimal().Files).MacroFolders);
     }
 }

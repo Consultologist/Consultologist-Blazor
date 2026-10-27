@@ -945,7 +945,7 @@ not placed, at specVersion 26"*) or an item by `<folder>.<item>` refused by name
 iterate the folder as an array of macro objects in the index's order (the inert and suppressed sets keyed
 `<folder>/<item>`); the preview scope carries the folders; the publish closure references the index and its
 items; the Web manifest reader reads the map. The engine half — the store gathering a folder, the render
-payload's folders — is **#1182** (layer B, after #1157); the direct item read `macro.<folder>.<item>` is #1116;
+payload's folders — is **#1182** (layer B, after #1157; landed 2026-10-27); the direct item read `macro.<folder>.<item>` is #1116;
 the editor's `+ Macro folder` is #1163's milestone; #1152 writes the map.)*
 
 *(#1116, 2026-10-26 — a folder item readable directly, as § 5.4 says; both the snippet item and the macro item
@@ -1173,6 +1173,29 @@ its content is empty where read, its id and label as ever; its label at 26 is it
 snippet lacked). Below 26 the folders are the settled snapshot and no key is set: the bytes are pinned. The
 editor's "empty prompt" desk note is M33's. Left to #1182 (macro folders: the store's gathering, the folder's
 items' gates by the same key).)*
+
+*(#1182, 2026-10-27 — macro folders at run time, as § 5.3 says; the engine half of #1099 and the last engine
+half of layer B. **The store gathers a folder as it gathers a snippet folder** — the entries whose path ends
+with `/` form a snippet-shaped table and go through the same gathering (the index, then each item file; the
+noun "Macro" for the index's sentences) — and `Materialise` resolves them through the headers
+(`WorkflowTextHeaders.ResolveMacroFolders`; loud on an error, since the validator already passed them) into
+`WorkflowPackage.MacroFolders` beside `Texts`: id → the index's ordered items, each with its header whole and
+its body as content; null below 26 and when none. **The render's folders** (`TemplateRenderScope.MacroFolders`,
+filled by the scope builder): each item a macro source with the header's label, instruction and `if`, the body
+as text, in the index's order — the renderer iterates the array and keys the direct read by item id; the
+mechanics sentence names the item's id, as the library's test pinned. **The gates by key**: one helper
+(`ConsultGatedScope.InertMacroKeys`) judges the flat macros by id and a folder's items by `<folder>/<item>`,
+the key the renderer and the walk use — the prompt activity, the completion and the deliverable-macro render
+all go through it; an inert item stays in the loop with empty prompt and content (a macro's gate is a render
+fact — unlike a snippet item's, which the starter's fan filter judged once). **Two gaps the engine half
+surfaced**: every convenience wrapper the engine calls (`Derive`, the deliverable reads, the gating reads, the
+signature readers) ran the walk WITHOUT the resolved macro folders, so a reader of `macro.<folder>` had no
+edges to what the items read and the scheduler could have run it before its sources — the wrappers now
+resolve the folders through the six-argument `PrepareNodes` and pass them, the validator's one map; and the
+publisher's file-path rule admitted only single-segment `macros/<file>`, so a package with a folder could never
+be published — `macros/<folder>/<file>` joins the admitted shapes, the folder id snake_case as a snippet
+folder's. A macro's gate is the reader's edge, not a gating read (it is judged at the render, never at the
+boundary). Left to the record (#1156) and the bump (#1149).)*
 
 ## 12. The editor
 

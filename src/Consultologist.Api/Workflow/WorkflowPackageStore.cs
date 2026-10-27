@@ -101,7 +101,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             : results.Count == 1 ? results[0].NodeId : null;
         var schemaContracts = loaded.SchemaContracts;
 
-        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef, Texts: loaded.Texts);
+        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef, Texts: loaded.Texts, MacroFolders: loaded.MacroFolders);
 
         _packageCache.TryAdd(cacheKey, package);
         _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, prompts?.Count ?? 0);
@@ -234,7 +234,19 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         WorkflowFormatCatalog Formats,
         string FormatsRef,
         // v26 (#1157): the header split, once; null below 26.
-        WorkflowResolvedTexts? Texts);
+        WorkflowResolvedTexts? Texts,
+        // v26 (#1182): the macro folders resolved through the headers; null below 26 and when none.
+        WorkflowPackageData? MacroFolders);
+
+    /// <summary>v26 (#1182): the macro entries that are folders (a path ending in '/'), as a snippet-shaped table — id → directory.</summary>
+    internal static IReadOnlyDictionary<string, string>? MacroFolderTableOf(WorkflowPackageManifest manifest)
+    {
+        var folders = (manifest.Macros ?? new List<WorkflowMacroSpec>())
+            .Where(macro => macro.File.EndsWith('/'))
+            .GroupBy(macro => macro.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First().File, StringComparer.Ordinal);
+        return folders.Count == 0 ? null : folders;
+    }
 
     /// <summary>
     /// The root files a manifest names, to download one by one (a miss is
@@ -281,6 +293,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         await GatherDataFilesAsync(name, version, manifest.Data, files, manifest.SpecVersion, cancellationToken);
         // v25 (B2 #1001): snippets are the same table shape as data.
         await GatherDataFilesAsync(name, version, manifest.Snippets, files, manifest.SpecVersion, cancellationToken);
+        // v26 (#1182, design § 5.3): a macro folder is gathered as a snippet folder is — its index and its items.
+        await GatherDataFilesAsync(name, version, MacroFolderTableOf(manifest), files, manifest.SpecVersion, cancellationToken, "Macro");
 
         // #433: the publication stamp, when the version has one — every version
         // published before it has none, and those keep re-matching as they
@@ -392,11 +406,25 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         // Post-validation resolve: the validator has already guaranteed integrity,
         // so this collects no errors. v26: through the headers — an item's label
         // and gate on the item, the bodies as content.
+        // v26 (#1182, design § 5.3): the macro folders — each item's header on the
+        // item, the body as content — resolved as the snippet folders are.
+        WorkflowPackageData? macroFolders = null;
+        if (texts is not null)
+        {
+            var folderErrors = new List<string>();
+            macroFolders = WorkflowTextHeaders.ResolveMacroFolders(manifest, texts, folderErrors);
+            if (folderErrors.Count > 0)
+            {
+                throw new WorkflowPackageContentException(
+                    $"Workflow package {packageRef} failed its macro folder read after validation: {string.Join(" | ", folderErrors)}");
+            }
+        }
+
         var data = texts is null
             ? WorkflowDataResolver.ResolveContent(manifest, files, new List<string>())
             : WorkflowDataResolver.ResolveContent(texts.Manifest, texts, new List<string>());
 
-        return new LoadedPackage(prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef, formats, formats.ResolvedRef, texts);
+        return new LoadedPackage(prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef, formats, formats.ResolvedRef, texts, macroFolders);
     }
 
     /// <summary>
@@ -484,7 +512,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         IReadOnlyDictionary<string, string>? table,
         Dictionary<string, string> files,
         int specVersion,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string noun = "Snippet")
     {
         foreach (var (folderId, path) in table ?? new Dictionary<string, string>())
         {
@@ -501,7 +530,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
                 continue;
             }
 
-            foreach (var file in ItemFilesOf(files[indexPath], folderId, specVersion))
+            foreach (var file in ItemFilesOf(files[indexPath], folderId, specVersion, noun))
             {
                 await TryAddBlobAsync(files, name, version, path + file, cancellationToken);
             }
@@ -514,11 +543,11 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     /// the 26 ordered list (<c>[{ id, file }]</c>, #1157 — design § 5.2). An
     /// index that is neither names nothing; the validator says why.
     /// </summary>
-    internal static IReadOnlyList<string> ItemFilesOf(string indexJson, string folderId, int specVersion)
+    internal static IReadOnlyList<string> ItemFilesOf(string indexJson, string folderId, int specVersion, string noun = "Snippet")
     {
         if (specVersion >= 26)
         {
-            return WorkflowTextHeaders.ReadIndexAt26(indexJson, folderId, "Snippet", new List<string>())?
+            return WorkflowTextHeaders.ReadIndexAt26(indexJson, folderId, noun, new List<string>())?
                 .Select(item => item.File)
                 .Where(file => !string.IsNullOrWhiteSpace(file))
                 .ToList()

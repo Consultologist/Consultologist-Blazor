@@ -94,7 +94,12 @@ public sealed record WorkflowPackage(
     // idempotent (run over bodies it finds no header and drops every gate); the
     // content endpoint round-trips the files whole; publish compares raw. A
     // render, a choice, a snapshot reads the effective form below.
-    WorkflowResolvedTexts? Texts = null)
+    WorkflowResolvedTexts? Texts = null,
+    // v26 (#1182, design § 5.3): the macro folders — id → the index's ordered
+    // items, each with its header (label, instruction, optional, default, if)
+    // and its body as content — resolved once at load as the snippet folders
+    // are. Null below 26 and when the package declares none.
+    WorkflowPackageData? MacroFolders = null)
 {
     public string Ref => $"{Manifest.Name}@{Manifest.Version}";
 

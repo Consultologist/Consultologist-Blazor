@@ -29,7 +29,7 @@ internal static class ConsultGatedScope
 
         var nodeId = NodeIdOf(input.NodeId);
         var itemId = input.Item?.GetValueOrDefault("id");
-        var inert = WorkflowInlineGates.Inert(scope.Macros.Values.Select(macro => (macro.Id, macro.If)), scope, TemplatePipes.Engine);
+        var inert = InertMacroKeys(scope);
         var suppressed = WorkflowInlineGates.Suppressed(
             nodeId,
             (input.Instances ?? Array.Empty<ConsultNodeMacroDescriptor>()).Select(instance => new WorkflowInlineGate(instance.Id, instance.If, instance.ForItem)),
@@ -85,6 +85,19 @@ internal static class ConsultGatedScope
 
         return scope with { Folders = folders, InertSnippets = keys };
     }
+
+    /// <summary>
+    /// v26 (#1177, #1182): the macros whose own gate does not hold over the
+    /// scope — the flat macros by id and (#1182, design § 5.3) a folder's items
+    /// by <c>&lt;folder&gt;/&lt;item&gt;</c>, the key the renderer and the walk use.
+    /// </summary>
+    public static IReadOnlySet<string> InertMacroKeys(TemplateRenderScope scope) =>
+        WorkflowInlineGates.Inert(
+            scope.Macros.Values.Select(macro => (macro.Id, macro.If))
+                .Concat((scope.MacroFolders ?? new Dictionary<string, IReadOnlyList<TemplateMacroSource>>())
+                    .SelectMany(folder => folder.Value.Select(item => ($"{folder.Key}/{item.Id}", item.If)))),
+            scope,
+            TemplatePipes.Engine);
 
     /// <summary>The node id of an instance key ("nodeId" or "nodeId:itemId").</summary>
     internal static string NodeIdOf(string instanceKey)
