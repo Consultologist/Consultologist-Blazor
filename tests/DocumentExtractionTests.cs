@@ -1549,4 +1549,170 @@ public class DocumentExtractionTests
             return buffer.ToArray();
         }
     }
+
+    // ---- speech-to-text for recordings (#1063) --------------------------
+    //
+    // The second impure reader, exercised through ExtractAsync with a fake
+    // ISpeechToText — never a cloud call. A recording is told by its bytes.
+
+    private sealed class FakeSpeechToText : ISpeechToText
+    {
+        private readonly SpeechToTextResult _result;
+
+        private FakeSpeechToText(SpeechToTextResult result, bool isConfigured)
+        {
+            _result = result;
+            IsConfigured = isConfigured;
+        }
+
+        public bool IsConfigured { get; }
+
+        public bool Invoked { get; private set; }
+
+        public Task<SpeechToTextResult> TranscribeAsync(byte[] audio, CancellationToken cancellationToken)
+        {
+            Invoked = true;
+            return Task.FromResult(_result);
+        }
+
+        public static FakeSpeechToText Returning(
+            SpeechToTextStatus status,
+            IReadOnlyList<TranscriptCue>? cues = null,
+            string? extractorId = "speech/1.0.0+abc12345abc12345abc12345abc12345",
+            bool isConfigured = true,
+            double? meanConfidence = 0.95) =>
+            new(new SpeechToTextResult(status, cues, extractorId, meanConfidence, TimeSpan.FromSeconds(90)), isConfigured);
+    }
+
+    private static async Task<DocumentExtractionResult> ExtractWithSpeechAsync(
+        byte[] bytes, ISpeechToText? stt, double? sttMinConfidence = null)
+    {
+        using var gate = new SemaphoreSlim(1, 1);
+        return await DocumentExtraction.ExtractAsync(
+            bytes, TimeSpan.Zero, gate, CancellationToken.None, null, null, stt, sttMinConfidence);
+    }
+
+    private static byte[] Wav() => [.. "RIFF"u8, 0x24, 0x08, 0x00, 0x00, .. "WAVEfmt "u8, 0x10, 0, 0, 0, 1, 0, 1, 0];
+    private static byte[] Mp3WithTag() => [.. "ID3"u8, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+    private static byte[] Mp3Bare() => [0xFF, 0xFB, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00];
+    private static byte[] Ogg() => [.. "OggS"u8, 0x00, 0x02, 0, 0, 0, 0, 0, 0, 0, 0];
+    private static byte[] Flac() => [.. "fLaC"u8, 0x00, 0x00, 0x00, 0x22];
+    private static byte[] M4a() => [0x00, 0x00, 0x00, 0x20, .. "ftypM4A "u8, 0, 0, 0, 0];
+
+    private static readonly IReadOnlyList<TranscriptCue> Consultation =
+    [
+        new("Speaker 1", "Good morning."),
+        new("Speaker 1", "How are you feeling today?"),
+        new("Speaker 2", "Fine, thanks. The cough is better."),
+    ];
+
+    public static IEnumerable<object[]> Recordings() =>
+        new[] { Wav(), Mp3WithTag(), Mp3Bare(), Ogg(), Flac(), M4a() }.Select(bytes => new object[] { bytes });
+
+    [Theory]
+    [MemberData(nameof(Recordings))]
+    public void ARecording_IsToldByItsBytes_AndNeedsTranscription(byte[] bytes)
+    {
+        Assert.True(AudioDocumentExtractor.Matches(bytes));
+        Assert.Equal(DocumentExtractionOutcomes.AudioNeedsTranscription, DocumentExtraction.Extract(bytes).Outcome);
+    }
+
+    [Fact]
+    public void ATextFile_IsNotARecording_NorIsAUtf16ByteOrderMark()
+    {
+        Assert.False(AudioDocumentExtractor.Matches("Referral: 65M, stage IIIA."u8.ToArray()));
+        Assert.False(AudioDocumentExtractor.Matches("WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHi"u8.ToArray()));
+        // FF FE opens a UTF-16 text file; a Layer I sync would read the same way.
+        Assert.False(AudioDocumentExtractor.Matches(Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes("Referral")).ToArray()));
+    }
+
+    [Fact]
+    public async Task ARecording_WithNoSpeechToText_IsRefusedAsAudioNotEnabled()
+    {
+        var unconfigured = FakeSpeechToText.Returning(SpeechToTextStatus.Transcribed, Consultation, isConfigured: false);
+
+        Assert.Equal(DocumentExtractionOutcomes.AudioNotEnabled, (await ExtractWithSpeechAsync(Wav(), stt: null)).Outcome);
+        Assert.Equal(DocumentExtractionOutcomes.AudioNotEnabled, (await ExtractWithSpeechAsync(Mp3Bare(), unconfigured)).Outcome);
+        Assert.False(unconfigured.Invoked);
+    }
+
+    [Fact]
+    public async Task ARecording_IsTranscribed_AndRenderedAsTurnsByTheOneRule()
+    {
+        var stt = FakeSpeechToText.Returning(SpeechToTextStatus.Transcribed, Consultation);
+
+        var result = await ExtractWithSpeechAsync(Wav(), stt);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        // Consecutive phrases of one speaker are one turn — a VTT's rule, so the
+        // record's textSha256 is over the conversation whichever container it came in.
+        Assert.Equal("Speaker 1: Good morning. How are you feeling today?\nSpeaker 2: Fine, thanks. The cough is better.", result.Text);
+        Assert.StartsWith("speech/", result.ExtractorId);
+        Assert.Null(result.PageCount);
+        Assert.True(stt.Invoked);
+    }
+
+    [Fact]
+    public async Task ARecording_BelowTheAccountsMinimum_IsRefused_AndAcceptedWithTheGateOff()
+    {
+        var stt = FakeSpeechToText.Returning(SpeechToTextStatus.Transcribed, Consultation, meanConfidence: 0.6);
+
+        Assert.Equal(DocumentExtractionOutcomes.SttLowConfidence, (await ExtractWithSpeechAsync(Ogg(), stt, sttMinConfidence: 0.8)).Outcome);
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, (await ExtractWithSpeechAsync(Ogg(), stt, sttMinConfidence: null)).Outcome);
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, (await ExtractWithSpeechAsync(Ogg(), stt, sttMinConfidence: 0.5)).Outcome);
+    }
+
+    [Theory]
+    [InlineData(SpeechToTextStatus.Empty, DocumentExtractionOutcomes.Empty)]
+    [InlineData(SpeechToTextStatus.Busy, DocumentExtractionOutcomes.Busy)]
+    [InlineData(SpeechToTextStatus.TooLong, DocumentExtractionOutcomes.TooLong)]
+    [InlineData(SpeechToTextStatus.Unavailable, DocumentExtractionOutcomes.SttUnavailable)]
+    public async Task TheServicesStatus_MapsToTheNamedOutcome(SpeechToTextStatus status, string outcome)
+    {
+        Assert.Equal(outcome, (await ExtractWithSpeechAsync(Flac(), FakeSpeechToText.Returning(status))).Outcome);
+    }
+
+    [Fact]
+    public async Task ATranscriptPastTheCharacterCap_IsRefused_NeverTruncated()
+    {
+        var cues = Enumerable.Range(0, 3000).Select(i => new TranscriptCue($"Speaker {i % 2 + 1}", new string('a', 100))).ToList();
+
+        var result = await ExtractWithSpeechAsync(M4a(), FakeSpeechToText.Returning(SpeechToTextStatus.Transcribed, cues));
+
+        Assert.Equal(DocumentExtractionOutcomes.TooMuchText, result.Outcome);
+    }
+
+    [Fact]
+    public async Task AScan_StillGoesToOcr_NotToSpeechToText()
+    {
+        var stt = FakeSpeechToText.Returning(SpeechToTextStatus.Transcribed, Consultation);
+        var ocr = FakeDocumentOcr.Returning(DocumentOcrStatus.Extracted, "Referral: 65M.", "docintel/1.0.0+abc12345");
+        using var gate = new SemaphoreSlim(1, 1);
+
+        var result = await DocumentExtraction.ExtractAsync(ImageOnlyPdf(), TimeSpan.Zero, gate, CancellationToken.None, ocr, null, stt, null);
+
+        Assert.Equal(DocumentExtractionOutcomes.Extracted, result.Outcome);
+        Assert.False(stt.Invoked);
+    }
+
+    [Theory]
+    [InlineData(null, "en-CA,fr-CA")]
+    [InlineData("", "en-CA,fr-CA")]
+    [InlineData("en-US", "en-US")]
+    [InlineData("en-CA, fr-CA ,en-US", "en-CA,fr-CA,en-US")]
+    [InlineData("en-CA;en-ca", "en-CA")]
+    public void TheLocales_DefaultToCanadasTwo_AndParseAList(string? configured, string expected)
+    {
+        Assert.Equal(expected, string.Join(',', AzureSpeechToText.ParseLocales(configured)));
+    }
+
+    [Theory]
+    [InlineData(DocumentExtractionOutcomes.AudioNotEnabled, "This is a recording, and audio transcription is not enabled here. Upload the transcript as text, .vtt or .srt instead.")]
+    [InlineData(DocumentExtractionOutcomes.SttUnavailable, "We could not transcribe this recording right now. Nothing is wrong with it — try again in a moment, or upload the transcript instead.")]
+    [InlineData(DocumentExtractionOutcomes.SttLowConfidence, "This recording was transcribed, but its confidence was below the minimum set in your profile. Upload the transcript instead, or lower the minimum in your profile.")]
+    [InlineData(DocumentExtractionOutcomes.TooLong, "This recording is longer than we transcribe in one go. Trim it, or upload the transcript instead.")]
+    public void TheRecordingOutcomes_HaveTheirSentences(string outcome, string sentence)
+    {
+        Assert.Equal(sentence, DocumentExtractionCopy.For(outcome));
+    }
 }

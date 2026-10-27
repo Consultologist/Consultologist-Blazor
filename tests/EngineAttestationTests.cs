@@ -61,6 +61,18 @@ public class EngineAttestationTests
     }
 
     [Fact]
+    public void Describe_CarriesTheDeploymentsFeatures_WhenGiven()
+    {
+        // #1063: what the deployment can do beyond the format — the Create page's
+        // transcript door reads features.speechToText; absent from a build before.
+        var with = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch, features: new EngineFeatures(true));
+        var without = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch);
+
+        Assert.True(with.Features!.SpeechToText);
+        Assert.Null(without.Features);
+    }
+
+    [Fact]
     public void Describe_AnUnstampedBuild_SaysSoWithoutAnyCommit()
     {
         var response = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch);
@@ -180,7 +192,8 @@ public class EngineAttestationTests
         // added here, in the open, before it can reach the wire.
         var properties = typeof(EngineAttestationResponse).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal);
         Assert.Equal(
-            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Release", "Scriban", "SupportedSpecVersions", "Version" },
+            // #1063: Features — the deployment's capabilities (speechToText), no PHI.
+            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "Features", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Release", "Scriban", "SupportedSpecVersions", "Version" },
             properties);
     }
 

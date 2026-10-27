@@ -44,6 +44,9 @@ public class ConsultGenerationJobStarterTests
     private const string Referral =
         "65M, newly diagnosed adenocarcinoma of the lung, stage IIIA, for consideration of chemoradiation. PMHx HTN.";
 
+    // #1063: speech-to-text for recordings; a test sets it to a fake before starting.
+    private ISpeechToText? _speechToText;
+
     private ConsultGenerationJobStarter CreateStarter(ILogger<ConsultGenerationJobStarter>? logger = null, string? apiHost = null)
     {
         _client.Entities.Returns(_entities);
@@ -71,7 +74,8 @@ public class ConsultGenerationJobStarterTests
             _formResponses,
             _formResponseBlobs,
             _ocr,
-            TestFormats.Catalog);
+            TestFormats.Catalog,
+            _speechToText);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -2528,6 +2532,72 @@ public class ConsultGenerationJobStarterTests
         Assert.Equal("vtt/1", origin.Extractor);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(vtt), origin.FileSha256);
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex(TeamsTurns), origin.TextSha256);
+    }
+
+    [Fact]
+    public async Task ARecordingInADeclaredTranscriptInput_StampsTranscript_WithTheSpeechBuildAndBothDigests()
+    {
+        // #1063: a recording is the transcript door's third container. The
+        // origin is a transcript's — FileSha256 over the audio bytes, TextSha256
+        // over the turns the service's phrases rendered to, the extractor naming
+        // the speech-to-text build.
+        var stt = Substitute.For<ISpeechToText>();
+        stt.IsConfigured.Returns(true);
+        stt.TranscribeAsync(Arg.Any<byte[]>(), Arg.Any<CancellationToken>()).Returns(new SpeechToTextResult(
+            SpeechToTextStatus.Transcribed,
+            new TranscriptCue[]
+            {
+                new("Speaker 1", "Good morning. Let's review the scan results from last week."),
+                new("Speaker 1", "How are you feeling today?"),
+                new("Speaker 2", "Fine, thanks. The cough is better."),
+            },
+            "speech/1.0.0+0123456789abcdef0123456789abcdef", 0.93, TimeSpan.FromSeconds(42)));
+        _speechToText = stt;
+        var minimal = V7Fixtures.Minimal();
+        var manifest = minimal with
+        {
+            SpecVersion = 13,
+            Inputs = minimal.Inputs!.Select(input => input.Id == "consult_draft"
+                ? input with { Type = WorkflowInputTypes.Text, ExpectedContent = WorkflowExpectedContent.Transcript }
+                : input).ToList()
+        };
+        var wav = new byte[] { (byte)'R', (byte)'I', (byte)'F', (byte)'F', 0x24, 0, 0, 0, (byte)'W', (byte)'A', (byte)'V', (byte)'E', (byte)'f', (byte)'m', (byte)'t', (byte)' ' };
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("audio/wav", wav)] });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.Null(captured.Outcome.Error);
+        var origin = Assert.Single(Assert.Contains("consult_draft", captured.Initialize!.InputDocumentOrigins));
+        Assert.Equal(ConsultInputOriginKinds.Transcript, origin.Kind);
+        Assert.StartsWith("speech/", origin.Extractor);
+        Assert.Equal(ConsultGenerationProvenance.Sha256Hex(wav), origin.FileSha256);
+        Assert.Equal(
+            ConsultGenerationProvenance.Sha256Hex("Speaker 1: Good morning. Let's review the scan results from last week. How are you feeling today?\nSpeaker 2: Fine, thanks. The cough is better."),
+            origin.TextSha256);
+        Assert.Null(captured.OrchestrationInput!.Request.InputFiles);
+    }
+
+    [Fact]
+    public async Task ARecording_WithNoSpeechToText_IsRefusedByName_BeforeAnythingRuns()
+    {
+        var minimal = V7Fixtures.Minimal();
+        var manifest = minimal with
+        {
+            SpecVersion = 13,
+            Inputs = minimal.Inputs!.Select(input => input.Id == "consult_draft"
+                ? input with { Type = WorkflowInputTypes.Text, ExpectedContent = WorkflowExpectedContent.Transcript }
+                : input).ToList()
+        };
+        var request = new ConsultGenerationRequest(
+            null,
+            InputFiles: new Dictionary<string, List<InputFilePayload>> { ["consult_draft"] = [new("audio/ogg", "OggS\0\u0002\0\0\0\0"u8.ToArray())] });
+
+        var captured = await StartAndCaptureAsync(manifest, request);
+
+        Assert.NotNull(captured.Outcome.Error);
+        Assert.Contains("audio transcription is not enabled here", captured.Outcome.ErrorDetail);
     }
 
     [Fact]
