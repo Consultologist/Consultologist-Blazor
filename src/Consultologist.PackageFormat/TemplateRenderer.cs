@@ -89,7 +89,15 @@ public sealed record TemplateLoopOutput(
 public sealed record TemplateFanItem(string Id, string Name, string? Text = null, string? Value = null, WorkflowDeclarationNode? Element = null);
 
 /// <summary>A macro as the template reads it: its text (a template, rendered when read) and its instruction (the <c>.prompt</c> half the mechanics sentence completes).</summary>
-public sealed record TemplateMacroSource(string Id, string Name, string Text, string Instruction);
+public sealed record TemplateMacroSource(
+    string Id,
+    string Name,
+    string Text,
+    string Instruction,
+    // #1157 (v26 design § 2.2): the macro's own gate, its header's `if` — carried
+    // beside the label and the instruction; judged by the engine (#1177). Null
+    // below 26 and when the header declares none.
+    string? If = null);
 
 /// <summary>The run facts (<c>run.date</c> as yyyy-MM-dd, <c>run.job</c>, <c>run.package</c>, <c>run.host</c>), as the v11 tokens gave them.</summary>
 public sealed record TemplateRunFacts(string Date, string Job, string Package, string Host);
@@ -329,40 +337,46 @@ public static class TemplateRenderer
         // #1099: one macro object — a flat macro keyed by its id, a folder item by <folder>/<item>.
         LazyMembersObject MacroObject(string key, string path, TemplateMacroSource source)
         {
+            // #1044: the instruction is a template, rendered over the same scope
+            // FIRST; the mechanics sentence — carrying the literal read the model
+            // is to write — is appended after, never rendered. #1157: .instruction
+            // is the same read without the sentence (what the model will be told,
+            // as text). Null is an empty read: nothing is told, nothing recorded.
+            string? RenderInstruction()
+            {
+                // #1089 (v26 design § 2.3): an inline read the running node's
+                // instance gate suppresses renders empty — no instruction, no
+                // mechanics sentence, no read recorded (the model is told nothing).
+                if (scope.SuppressedPrompts?.Contains(key) == true || scope.InertMacros?.Contains(key) == true)
+                {
+                    return null;
+                }
+
+                // #1096 (§ 2.3, § 2.5): the instruction renders first; a blank result —
+                // no instruction, or a template that renders to nothing — is an
+                // empty read: no mechanics sentence, no read recorded.
+                var rendered = RenderWith($"Macro '{key}' instruction", source.Instruction, globals, trace, nested: true);
+                if (string.IsNullOrWhiteSpace(rendered))
+                {
+                    return null;
+                }
+
+                trace?.PromptReads.Add(key);
+                return rendered;
+            }
+
             var members = new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
             {
                 [TemplateMembers.Id] = () => source.Id,
                 [TemplateMembers.Name] = () => source.Name,
-                // #1044: the instruction is a template, rendered over the same
-                // scope FIRST; the mechanics sentence — carrying the literal read
-                // the model is to write — is appended after, never rendered.
-                [TemplateMembers.Prompt] = () =>
-                {
-                    // #1089 (v26 design § 2.3): an inline read the running node's
-                    // instance gate suppresses renders empty — no instruction, no
-                    // mechanics sentence, no read recorded (the model is told nothing).
-                    if (scope.SuppressedPrompts?.Contains(key) == true || scope.InertMacros?.Contains(key) == true)
-                    {
-                        return string.Empty;
-                    }
-
-                    // #1096 (§ 2.3, § 2.5): the instruction renders first; a blank result —
-                    // no instruction, or a template that renders to nothing — is an
-                    // empty read: no mechanics sentence, no read recorded.
-                    var rendered = RenderWith($"Macro '{key}' instruction", source.Instruction, globals, trace, nested: true);
-                    if (string.IsNullOrWhiteSpace(rendered))
-                    {
-                        return string.Empty;
-                    }
-
-                    trace?.PromptReads.Add(key);
-                    return WorkflowMacroMechanics.Prompt(source.Id, rendered);
-                },
+                [TemplateMembers.Prompt] = () => RenderInstruction() is { } rendered ? WorkflowMacroMechanics.Prompt(source.Id, rendered) : string.Empty,
             };
             if (scope.Labelled)
             {
                 // #1105 (v26 design § 5): at 26 the member is label — the header's.
                 members[TemplateMembers.Label] = () => source.Name;
+                // #1157 (§ 5.2): the instruction readable as text — the same read as .prompt.
+                members[TemplateMembers.Instruction] = () => RenderInstruction() ?? string.Empty;
             }
 
             var text = new Lazy<string>(() => RenderWith($"Macro '{key}'", source.Text, globals, trace, nested: true));
