@@ -913,7 +913,7 @@ hpi, plan)"*); the 26 rule reads *"a folder item's if reads inputs and item.id o
 known at job start"*. `WorkflowInlineGates.InertSnippets` is the judgement; the render scope's `InertSnippets`
 empties `snippet.<id>.content` where read, the id as ever; null is the 25 render. Decided 2026-10-26: the engine
 half — the inert render judged before the prompt, the job starter's fan filter reading the item's `if`, the
-direct read gated once #1116 lands — is **#1179** (layer B, beside #1175/#1177, after #1157); the preview's
+direct read gated once #1116 lands — is **#1179** (layer B, beside #1175/#1177, after #1157; landed 2026-10-27); the preview's
 picture is the editor's (M33); the migration's lifting of a uniform text guard is #1152's.)*
 
 *(#1096, 2026-10-26 — the instruction required only where read inline, as § 2.5 says. `ValidateInstructionsAt26`
@@ -1155,6 +1155,24 @@ reads; no instance reads as today; `item.id` per item; an inert macro's `.prompt
 placement excluded with the header's text; inert + a holding instance is inert; a live macro + a failing instance
 is suppressed, its `.content` still composing inline; a 25 `when` does not suppress. Left to #1179 (the snippet's
 and the folder item's gate — `InertSnippets`, the starter's fan filter), #1182 (macro folders), the bump.)*
+
+*(#1179, 2026-10-27 — the snippet's and the folder item's gate at run time, as § 2.1 and § 5.4 say; the last
+gate. **A folder item's gate is judged once, at job start**, with the item bound — the starter's fan filter
+(`SettledFolders`, #1154): the settled snapshot the orchestrator threads holds the live items and the render never
+re-judges. Two facts decided the direct read: the renderer's context is strict (a direct read of an item absent
+from the rendered folder refused the member), and the renderer had kept an inert item IN the loop with empty
+content. So the renderer now leaves an inert folder item out of every loop over its folder and keeps it as a
+direct member (`array.size` is the live count) — the design's sentence, literally — and at 26 the render sees the
+FULL declared folder (bodies, labels, from the package's data) with every item the settled snapshot lacks keyed
+`<folder>/<item>` in `InertSnippets` (`ConsultGatedScope.JudgeSnippets`, called by `Judge` and by the
+deliverable-macro render): the loop iterates the settled set, the direct read of a gated-off item renders empty.
+**A standalone snippet's header `if`** is judged in `JudgeSnippets` over the node's scope
+(`WorkflowInlineGates.InertSnippets`; the gate from the resolved texts' headers by the manifest's path) — inert,
+its content is empty where read, its id and label as ever; its label at 26 is its header's
+(`TemplateRenderScope.SnippetLabels`, filled by the scope builder — the one slice of #1157's label work the
+snippet lacked). Below 26 the folders are the settled snapshot and no key is set: the bytes are pinned. The
+editor's "empty prompt" desk note is M33's. Left to #1182 (macro folders: the store's gathering, the folder's
+items' gates by the same key).)*
 
 ## 12. The editor
 
