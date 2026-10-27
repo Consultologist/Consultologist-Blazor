@@ -27,12 +27,20 @@ internal static class ConsultRenderPayload
         ConsultNodeDescriptor node,
         IReadOnlyDictionary<string, string>? item,
         IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
-        IReadOnlyDictionary<string, NodeRunResult> outputs)
+        IReadOnlyDictionary<string, NodeRunResult> outputs,
+        // v26 (#1154, design § 1.3): a flow node that took no branch has no
+        // text — the read is omitted, and the render reads null (PR 3).
+        IReadOnlySet<string>? skipped = null)
     {
         var texts = new Dictionary<string, string>(StringComparer.Ordinal);
 
         foreach (var readId in node.Reads ?? Array.Empty<string>())
         {
+            if (skipped?.Contains(readId) == true)
+            {
+                continue;
+            }
+
             var read = nodesById.GetValueOrDefault(readId)
                 ?? throw new InvalidOperationException($"Node '{node.Id}' reads node '{readId}', which the job does not carry.");
             var key = ConsultNodeScheduler.InstanceKey(readId, read.ForEach is null ? null : item?["id"]);

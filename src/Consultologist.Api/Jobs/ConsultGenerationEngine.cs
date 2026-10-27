@@ -166,6 +166,12 @@ public sealed class ConsultGenerationOrchestrator
         var nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
         var chainNodes = nodes.Where(node => node.ForEach != null).ToList();
         var aggregators = nodes.Where(node => node.Aggregate != null).ToList();
+        // v26 (#1154, design § 1): the flow nodes — a loop completes as the
+        // aggregator it replaces (ConsultFlowCompletion), an if/case as its
+        // taken body's returned node; one that took no branch is SKIPPED: its
+        // row says so, a reader treats it as settled and reads nothing.
+        var flowNodes = nodes.Where(node => node.Flow is not null).ToList();
+        var skippedNodes = new HashSet<string>(StringComparer.Ordinal);
         // v25 (B5 #1004): a 25 job — one whose nodes carry formats (the job
         // starter's IsAt25, over the snapshot it took). Its aggregators stamp
         // definition 6, and its deliverables fill no slot: an inline macro
@@ -194,8 +200,16 @@ public sealed class ConsultGenerationOrchestrator
         string FailedKey(ConsultNodeDescriptor node, string itemId) =>
             v6 ? $"{CollectionIdOf(node)}:{itemId}" : itemId;
 
+        // v26 (#1154): a 26 folder item carries its header's label where a 25 item carried name.
         string ItemName(ConsultNodeDescriptor node, string itemId) =>
-            FanItems(node).First(item => item["id"] == itemId).GetValueOrDefault("name", itemId);
+            WorkflowPackageBlocks.ItemName(FanItems(node).First(item => item["id"] == itemId));
+
+        // v26 (#1154, design § 3): a block is named by the LOOP a deliverable
+        // sources; the body node the loop returns is what completes it.
+        string BlockNodeOf(ConsultNodeDescriptor node) =>
+            node.In is { } loopId && nodesById.TryGetValue(loopId, out var loop) && loop.Flow == ConsultNodeFlows.For && string.Equals(loop.Ret, node.Id, StringComparison.Ordinal)
+                ? loopId
+                : node.Id;
 
         // The deliverable table: v7 = one entry per result in result-set order
         // (block ids gain the "{resultId}:" prefix); v6 = one unnamed entry
@@ -264,7 +278,7 @@ public sealed class ConsultGenerationOrchestrator
                             instanceKey,
                             node.Op ?? string.Empty,
                             node.With ?? new Dictionary<string, string>(StringComparer.Ordinal),
-                            ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs),
+                            ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs, skippedNodes),
                             node.Format,
                             node.FormatHash),
                         AgentActivityRetryOptions)] = (node.Id, item?["id"]);
@@ -289,7 +303,7 @@ public sealed class ConsultGenerationOrchestrator
                         Producer: node.Producer,
                         FormatHash: node.FormatHash,
                         Op: node.Op,
-                        NodeTexts: ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs),
+                        NodeTexts: ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs, skippedNodes),
                         Folders: ConsultRenderPayload.FoldersFor(collections),
                         Item: item,
                         ForEach: node.ForEach,
@@ -358,10 +372,15 @@ public sealed class ConsultGenerationOrchestrator
                     continue; // v12 #624: checks settle inline too — no activity, no model.
                 }
 
+                if (node.Flow != null)
+                {
+                    continue; // v26 (#1154): a flow node is structural — it completes inline, as an aggregator does.
+                }
+
                 if (node.ForEach is null)
                 {
                     if (!started.Contains(node.Id)
-                        && ConsultNodeScheduler.InstanceReady(node, null, nodesById, outputs))
+                        && ConsultNodeScheduler.InstanceReady(node, null, nodesById, outputs, skippedNodes))
                     {
                         StartInstance(node, null);
                     }
@@ -379,7 +398,7 @@ public sealed class ConsultGenerationOrchestrator
                         continue;
                     }
 
-                    if (ConsultNodeScheduler.InstanceReady(node, itemId, nodesById, outputs))
+                    if (ConsultNodeScheduler.InstanceReady(node, itemId, nodesById, outputs, skippedNodes))
                     {
                         StartInstance(node, item);
                     }
@@ -454,7 +473,7 @@ public sealed class ConsultGenerationOrchestrator
                         await context.Entities.CallEntityAsync(
                             entityId,
                             nameof(ConsultGenerationJobEntity.FailBlock),
-                            new BlockGenerationResult($"{deliverable.BlockPrefix}{source!.Id}:{itemId}", ItemName(node, itemId), false, null, error));
+                            new BlockGenerationResult($"{deliverable.BlockPrefix}{BlockNodeOf(source!)}:{itemId}", ItemName(node, itemId), false, null, error));
                     }
                 }
             }
@@ -802,6 +821,91 @@ public sealed class ConsultGenerationOrchestrator
                             rendered);
                     }
                 }
+
+                // v26 (#1154, design § 1.3): the flow nodes settle on the same
+                // pass — a loop as the aggregator's bytes over its returned
+                // node's items, an if/case as its taken body's returned node.
+                // A loop's row carries the aggregator's ladder; the alias row
+                // carries none (its output is the returned node's, recorded
+                // there). An if/case a deliverable sources is one block,
+                // completed here; a loop's blocks complete item by item.
+                // The deliverable's composition from its sources is #1155.
+                foreach (var flow in flowNodes)
+                {
+                    if (outputs.ContainsKey(flow.Id) || failedAggregators.ContainsKey(flow.Id) || skippedNodes.Contains(flow.Id))
+                    {
+                        continue;
+                    }
+
+                    var composed = ConsultFlowCompletion.TryCompose(flow, nodesById, outputs, FanItems, (node, itemId) => failedItems.Contains(FailedKey(node, itemId)));
+                    if (composed is null)
+                    {
+                        continue;
+                    }
+
+                    progressed = true;
+
+                    if (composed.Failure is { } failure)
+                    {
+                        failedAggregators[flow.Id] = failure;
+                        continue;
+                    }
+
+                    var flowResult = composed.Result!;
+                    outputs[flow.Id] = flowResult;
+                    completedNodeCount++;
+
+                    var isLoop = flow.Flow == ConsultNodeFlows.For;
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
+                        new ConsultGenerationNodeUpdate(
+                            flow.Id, flow.Label, null,
+                            isLoop ? flowResult.InputHash : null, isLoop ? flowResult.OutputHash : null,
+                            completedNodeCount, totalNodeCount, isLoop ? flowResult.HashVersion : null,
+                            AgentOutputHash: isLoop ? flowResult.AgentOutputHash : null));
+
+                    if (isLoop)
+                    {
+                        continue;
+                    }
+
+                    foreach (var deliverable in deliverables)
+                    {
+                        if (deliverable.SourceIds.Contains(flow.Id))
+                        {
+                            completedBlockCount++;
+
+                            await context.Entities.CallEntityAsync(
+                                entityId,
+                                nameof(ConsultGenerationJobEntity.CompleteBlock),
+                                new BlockGenerationResult($"{deliverable.BlockPrefix}{flow.Id}", flow.Label, true, flowResult.RawOutput.Trim(), null));
+                        }
+                    }
+                }
+            }
+        }
+
+        // v26 (#1154, design § 1.3, § 1.5): an if/case that took no branch is
+        // skipped — its row says so (the branch "none" rides its descriptor),
+        // a reader treats it as settled and reads nothing. Judged once the
+        // graph is final: at start for a non-deciding job, after the boundary
+        // for a deciding one (stage one holds no decided flow).
+        async Task MarkSkippedFlowsAsync()
+        {
+            foreach (var flow in flowNodes)
+            {
+                if (flow.Branch != WorkflowFlowDecision.None || !skippedNodes.Add(flow.Id))
+                {
+                    continue;
+                }
+
+                completedNodeCount++;
+
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.MarkNodeSkipped),
+                    new ConsultGenerationNodeSkip(flow.Id, flow.Label, "took no branch", completedNodeCount, totalNodeCount));
             }
         }
 
@@ -972,7 +1076,7 @@ public sealed class ConsultGenerationOrchestrator
                             await context.Entities.CallEntityAsync(
                                 entityId,
                                 nameof(ConsultGenerationJobEntity.CompleteBlock),
-                                new BlockGenerationResult($"{deliverable.BlockPrefix}{nodeId}:{itemId}", ItemName(node, itemId), true, result.RawOutput.Trim(), null));
+                                new BlockGenerationResult($"{deliverable.BlockPrefix}{BlockNodeOf(node)}:{itemId}", ItemName(node, itemId), true, result.RawOutput.Trim(), null));
                         }
                     }
                 }
@@ -997,6 +1101,7 @@ public sealed class ConsultGenerationOrchestrator
             nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
             chainNodes = nodes.Where(node => node.ForEach != null).ToList();
             aggregators = nodes.Where(node => node.Aggregate != null).ToList();
+            flowNodes = nodes.Where(node => node.Flow is not null).ToList();
             totalNodeCount = allNodes.Count;
 
             try
@@ -1086,6 +1191,7 @@ public sealed class ConsultGenerationOrchestrator
             nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
             chainNodes = nodes.Where(node => node.ForEach != null).ToList();
             aggregators = nodes.Where(node => node.Aggregate != null).ToList();
+            flowNodes = nodes.Where(node => node.Flow is not null).ToList();
             results = decidedResults;
             items = decision.Items;
             collections = decision.CollectionSets;
@@ -1095,6 +1201,8 @@ public sealed class ConsultGenerationOrchestrator
             totalNodeCount = nodes.Count;
             skippedForReply = decision.Skipped.Count > 0 ? decision.Skipped : null;
         }
+
+        await MarkSkippedFlowsAsync();
 
         if (!await RunToQuiescenceAsync())
         {
@@ -1157,7 +1265,7 @@ public sealed class ConsultGenerationOrchestrator
             return (before, after);
         }
 
-        var expectedInstances = nodes.Where(node => node.Aggregate is null && node.Check is null).Sum(node => node.ForEach is null
+        var expectedInstances = nodes.Where(node => node.Aggregate is null && node.Check is null && node.Flow is null).Sum(node => node.ForEach is null
             ? 1
             : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, item["id"]))));
         if (started.Count(key => outputs.ContainsKey(key)) < expectedInstances && failedItems.Count == 0)
@@ -1507,10 +1615,14 @@ internal static class ConsultNodeScheduler
         ConsultNodeDescriptor node,
         string? itemId,
         IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
-        IReadOnlyDictionary<string, NodeRunResult> outputs)
+        IReadOnlyDictionary<string, NodeRunResult> outputs,
+        // v26 (#1154, design § 1.3): a flow node that took no branch is
+        // settled with nothing to read — a reader does not wait on it.
+        IReadOnlySet<string>? skipped = null)
     {
         return NodeDependencies(node).All(dependencyId =>
-            outputs.ContainsKey(InstanceKey(
+            skipped?.Contains(dependencyId) == true
+            || outputs.ContainsKey(InstanceKey(
                 dependencyId,
                 nodesById[dependencyId].ForEach is null ? null : itemId)));
     }
@@ -1610,7 +1722,12 @@ internal static class ConsultDeliverables
         string? CheckNodeId = null,
         // v25 (B8 #1027): the nodes this deliverable's placed macros read —
         // its document composes only once every one has settled.
-        IReadOnlyList<string>? Reads = null);
+        IReadOnlyList<string>? Reads = null,
+        // v26 (#1154, design § 3): the deliverable's sources as declared — a
+        // loop, an if/case or a prose node each. SourceIds then holds the
+        // COMPLETION keys: a loop's returned node (its items complete the
+        // loop's blocks), an if/case's own id, a prose node's own. Null below 26.
+        IReadOnlyList<string>? Sources = null);
 
     public static IReadOnlyList<Deliverable> Resolve(
         IReadOnlyList<ConsultResultDescriptor>? results,
@@ -1623,6 +1740,12 @@ internal static class ConsultDeliverables
                 .ToList()
             ?? (IReadOnlyList<string>)new List<string>();
 
+        // v26 (#1154): the completion keys of a deliverable's declared sources.
+        IReadOnlyList<string> CompletionKeysOf(IReadOnlyList<string> sources) =>
+            sources
+                .Select(id => nodesById.GetValueOrDefault(id) is { Flow: ConsultNodeFlows.For, Ret: { } ret } ? ret : id)
+                .ToList();
+
         if (results is { Count: > 0 })
         {
             return results
@@ -1631,7 +1754,7 @@ internal static class ConsultDeliverables
                     result.Label,
                     $"{result.Id}:",
                     result.NodeId,
-                    SourcesOf(nodesById.GetValueOrDefault(result.NodeId)),
+                    result.Sources is { Count: > 0 } sources ? CompletionKeysOf(sources) : SourcesOf(nodesById.GetValueOrDefault(result.NodeId)),
                     ordinal,
                     result.Macros,
                     result.Signature,
@@ -1639,7 +1762,8 @@ internal static class ConsultDeliverables
                     result.Check is { } check && ConsultCheckRefs.NodeIdOf(check) is { } checkId && nodesById.ContainsKey(checkId)
                         ? checkId
                         : null,
-                    result.Reads))
+                    result.Reads,
+                    result.Sources))
                 .ToList();
         }
 
