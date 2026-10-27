@@ -822,7 +822,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // generic custom agent a 22-24 custom-schema node now runs on.
         // v26 (#1157): the texts as a render reads them (a format or schema file
         // is byte-identical in both maps) and the macros with their header facts.
-        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.TextFiles, package.EffectiveManifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest, flows, branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id))).ToList();
+        var nodes = package.Nodes.Select(node => DescribeNode(node, package.SchemaContracts, package.ContractAgents, package.TextFiles, package.EffectiveManifest.Macros, package.Formats ?? _formats, package.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), inputs.Effective, package.Manifest, flows, branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id), collectionSets)).ToList();
 
         // Provenance: identify the artifacts and input that produce this consult.
         // v5/v6: the hash covers the draft only (definition version 2). v7: the
@@ -3245,13 +3245,15 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         WorkflowFlowNodes.Resolved? flows = null,
         string? branch = null,
         // v26 (#1155): the deliverables this node's prompt reads.
-        IReadOnlySet<string>? deliverableReads = null)
+        IReadOnlySet<string>? deliverableReads = null,
+        // v26 (#1156): the settled collection sets, for a loop row's count.
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null)
     {
         // v26 (#1154, design § 1.5): a flow node is structural — no format, no
         // prompt — and its row carries its kind, its bodies and its decision.
         if (flows is not null && flows.Flows.TryGetValue(node.Id, out var flow))
         {
-            return DescribeFlowNodeAt26(flow, reads, branch);
+            return DescribeFlowNodeAt26(flow, reads, branch, collectionSets);
         }
 
         // v25 (B2 #1001, design § 3.7): a node that declares a format is
@@ -3444,7 +3446,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             OnInvalid: node.OnInvalid,
             In: flows?.Owner.GetValueOrDefault(node.Id),
             // v26 (#1155): the deliverables its prompt reads, sorted.
-            DeliverableReads: deliverableReads is { Count: > 0 } ? deliverableReads.Order(StringComparer.Ordinal).ToList() : null);
+            DeliverableReads: deliverableReads is { Count: > 0 } ? deliverableReads.Order(StringComparer.Ordinal).ToList() : null,
+            // v26 (#1156, record storage 8): the prompt by path on the served row.
+            Prompt: manifest?.SpecVersion >= 26 ? node.Prompt : null);
     }
 
     /// <summary>
@@ -3453,7 +3457,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     /// undecided or when none) and the branch taken. Its Reads are what its
     /// decision reads (an if's expression, a case's subject), never its bodies.
     /// </summary>
-    internal static ConsultNodeDescriptor DescribeFlowNodeAt26(WorkflowFlowNodes.Flow flow, IReadOnlySet<string>? reads, string? branch)
+    internal static ConsultNodeDescriptor DescribeFlowNodeAt26(
+        WorkflowFlowNodes.Flow flow,
+        IReadOnlySet<string>? reads,
+        string? branch,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null)
     {
         var taken = flow.Kind == WorkflowFlowNodes.Kind.For
             ? flow.Bodies.FirstOrDefault()
@@ -3464,12 +3472,18 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             flow.Node.Label,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(flow.Node.Id, flow.Node.Id),
             Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
-            Flow: flow.Kind switch { WorkflowFlowNodes.Kind.For => "for", WorkflowFlowNodes.Kind.If => "if", _ => "case" },
+            Kind: flow.Kind switch { WorkflowFlowNodes.Kind.For => "for", WorkflowFlowNodes.Kind.If => "if", _ => "case" },
             Collection: flow.Collection,
             Expression: flow.Expression,
             Body: flow.BodyNodeIds.Distinct(StringComparer.Ordinal).ToList(),
             Ret: taken?.RetNodeId,
-            Branch: branch);
+            Branch: branch,
+            // v26 (#1156, record storage 8): a loop row's count — the settled
+            // fan's items (the folder after its items' gates, or the array input).
+            Count: flow.Kind == WorkflowFlowNodes.Kind.For && flow.Collection is { } collection && collectionSets is not null
+                && collectionSets.TryGetValue(WorkflowFanSources.CollectionIdOf(collection), out var items)
+                ? items.Count
+                : null);
     }
 
     /// <summary>v26 (#1154): a package at 26 — its manifest says so (26 keeps formats on its plain nodes, so <see cref="IsAt25"/> holds there too, rightly, for every 25 path).</summary>

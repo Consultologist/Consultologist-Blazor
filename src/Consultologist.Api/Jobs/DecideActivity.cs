@@ -193,7 +193,7 @@ public sealed class DecideActivity
             narrowed.Nodes!.Select(node => ConsultGenerationJobStarter.DescribeNode(
                 node, narrowed.SchemaContracts, narrowed.ContractAgents, narrowed.TextFiles, narrowed.EffectiveManifest.Macros,
                 narrowed.Formats ?? engineFormats, narrowed.Stamp?.Formats, derivedEdges?.GetValueOrDefault(node.Id), effectiveInputs, narrowed.Manifest,
-                flows, fireSet.Branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id))).ToList(),
+                flows, fireSet.Branches?.GetValueOrDefault(node.Id), nodeDeliverableReads?.GetValueOrDefault(node.Id), skeleton.CollectionSets)).ToList(),
             skeleton.Items,
             skeleton.CollectionSets,
             skeleton.CollectionRosters,

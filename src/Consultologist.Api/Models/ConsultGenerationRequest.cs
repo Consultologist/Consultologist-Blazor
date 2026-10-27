@@ -613,14 +613,15 @@ public sealed record ConsultNodeDescriptor(
     IReadOnlyDictionary<string, string>? With = null,
     string? OnInvalid = null,
     // v26 (#1154, design § 1.5, § 10): a flow node's row — its kind (for | if |
-    // case), a loop's collection as a 25 forEach spells it, an if's expression
-    // or a case's subject, its body node ids, the node it returns (a loop's; for
-    // an if/case the TAKEN body's, null while undecided or when none), and the
+    // case; the record's discriminator, spelled kind on the wire — #1156), a
+    // loop's collection as a 25 forEach spells it, an if's expression or a
+    // case's subject, its body node ids, the node it returns (a loop's; for an
+    // if/case the TAKEN body's, null while undecided or when none), and the
     // branch the decision took ("then" | "else" | "<v1, v2>" | "none"). On a
     // body node, In names the flow node it runs inside (its ForEach is its
     // loop's collection, so it fans as a 25 node did). Null below 26. Appended
     // last, same positional-call rule.
-    string? Flow = null,
+    string? Kind = null,
     string? Collection = null,
     string? Expression = null,
     IReadOnlyList<string>? Body = null,
@@ -630,7 +631,22 @@ public sealed record ConsultNodeDescriptor(
     // v26 (#1155, design § 3.1): the deliverables this node's prompt reads as
     // deliverable.<id>.content, closed as its Reads are — the orchestrator
     // threads each one's composed text. Sorted; null below 26 and when none.
-    IReadOnlyList<string>? DeliverableReads = null);
+    IReadOnlyList<string>? DeliverableReads = null,
+    // v26 (#1156, design § 10, record storage 8): the node's prompt by PATH —
+    // the served record's field at 26, where PromptId (the engine's working
+    // copy, the same path at 26) is projected away; a loop row's Count is the
+    // settled fan's item count. Null below 26. Appended last, same rule.
+    string? Prompt = null,
+    int? Count = null)
+{
+    /// <summary>
+    /// v26 (#1156, record storage 8): the row as the served record carries it —
+    /// prompt by path, no promptId / forEach / aggregate (a body node's In and
+    /// a loop row's Collection say what they said). The entity keeps the working
+    /// fields; the contract is the served record.
+    /// </summary>
+    public ConsultNodeDescriptor AsRecordRowAt8() => this with { PromptId = null, ForEach = null, Aggregate = null };
+}
 
 /// <summary>
 /// v25 (B4 #1003, design § 3.5): a reply validated against its format after

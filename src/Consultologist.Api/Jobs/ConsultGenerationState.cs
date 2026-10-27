@@ -27,6 +27,15 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     private readonly IJobInputsBlobStore _inputsStore;
     private readonly IAccountUsageStore _usageStore;
 
+    /// <summary>
+    /// v26 (#1156, record storage 8): the storage shape a path stamps — 8 for a
+    /// job whose package is at specVersion 26 (every path; the flow rows, the
+    /// pruned node's row, a document's sources and composedHash), else the
+    /// value the path wrote before (6 for a node, 7 for a deliverable).
+    /// </summary>
+    internal static void Stamp(ConsultGenerationJobState state, int at25) =>
+        state.SchemaVersion = state.PackageSpecVersion >= 26 ? 8 : at25;
+
     public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore)
     {
         _indexStore = indexStore;
@@ -106,7 +115,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         state.FailureStack ??= input.FailureStack;
         state.Classifications = input.Classifications?.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
         state.SkippedDocuments ??= input.SkippedDocuments?.ToList();
-        state.SchemaVersion = 7;
+        Stamp(state, 7);
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.History.Add(new JobHistoryEvent(
             "failure",
@@ -137,7 +146,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         state.StartFailure = input.Reason;
         // The record's own storage shape is the current one, as a job that
         // ran stamps at its first document; nothing here will stamp it later.
-        state.SchemaVersion = 7;
+        Stamp(state, 7);
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.History.Add(new JobHistoryEvent("failure", "No document applies", input.Reason, DateTimeOffset.UtcNow));
         State = state;
@@ -200,6 +209,12 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.Source ??= input.Source;
         State.ScheduledAtUtc ??= input.ScheduledAtUtc;
         State.PackageSpecVersion ??= input.PackageSpecVersion;
+        // v26 (#1156, record storage 8): a 26 job's record is at 8 from its
+        // creation — never 2, 6 or 7 — so a reader trusts the 26 rows at once.
+        if (State.PackageSpecVersion >= 26)
+        {
+            State.SchemaVersion = 8;
+        }
         State.PackageTitle ??= input.PackageTitle;
         State.PackageTags ??= input.PackageTags?.ToList();
         State.InputOrigins ??= input.InputOrigins?.ToDictionary(
@@ -286,7 +301,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task CompleteDocument(string text)
     {
         var state = EnsureState();
-        state.SchemaVersion = 6;
+        Stamp(state, 6);
         state.AssembledDocument = text;
         state.History.Add(new JobHistoryEvent("success", "Assembled document produced.", null, DateTimeOffset.UtcNow));
         State = state;
@@ -302,7 +317,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task CompleteResultDocument(ConsultGenerationResultDocument input)
     {
         var state = EnsureState();
-        state.SchemaVersion = 7;
+        Stamp(state, 7);
         state.AssembledDocuments ??= new List<ConsultGenerationResultDocumentState>();
         state.AssembledDocuments.RemoveAll(d => d.ResultId == input.ResultId);
         state.AssembledDocuments.Add(new ConsultGenerationResultDocumentState
@@ -344,7 +359,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public void RecordFailedDocument(ConsultFailedDocument input)
     {
         var state = EnsureState();
-        state.SchemaVersion = 7;
+        Stamp(state, 7);
         state.FailedDocuments ??= new List<ConsultFailedDocument>();
         state.FailedDocuments.RemoveAll(d => d.ResultId == input.ResultId);
         state.FailedDocuments.Add(input);
@@ -379,7 +394,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public void MarkNodeItemCompleted(ConsultGenerationNodeItemUpdate input)
     {
         var state = EnsureState();
-        state.SchemaVersion = 6;
+        Stamp(state, 6);
 
         var output = state.GetOrAddNodeOutput($"{input.NodeId}:{input.ItemId}", input.Label);
         output.NodeId = input.NodeId;
@@ -441,7 +456,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public void MarkNodeCompleted(ConsultGenerationNodeUpdate input)
     {
         var state = EnsureState();
-        state.SchemaVersion = 6;
+        Stamp(state, 6);
 
         var node = state.GetOrAddNodeOutput(input.NodeId, input.Label);
         node.Status = ConsultGenerationNodeStatuses.Completed;
@@ -504,7 +519,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public void MarkNodeSkipped(ConsultGenerationNodeSkip input)
     {
         var state = EnsureState();
-        state.SchemaVersion = 6;
+        Stamp(state, 6);
 
         var node = state.GetOrAddNodeOutput(input.NodeId, input.Label);
         node.Status = ConsultGenerationNodeStatuses.Skipped;
@@ -519,7 +534,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task MarkNodeFailed(ConsultGenerationNodeFailure input)
     {
         var state = EnsureState();
-        state.SchemaVersion = 6;
+        Stamp(state, 6);
 
         var node = state.GetOrAddNodeOutput(input.NodeId, input.Label);
         node.Status = ConsultGenerationNodeStatuses.Failed;
@@ -1420,7 +1435,7 @@ public sealed class ConsultGenerationJobState
     /// fact in provenance-versions.json (#400), pinned against this list by
     /// test. A new storage shape is added here and there in the same change.
     /// </summary>
-    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7 };
+    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8 };
 
     /// <summary>#373: the specVersion of the package this job ran.</summary>
     public int? PackageSpecVersion { get; set; }
@@ -1855,7 +1870,9 @@ public sealed class ConsultGenerationJobState
             Source: Source,
             ScheduledAtUtc: ScheduledAtUtc,
             ItemSteps: ItemSteps,
-            Nodes: Nodes,
+            // v26 (#1156, record storage 8): the served row — prompt by path, no
+            // promptId / forEach / aggregate; the entity keeps the working fields.
+            Nodes: PackageSpecVersion >= 26 ? Nodes?.Select(node => node.AsRecordRowAt8()).ToList() : Nodes,
             Collections: Collections,
             NodeOutputs: NodeOutputs?.ToDictionary(
                 pair => pair.Key,
