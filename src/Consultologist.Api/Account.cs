@@ -836,6 +836,13 @@ public sealed class Account
             return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, ocrError, cancellationToken);
         }
 
+        // #1063: the speech-to-text gate, the same rules.
+        if (SttConfidenceSettings.IsSttKey(key)
+            && SttConfidenceSettings.Validate(key, request.Value) is { } sttError)
+        {
+            return await CreateTextResponseAsync(req, HttpStatusCode.BadRequest, sttError, cancellationToken);
+        }
+
         await _settingsStore.SaveAsync(account.AppUserId, key, request.Value, contentType, cancellationToken);
 
         var response = req.CreateResponse(HttpStatusCode.NoContent);

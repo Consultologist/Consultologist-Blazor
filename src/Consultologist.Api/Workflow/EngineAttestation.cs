@@ -32,7 +32,14 @@ public sealed record EngineAttestationResponse(
     // workflow stamped (-p:EngineRelease), the release the Commit shipped
     // under. Null when the build carried no tag (a local build or a manual
     // workflow_dispatch deploy); a record then links to the commit alone.
-    string? Release = null);
+    string? Release = null,
+    // #1063: what this deployment can do beyond the format — today whether a
+    // recording dropped on a transcript input is transcribed. Read by the Create
+    // page so its door says so; null on records and builds from before.
+    EngineFeatures? Features = null);
+
+/// <summary>#1063: the deployment's optional capabilities, each a configured service.</summary>
+public sealed record EngineFeatures(bool SpeechToText);
 
 public static class EngineAttestation
 {
@@ -45,7 +52,7 @@ public static class EngineAttestation
     private const int FullCommitLength = 40;
 
     /// <summary>The rule, separated from reflection and the file system so it can be tested on strings.</summary>
-    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now, string? apiHost = null, string? release = null)
+    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now, string? apiHost = null, string? release = null, EngineFeatures? features = null)
     {
         var raw = string.IsNullOrWhiteSpace(informationalVersion) ? "unknown" : informationalVersion;
         var separator = raw.IndexOf('+');
@@ -61,7 +68,8 @@ public static class EngineAttestation
             WorkflowPackageValidator.EngineScribanVersion.ToString(),
             now,
             ApiHostOf(apiHost),
-            ReleaseOf(release));
+            ReleaseOf(release),
+            features);
     }
 
     /// <summary>
@@ -161,7 +169,7 @@ public static class EngineAttestation
     public const string PackageFormatRegistry = "package-format";
     public const string ProvenanceRegistry = "provenance";
 
-    public static EngineAttestationResponse Current(OutputContractCatalog catalog, string? apiHost = null) =>
+    public static EngineAttestationResponse Current(OutputContractCatalog catalog, string? apiHost = null, EngineFeatures? features = null) =>
         Describe(
             typeof(EngineAttestation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
             catalog.ResolvedRef,
@@ -169,5 +177,6 @@ public static class EngineAttestation
             ProvenanceVersionIn(AppContext.BaseDirectory),
             DateTimeOffset.UtcNow,
             apiHost,
-            ReleaseMetadataOf(typeof(EngineAttestation).Assembly));
+            ReleaseMetadataOf(typeof(EngineAttestation).Assembly),
+            features);
 }

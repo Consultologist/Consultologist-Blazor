@@ -109,6 +109,9 @@ builder.Services.AddScoped<AgentSectionGenerator>();
 // #239: OCR for image-only PDFs. Singleton so the Document Intelligence client
 // is built once and reused; off unless DocumentExtraction__OcrEndpoint is set.
 builder.Services.AddSingleton<Consultologist.Api.Documents.IDocumentOcr, Consultologist.Api.Documents.AzureDocumentIntelligenceOcr>();
+// #1063: speech-to-text for recordings. Singleton as OCR is; off unless
+// SpeechToText__Endpoint is set.
+builder.Services.AddSingleton<Consultologist.Api.Documents.ISpeechToText, Consultologist.Api.Documents.AzureSpeechToText>();
 builder.Services.AddSingleton<IBearerTokenValidator, BearerTokenValidator>();
 builder.Services.AddSingleton<IAccountStore, AccountStore>();
 builder.Services.AddSingleton<IAccountSettingsStore, AccountSettingsStore>();
@@ -141,7 +144,9 @@ builder.Services.AddSingleton<PublicChain>();
 // and stamped on every record's packageFormatRef/provenanceRef.
 builder.Services.AddSingleton(sp => EngineAttestation.Current(
     sp.GetRequiredService<OutputContractCatalog>(),
-    sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()[EngineAttestation.ApiHostSetting]));
+    sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()[EngineAttestation.ApiHostSetting],
+    // #1063: the deployment's capabilities — the Create page's door reads them.
+    new EngineFeatures(sp.GetRequiredService<Consultologist.Api.Documents.ISpeechToText>().IsConfigured)));
 builder.Services.AddSingleton<PublicEngine>();
 // #403: what the terminology server says about itself, read once per cache window.
 builder.Services.AddSingleton<ITerminologyAttestationSource, TerminologyAttestationClient>();

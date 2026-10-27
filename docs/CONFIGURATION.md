@@ -571,6 +571,55 @@ the read is refused as `ocr-low-confidence` (422). There is no deployment-wide
 confidence knob; the operator settings above are only the endpoint, caps, and
 timeout.
 
+### Speech-to-text for recordings (`Documents/AzureSpeechToText.cs`, #1063)
+
+A recording (WAV, MP3, OGG/Opus, FLAC, M4A — told by its bytes) dropped on a
+transcript input is transcribed with **Azure AI Speech's fast transcription**
+(diarisation on) and folded into turns by the VTT rule, so it hashes as its
+transcript file would (`docs/DOCUMENT_INPUT.md` § 3). The seam is OCR's:
+unconfigured, a recording is refused as `audio-not-enabled` and the Create
+page's door never mentions one.
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `SpeechToText__Endpoint` | The Speech resource's **custom-domain** endpoint, `https://<resource>.cognitiveservices.azure.com/`. **Unset ⇒ speech-to-text is off** | unset | no |
+| `SpeechToText__Locales` | Comma-separated locale candidates the service identifies among (`en-CA,fr-CA`); every supported locale is allowed | `en-CA,fr-CA` | no |
+| `SpeechToText__MaxSpeakers` | The most speakers diarisation separates (2–35) | `4` | no |
+| `SpeechToText__MaxDurationMinutes` | A positive integer: a recording longer than this is refused as `too-long` (judged on the duration the service measured; the 10 MB file cap bounds the spend before the call) | `60` | no |
+| `SpeechToText__TimeoutSeconds` | A non-negative integer: the transcription's own wall clock, separate from the 20-second parse timeout | `120` | no |
+| `SpeechToText__MaxRetries` | A non-negative integer of SDK retries — a cold service answers 429 first | `1` | no |
+
+**Identity-only, never keys.** As OCR: the user-assigned managed identity
+(`AZURE_CLIENT_ID`) via `DefaultAzureCredential`; Entra ID authentication
+needs the custom-domain endpoint (a regional `<region>.api.cognitive.microsoft.com`
+endpoint does not accept token credentials). Grant the identity **Cognitive
+Services User** on the resource (the Speech-specific *Cognitive Services
+Speech User* also suffices).
+
+**Region.** Fast transcription is offered in **Canada Central**, not Canada
+East — the same split as Document Intelligence. The bytes are sent and never
+kept; duration and confidence are telemetry, never record. A transient outage
+surfaces as `stt-unavailable` (503, "try again").
+
+**Provisioning** (once; the role assignment needs a subscription owner):
+
+```bash
+az cognitiveservices account create -n consult-speech-cacentral -g consultologist_group \
+  --kind SpeechServices --sku S0 -l canadacentral --custom-domain consult-speech-cacentral --yes
+az role assignment create --role "Cognitive Services User" \
+  --assignee-object-id <user-assigned identity principal id> --assignee-principal-type ServicePrincipal \
+  --scope $(az cognitiveservices account show -n consult-speech-cacentral -g consultologist_group --query id -o tsv)
+# then, dev first:
+az functionapp config appsettings set -n canada-east-ai-function-dev -g consultologist-dev \
+  --settings SpeechToText__Endpoint=https://consult-speech-cacentral.cognitiveservices.azure.com/
+```
+
+**The confidence gate is per account**, the OCR gate's twin:
+`stt.confidenceGate` / `stt.minConfidence` (on by default at 80 %, the
+Profile's *Recording transcript confidence* card) — see ACCOUNTS.md. Below
+the minimum mean phrase confidence the recording is refused as
+`stt-low-confidence` (422).
+
 ## Rate limiting (`RateLimiting/AccountRateLimiter.cs`, #266)
 
 | Variable | Accepted values | Default | Required |

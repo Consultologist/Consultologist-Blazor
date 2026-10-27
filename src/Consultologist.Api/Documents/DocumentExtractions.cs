@@ -40,7 +40,9 @@ public sealed class DocumentExtractions
         IOnBehalfOfTokenClient onBehalfOf,
         IGraphDocumentFetcher graphFetcher,
         IDocumentOcr ocr,
-        IAccountSettingsStore settingsStore)
+        IAccountSettingsStore settingsStore,
+        // #1063: speech-to-text for recordings; null (a test) reads as unconfigured.
+        ISpeechToText? speechToText = null)
     {
         _logger = logger;
         _authorizer = authorizer;
@@ -49,6 +51,17 @@ public sealed class DocumentExtractions
         _graphFetcher = graphFetcher;
         _ocr = ocr;
         _settingsStore = settingsStore;
+        _speechToText = speechToText;
+    }
+
+    private readonly ISpeechToText? _speechToText;
+
+    // #1063: the caller's speech-to-text confidence policy, the OCR gate's twin.
+    private async Task<double?> SttMinConfidenceAsync(string appUserId, CancellationToken cancellationToken)
+    {
+        var gate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttConfidenceGate, cancellationToken);
+        var min = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttMinConfidence, cancellationToken);
+        return SttConfidenceSettings.EffectiveMinConfidence(gate?.Value, min?.Value);
     }
 
     // #239: the caller's OCR confidence policy — the minimum a scan's read must
@@ -122,7 +135,9 @@ public sealed class DocumentExtractions
             DocumentExtraction.InteractiveGateWait,
             cancellationToken,
             _ocr,
-            await OcrMinConfidenceAsync(account.AppUserId, cancellationToken));
+            await OcrMinConfidenceAsync(account.AppUserId, cancellationToken),
+            _speechToText,
+            await SttMinConfidenceAsync(account.AppUserId, cancellationToken));
 
         // Lengths and dispositions only: no bytes, no extracted text, no
         // filename — there is no filename to log.
@@ -157,12 +172,13 @@ public sealed class DocumentExtractions
     /// </summary>
     private static HttpStatusCode StatusFor(string outcome) => outcome switch
     {
-        DocumentExtractionOutcomes.UnsupportedType => HttpStatusCode.UnsupportedMediaType,
+        DocumentExtractionOutcomes.UnsupportedType or DocumentExtractionOutcomes.AudioNotEnabled => HttpStatusCode.UnsupportedMediaType,
         DocumentExtractionOutcomes.TooLarge => HttpStatusCode.RequestEntityTooLarge,
         // #241: not 422. The request was well-formed AND satisfiable — we
         // simply had no capacity, and 503 is the one status that says
         // "try the same thing again". #239: an OCR outage is the same shape.
-        DocumentExtractionOutcomes.Busy or DocumentExtractionOutcomes.OcrUnavailable =>
+        // #1063: a speech-to-text outage is the same shape again.
+        DocumentExtractionOutcomes.Busy or DocumentExtractionOutcomes.OcrUnavailable or DocumentExtractionOutcomes.SttUnavailable =>
             HttpStatusCode.ServiceUnavailable,
         _ => HttpStatusCode.UnprocessableEntity
     };
@@ -282,7 +298,9 @@ public sealed class DocumentExtractions
             DocumentExtraction.InteractiveGateWait,
             cancellationToken,
             _ocr,
-            await OcrMinConfidenceAsync(authorized.Account.AppUserId, cancellationToken));
+            await OcrMinConfidenceAsync(authorized.Account.AppUserId, cancellationToken),
+            _speechToText,
+            await SttMinConfidenceAsync(authorized.Account.AppUserId, cancellationToken));
 
         // Lengths and dispositions only — no bytes, no text, no URL: a
         // sharing link names a file, and a filename can itself be PHI.

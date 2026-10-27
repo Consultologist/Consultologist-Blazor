@@ -208,6 +208,8 @@ retention.outputDays        (whole days produced text is kept after completion, 
 retention.inputDays         (whole days held inputs are kept, #548 — 1..30, never past outputs; absent = TextRetention__Days)
 ocr.confidenceGate          ("true" | "false" — whether OCR of a scanned PDF must clear a minimum confidence, #239; absent = on)
 ocr.minConfidence           (whole-number percent 0..100 the OCR read must reach when the gate is on, #239; absent = 80)
+stt.confidenceGate          ("true" | "false" — whether a recording's speech-to-text transcript must clear a minimum confidence, #1063; absent = on)
+stt.minConfidence           (whole-number percent 0..100 the mean phrase confidence must reach when the gate is on, #1063; absent = 80)
 ```
 
 `delivery.emailPdf` (#518) is a preference, not an identity, so it rides
@@ -267,6 +269,13 @@ honours it too); the PUT validates the gate word and the percent range by
 name (`Auth/OcrConfidenceSettings.cs`) and reads clamp, so a slipped value
 never turns the gate into an accident. The Profile's *Scanned PDF
 confidence* card writes both keys.
+
+`stt.confidenceGate` / `stt.minConfidence` (#1063) are the same policy for a
+recording transcribed by speech-to-text (`Auth/SttConfidenceSettings.cs`,
+the same rules over its own keys): on by default at 80 %, gated on the mean
+phrase confidence, refused as `stt-low-confidence`; the Profile's *Recording
+transcript confidence* card writes both keys. The two gates are separate so
+a clinician can tune scans and recordings apart.
 
 `delivery.address` (#486) is the account's **verified delivery address**:
 the only address app-submitted consults are ever emailed to. It is written

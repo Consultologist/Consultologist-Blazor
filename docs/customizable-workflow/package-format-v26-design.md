@@ -1219,6 +1219,30 @@ so a 26 record never says 2, 6 or 7 — the registry's sentence. A 25 run still 
 unchanged). History's DAG reads `forEach`/`promptId` to mark a fanned node and loses the marker for 26 runs
 until a Web follow-up — noted, not filed. Left to the bump (#1149).)*
 
+*(#1063, 2026-10-27 — audio transcripts with speech-to-text, as § 7.2 says; engine, Create page and a
+provenance sentence, not a manifest change. Built INERT behind `SpeechToText__Endpoint` (unset everywhere; the
+OCR precedent). **The service:** Azure AI Speech **fast transcription** — in Canada Central, not Canada East
+(Document Intelligence's split), diarisation, per-phrase confidence, locale identification among candidates;
+Entra auth through the resource's custom domain and *Cognitive Services User* on the user-assigned identity;
+the .NET client `Azure.AI.Speech.Transcription` 1.0.0 beside the Document Intelligence one (SDK, not raw
+REST — decided 2026-10-27). **Decisions (2026-10-27):** the caps stay 10 MB / 20 MB (about twenty minutes of
+64 kbps MP3; the duration cap `SpeechToText__MaxDurationMinutes` 60 is judged on the service's measurement —
+`too-long`); locales `en-CA, fr-CA` with `SpeechToText__Locales` overriding; the gate has its own keys
+(`stt.confidenceGate`/`stt.minConfidence`, the OCR gate's rules) and its own Profile card; the Create page
+learns the capability from `Public/Engine` → `features.speechToText` and the transcript door's sentence adds
+"or a recording" only then. **As built:** `ISpeechToText` (never throws; `Transcribed | Empty | Unavailable |
+Busy | TooLong`) and `AzureSpeechToText` (cues `Speaker N` as the service numbered them, mean phrase
+confidence, 429 → Busy, telemetry never text, `speech/<version>+<commit>`); `AudioDocumentExtractor` sniffs
+WAV/MP3 (ID3 or a Layer III sync — Layer III only, because a UTF-16 byte-order mark `FF FE` reads as a
+Layer I sync and must stay text)/OGG/FLAC/M4A and returns `audio-needs-transcription`, last in the format
+list; the impure edge routes it after the parse slot as a scan routes to OCR, renders the cues by
+`TranscriptTurns.Render` (the one rule — the same `textSha256` as the VTT of the same conversation) and
+gates on the account's minimum; outcomes `audio-not-enabled` (415), `stt-unavailable` (503),
+`stt-low-confidence`, `too-long`, `busy`, with their sentences; `EngineAttestationResponse.Features`
+(trailing; the property pin updated). The provenance registry gained one sentence (`provenance@v2026.10.8`,
+no ladder moves). **Left:** provisioning on the user's word (the recipe in CONFIGURATION.md; dev first, then
+a live preview with a fictional recording), the release that carries the engine half.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,

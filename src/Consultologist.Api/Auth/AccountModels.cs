@@ -116,6 +116,17 @@ public static class AccountSettingKeys
     /// Saves are validated by <see cref="OcrConfidenceSettings"/>; reads clamp.
     /// </summary>
     public const string OcrMinConfidence = "ocr.minConfidence";
+
+    /// <summary>
+    /// #1063: whether a recording's speech-to-text transcript must clear a
+    /// minimum mean phrase confidence before it is accepted — the OCR gate's
+    /// twin, default ON for the same reason. Read at extraction alongside
+    /// <see cref="SttMinConfidence"/> (<see cref="SttConfidenceSettings"/>).
+    /// </summary>
+    public const string SttConfidenceGate = "stt.confidenceGate";
+
+    /// <summary>#1063: the minimum mean phrase confidence, a whole-number percent (0–100); absent = the default.</summary>
+    public const string SttMinConfidence = "stt.minConfidence";
 }
 
 /// <summary>#517: the two ways a delivery address gets verified.</summary>

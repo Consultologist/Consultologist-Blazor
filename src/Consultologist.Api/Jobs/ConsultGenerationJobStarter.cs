@@ -186,6 +186,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly Forms.IFormResponseStore _formResponses;
     private readonly Forms.IFormResponseBlobStore _formResponseBlobs;
     private readonly IDocumentOcr _ocr;
+    private readonly ISpeechToText? _speechToText;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -204,8 +205,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         Forms.IFormResponseStore formResponses,
         Forms.IFormResponseBlobStore formResponseBlobs,
         IDocumentOcr ocr,
-        WorkflowFormatCatalog formats)
+        WorkflowFormatCatalog formats,
+        // #1063: speech-to-text for recordings; null (a test) reads as unconfigured.
+        ISpeechToText? speechToText = null)
     {
+        _speechToText = speechToText;
         _logger = logger;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
@@ -407,6 +411,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         var ocrGate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrConfidenceGate, cancellationToken);
         var ocrMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
         var ocrMinConfidence = OcrConfidenceSettings.EffectiveMinConfidence(ocrGate?.Value, ocrMin?.Value);
+        // #1063: the speech-to-text gate, the OCR gate's twin.
+        var sttGate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttConfidenceGate, cancellationToken);
+        var sttMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttMinConfidence, cancellationToken);
+        var sttMinConfidence = SttConfidenceSettings.EffectiveMinConfidence(sttGate?.Value, sttMin?.Value);
 
         // #874: a previous-run reference that STANDS ALONE (its id carries no
         // typed value and no document) is written into the value map and its
@@ -447,7 +455,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
 
         var extraction = await ExtractInputFilesAsync(
             request, package.Manifest, GateWaitFor(origin), _ocr, ocrMinConfidence, cancellationToken,
-            refResolvedIds, resolution.RefGroups);
+            refResolvedIds, resolution.RefGroups, _speechToText, sttMinConfidence);
         if (extraction.Error != null)
         {
             _logger.LogWarning(
@@ -2524,7 +2532,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the mixed array<text> input — typed rows → documents → previous-run —
         // for both the file-bearing ids (the loop below) and the ref-only ids
         // (the post-loop after it). Null when nothing combined.
-        IReadOnlyDictionary<string, RefGroup>? refGroups = null)
+        IReadOnlyDictionary<string, RefGroup>? refGroups = null,
+        // #1063: speech-to-text for recordings, with the account's gate; null = unconfigured.
+        ISpeechToText? speechToText = null,
+        double? sttMinConfidence = null)
     {
         // #874: refGroups can carry ids with NO file (typed + previous-run,
         // no document), so a request with only references still has inputs to
@@ -2676,7 +2687,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 // the parser touches them — the one thing the bytes leave on the
                 // record, since they are cleared below and never kept.
                 var fileSha256 = ConsultGenerationProvenance.Sha256Hex(documents[index].Content);
-                var result = await DocumentExtraction.ExtractAsync(documents[index].Content, gateWait, cancellationToken, ocr, ocrMinConfidence);
+                var result = await DocumentExtraction.ExtractAsync(documents[index].Content, gateWait, cancellationToken, ocr, ocrMinConfidence, speechToText, sttMinConfidence);
 
                 if (!DocumentExtraction.Succeeded(result))
                 {

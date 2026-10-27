@@ -592,6 +592,28 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void ATranscriptChannelInput_NamesARecording_OnlyWhenTheEngineTranscribesOne()
+    {
+        // #1063: the sentence is still the whole door — it adds "a recording"
+        // when Public/Engine says features.speechToText, and not otherwise.
+        WithPinnedPackage(blocks: new[] { Block("s:hpi", "History") }, inputs: new[]
+        {
+            new WorkflowPackageInputResponse("meeting_transcript", "Meeting transcript", false,
+                WorkflowInputTypes.Text, ExpectedContent: WorkflowExpectedContent.Transcript),
+            new WorkflowPackageInputResponse("visits", "Visit transcripts", false, WorkflowInputTypes.Array,
+                Items: new WorkflowPackageElementResponse(WorkflowInputTypes.Text), ExpectedContent: WorkflowExpectedContent.Transcript)
+        });
+        WorkflowService.GetEngineAsync().Returns(new EngineView("abc", null, null, Features: new EngineFeaturesView(true)));
+
+        var page = Render<Consults>();
+
+        var prompts = page.FindAll(".input-field__dropzone").Select(zone => zone.TextContent.Trim()).ToList();
+        Assert.Contains("Drop a transcript or a recording here, or browse…", prompts);
+        Assert.Contains("Drop transcripts or recordings here, or browse…", prompts);
+        Assert.DoesNotContain(page.FindComponents<FluentInputFile>(), file => !string.IsNullOrEmpty(file.Instance.Accept));
+    }
+
+    [Fact]
     public void ATranscriptInputsPreview_ShowsTheTurnsTheServerRead()
     {
         // #994: what runs is the parser's turns, shown for review before the

@@ -20,6 +20,27 @@ internal static class DocumentExtractionCopy
         DocumentExtractionOutcomes.UnsupportedType =>
             "We can read .txt, .md, .pdf, .docx, .html, .vtt and .srt files — that one is something else.",
 
+        // #1063: a recording where this deployment transcribes none. Not about
+        // the file — it says what the file is and what to send instead.
+        DocumentExtractionOutcomes.AudioNotEnabled =>
+            "This is a recording, and audio transcription is not enabled here. "
+            + "Upload the transcript as text, .vtt or .srt instead.",
+
+        // #1063: not about the file either — the service was momentarily
+        // unavailable, the same "nothing is wrong with it" shape as Busy.
+        DocumentExtractionOutcomes.SttUnavailable =>
+            "We could not transcribe this recording right now. Nothing is wrong with it — try again in a moment, "
+            + "or upload the transcript instead.",
+
+        // #1063: a policy refusal — the recording was transcribed, its
+        // confidence just did not clear the bar the account set.
+        DocumentExtractionOutcomes.SttLowConfidence =>
+            "This recording was transcribed, but its confidence was below the minimum set in your profile. "
+            + "Upload the transcript instead, or lower the minimum in your profile.",
+
+        DocumentExtractionOutcomes.TooLong =>
+            "This recording is longer than we transcribe in one go. Trim it, or upload the transcript instead.",
+
         DocumentExtractionOutcomes.NoTextLayer =>
             "This PDF has no text layer, so it is a scan or a fax. Paste the text instead, "
             + "or attach a PDF exported from your system.",
