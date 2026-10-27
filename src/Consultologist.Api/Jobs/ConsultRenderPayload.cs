@@ -293,6 +293,22 @@ internal static class ConsultRenderPayload
                 ? (package.EffectiveManifest.Snippets ?? new Dictionary<string, string>())
                     .Where(entry => !entry.Value.EndsWith('/') && texts.Headers.GetValueOrDefault(entry.Value)?.Label is not null)
                     .ToDictionary(entry => entry.Key, entry => texts.Headers[entry.Value].Label!, StringComparer.Ordinal)
+                : null,
+            // v26 (#1182, design § 5.3): a macro folder iterates as an array of macro
+            // objects in the index's order — each item's label, instruction and gate
+            // its header's, its text the body; the engine keys an item <folder>/<item>.
+            MacroFolders: package.MacroFolders is { Collections.Count: > 0 } macroFolders
+                ? macroFolders.Collections.ToDictionary(
+                    entry => entry.Key,
+                    entry => (IReadOnlyList<TemplateMacroSource>)entry.Value.Items
+                        .Select(item => new TemplateMacroSource(
+                            item.Id,
+                            item.Header?.Label ?? item.Id,
+                            item.Fields.GetValueOrDefault("content", string.Empty),
+                            item.Header?.Instruction ?? string.Empty,
+                            item.Header?.If))
+                        .ToList(),
+                    StringComparer.Ordinal)
                 : null);
     }
 

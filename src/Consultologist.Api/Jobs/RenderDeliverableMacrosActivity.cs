@@ -97,7 +97,7 @@ public sealed class RenderDeliverableMacrosActivity
         // macro's own placement never reaches here: the fire set excluded it.)
         if (package.Manifest.SpecVersion >= 26)
         {
-            scope = scope with { InertMacros = WorkflowInlineGates.Inert(scope.Macros.Values.Select(macro => (macro.Id, macro.If)), scope, TemplatePipes.Engine) };
+            scope = scope with { InertMacros = ConsultGatedScope.InertMacroKeys(scope) };
             // v26 (#1179): and the snippets' — an inert snippet or a gated-off item is off here too.
             scope = ConsultGatedScope.JudgeSnippets(scope, package, input.Folders);
         }
