@@ -948,4 +948,51 @@ public static class EditorFixtures
 
         return new(at25.Name, at25.Version, 26, JsonDocument.Parse(migrated.ManifestJson).RootElement.Clone(), migrated.Files);
     }
+
+    /// <summary>
+    /// v26 (#1159): the V26 fixture with the two other flow nodes — `triage`, an if over
+    /// input.kind whose then body holds assessment (returned; the deliverable sources
+    /// node.triage instead of node.assessment), and `route`, a case over node.scope.value
+    /// whose one branch ["in_scope"] holds meds (returned), no else. A real 26 package:
+    /// TemplatesV26FlowPaneTests validates it unchanged.
+    /// </summary>
+    public static WorkflowPackageContentResponse V26Flow()
+    {
+        var at26 = V26();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(at26.Manifest.GetRawText())!.AsObject();
+        var nodes = root["nodes"]!.AsArray();
+        var assessmentIndex = nodes.Select((n, i) => (n, i)).First(pair => pair.n!["id"]!.GetValue<string>() == "assessment").i;
+        nodes.Insert(assessmentIndex, new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "triage",
+            ["label"] = "Triage",
+            ["if"] = "input.kind == \"new\"",
+            ["then"] = new System.Text.Json.Nodes.JsonObject { ["nodes"] = new System.Text.Json.Nodes.JsonArray("assessment"), ["ret"] = "node.assessment" }
+        });
+        var medsIndex = nodes.Select((n, i) => (n, i)).First(pair => pair.n!["id"]!.GetValue<string>() == "meds").i;
+        nodes.Insert(medsIndex, new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "route",
+            ["label"] = "Route",
+            ["case"] = "node.scope.value",
+            ["branches"] = new System.Text.Json.Nodes.JsonArray(new System.Text.Json.Nodes.JsonObject
+            {
+                ["when"] = new System.Text.Json.Nodes.JsonArray("in_scope"),
+                ["nodes"] = new System.Text.Json.Nodes.JsonArray("meds"),
+                ["ret"] = "node.meds"
+            })
+        });
+        var sources = root["deliverables"]![0]!["sources"]!.AsArray();
+        for (var i = 0; i < sources.Count; i++)
+        {
+            if (sources[i]!.GetValue<string>() == "node.assessment") { sources[i] = "node.triage"; }
+        }
+
+        // assessment read node.meds; meds now runs inside route, so the outside reads node.route
+        // (as text: branches may disagree on format once a second branch is added).
+        var files = new Dictionary<string, string>(at26.Files, StringComparer.Ordinal);
+        files["prompts/assessment.md"] = files["prompts/assessment.md"]
+            .Replace("{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}", "{{ node.route.content }}");
+        return new(at26.Name, at26.Version, 26, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
+    }
 }

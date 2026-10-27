@@ -35,9 +35,13 @@ public static class WorkflowDagDiagram
         // v26 (#1160): a loop's body draws inside the loop's own subgraph below; the
         // loop itself is the box the subgraph returns into. Neither is a top-level node.
         var loops = nodes.Where(node => node.For != null).ToList();
-        var bodyIds = loops.SelectMany(loop => loop.Nodes ?? new List<string>()).ToHashSet(StringComparer.Ordinal);
+        // v26 (#1159): an if's then/else and a case's branches/else are bodies too.
+        var flows = nodes.Where(node => node.If != null || node.Case != null).ToList();
+        var bodyIds = loops.SelectMany(loop => loop.Nodes ?? new List<string>())
+            .Concat(flows.SelectMany(flow => FlowBodies(flow).SelectMany(body => body.Nodes)))
+            .ToHashSet(StringComparer.Ordinal);
 
-        foreach (var node in nodes.Where(node => node.ForEach is null && node.For is null && !bodyIds.Contains(node.Id)))
+        foreach (var node in nodes.Where(node => node.ForEach is null && node.For is null && node.If is null && node.Case is null && !bodyIds.Contains(node.Id)))
         {
             if (node.Aggregate != null)
             {
@@ -159,9 +163,74 @@ public static class WorkflowDagDiagram
             }
         }
 
+        // v26 (#1159): one subgraph per body of an if/case node — then/else, each branch
+        // (titled by its values) and else — returning into the flow's box through ret; a
+        // case over a node's value draws a dotted edge from that node.
+        foreach (var flow in flows)
+        {
+            var kind = flow.If != null ? "if" : "case";
+            sb.Append('\n');
+            foreach (var body in FlowBodies(flow))
+            {
+                var subgraphId = $"{kind}_{Sanitize(flow.Id)}_{Sanitize(body.Key)}";
+                sb.Append($"    subgraph {subgraphId}[\"{flow.Id}: {body.Title}\"]\n");
+                foreach (var bodyId in body.Nodes)
+                {
+                    var label = nodesById.TryGetValue(bodyId, out var bodyNode) ? $"{bodyId}<br/>{bodyNode.Label}" : bodyId;
+                    sb.Append($"        {Sanitize(bodyId)}[\"{label}\"]\n");
+                }
+
+                sb.Append("    end\n");
+            }
+
+            var head = flow.If != null ? $"if {flow.If}" : $"case {flow.Case}";
+            sb.Append($"    {Sanitize(flow.Id)}[\"{flow.Id}<br/>{flow.Label}<br/>{head}\"]\n");
+
+            foreach (var body in FlowBodies(flow))
+            {
+                if (TemplateObjectReference.NodeIdOf(body.Ret ?? string.Empty) is { } retId)
+                {
+                    sb.Append($"    {Sanitize(retId)} -->|\"ret ({body.Title})\"| {Sanitize(flow.Id)}\n");
+                }
+            }
+
+            if (flow.Case is { } subject && subject.StartsWith(TemplateObjectReference.NodePrefix, StringComparison.Ordinal))
+            {
+                var subjectId = subject[TemplateObjectReference.NodePrefix.Length..];
+                var dot = subjectId.IndexOf('.');
+                sb.Append($"    {Sanitize(dot < 0 ? subjectId : subjectId[..dot])} -.->|\"case\"| {Sanitize(flow.Id)}\n");
+            }
+        }
+
         AppendDeliverables(sb, manifest);
 
         return sb.ToString();
+    }
+
+    /// <summary>v26 (#1159): an if/case node's bodies in order — key (then/else/branch_n), title, nodes, ret.</summary>
+    private static IReadOnlyList<(string Key, string Title, IReadOnlyList<string> Nodes, string? Ret)> FlowBodies(WorkflowNodeSpec flow)
+    {
+        var bodies = new List<(string, string, IReadOnlyList<string>, string?)>();
+        if (flow.If != null)
+        {
+            bodies.Add(("then", "then", flow.Then?.Nodes ?? new List<string>(), flow.Then?.Ret));
+        }
+
+        if (flow.Case != null)
+        {
+            var branches = flow.Branches ?? new List<WorkflowCaseBranchSpec>();
+            for (var i = 0; i < branches.Count; i++)
+            {
+                bodies.Add(($"branch_{i + 1}", string.Join(", ", branches[i].When ?? new List<string>()), branches[i].Nodes ?? new List<string>(), branches[i].Ret));
+            }
+        }
+
+        if (flow.Else != null)
+        {
+            bodies.Add(("else", "else", flow.Else.Nodes ?? new List<string>(), flow.Else.Ret));
+        }
+
+        return bodies;
     }
 
     /// <summary>v26: the collection a loop's <c>for</c> iterates — the text after "item in " — or null when not of that shape.</summary>

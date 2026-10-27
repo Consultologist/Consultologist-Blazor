@@ -55,12 +55,72 @@ public static class WorkflowManifestReader
         // ("node.<id>"). Null on every node below 26 and on a plain node at 26.
         string? For = null,
         IReadOnlyList<string>? Nodes = null,
-        string? Ret = null)
+        string? Ret = null,
+        // v26 (#1159, design § 1): an if node — its condition (the 25 Scriban condition
+        // grammar) with then/else bodies — and a case node — its subject (input.<id> or
+        // node.<id>.value) with branches, each over one or more values, and an optional
+        // else. Null on every node below 26 and on any other node at 26.
+        string? If = null,
+        string? Case = null,
+        BodyView? Then = null,
+        BodyView? Else = null,
+        IReadOnlyList<BranchView>? Branches = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
 
         /// <summary>v26 (#1160): a flow node of kind for.</summary>
         public bool IsLoop => For is not null;
+
+        /// <summary>v26 (#1159): a flow node of kind if.</summary>
+        public bool IsIf => If is not null;
+
+        /// <summary>v26 (#1159): a flow node of kind case.</summary>
+        public bool IsCase => Case is not null;
+
+        /// <summary>v26: any flow node — structural, never prompted, never placed in a body.</summary>
+        public bool IsFlow => IsLoop || IsIf || IsCase;
+
+        /// <summary>
+        /// v26 (#1159): the node's bodies, addressed — a loop's one body, an if's then and
+        /// else, a case's branches and else — each with its label, its nodes and its ret.
+        /// </summary>
+        public IReadOnlyList<FlowBodyView> Bodies()
+        {
+            var bodies = new List<FlowBodyView>();
+            if (IsLoop)
+            {
+                bodies.Add(new FlowBodyView(new FlowBodyRef(Id, FlowBodyRef.Loop), $"{Label} ({Collection ?? For})", Nodes ?? Array.Empty<string>(), Ret));
+            }
+            else if (IsIf)
+            {
+                bodies.Add(new FlowBodyView(new FlowBodyRef(Id, FlowBodyRef.Then), $"{Label} · then", Then?.Nodes ?? Array.Empty<string>(), Then?.Ret));
+                if (Else != null)
+                {
+                    bodies.Add(new FlowBodyView(new FlowBodyRef(Id, FlowBodyRef.Else), $"{Label} · else", Else.Nodes, Else.Ret));
+                }
+            }
+            else if (IsCase)
+            {
+                var branches = Branches ?? Array.Empty<BranchView>();
+                for (var i = 0; i < branches.Count; i++)
+                {
+                    var values = branches[i].When.Count == 0 ? $"branch {i + 1} (no values)" : string.Join(", ", branches[i].When);
+                    bodies.Add(new FlowBodyView(new FlowBodyRef(Id, FlowBodyRef.Branch(i)), $"{Label} · {values}", branches[i].Nodes, branches[i].Ret));
+                }
+                if (Else != null)
+                {
+                    bodies.Add(new FlowBodyView(new FlowBodyRef(Id, FlowBodyRef.Else), $"{Label} · else", Else.Nodes, Else.Ret));
+                }
+            }
+
+            return bodies;
+        }
+
+        /// <summary>v26 (#1159): the body (of any flow node) holding the node, or null — a node runs in one body.</summary>
+        public static FlowBodyView? BodyOf(IEnumerable<NodeView> nodes, string nodeId) =>
+            nodes.Where(candidate => candidate.IsFlow)
+                .SelectMany(candidate => candidate.Bodies())
+                .FirstOrDefault(body => body.Nodes.Contains(nodeId, StringComparer.Ordinal));
 
         /// <summary>v26: the grammar's prefix — spelled once client-side (the library's reader is internal).</summary>
         public const string LoopPrefix = "item in ";
@@ -89,6 +149,58 @@ public static class WorkflowManifestReader
         public bool IsCheck => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Check;
 
         public bool IsTemplate => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Template;
+    }
+
+    /// <summary>v26 (#1159): a flow body — the node ids it runs and the one it returns ("node.&lt;id&gt;").</summary>
+    public sealed record BodyView(IReadOnlyList<string> Nodes, string? Ret)
+    {
+        public string? RetNodeId => RetNodeIdOf(Ret);
+    }
+
+    /// <summary>v26 (#1159): a case branch — the values it takes, its body and its ret.</summary>
+    public sealed record BranchView(IReadOnlyList<string> When, IReadOnlyList<string> Nodes, string? Ret)
+    {
+        public string? RetNodeId => RetNodeIdOf(Ret);
+    }
+
+    /// <summary>The id in a "node.&lt;id&gt;" ret, or null.</summary>
+    public static string? RetNodeIdOf(string? ret) =>
+        ret is { } text && text.StartsWith("node.", StringComparison.Ordinal) && text.Length > 5 ? text[5..] : null;
+
+    /// <summary>
+    /// v26 (#1159): a body's address — the flow node and which of its bodies: a loop's
+    /// one body, an if's then/else, a case's branch:&lt;n&gt; (0-based) or else. The key is
+    /// what a placement select carries: a loop's bare id (#1160's spelling, kept), else
+    /// "&lt;id&gt;/&lt;body&gt;".
+    /// </summary>
+    public sealed record FlowBodyRef(string FlowId, string Body)
+    {
+        public const string Loop = "loop";
+        public const string Then = "then";
+        public const string Else = "else";
+        public const string BranchPrefix = "branch:";
+
+        public static string Branch(int index) => BranchPrefix + index;
+
+        public bool IsLoop => Body == Loop;
+        public bool IsThen => Body == Then;
+        public bool IsElse => Body == Else;
+        public int? BranchIndex => Body.StartsWith(BranchPrefix, StringComparison.Ordinal) && int.TryParse(Body[BranchPrefix.Length..], out var i) ? i : null;
+
+        public string Key => IsLoop ? FlowId : $"{FlowId}/{Body}";
+
+        public static FlowBodyRef Parse(string key)
+        {
+            var slash = key.IndexOf('/');
+            return slash < 0 ? new FlowBodyRef(key, Loop) : new FlowBodyRef(key[..slash], key[(slash + 1)..]);
+        }
+    }
+
+    /// <summary>v26 (#1159): one body of a flow node as the panes and pickers read it.</summary>
+    public sealed record FlowBodyView(FlowBodyRef Ref, string Label, IReadOnlyList<string> Nodes, string? Ret)
+    {
+        public string Key => Ref.Key;
+        public string? RetNodeId => RetNodeIdOf(Ret);
     }
 
     /// <summary>
@@ -316,10 +428,39 @@ public static class WorkflowManifestReader
                 // v26 (#1160): the loop's three members.
                 ReadString(node, "for"),
                 ReadStringArray(node, "nodes"),
-                ReadString(node, "ret")));
+                ReadString(node, "ret"),
+                // v26 (#1159): the if and case members.
+                ReadString(node, "if"),
+                ReadString(node, "case"),
+                ReadBody(node, "then"),
+                ReadBody(node, "else"),
+                ReadBranches(node)));
         }
 
         return nodes;
+    }
+
+    /// <summary>v26 (#1159): a flow body object { nodes, ret }, or null when absent or not an object.</summary>
+    private static BodyView? ReadBody(JsonElement node, string property) =>
+        TryGetProperty(node, property, out var body) && body.ValueKind == JsonValueKind.Object
+            ? new BodyView(ReadStringArray(body, "nodes") ?? Array.Empty<string>(), ReadString(body, "ret"))
+            : null;
+
+    /// <summary>v26 (#1159): a case node's branches [{ when[], nodes[], ret }], or null when absent.</summary>
+    private static IReadOnlyList<BranchView>? ReadBranches(JsonElement node)
+    {
+        if (!TryGetProperty(node, "branches", out var array) || array.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        return array.EnumerateArray()
+            .Where(branch => branch.ValueKind == JsonValueKind.Object)
+            .Select(branch => new BranchView(
+                ReadStringArray(branch, "when") ?? Array.Empty<string>(),
+                ReadStringArray(branch, "nodes") ?? Array.Empty<string>(),
+                ReadString(branch, "ret")))
+            .ToList();
     }
 
     /// <summary>v25: a node's `with` object as written — parameter name to its JSON value; null when absent or not an object.</summary>

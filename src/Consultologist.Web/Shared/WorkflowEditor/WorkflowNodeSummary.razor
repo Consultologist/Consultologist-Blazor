@@ -39,9 +39,17 @@
                         {
                             <span> · loop over @(node.Collection ?? node.For)</span>
                         }
-                        @if (At26 && LoopOf?.Invoke(node.Id) is { } inLoop)
+                        @if (At26 && node.IsIf)
                         {
-                            <span> · in loop '@inLoop'</span>
+                            <span> · if @(string.IsNullOrWhiteSpace(node.If) ? "(no condition yet)" : node.If)</span>
+                        }
+                        @if (At26 && node.IsCase)
+                        {
+                            <span> · case over @node.Case</span>
+                        }
+                        @if (At26 && BodyOf?.Invoke(node.Id) is { } inBody)
+                        {
+                            <span> · in @(Bodies.FirstOrDefault(b => b.Key == inBody)?.Label ?? inBody)</span>
                         }
                         @if (node.Aggregate != null)
                         {
@@ -201,21 +209,23 @@
                     @<text>
                         @if (At26)
                         {
-                            @* v26 (#1160, design § 12): a node is placed INSIDE a loop, not given a
+                            @* v26 (#1160, design § 12): a node is placed INSIDE a body, not given a
                                fan key — "in [sections ▾]" replaces the for-each select; moving a node
-                               between loops is this picker. A loop never sits in another loop at 26. *@
-                            @if (!node.IsLoop && node.Aggregate == null && !IsComputed(node))
+                               between bodies is this picker. #1159: ONE picker over every body — a
+                               loop, an if's then/else, a case's branches and else (the user's decision).
+                               A flow node never sits in a body at 26. *@
+                            @if (!node.IsFlow && node.Aggregate == null && !IsComputed(node))
                             {
                                 <label class="node-field">
                                     <span>in</span>
                                     <FluentSelect TOption="string" class="binding-row__select node-in-loop"
-                                                  Value="@(LoopOf?.Invoke(node.Id) ?? string.Empty)"
-                                                  ValueChanged="@(v => EmitLoopChangeAsync(node, v))"
+                                                  Value="@(BodyOf?.Invoke(node.Id) ?? string.Empty)"
+                                                  ValueChanged="@(v => EmitPlacementAsync(node, v))"
                                                   aria-label="Node loop">
-                                        <FluentOption TOption="string" Value="">— not in a loop —</FluentOption>
-                                        @foreach (var loop in Loops)
+                                        <FluentOption TOption="string" Value="">— not in a body —</FluentOption>
+                                        @foreach (var body in Bodies)
                                         {
-                                            <FluentOption TOption="string" Value="@loop.Id">@loop.Label (@(loop.Collection ?? loop.For))</FluentOption>
+                                            <FluentOption TOption="string" Value="@body.Key">@body.Label</FluentOption>
                                         }
                                     </FluentSelect>
                                 </label>
@@ -816,20 +826,20 @@
     /// <summary>v26 (#1160): the package is at 26 — the in-loop picker replaces the for-each select.</summary>
     [Parameter] public bool At26 { get; set; }
 
-    /// <summary>v26 (#1160): the loops a node may be placed in.</summary>
-    [Parameter] public IReadOnlyList<WorkflowManifestReader.NodeView> Loops { get; set; } = Array.Empty<WorkflowManifestReader.NodeView>();
+    /// <summary>v26 (#1160/#1159): every body a node may be placed in — a loop, an if's then/else, a case's branches and else.</summary>
+    [Parameter] public IReadOnlyList<WorkflowManifestReader.FlowBodyView> Bodies { get; set; } = Array.Empty<WorkflowManifestReader.FlowBodyView>();
 
-    /// <summary>v26 (#1160): the loop a node runs inside (its id), or null.</summary>
-    [Parameter] public Func<string, string?>? LoopOf { get; set; }
+    /// <summary>v26 (#1160/#1159): the key of the body a node runs inside, or null.</summary>
+    [Parameter] public Func<string, string?>? BodyOf { get; set; }
 
-    /// <summary>v26 (#1160): a node moved into a loop (or out of every loop: null).</summary>
-    [Parameter] public EventCallback<LoopPlacement> OnLoopChanged { get; set; }
+    /// <summary>v26 (#1160/#1159): a node moved into a body (or out of every body: null).</summary>
+    [Parameter] public EventCallback<BodyPlacement> OnPlacementChanged { get; set; }
 
-    /// <summary>v26 (#1160): a node's placement in a loop — the loop id, or null for none.</summary>
-    public sealed record LoopPlacement(string NodeId, string? LoopId);
+    /// <summary>v26: a node's placement — a body key (a loop's id, or "&lt;id&gt;/then|else|branch:n"), or null for none.</summary>
+    public sealed record BodyPlacement(string NodeId, string? BodyKey);
 
-    private Task EmitLoopChangeAsync(WorkflowManifestReader.NodeView node, string? loopId) =>
-        OnLoopChanged.InvokeAsync(new LoopPlacement(node.Id, string.IsNullOrEmpty(loopId) ? null : loopId));
+    private Task EmitPlacementAsync(WorkflowManifestReader.NodeView node, string? bodyKey) =>
+        OnPlacementChanged.InvokeAsync(new BodyPlacement(node.Id, string.IsNullOrEmpty(bodyKey) ? null : bodyKey));
 
     private async Task MoveAggregateSourceAsync(WorkflowManifestReader.NodeView node, int index, int delta)
     {

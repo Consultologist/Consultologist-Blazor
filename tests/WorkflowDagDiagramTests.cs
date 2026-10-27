@@ -56,6 +56,28 @@ public class WorkflowDagDiagramTests
     }
 
     [Fact]
+    public void Diagram_At26_DrawsAnIfAndACase_AsBodySubgraphsReturningThroughRet()
+    {
+        var (manifest, _) = V26Package.Minimal();
+        var withFlows = V26JobStartTests.WithRoute(V26JobStartTests.WithTriage(manifest, withElse: true), onNode: true, withElse: true);
+
+        var diagram = WorkflowDagDiagram.Generate(withFlows);
+
+        Assert.Contains("subgraph if_triage_then[\"triage: then\"]", diagram);
+        Assert.Contains("subgraph if_triage_else[\"triage: else\"]", diagram);
+        Assert.Contains("        full_workup[\"full_workup<br/>", diagram);
+        Assert.Contains("triage[\"triage<br/>Triage<br/>if input.kind == \\\"new\\\"\"]".Replace("\\\"", "\""), diagram);
+        Assert.Contains("full_workup -->|\"ret (then)\"| triage", diagram);
+        Assert.Contains("brief_update -->|\"ret (else)\"| triage", diagram);
+        Assert.Contains("subgraph case_route_branch_1[\"route: in_scope\"]", diagram);
+        Assert.Contains("subgraph case_route_else[\"route: else\"]", diagram);
+        Assert.Contains("plan -->|\"ret (in_scope)\"| route", diagram);
+        Assert.Contains("scope -.->|\"case\"| route", diagram);
+        // Body nodes are not also top-level boxes.
+        Assert.Equal(1, diagram.Split("plan[\"").Length - 1);
+    }
+
+    [Fact]
     public void Diagram_At25_HasNoLoopSubgraph()
     {
         var (manifest, _) = V25Package.Minimal();
