@@ -12,7 +12,7 @@ internal enum TranscriptSyntax
 }
 
 /// <summary>One cue's speech: who the source said spoke (null when it did not say) and what.</summary>
-internal readonly record struct TranscriptCue(string? Speaker, string Text);
+public readonly record struct TranscriptCue(string? Speaker, string Text);
 
 /// <summary>
 /// #994: the one rule that turns a cue container (WebVTT, SubRip) into the

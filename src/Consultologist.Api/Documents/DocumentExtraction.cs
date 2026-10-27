@@ -46,6 +46,21 @@ public static class DocumentExtractionOutcomes
     // minimum the account set in its profile. A policy refusal, not a service
     // fault — 422, and the copy points at the profile setting.
     public const string OcrLowConfidence = "ocr-low-confidence";
+    // #1063: a recognised recording (WAV/MP3/OGG/FLAC/M4A). A pure refusal that
+    // routes to the speech-to-text edge — audio has no text — so it always
+    // transcribes, or is refused when speech-to-text is unconfigured.
+    public const string AudioNeedsTranscription = "audio-needs-transcription";
+    // #1063: a recording where this deployment has no speech-to-text — the
+    // door says so rather than calling the file something else (415).
+    public const string AudioNotEnabled = "audio-not-enabled";
+    // #1063: speech-to-text was configured and tried, but the service errored
+    // or timed out. Transient and about us, like OcrUnavailable — 503.
+    public const string SttUnavailable = "stt-unavailable";
+    // #1063: transcribed, but the mean phrase confidence was below the
+    // account's minimum (stt.minConfidence). A policy refusal — 422.
+    public const string SttLowConfidence = "stt-low-confidence";
+    // #1063: the recording is longer than the deployment's cap. 422.
+    public const string TooLong = "too-long";
 }
 
 internal sealed record DocumentExtractionResult(
@@ -213,7 +228,11 @@ internal static class DocumentExtraction
         // #730: a recognized raw image has no local parser — it returns
         // image-needs-ocr, and the impure edge routes it to OCR (or refuses it
         // when OCR is unconfigured).
-        new DocumentFormat(ImageDocumentExtractor.Matches, ImageDocumentExtractor.Extract)
+        new DocumentFormat(ImageDocumentExtractor.Matches, ImageDocumentExtractor.Extract),
+        // #1063: a recording has no local parser either — it returns
+        // audio-needs-transcription, and the impure edge routes it to
+        // speech-to-text (or refuses it when none is configured).
+        new DocumentFormat(AudioDocumentExtractor.Matches, AudioDocumentExtractor.Extract)
     ];
 
     /// <summary>
@@ -245,8 +264,10 @@ internal static class DocumentExtraction
         TimeSpan gateWait,
         CancellationToken cancellationToken,
         IDocumentOcr? ocr = null,
-        double? ocrMinConfidence = null) =>
-        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken, ocr, ocrMinConfidence);
+        double? ocrMinConfidence = null,
+        ISpeechToText? speechToText = null,
+        double? sttMinConfidence = null) =>
+        ExtractAsync(bytes, gateWait, ParseGate, cancellationToken, ocr, ocrMinConfidence, speechToText, sttMinConfidence);
 
     /// <summary>
     /// The gate as a parameter, so saturation can be tested by handing in a
@@ -259,7 +280,9 @@ internal static class DocumentExtraction
         SemaphoreSlim gate,
         CancellationToken cancellationToken,
         IDocumentOcr? ocr = null,
-        double? ocrMinConfidence = null)
+        double? ocrMinConfidence = null,
+        ISpeechToText? speechToText = null,
+        double? sttMinConfidence = null)
     {
         if (!await gate.WaitAsync(gateWait, cancellationToken))
         {
@@ -341,7 +364,55 @@ internal static class DocumentExtraction
             return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.UnsupportedType);
         }
 
+        // #1063: a recording routes to speech-to-text on this impure edge, as
+        // a scan routes to OCR — outside the parse gate and its clock; the
+        // reader owns its own. The phrases fold into turns by the one rule a
+        // VTT follows (TranscriptTurns.Render), so the record's textSha256 is
+        // over the conversation whichever container it arrived in. No service
+        // configured: the door says so (audio-not-enabled), never "corrupt".
+        if (string.Equals(result.Outcome, DocumentExtractionOutcomes.AudioNeedsTranscription, StringComparison.Ordinal))
+        {
+            if (speechToText is not { IsConfigured: true })
+            {
+                return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.AudioNotEnabled);
+            }
+
+            var transcription = await speechToText.TranscribeAsync(bytes, cancellationToken);
+
+            return transcription.Status switch
+            {
+                SpeechToTextStatus.Transcribed => AcceptOrGateSpeech(transcription, sttMinConfidence),
+                SpeechToTextStatus.Empty => DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Empty),
+                SpeechToTextStatus.Busy => DocumentExtractionResult.Refused(DocumentExtractionOutcomes.Busy),
+                SpeechToTextStatus.TooLong => DocumentExtractionResult.Refused(DocumentExtractionOutcomes.TooLong),
+                _ => DocumentExtractionResult.Refused(DocumentExtractionOutcomes.SttUnavailable),
+            };
+        }
+
         return result;
+    }
+
+    /// <summary>
+    /// #1063: the account's speech-to-text confidence policy, the OCR gate's
+    /// twin: below the minimum, refuse as <c>stt-low-confidence</c> rather than
+    /// feed a doubtful transcript into a consult. Accepted cues render to turns
+    /// by the one rule and go through Normalize like every other path; turns
+    /// past the character cap are refused, never truncated (§ 4).
+    /// </summary>
+    private static DocumentExtractionResult AcceptOrGateSpeech(SpeechToTextResult transcription, double? minConfidence)
+    {
+        if (minConfidence is double min && transcription.MeanConfidence is double mean && mean < min)
+        {
+            return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.SttLowConfidence);
+        }
+
+        var turns = TranscriptTurns.Render(transcription.Cues ?? []);
+        if (turns.Length > MaxCharacters)
+        {
+            return DocumentExtractionResult.Refused(DocumentExtractionOutcomes.TooMuchText);
+        }
+
+        return Normalize(DocumentExtractionResult.Extracted(turns, transcription.ExtractorId!, null));
     }
 
     /// <summary>

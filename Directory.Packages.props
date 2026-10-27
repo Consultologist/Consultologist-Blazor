@@ -31,6 +31,9 @@
     <!-- #239: OCR for image-only PDFs via Azure AI Document Intelligence
          (prebuilt-read). Managed-identity auth; no native assets. -->
     <PackageVersion Include="Azure.AI.DocumentIntelligence" Version="1.0.0" />
+    <!-- #1063: speech-to-text for recordings via Azure AI Speech fast transcription
+         (Documents/AzureSpeechToText.cs); the one other cloud reader behind a seam. -->
+    <PackageVersion Include="Azure.AI.Speech.Transcription" Version="1.0.0" />
     <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.15.0" />
     <PackageVersion Include="System.IdentityModel.Tokens.Jwt" Version="8.15.0" />
     <PackageVersion Include="Microsoft.ApplicationInsights.WorkerService" Version="2.23.0" />
