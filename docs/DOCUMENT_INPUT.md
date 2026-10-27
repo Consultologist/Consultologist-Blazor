@@ -39,7 +39,7 @@ about documents; the intake layer does.
 ```
                     PARSER  (sole format authority)
               sniff → decode/extract → named outcome
-                 owns: txt · md · pdf · docx · html · vtt · srt
+                 owns: txt · md · pdf · docx · html · vtt · srt · (image → OCR) · (audio → speech-to-text)
                       ↑                ↑
               SOURCE: app        SOURCE: email
               (bytes only)       (bytes only)
@@ -434,6 +434,49 @@ now, sniffed on content like every other (`VttDocumentExtractor`,
   (`expectedContent: transcript`) or the caller's `TranscriptInputs`, so a VTT
   dropped on a plain text input is parsed the same way and stays a
   `document`. `textSha256` is over the turns; provenance@v2026.10.6 words it.
+
+### Recordings — speech-to-text (#1063, 2026-10-27)
+
+A recorded encounter may arrive as the recording itself. A recording is a
+format now, sniffed on content like every other (`AudioDocumentExtractor`:
+WAV by `RIFF…WAVE`, MP3 by an ID3 tag or a Layer III frame sync, OGG/Opus by
+`OggS`, FLAC by `fLaC`, M4A/MP4 by the `ftyp` box) — and, like an image, it
+has no local parser: the pure core returns `audio-needs-transcription` and
+the impure edge routes it to **speech-to-text** (`ISpeechToText`, Azure AI
+Speech's fast transcription in Canada Central, behind
+`SpeechToText__Endpoint` exactly as OCR sits behind its endpoint — see
+CONFIGURATION.md). The service's phrases, with the speakers as it numbered
+them, fold into turns by the **same rule a VTT follows**
+(`TranscriptTurns.Render`: `Speaker N: text`, consecutive phrases of one
+speaker merged), so the record's `textSha256` is over the conversation
+whichever container it arrived in; `fileSha256` is over the audio bytes as
+received, which are cleared at job start with every other document's and
+never rest. The extractor names the speech-to-text build
+(`speech/<version>+<commit>`); provenance@v2026.10.8 words it.
+
+- **Caps.** The per-file (10 MB) and per-request (20 MB) limits are unchanged:
+  about twenty minutes of 64 kbps MP3; a WAV must be compressed first. The
+  service's own duration is capped at `SpeechToText__MaxDurationMinutes`
+  (60), judged on the duration the service measured — `too-long`.
+- **Outcomes.** `audio-not-enabled` (415: this deployment transcribes none —
+  the door says so, never "corrupt"), `stt-unavailable` (503, the OCR
+  outage's twin), `busy` (the service rate-limited; a cold service answers
+  429 first and the client retries once), `stt-low-confidence` (422: below
+  the account's minimum), `too-long` (422), `empty` (nothing recognised),
+  `too-much-text` (the turns past the character cap — refused, never
+  truncated, § 4).
+- **The gate is the account's**, the OCR gate's twin: `stt.confidenceGate` /
+  `stt.minConfidence` (on by default at 80 %, the Profile's *Recording
+  transcript confidence* card), gated on the mean phrase confidence. Both
+  doors read it — the preview endpoint and the job starter.
+- **The door.** The transcript channel's sentence names a recording only when
+  the engine says it transcribes one (`Public/Engine` →
+  `features.speechToText`): *"Drop a transcript or a recording here, or
+  browse…"*. Still no `accept`: the parser decides. The origin **kind** is
+  unchanged by the format — a recording on a plain input is a `document`
+  read by `speech/…`, as a VTT is.
+- **Not** live or ambient capture, not diarisation beyond the service's,
+  not translation; not the Zoom satellite's path (it submits text).
 
 ## 4. Limits
 
@@ -839,6 +882,10 @@ happened and what to do instead.
 | `no-text-layer` | This PDF has no text layer, so it is a scan or a fax. Paste the text instead, or attach a PDF exported from your system. |
 | `ocr-unavailable` | We could not read this scan right now. Nothing is wrong with it — try again in a moment, or paste the text instead. |
 | `ocr-low-confidence` | This scan was read, but its text confidence was below the minimum set in your profile. Paste the text instead, or lower the minimum in your profile. |
+| `audio-not-enabled` | This is a recording, and audio transcription is not enabled here. Upload the transcript as text, .vtt or .srt instead. |
+| `stt-unavailable` | We could not transcribe this recording right now. Nothing is wrong with it — try again in a moment, or upload the transcript instead. |
+| `stt-low-confidence` | This recording was transcribed, but its confidence was below the minimum set in your profile. Upload the transcript instead, or lower the minimum in your profile. |
+| `too-long` | This recording is longer than we transcribe in one go. Trim it, or upload the transcript instead. |
 | `password-protected` | This PDF is password-protected. Remove the password and try again, or paste the text instead. |
 | `corrupt` | This file could not be read — it may be damaged or incomplete. |
 | `empty` | There is no text in this file. |
