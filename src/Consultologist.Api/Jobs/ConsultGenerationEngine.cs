@@ -316,7 +316,12 @@ public sealed class ConsultGenerationOrchestrator
                         Supplied: input.SuppliedInputs is null ? null : new Dictionary<string, string>(input.SuppliedInputs, StringComparer.Ordinal),
                         Classifications: Classifications(),
                         FailIfEmpty: node.FailIfEmpty,
-                        Instances: node.Macros),
+                        Instances: node.Macros,
+                        // v26 (#1154, design § 1.3): the loops read whole, the flow
+                        // nodes' returned nodes, the flows that took no branch.
+                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, collections),
+                        FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById),
+                        SkippedNodes: skippedNodes.Count > 0 ? skippedNodes.Order(StringComparer.Ordinal).ToList() : null),
                     AgentActivityRetryOptions)] = (node.Id, item?["id"]);
                 return;
             }

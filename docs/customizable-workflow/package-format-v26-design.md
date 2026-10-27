@@ -1057,6 +1057,25 @@ one does. Left to PR 3: the loop read at render (`{{ for e in node.<loop> }}`), 
 the `label` member. #1155: `FinalOutcome`, `pendingDeliverables` and the compose step from `sources[]` — a 26
 job cannot complete its deliverable until then (none runs before the bump).)*
 
+*(#1154, PR 3 of 3, 2026-10-26 — the render scope, as § 1.3 reads a loop. The orchestrator hands the activity
+every loop the node reads whole (`ConsultLoopPayload`: the collection, the returned node, the settled items in
+item order, each body node's output per item), the returned node of every flow node read (`FlowRets`, so an
+if/case alias types as its returned node) and the flows that took no branch (`SkippedNodes`) — three trailing
+fields on the activity input, null below 26. `TemplateRenderScope` gains `Loops`, `SkippedNodes` and
+`Labelled`. **`{{ for e in node.<loop> }}` iterates**: each element carries `item` (the fan item, rendered
+when read as the instance's own `item` is), `content` and `value` (the returned node's for that item) and
+every body node by id as a node object — so `e.<body> | pipe` takes the node (§ 7.1); the list reads as the
+loop's composed text (the aggregator's bytes, `node.<loop>.content`) and as the array of the returned node's
+values. **One builder** (`TemplateRenderer.LoopList`) assembles the list for the validator's probe
+(`ProbeFlowNodesAt26`, rewritten over it) and for the render, so the two member sets cannot drift; a package
+valid at 26 whose prompt iterates its loop renders over the run's scope (pinned). A flow node that took no
+branch reads null — `{{ if node.triage }}` guards it. At 26 the item, snippet, folder-item and macro objects
+carry `label` beside `name` (the walker admits `.label` and refuses `.name` there); a 26 folder item's name
+is its header's label everywhere the engine names one. **Left to #1157**: the store resolving the headers
+(a macro's `label`/`instruction` at run time, a folder item's `if` and label from the store's own read) and
+the prompt loaded by path. #1155 composes the deliverable from `sources[]`; a deliverable macro reads a loop
+as text alone until then. #1154 closes.)*
+
 ## 12. The editor
 
 The Milestone 31 panes land at 25 and are the rows 26 re-keys. What changes **label only**,

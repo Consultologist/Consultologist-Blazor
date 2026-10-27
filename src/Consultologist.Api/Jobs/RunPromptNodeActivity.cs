@@ -82,7 +82,27 @@ public sealed record ConsultPromptNodeActivityInput(
     // dependencies from), composed around the output at completion. Null
     // below 25 (there the instances ride Before/After, prompt-side). Appended last.
     string? FailIfEmpty = null,
-    IReadOnlyList<ConsultNodeMacroDescriptor>? Instances = null);
+    IReadOnlyList<ConsultNodeMacroDescriptor>? Instances = null,
+    // v26 (#1154, design § 1.3): the loops this node reads whole — each with
+    // its items and every body node's output per item — so the activity's
+    // scope iterates node.<loop>; the returned node of every flow node read
+    // (a loop's, an if/case's taken branch's), so the alias types as it; the
+    // flow nodes that took no branch, which read null. Null below 26. Appended
+    // last, same positional-call rule.
+    IReadOnlyDictionary<string, ConsultLoopPayload>? Loops = null,
+    IReadOnlyDictionary<string, string>? FlowRets = null,
+    IReadOnlyList<string>? SkippedNodes = null);
+
+/// <summary>
+/// v26 (#1154): a loop as the orchestrator hands it to the activity — its
+/// collection as a 25 forEach spells it, its returned node, the settled items
+/// in item order, and each body node's output text by item id.
+/// </summary>
+public sealed record ConsultLoopPayload(
+    string Collection,
+    string RetId,
+    IReadOnlyList<IReadOnlyDictionary<string, string>> Items,
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Texts);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable

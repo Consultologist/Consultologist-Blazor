@@ -1045,44 +1045,36 @@ public static partial class WorkflowPackageValidator
             if (shape.Flow?.Kind == TemplateFlowKind.For)
             {
                 var ret = shape.Flow.Ret ?? TemplateNodeShape.Aggregator();
-                var list = new ScriptArray();
+                var body = shape.Flow.Body ?? new Dictionary<string, TemplateNodeShape>();
 
-                for (var i = 0; i < 2; i++)
-                {
-                    var element = new ScriptObject
-                    {
-                        [TemplateMembers.Item] = shape.Flow.Fan is InputArrayFan input
-                            ? new ScriptObject { ["id"] = i.ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = Probe(input.Element) }
-                            : new ScriptObject { ["id"] = "item", [TemplateMembers.Label] = "placeholder", ["content"] = "placeholder" },
-                        [TemplateMembers.Content] = "placeholder",
-                    };
-
-                    if (ret.HasValue)
-                    {
-                        element[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(ret));
-                    }
-
-                    foreach (var (id, bodyShape) in shape.Flow.Body ?? new Dictionary<string, TemplateNodeShape>())
-                    {
-                        var member = new ScriptObject { [TemplateMembers.Content] = "placeholder" };
-                        if (bodyShape.HasValue)
+                // #1154: the render's own builder — the probe and the run share one member set.
+                var elements = Enumerable.Range(0, 2).Select(i => new TemplateRenderer.LoopElement(
+                    shape.Flow.Fan is InputArrayFan input
+                        ? new ScriptObject { ["id"] = i.ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = Probe(input.Element) }
+                        : new ScriptObject { ["id"] = "item", [TemplateMembers.Label] = "placeholder", ["content"] = "placeholder" },
+                    "placeholder",
+                    ret.HasValue,
+                    ret.HasValue ? ProbeFromShape(ValueShapeOf(ret)) : null,
+                    body.ToDictionary(
+                        pair => pair.Key,
+                        pair =>
                         {
-                            member[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(bodyShape));
-                        }
+                            var member = new ScriptObject { [TemplateMembers.Content] = "placeholder" };
+                            if (pair.Value.HasValue)
+                            {
+                                member[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(pair.Value));
+                            }
 
-                        element[id] = member;
-                    }
+                            return (object?)member;
+                        },
+                        StringComparer.Ordinal)));
 
-                    list.Add(element);
-                }
-
-                list.ScriptObject[TemplateMembers.Content] = "placeholder";
-                if (ret.HasValue)
-                {
-                    list.ScriptObject[TemplateMembers.Value] = new ScriptArray { ProbeFromShape(ValueShapeOf(ret)), ProbeFromShape(ValueShapeOf(ret)) };
-                }
-
-                node[flow.Node.Id] = list;
+                node[flow.Node.Id] = TemplateRenderer.LoopList(
+                    () => new ScriptObject(),
+                    elements,
+                    "placeholder",
+                    ret.HasValue,
+                    ret.HasValue ? new ScriptArray { ProbeFromShape(ValueShapeOf(ret)), ProbeFromShape(ValueShapeOf(ret)) } : null);
                 continue;
             }
 

@@ -69,6 +69,19 @@ public sealed record TemplateNodeOutput(
 public sealed record TemplateFolderItem(string Id, string Name, string Text);
 
 /// <summary>
+/// #1154 (v26 design § 1.3): a loop as a template reads it — iterable, each
+/// element carrying the fan item, the returned node's output for that item and
+/// every body node's by id; the list itself reading as the loop's composed
+/// text (<see cref="Output"/>, the aggregator's bytes) and as the array of the
+/// returned node's values. <see cref="Body"/> is body node id → item id → output.
+/// </summary>
+public sealed record TemplateLoopOutput(
+    string RetId,
+    IReadOnlyList<TemplateFanItem> Items,
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>> Body,
+    TemplateNodeOutput Output);
+
+/// <summary>
 /// The fan item an instance runs for: a snippet fan carries <c>Text</c> (a
 /// template, rendered when read); an input fan carries <c>Value</c> (the
 /// element's canonical form or carrier JSON) typed by <c>Element</c>.
@@ -120,7 +133,17 @@ public sealed record TemplateRenderScope(
     // #1099 (v26 design § 5.3): the macro folders — macro.<folder> an array of
     // macro objects in the index's order; the inert and suppressed sets key an
     // item as <folder>/<item>. Null is the 25 render.
-    IReadOnlyDictionary<string, IReadOnlyList<TemplateMacroSource>>? MacroFolders = null);
+    IReadOnlyDictionary<string, IReadOnlyList<TemplateMacroSource>>? MacroFolders = null,
+    // #1154 (v26 design § 1.3): the loops this render reads whole — node.<loop>
+    // iterable, its elements the items with the body nodes' outputs; a loop
+    // read as text alone needs no entry (Nodes carries its composed text).
+    IReadOnlyDictionary<string, TemplateLoopOutput>? Loops = null,
+    // #1154 (§ 1.3): the if/case nodes that took no branch — node.<id> reads
+    // null, so {{ if node.<id> }} guards it. Null is the 25 render.
+    IReadOnlySet<string>? SkippedNodes = null,
+    // #1105/#1154: at 26 the item, snippet and macro objects carry `label`
+    // (the header's) beside name. False is the 25 render.
+    bool Labelled = false);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -208,15 +231,58 @@ public static class TemplateRenderer
         globals[TemplateObjects.Input] = input;
 
         var node = new ClosedObject(subject, TemplateObjects.Node);
-        foreach (var (id, output) in scope.Nodes)
-        {
+        NodeObject NodeObjectOf(string id, TemplateNodeOutput output, string path) =>
             // #1059: the node object carries its identity — a renderer pipe takes it whole.
-            node[id] = new NodeObject(subject, id, output,
+            new(subject, id, output,
                 new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
                 {
                     [TemplateMembers.Content] = () => output.Text,
                     [TemplateMembers.Value] = () => NodeValue(subject, id, output),
-                });
+                },
+                path);
+
+        foreach (var (id, output) in scope.Nodes)
+        {
+            if (scope.Loops?.ContainsKey(id) == true)
+            {
+                continue; // the loop's list below reads as this text too
+            }
+
+            node[id] = NodeObjectOf(id, output, $"{TemplateObjects.Node}.{id}");
+        }
+
+        // #1154 (v26 design § 1.3): a loop iterates — each element the fan item,
+        // the returned node's content and value, and every body node by id (a
+        // NodeObject, so a renderer pipe takes it); the list reads as the loop's
+        // composed text and as the array of the returned node's values. One
+        // builder with the validator's probe, so the two member sets are one.
+        foreach (var (id, loop) in scope.Loops ?? new Dictionary<string, TemplateLoopOutput>())
+        {
+            var path = $"{TemplateObjects.Node}.{id}";
+            var elements = loop.Items.Select(item =>
+            {
+                var elementPath = $"{path}[{item.Id}]";
+                var ret = loop.Body[loop.RetId][item.Id];
+                var body = loop.Body.ToDictionary(
+                    pair => pair.Key,
+                    pair => (object?)NodeObjectOf(pair.Key, pair.Value[item.Id], $"{elementPath}.{pair.Key}"),
+                    StringComparer.Ordinal);
+                return new LoopElement(
+                    ItemObject(subject, $"{elementPath}.{TemplateMembers.Item}", item, globals, trace, scope.Labelled),
+                    ret.Text,
+                    true,
+                    NodeValue(subject, loop.RetId, ret),
+                    body);
+            });
+            var values = new ScriptArray(loop.Items.Select(item => NodeValue(subject, loop.RetId, loop.Body[loop.RetId][item.Id])));
+
+            node[id] = LoopList(() => new ClosedObject(subject, $"{path}[]"), elements, loop.Output.Text, true, values);
+        }
+
+        // #1154 (§ 1.3): a flow node that took no branch reads null — a guard sees it.
+        foreach (var id in scope.SkippedNodes ?? new HashSet<string>())
+        {
+            node[id] = null;
         }
 
         globals[TemplateObjects.Node] = node;
@@ -226,7 +292,7 @@ public static class TemplateRenderer
         {
             // #1094: an inert snippet's content is empty where read; its id as ever.
             var inert = scope.InertSnippets?.Contains(id) == true;
-            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, id, inert ? string.Empty : text, $"Snippet '{id}'", globals, trace);
+            snippet[id] = Rendered(subject, $"{TemplateObjects.Snippet}.{id}", id, id, inert ? string.Empty : text, $"Snippet '{id}'", globals, trace, scope.Labelled);
         }
 
         foreach (var (folder, items) in scope.Folders)
@@ -238,7 +304,7 @@ public static class TemplateRenderer
                 // read directly as snippet.<folder>.<item>; an item gated off (#1094,
                 // the engine's key <folder>/<item>) reads empty there.
                 var inert = scope.InertSnippets?.Contains($"{folder}/{item.Id}") == true;
-                var rendered = Rendered(subject, $"{TemplateObjects.Snippet}.{folder}[{item.Id}]", item.Id, item.Name, inert ? string.Empty : item.Text, $"Snippet '{folder}/{item.Id}'", globals, trace);
+                var rendered = Rendered(subject, $"{TemplateObjects.Snippet}.{folder}[{item.Id}]", item.Id, item.Name, inert ? string.Empty : item.Text, $"Snippet '{folder}/{item.Id}'", globals, trace, scope.Labelled);
                 array.Add(rendered);
                 array.ScriptObject[item.Id] = rendered;
             }
@@ -250,14 +316,7 @@ public static class TemplateRenderer
 
         if (scope.Item is { } fanItem)
         {
-            globals[TemplateObjects.Item] = fanItem.Text is not null
-                ? Rendered(subject, TemplateObjects.Item, fanItem.Id, fanItem.Name, fanItem.Text, $"{subject} item '{fanItem.Id}'", globals, trace)
-                : new ClosedObject(subject, TemplateObjects.Item)
-                {
-                    [TemplateMembers.Id] = fanItem.Id,
-                    [TemplateMembers.Name] = fanItem.Name,
-                    [TemplateMembers.Value] = PromptTemplateRenderer.MaterialiseElement(fanItem.Value ?? string.Empty, fanItem.Element),
-                };
+            globals[TemplateObjects.Item] = ItemObject(subject, TemplateObjects.Item, fanItem, globals, trace, scope.Labelled);
         }
 
         var macro = new ClosedObject(subject, TemplateObjects.Macro);
@@ -295,6 +354,12 @@ public static class TemplateRenderer
                     return WorkflowMacroMechanics.Prompt(source.Id, rendered);
                 },
             };
+            if (scope.Labelled)
+            {
+                // #1105 (v26 design § 5): at 26 the member is label — the header's.
+                members[TemplateMembers.Label] = () => source.Name;
+            }
+
             var text = new Lazy<string>(() => RenderWith($"Macro '{key}'", source.Text, globals, trace, nested: true));
             members[TemplateMembers.Content] = () =>
             {
@@ -397,15 +462,86 @@ public static class TemplateRenderer
         _ => value.GetType().Name.ToLowerInvariant(),
     };
 
-    private static LazyMembersObject Rendered(string subject, string path, string id, string name, string text, string templateSubject, ScriptObject globals, TemplateRenderTrace? trace)
+    private static LazyMembersObject Rendered(string subject, string path, string id, string name, string text, string templateSubject, ScriptObject globals, TemplateRenderTrace? trace, bool labelled = false)
     {
         var rendered = new Lazy<string>(() => RenderWith(templateSubject, text, globals, trace, nested: true));
-        return new LazyMembersObject(subject, path, new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
+        var members = new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
         {
             [TemplateMembers.Id] = () => id,
             [TemplateMembers.Name] = () => name,
             [TemplateMembers.Content] = () => rendered.Value,
-        });
+        };
+        if (labelled)
+        {
+            // #1105 (v26 design § 5): at 26 the member is label — the header's.
+            members[TemplateMembers.Label] = () => name;
+        }
+
+        return new LazyMembersObject(subject, path, members);
+    }
+
+    /// <summary>The fan item as a template reads it: a snippet item renders its text when read; an input element carries its materialised value.</summary>
+    private static ScriptObject ItemObject(string subject, string path, TemplateFanItem fanItem, ScriptObject globals, TemplateRenderTrace? trace, bool labelled)
+    {
+        if (fanItem.Text is not null)
+        {
+            return Rendered(subject, path, fanItem.Id, fanItem.Name, fanItem.Text, $"{subject} item '{fanItem.Id}'", globals, trace, labelled);
+        }
+
+        var element = new ClosedObject(subject, path)
+        {
+            [TemplateMembers.Id] = fanItem.Id,
+            [TemplateMembers.Name] = fanItem.Name,
+            [TemplateMembers.Value] = PromptTemplateRenderer.MaterialiseElement(fanItem.Value ?? string.Empty, fanItem.Element),
+        };
+        if (labelled)
+        {
+            element[TemplateMembers.Label] = fanItem.Name;
+        }
+
+        return element;
+    }
+
+    /// <summary>#1154: one element of a loop's list — the fan item, the returned node's content and (when it has one) value, and the body nodes by id.</summary>
+    internal sealed record LoopElement(object Item, object? Content, bool HasValue, object? Value, IReadOnlyDictionary<string, object?> Body);
+
+    /// <summary>
+    /// #1154 (v26 design § 1.3): the loop's list, ONE shape for the validator's
+    /// probe and the render — each element carries <c>item</c>, <c>content</c>,
+    /// <c>value</c> (when the returned node has one) and every body node by id;
+    /// the list itself carries <c>content</c> (the loop's composed text) and
+    /// <c>value</c> (the array of the returned node's values). The element
+    /// container is the caller's: the probe's plain object, the render's closed one.
+    /// </summary>
+    internal static ScriptArray LoopList(Func<ScriptObject> newElement, IEnumerable<LoopElement> elements, object? content, bool hasValue, object? value)
+    {
+        var list = new ScriptArray();
+
+        foreach (var e in elements)
+        {
+            var element = newElement();
+            element[TemplateMembers.Item] = e.Item;
+            element[TemplateMembers.Content] = e.Content;
+            if (e.HasValue)
+            {
+                element[TemplateMembers.Value] = e.Value;
+            }
+
+            foreach (var (id, member) in e.Body)
+            {
+                element[id] = member;
+            }
+
+            list.Add(element);
+        }
+
+        list.ScriptObject[TemplateMembers.Content] = content;
+        if (hasValue)
+        {
+            list.ScriptObject[TemplateMembers.Value] = value;
+        }
+
+        return list;
     }
 
     private static string RenderWith(string subject, string templateText, ScriptObject globals, TemplateRenderTrace? trace, bool nested)
@@ -557,8 +693,8 @@ public static class TemplateRenderer
     /// <summary>#1059: a node's object — its members, and the identity a renderer pipe takes.</summary>
     private sealed class NodeObject : LazyMembersObject
     {
-        public NodeObject(string subject, string id, TemplateNodeOutput output, Dictionary<string, Func<object?>> members)
-            : base(subject, $"{TemplateObjects.Node}.{id}", members)
+        public NodeObject(string subject, string id, TemplateNodeOutput output, Dictionary<string, Func<object?>> members, string? path = null)
+            : base(subject, path ?? $"{TemplateObjects.Node}.{id}", members)
         {
             Id = id;
             Output = output;
