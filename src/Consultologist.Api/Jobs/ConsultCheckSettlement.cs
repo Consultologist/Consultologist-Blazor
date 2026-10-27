@@ -36,11 +36,23 @@ internal static class ConsultCheckSettlement
         ConsultDeliverables.Deliverable deliverable,
         IReadOnlyDictionary<string, NodeRunResult> outputs,
         IReadOnlyDictionary<string, ConsultCheckOutcome> settledChecks,
-        out ConsultCheckOutcome? outcome)
+        out ConsultCheckOutcome? outcome,
+        // v26 (#1155): a read naming a flow node that took no branch is settled
+        // with nothing to read; a read of another deliverable (its macro's
+        // deliverable.<id>.content) holds until that deliverable composes, or is
+        // null when it is not in the run (skipped by its if).
+        IReadOnlySet<string>? skipped = null,
+        IReadOnlySet<string>? composedDeliverables = null,
+        IReadOnlySet<string>? runDeliverables = null)
     {
         outcome = null;
 
-        if (deliverable.Reads?.Any(read => !outputs.ContainsKey(read)) == true)
+        if (deliverable.Reads?.Any(read => !outputs.ContainsKey(read) && skipped?.Contains(read) != true) == true)
+        {
+            return false;
+        }
+
+        if (deliverable.DeliverableReads?.Any(id => runDeliverables?.Contains(id) == true && composedDeliverables?.Contains(id) != true) == true)
         {
             return false;
         }

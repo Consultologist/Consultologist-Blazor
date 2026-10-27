@@ -25,7 +25,11 @@ public sealed record ConsultDeliverableMacrosActivityInput(
     IReadOnlyDictionary<string, string> NodeTexts,
     IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? Folders,
     TemplateRunFacts Run,
-    TemplateProfileFacts Profile);
+    TemplateProfileFacts Profile,
+    // v26 (#1155, design § 3.1): the deliverables the placed macros read as
+    // deliverable.<id>.content — composed; null for one skipped by its if.
+    // Null below 26 and when none. Appended last, positional rule.
+    IReadOnlyDictionary<string, string?>? Deliverables = null);
 
 /// <summary>One placed macro rendered: its id and its text.</summary>
 public sealed record ConsultRenderedMacro(string Id, string Text);
@@ -86,7 +90,8 @@ public sealed class RenderDeliverableMacrosActivity
     internal static ConsultDeliverableMacrosResult Render(ConsultDeliverableMacrosActivityInput input, WorkflowPackage package)
     {
         var scope = ConsultRenderPayload.ScopeFor(
-            input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, item: null, forEach: null, input.Run, input.Profile, package);
+            input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, item: null, forEach: null, input.Run, input.Profile, package,
+            deliverables: input.Deliverables);
         var prepend = new List<ConsultRenderedMacro>();
         var append = new List<ConsultRenderedMacro>();
 

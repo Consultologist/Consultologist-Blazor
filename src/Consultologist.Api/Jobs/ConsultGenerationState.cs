@@ -314,7 +314,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             // v11 #513: null when nothing was appended — the control's bytes.
             Appended = input.Appended is { Count: > 0 } ? new List<ConsultAppendedEntry>(input.Appended) : null,
             // v11 #516: only true or null, never false.
-            Unsigned = input.Unsigned == true ? true : null
+            Unsigned = input.Unsigned == true ? true : null,
+            // v26 (#1155): null below 26.
+            ComposedHash = input.ComposedHash,
+            Sources = input.Sources is { Count: > 0 } ? new List<string>(input.Sources) : null
         });
         state.AssembledDocuments.Sort((a, b) => a.Ordinal.CompareTo(b.Ordinal));
         state.History.Add(new JobHistoryEvent("success", $"Assembled document produced: {input.Label}", null, DateTimeOffset.UtcNow));
@@ -1350,7 +1353,11 @@ public sealed record ConsultGenerationResultDocument(
     IReadOnlyList<ConsultAppendedEntry>? Appended = null,
     // v11 #516: signature requested by the package; none chosen on the
     // profile. Only true or null, never false. Appended last, same reason.
-    bool? Unsigned = null);
+    bool? Unsigned = null,
+    // v26 (#1155, design § 10): the composed text's hash (the aggregator's
+    // agentOutputHash, moved) and the sources composed. Null below 26. Appended last.
+    string? ComposedHash = null,
+    IReadOnlyList<string>? Sources = null);
 
 /// <summary>
 /// One forEach instance's completion: per-item provenance plus the item's chain
@@ -1935,7 +1942,9 @@ public sealed class ConsultGenerationJobState
                         d.Text,
                         d.DocumentHash ?? (d.Text == null ? null : ConsultGenerationProvenance.Sha256Hex(d.Text)),
                         d.Appended,
-                        d.Unsigned))
+                        d.Unsigned,
+                        d.ComposedHash,
+                        d.Sources))
                     .ToList()
                 : null,
             TextDroppedAtUtc: TextDroppedAtUtc,
@@ -1981,6 +1990,11 @@ public sealed class ConsultGenerationResultDocumentState
     // v11 #516: produced unsigned although the package requested a signature.
     // Only true or null — a signed-and-appended document stores nothing here.
     public bool? Unsigned { get; set; }
+    // v26 (#1155, design § 10): the composed text's hash and the sources
+    // composed — null on every record below 26, so those store the bytes they
+    // always stored.
+    public string? ComposedHash { get; set; }
+    public List<string>? Sources { get; set; }
 }
 
 /// <summary>One forEach item's chain progress — the section-prose-step source.</summary>
