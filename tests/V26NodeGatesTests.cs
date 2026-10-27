@@ -328,4 +328,81 @@ public class V26NodeGatesTests
         Assert.NotNull(scope.WithItem("sections", package.Data!.Collections["sections"].Items[0]).InertReason("closing"));
         Assert.Null(scope.InertReason("nope"));
     }
+
+    // ----- the snippet's and the folder item's gate (#1179) --------------------------------
+
+    private static readonly IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> HpiOnly =
+        new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> { ["sections"] = new[] { Hpi } };
+
+    [Fact]
+    public void AnInertSnippet_RendersEmptyContent_AndItsIdAndLabelStillRead()
+    {
+        static void GatedStandards(Dictionary<string, string> files) =>
+            files["snippets/standards.md"] = V26Package.Header("Local standards", @if: "input.kind == \"follow_up\"") + "Follow the local standards.";
+
+        var (package, input, _, rendered) = Prepare("assessment", null, GatedStandards);
+        Assert.Equal("Assess.\n\nReferral.\n- Asthma\n", rendered);
+        Assert.Equal("standards|Local standards|", ConsultRenderPayload.RenderAt25(input, package, "{{ snippet.standards.id }}|{{ snippet.standards.label }}|{{ snippet.standards.content }}"));
+
+        // The gate holding: as today.
+        var (_, _, _, live) = Prepare("assessment", null, files => files["snippets/standards.md"] = V26Package.Header("Local standards", @if: "input.kind == \"new\"") + "Follow the local standards.");
+        Assert.Equal("Assess.\nFollow the local standards.\nReferral.\n- Asthma\n", live);
+    }
+
+    [Fact]
+    public void AFolderItemGatedOffAtJobStart_IsAbsentFromTheLoop_AndReadsEmptyDirectly()
+    {
+        // The starter settled the folder to [hpi] (the item's if, judged with the item in hand — #1154);
+        // the render sees the full folder with plan inert: out of the loop, empty when read directly.
+        var package = V26JobStartTests.Package(withFiles: files => files["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "input.kind == \"follow_up\"") + "Plan.");
+        var node = package.Nodes!.First(n => n.Id == "assessment");
+        var input = new ConsultPromptNodeActivityInput("assessment", node.Prompt!, Inputs, package.Ref, Format: "prose", Producer: "attested",
+            NodeTexts: new Dictionary<string, string>(), Folders: HpiOnly, Run: Run, Profile: Profile);
+
+        var rendered = ConsultRenderPayload.RenderAt25(input, package,
+            "[{{ for s in snippet.sections }}{{ s.label }}={{ s.content }};{{ end }}] {{ snippet.sections | array.size }} [{{ snippet.sections.plan.content }}] {{ snippet.sections.plan.id }} [{{ snippet.sections.hpi.content }}]");
+
+        Assert.Equal("[HPI=History: Referral.;] 1 [] plan [History: Referral.]", rendered);
+
+        var scope = ConsultGatedScope.Judge(input, package);
+        Assert.Equal(new[] { "sections/plan" }, scope.InertSnippets!.Order());
+        Assert.Equal(new[] { "hpi", "plan" }, scope.Folders["sections"].Select(item => item.Id));
+    }
+
+    [Fact]
+    public void TheDeliverableMacroRender_ReadsAnInertSnippet_AndAGatedOffItem_AsEmpty()
+    {
+        var package = V26JobStartTests.Package(
+            withFiles: files =>
+            {
+                files["snippets/standards.md"] = V26Package.Header("Local standards", @if: "input.kind == \"follow_up\"") + "Follow the local standards.";
+                files["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "input.kind == \"follow_up\"") + "Plan.";
+                files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.") + "[{{ snippet.standards.content }}][{{ snippet.sections.plan.content }}][{{ for s in snippet.sections }}{{ s.id }}{{ end }}]";
+            });
+        var input = new ConsultDeliverableMacrosActivityInput("consult", package.Ref, new[] { new ConsultMacroPlacement("closing", At: "append") },
+            Inputs, null, new Dictionary<string, string>(), HpiOnly, Run, Profile);
+
+        var result = RenderDeliverableMacrosActivity.Render(input, package);
+
+        Assert.Equal("[][][hpi]", Assert.Single(result.Append).Text);
+    }
+
+    [Fact]
+    public void Below26_TheFoldersAreTheSettledSnapshot_AndNoKeyIsSet()
+    {
+        var package = V25JobStartTests.Package();
+        var node = package.Nodes!.First(n => n.Id == "assessment");
+        var settled = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>
+        {
+            ["sections"] = new[] { (IReadOnlyDictionary<string, string>)new Dictionary<string, string> { ["id"] = "hpi", ["name"] = "HPI", ["content"] = "History: {{ input.notes }}" } },
+        };
+        var input = new ConsultPromptNodeActivityInput("assessment", node.Prompt!, Inputs, package.Ref, Format: "prose", Producer: "attested",
+            NodeTexts: new Dictionary<string, string>(), Folders: settled, Run: Run, Profile: Profile);
+
+        var scope = ConsultGatedScope.Judge(input, package);
+
+        Assert.Null(scope.InertSnippets);
+        Assert.Equal(new[] { "hpi" }, scope.Folders["sections"].Select(item => item.Id));
+        Assert.Equal("[HPI;]", ConsultRenderPayload.RenderAt25(input, package, "[{{ for s in snippet.sections }}{{ s.name }};{{ end }}]"));
+    }
 }
