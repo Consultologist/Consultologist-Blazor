@@ -1282,6 +1282,28 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   new-node "for each" select), and the `if`/`case` pane holds the expression builder, the branch
   table (the #1091/#1120 case table, now on a node) and a **`ret` picker** per branch — empty
   until chosen, blocking publish (explicit init).
+  *(The `if`/`case` half, as built by #1159: the client reader carries `if`/`case`/`then`/`else`/
+  `branches` on `NodeView` (`IsIf`, `IsCase`, `IsFlow`), and every flow node's bodies are
+  **addressed** — `FlowBodyRef(flowId, loop|then|else|branch:n)`, keyed as a loop's bare id (#1160's
+  spelling, kept) or `<id>/<body>` — through `Bodies()` and `BodyOf(nodes, nodeId)`. **One placement
+  picker** (decided 2026-10-27): the node pane's "in [— not in a body — | Sections (snippet.sections) |
+  Triage · then | Route · in_scope, … | Route · else ▾]" and the add pane's "in" list every body; one
+  mover, `PlaceInBody`, takes a node out of its body (clearing a `ret` that named it) and onto the end of
+  the chosen one. **The if pane**: label, the condition through the 25 node-when builder (`ConditionField`
+  on a `node-if:<id>` target writing the node's `if`), the then body and, once "+ else body" is pressed,
+  the else — each body section the loop pane's idiom with its own `ret` picker. **The case pane** (one
+  row per branch with value chips, decided 2026-10-27 over the text table's row-per-value): the subject
+  select (enum inputs as `input.<id>`, enum-format nodes as `node.<id>.value`), per branch its chips (✕
+  per chip, a one-shot "add a value…" over the values no branch lists yet), its body and `ret`, "Remove
+  branch"; "+ branch" appends an empty branch the desk names ("lists no value"); an else as on the if
+  pane; the unrouted values are said in the section's note. Every edit is one own dict, `flowEdits`
+  (the whole tuple, self-removing). **"Runs when" goes at 26.** The add pane offers for, if and case
+  before the formats; an `if` is born with an empty condition and an empty then (the desk names it until
+  the builder completes it), a `case` needs its subject at birth ("Choose what the case switches on.").
+  The Nodes nav nests then/else/branch rows beneath the flow node with a tag ("· then", "· in_scope").
+  The diagram draws one subgraph per body returning into the flow's box through `ret`, and a dotted
+  `case` edge from a subject node. An if/case inside a for, and the reverse, stay refused by the library
+  (#1173).)*
   *(The `for` half, as built by #1160: the client reader carries `for`/`nodes`/`ret` on
   `NodeView` with `IsLoop`, `Collection` (the text after `item in `, the 25 fan spelling) and
   `RetNodeId`; `EffectiveFan(node, nodes)` = the node's own `forEach` below 26, its loop's
