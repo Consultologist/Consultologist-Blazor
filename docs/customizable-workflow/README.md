@@ -2,7 +2,7 @@
 
 Design records, begun 2026-07-09, on turning the consult-generation workflow and
 section template system into versioned, code-independent artifacts. Since then
-formats v2–v10 have shipped and v11 is designed (2026-08-31), the normative
+formats v2–v25 have shipped and v26 is designed (2026-10-24), the normative
 specifications live in their own registry (#376) and the record contract in
 another (#400); what stays here is why each was chosen. Public by design, like the rest of this repository.
 
@@ -63,6 +63,10 @@ another (#400); what stays here is why each was chosen. Public by design, like t
 - [package-format-v4.md](package-format-v4.md) — normative specVersion-4 format:
   the node DAG (implicit edges, one map node), schema file refs welded to attested
   agents, per-node failure policy, the v4.0 closures
+- [package-format-v9-design.md](package-format-v9-design.md) — design record
+  (2026-08-21, Milestone 19; #419): structured inputs, numbers, and fanning over
+  caller data — written from the candidate records (#338, #340) rather than a
+  sketch; the candidates not taken kept, with why
 - [package-format-v10-design.md](package-format-v10-design.md) — design record
   (2026-08-26, Milestone 21): the classifying node and the boundary at which
   the fire set is decided, a condition evaluator with `and`/`or`/`not` and
@@ -84,6 +88,29 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   package-declared concept-list operands; per-document fail, the third
   state beside produced and skipped); the ladder of PRs; trigger audited
   unfired, owner override said so
+- [macro-classifier-gating.md](macro-classifier-gating.md) — recipe (2026-09-27):
+  conditionally append a macro on a model judgment — a classifier node decides
+  the fact from the draft and the macro's `when` reads its answer; verified
+  end to end
+- [node-macros-design.md](node-macros-design.md) — design record (2026-10-06,
+  Milestone 28, specVersion 23): one macro type with a second — node —
+  attachment site, absorbing preludes as the trivial node macro; the data
+  model, the prelude migration, the renderer seam and the v23/v24 phasing
+- [package-format-v25-design.md](package-format-v25-design.md) — design record
+  (2026-10-09, revision 2 2026-10-11, Milestone 29): the template is the source
+  of truth — a prompt reads the package through objects (`input`, `node`,
+  `snippet`, `item`, `macro`) and the edges are derived from it at publish; a
+  node declares one format (shape, producer, macro rule) with the catalogue in
+  the agents registry, in place of contracts, schemas and node kinds; snippets
+  read, macros placed; two per-node hashes. The normative text is the
+  registry's `package-format-v25.md`
+- [package-format-v26-design.md](package-format-v26-design.md) — design record
+  (2026-10-24, Milestone 30, #1104): every object is a node, every gate is
+  Scriban — flow nodes `if`/`case`/`for` with a required `ret`, gates keyed
+  `if`, the aggregator folded into `deliverables[].sources`, the prompt on the
+  node, a JSON header on every text file; the static half (26) with the
+  dynamic half named for 27; § 11 carries the as-built notes. The normative
+  text follows in the registry at the bump
 - [forms-intake-spike.md](forms-intake-spike.md) — spike record (#511, 2026-08-28):
   a Microsoft Forms response as an intake source — no supported API, so the
   clinician's Power Automate flow pushes responses with the clinician's own
@@ -102,6 +129,16 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   (2026-07-15): fork-everything with derivedFrom lineage, data/
   collections replacing the standards straddle, one node kind with forEach,
   per-item provenance; executing as Milestone 5 (#59)
+- [package-format-v6-design.md](package-format-v6-design.md) — design record
+  (2026-07-20, Milestone 9; implemented 2026-07-21): multi-collection fan,
+  aggregator nodes and one assembled document
+- [package-format-v7-design.md](package-format-v7-design.md) — design record
+  (2026-07-26, Milestone 14; #209): declared inputs and multiple deliverables —
+  v6's "natural v7" made normative
+- [package-format-v8-design.md](package-format-v8-design.md) — design record
+  (2026-08-10, Milestone 17; #312): typed inputs and conditional deliverables;
+  the candidates considered and not taken, and why the trigger was overridden
+  rather than met
 - [package-format-v5.md](https://github.com/Consultologist/consultologist-package-format/blob/main/package-format-v5.md) — normative specVersion-5 format:
   derivedFrom fork lineage, the data table and self-describing collections, one
   node kind with forEach, item-aligned edges, the result contract, per-item
