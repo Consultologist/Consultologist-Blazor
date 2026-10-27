@@ -1325,6 +1325,16 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
 - **The upgrade button**: "Upgrade to specVersion 26" on any 25 package (below 25, the chain
   runs 24 → 25 → 26, one publish, one notice naming the steps); a refusal (an unfillable `ret`,
   § 13) is said in the toolbar and leaves the package as loaded.
+  *(Interim, as built by #1209 — retired whole by #1164: while the editor's ceiling lags the
+  engine's (`NewestSpecVersion` 25, the engine running 26), a package above the ceiling opens
+  **read-only with a banner** — *"This package is at specVersion 26; this editor authors up to
+  25. Reading only; #1159–#1164 bring the 26 panes."* — and every edit door is refused by name:
+  publish, the draft and history writes, undo/redo, discard/revert, import; the pane itself
+  renders `inert` (one attribute that blocks every click, key and focus inside it, Fluent web
+  components included) while the nav stays live so every pane can still be read, and the
+  download stays open. The 26-pane tests render through a test-only page parameter,
+  `AuthorsAboveCeiling`, so #1160's loop pane and the panes to come keep being exercised; the
+  gate, the banner, the seam and the banner's test go together with #1164.)*
 
 The macro pane is § 2.6's picture.
 

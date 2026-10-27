@@ -47,5 +47,10 @@ buttons carry an `aria-label` (and usually a `Title`).
   (the label-activation gotcha, #510/#534/#1137/#1143 — the unchosen row's text door and
   Remove are wrapped; its documents door holds the file input and is not). bUnit cannot show
   label activation — verify live.
+- **A read-only region of Fluent web components is `inert`**, not a `fieldset disabled`
+  (custom elements ignore the fieldset): one attribute on the container blocks every click,
+  key and focus inside it (#1209's editor pane above the authoring ceiling). bUnit does not
+  honour `inert` — pin the attribute in markup and keep the handler's own refusal behind it;
+  verify the gesture live.
 - **Design tokens / accent** are set once via `<FluentDesignTheme CustomColor="#0078d4">`
   (`Shared/Header.razor`); see the `--consultologist-*` layer in `wwwroot/css/app.css` (#883).
