@@ -1282,6 +1282,31 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   new-node "for each" select), and the `if`/`case` pane holds the expression builder, the branch
   table (the #1091/#1120 case table, now on a node) and a **`ret` picker** per branch — empty
   until chosen, blocking publish (explicit init).
+  *(The `for` half, as built by #1160: the client reader carries `for`/`nodes`/`ret` on
+  `NodeView` with `IsLoop`, `Collection` (the text after `item in `, the 25 fan spelling) and
+  `RetNodeId`; `EffectiveFan(node, nodes)` = the node's own `forEach` below 26, its loop's
+  collection at 26 — the one answer every item-typing site reads, so a body node's `item.*`
+  types through its loop. The **loop pane** (a `NodeView` with `IsLoop`, at ≥26) is
+  structural: label, the collection select (`item in …` written), the **body** in `nodes[]`
+  order — each row a link to the node's pane, the returned one badged, a Remove-from-loop
+  per row, a one-shot "add a node to the body…" over the plain nodes in no loop — and the
+  **`ret` picker** over the body, resting "choose…" when unset: publish stays open and the
+  desk refuses with the validator's own *"Loop 'x' returns nothing"*. The **in-loop picker**
+  ("in [— not in a loop — | sections ▾]") sits on a plain node's pane where the for-each
+  select sat; a pick moves the node between bodies and clears a `ret` that named it (explicit
+  init again). Every change is one own dict, `loopEdits` (the whole tuple per loop, self-
+  removing when it equals the loaded one; a pending loop is mutated), written by the composer
+  as `for`/`nodes`/`ret` with both casings removed first. The add pane offers **"for — a
+  loop"** first and **never the aggregator** at 26 (decided 2026-10-27; a deliverable's sources
+  gather), a loop needing id, label and its collection ("Choose what the loop iterates."); a
+  plain node picks "in [loop ▾]" and joins that body. The **Nodes nav nests** a loop's body
+  beneath it in body order (decided 2026-10-27; a ≤25 list stays flat). The Graph pane's
+  diagram draws a loop as its own subgraph (`for_<id>`, fed by its collection) returning into
+  the loop's box through `ret`, and a deliverable's `sources` each draw an edge. Two reads
+  the pane needed landed with it: a 26 folder's `index.json` list (`[{ id, file }]`, label and
+  `if` from the item file's header — read only; the write target is #1163's) and a node born
+  at 26 naming its prompt by file. The Prompt-text section on a body node waits on #1162
+  (prompts by file); "Runs when" on a plain node is #1159's to retire.)*
 - **The `forItem` picker** (node instance "— every item —") goes; its row is the gate, with the
   `case item.id` spelling offered when the gate is a disjunction of `item.id` equalities.
 - **The aggregator node** goes from the palette; the Deliverables card's node select becomes an
