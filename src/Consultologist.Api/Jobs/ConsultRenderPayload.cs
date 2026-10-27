@@ -92,7 +92,60 @@ internal static class ConsultRenderPayload
                 $"Prompt node '{input.NodeId}' declares format '{input.Format}', but its payload carries no 25 render scope (snapshotted before the render shipped).");
         }
 
-        return ScopeFor(input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, input.Item, input.ForEach, input.Run, input.Profile, package);
+        return ScopeFor(input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, input.Item, input.ForEach, input.Run, input.Profile, package,
+            input.Loops, input.FlowRets, input.SkippedNodes);
+    }
+
+    /// <summary>
+    /// v26 (#1154, design § 1.3): the loops this node reads, as the activity
+    /// needs them — every loop among its Reads, with the settled items and each
+    /// body node's output per item. The scheduler started the node only once
+    /// the loop composed, and a body node completes before the node that
+    /// returns it, so every item is in hand; a missing one is an engine fault.
+    /// Null when the node reads no loop (the 25 bytes).
+    /// </summary>
+    public static IReadOnlyDictionary<string, ConsultLoopPayload>? LoopsFor(
+        ConsultNodeDescriptor node,
+        IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
+        IReadOnlyDictionary<string, NodeRunResult> outputs,
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collections)
+    {
+        Dictionary<string, ConsultLoopPayload>? loops = null;
+
+        foreach (var readId in node.Reads ?? Array.Empty<string>())
+        {
+            if (nodesById.GetValueOrDefault(readId) is not { Flow: ConsultNodeFlows.For, Collection: { } collection, Ret: { } ret } loop)
+            {
+                continue;
+            }
+
+            var items = collections?.GetValueOrDefault(WorkflowFanSources.CollectionIdOf(collection))
+                ?? throw new InvalidOperationException($"Node '{node.Id}' reads loop '{loop.Id}' over '{collection}', which the job snapshot does not carry.");
+            var texts = (loop.Body ?? Array.Empty<string>()).ToDictionary(
+                bodyId => bodyId,
+                bodyId => (IReadOnlyDictionary<string, string>)items.ToDictionary(
+                    item => item["id"],
+                    item => outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(bodyId, item["id"])) is { } output
+                        ? output.Classification ?? output.RawOutput
+                        : throw new InvalidOperationException($"Node '{node.Id}' reads loop '{loop.Id}', whose body node '{bodyId}' has no output for item '{item["id"]}'."),
+                    StringComparer.Ordinal),
+                StringComparer.Ordinal);
+
+            loops ??= new Dictionary<string, ConsultLoopPayload>(StringComparer.Ordinal);
+            loops[readId] = new ConsultLoopPayload(collection, ret, items, texts);
+        }
+
+        return loops;
+    }
+
+    /// <summary>v26 (#1154): the returned node of every flow node this node reads — the alias types as it. Null when it reads none.</summary>
+    public static IReadOnlyDictionary<string, string>? FlowRetsFor(ConsultNodeDescriptor node, IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById)
+    {
+        var rets = (node.Reads ?? Array.Empty<string>())
+            .Select(readId => (readId, nodesById.GetValueOrDefault(readId)))
+            .Where(pair => pair.Item2 is { Flow: not null, Ret: not null })
+            .ToDictionary(pair => pair.readId, pair => pair.Item2!.Ret!, StringComparer.Ordinal);
+        return rets.Count > 0 ? rets : null;
     }
 
     /// <summary>The 25 scope from its parts — the node's (B3), the deliverable's (B8 #1027: no item) — completed from the package.</summary>
@@ -105,19 +158,24 @@ internal static class ConsultRenderPayload
         string? forEach,
         TemplateRunFacts run,
         TemplateProfileFacts profile,
-        WorkflowPackage package)
+        WorkflowPackage package,
+        // v26 (#1154): the loops read whole, the flow nodes' returned nodes, the skipped flows.
+        IReadOnlyDictionary<string, ConsultLoopPayload>? loops = null,
+        IReadOnlyDictionary<string, string>? flowRets = null,
+        IReadOnlyList<string>? skipped = null)
     {
         var manifest = package.Manifest;
         var nodesById = (package.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
         var inputsById = WorkflowVariableDeclarations.For(manifest);
 
-        var nodes = nodeTexts.ToDictionary(
-            pair => pair.Key,
-            pair => new TemplateNodeOutput(
-                pair.Value,
-                FormatTypeOf(package, nodesById.GetValueOrDefault(pair.Key)),
-                WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(pair.Key, pair.Key)),
-            StringComparer.Ordinal);
+        // v26 (#1154): a flow node's output types as its returned node's.
+        TemplateNodeOutput OutputOf(string id, string text) =>
+            new(
+                text,
+                FormatTypeOf(package, nodesById.GetValueOrDefault(flowRets?.GetValueOrDefault(id) ?? id)),
+                WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(id, id));
+
+        var nodes = nodeTexts.ToDictionary(pair => pair.Key, pair => OutputOf(pair.Key, pair.Value), StringComparer.Ordinal);
 
         var folderItems = (folders ?? new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>())
             .ToDictionary(
@@ -125,25 +183,47 @@ internal static class ConsultRenderPayload
                 entry => (IReadOnlyList<TemplateFolderItem>)entry.Value
                     .Select(item => new TemplateFolderItem(
                         item.GetValueOrDefault("id", string.Empty),
-                        item.GetValueOrDefault("name", item.GetValueOrDefault("id", string.Empty)),
+                        // v26 (#1154): a 26 item's name is its header's label.
+                        item.ContainsKey("id") ? WorkflowPackageBlocks.ItemName(item) : string.Empty,
                         item.GetValueOrDefault("content", string.Empty)))
                     .ToList(),
                 StringComparer.Ordinal);
 
-        TemplateFanItem? fanItem = null;
-
-        if (item is not null && forEach is not null)
+        // v26 (#1154): a 26 folder item carries its header's label where a 25 item carried name.
+        TemplateFanItem FanItemOf(IReadOnlyDictionary<string, string> fanned, string fan)
         {
-            var id = item.GetValueOrDefault("id", string.Empty);
-            var name = item.GetValueOrDefault("name", id);
+            var id = fanned.GetValueOrDefault("id", string.Empty);
+            var name = fanned.ContainsKey("id") ? WorkflowPackageBlocks.ItemName(fanned) : id;
 
-            fanItem = WorkflowInputFans.IsInputFan(forEach)
-                ? new TemplateFanItem(id, name, Value: item.GetValueOrDefault("value", string.Empty),
-                    Element: inputsById.TryGetValue(WorkflowInputFans.InputIdOf(forEach), out var declaration)
+            return WorkflowInputFans.IsInputFan(fan)
+                ? new TemplateFanItem(id, name, Value: fanned.GetValueOrDefault("value", string.Empty),
+                    Element: inputsById.TryGetValue(WorkflowInputFans.InputIdOf(fan), out var declaration)
                         ? WorkflowDeclarationNode.Of(declaration).Items
                         : null)
-                : new TemplateFanItem(id, name, Text: item.GetValueOrDefault("content", string.Empty));
+                : new TemplateFanItem(id, name, Text: fanned.GetValueOrDefault("content", string.Empty));
         }
+
+        var fanItem = item is not null && forEach is not null ? FanItemOf(item, forEach) : null;
+
+        // v26 (#1154, design § 1.3): each loop read whole — its items, every
+        // body node's output per item typed by that node's format, and the
+        // loop's own composed text (the aggregator's bytes, already in nodes).
+        var loopOutputs = loops?.ToDictionary(
+            pair => pair.Key,
+            pair => new TemplateLoopOutput(
+                pair.Value.RetId,
+                pair.Value.Items.Select(fanned => FanItemOf(fanned, pair.Value.Collection)).ToList(),
+                pair.Value.Texts.ToDictionary(
+                    body => body.Key,
+                    body => (IReadOnlyDictionary<string, TemplateNodeOutput>)body.Value.ToDictionary(
+                        perItem => perItem.Key,
+                        perItem => OutputOf(body.Key, perItem.Value),
+                        StringComparer.Ordinal),
+                    StringComparer.Ordinal),
+                nodes.TryGetValue(pair.Key, out var composed)
+                    ? composed
+                    : throw new InvalidOperationException($"The payload carries loop '{pair.Key}' but not its composed text.")),
+            StringComparer.Ordinal);
 
         var macros = (manifest.Macros ?? new List<WorkflowMacroSpec>())
             .Where(macro => macro.File is not null && package.SourceFiles is not null && package.SourceFiles.ContainsKey(macro.File))
@@ -162,7 +242,10 @@ internal static class ConsultRenderPayload
             fanItem,
             macros,
             run,
-            profile);
+            profile,
+            Loops: loopOutputs,
+            SkippedNodes: skipped is { Count: > 0 } ? skipped.ToHashSet(StringComparer.Ordinal) : null,
+            Labelled: manifest.SpecVersion >= 26);
     }
 
     /// <summary>The type a node's format declares — the stamped catalogue's, or a package-local format file's — so <c>.value</c> parses accordingly; text when unknown.</summary>
