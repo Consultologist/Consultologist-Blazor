@@ -928,4 +928,24 @@ public static class EditorFixtures
         ("snippets/sections/hpi.md", "History: {{ input.notes }}"),
         ("snippets/sections/plan.md", "Plan."),
         (MedicationListFormatFile, MedicationListFormat));
+
+    /// <summary>
+    /// v26 (#1160): the V25 fixture through the real 25→26 migrator — the fanned
+    /// node section_notes becomes the body of the loop `sections` over
+    /// snippet.sections, returned by it; the aggregator `all` folds into the
+    /// deliverable's sources; prompts are files; the macros' headers carry their
+    /// label and instruction. The migrator's naming, not a hand-written manifest,
+    /// so the editor's 26 fixture is exactly what a migrated package looks like.
+    /// </summary>
+    public static WorkflowPackageContentResponse V26()
+    {
+        var at25 = V25();
+        var migrated = Consultologist.PackageFormat.WorkflowPackageMigration25To26.Migrate(at25.Manifest.GetRawText(), at25.Files);
+        if (!migrated.Succeeded)
+        {
+            throw new InvalidOperationException("The V25 fixture did not migrate to 26: " + string.Join(" | ", migrated.Refusals));
+        }
+
+        return new(at25.Name, at25.Version, 26, JsonDocument.Parse(migrated.ManifestJson).RootElement.Clone(), migrated.Files);
+    }
 }

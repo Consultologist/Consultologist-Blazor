@@ -32,7 +32,12 @@ public static class WorkflowDagDiagram
 
         var nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
 
-        foreach (var node in nodes.Where(node => node.ForEach is null))
+        // v26 (#1160): a loop's body draws inside the loop's own subgraph below; the
+        // loop itself is the box the subgraph returns into. Neither is a top-level node.
+        var loops = nodes.Where(node => node.For != null).ToList();
+        var bodyIds = loops.SelectMany(loop => loop.Nodes ?? new List<string>()).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var node in nodes.Where(node => node.ForEach is null && node.For is null && !bodyIds.Contains(node.Id)))
         {
             if (node.Aggregate != null)
             {
@@ -125,9 +130,47 @@ public static class WorkflowDagDiagram
             }
         }
 
+        // v26 (#1160): one subgraph per loop, fed by its collection, the body in
+        // order, the loop node as the box the subgraph returns into through ret.
+        foreach (var loop in loops)
+        {
+            var collection = LoopCollectionOf(loop.For!);
+            var subgraphId = "for_" + Sanitize(loop.Id);
+
+            sb.Append('\n');
+            if (collection != null)
+            {
+                sb.Append($"    {Sanitize(collection)} -->|\"for\"| {subgraphId}\n");
+            }
+
+            sb.Append($"    subgraph {subgraphId}[\"{loop.Id}: per {collection ?? loop.For} item\"]\n");
+            foreach (var bodyId in loop.Nodes ?? new List<string>())
+            {
+                var label = nodesById.TryGetValue(bodyId, out var bodyNode) ? $"{bodyId}<br/>{bodyNode.Label}" : bodyId;
+                sb.Append($"        {Sanitize(bodyId)}[\"{label}\"]\n");
+            }
+
+            sb.Append("    end\n");
+            sb.Append($"    {Sanitize(loop.Id)}[\"{loop.Id}<br/>{loop.Label}<br/>{loop.For}\"]\n");
+
+            if (TemplateObjectReference.NodeIdOf(loop.Ret ?? string.Empty) is { } retId)
+            {
+                sb.Append($"    {Sanitize(retId)} -->|\"ret\"| {Sanitize(loop.Id)}\n");
+            }
+        }
+
         AppendDeliverables(sb, manifest);
 
         return sb.ToString();
+    }
+
+    /// <summary>v26: the collection a loop's <c>for</c> iterates — the text after "item in " — or null when not of that shape.</summary>
+    private static string? LoopCollectionOf(string forText)
+    {
+        const string prefix = "item in ";
+        return forText.StartsWith(prefix, StringComparison.Ordinal) && forText.Length > prefix.Length
+            ? forText[prefix.Length..].Trim()
+            : null;
     }
 
     /// <summary>
@@ -160,8 +203,12 @@ public static class WorkflowDagDiagram
             // so a deliverable never reads as one more aggregator.
             sb.Append($"    {boxId}{{{{\"{caption}\"}}}}\n");
 
-            var nodeId = TemplateObjectReference.NodeIdOf(nodeRef) ?? nodeRef;
-            sb.Append($"    {Sanitize(nodeId)} --> {boxId}\n");
+            // v26 (#1160): a deliverable's sources each draw an edge; below 26 its node does.
+            foreach (var sourceRef in nodeRef.Length > 0 ? new[] { nodeRef } : (Sources(manifest, id) ?? Array.Empty<string>()))
+            {
+                var nodeId = TemplateObjectReference.NodeIdOf(sourceRef) ?? sourceRef;
+                sb.Append($"    {Sanitize(nodeId)} --> {boxId}\n");
+            }
 
             if (when is null)
             {
@@ -209,12 +256,18 @@ public static class WorkflowDagDiagram
     /// Both result shapes as one list: v7's declared entries, or v6's single
     /// string, which carries neither an id nor a label.
     /// </summary>
+    /// <summary>v26: a deliverable's sources (node.&lt;id&gt; each), or null below 26.</summary>
+    private static IReadOnlyList<string>? Sources(WorkflowPackageManifest manifest, string? deliverableId) =>
+        manifest.EffectiveDeliverables.FirstOrDefault(result => result.Id == deliverableId)?.Sources;
+
     private static IReadOnlyList<(string? Id, string? Label, string Node, string? When)> Deliverables(
         WorkflowPackageManifest manifest)
     {
-        if (manifest.Results is { Count: > 0 })
+        // #985/#1160: the list under either key — `deliverables` since 25, `results`
+        // before — so a 25 or 26 package's terminals draw too.
+        if (manifest.EffectiveDeliverables is { Count: > 0 } deliverables)
         {
-            return manifest.Results
+            return deliverables
                 .Select(result => ((string?)result.Id, (string?)result.Label, result.Node ?? string.Empty, result.When))
                 .ToList();
         }
@@ -275,6 +328,12 @@ public static class WorkflowDagDiagram
             }
 
             Add(node.ForEach);
+
+            // v26 (#1160): a loop's collection is a source too.
+            if (node.For != null)
+            {
+                Add(LoopCollectionOf(node.For));
+            }
         }
 
         // #353: an input only a condition reads is bound by nothing, so the

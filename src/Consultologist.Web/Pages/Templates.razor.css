@@ -1011,3 +1011,19 @@ fluent-select.branch-table__pick {
 	font-family: var(--consultologist-font-mono, ui-monospace, monospace);
 	font-size: 0.9em;
 }
+
+/* v26 (#1160): a loop pane's body rows — a link to the node, the returned badge, Remove-from-loop. */
+.loop-body {
+	list-style: none;
+	margin: 0 0 0.5rem;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 0.25rem;
+}
+
+.loop-body__row {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+}
