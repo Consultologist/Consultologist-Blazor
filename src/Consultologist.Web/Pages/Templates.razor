@@ -188,13 +188,13 @@
                     @* #815: step back and forward through committed edits. *@
                     <FluentButton Appearance="Appearance.Outline"
                                   Class="undo-button"
-                                  Disabled="@(undoStack.Count == 0 || isPublishing || ReadOnlyAboveCeiling)"
+                                  Disabled="@(undoStack.Count == 0 || isPublishing)"
                                   @onclick="UndoAsync">
                         Undo
                     </FluentButton>
                     <FluentButton Appearance="Appearance.Outline"
                                   Class="redo-button"
-                                  Disabled="@(redoStack.Count == 0 || isPublishing || ReadOnlyAboveCeiling)"
+                                  Disabled="@(redoStack.Count == 0 || isPublishing)"
                                   @onclick="RedoAsync">
                         Redo
                     </FluentButton>
@@ -210,7 +210,7 @@
                                    MainAppearance="Appearance.Outline"
                                    BackOutAppearance="Appearance.Outline"
                                    BackOutClass="cancel-armed-button"
-                                   Disabled="@((!imported && upgradedFrom == null && PendingCount == 0) || isPublishing || ReadOnlyAboveCeiling)"
+                                   Disabled="@((!imported && upgradedFrom == null && PendingCount == 0) || isPublishing)"
                                    OnClick="DiscardAsync"
                                    OnBackOut="CancelToolbarArm" />
                     <ConfirmButton Armed="revertArmed"
@@ -219,7 +219,7 @@
                                    MainAppearance="Appearance.Outline"
                                    BackOutAppearance="Appearance.Outline"
                                    BackOutClass="cancel-armed-button"
-                                   Disabled="@(isPublishing || ReadOnlyAboveCeiling)"
+                                   Disabled="@isPublishing"
                                    OnClick="RevertToDefaultAsync"
                                    OnBackOut="CancelToolbarArm" />
                     <FluentDivider Orientation="Orientation.Vertical" Role="DividerRole.Presentation" />
@@ -237,7 +237,7 @@
                        input, no drop zone. The handler is unchanged (OnInputFileChange hands
                        it the same InputFileChangeEventArgs; the component's own size/count
                        filtering is bypassed, so ImportPackageAsync stays the authority). *@
-                    <FluentButton Id="editor-import-trigger" Appearance="Appearance.Stealth" Disabled="@ReadOnlyAboveCeiling"
+                    <FluentButton Id="editor-import-trigger" Appearance="Appearance.Stealth"
                                   IconStart="@(new Icons.Regular.Size20.ArrowUpload())"
                                   Title="Import a package .zip into the editor for this session">Import package…</FluentButton>
                     <FluentInputFile AnchorId="editor-import-trigger" DragDropZoneVisible="false"
@@ -291,14 +291,6 @@
             {
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
                     specVersion @EffectiveSpecVersion is publishable but not yet runnable: consults pinned to a specVersion @EffectiveSpecVersion package will refuse to start until the engine runs it.
-                </FluentMessageBar>
-            }
-            @* #1209: the reverse gap — a package above what this editor AUTHORS (not
-               above what the engine runs). Said up front; reading only. *@
-            @if (ReadOnlyAboveCeiling)
-            {
-                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="read-only-notice">
-                    This package is at specVersion @LoadedSpecVersion; this editor authors up to @NewestSpecVersion. Reading only; #1159–#1164 bring the 26 panes.
                 </FluentMessageBar>
             }
             @if (migrationNotice is { Length: > 0 })
@@ -699,11 +691,7 @@
                     </button>
                 </nav>
 
-                @* #1209: inert while read-only — one attribute blocks every click, key and
-                   focus inside the pane (Fluent web components included); the nav stays live
-                   so every pane can still be read. bUnit does not honour it: pinned in markup,
-                   verified live (the #510 idiom). *@
-                <section class="content-card editor-pane" inert="@ReadOnlyAboveCeiling">
+                <section class="content-card editor-pane">
                     @if (selectedKey != null && selectedKey.StartsWith(NewKeyPrefix, StringComparison.Ordinal))
                     {
                         var newCollection = selectedKey[NewKeyPrefix.Length..];
@@ -4910,8 +4898,9 @@
     /// fetches it (WorkflowPackagePicker mirrors the floor the same way);
     /// internal so SpecVersionMirrorTests can prove the mirror still matches
     /// the library's set. Not necessarily runnable: see RunnableSpecVersion.
+    /// v26 (#1164): the editor's chain to 26 landed — the ceilings meet again.
     /// </summary>
-    internal const int NewestSpecVersion = 25;
+    internal const int NewestSpecVersion = 26;
 
     /// <summary>
     /// The newest version a bump can STAGE as pending state (specVersionBump).
@@ -4933,11 +4922,8 @@
     /// (#500), eleven (#566), twelve (#623) and every bump since, twenty-five
     /// (#1018) included. The mechanism stays for the next format.
     /// </summary>
-    // #1149: the engine runs 26 while this editor still authors up to 25
-    // (NewestSpecVersion) — the opposite gap to the one the comment above
-    // describes: no "Upgrade to 26" button is offered until the editor's own
-    // chain to 26 lands (Milestone 33, #1164). SpecVersionMirrorTests pins
-    // the lag by name.
+    // #1149 ran 26 ahead of the editor (the opposite gap, pinned by name in
+    // SpecVersionMirrorTests until #1164 brought the editor's chain to 26).
     internal const int RunnableSpecVersion = 26;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
@@ -4957,22 +4943,6 @@
     /// Correct only where the question is about what is already published.
     /// </summary>
     private int LoadedSpecVersion => content?.SpecVersion ?? 0;
-
-    /// <summary>
-    /// #1209 (interim, Milestone 33): the loaded package is ABOVE the editor's authoring
-    /// ceiling — the engine runs 26 while the panes author up to 25 (#1149's lag) — so
-    /// it opens readable and un-editable with a banner; every edit door is refused by
-    /// name (publish, draft, history, undo/redo, discard/revert, import, the pane
-    /// itself inert). Retired whole by #1164 when the ceilings meet again.
-    /// </summary>
-    private bool ReadOnlyAboveCeiling => content != null && LoadedSpecVersion > NewestSpecVersion && !AuthorsAboveCeiling;
-
-    /// <summary>
-    /// #1209: the test seam — a 26-pane test (#1160's loop pane, #1159–#1163's to come)
-    /// authors above the ceiling ON PURPOSE. Never set by a route (the page takes no
-    /// parameters); removed with the gate by #1164.
-    /// </summary>
-    [Parameter] public bool AuthorsAboveCeiling { get; set; }
 
     /// <summary>
     /// Whether the loaded package is the account's own fork. False means the
@@ -5017,7 +4987,7 @@
     // when the name is typed) and survives reload. Null when not an import.
     private string? importZipBase64;
 
-    private bool CanPublish => content != null && !isPublishing && !ReadOnlyAboveCeiling && (imported || upgradedFrom != null || PendingCount > 0);
+    private bool CanPublish => content != null && !isPublishing && (imported || upgradedFrom != null || PendingCount > 0);
 
     /// <summary>
     /// The ref this editor is holding. Since #411 it is NOT the consult pin:
@@ -5068,7 +5038,7 @@
         // state). A5 (#1018): below 24 the chain stages the 24 rung first.
         if (target > LastStagedSpecVersion)
         {
-            await MigrateTo25Async();
+            await MigrateToNewestAsync();
             return;
         }
 
@@ -5110,7 +5080,7 @@
     /// back as it was (the author's own edits included) and is said in the
     /// toolbar; a step-one refusal writes nothing to revert.
     /// </summary>
-    private async Task MigrateTo25Async()
+    private async Task MigrateToNewestAsync()
     {
         if (content == null)
         {
@@ -5121,6 +5091,17 @@
         var pendingBefore = PendingCount == 0 ? null : JsonSerializer.Serialize(BuildDraft());
         var selectedBefore = selectedKey;
         string? through24 = null;
+
+        // A refusal at any rung applies nothing: the staged rung and the prelude shapes
+        // go, the author's edits come back with the snapshot (ApplyDraft clears the
+        // refusal, so it is said after), and the package stays as loaded (#1164,
+        // decided 2026-10-27: the chain refuses whole).
+        void Refuse(int rung, IReadOnlyList<string> refusals)
+        {
+            ApplyDraft(pendingBefore is null ? null : JsonSerializer.Deserialize<DraftPayload>(pendingBefore));
+            selectedKey = selectedBefore;
+            upgradeRefusal = $"At specVersion {rung}: {string.Join(" ", refusals)}";
+        }
 
         if (from < LastStagedSpecVersion)
         {
@@ -5140,29 +5121,42 @@
         }
 
         var manifestJson = ComposeManifest().GetRawText();
-        var files = AssembleFiles();
-        var catalogSchemas = await WorkflowService.GetCatalogSchemasAsync();
-        Func<System.Text.Json.Nodes.JsonNode, string?>? resolveContract = catalogSchemas is null
-            ? null
-            : schema =>
-            {
-                var canonical = PF.WorkflowPackageValidator.CanonicalizeSchema(schema);
-                return catalogSchemas
-                    .Where(pair => PF.WorkflowPackageValidator.CanonicalizeSchema(System.Text.Json.Nodes.JsonNode.Parse(pair.Value)) == canonical)
-                    .Select(pair => pair.Key)
-                    .FirstOrDefault();
-            };
+        var files = (IReadOnlyDictionary<string, string>)AssembleFiles();
+        string? through25 = null;
 
-        var result = PF.WorkflowPackageMigration24To25.Migrate(manifestJson, files, resolveContract);
+        // The 25 rung (C6 #1012): below 25 the library's rewrite to 25 runs over the composed package.
+        if (EffectiveSpecVersion < 25)
+        {
+            var catalogSchemas = await WorkflowService.GetCatalogSchemasAsync();
+            Func<System.Text.Json.Nodes.JsonNode, string?>? resolveContract = catalogSchemas is null
+                ? null
+                : schema =>
+                {
+                    var canonical = PF.WorkflowPackageValidator.CanonicalizeSchema(schema);
+                    return catalogSchemas
+                        .Where(pair => PF.WorkflowPackageValidator.CanonicalizeSchema(System.Text.Json.Nodes.JsonNode.Parse(pair.Value)) == canonical)
+                        .Select(pair => pair.Key)
+                        .FirstOrDefault();
+                };
+
+            var result25 = PF.WorkflowPackageMigration24To25.Migrate(manifestJson, files, resolveContract);
+            if (!result25.Succeeded)
+            {
+                Refuse(25, result25.Refusals);
+                return;
+            }
+
+            manifestJson = result25.ManifestJson;
+            files = result25.Files;
+            through25 = string.Join(" ", result25.Notices);
+        }
+
+        // v26 (#1164, design § 13): the 26 rung — the library's rewrite to 26 over the 25 package.
+        var result = PF.WorkflowPackageMigration25To26.Migrate(manifestJson, files);
 
         if (!result.Succeeded)
         {
-            // The staged rung and the prelude shapes go; the author's edits come
-            // back with the snapshot. ApplyDraft clears the refusal, so it is
-            // said after.
-            ApplyDraft(pendingBefore is null ? null : JsonSerializer.Deserialize<DraftPayload>(pendingBefore));
-            selectedKey = selectedBefore;
-            upgradeRefusal = string.Join(" ", result.Refusals);
+            Refuse(NewestSpecVersion, result.Refusals);
             return;
         }
 
@@ -5185,6 +5179,7 @@
         await LoadFormatsCatalogAsync();
         migrationNotice = $"Migrated to specVersion {NewestSpecVersion}. "
             + (through24 is null ? string.Empty : $"Through 24: {through24} ")
+            + (through25 is null ? string.Empty : $"Through 25: {through25} ")
             + string.Join(" ", result.Notices);
         upgradeRefusal = null;
         selectedKey = GraphKey;
@@ -5264,7 +5259,8 @@
     // the diagram read it, and it is persisted with the package it replaces.
     private int? upgradedFrom;
 
-    private const int UpgradeDraftVersion = 1;
+    // v26 (#1164): 2 — a stored upgrade to 25 from before the chain reached 26 is not restored as a 26 one.
+    private const int UpgradeDraftVersion = 2;
     private const string UpgradeKeyPrefix = "workflow-editor-upgrade:";
 
     private sealed record UpgradeDraft(int Version, int FromSpecVersion, string Name, string PackageVersion, string ManifestJson, Dictionary<string, string> Files, string? Notice);
@@ -15570,8 +15566,7 @@
             // C6 (#1012): an unpublished upgrade of THIS package held in this browser
             // takes its place; the notice it was given comes back with it.
             string? storedNotice = null;
-            // #1209: nothing pending is restored onto a read-only package.
-            if (storedImport == null && content != null && !ReadOnlyAboveCeiling && await ReadStoredUpgradeAsync() is { } storedUpgrade
+            if (storedImport == null && content != null && await ReadStoredUpgradeAsync() is { } storedUpgrade
                 && storedUpgrade.Name == content.Name && storedUpgrade.PackageVersion == content.Version)
             {
                 try
@@ -15588,19 +15583,13 @@
             ProjectLoadedContent();
             // v25 (C1 #1007): the formats catalogue, read once a 25 package is loaded.
             await LoadFormatsCatalogAsync();
-            if (!ReadOnlyAboveCeiling)
-            {
-                await RestoreDraftAsync();
-            }
+            await RestoreDraftAsync();
             if (storedNotice != null)
             {
                 migrationNotice = storedNotice;
             }
             // #815: restore the undo/redo history for this package (or start fresh).
-            if (!ReadOnlyAboveCeiling)
-            {
-                await RestoreHistoryAsync();
-            }
+            await RestoreHistoryAsync();
 
             // Keep the selection when the pane still exists; otherwise open on
             // Graph — the overview, and the right landing for a cold load or a
@@ -16476,14 +16465,6 @@
     /// </summary>
     private async Task PendingChangedAsync()
     {
-        // #1209: read-only above the ceiling — no snapshot, no history, no draft
-        // written or removed (the belt under the inert pane: bUnit fires handlers a
-        // browser cannot).
-        if (ReadOnlyAboveCeiling)
-        {
-            return;
-        }
-
         walkTick++;
         publishSuccess = null;
         publishWarnings.Clear();
@@ -16656,7 +16637,7 @@
 
     private async Task UndoAsync()
     {
-        if (undoStack.Count == 0 || ReadOnlyAboveCeiling)
+        if (undoStack.Count == 0)
         {
             return;
         }
@@ -16669,7 +16650,7 @@
 
     private async Task RedoAsync()
     {
-        if (redoStack.Count == 0 || ReadOnlyAboveCeiling)
+        if (redoStack.Count == 0)
         {
             return;
         }
@@ -17596,7 +17577,7 @@
 
     private async Task ImportPackageAsync(InputFileChangeEventArgs args)
     {
-        if (args.FileCount == 0 || ReadOnlyAboveCeiling)
+        if (args.FileCount == 0)
         {
             return;
         }
