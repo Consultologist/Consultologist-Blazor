@@ -55,6 +55,30 @@ public class TemplatePreviewScopeTests
         Assert.StartsWith("Follow the local standards. Closing: ⟨profile.name⟩.", prompt);
     }
 
+    // ----- v26 (#1207): the preview is labelled at 26 — item.label, a folder item's .label, a
+    // macro's .instruction, a standalone snippet's label from its header -----
+
+    [Fact]
+    public void At26_ThePreview_RendersTheLabelMembers_AndASnippetsHeaderLabel()
+    {
+        var (manifest, files) = WorkflowV26MacroFolderTests.WithFolder(
+            "[{{ snippet.sections.hpi.label }}|{{ snippet.standards.label }}|{{ macro.section_notes.hpi.instruction }}|{{ for s in snippet.sections }}{{ s.label }},{{ end }}|{{ snippet.sections.plan.content }}]");
+        var scope = TemplatePreviewScope.Tokens(manifest, files, V25Package.Catalog());
+
+        var rendered = TemplateRenderer.Render("Node 'assessment' prompt", files["prompts/assessment.md"], scope, TemplatePreviewScope.Pipes);
+
+        Assert.Equal("Assess. [HPI|Local standards|Note the history.|HPI,Plan,|Plan.]", rendered);
+    }
+
+    [Fact]
+    public void Below26_ThePreview_IsNotLabelled()
+    {
+        var scope = Scope(V25Package.Minimal());
+
+        Assert.False(scope.Labelled);
+        Assert.Null(scope.SnippetLabels);
+    }
+
     [Fact]
     public void AnInstructionThatDoesNotRender_ThrowsTheRenderersSentence()
     {
