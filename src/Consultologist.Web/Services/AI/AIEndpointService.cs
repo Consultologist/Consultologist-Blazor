@@ -747,7 +747,12 @@ public record ConsultGenerationResultDocumentResponse(
     bool? Unsigned = null,
     // #869 (v11 #513 / #863): what was appended after the sections, in applied
     // order — appended macros, model-placed slots, and the signature block.
-    IReadOnlyList<ConsultAppendedEntry>? Appended = null);
+    IReadOnlyList<ConsultAppendedEntry>? Appended = null,
+    // v26 (#1208; the Api's #1155 fields): the composed text's hash and the
+    // sources it composed (node.<id> …) — the run diagram draws a deliverable's
+    // edges from them at 26. Null below 26.
+    string? ComposedHash = null,
+    IReadOnlyList<string>? Sources = null);
 
 /// <summary>
 /// One node of the job's workflow DAG (v5: one kind, ForEach as multiplicity).
@@ -784,7 +789,24 @@ public record ConsultGenerationNodeDescriptor(
     string? AgentName = null,
     string? AgentVersion = null,
     IReadOnlyList<string>? Reads = null,
-    string? OnInvalid = null);
+    string? OnInvalid = null,
+    // v26 (#1208, record storage 8 — #1154/#1155/#1156): the flow rows and the
+    // 26 node row as the served record carries them — a flow node's kind (for |
+    // if | case), its collection or expression, its body ids, its ret, a body
+    // node's loop (in), the branch an if/case took (then | else | <values> |
+    // none), the deliverables a prompt reads, the node's prompt by PATH and a
+    // loop row's settled item count. Null below 26 (and promptId, forEach and
+    // aggregate are absent at 26). Trailing, same rule as ever.
+    string? Kind = null,
+    string? Collection = null,
+    string? Expression = null,
+    IReadOnlyList<string>? Body = null,
+    string? Ret = null,
+    string? In = null,
+    string? Branch = null,
+    IReadOnlyList<string>? DeliverableReads = null,
+    string? Prompt = null,
+    int? Count = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultNodeBindingDescriptor (#642).</summary>
 public record ConsultNodeBindingDescriptor(string From, string? As = null);

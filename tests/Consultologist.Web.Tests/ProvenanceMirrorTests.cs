@@ -247,4 +247,48 @@ public class ProvenanceMirrorTests
         Assert.Equal("application/pdf", documents[1].ContentType);
         Assert.Equal(new byte[] { 0x25, 0x50, 0x44, 0x46 }, documents[1].Content);
     }
+
+    // ----- v26 (#1208): the storage-8 node row and a document's sources -----
+
+    [Fact]
+    public void TheStorage8Row_ReachesTheClient()
+    {
+        var loop = new ApiModels.ConsultNodeDescriptor("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "node.section_notes", Count: 2);
+        var body = new ApiModels.ConsultNodeDescriptor("section_notes", "Section notes", PromptId: "prompts/section.md", ForEach: "snippet.sections", In: "sections", Prompt: "prompts/section.md", DeliverableReads: new[] { "consult" }).AsRecordRowAt8();
+        var triage = new ApiModels.ConsultNodeDescriptor("triage", "Triage", Kind: "if", Expression: "input.kind == \"new\"", Body: new[] { "full", "brief" }, Ret: "node.brief", Branch: "else");
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 1, 1, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            Nodes: new[] { loop, body, triage },
+            AssembledDocuments: new[] { new ApiModels.ConsultGenerationResultDocumentResponse("consult", "Note", "text", ComposedHash: "cafe", Sources: new[] { "node.triage", "node.sections" }) });
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(
+            JsonSerializer.Serialize(response, Web), Web)!;
+
+        var rows = mirrored.Nodes!;
+        Assert.Equal(("for", "snippet.sections", "node.section_notes", 2), (rows[0].Kind, rows[0].Collection, rows[0].Ret, rows[0].Count));
+        Assert.Equal(new[] { "section_notes" }, rows[0].Body);
+        // The served row: the prompt by path, in its loop; promptId and forEach projected away.
+        Assert.Equal(("prompts/section.md", "sections", null, null), (rows[1].Prompt, rows[1].In, rows[1].PromptId, rows[1].ForEach));
+        Assert.Equal(new[] { "consult" }, rows[1].DeliverableReads);
+        Assert.Equal(("if", "input.kind == \"new\"", "else"), (rows[2].Kind, rows[2].Expression, rows[2].Branch));
+        var document = Assert.Single(mirrored.AssembledDocuments!);
+        Assert.Equal("cafe", document.ComposedHash);
+        Assert.Equal(new[] { "node.triage", "node.sections" }, document.Sources);
+    }
+
+    [Fact]
+    public void TheNodeDescriptorMirror_IsASubsetOfTheApis()
+    {
+        // The Web row mirrors the fields its pages read; every one of them must exist on the Api's with its type.
+        static string Normalize(string type) =>
+            type.Replace("Consultologist.Api.Models.", "").Replace("Consultologist.Web.Services.AI.", "");
+
+        var api = typeof(ApiModels.ConsultNodeDescriptor).GetProperties().ToDictionary(p => p.Name, p => Normalize(p.PropertyType.ToString()));
+        foreach (var property in typeof(WebAI.ConsultGenerationNodeDescriptor).GetProperties())
+        {
+            Assert.True(api.TryGetValue(property.Name, out var apiType), $"{property.Name} is not on the Api's descriptor");
+            Assert.Equal(apiType, Normalize(property.PropertyType.ToString()));
+        }
+    }
 }

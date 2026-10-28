@@ -2549,7 +2549,8 @@
     if (response.Nodes is { Count: > 0 })
     {
       jobNodes = response.Nodes
-        .Select(node => new RailNode(node.Id, node.Label, node.ForEach, node.Aggregate is { Count: > 0 },
+        // v26 (#1208): a body node fans through its loop row at record storage 8.
+        .Select(node => new RailNode(node.Id, node.Label, Consultologist.Web.Services.Provenance.RecordFlow.FanOf(node, response.Nodes), node.Aggregate is { Count: > 0 },
           IsClassifier: string.Equals(node.OutputContract, "classification", StringComparison.Ordinal)))
         .ToList();
     }

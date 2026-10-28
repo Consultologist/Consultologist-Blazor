@@ -801,8 +801,10 @@
                                                                 <span class="node-row__status @StatusCss(group.NodeLevel?.Status)">@StatusGlyph(group.NodeLevel?.Status)</span>
                                                                 <span class="node-row__label">@group.Descriptor.Label</span>
                                                                 <span class="node-row__contract muted-text">@ContractLabel(group.Descriptor, detail)</span>
+                                                                @FlowTagSpan(group.Descriptor, detail)
+                                                                @PromptPathSpan(group.Descriptor)
                                                                 @UnattestedBadge(group.Descriptor, group.NodeLevel)
-                                                                @TokensSpan(group.NodeLevel?.Tokens, group.Descriptor.PromptId != null)
+                                                                @TokensSpan(group.NodeLevel?.Tokens, group.Descriptor.PromptId != null || group.Descriptor.Prompt != null)
                                                                 @DurationSpan(group.NodeLevel?.DurationMs)
                                                                 <span class="node-row__hashes hash-text">
                                                                     <span title="@group.NodeLevel?.InputHash">in @HashPrefix(group.NodeLevel?.InputHash)</span>
@@ -819,6 +821,16 @@
                                                                     <pre class="node-stack__frames">@nodeStack</pre>
                                                                 </details>
                                                             }
+                                                            @* v26 (#1208, record storage 8): the bodies an if/case pruned with its untaken branch — no row of their own. *@
+                                                            @foreach (var prunedId in PrunedUnder(group.Descriptor, detail))
+                                                            {
+                                                                <div class="node-row node-row--pruned" data-pruned-by="@group.Descriptor.Id">
+                                                                    <span class="node-row__chevron" aria-hidden="true"></span>
+                                                                    <span class="node-row__status node-status--muted">○</span>
+                                                                    <span class="node-row__label">@prunedId</span>
+                                                                    <span class="node-row__contract muted-text">pruned by @group.Descriptor.Id</span>
+                                                                </div>
+                                                            }
                                                         }
                                                         else
                                                         {
@@ -828,8 +840,10 @@
                                                                     <span class="node-row__status @StatusCss(group.NodeLevel?.Status)">@StatusGlyph(group.NodeLevel?.Status)</span>
                                                                     <span class="node-row__label">@group.Descriptor.Label</span>
                                                                     <span class="node-row__contract muted-text">
-                                                                        @ContractLabel(group.Descriptor, detail) · per @group.Descriptor.ForEach item (@group.Items.Count)
+                                                                        @ContractLabel(group.Descriptor, detail) · per @FanOf(group.Descriptor, detail) item (@group.Items.Count)
                                                                     </span>
+                                                                    @FlowTagSpan(group.Descriptor, detail)
+                                                                    @PromptPathSpan(group.Descriptor)
                                                                     @UnattestedBadge(group.Descriptor, group.NodeLevel)
                                                                 </summary>
                                                                 @foreach (var (itemId, entry) in group.Items)
@@ -841,7 +855,7 @@
                                                                         @* #980: an item stamped by the engine names its own hash + agent;
                                                                            an unstamped one (a record from before) reads the summary row's. *@
                                                                         @UnattestedBadge(group.Descriptor, entry.CustomSchemaHash != null || entry.CustomAgent != null ? entry : (group.NodeLevel ?? entry))
-                                                                        @TokensSpan(entry.Tokens, group.Descriptor.PromptId != null)
+                                                                        @TokensSpan(entry.Tokens, group.Descriptor.PromptId != null || group.Descriptor.Prompt != null)
                                                                         @DurationSpan(entry.DurationMs)
                                                                         <span class="node-row__hashes hash-text">
                                                                             <span title="@entry.InputHash">in @HashPrefix(entry.InputHash)</span>
@@ -2015,6 +2029,50 @@
             _ => contract
         };
     }
+
+    // ----- v26 (#1208, record storage 8): the flow rows on History's rows -----
+
+    /// <summary>The fan a row runs under — its forEach below 8, its loop row's collection at 8.</summary>
+    private static string? FanOf(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) =>
+        Consultologist.Web.Services.Provenance.RecordFlow.FanOf(descriptor, detail.Nodes);
+
+    /// <summary>What a storage-8 row says of its flow: a loop's collection and count, an if/case's expression and branch, a body node's loop; null below 8.</summary>
+    private static string? FlowTag(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) =>
+        descriptor.Kind == Consultologist.Web.Services.Provenance.RecordFlow.Loop
+            ? $"for item in {descriptor.Collection}{(descriptor.Count is { } count ? $" ({count})" : string.Empty)}"
+            : Consultologist.Web.Services.Provenance.RecordFlow.IsBranching(descriptor)
+                ? $"{descriptor.Kind} {descriptor.Expression} · branch: {Consultologist.Web.Services.Provenance.RecordFlow.BranchText(descriptor)}"
+                : descriptor.In is { } loopId ? $"in {loopId}" : null;
+
+    private static RenderFragment FlowTagSpan(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) => builder =>
+    {
+        if (FlowTag(descriptor, detail) is { } tag)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "node-row__flow muted-text");
+            builder.AddContent(2, $"· {tag}");
+            builder.CloseElement();
+        }
+    };
+
+    /// <summary>The node's prompt by path (a storage-8 row).</summary>
+    private static RenderFragment PromptPathSpan(ConsultGenerationNodeDescriptor descriptor) => builder =>
+    {
+        if (descriptor.Prompt is { Length: > 0 } prompt)
+        {
+            builder.OpenElement(0, "span");
+            builder.AddAttribute(1, "class", "node-row__prompt muted-text");
+            builder.AddAttribute(2, "title", "The node's prompt file");
+            builder.AddContent(3, prompt);
+            builder.CloseElement();
+        }
+    };
+
+    /// <summary>The body ids an if/case row pruned with its untaken branch (none for any other row).</summary>
+    private static IReadOnlyList<string> PrunedUnder(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) =>
+        detail.Nodes is { Count: > 0 } nodes && Consultologist.Web.Services.Provenance.RecordFlow.IsBranching(descriptor)
+            ? Consultologist.Web.Services.Provenance.RecordFlow.PrunedOf(nodes, detail.NodeOutputs).GetValueOrDefault(descriptor.Id) ?? Array.Empty<string>()
+            : Array.Empty<string>();
 
     private sealed record NodeGroup(
         ConsultGenerationNodeDescriptor Descriptor,

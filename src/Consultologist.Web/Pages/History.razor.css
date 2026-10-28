@@ -554,3 +554,13 @@
     font-size: 0.75rem;
     text-align: right;
 }
+
+/* v26 (#1208, record storage 8): a pruned body row and the flow tag / prompt path on a row. */
+.node-row--pruned {
+    opacity: 0.7;
+}
+
+.node-row__flow,
+.node-row__prompt {
+    font-size: 0.85rem;
+}
