@@ -1371,6 +1371,28 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   edited, unknown key) is shown as the validator's sentence.
 - **Folder items** show their kind (snippet or macro) from the header; `macro.<folder>` folders
   appear in the Macros nav group with the Snippets' folder idiom (#1103's arrows).
+  *(As built by #1163, both bullets: the client reader reads every snippet and macro file's header
+  once (`ReadTextHeaders`, by the file's declared kind — a folder item's kind **follows the
+  declaration**, the snippets map or the macros map, as the library decided on 2026-10-26, not
+  "instruction present"); `ReadMacros` over the 26 map fills label, instruction, optional, default
+  and the macro's own `if` from the header, and a `"<dir>/"` entry is a `CollectionView` of kind
+  Macro, read through the same list-index path as a snippet folder. The panes keep their fields;
+  at 26 every one writes **one dictionary keyed by file**, `headerEdits` (the whole header tuple,
+  self-removing when it equals the loaded one), and the text editor shows the **body, not the
+  file** (`edits[path]` holds the body; the header never appears in the editor). The composer
+  recomposes a headed file as `WorkflowTextHeaders.Compose(header) + body` — the migrator's bytes,
+  the same key order — **only when something pends for it**; an untouched file passes through
+  byte-identical (files hash whole). The `macros` map gains and loses keys (a file, a `"<dir>/"`
+  folder) and never a label; a folder's index is written as the `[{ id, file }]` list, recomposed
+  on membership and order alone. New: the macro pane's **if** section ("Always" at rest, the
+  § 2.6 sentence), the optional/default pair back on the pane at 26 (the desk refuses optional
+  without a default in the validator's words, since the library judges the manifest's pair, empty
+  at 26), the standalone snippet pane's **label** and **if** fields, "+ Snippet" with a label that
+  defaults from the id as "+ Macro"'s does, "+ Macro folder" and a macro folder's item pane with
+  its instruction and pair. **A refused header** (none, an unknown or reserved key, no label, bad
+  JSON) opens as the whole file in the text editor with the library's own sentences in a bar and
+  the fields hidden; a text edit that makes it parse brings the fields back live, and nothing is
+  rewritten silently. "Composed as" shows the macro's label (#1161's caveat closes).)*
 - **The upgrade button**: "Upgrade to specVersion 26" on any 25 package (below 25, the chain
   runs 24 → 25 → 26, one publish, one notice naming the steps); a refusal (an unfillable `ret`,
   § 13) is said in the toolbar and leaves the package as loaded.
