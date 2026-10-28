@@ -191,8 +191,8 @@ public class TemplatesV26DeliverablesTests : ClientRenderTestContext
 
         var composed = page.Find(".deliverable-composed").TextContent.Replace("\n", " ");
         composed = System.Text.RegularExpressions.Regex.Replace(composed, @"\s+", " ").Trim();
-        // The macro's label lives in its file header at 26 — read by #1163; until then the id shows.
-        Assert.Equal("Composed as: closing when input.kind == \"new\" → Assessment → Sections", composed);
+        // #1163: the macro's label is read from its file header at 26.
+        Assert.Equal("Composed as: Closing when input.kind == \"new\" → Assessment → Sections", composed);
 
         page.Find("input[type='checkbox'][aria-label='Signed for deliverable consult']").Change(true);
         composed = System.Text.RegularExpressions.Regex.Replace(page.Find(".deliverable-composed").TextContent.Replace("\n", " "), @"\s+", " ").Trim();
