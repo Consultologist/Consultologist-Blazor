@@ -3249,11 +3249,13 @@
                                         <label class="input-field macro-instruction-field">
                                             <span>instruction</span>
                                             <FluentTextArea class="macro-instruction" Rows="4"
-                                                            Value="@(standard.Instruction ?? string.Empty)"
+                                                            Value="@(ItemHeaderPending(standard)?.Instruction ?? standard.Instruction ?? string.Empty)"
                                                             ValueChanged="@(v => SetItemInstructionAsync(standard, v))"
                                                             aria-label="@($"Instruction for macro item {FolderOfItem(standard.File)}/{standard.Id}")" />
                                         </label>
-                                        @MacroItemChoiceRow((FolderOfItem(standard.File), standard.Id, standard.Optional == true, standard.Default,
+                                        @MacroItemChoiceRow((FolderOfItem(standard.File), standard.Id,
+                                            ItemHeaderPending(standard) is { } pendingChoice ? pendingChoice.Optional == true : standard.Optional == true,
+                                            ItemHeaderPending(standard) is { } pendingDefault ? pendingDefault.Default : standard.Default,
                                             new Func<bool, Task>(optional => SetItemOptionalAsync(standard, optional)),
                                             new Func<string?, Task>(raw => SetItemDefaultAsync(standard, raw))))
                                         <p class="muted-text">Read as <code>m.content</code> where <code>{{ for m in macro.@(FolderOfItem(standard.File)) }}</code> iterates, or directly as <code>macro.@(FolderOfItem(standard.File)).@(standard.Id).content</code>.</p>
@@ -8379,6 +8381,14 @@
 
     private const string ItemWhenKeyPrefix = "item-when:";
 
+    /// <summary>
+    /// #1224 (a #1163 leftover): a loaded folder item's pending header edit, for the
+    /// pane's instruction and optional/default to read pending-first as its if does —
+    /// without it a ticked optional never showed, so its default could never be chosen.
+    /// </summary>
+    private PF.WorkflowTextHeader? ItemHeaderPending(WorkflowManifestReader.DataItemView item) =>
+        headerEdits.TryGetValue(item.File, out var header) ? header : null;
+
     private string? ItemWhenValue(WorkflowManifestReader.DataItemView item) =>
         // v26 (#1163): the header's if, pending first.
         headerEdits.TryGetValue(item.File, out var header) ? (string.IsNullOrWhiteSpace(header.If) ? null : header.If)
@@ -10769,34 +10779,9 @@
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
             : result.Errors.ToList();
 
-        // v26 (#1163): the optional/default pair lives in the header — the v12 explicit-init
-        // rule (no silent default), in the validator's words, over the macros and the macro
-        // folders' items (the library judges the manifest's pair, which is empty at 26).
-        if (At26)
-        {
-            foreach (var macro in EffectiveMacros)
-            {
-                if (macro.Optional == true && macro.Default == null)
-                {
-                    errors.Add($"Macro '{macro.Id}' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
-                }
-            }
-
-            foreach (var folder in MacroCollections)
-            {
-                foreach (var (item, added) in OrderedItems(folder))
-                {
-                    var key = $"{folder.Id}/{item?.Id ?? added!.Id}";
-                    var optional = item is not null ? EffectiveHeader(item.File)?.Optional == true : added!.Optional;
-                    var chosen = item is not null ? EffectiveHeader(item.File)?.Default : added!.Default;
-                    if (optional && chosen == null)
-                    {
-                        errors.Add($"Macro '{key}' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
-                    }
-                }
-            }
-        }
-
+        // v26 (#1163 → #1224): the optional/default pair lives in the header and the
+        // library judges it there — a standalone macro and a folder item alike — so the
+        // validator's run above says the v12 sentence; nothing is mirrored here.
         return (errors.Distinct(StringComparer.Ordinal).ToList(), result.Warnings.Distinct(StringComparer.Ordinal).ToList());
     }
 
