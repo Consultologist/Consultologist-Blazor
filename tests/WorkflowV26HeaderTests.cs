@@ -161,6 +161,40 @@ public class WorkflowV26HeaderTests
         Assert.True(V26Package.Validate((manifest, files)).IsValid);
     }
 
+    // ----- the optional/default pair, judged over the header (#1224) ----------------
+
+    private static List<string> ClosingHeaderErrors(bool? optional, bool? @default)
+    {
+        var (manifest, files) = V26Package.Minimal();
+        files["macros/closing.md"] = V26Package.Header("Closing", instruction: "Say goodbye.", optional: optional, @default: @default) + "Closing: {{ profile.name }}.";
+        return V26Package.Errors((manifest, files));
+    }
+
+    [Fact]
+    public void OptionalWithoutDefault_IsRefusedAt26_InTheV12Words()
+    {
+        Assert.Contains(
+            "Macro 'closing' is optional and declares no default; an optional macro must say what a run that makes no choice does.",
+            ClosingHeaderErrors(optional: true, @default: null));
+    }
+
+    [Fact]
+    public void DefaultWithoutOptional_IsRefusedAt26_InTheV12Words()
+    {
+        Assert.Contains(
+            "Macro 'closing' declares default but is not optional; only optional: true takes a per-run choice.",
+            ClosingHeaderErrors(optional: null, @default: false));
+    }
+
+    [Fact]
+    public void TheOptionalPair_PublishesAt26_AndNeitherAloneSentenceAppears()
+    {
+        var errors = ClosingHeaderErrors(optional: true, @default: false);
+
+        Assert.Empty(errors);
+        Assert.DoesNotContain(errors, e => e.Contains("is optional and declares no default") || e.Contains("declares default but is not optional"));
+    }
+
     // ----- one home -----------------------------------------------------------------
 
     [Fact]

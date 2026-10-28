@@ -98,6 +98,28 @@ public class WorkflowV26MacroFolderTests
         Assert.Superset(new HashSet<string> { "section_notes/hpi", "section_notes/plan" }, walk.PromptReadsOf("assessment").ToHashSet());
     }
 
+    // #1224: the pair judged on a folder item's header too, keyed <folder>/<item>.
+
+    [Fact]
+    public void AFolderItem_OptionalWithoutDefault_IsRefusedAt26()
+    {
+        var (manifest, files) = WithFolder();
+        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", optional: true) + "Plan noted.";
+
+        Assert.Contains("Macro 'section_notes/plan' is optional and declares no default; an optional macro must say what a run that makes no choice does.", Errors((manifest, files)));
+    }
+
+    [Fact]
+    public void AFolderItem_DefaultWithoutOptional_IsRefusedAt26_AndThePairPublishes()
+    {
+        var (manifest, files) = WithFolder();
+        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @default: true) + "Plan noted.";
+        Assert.Contains("Macro 'section_notes/plan' declares default but is not optional; only optional: true takes a per-run choice.", Errors((manifest, files)));
+
+        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", optional: true, @default: true) + "Plan noted.";
+        Assert.Empty(Errors((manifest, files)));
+    }
+
     [Fact]
     public void AnItemReadInline_NeedsItsInstruction_AndAContentReadDoesNot()
     {

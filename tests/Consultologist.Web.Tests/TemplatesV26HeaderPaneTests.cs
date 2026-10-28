@@ -289,6 +289,29 @@ public class TemplatesV26HeaderPaneTests : ClientRenderTestContext
     // ---- macro folders -----------------------------------------------------------------
 
     [Fact]
+    public void AFolderItems_OptionalAlone_IsRefusedAtTheDesk_InTheValidatorsWords()
+    {
+        // #1224: the library judges the pair on a folder item's header (keyed <folder>/<item>); the desk says its words.
+        CapturePublish();
+        var page = RenderEditor(EditorFixtures.V26Macros());
+        Navigate(page, "Plan notes");
+
+        page.Find("input[aria-label='Optional for macro item notes/plan']").Change(true);
+        Publish(page);
+
+        Assert.Null(sent);
+        Assert.Contains(Refusals(page), r => r == "Macro 'notes/plan' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
+
+        // The pane reads the pending header (a #1163 leftover fixed here): the tick shows and the default can be chosen.
+        Assert.True(page.Find("input[aria-label='Optional for macro item notes/plan']").HasAttribute("checked"));
+        page.Find("fluent-select[aria-label='Default for macro item notes/plan']").Change("true");
+        Publish(page);
+        Assert.NotNull(sent);
+        Assert.Equal(Header("Plan notes", @if: "input.kind == \"new\"", instruction: "Note the plan.", optional: true, @default: true) + "Plan notes.", sent!.Files["macros/notes/plan.md"]);
+        Assert.Empty(Validated().Errors);
+    }
+
+    [Fact]
     public void AMacroFolder_SitsInTheMacrosNav_WithItemRowsAndArrows_AndItsItemPaneWritesTheHeader()
     {
         CapturePublish();

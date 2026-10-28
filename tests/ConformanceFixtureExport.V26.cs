@@ -174,6 +174,11 @@ public partial class ConformanceFixtureExport
         // ======================================================= § 5: the JSON header (#1105)
         Valid("v26-header-every-key", "A macro file's header carrying every key — label, instruction, optional, default and if over an input.",
             Files(m, fs => fs["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.", @if: "input.kind == \"new\"", optional: true, @default: false) + "Closing: {{ profile.name }}."));
+        // #1224: the v12 pair rule judged over the header — a standalone macro, then a folder item below.
+        Invalid("invalid-macro-optional-without-default-at-26", "A macro header saying optional with no default: the package must say what a run that makes no choice does.",
+            Files(m, fs => fs["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.", optional: true) + "Closing: {{ profile.name }}."));
+        Invalid("invalid-macro-default-without-optional-at-26", "A macro header declaring default but not optional: only optional: true takes a per-run choice.",
+            Files(m, fs => fs["macros/closing.md"] = V26Package.Header("Closing", instruction: "Add a closing line if the plan changed.", @default: false) + "Closing: {{ profile.name }}."));
         Invalid("invalid-snippet-without-header-at-26", "A snippet file with no header.", Files(m, fs => fs["snippets/standards.md"] = "Follow the local standards."));
         Invalid("invalid-folder-item-without-header-at-26", "A folder item file with no header.", Files(m, fs => fs["snippets/sections/plan.md"] = "Plan."));
         Invalid("invalid-macro-without-header-at-26", "A macro file with no header.", Files(m, fs => fs["macros/closing.md"] = "Closing: {{ profile.name }}."));
@@ -244,6 +249,10 @@ public partial class ConformanceFixtureExport
         Valid("v26-macro-folder", "A macro folder — the index an ordered list, the items macro files — read as {{ for m in macro.<folder> }} with each item's label and prompt.", Folder());
         Invalid("invalid-macro-folder-without-index-at-26", "A macro folder with no index.json.", Files(Folder(), fs => fs.Remove("macros/section_notes/index.json")));
         Invalid("invalid-macro-folder-item-without-header-at-26", "A macro folder item file with no header.", Files(Folder(), fs => fs["macros/section_notes/plan.md"] = "Plan noted."));
+        Invalid("invalid-macro-folder-item-optional-without-default-at-26", "A folder item's header saying optional with no default (#1224) — keyed <folder>/<item>.",
+            Files(Folder(), fs => fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", optional: true) + "Plan noted."));
+        Invalid("invalid-macro-folder-item-default-without-optional-at-26", "A folder item's header declaring default but not optional (#1224).",
+            Files(Folder(), fs => fs["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @default: true) + "Plan noted."));
         Invalid("invalid-macro-folder-placed-at-26", "A macro folder placed on a node — a folder is read, not placed.",
             Node(Folder(), "assessment", n => n with { Macros = new List<WorkflowNodeMacroSpec> { new("closing", At: WorkflowNodeMacroSpec.After), new("section_notes", At: WorkflowNodeMacroSpec.After) } }));
         Invalid("invalid-macro-folder-item-placed-at-26", "A macro folder item placed by <folder>.<item> — waits for a package that needs it.",
