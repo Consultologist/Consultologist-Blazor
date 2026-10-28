@@ -1066,3 +1066,14 @@ fluent-select.branch-table__pick {
 .macro-if p.muted-text {
     margin: 0;
 }
+
+/* v26 (#1205): the gates the preview judged over the pick — one line each, the waiting ones quieter. */
+.rendered-preview__gates {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
+    font-size: 0.85rem;
+}
+
+.rendered-preview__gate--waiting {
+    opacity: 0.8;
+}

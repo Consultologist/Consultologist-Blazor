@@ -2897,7 +2897,7 @@
                                 }
                                 <WorkflowEditorPane ShowHeader="false" EditLabel="Prompt text"
                                                     EditorExtra="@(At25 ? InsertReferencePalette((promptView.File, WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null, false)) : null)"
-                                                    Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(promptView.File, At26 ? $"Node '{selectedNode.Id}' prompt" : $"Prompt '{nodePrompt}'", GetText(promptView.File), WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null)) : null)"
+                                                    Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(promptView.File, At26 ? $"Node '{selectedNode.Id}' prompt" : $"Prompt '{nodePrompt}'", GetText(promptView.File), WorkflowManifestReader.NodeView.EffectiveFan(selectedNode, EffectiveNodes) != null ? selectedNode : null, selectedNode.Id)) : null)"
                                                     Text="@GetText(promptView.File)"
                                                     Raw="@EffectivePromptRaw(nodePrompt)"
                                                     TextChanged="@(value => OnTextChangedAsync(promptView.File, value))">
@@ -3011,7 +3011,7 @@
                                                       IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                       @onclick="() => RemoveNodeMacroAsync(selectedNode.Id, index)"
                                                       aria-label="@($"Remove macro {entry.Id} from {selectedNode.Id}")" />
-                                        @ConditionField(("Applies when", NodeMacroWhenTarget(selectedNode, index), "Always"))
+                                        @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(selectedNode, index), "Always"))
                                     </div>
                                 }
                                 @if (nodeMacros.Count == 0)
@@ -3781,7 +3781,7 @@
                                                                   @onclick="() => RemoveNodeMacroAsync(instanceNode.Id, instanceIndex)" />
                                                 </span>
                                                 <span class="result-macro-when">
-                                                    @ConditionField(("Applies when", NodeMacroWhenTarget(instanceNode, instanceIndex), "Always"))
+                                                    @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(instanceNode, instanceIndex), "Always"))
                                                 </span>
                                             </div>
                                         }
@@ -5649,7 +5649,10 @@
 
     // #1071: the token scope the panes preview over (TemplatePreviewScope),
     // memoised like the walk; null when the composed manifest does not read.
-    private (int Tick, WorkflowFormatsView? Catalogue, PF.TemplateRenderScope? Scope) previewScopeCache = (-1, null, null);
+    private (int Tick, WorkflowFormatsView? Catalogue, PF.TemplateRenderScope? Scope, IReadOnlyList<PF.TemplatePreviewGate> Gates) previewScopeCache = (-1, null, null, Array.Empty<PF.TemplatePreviewGate>());
+
+    /// <summary>v26 (#1205): the gates the preview may judge — the walk's conditions at 26; empty below (the cache is PreviewScope's).</summary>
+    private IReadOnlyList<PF.TemplatePreviewGate> PreviewGates => PreviewScope is null ? Array.Empty<PF.TemplatePreviewGate>() : previewScopeCache.Gates;
 
     private PF.TemplateRenderScope? PreviewScope
     {
@@ -5663,17 +5666,21 @@
             if (previewScopeCache.Tick != walkTick || !ReferenceEquals(previewScopeCache.Catalogue, formatsCatalog))
             {
                 PF.TemplateRenderScope? scope = null;
+                IReadOnlyList<PF.TemplatePreviewGate> gates = Array.Empty<PF.TemplatePreviewGate>();
                 try
                 {
                     var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
                     scope = PF.TemplatePreviewScope.Tokens(manifest, AssembleFiles(), EditorPackageWalk.CatalogFrom(formatsCatalog));
+                    // v26 (#1205): the gates ride the same tick as the scope.
+                    gates = PackageWalk is { } walk ? PF.TemplatePreviewScope.Gates(manifest, walk) : Array.Empty<PF.TemplatePreviewGate>();
                 }
                 catch (Exception ex) when (ex is not OutOfMemoryException)
                 {
                     scope = null;
+                    gates = Array.Empty<PF.TemplatePreviewGate>();
                 }
 
-                previewScopeCache = (walkTick, formatsCatalog, scope);
+                previewScopeCache = (walkTick, formatsCatalog, scope, gates);
             }
 
             return previewScopeCache.Scope;
@@ -5701,7 +5708,8 @@
     // ----- #1095: the text panes' rendered preview — what a reader gets -----
 
     /// <summary>What a text pane previews: its file (the walk's key), the subject the renderer names when the file is not walked, and the text as edited.</summary>
-    private sealed record RenderedPreviewTarget(string File, string FallbackSubject, string Text, WorkflowManifestReader.NodeView? FanNode = null);
+    /// <summary>v26 (#1205): <paramref name="ReaderNodeId"/> — the node whose prompt is previewed, whose instance gates the judgement applies (null: no instance judged).</summary>
+    private sealed record RenderedPreviewTarget(string File, string FallbackSubject, string Text, WorkflowManifestReader.NodeView? FanNode = null, string? ReaderNodeId = null);
 
     // The author's preview choices (input id → the enum value previewed with; #1109: folder id →
     // the item previewed as) — NOT pending state: never bumps walkTick, never in the draft, no
@@ -5727,11 +5735,8 @@
         EffectiveCollections.Where(c => c.Id == folder)
             .SelectMany(OrderedItems)
             .Select(pair => pair.Item is { } i
-                ? new PreviewItem(
-                    i.Id,
-                    StandardName(i),
-                    GetText(i.File),
-                    itemWhenEdits.TryGetValue(i.File, out var pendingWhen) ? (string.IsNullOrWhiteSpace(pendingWhen) ? null : pendingWhen) : i.When)
+                // v26 (#1205): the pending header if too (ItemWhenValue reads both overlays).
+                ? new PreviewItem(i.Id, StandardName(i), GetText(i.File), ItemWhenValue(i))
                 : new PreviewItem(pair.Added!.Id, pair.Added.Name, pair.Added.Content, string.IsNullOrWhiteSpace(pair.Added.When) ? null : pair.Added.When))
             .ToList();
 
@@ -5773,7 +5778,42 @@
     /// input stays its token, the #1095 rule): an enum, boolean or number input it reads, a text input it
     /// compares (#1123), then an enum-format node whose .value it reads. In id order within each.
     /// </summary>
-    private IReadOnlyList<PreviewPick> PreviewPicksOf(PF.WorkflowDerivedEdges.WalkedTemplate? walked)
+    /// <summary>
+    /// v26 (#1205): the gates this preview judges — the ones the walked template reads directly
+    /// (a macro's own if where macro.&lt;id&gt; is read or its folder iterated, a snippet's where
+    /// read, an item's where its folder is iterated or the item read, the reader node's instance
+    /// gates where macro.&lt;id&gt;.prompt is read). A gate reached only through another text is the
+    /// engine's to apply; the preview names what the pane's text reads.
+    /// </summary>
+    private IReadOnlyList<PF.TemplatePreviewGate> PreviewGatesOf(PF.WorkflowDerivedEdges.WalkedTemplate? walked, string? readerNodeId)
+    {
+        if (walked is null || !At26)
+        {
+            return Array.Empty<PF.TemplatePreviewGate>();
+        }
+
+        var refs = walked.References;
+        bool ReadsMacro(string key)
+        {
+            if (refs.MacroContents.Contains(key) || refs.MacroPrompts.Contains(key))
+            {
+                return true;
+            }
+
+            var slash = key.IndexOf('/');
+            return slash > 0 && (refs.MacroFolders.Contains(key[..slash]) || refs.MacroFolderContents?.Contains(key[..slash]) == true || refs.MacroFolderPrompts?.Contains(key[..slash]) == true);
+        }
+
+        return PreviewGates.Where(gate => gate.Kind switch
+        {
+            PF.TemplatePreviewGateKind.Instance => gate.Owner == readerNodeId && refs.MacroPrompts.Contains(gate.Key),
+            PF.TemplatePreviewGateKind.Macro => ReadsMacro(gate.Key),
+            PF.TemplatePreviewGateKind.Snippet => refs.Snippets.Contains(gate.Key),
+            _ => refs.SnippetFolders.Contains(gate.Owner) || refs.Snippets.Contains(gate.Key),
+        }).ToList();
+    }
+
+    private IReadOnlyList<PreviewPick> PreviewPicksOf(PF.WorkflowDerivedEdges.WalkedTemplate? walked, string? readerNodeId = null)
     {
         if (walked is null)
         {
@@ -5782,7 +5822,10 @@
 
         var picks = new List<PreviewPick>();
 
-        foreach (var input in EffectiveInputs.Where(i => walked.References.Inputs.Contains(i.Id)).OrderBy(i => i.Id, StringComparer.Ordinal))
+        // v26 (#1205): an input a judged gate reads earns a control too — the gate is judged over it.
+        var gateInputs = PreviewGatesOf(walked, readerNodeId).SelectMany(g => g.Inputs).ToHashSet(StringComparer.Ordinal);
+
+        foreach (var input in EffectiveInputs.Where(i => walked.References.Inputs.Contains(i.Id) || gateInputs.Contains(i.Id)).OrderBy(i => i.Id, StringComparer.Ordinal))
         {
             var label = $"input.{input.Id}";
 
@@ -5873,22 +5916,64 @@
         };
     }
 
-    /// <summary>What a reader gets — the text rendered over the token scope with the picks applied; the renderer's own sentence when it does not render (MacroPromptPreview's shape).</summary>
-    private (string Text, bool IsError) RenderedPreviewOf(string subject, string text, IReadOnlyList<KeyValuePair<string, string>> picks, IReadOnlyList<KeyValuePair<string, string>> nodePicks, PreviewItem? item)
+    /// <summary>v26 (#1205): a rendered preview — the text, whether it is the renderer's sentence, and the gates judged over the pick (applied: they did not hold; waiting: on picks).</summary>
+    private sealed record RenderedPreviewResult(string Text, bool IsError, IReadOnlyList<PF.TemplatePreviewGate> Applied, IReadOnlyList<PF.TemplatePreviewWaitingGate> Waiting);
+
+    private static readonly RenderedPreviewResult NoPreviewScope = new("The package does not read yet — fix the publish refusals to preview.", true, Array.Empty<PF.TemplatePreviewGate>(), Array.Empty<PF.TemplatePreviewWaitingGate>());
+
+    /// <summary>
+    /// What a reader gets — the text rendered over the token scope with the picks applied; the
+    /// renderer's own sentence when it does not render (MacroPromptPreview's shape). v26 (#1205):
+    /// the three gates judged over the pick first (the engine's judgement, only where every read
+    /// is picked), the reader node's instances among them.
+    /// </summary>
+    private RenderedPreviewResult RenderedPreviewOf(string subject, string text, IReadOnlyList<KeyValuePair<string, string>> picks, IReadOnlyList<KeyValuePair<string, string>> nodePicks, PreviewItem? item, PF.WorkflowDerivedEdges.WalkedTemplate? walked = null, string? readerNodeId = null)
     {
         if (PreviewScope is not { } scope)
         {
-            return ("The package does not read yet — fix the publish refusals to preview.", true);
+            return NoPreviewScope;
         }
 
         try
         {
-            return (PF.TemplateRenderer.Render(subject, text, PickedScope(scope, picks, nodePicks, item), PF.TemplatePreviewScope.Pipes), false);
+            var judged = PF.TemplatePreviewScope.Judged(
+                PickedScope(scope, picks, nodePicks, item),
+                PreviewGatesOf(walked, readerNodeId),
+                picks.Select(p => p.Key).ToHashSet(StringComparer.Ordinal),
+                nodePicks.Select(p => p.Key).ToHashSet(StringComparer.Ordinal),
+                item is not null,
+                readerNodeId,
+                item?.Id);
+            return new(PF.TemplateRenderer.Render(subject, text, judged.Scope, PF.TemplatePreviewScope.Pipes), false, judged.Applied, judged.Waiting);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            return (ex.Message, true);
+            return new(ex.Message, true, Array.Empty<PF.TemplatePreviewGate>(), Array.Empty<PF.TemplatePreviewWaitingGate>());
         }
+    }
+
+    /// <summary>v26 (#1205): what an applied gate did for this pick, in the pane's words.</summary>
+    private static string GateSentence(PF.TemplatePreviewGate gate) => gate.Kind switch
+    {
+        PF.TemplatePreviewGateKind.Instance => $"the read of macro.{gate.Key}.prompt is suppressed for this pick: node '{gate.Owner}''s instance if ({gate.If}) does not hold",
+        PF.TemplatePreviewGateKind.Macro => $"macro '{gate.Key}' is inert for this pick: its if ({gate.If}) does not hold — .prompt and .content render empty",
+        PF.TemplatePreviewGateKind.Snippet => $"snippet '{gate.Key}' renders empty for this pick: its if ({gate.If}) does not hold",
+        _ => $"item '{gate.Key[(gate.Owner.Length + 1)..]}' of folder '{gate.Owner}' is out of the loop for this pick (its direct read renders empty): its if ({gate.If}) does not hold",
+    };
+
+    /// <summary>v26 (#1205): what a waiting gate needs picked.</summary>
+    private static string WaitingSentence(PF.TemplatePreviewWaitingGate waiting)
+    {
+        var gate = waiting.Gate;
+        var picks = string.Join(", ", waiting.Missing.Select(m => m == PF.TemplateObjects.Item ? "an item" : m));
+        var whose = gate.Kind switch
+        {
+            PF.TemplatePreviewGateKind.Instance => $"node '{gate.Owner}''s instance if of macro '{gate.Key}'",
+            PF.TemplatePreviewGateKind.Macro => $"macro '{gate.Key}''s if",
+            PF.TemplatePreviewGateKind.Snippet => $"snippet '{gate.Key}''s if",
+            _ => $"item '{gate.Key[(gate.Owner.Length + 1)..]}' of folder '{gate.Owner}''s if",
+        };
+        return $"pick {picks} to judge {whose} ({gate.If})";
     }
 
     private PF.WorkflowDerivedEdges.Walk? PackageWalk
@@ -6863,7 +6948,7 @@
             var subject = walked?.Subject ?? target.FallbackSubject;
             // #1123: every "preview with" control the template earns; a stale pick (the values edited since, a
             // number that does not parse) applies nothing.
-            var controls = PreviewPicksOf(walked);
+            var controls = PreviewPicksOf(walked, target.ReaderNodeId);
             var picks = controls
                 .Where(c => !c.IsNode && previewInputPicks.TryGetValue(c.Id, out var picked) && PickIsCurrent(c, picked))
                 .Select(c => KeyValuePair.Create(c.Id, previewInputPicks[c.Id]))
@@ -6879,7 +6964,9 @@
             var pickedItem = folder is not null && previewItemPicks.TryGetValue(folder, out var pickedItemId)
                 ? items.FirstOrDefault(i => i.Id == pickedItemId)
                 : null;
-            var (rendered, renderedIsError) = RenderedPreviewOf(subject, target.Text, picks, nodePicks, pickedItem);
+            var preview = RenderedPreviewOf(subject, target.Text, picks, nodePicks, pickedItem, walked, target.ReaderNodeId);
+            var rendered = preview.Text;
+            var renderedIsError = preview.IsError;
         }
         <div class="rendered-preview__head">
             <span class="muted-text">What a reader gets</span>
@@ -6949,6 +7036,20 @@
             {
                 <p class="muted-text rendered-preview__note">An unchosen value renders as its token — an equality against it is false, a bare <code>if</code> or an ordering sees a non-empty text — choose a value to see the branch you mean.</p>
             }
+        }
+        @if (preview.Applied.Count > 0 || preview.Waiting.Count > 0)
+        {
+            @* v26 (#1205): the gates judged over this pick — each applied one named, each waiting one with what to pick. *@
+            <ul class="muted-text rendered-preview__gates" aria-label="@($"Gates judged for {subject}")">
+                @foreach (var applied in preview.Applied)
+                {
+                    <li class="rendered-preview__gate" data-gate-kind="@applied.Kind.ToString().ToLowerInvariant()" data-gate-key="@applied.Key">@GateSentence(applied)</li>
+                }
+                @foreach (var waiting in preview.Waiting)
+                {
+                    <li class="rendered-preview__gate rendered-preview__gate--waiting" data-gate-kind="@waiting.Gate.Kind.ToString().ToLowerInvariant()" data-gate-key="@waiting.Gate.Key">@WaitingSentence(waiting)</li>
+                }
+            </ul>
         }
         @if (renderedIsError || !previewAsMarkdown)
         {
@@ -13176,14 +13277,15 @@
         var extra = fanItems.Count > 0
             ? new[] { new ConditionOperand(ItemIdKey, ItemValueType, fanItems.Select(item => item.Id).ToList(), fanItems.Select(StandardName).ToList()) }
             : null;
+        // v26 (#1205, design § 2.1): the instance's gate is keyed if at 26 — read and written as If.
         return new($"node-macro:{node.Id}\n{index}", $"{node.Id} macro {macroId}",
-            index < macros.Count ? macros[index].When : null,
+            index < macros.Count ? (At26 ? macros[index].If : macros[index].When) : null,
             text =>
             {
                 var list = MutableNodeMacros(node.Id);
                 if (index >= 0 && index < list.Count)
                 {
-                    list[index] = list[index] with { When = text };
+                    list[index] = At26 ? list[index] with { If = text } : list[index] with { When = text };
                 }
             },
             extra);
@@ -15510,7 +15612,9 @@
 
     // v23 (#955): a node's macro attachments persisted in the draft — the whole
     // list per node, mirroring nodeMacroEdits.
-    private sealed record DraftNodeMacro(string Id, string? At = null, string? When = null, bool? Optional = null, string? ForItem = null);
+    private sealed record DraftNodeMacro(string Id, string? At = null, string? When = null, bool? Optional = null, string? ForItem = null,
+        // v26 (#1205): the instance's if. Trailing.
+        string? If = null);
     private sealed record DraftNodeMacros(string NodeId, List<DraftNodeMacro> Macros);
 
     // v15 (#731): a pending raw toggle on a declared prompt.
@@ -16239,7 +16343,7 @@
         foreach (var draftNodeMacros in draftNodeMacroEdits ?? new List<DraftNodeMacros>())
         {
             nodeMacroEdits[draftNodeMacros.NodeId] = draftNodeMacros.Macros
-                .Select(m => new WorkflowManifestReader.NodeMacroView(m.Id, m.At, m.When, m.Optional, m.ForItem))
+                .Select(m => new WorkflowManifestReader.NodeMacroView(m.Id, m.At, m.When, m.Optional, m.ForItem, m.If))
                 .ToList();
         }
 
@@ -16366,7 +16470,7 @@
             standardNameEdits.Select(pair => new DraftStandardName(pair.Key, pair.Value)).ToList(),
             nodeMacroEdits.Select(pair => new DraftNodeMacros(
                 pair.Key,
-                pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem)).ToList())).ToList(),
+                pair.Value.Select(e => new DraftNodeMacro(e.Id, e.At, e.When, e.Optional, e.ForItem, e.If)).ToList())).ToList(),
             addedFormats.Select(pair => new DraftAddedFormat(pair.Key, pair.Value)).ToList(),
             removedFormatIds.ToList(),
             itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList(),
@@ -18643,9 +18747,11 @@
                 {
                     var macroObject = new System.Text.Json.Nodes.JsonObject { ["id"] = entry.Id };
                     if (entry.At != null) { macroObject["at"] = entry.At; }
-                    if (entry.When != null) { macroObject["when"] = entry.When; }
+                    // v26 (#1205): the gate is keyed if; when and forItem are retired at 26.
+                    if (entry.When != null && !At26) { macroObject["when"] = entry.When; }
                     if (entry.Optional != null) { macroObject["optional"] = entry.Optional.Value; }
-                    if (entry.ForItem != null) { macroObject["forItem"] = entry.ForItem; }
+                    if (entry.ForItem != null && !At26) { macroObject["forItem"] = entry.ForItem; }
+                    if (entry.If != null && At26) { macroObject["if"] = entry.If; }
                     macrosArray.Add(macroObject);
                 }
             }
