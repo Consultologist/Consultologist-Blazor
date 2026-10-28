@@ -1431,6 +1431,19 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   "if", the composer writes `if` and never `when`/`forItem` (a #1159 leftover: the editor wrote `when`
   at 26, which the validator refuses). The preview scope's macro sources carry their header `if` now,
   as the engine's do.)*
+  *(#1206, 2026-10-27 — the three desk notes, pane notes only (no validator change). **Never fires** on an
+  instance row — the node pane's Macros rows, the macro pane's node- and deliverable-instance rows, the
+  Deliverables card's macro rows — *"never fires: the macro's if (…) and this instance's if (…) cannot both
+  hold"*, judged **over one enum input by brute force** (decided 2026-10-27: the library records no compared
+  literals; both texts read through the builder's tree, every clause `==`/`!=` on the same enum input, every
+  declared value tried, none satisfies both; any other shape says nothing). **Unread** on the macro pane's
+  "What the model is told" when the macro is placed, read inline by nothing and carries an instruction —
+  *"unread: no prompt reads macro.<id>.prompt; the instruction is kept, not shown."* (the 25 sentence stays
+  otherwise). **Empty prompt** there when the macro is read inline and its instruction is blank, or renders to
+  whitespace over the token scope while its walk reads nothing a run could change (no input, node, item, run or
+  profile fact — decided 2026-10-27, so a conditional instruction with unchosen tokens is not called empty) —
+  *"empty prompt: macro.<id>.prompt renders to nothing — the model is told nothing where it is read (…)"*
+  naming the readers. Macros only: a prompt whose only content is a gated snippet is #1205's preview note.)*
 - **The upgrade button**: "Upgrade to specVersion 26" on any 25 package (below 25, the chain
   runs 24 → 25 → 26, one publish, one notice naming the steps); a refusal (an unfillable `ret`,
   § 13) is said in the toolbar and leaves the package as loaded.
