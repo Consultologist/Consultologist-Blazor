@@ -226,7 +226,9 @@ public static partial class WorkflowPackageValidator
     /// The macro library at 26: the id and the file as 25; the label is the
     /// header's (its absence said by the header pass); the instruction the
     /// header's, required only where read inline (#1096,
-    /// <see cref="ValidateInstructionsAt26"/>, after the walk).
+    /// <see cref="ValidateInstructionsAt26"/>, after the walk); the optional/default
+    /// pair the header's, judged as v12 judged the manifest's (#1224) — on a
+    /// standalone macro and on a folder item (keyed <c>&lt;folder&gt;/&lt;item&gt;</c>).
     /// </summary>
     private static void ValidateMacroLibraryAt26(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files, WorkflowPackageData? macroFolders, List<string> errors)
     {
@@ -254,16 +256,40 @@ public static partial class WorkflowPackageValidator
                     if (!WorkflowDeclaredIds.IsValid(item.Id))
                     {
                         errors.Add($"Macro folder '{macro.Id}' item id '{item.Id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).");
+                        continue;
                     }
+
+                    JudgeOptionalPair(WorkflowDerivedEdges.SnippetItemKey(macro.Id, item.Id), item.Header?.Optional, item.Header?.Default, errors);
                 }
 
                 continue;
             }
 
+            // #1224: the pair rides the header into the effective manifest (Resolve).
+            JudgeOptionalPair(macro.Id, macro.Optional, macro.Default, errors);
+
             if (string.IsNullOrWhiteSpace(macro.File) || !files.ContainsKey(macro.File))
             {
                 errors.Add($"Macro '{macro.Id}' file '{macro.File}' is missing from the package.");
             }
+        }
+    }
+
+    /// <summary>
+    /// v12 (§ 3), at 26 over the header (#1224): an optional macro must say what a
+    /// formless run does — the package decides, every door (#516 carried forward);
+    /// and only an optional macro takes a per-run choice. The v12 sentences, verbatim.
+    /// </summary>
+    private static void JudgeOptionalPair(string key, bool? optional, bool? @default, List<string> errors)
+    {
+        if (optional == true && @default == null)
+        {
+            errors.Add($"Macro '{key}' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
+        }
+
+        if (@default != null && optional != true)
+        {
+            errors.Add($"Macro '{key}' declares default but is not optional; only optional: true takes a per-run choice.");
         }
     }
 
