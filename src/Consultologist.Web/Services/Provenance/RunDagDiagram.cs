@@ -35,7 +35,16 @@ public static class RunDagDiagram
         {
             ["ranNot"] = new(), ["skipped"] = new(), ["done"] = new(), ["failed"] = new(), ["running"] = new()
         };
-        var statusById = nodes.ToDictionary(node => node.Id, node => StatusOf(node, outputs, detail.Collections), StringComparer.Ordinal);
+        var statusById = nodes.ToDictionary(node => node.Id, node => StatusOf(node, outputs, detail.Collections, nodes), StringComparer.Ordinal);
+
+        // v26 (#1208, record storage 8): a flow row draws its body as a subgraph — a loop as the
+        // fan it is with its count, an if/case as the decided set with the branch taken and the
+        // pruned bodies dashed inside it; a body node never sits at the top level. A record
+        // without flow rows draws exactly as it did.
+        var flowAware = nodes.Any(RecordFlow.IsFlow);
+        var bodyIds = flowAware ? RecordFlow.BodyIds(nodes) : new HashSet<string>(StringComparer.Ordinal);
+        var pruned = flowAware ? RecordFlow.PrunedOf(nodes, outputs) : new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
+        var nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
 
         // External sources first, in first-seen order: the stadiums.
         var sources = new List<string>();
@@ -58,7 +67,7 @@ public static class RunDagDiagram
         }
 
         // The nodes, in package order, each shaped and classed by its state.
-        foreach (var node in nodes)
+        void EmitNode(ConsultGenerationNodeDescriptor node)
         {
             var id = Sanitize(node.Id);
             var status = statusById[node.Id];
@@ -67,8 +76,14 @@ public static class RunDagDiagram
             var label = new StringBuilder($"{node.Id}<br/>{node.Label}");
             if (node.ForEach != null)
             {
-                var (doneItems, totalItems) = ItemTally(node, outputs, detail.Collections);
+                var (doneItems, totalItems) = ItemTally(node, outputs, detail.Collections, nodes);
                 label.Append(($"<br/>per {node.ForEach} item ({doneItems}/{totalItems})"));
+            }
+            else if (node.In != null)
+            {
+                // v26 (#1208): a body node — its items' tally; the loop's subgraph names the fan.
+                var (doneItems, totalItems) = ItemTally(node, outputs, detail.Collections, nodes);
+                label.Append(($"<br/>({doneItems}/{totalItems}) items"));
             }
 
             if (node.Check is { } check)
@@ -90,6 +105,12 @@ public static class RunDagDiagram
             if (node.Aggregate != null)
             {
                 label.Append("<br/>aggregate");
+            }
+
+            // v26 (#1208): the node's prompt by path (the storage-8 row's field).
+            if (node.Prompt is { Length: > 0 } promptPath)
+            {
+                label.Append(($"<br/>{promptPath}"));
             }
 
             body.Append(($"{id}[\"{label}\"]\n"));
@@ -138,17 +159,112 @@ public static class RunDagDiagram
             }
         }
 
+        // v26 (#1208): a flow row — its body inside a subgraph, its own box after, the ret edge.
+        void EmitFlow(ConsultGenerationNodeDescriptor flow)
+        {
+            var id = Sanitize(flow.Id);
+            var status = statusById[flow.Id];
+            var kind = flow.Kind ?? "flow";
+            var subgraphId = $"{Sanitize(kind)}_{id}";
+            var bodies = (flow.Body ?? Array.Empty<string>()).Where(nodesById.ContainsKey).Select(bodyId => nodesById[bodyId]).ToList();
+
+            if (RecordFlow.IsLoop(flow))
+            {
+                var collection = flow.Collection ?? string.Empty;
+                var retNode = Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(flow.Ret ?? string.Empty) is { } retId && nodesById.TryGetValue(retId, out var ret) ? ret : bodies.FirstOrDefault();
+                var (doneItems, totalItems) = retNode is null ? (0, flow.Count ?? 0) : ItemTally(retNode, outputs, detail.Collections, nodes);
+                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({doneItems}/{totalItems})\"]\n"));
+                foreach (var bodyNode in bodies)
+                {
+                    EmitNode(bodyNode);
+                }
+
+                body.Append("end\n");
+                if (collection.Length > 0)
+                {
+                    body.Append(($"src_{Sanitize(collection)}([\"{collection}\"])\n"));
+                    body.Append(($"src_{Sanitize(collection)} -->|\"for\"| {subgraphId}\n"));
+                }
+
+                byClass[status].Add(id);
+                body.Append(($"{id}[\"{flow.Id}<br/>{flow.Label}<br/>for item in {collection}\"]\n"));
+            }
+            else
+            {
+                var branch = RecordFlow.BranchText(flow);
+                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: {kind} {flow.Expression} — branch: {branch}\"]\n"));
+                foreach (var bodyNode in bodies)
+                {
+                    EmitNode(bodyNode);
+                }
+
+                foreach (var prunedId in pruned.GetValueOrDefault(flow.Id) ?? Array.Empty<string>())
+                {
+                    byClass["skipped"].Add(Sanitize(prunedId));
+                    body.Append(($"{Sanitize(prunedId)}[\"{prunedId}<br/>pruned\"]\n"));
+                }
+
+                body.Append("end\n");
+                byClass[status].Add(id);
+                body.Append(($"{id}{{\"{flow.Id}<br/>{flow.Label}<br/>{kind}: {flow.Expression}<br/>branch: {branch}\"}}\n"));
+                // A case over a node's value (node.<id>.value) draws the dotted edge from that node.
+                if (kind == "case" && SubjectNodeOf(flow.Expression) is { } subjectId)
+                {
+                    body.Append(($"{Sanitize(subjectId)} -.->|\"case\"| {id}\n"));
+                }
+            }
+
+            if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(flow.Ret ?? string.Empty) is { } retEdgeId)
+            {
+                AppendEdge(body, statusById, retEdgeId, flow.Id, "ret");
+            }
+
+            foreach (var read in flow.Reads ?? Array.Empty<string>())
+            {
+                AppendEdge(body, statusById, read, flow.Id);
+            }
+        }
+
+        foreach (var node in nodes)
+        {
+            if (flowAware && bodyIds.Contains(node.Id))
+            {
+                continue;
+            }
+
+            if (flowAware && RecordFlow.IsFlow(node))
+            {
+                EmitFlow(node);
+            }
+            else
+            {
+                EmitNode(node);
+            }
+        }
+
         // The deliverables: hexagons in their three states. The response does
         // not carry the result→aggregator mapping, so with exactly one
         // aggregator the edge is drawn and otherwise the hexagons stand alone
         // — the state is the point.
         var aggregators = nodes.Where(node => node.Aggregate != null).ToList();
-        void Deliverable(string resultId, string label, string cls)
+        void Deliverable(string resultId, string label, string cls, IReadOnlyList<string>? sources = null)
         {
             var id = $"result_{Sanitize(resultId)}";
             byClass[cls].Add(id);
             body.Append(($"{id}{{{{\"{label}\"}}}}\n"));
-            if (aggregators.Count == 1)
+            // v26 (#1208): a storage-8 document names its sources — one edge each.
+            if (sources is { Count: > 0 })
+            {
+                foreach (var source in sources)
+                {
+                    if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(source) is { } sourceId)
+                    {
+                        var dashed = cls == "skipped" || statusById.GetValueOrDefault(sourceId) == "skipped";
+                        body.Append(($"{Sanitize(sourceId)} {(dashed ? "-.->" : "-->")}|\"source\"| {id}\n"));
+                    }
+                }
+            }
+            else if (aggregators.Count == 1)
             {
                 body.Append(($"{Sanitize(aggregators[0].Id)} {(cls == "skipped" ? "-.->" : "-->")} {id}\n"));
             }
@@ -156,7 +272,7 @@ public static class RunDagDiagram
 
         foreach (var document in detail.AssembledDocuments ?? Array.Empty<ConsultGenerationResultDocumentResponse>())
         {
-            Deliverable(document.ResultId, document.Label, "done");
+            Deliverable(document.ResultId, document.Label, "done", document.Sources);
         }
 
         foreach (var skipped in detail.SkippedDocuments ?? Array.Empty<ConsultSkippedDocumentResponse>())
@@ -198,9 +314,11 @@ public static class RunDagDiagram
     private static string StatusOf(
         ConsultGenerationNodeDescriptor node,
         IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs,
-        IReadOnlyList<ConsultCollectionRoster>? rosters)
+        IReadOnlyList<ConsultCollectionRoster>? rosters,
+        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
     {
-        if (node.ForEach != null)
+        // v26 (#1208): a body node fans through its loop row — the same roll-up.
+        if (RecordFlow.FanOf(node, nodes) != null)
         {
             var items = outputs.Where(pair => pair.Key.StartsWith($"{node.Id}:", StringComparison.Ordinal)).ToList();
             if (items.Any(pair => pair.Value.Status == "Failed"))
@@ -213,7 +331,7 @@ public static class RunDagDiagram
                 return "running";
             }
 
-            var (done, total) = ItemTally(node, outputs, rosters);
+            var (done, total) = ItemTally(node, outputs, rosters, nodes);
             if (total > 0 && done >= total)
             {
                 return "done";
@@ -237,12 +355,32 @@ public static class RunDagDiagram
     private static (int Done, int Total) ItemTally(
         ConsultGenerationNodeDescriptor node,
         IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs,
-        IReadOnlyList<ConsultCollectionRoster>? rosters)
+        IReadOnlyList<ConsultCollectionRoster>? rosters,
+        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
     {
         var items = outputs.Where(pair => pair.Key.StartsWith($"{node.Id}:", StringComparison.Ordinal)).ToList();
+        // v26 (#1208): a body node's total is its loop row's settled count; a forEach node's the roster's, as ever.
+        if (RecordFlow.LoopOf(node, nodes) is { Count: { } count })
+        {
+            return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(count, items.Count));
+        }
+
         var collectionId = node.ForEach?.Contains(':') == true ? node.ForEach[(node.ForEach.IndexOf(':') + 1)..] : node.ForEach;
         var total = rosters?.FirstOrDefault(roster => roster.CollectionId == collectionId)?.Items.Count ?? items.Count;
         return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(total, items.Count));
+    }
+
+    /// <summary>v26 (#1208): the node a case subject reads — node.&lt;id&gt;.value, or node.&lt;id&gt;; null for an input.</summary>
+    private static string? SubjectNodeOf(string? expression)
+    {
+        if (string.IsNullOrWhiteSpace(expression) || !expression.StartsWith("node.", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        var rest = expression["node.".Length..];
+        var dot = rest.IndexOf('.');
+        return dot > 0 ? rest[..dot] : rest.Length > 0 ? rest : null;
     }
 
     private static string Sanitize(string raw) => new(raw.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
