@@ -118,7 +118,7 @@ public static class TemplatePreviewScope
         var macroFolders = texts is null ? null : WorkflowTextHeaders.ResolveMacroFolders(manifest, texts, discard)?.Collections.ToDictionary(
             entry => entry.Key,
             entry => (IReadOnlyList<TemplateMacroSource>)entry.Value.Items
-                .Select(item => new TemplateMacroSource(item.Id, item.Header?.Label ?? item.Id, item.Fields.GetValueOrDefault(TemplateMembers.Content, string.Empty), item.Header?.Instruction ?? string.Empty))
+                .Select(item => new TemplateMacroSource(item.Id, item.Header?.Label ?? item.Id, item.Fields.GetValueOrDefault(TemplateMembers.Content, string.Empty), item.Header?.Instruction ?? string.Empty, item.Header?.If))
                 .ToList(),
             StringComparer.Ordinal);
 
@@ -127,7 +127,8 @@ public static class TemplatePreviewScope
             .DistinctBy(macro => macro.Id, StringComparer.Ordinal)
             .ToDictionary(
                 macro => macro.Id,
-                macro => new TemplateMacroSource(macro.Id, macro.Label ?? macro.Id, files.GetValueOrDefault(macro.File!, string.Empty), macro.Instruction ?? string.Empty),
+                // #1205: the macro's own gate rides the source (the header's), as the engine's scope has it.
+                macro => new TemplateMacroSource(macro.Id, macro.Label ?? macro.Id, files.GetValueOrDefault(macro.File!, string.Empty), macro.Instruction ?? string.Empty, texts?.Headers.GetValueOrDefault(macro.File!)?.If),
                 StringComparer.Ordinal);
 
         return new TemplateRenderScope(
@@ -152,6 +153,173 @@ public static class TemplatePreviewScope
                 : (manifest.Snippets ?? new Dictionary<string, string>())
                     .Where(entry => !entry.Value.EndsWith('/') && texts.Headers.GetValueOrDefault(entry.Value)?.Label is not null)
                     .ToDictionary(entry => entry.Key, entry => texts.Headers[entry.Value].Label!, StringComparer.Ordinal));
+    }
+
+    // ----- #1205 (v26 design § 2, § 5.4, § 12): the three gates judged over a preview pick -----
+
+    /// <summary>
+    /// The gates a preview may judge, from the walk's conditions: a node instance's `if`
+    /// (owner the node, key the macro), a macro's own `if` (key the id or &lt;folder&gt;/&lt;item&gt;),
+    /// a standalone snippet's `if` (key the id), a folder item's `if` (owner the folder, key
+    /// &lt;folder&gt;/&lt;item&gt;). An instance with no gate is listed with an empty `If` (it holds,
+    /// and keeps its macro's read live — the engine's rule) and is never applied. Empty below 26.
+    /// </summary>
+    public static IReadOnlyList<TemplatePreviewGate> Gates(WorkflowPackageManifest manifest, WorkflowDerivedEdges.Walk walk)
+    {
+        if (manifest.SpecVersion < 26)
+        {
+            return Array.Empty<TemplatePreviewGate>();
+        }
+
+        var gates = new List<TemplatePreviewGate>();
+        var walked = walk.Conditions.Where(c => c.Walk.IsValid).ToList();
+
+        static TemplatePreviewGate Of(TemplatePreviewGateKind kind, string owner, string key, WorkflowDerivedEdges.WalkedCondition condition) =>
+            new(kind, owner, key, condition.Text.Trim(), condition.Walk.References.Inputs, condition.Walk.References.Nodes.Keys.ToHashSet(StringComparer.Ordinal), condition.Walk.References.ItemMembers.Count > 0);
+
+        foreach (var condition in walked)
+        {
+            switch (condition.Site)
+            {
+                case WorkflowDerivedEdges.ConditionSite.Macro:
+                    gates.Add(Of(TemplatePreviewGateKind.Macro, condition.OwnerId, condition.OwnerId, condition));
+                    break;
+                case WorkflowDerivedEdges.ConditionSite.Snippet:
+                    gates.Add(Of(TemplatePreviewGateKind.Snippet, condition.OwnerId, condition.OwnerId, condition));
+                    break;
+                case WorkflowDerivedEdges.ConditionSite.FolderItem when condition.OwnerId.IndexOf('/') is var slash && slash > 0:
+                    gates.Add(Of(TemplatePreviewGateKind.Item, condition.OwnerId[..slash], condition.OwnerId, condition));
+                    break;
+            }
+        }
+
+        // The instances from the manifest: a gated one takes its walked reads, an ungated one holds.
+        foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+        {
+            foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
+            {
+                var gate = (instance.If ?? instance.When)?.Trim();
+                if (string.IsNullOrWhiteSpace(gate))
+                {
+                    gates.Add(new TemplatePreviewGate(TemplatePreviewGateKind.Instance, node.Id, instance.Id, string.Empty,
+                        new HashSet<string>(StringComparer.Ordinal), new HashSet<string>(StringComparer.Ordinal), false));
+                }
+                else if (walked.FirstOrDefault(c => c.Site == WorkflowDerivedEdges.ConditionSite.NodeInstance && c.OwnerId == node.Id && c.MacroId == instance.Id && c.Text.Trim() == gate) is { } condition)
+                {
+                    gates.Add(Of(TemplatePreviewGateKind.Instance, node.Id, instance.Id, condition));
+                }
+            }
+        }
+
+        return gates;
+    }
+
+    /// <summary>
+    /// The gates judged over a picked scope, the engine's way (#1175/#1177/#1179): a gate is
+    /// judged only once every input, node value and item it reads has a pick (decided
+    /// 2026-10-27 — an unchosen token compares false and would gate everything off); the rest
+    /// wait, naming the missing picks. Instances are the reader node's alone (no reader, none
+    /// judged); a folder item's gate is judged with the item bound. A gate that throws (a stale
+    /// text) holds. Without a gate the scope is returned as given — the bytes are unchanged.
+    /// </summary>
+    public static TemplatePreviewJudgement Judged(
+        TemplateRenderScope picked,
+        IReadOnlyList<TemplatePreviewGate> gates,
+        IReadOnlySet<string> pickedInputs,
+        IReadOnlySet<string> pickedNodes,
+        bool itemPicked,
+        string? readerNodeId,
+        string? itemId)
+    {
+        if (gates.Count == 0)
+        {
+            return new TemplatePreviewJudgement(picked, Array.Empty<TemplatePreviewGate>(), Array.Empty<TemplatePreviewWaitingGate>());
+        }
+
+        var ready = new List<TemplatePreviewGate>();
+        var waiting = new List<TemplatePreviewWaitingGate>();
+        foreach (var gate in gates)
+        {
+            if (gate.Kind == TemplatePreviewGateKind.Instance && gate.Owner != readerNodeId)
+            {
+                continue;
+            }
+
+            var missing = new List<string>();
+            missing.AddRange(gate.Inputs.Where(id => !pickedInputs.Contains(id)).Order(StringComparer.Ordinal).Select(id => $"{TemplateObjects.Input}.{id}"));
+            missing.AddRange(gate.Nodes.Where(id => !pickedNodes.Contains(id)).Order(StringComparer.Ordinal).Select(id => $"{TemplateObjects.Node}.{id}"));
+            if (gate.ReadsItem && !itemPicked && gate.Kind != TemplatePreviewGateKind.Item)
+            {
+                missing.Add(TemplateObjects.Item);
+            }
+
+            if (missing.Count > 0)
+            {
+                waiting.Add(new TemplatePreviewWaitingGate(gate, missing));
+            }
+            else
+            {
+                ready.Add(gate);
+            }
+        }
+
+        // The notes read in the engine's order: instances, macros, snippets, items.
+        waiting = waiting.OrderBy(w => w.Gate.Kind).ToList();
+        var applied = new List<TemplatePreviewGate>();
+        IReadOnlySet<string> suppressed = new HashSet<string>(StringComparer.Ordinal);
+        IReadOnlySet<string> inertMacros = new HashSet<string>(StringComparer.Ordinal);
+        IReadOnlySet<string> inertSnippets = new HashSet<string>(StringComparer.Ordinal);
+
+        static IReadOnlySet<string> Judge(Func<IReadOnlySet<string>> judge)
+        {
+            try
+            {
+                return judge();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Scriban.Syntax.ScriptRuntimeException)
+            {
+                return new HashSet<string>(StringComparer.Ordinal);
+            }
+        }
+
+        if (readerNodeId is not null)
+        {
+            var instances = ready.Where(g => g.Kind == TemplatePreviewGateKind.Instance).ToList();
+            suppressed = Judge(() => WorkflowInlineGates.Suppressed(readerNodeId, instances.Select(g => new WorkflowInlineGate(g.Key, g.If.Length > 0 ? g.If : null)), itemId, picked, Pipes));
+            applied.AddRange(instances.Where(g => g.If.Length > 0 && suppressed.Contains(g.Key)));
+        }
+
+        var macros = ready.Where(g => g.Kind == TemplatePreviewGateKind.Macro).ToList();
+        inertMacros = Judge(() => WorkflowInlineGates.Inert(macros.Select(g => (g.Key, (string?)g.If)), picked, Pipes));
+        applied.AddRange(macros.Where(g => inertMacros.Contains(g.Key)));
+
+        var snippets = ready.Where(g => g.Kind == TemplatePreviewGateKind.Snippet).ToList();
+        var inert = new HashSet<string>(Judge(() => WorkflowInlineGates.InertSnippets(snippets.Select(g => (g.Key, (string?)g.If)), picked, Pipes)), StringComparer.Ordinal);
+        applied.AddRange(snippets.Where(g => inert.Contains(g.Key)));
+
+        // A folder item's gate is judged with the item bound (the starter's fan filter).
+        foreach (var gate in ready.Where(g => g.Kind == TemplatePreviewGateKind.Item))
+        {
+            var item = picked.Folders.GetValueOrDefault(gate.Owner)?.FirstOrDefault(i => i.Id == gate.Key[(gate.Owner.Length + 1)..]);
+            if (item is null)
+            {
+                continue;
+            }
+
+            var bound = picked with { Item = new TemplateFanItem(item.Id, item.Name, Text: item.Text) };
+            var holds = Judge(() => WorkflowConditionAt25.Holds($"Snippet folder '{gate.Owner}' item '{item.Id}' if", gate.If, bound, Pipes) ? new HashSet<string>(StringComparer.Ordinal) : new HashSet<string>(StringComparer.Ordinal) { gate.Key });
+            if (holds.Count > 0)
+            {
+                inert.Add(gate.Key);
+                applied.Add(gate);
+            }
+        }
+
+        inertSnippets = inert;
+        return new TemplatePreviewJudgement(
+            picked with { SuppressedPrompts = suppressed, InertMacros = inertMacros, InertSnippets = inertSnippets },
+            applied,
+            waiting);
     }
 
     /// <summary>What the model is told where <c>macro.&lt;id&gt;.prompt</c> is read — the instruction rendered over the scope, then the mechanics sentence; the renderer's own sentence when the instruction does not render.</summary>
@@ -180,3 +348,20 @@ public static class TemplatePreviewScope
                 ? new JsonArray(shape.Items is null ? JsonValue.Create(Token($"{path}[0]")) : ShapeCarrier($"{path}[0]", shape.Items))
                 : JsonValue.Create(Token(path));
 }
+
+/// <summary>#1205: the kind of gate a preview judges — a node instance's `if`, a macro's own, a standalone snippet's, a folder item's.</summary>
+public enum TemplatePreviewGateKind { Instance, Macro, Snippet, Item }
+
+/// <summary>
+/// #1205: one gate a preview may judge — its kind, its owner (the node of an instance, the folder of
+/// an item, else the key), its key (a macro id, a snippet id, &lt;folder&gt;/&lt;item&gt;), its text (empty for
+/// an ungated instance, which holds), and what it reads: the inputs, the nodes, whether it reads the
+/// fan item. A gate is judged only once every read has a pick.
+/// </summary>
+public sealed record TemplatePreviewGate(TemplatePreviewGateKind Kind, string Owner, string Key, string If, IReadOnlySet<string> Inputs, IReadOnlySet<string> Nodes, bool ReadsItem);
+
+/// <summary>#1205: a gate waiting on picks — the reads it needs, spelled `input.&lt;id&gt;`, `node.&lt;id&gt;`, `item`.</summary>
+public sealed record TemplatePreviewWaitingGate(TemplatePreviewGate Gate, IReadOnlyList<string> Missing);
+
+/// <summary>#1205: the picked scope with the judged sets, the gates applied (they did not hold) and the gates waiting on picks.</summary>
+public sealed record TemplatePreviewJudgement(TemplateRenderScope Scope, IReadOnlyList<TemplatePreviewGate> Applied, IReadOnlyList<TemplatePreviewWaitingGate> Waiting);
