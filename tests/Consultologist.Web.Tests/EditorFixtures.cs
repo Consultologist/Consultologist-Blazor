@@ -970,6 +970,27 @@ public static class EditorFixtures
     }
 
     /// <summary>
+    /// v26 (#1205): the V26Macros fixture with the three gates set — the closing macro's header if and
+    /// the standards snippet's header if both `input.kind == "new"` (sections/plan keeps its migrated if;
+    /// section_notes' tool_note instance its migrated `item.id == "hpi"`), and the assessment prompt
+    /// reading macro.closing.content and iterating snippet.sections by label, so every gate shows in
+    /// one preview. A real 26 package.
+    /// </summary>
+    public static WorkflowPackageContentResponse V26Gated()
+    {
+        var at26 = V26Macros();
+        var files = new Dictionary<string, string>(at26.Files, StringComparer.Ordinal)
+        {
+            ["macros/closing.md"] = Consultologist.PackageFormat.WorkflowTextHeaders.Compose(new("Closing", "input.kind == \"new\"", "Add a closing line if the plan changed.")) + "Closing: {{ profile.name }}.",
+            ["snippets/standards.md"] = Consultologist.PackageFormat.WorkflowTextHeaders.Compose(new("Standards", "input.kind == \"new\"")) + "Follow the local standards.",
+        };
+        files["prompts/assessment.md"] += "\n{{ macro.closing.content }}\n{{ for s in snippet.sections }}{{ s.label }},{{ end }}";
+        // The loop's body reads its instance's prompt, so the instance gate shows in the preview.
+        files["prompts/section.md"] += "\n{{ macro.tool_note.prompt }}";
+        return new(at26.Name, at26.Version, 26, at26.Manifest, files);
+    }
+
+    /// <summary>
     /// v26 (#1163): the V26 fixture with snippets/standards.md carrying a header the library
     /// refuses — `name` is not a header key (the 25 word, hand-written).
     /// </summary>

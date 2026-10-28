@@ -320,9 +320,10 @@ public static class WorkflowManifestReader
     /// node-level when. A bare read writes the string form, an adorned one the
     /// object. Mirror of WorkflowNodeMacroSpec.
     /// </summary>
-    public sealed record NodeMacroView(string Id, string? At = null, string? When = null, bool? Optional = null, string? ForItem = null)
+    /// v26 (#1205): <paramref name="If"/> — the instance's gate keyed if at 26 (when and forItem retired there).
+    public sealed record NodeMacroView(string Id, string? At = null, string? When = null, bool? Optional = null, string? ForItem = null, string? If = null)
     {
-        public bool IsBare => At is null && When is null && Optional is null && ForItem is null;
+        public bool IsBare => At is null && When is null && Optional is null && ForItem is null && If is null;
 
         public bool IsAfter => At == Consultologist.PackageFormat.WorkflowNodeMacroSpec.After;
     }
@@ -1181,7 +1182,8 @@ public static class WorkflowManifestReader
                     ReadString(item, "at"),
                     ReadString(item, "when"),
                     ReadBool(item, "optional"),
-                    ReadString(item, "forItem")));
+                    ReadString(item, "forItem"),
+                    ReadString(item, "if")));
             }
         }
 
