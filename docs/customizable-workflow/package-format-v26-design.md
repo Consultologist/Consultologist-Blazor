@@ -961,6 +961,24 @@ members (Scriban's array members), so `snippet.sections.hpi.content` renders bes
 a gated-off item's direct read renders empty through the engine's key (#1179). The editor's palette choice is
 M33's.)*
 
+*(#1207, 2026-10-27 — the editor's half. The read palette at 26 lists each folder's items under the folder's
+loop entry, **one pick per item** — `snippet.<folder>.<item>.content` labelled with the header's label (decided
+2026-10-27: `.label` and `.id` stay typable, the list stays one row per item) — and, new, a macro folder's loop
+(`for m in macro.<folder>`) followed by its items with the macro idiom (`.content`; `.prompt (inline)` outside a
+macro text); the reading item never offers itself; the fan item's member reads `item.label` at 26. The read rows
+know the key shape: a `<folder>/<item>` key in `Snippets` / `MacroContents` / `MacroPrompts` is an item read —
+*"Item 'hpi' of folder 'sections' · reads snippet.sections.hpi.content · directly"* (a macro item *"Macro item
+'hpi' of folder 'notes'"*, inline when `.prompt`), opening the item's pane, the member spelled with dots so its
+guard site matches; a `MacroFolders` row *"Macro folder 'notes' · iterates its items"* joins the snippet folder's.
+The snippet item pane lists its **direct readers** ("Read directly by", *reads it directly*) beside the folder's,
+and the macro-folder item pane gains its readers (inline and text reads keyed `<folder>/<item>`, then every
+template iterating the folder). Two leftovers closed on the way: the editor's walk never passed the resolved
+macro folders to `WalkAll`, so a macro folder's items were not walked in the editor (#1099); and the preview
+scope was never **labelled** at 26 — `TemplatePreviewScope.Tokens` now sets `Labelled` and the snippets' header
+labels and names the fan item's token `item.label`, so `item.label`, `s.label`, a direct read's `.label` and a
+macro item's `.instruction` render in the preview as the engine renders them. Below 26 the palette is unchanged
+and the spelling is the library's refusal.)*
+
 *(#1059, 2026-10-26 — a renderer pipe takes the node, as § 7.1 says. The walker at 26 judges a bare node
 operand by its format: the edge and the rendering are recorded on the node (`Rendered` carries the node, the
 pipe and the guard as before); `node.x.content | pipe` is refused with the replacement, `node.x.value | pipe`
