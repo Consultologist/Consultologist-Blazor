@@ -170,6 +170,8 @@ public class V26JobStartTests
     [Fact]
     public void AnIfNode_DecidedAtStart_PrunesTheUntakenBody_AndKeepsTheRow()
     {
+        // The record's contract (provenance v2026.10.9, #1223): a pruned body has no
+        // descriptor of its own; its flow row's body names it and branch says why.
         var package = Package(m => WithTriage(m));
 
         var then = ConsultGenerationJobStarter.DecideFireSet(package, NewPatient, null, Scope(package, NewPatient));

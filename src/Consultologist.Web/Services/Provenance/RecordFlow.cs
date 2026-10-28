@@ -6,8 +6,9 @@ namespace Consultologist.Web.Services.Provenance;
 /// v26 (#1208, record storage 8): the one reading of a record's flow rows — a loop row
 /// (<c>kind: for</c>) is the fan its body nodes run under, an if/case row names the branch
 /// it took, and a body id of an untaken branch that has neither a descriptor nor an output
-/// row is pruned (the engine lists it in the flow row's <c>body</c> alone; the registry's
-/// sentence lists it in <c>nodes</c> too — either way it is drawn here). Below 8 a node's
+/// row is pruned (the engine lists it in the flow row's <c>body</c> alone, and the registry
+/// says the same since provenance v2026.10.9, #1223; a listed descriptor with no output row
+/// is still read as pruned, for a record that might carry one). Below 8 a node's
 /// own <c>forEach</c> is the fan and none of this applies.
 /// </summary>
 public static class RecordFlow
