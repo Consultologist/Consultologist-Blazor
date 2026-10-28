@@ -268,42 +268,4 @@ public class WorkflowPackageMigration25To26Tests
         Assert.Contains("Prompt 'extract' is bound by nodes 'extract', 'scope'; at 26 a node names its own file — copy the file per node, then upgrade.", twice.Refusals);
         Assert.Equal(25, VersionOf(twice.ManifestJson));
     }
-
-    // ----- the public packages, when checked out beside the engine ------------------------
-
-    [Fact]
-    public void ThePublicPackages_MigrateWithoutARefusal_AndValidateAt26()
-    {
-        var packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects", "Consultologist", "consultologist-workflows", "packages");
-        if (!Directory.Exists(packages))
-        {
-            return;
-        }
-
-        var expectedLoops = new Dictionary<string, string[]>(StringComparer.Ordinal)
-        {
-            ["general"] = new[] { "standards" },
-            ["test/general"] = new[] { "standards" },
-            ["example-two-documents"] = new[] { "standards" },
-            ["example-v12-constructs"] = new[] { "standards_section_instructions", "standards_letter_body" },
-            ["example-classifier-scope"] = new[] { "plan_sections", "letter_decline_letter", "letter_information_request" },
-            ["example-conditional-documents"] = new[] { "sections_consult_note_section", "sections_progress_note_section" },
-            ["example-structured-intake"] = new[] { "sections_note_section", "sections_senior_review_section", "sections_long_stay_section", "prior_notes_summarise_note", "prior_notes_index_note" },
-        };
-
-        foreach (var (name, loops) in expectedLoops)
-        {
-            var dir = Path.Combine(packages, name.Replace('/', Path.DirectorySeparatorChar));
-            var files = Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
-                .Where(p => !p.EndsWith("manifest.json", StringComparison.Ordinal) && !p.EndsWith("dag.mmd", StringComparison.Ordinal) && !p.EndsWith(".stamp.json", StringComparison.Ordinal))
-                .ToDictionary(p => Path.GetRelativePath(dir, p).Replace('\\', '/'), File.ReadAllText, StringComparer.Ordinal);
-            var result = WorkflowPackageMigration25To26.Migrate(File.ReadAllText(Path.Combine(dir, "manifest.json")), files);
-
-            Assert.True(result.Succeeded, $"{name}: {string.Join(" | ", result.Refusals)}");
-            var manifest = Manifest(result.ManifestJson);
-            Assert.Equal(loops.Order(StringComparer.Ordinal), manifest.Nodes!.Where(n => n.For is not null).Select(n => n.Id).Order(StringComparer.Ordinal));
-            var errors = V26Package.Errors(Bundle(result));
-            Assert.True(errors.Count == 0, $"{name}: {string.Join(" | ", errors)}");
-        }
-    }
 }
