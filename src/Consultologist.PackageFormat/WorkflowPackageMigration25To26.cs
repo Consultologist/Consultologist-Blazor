@@ -38,7 +38,6 @@ public static class WorkflowPackageMigration25To26
 {
     private static readonly JsonSerializerOptions WriteOptions = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     private static readonly JsonSerializerOptions ReadOptions = new(JsonSerializerDefaults.Web);
-    private static readonly JsonSerializerOptions HeaderJson = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
     private static readonly Regex NodeReference = new(@"\bnode\.([a-z][a-z0-9_]*)\b", RegexOptions.Compiled);
     private static readonly Regex PipeOnContent = new(@"\bnode\.([a-z][a-z0-9_]*)\.content\s*\|\s*(concept_bullets|concept_context)\b", RegexOptions.Compiled);
     private static readonly Regex ForVariable = new(@"\{\{-?\s*for\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\s+(?:snippet|macro)\.[a-z][a-z0-9_]*\s*-?\}\}", RegexOptions.Compiled);
@@ -564,32 +563,9 @@ public static class WorkflowPackageMigration25To26
         return items;
     }
 
-    /// <summary>The JSON header a 26 text opens with (§ 5.1): the first line `{`, one key per line, the last `}`.</summary>
-    public static string HeaderOf(string label, string? @if = null, string? instruction = null, bool? optional = null, bool? @default = null)
-    {
-        var lines = new List<string> { $"  \"label\": {JsonSerializer.Serialize(label, HeaderJson)}" };
-        if (instruction is not null)
-        {
-            lines.Add($"  \"instruction\": {JsonSerializer.Serialize(instruction, HeaderJson)}");
-        }
-
-        if (optional is not null)
-        {
-            lines.Add($"  \"optional\": {(optional.Value ? "true" : "false")}");
-        }
-
-        if (@default is not null)
-        {
-            lines.Add($"  \"default\": {(@default.Value ? "true" : "false")}");
-        }
-
-        if (@if is not null)
-        {
-            lines.Add($"  \"if\": {JsonSerializer.Serialize(@if, HeaderJson)}");
-        }
-
-        return "{\n" + string.Join(",\n", lines) + "\n}\n";
-    }
+    /// <summary>The JSON header a 26 text opens with (§ 5.1) — <see cref="WorkflowTextHeaders.Compose"/>'s bytes.</summary>
+    public static string HeaderOf(string label, string? @if = null, string? instruction = null, bool? optional = null, bool? @default = null) =>
+        WorkflowTextHeaders.Compose(new WorkflowTextHeader(label, @if, instruction, optional, @default));
 
     /// <summary>A label invented from an id: `snomed_tool_guidance` → `Snomed tool guidance`.</summary>
     public static string Humanise(string id)

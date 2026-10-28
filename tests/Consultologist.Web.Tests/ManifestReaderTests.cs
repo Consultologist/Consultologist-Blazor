@@ -319,6 +319,73 @@ public class ManifestReaderTests
         Assert.Null(macros[1].Instruction);
     }
 
+    // ----- v26 #1163: the headers carry the facts; the macros map; a folder's list index -----
+
+    private static readonly Dictionary<string, string> HeadedFiles = new(StringComparer.Ordinal)
+    {
+        ["snippets/standards.md"] = "{\n  \"label\": \"Standards\",\n  \"if\": \"input.kind == \\\"new\\\"\"\n}\nFollow the standards.",
+        ["macros/closing.md"] = "{\n  \"label\": \"Closing\",\n  \"instruction\": \"Close it.\",\n  \"optional\": true,\n  \"default\": false,\n  \"if\": \"input.kind == \\\"new\\\"\"\n}\nClosing.",
+        ["macros/notes/index.json"] = "[ { \"id\": \"hpi\", \"file\": \"hpi.md\" } ]",
+        ["macros/notes/hpi.md"] = "{\n  \"label\": \"HPI notes\",\n  \"instruction\": \"Note it.\"\n}\nNotes.",
+        ["snippets/bad.md"] = "{\n  \"name\": \"Bad\"\n}\nBad.",
+        ["snippets/bare.md"] = "No header here.",
+    };
+
+    private static readonly string HeadedManifest = """
+        { "snippets": { "standards": "snippets/standards.md", "bad": "snippets/bad.md", "bare": "snippets/bare.md" },
+          "macros": { "closing": "macros/closing.md", "notes": "macros/notes/" } }
+        """;
+
+    [Fact]
+    public void ReadMacros_At26_ReadsTheHeader_AndSkipsAFolder()
+    {
+        var macro = Assert.Single(WorkflowManifestReader.ReadMacros(Parse(HeadedManifest), HeadedFiles));
+
+        Assert.Equal(("closing", "Closing", "macros/closing.md", "Close it.", (bool?)true, (bool?)false, "input.kind == \"new\""),
+            (macro.Id, macro.Label, macro.File, macro.Instruction, macro.Optional, macro.Default, macro.If));
+    }
+
+    [Fact]
+    public void ReadCollections_OverTheMacrosMap_ReadsAMacroFoldersItems_WithTheMacroKeys()
+    {
+        var folder = Assert.Single(WorkflowManifestReader.ReadCollections(Parse(HeadedManifest), HeadedFiles, "macros", Consultologist.PackageFormat.WorkflowTextKind.Macro));
+
+        Assert.Equal(Consultologist.PackageFormat.WorkflowTextKind.Macro, folder.Kind);
+        var item = Assert.Single(folder.Items);
+        Assert.Equal(("hpi", "HPI notes", "macros/notes/hpi.md", "Note it."), (item.Id, item.Name, item.File, item.Instruction));
+    }
+
+    [Fact]
+    public void ReadScalarEntries_At26_ReadsLabelAndIf_FromTheHeader()
+    {
+        var scalars = WorkflowManifestReader.ReadScalarEntries(Parse(HeadedManifest), HeadedFiles, WorkflowManifestReader.SnippetsKey);
+
+        var standards = scalars.Single(s => s.Id == "standards");
+        Assert.Equal(("Standards", "input.kind == \"new\""), (standards.Label, standards.If));
+        // A refused header leaves the label and if unread — the pane shows the sentence.
+        Assert.Null(scalars.Single(s => s.Id == "bad").Label);
+    }
+
+    [Fact]
+    public void ReadTextHeaders_ReadsEveryHeadedFile_AndNamesWhatIsRefused()
+    {
+        var headers = WorkflowManifestReader.ReadTextHeaders(Parse(HeadedManifest), HeadedFiles);
+
+        Assert.Equal(new[] { "macros/closing.md", "macros/notes/hpi.md", "snippets/bad.md", "snippets/bare.md", "snippets/standards.md" }, headers.Keys.Order(StringComparer.Ordinal));
+        Assert.False(headers["snippets/standards.md"].Refused);
+        Assert.Equal("Follow the standards.", headers["snippets/standards.md"].Body);
+        Assert.Equal(Consultologist.PackageFormat.WorkflowTextKind.Macro, headers["macros/notes/hpi.md"].Kind);
+
+        var bad = headers["snippets/bad.md"];
+        Assert.True(bad.Refused);
+        Assert.Contains(bad.Errors, e => e.StartsWith("snippets/bad.md header declares 'name', which is not a header key", StringComparison.Ordinal));
+        Assert.Equal(HeadedFiles["snippets/bad.md"], bad.Body);
+
+        var bare = headers["snippets/bare.md"];
+        Assert.True(bare.Refused);
+        Assert.Equal(new[] { "snippets/bare.md has no header; a snippet file opens with { \"label\": … }." }, bare.Errors);
+    }
+
     [Fact]
     public void ReadResults_CarriesADeliverableInstancesAt_AndItIsNotBare()
     {

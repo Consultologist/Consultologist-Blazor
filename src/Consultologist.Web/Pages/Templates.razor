@@ -456,7 +456,7 @@
                             <button type="button"
                                     class="editor-nav__item @(selectedKey == navMacro.File ? "editor-nav__item--selected" : "")"
                                     @onclick="() => Select(navMacro.File)">
-                                <span class="editor-nav__dot">@(edits.ContainsKey(navMacro.File) || AddedMacroForFile(navMacro.File) != null ? "●" : "")</span>
+                                <span class="editor-nav__dot">@(edits.ContainsKey(navMacro.File) || AddedMacroForFile(navMacro.File) != null || headerEdits.ContainsKey(navMacro.File) ? "●" : "")</span>
                                 <span>@navMacro.Id</span>
                             </button>
                             @* #936 follow-up: a macro is removed from its own pane (like a node),
@@ -472,6 +472,14 @@
                                 <button type="button" class="editor-nav__restore" @onclick="() => RestoreDeclaredMacroAsync(removedMacroId)">(restore)</button>
                             </div>
                         }
+                        @* v26 (#1163): macro folders ({{ for m in macro.<folder> }}) with the Snippets' folder idiom. *@
+                        @if (At26)
+                        {
+                            @foreach (var macroFolder in MacroCollections)
+                            {
+                                @FolderNav(macroFolder)
+                            }
+                        }
                         @if (EffectiveSpecVersion >= 11)
                         {
                             <button type="button"
@@ -479,6 +487,15 @@
                                     @onclick="() => Select(AddMacroKey)">
                                 <span class="editor-nav__dot"></span>
                                 <span>+ Macro</span>
+                            </button>
+                        }
+                        @if (At26)
+                        {
+                            <button type="button"
+                                    class="editor-nav__item editor-nav__add @(selectedKey == AddMacroCollectionKey ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(AddMacroCollectionKey)">
+                                <span class="editor-nav__dot"></span>
+                                <span>+ Macro folder</span>
                             </button>
                         }
                     }
@@ -666,92 +683,13 @@
                         <span class="editor-nav__dot"></span>
                         <span>@(At25 ? "+ Snippet" : "+ Data value")</span>
                     </button>
-                    @if (!EffectiveCollections.Any())
+                    @if (!SnippetCollections.Any())
                     {
                         <EmptyState Compact Class="editor-nav__empty" Description="@(At25 ? "No snippet folders yet." : "No data folders yet.")" />
                     }
-                    @foreach (var collection in EffectiveCollections)
+                    @foreach (var collection in SnippetCollections)
                     {
-                        <details class="editor-nav__folder" open>
-                            <summary class="editor-nav__item editor-nav__folder-summary">
-                                <span class="editor-nav__chevron" aria-hidden="true">&#x203A;</span>
-                                <span class="editor-nav__dot">@(CollectionHasPending(collection) ? "●" : "")</span>
-                                <span>@collection.Id (@CollectionCount(collection))</span>
-                            </summary>
-                            @* #1103: the live items in the folder's shown order — index.json's array is the
-                               fan's run order — each row a label button with move arrows; removed items after. *@
-                            @{
-                                var orderedRows = OrderedItems(collection);
-                                var orderedCollection = collection;
-                            }
-                            @for (var rowIndex = 0; rowIndex < orderedRows.Count; rowIndex++)
-                            {
-                                var (item, added) = orderedRows[rowIndex];
-                                var rowId = item?.Id ?? added!.Id;
-                                var rowKey = item?.File ?? added!.Key;
-                                var rowName = item is not null ? StandardName(item) : added!.Name;
-                                var rowDot = item is not null
-                                    ? (edits.ContainsKey(item.File) || standardNameEdits.ContainsKey(item.File) || itemWhenEdits.ContainsKey(item.File) ? "●" : "")
-                                    : "●";
-                                var isFirst = rowIndex == 0;
-                                var isLast = rowIndex == orderedRows.Count - 1;
-                                <div class="editor-nav__row editor-nav__item--nested" data-folder-item="@rowId">
-                                    <button type="button"
-                                            class="editor-nav__item editor-nav__item--nested @(selectedKey == rowKey ? "editor-nav__item--selected" : "")"
-                                            @onclick="() => Select(rowKey)">
-                                        <span class="editor-nav__dot">@rowDot</span>
-                                        <span>@rowName</span>
-                                    </button>
-                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move up"
-                                                  aria-label="@($"Move item {rowName} up")"
-                                                  Disabled="@isFirst"
-                                                  IconStart="@(new Icons.Regular.Size16.ArrowUp())"
-                                                  @onclick="() => MoveItemAsync(orderedCollection, rowId, -1)" />
-                                    <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move down"
-                                                  aria-label="@($"Move item {rowName} down")"
-                                                  Disabled="@isLast"
-                                                  IconStart="@(new Icons.Regular.Size16.ArrowDown())"
-                                                  @onclick="() => MoveItemAsync(orderedCollection, rowId, 1)" />
-                                </div>
-                            }
-                            @foreach (var item in collection.Items.Where(i => removedFiles.Contains(i.File)))
-                            {
-                                <div class="editor-nav__item editor-nav__item--nested editor-nav__item--removed">
-                                    <span class="editor-nav__dot"></span>
-                                    <span class="editor-nav__strike">@item.Name</span>
-                                    <button type="button" class="editor-nav__restore" @onclick="() => RestoreItem(item.File)">(restore)</button>
-                                </div>
-                            }
-                            <button type="button"
-                                    class="editor-nav__item editor-nav__item--nested editor-nav__add @(selectedKey == NewKeyFor(collection.Id) ? "editor-nav__item--selected" : "")"
-                                    @onclick="() => Select(NewKeyFor(collection.Id))">
-                                <span class="editor-nav__dot"></span>
-                                <span>+ Add item</span>
-                            </button>
-                            @if (CollectionHasOrderEdits(collection))
-                            {
-                                <div class="editor-nav__item editor-nav__item--nested">
-                                    <span class="editor-nav__dot"></span>
-                                    <button type="button" class="editor-nav__restore editor-nav__reset-order"
-                                            aria-label="@($"Reset order of {collection.Id}")"
-                                            @onclick="() => ResetItemOrderAsync(orderedCollection.Id)">(reset order)</button>
-                                </div>
-                            }
-                            @if (addedCollections.Contains(collection.Id))
-                            {
-                                <div class="editor-nav__item editor-nav__item--nested">
-                                    <span class="editor-nav__dot"></span>
-                                    <button type="button" class="editor-nav__restore" @onclick="() => RemoveCollectionAsync(collection.Id)">(remove folder)</button>
-                                </div>
-                            }
-                            @if (CollectionIsUnused(collection.Id))
-                            {
-                                <div class="editor-nav__item editor-nav__item--nested">
-                                    <span class="editor-nav__dot"></span>
-                                    <span class="muted-text">@(At25 ? "not fanned or iterated by anything yet" : "not used by any workflow node yet")</span>
-                                </div>
-                            }
-                        </details>
+                        @FolderNav(collection)
                     }
                     <button type="button"
                             class="editor-nav__item editor-nav__add @(selectedKey == AddCollectionKey ? "editor-nav__item--selected" : "")"
@@ -853,6 +791,36 @@
                             </FluentButton>
                         </div>
                     }
+                    else if (selectedKey == AddMacroCollectionKey)
+                    {
+                        @* v26 (#1163): a macro folder — read as {{ for m in macro.<folder> }}, each item a macro with its own header. *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">New macro folder</h3>
+                                <p class="muted-text">
+                                    A folder of macros a template iterates (<code>{{ for m in macro.&lt;folder&gt; }}</code>)
+                                    or reads one at a time (<code>macro.&lt;folder&gt;.&lt;item&gt;</code>) — each item a macro
+                                    with its own label, instruction and gate in its file's header. Add at least one item
+                                    before publishing.
+                                </p>
+                            </div>
+                        </div>
+                        @if (newMacroCollectionError != null)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false">@newMacroCollectionError</FluentMessageBar>
+                        }
+                        <div class="new-item-fields">
+                            <label class="input-field">
+                                <span>folder id (snake_case)</span>
+                                <FluentTextField @bind-Value="newMacroCollectionId" Placeholder="section_notes" aria-label="New macro folder id" />
+                            </label>
+                        </div>
+                        <div class="action-row">
+                            <FluentButton Appearance="Appearance.Accent" @onclick="AddMacroCollectionAsync">
+                                Create macro folder
+                            </FluentButton>
+                        </div>
+                    }
                     else if (selectedKey == AddScalarKey)
                     {
                         <div class="pane-header">
@@ -885,6 +853,14 @@
                                 <span>@(At25 ? "snippet id (snake_case)" : "value id (lowercase, digits, underscores, hyphens)")</span>
                                 <FluentTextField @bind-Value="newScalarId" Placeholder="@(At25 ? "standards" : "specialty")" />
                             </label>
+                            @if (At26)
+                            {
+                                @* v26 (#1163): the file opens with a header naming its label — blank defaults from the id. *@
+                                <label class="input-field">
+                                    <span>label (optional — defaults from the id)</span>
+                                    <FluentTextField @bind-Value="newScalarLabel" Placeholder="Standards" aria-label="New snippet label" />
+                                </label>
+                            }
                         </div>
                         <div class="action-row">
                             <FluentButton Appearance="Appearance.Accent" @onclick="AddScalarAsync">
@@ -894,18 +870,18 @@
                     }
                     else if (SelectedScalar() is { } scalar)
                     {
-                        <WorkflowEditorPane Title="@scalar.Id"
+                        <WorkflowEditorPane Title="@(At26 ? ScalarLabel(scalar) : scalar.Id)"
                                             EditorExtra="@(At25 ? InsertReferencePalette((scalar.Path, null, false)) : null)"
                                             Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(scalar.Path, $"Snippet '{scalar.Id}'", GetText(scalar.Path))) : null)"
                                             Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? "— new, unpublished" : string.Empty)"
                                             IdentityId="@scalar.Id"
                                             IdentityFile="@scalar.Path"
-                                            EditLabel="@(At25 ? "Snippet" : "Value")"
+                                            EditLabel="@(HeaderRefused(scalar.Path) ? "File (header refused)" : At25 ? "Snippet" : "Value")"
                                             Text="@GetText(scalar.Path)"
                                             Modified="@ScalarHasPending(scalar)"
                                             TextChanged="@(value => OnTextChangedAsync(scalar.Path, value))">
                             <HeaderActions>
-                                @PaneDiscardButton(scalar.Path, ScalarCanDiscard(scalar), () => RevertFileEdits(scalar.Path))
+                                @PaneDiscardButton(scalar.Path, ScalarCanDiscard(scalar), () => RevertScalarEdits(scalar.Path))
                                 <FluentButton Appearance="Appearance.Outline"
                                               Disabled="@(!ScalarIsUnused(scalar.Id))"
                                               @onclick="() => RemoveScalarAsync(scalar.Id)">
@@ -913,6 +889,23 @@
                                 </FluentButton>
                             </HeaderActions>
                             <ChildContent>
+                                @* v26 (#1163): the snippet's label and if live in its file's header — edited here,
+                                   written ahead of the text; a refused header shows the file whole with the sentence. *@
+                                @if (At26)
+                                {
+                                    @HeaderRefusedBar(scalar.Path)
+                                    @if (!HeaderRefused(scalar.Path))
+                                    {
+                                        <label class="node-field">
+                                            <span>label</span>
+                                            <input class="node-field__input"
+                                                   value="@ScalarLabel(scalar)"
+                                                   @onchange="args => RelabelScalarAsync(scalar, args.Value?.ToString())"
+                                                   aria-label="@($"Label for snippet {scalar.Id}")" />
+                                        </label>
+                                        @ConditionField(("if", ScalarIfTarget(scalar), "Always"))
+                                    }
+                                }
                                 @* Said before the button is reached for, not after
                                    it is pressed: deleting a bound value produces a
                                    package the server refuses to publish. *@
@@ -955,11 +948,11 @@
                     {
                         <WorkflowEditorPane Title="@addedItem.Name"
                                             EditorExtra="@(At25 ? InsertReferencePalette((AddedPath(addedItem), null, false)) : null)"
-                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(AddedPath(addedItem), $"Snippet '{addedItem.Collection}/{addedItem.Id}'", addedItem.Content)) : null)"
+                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(AddedPath(addedItem), $"{(IsMacroCollection(addedItem.Collection) ? "Macro" : "Snippet")} '{addedItem.Collection}/{addedItem.Id}'", addedItem.Content)) : null)"
                                             Subtitle="— new, unpublished"
                                             IdentityId="@addedItem.Id"
                                             IdentityFile="@AddedPath(addedItem)"
-                                            EditLabel="@ItemNoun"
+                                            EditLabel="@ItemNounOf(addedItem.Collection)"
                                             Text="@addedItem.Content"
                                             Modified="true"
                                             TextChanged="@(async value => { addedItem.Content = value; await PendingChangedAsync(); })">
@@ -969,10 +962,26 @@
                                 </FluentButton>
                             </HeaderActions>
                             <ChildContent>
-                                @if (At25)
+                                @if (At26 && IsMacroCollection(addedItem.Collection))
+                                {
+                                    @* v26 (#1163): a macro folder's item is a macro — its header's instruction, optional/default and if. *@
+                                    <label class="input-field macro-instruction-field">
+                                        <span>instruction</span>
+                                        <FluentTextArea class="macro-instruction" Rows="4"
+                                                        Value="@(addedItem.Instruction ?? string.Empty)"
+                                                        ValueChanged="@(async v => { addedItem.Instruction = v ?? string.Empty; await CommitDeclarationAsync(); })"
+                                                        aria-label="@($"Instruction for macro item {addedItem.Collection}/{addedItem.Id}")" />
+                                    </label>
+                                    @MacroItemChoiceRow((addedItem.Collection, addedItem.Id, addedItem.Optional, addedItem.Default,
+                                        new Func<bool, Task>(async optional => { addedItem.Optional = optional; addedItem.Default = optional ? addedItem.Default : null; await CommitDeclarationAsync(); }),
+                                        new Func<string?, Task>(async raw => { addedItem.Default = raw switch { "true" => true, "false" => false, _ => null }; await CommitDeclarationAsync(); })))
+                                    <p class="muted-text">Read as <code>m.content</code> where <code>{{ for m in macro.@(addedItem.Collection) }}</code> iterates, or directly as <code>macro.@(addedItem.Collection).@(addedItem.Id).content</code>.</p>
+                                    @ConditionField(("if", AddedItemWhenTarget(addedItem), "Always"))
+                                }
+                                else if (At25)
                                 {
                                     <p class="muted-text">Read as <code>item.content</code> by the node fanning '@addedItem.Collection'.</p>
-                                    @ConditionField(("Included when", AddedItemWhenTarget(addedItem), "Every run"))
+                                    @ConditionField((At26 ? "if" : "Included when", AddedItemWhenTarget(addedItem), At26 ? "Always" : "Every run"))
                                     @SnippetReadersList((addedItem.Collection, true))
                                 }
                                 else
@@ -3180,33 +3189,60 @@
                     {
                         <WorkflowEditorPane Title="@StandardName(standard)"
                                             EditorExtra="@(At25 ? InsertReferencePalette((standard.File, null, false)) : null)"
-                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(standard.File, $"Snippet '{FolderOfItem(standard.File)}/{standard.Id}'", GetText(standard.File))) : null)"
+                                            Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(standard.File, $"{(IsMacroCollection(FolderOfItem(standard.File)) ? "Macro" : "Snippet")} '{FolderOfItem(standard.File)}/{standard.Id}'", GetText(standard.File))) : null)"
                                             IdentityId="@standard.Id"
                                             IdentityFile="@standard.File"
-                                            EditLabel="@ItemNoun"
+                                            EditLabel="@(HeaderRefused(standard.File) ? "File (header refused)" : ItemNounOf(FolderOfItem(standard.File)))"
                                             Text="@GetText(standard.File)"
-                                            Modified="@edits.ContainsKey(standard.File)"
+                                            Modified="@(edits.ContainsKey(standard.File) || headerEdits.ContainsKey(standard.File))"
                                             TextChanged="@(value => OnTextChangedAsync(standard.File, value))">
                             <HeaderActions>
-                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File) || itemWhenEdits.ContainsKey(standard.File), () => RevertItemEdits(standard.File))
+                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File) || itemWhenEdits.ContainsKey(standard.File) || headerEdits.ContainsKey(standard.File), () => RevertItemEdits(standard.File))
                                 <FluentButton Appearance="Appearance.Outline" @onclick="() => RemoveItemAsync(standard.File)">
                                     Remove
                                 </FluentButton>
                             </HeaderActions>
                             <ChildContent>
-                                @* #946: the standard's display name — an editable index.json field. *@
-                                <label class="node-field">
-                                    <span>name</span>
-                                    <input class="node-field__input"
-                                           value="@StandardName(standard)"
-                                           @onchange="args => RenameStandardAsync(standard, args.Value?.ToString())"
-                                           aria-label="@($"Name for {ItemNoun.ToLowerInvariant()} {standard.Id}")" />
-                                </label>
-                                @if (At25)
+                                @* v26 (#1163): the fields write the item file's header; a refused header shows the file whole. *@
+                                @if (At26)
+                                {
+                                    @HeaderRefusedBar(standard.File)
+                                }
+                                @if (!HeaderRefused(standard.File))
+                                {
+                                    @* #946: the standard's display name — an editable index.json field; v26 (#1163) the header's label. *@
+                                    <label class="node-field">
+                                        <span>@(At26 ? "label" : "name")</span>
+                                        <input class="node-field__input"
+                                               value="@StandardName(standard)"
+                                               @onchange="args => RenameStandardAsync(standard, args.Value?.ToString())"
+                                               aria-label="@($"Name for {ItemNoun.ToLowerInvariant()} {standard.Id}")" />
+                                    </label>
+                                }
+                                @if (At26 && IsMacroCollection(FolderOfItem(standard.File)))
+                                {
+                                    @if (!HeaderRefused(standard.File))
+                                    {
+                                        @* v26 (#1163): a macro folder's item is a macro — its header's instruction, optional/default and if. *@
+                                        <label class="input-field macro-instruction-field">
+                                            <span>instruction</span>
+                                            <FluentTextArea class="macro-instruction" Rows="4"
+                                                            Value="@(standard.Instruction ?? string.Empty)"
+                                                            ValueChanged="@(v => SetItemInstructionAsync(standard, v))"
+                                                            aria-label="@($"Instruction for macro item {FolderOfItem(standard.File)}/{standard.Id}")" />
+                                        </label>
+                                        @MacroItemChoiceRow((FolderOfItem(standard.File), standard.Id, standard.Optional == true, standard.Default,
+                                            new Func<bool, Task>(optional => SetItemOptionalAsync(standard, optional)),
+                                            new Func<string?, Task>(raw => SetItemDefaultAsync(standard, raw))))
+                                        <p class="muted-text">Read as <code>m.content</code> where <code>{{ for m in macro.@(FolderOfItem(standard.File)) }}</code> iterates, or directly as <code>macro.@(FolderOfItem(standard.File)).@(standard.Id).content</code>.</p>
+                                        @ConditionField(("if", ItemWhenTarget(standard), "Always"))
+                                    }
+                                }
+                                else if (At25 && !HeaderRefused(standard.File))
                                 {
                                     <p class="muted-text">Read as <code>item.content</code> by the node fanning this folder.</p>
                                     @* v25 (#1008): the item's input-only when — a folder's size is settled at job start. *@
-                                    @ConditionField(("Included when", ItemWhenTarget(standard), "Every run"))
+                                    @ConditionField((At26 ? "if" : "Included when", ItemWhenTarget(standard), At26 ? "Always" : "Every run"))
                                     @SnippetReadersList((FolderOfItem(standard.File), true))
                                 }
                                 else
@@ -3433,9 +3469,9 @@
                                             Footer="@(At25 ? MacroHelp : null)"
                                             IdentityId="@macro.Id"
                                             IdentityFile="@macro.File"
-                                            EditLabel="Macro text"
+                                            EditLabel="@(HeaderRefused(macro.File) ? "File (header refused)" : "Macro text")"
                                             Text="@GetText(macro.File)"
-                                            Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null)"
+                                            Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null || headerEdits.ContainsKey(macro.File))"
                                             TextChanged="@(value => OnTextChangedAsync(macro.File, value))">
                             <HeaderActions>
                                 @PaneDiscardButton(macro.File, MacroCanDiscard(macro), () => RevertMacroEdits(macro.File, macro.Id))
@@ -3449,7 +3485,15 @@
                                 }
                             </HeaderActions>
                             <ChildContent>
-                            @* #946: the macro's display label — an editable manifest field (macros[].label). *@
+                            @* v26 (#1163): the label, instruction, optional/default and if write the macro file's
+                               header; a refused header shows the file whole with the library's sentences. *@
+                            @if (At26)
+                            {
+                                @HeaderRefusedBar(macro.File)
+                            }
+                            @* #946: the macro's display label — an editable manifest field (macros[].label); v26 the header's label. *@
+                            @if (!HeaderRefused(macro.File))
+                            {
                             <label class="node-field">
                                 <span>label</span>
                                 <input class="node-field__input"
@@ -3457,7 +3501,8 @@
                                        @onchange="args => RelabelMacroAsync(macro.Id, args.Value?.ToString())"
                                        aria-label="@($"Label for macro {macro.Id}")" />
                             </label>
-                            @if (At25)
+                            }
+                            @if (At25 && !HeaderRefused(macro.File))
                             {
                                 @* v25 (C3 #1009): the instruction — mandatory at 25; what the model is told
                                    where {{ macro.<id>.prompt }} is read, ahead of the format's mechanics sentence.
@@ -3498,6 +3543,14 @@
                                     }
                                 </div>
                                 <p class="muted-text">Tells the model when and where to write the content; what it sees is above — the instruction rendered, then the format's sentence naming the read <code>{{ macro.@(macro.Id).content }}</code>. Required at specVersion 25.</p>
+                            }
+                            @if (At26 && !HeaderRefused(macro.File))
+                            {
+                                @* v26 (#1163, design § 2.6): the macro's own gate — the header's if. *@
+                                <div class="macro-if" aria-label="@($"Gate of macro {macro.Id}")">
+                                    @ConditionField(("if", MacroIfTarget(macro), "Always"))
+                                    <p class="muted-text">The macro's own gate: when it does not hold, its prompt and content render empty and its placements skip — everywhere. A read can narrow this, never widen it.</p>
+                                </div>
                             }
                             @{
                                 @* #936: which deliverables this macro is attached to — used by the
@@ -3796,7 +3849,8 @@
                                     Remove macro@(At25 ? (MacroPlacedOn(macro.Id) is { Count: > 0 } placedOnList ? $" (removes its instances on {string.Join(", ", placedOnList)})" : "") : attachedTo.Count > 0 ? $" (detaches from: {string.Join(", ", attachedTo)})" : "")
                                 </FluentButton>
                             }
-                            @if (EffectiveSpecVersion >= 12 && !At25)
+                            @* v26 (#1163): the pair returns at 26, written to the header (hidden at 25, where the manifest carried it). *@
+                            @if (EffectiveSpecVersion >= 12 && (!At25 || At26) && !HeaderRefused(macro.File))
                             {
                                 var effectiveMacro = EffectiveMacros.First(m => m.Id == macro.Id);
                                 <div class="macro-optional-row">
@@ -3975,6 +4029,140 @@
   /// the shared <see cref="ConditionEditor"/>. A verbatim or non-empty condition
   /// shows the builder directly — content worth seeing.
   /// </summary>
+  /// <summary>
+  /// A folder in the nav — the Snippets group's idiom (#1103's arrows, restore, "+ Add item",
+  /// reset order, remove a pending folder, the unused note); v26 (#1163) the Macros group
+  /// renders its macro folders through the same fragment (rows carry data-kind).
+  /// </summary>
+  private RenderFragment<WorkflowManifestReader.CollectionView> FolderNav => collection =>
+    @<text>
+                <details class="editor-nav__folder" open>
+                    <summary class="editor-nav__item editor-nav__folder-summary">
+                        <span class="editor-nav__chevron" aria-hidden="true">&#x203A;</span>
+                        <span class="editor-nav__dot">@(CollectionHasPending(collection) ? "●" : "")</span>
+                        <span>@collection.Id (@CollectionCount(collection))</span>
+                    </summary>
+                    @* #1103: the live items in the folder's shown order — index.json's array is the
+                       fan's run order — each row a label button with move arrows; removed items after. *@
+                    @{
+                        var orderedRows = OrderedItems(collection);
+                        var orderedCollection = collection;
+                    }
+                    @for (var rowIndex = 0; rowIndex < orderedRows.Count; rowIndex++)
+                    {
+                        var (item, added) = orderedRows[rowIndex];
+                        var rowId = item?.Id ?? added!.Id;
+                        var rowKey = item?.File ?? added!.Key;
+                        var rowName = item is not null ? StandardName(item) : added!.Name;
+                        var rowDot = item is not null
+                            ? (edits.ContainsKey(item.File) || standardNameEdits.ContainsKey(item.File) || itemWhenEdits.ContainsKey(item.File) || headerEdits.ContainsKey(item.File) ? "●" : "")
+                            : "●";
+                        var isFirst = rowIndex == 0;
+                        var isLast = rowIndex == orderedRows.Count - 1;
+                        <div class="editor-nav__row editor-nav__item--nested" data-folder-item="@rowId" data-kind="@(collection.Kind == PF.WorkflowTextKind.Macro ? "macro" : "snippet")">
+                            <button type="button"
+                                    class="editor-nav__item editor-nav__item--nested @(selectedKey == rowKey ? "editor-nav__item--selected" : "")"
+                                    @onclick="() => Select(rowKey)">
+                                <span class="editor-nav__dot">@rowDot</span>
+                                <span>@rowName</span>
+                            </button>
+                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move up"
+                                          aria-label="@($"Move item {rowName} up")"
+                                          Disabled="@isFirst"
+                                          IconStart="@(new Icons.Regular.Size16.ArrowUp())"
+                                          @onclick="() => MoveItemAsync(orderedCollection, rowId, -1)" />
+                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move down"
+                                          aria-label="@($"Move item {rowName} down")"
+                                          Disabled="@isLast"
+                                          IconStart="@(new Icons.Regular.Size16.ArrowDown())"
+                                          @onclick="() => MoveItemAsync(orderedCollection, rowId, 1)" />
+                        </div>
+                    }
+                    @foreach (var item in collection.Items.Where(i => removedFiles.Contains(i.File)))
+                    {
+                        <div class="editor-nav__item editor-nav__item--nested editor-nav__item--removed">
+                            <span class="editor-nav__dot"></span>
+                            <span class="editor-nav__strike">@item.Name</span>
+                            <button type="button" class="editor-nav__restore" @onclick="() => RestoreItem(item.File)">(restore)</button>
+                        </div>
+                    }
+                    <button type="button"
+                            class="editor-nav__item editor-nav__item--nested editor-nav__add @(selectedKey == NewKeyFor(collection.Id) ? "editor-nav__item--selected" : "")"
+                            @onclick="() => Select(NewKeyFor(collection.Id))">
+                        <span class="editor-nav__dot"></span>
+                        <span>+ Add item</span>
+                    </button>
+                    @if (CollectionHasOrderEdits(collection))
+                    {
+                        <div class="editor-nav__item editor-nav__item--nested">
+                            <span class="editor-nav__dot"></span>
+                            <button type="button" class="editor-nav__restore editor-nav__reset-order"
+                                    aria-label="@($"Reset order of {collection.Id}")"
+                                    @onclick="() => ResetItemOrderAsync(orderedCollection.Id)">(reset order)</button>
+                        </div>
+                    }
+                    @if (addedCollections.Contains(collection.Id) || addedMacroCollections.Contains(collection.Id))
+                    {
+                        <div class="editor-nav__item editor-nav__item--nested">
+                            <span class="editor-nav__dot"></span>
+                            <button type="button" class="editor-nav__restore" @onclick="() => RemoveCollectionAsync(collection.Id)">(remove folder)</button>
+                        </div>
+                    }
+                    @if (CollectionIsUnused(collection.Id))
+                    {
+                        <div class="editor-nav__item editor-nav__item--nested">
+                            <span class="editor-nav__dot"></span>
+                            <span class="muted-text">@(collection.Kind == PF.WorkflowTextKind.Macro ? "not iterated by anything yet" : At25 ? "not fanned or iterated by anything yet" : "not used by any workflow node yet")</span>
+                        </div>
+                    }
+                </details>
+    </text>;
+
+  /// <summary>v26 (#1163): a macro-folder item's optional/default pair — the macro pane's row, on the item (explicit init: optional never invents a default).</summary>
+  private RenderFragment<(string Folder, string Id, bool Optional, bool? Default, Func<bool, Task> SetOptional, Func<string?, Task> SetDefault)> MacroItemChoiceRow => spec =>
+    @<text>
+      <div class="macro-optional-row">
+        <label class="macro-optional">
+          <input type="checkbox"
+                 checked="@spec.Optional"
+                 @onchange="args => spec.SetOptional(args.Value is bool isChecked && isChecked)"
+                 aria-label="@($"Optional for macro item {spec.Folder}/{spec.Id}")" />
+          <span>optional — each run chooses</span>
+        </label>
+        @if (spec.Optional)
+        {
+          <FluentSelect TOption="string" class="binding-row__select macro-default"
+                        Value="@(spec.Default == true ? "true" : spec.Default == false ? "false" : "")"
+                        ValueChanged="@(v => spec.SetDefault(v))"
+                        aria-label="@($"Default for macro item {spec.Folder}/{spec.Id}")">
+            <FluentOption TOption="string" Value="">choose a default…</FluentOption>
+            <FluentOption TOption="string" Value="true">appended unless declined</FluentOption>
+            <FluentOption TOption="string" Value="false">omitted unless asked</FluentOption>
+          </FluentSelect>
+        }
+      </div>
+    </text>;
+
+  /// <summary>
+  /// v26 (#1163): a loaded file whose header the library refuses — the pane shows the file whole
+  /// in the text editor with the library's sentences, and its fields wait until the text parses.
+  /// </summary>
+  private RenderFragment<string> HeaderRefusedBar => file =>
+    @<text>
+      @if (HeaderRefused(file) && headers.TryGetValue(file, out var refusedHeader))
+      {
+        <FluentMessageBar Intent="MessageIntent.Error" AllowDismiss="false" Class="header-refused">
+          <strong>The file's header is refused — fix it in the text below; the fields return once it parses.</strong>
+          <ul>
+            @foreach (var sentence in refusedHeader.Errors)
+            {
+              <li>@sentence</li>
+            }
+          </ul>
+        </FluentMessageBar>
+      }
+    </text>;
+
   private RenderFragment<(string Label, ConditionTarget Target, string RestingLabel)> ConditionField => spec =>
     @<text>
       <div class="condition-field">
@@ -4505,8 +4693,14 @@
         public string Name { get; set; } = string.Empty;
         public string Content { get; set; } = string.Empty;
 
-        /// <summary>v25 (#1008): the item's input-only when, written into index.json; null = always included.</summary>
+        /// <summary>v25 (#1008): the item's input-only when, written into index.json; null = always included.
+        /// v26 (#1163): the item's header <c>if</c>.</summary>
         public string? When { get; set; }
+
+        /// <summary>v26 (#1163): a macro-folder item's header facts — the instruction (born blank, written when non-empty), optional and its default.</summary>
+        public string? Instruction { get; set; }
+        public bool Optional { get; set; }
+        public bool? Default { get; set; }
     }
 
     private readonly List<AddedItem> addedItems = new();
@@ -4515,6 +4709,108 @@
     // New collections (#154): pending folder ids; items arrive through the
     // same added-items flow, keyed by the folder id.
     private readonly List<string> addedCollections = new();
+
+    // ----- v26 (#1163): the file's JSON header is the write target -----
+
+    /// <summary>v26 (#1163): pending macro folders — "+ Macro folder" ids; their items arrive through addedItems.</summary>
+    private readonly List<string> addedMacroCollections = new();
+    private const string AddMacroCollectionKey = "add-macro-collection";
+    private string? newMacroCollectionId;
+    private string? newMacroCollectionError;
+
+    /// <summary>v26 (#1163): "+ Snippet"'s label — blank defaults from the id, humanised, as "+ Macro"'s does.</summary>
+    private string? newScalarLabel;
+
+    /// <summary>
+    /// v26 (#1163): every snippet and macro file's header as loaded, by path — the parsed header, the
+    /// library's sentences when refused, and the body after it. Empty below 26.
+    /// </summary>
+    private IReadOnlyDictionary<string, WorkflowManifestReader.TextHeaderView> headers =
+        new Dictionary<string, WorkflowManifestReader.TextHeaderView>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// v26 (#1163): a file's effective header where it differs from the loaded one — the whole tuple
+    /// (label, if, instruction, optional, default), keyed by file, self-removing when it equals the
+    /// loaded header again (the loopEdits idiom). The label, instruction, optional, default and if
+    /// fields of the macro pane, a folder item's pane and the snippet pane write here at 26; the
+    /// composer serialises it ahead of the body. A pending file (an added snippet) holds its header
+    /// here too, under its derived path.
+    /// </summary>
+    private readonly Dictionary<string, PF.WorkflowTextHeader> headerEdits = new(StringComparer.Ordinal);
+
+    /// <summary>v26 (#1163): the file's effective header — the pending tuple, else the loaded one; null when the loaded header is refused and nothing pends.</summary>
+    private PF.WorkflowTextHeader? EffectiveHeader(string file) =>
+        headerEdits.TryGetValue(file, out var pending) ? pending
+        : headers.TryGetValue(file, out var loaded) && !loaded.Refused ? loaded.Header
+        : null;
+
+    /// <summary>v26 (#1163): whether the pane shows the file whole with the library's sentences — the loaded header is refused and no text edit has made it parse.</summary>
+    private bool HeaderRefused(string file) =>
+        headers.TryGetValue(file, out var loaded) && loaded.Refused && !headerEdits.ContainsKey(file);
+
+    /// <summary>v26 (#1163): the one writer of headerEdits — self-removing when the tuple equals the loaded header.</summary>
+    private void SetHeader(string file, PF.WorkflowTextHeader header)
+    {
+        if (headers.TryGetValue(file, out var loaded) && !loaded.Refused && loaded.Header == header)
+        {
+            headerEdits.Remove(file);
+        }
+        else
+        {
+            headerEdits[file] = header;
+        }
+    }
+
+    /// <summary>v26 (#1163): a header written for a snippet-kind file carries label and if alone (the closed key set).</summary>
+    private static PF.WorkflowTextHeader SnippetHeader(PF.WorkflowTextHeader header) =>
+        new(header.Label, string.IsNullOrWhiteSpace(header.If) ? null : header.If);
+
+    /// <summary>v26 (#1163): the loaded body of a headed file (the file whole when its header is refused), or the raw file.</summary>
+    private string LoadedBodyOf(string path) =>
+        headers.TryGetValue(path, out var loaded) ? loaded.Body : content!.Files.GetValueOrDefault(path, string.Empty);
+
+    /// <summary>v26 (#1163): a folder's kind follows its declaration — the snippets map or the macros map.</summary>
+    private bool IsMacroCollection(string collectionId) =>
+        collections.Any(c => c.Id == collectionId && c.Kind == PF.WorkflowTextKind.Macro) || addedMacroCollections.Contains(collectionId);
+
+    private PF.WorkflowTextKind CollectionKind(string collectionId) =>
+        IsMacroCollection(collectionId) ? PF.WorkflowTextKind.Macro : PF.WorkflowTextKind.Snippet;
+
+    private IEnumerable<WorkflowManifestReader.CollectionView> SnippetCollections =>
+        EffectiveCollections.Where(c => c.Kind == PF.WorkflowTextKind.Snippet);
+
+    private IEnumerable<WorkflowManifestReader.CollectionView> MacroCollections =>
+        EffectiveCollections.Where(c => c.Kind == PF.WorkflowTextKind.Macro);
+
+    private bool CollectionHasHeaderEdits(WorkflowManifestReader.CollectionView collection) =>
+        headerEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
+
+    /// <summary>v26 (#1163): the pane's noun for a folder's item — Macro text in a macro folder.</summary>
+    private string ItemNounOf(string collectionId) => IsMacroCollection(collectionId) ? "Macro text" : ItemNoun;
+
+    private async Task AddMacroCollectionAsync()
+    {
+        var id = newMacroCollectionId?.Trim() ?? string.Empty;
+
+        if (!PF.WorkflowDeclaredIds.IsValid(id))
+        {
+            newMacroCollectionError = $"Macro folder id '{id}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).";
+            return;
+        }
+
+        if (EffectiveMacros.Any(m => m.Id == id) || EffectiveCollections.Any(c => c.Id == id))
+        {
+            newMacroCollectionError = $"A macro or folder named '{id}' already exists.";
+            return;
+        }
+
+        addedMacroCollections.Add(id);
+        newMacroCollectionId = null;
+        newMacroCollectionError = null;
+        // Land on the folder's "+ Add item" pane — the first item is the next step.
+        selectedKey = NewKeyFor(id);
+        await PendingChangedAsync();
+    }
 
     // New single-value data entries (#309): id → pending text. A value is one
     // file, so unlike a collection it needs nowhere for items to arrive — the
@@ -5093,6 +5389,11 @@
                 () => $"{edits.Count} edited", () => false),
             new("addedCollections", () => addedCollections.Count, addedCollections.Clear,
                 () => $"+{addedCollections.Count} {Plural(addedCollections.Count, "folder")}", () => addedCollections.Count > 0),
+            // v26 (#1163): pending macro folders (the macros map) and pending file headers (the files, not the manifest).
+            new("addedMacroCollections", () => addedMacroCollections.Count, addedMacroCollections.Clear,
+                () => $"+{addedMacroCollections.Count} macro {Plural(addedMacroCollections.Count, "folder")}", () => addedMacroCollections.Count > 0),
+            new("headerEdits", () => headerEdits.Count, headerEdits.Clear,
+                () => $"{headerEdits.Count} {Plural(headerEdits.Count, "header")}", () => false),
             new("addedScalars", () => addedScalars.Count, addedScalars.Clear,
                 () => $"+{addedScalars.Count} {Plural(addedScalars.Count, "value")}", () => addedScalars.Count > 0),
             new("addedItems", () => addedItems.Count, addedItems.Clear,
@@ -5247,6 +5548,8 @@
     private bool PaneStillExists(string key) =>
         key is GraphKey or InputsKey or ResultsKey
             or AddCollectionKey or AddScalarKey or AddNodeKey or AddPromptKey
+        // v26 (#1163): "+ Macro folder" at 26.
+        || (key == AddMacroCollectionKey && At26)
         || (key == PackageKey && EffectiveSpecVersion >= 9)
         // #746/#759: the schemas pane is always reachable now that a contract can be added.
         || key == SchemasKey
@@ -5283,7 +5586,7 @@
         || key == AddPreludeKey
         || addedItems.Any(added => added.Key == key);
 
-    private string AddedPath(AddedItem item) => $"{DataRoot}{item.Collection}/{item.Id}.md";
+    private string AddedPath(AddedItem item) => $"{CollectionDirectory(item.Collection)}{item.Id}.md";
 
     /// <summary>
     /// C2 (#1008): at 25 the Data group is the Snippets group — the same
@@ -5310,7 +5613,8 @@
 
     private string DataRoot => At25 ? "snippets/" : "data/";
 
-    private string CollectionDirectory(string collectionId) => $"{DataRoot}{collectionId}/";
+    private string CollectionDirectory(string collectionId) =>
+        IsMacroCollection(collectionId) ? $"macros/{collectionId}/" : $"{DataRoot}{collectionId}/";
 
     /// <summary>How a node fans this folder: snippet.&lt;folder&gt; at 25, data:&lt;collection&gt; below.</summary>
     private string FanRef(string collectionId) => At25 ? PF.TemplateObjectReference.Snippet(collectionId) : $"data:{collectionId}";
@@ -5688,6 +5992,10 @@
         PF.TemplateKind.Prompt => EffectiveNodes.FirstOrDefault(n => n.Id == template.Id)?.Prompt is { } promptId
             ? EffectivePrompts.FirstOrDefault(p => p.Id == promptId)?.File
             : null,
+        // v26 (#1163): a macro folder's item walks as <folder>/<item> — its pane is the item file's.
+        PF.TemplateKind.Macro or PF.TemplateKind.Instruction when template.Id.IndexOf('/') is var macroSlash && macroSlash > 0 =>
+            MacroCollections.FirstOrDefault(c => c.Id == template.Id[..macroSlash])?.Items.FirstOrDefault(i => i.Id == template.Id[(macroSlash + 1)..])?.File
+            ?? addedItems.FirstOrDefault(a => a.Collection == template.Id[..macroSlash] && a.Id == template.Id[(macroSlash + 1)..])?.Key,
         PF.TemplateKind.Macro or PF.TemplateKind.Instruction => EffectiveMacros.FirstOrDefault(m => m.Id == template.Id)?.File,
         PF.TemplateKind.Snippet when template.Id.IndexOf('/') is var slash && slash > 0 =>
             EffectiveCollections.FirstOrDefault(c => c.Id == template.Id[..slash])?.Items.FirstOrDefault(i => i.Id == template.Id[(slash + 1)..])?.File
@@ -6345,7 +6653,7 @@
             choices.Add(new ReferenceChoice($"{{{{ snippet.{snippet.Id}.content }}}}", $"snippet.{snippet.Id}.content", "snippets"));
         }
 
-        foreach (var folder in EffectiveCollections)
+        foreach (var folder in SnippetCollections)
         {
             choices.Add(new ReferenceChoice($"{{{{ for s in snippet.{folder.Id} }}}}\n{{{{ s.content }}}}\n{{{{ end }}}}", $"for s in snippet.{folder.Id} (each item)", "snippets"));
         }
@@ -7269,16 +7577,22 @@
         || addedCollections.Contains(collection.Id)
         || CollectionHasOrderEdits(collection)
         || CollectionHasNameEdits(collection)
-        || CollectionHasWhenEdits(collection);
+        || CollectionHasWhenEdits(collection)
+        || CollectionHasHeaderEdits(collection);
 
     // The loaded collections plus one synthetic view per pending folder, so
     // the sidebar and index composition treat both alike.
     private IEnumerable<WorkflowManifestReader.CollectionView> EffectiveCollections =>
         collections.Concat(addedCollections.Select(id => new WorkflowManifestReader.CollectionView(
-            id, CollectionDirectory(id), Array.Empty<WorkflowManifestReader.DataItemView>())));
+            id, CollectionDirectory(id), Array.Empty<WorkflowManifestReader.DataItemView>())))
+        // v26 (#1163): a pending macro folder, under the macros root.
+        .Concat(addedMacroCollections.Select(id => new WorkflowManifestReader.CollectionView(
+            id, $"macros/{id}/", Array.Empty<WorkflowManifestReader.DataItemView>(), PF.WorkflowTextKind.Macro)));
 
     private bool CollectionIsUnused(string collectionId) =>
-        At25 ? SnippetReadRows(collectionId, folder: true).Count == 0 : !nodes.Any(n => n.ForEach == FanRef(collectionId));
+        // v26 (#1163): a macro folder is read ({{ for m in macro.<folder> }}), never fanned — the walk says whether anything iterates it.
+        IsMacroCollection(collectionId) ? !(PackageWalk?.Templates.Any(t => t.References.MacroFolders.Contains(collectionId)) ?? true)
+        : At25 ? SnippetReadRows(collectionId, folder: true).Count == 0 : !nodes.Any(n => n.ForEach == FanRef(collectionId));
 
     // Single-value data entries (#309). A value's key IS its path, derived the
     // same way whether pending or published, so selection needs no second
@@ -7289,10 +7603,56 @@
     // sidebar and the composition treat both alike.
     private IEnumerable<WorkflowManifestReader.ScalarView> EffectiveScalars =>
         scalarEntries.Concat(addedScalars.Keys.Select(id =>
-            new WorkflowManifestReader.ScalarView(id, ScalarPath(id))));
+            new WorkflowManifestReader.ScalarView(id, ScalarPath(id))))
+        // v26 (#1163): a pending header (a relabel, an if, a new snippet's) is effective everywhere.
+        .Select(scalar => headerEdits.TryGetValue(scalar.Path, out var header)
+            ? scalar with { Label = header.Label, If = string.IsNullOrWhiteSpace(header.If) ? null : header.If }
+            : scalar);
+
+    /// <summary>A label invented from an id — the migrator's rule (`snomed_tool_guidance` → `Snomed tool guidance`).</summary>
+    private static string Humanise(string id) => char.ToUpperInvariant(id[0]) + id[1..].Replace('_', ' ');
 
     private bool ScalarHasPending(WorkflowManifestReader.ScalarView scalar) =>
-        edits.ContainsKey(scalar.Path) || addedScalars.ContainsKey(scalar.Id);
+        edits.ContainsKey(scalar.Path) || addedScalars.ContainsKey(scalar.Id) || headerEdits.ContainsKey(scalar.Path);
+
+    // ----- v26 (#1163): a standalone snippet's label and if, in its file's header -----
+
+    private const string ScalarIfKeyPrefix = "snippet-if:";
+
+    /// <summary>v26 (#1163): the snippet's label — the header's (pending first), else its id.</summary>
+    private string ScalarLabel(WorkflowManifestReader.ScalarView scalar) =>
+        headerEdits.TryGetValue(scalar.Path, out var header) ? header.Label ?? scalar.Id : scalar.Label ?? scalar.Id;
+
+    private string? ScalarIfValue(WorkflowManifestReader.ScalarView scalar) =>
+        headerEdits.TryGetValue(scalar.Path, out var header) ? (string.IsNullOrWhiteSpace(header.If) ? null : header.If) : scalar.If;
+
+    private async Task RelabelScalarAsync(WorkflowManifestReader.ScalarView scalar, string? value)
+    {
+        var label = (value ?? string.Empty).Trim();
+        if (label.Length == 0)
+        {
+            declaredError = $"Snippet '{scalar.Id}' has no label.";
+            return;
+        }
+
+        SetHeader(scalar.Path, SnippetHeader((EffectiveHeader(scalar.Path) ?? new PF.WorkflowTextHeader(scalar.Label ?? scalar.Id)) with { Label = label }));
+        await CommitDeclarationAsync();
+    }
+
+    private void SetScalarIf(WorkflowManifestReader.ScalarView scalar, string? text) =>
+        SetHeader(scalar.Path, SnippetHeader((EffectiveHeader(scalar.Path) ?? new PF.WorkflowTextHeader(scalar.Label ?? scalar.Id)) with { If = string.IsNullOrWhiteSpace(text) ? null : text }));
+
+    /// <summary>v26 (#1163): a standalone snippet's if — inputs only (item.* is refused outside a folder), written to its header.</summary>
+    private ConditionTarget ScalarIfTarget(WorkflowManifestReader.ScalarView scalar) =>
+        new($"{ScalarIfKeyPrefix}{scalar.Path}", $"snippet {scalar.Id}", ScalarIfValue(scalar), text => SetScalarIf(scalar, text), InputsOnly: true);
+
+    /// <summary>The snippet pane's discard at 26: the text edit, the header edit and any in-progress condition draft.</summary>
+    private void RevertScalarEdits(string path)
+    {
+        RevertFileEdits(path);
+        headerEdits.Remove(path);
+        conditionDrafts.Remove($"{ScalarIfKeyPrefix}{path}");
+    }
 
     // The nodes holding a value. The single answer to "is this value bound?" —
     // the hint, the delete guard and the refusal message all read it, because
@@ -7364,7 +7724,16 @@
         }
 
         addedScalars[id] = string.Empty;
+
+        // v26 (#1163): the file opens with its header — a blank label defaults from the
+        // id, humanised, as "+ Macro"'s does; the pane's label field edits it after.
+        if (At26)
+        {
+            headerEdits[ScalarPath(id)] = new PF.WorkflowTextHeader(string.IsNullOrWhiteSpace(newScalarLabel) ? Humanise(id) : newScalarLabel!.Trim());
+        }
+
         newScalarId = null;
+        newScalarLabel = null;
         newScalarError = null;
         selectedKey = ScalarPath(id);
         await PendingChangedAsync();
@@ -7391,6 +7760,7 @@
         }
 
         edits.Remove(path);
+        headerEdits.Remove(path); // v26 (#1163)
 
         if (selectedKey == path)
         {
@@ -7447,6 +7817,7 @@
     {
         var itsItemKeys = addedItems.Where(a => a.Collection == collectionId).Select(a => a.Key).ToHashSet(StringComparer.Ordinal);
         addedCollections.Remove(collectionId);
+        addedMacroCollections.Remove(collectionId);
         addedItems.RemoveAll(a => a.Collection == collectionId);
         itemOrderEdits.Remove(collectionId);
 
@@ -7495,7 +7866,8 @@
             return;
         }
 
-        var added = new AddedItem { Collection = collectionId, Id = id, Name = name, Content = newItemContent ?? string.Empty };
+        // v26 (#1163): a macro folder's item is a macro — its instruction is born blank (explicit init).
+        var added = new AddedItem { Collection = collectionId, Id = id, Name = name, Content = newItemContent ?? string.Empty, Instruction = IsMacroCollection(collectionId) ? string.Empty : null };
         addedItems.Add(added);
         newItemId = newItemName = newItemContent = null;
         newItemError = null;
@@ -7555,7 +7927,9 @@
 
     // #946: the item's display name with any pending rename applied.
     private string StandardName(WorkflowManifestReader.DataItemView item) =>
-        standardNameEdits.TryGetValue(item.File, out var name) ? name : item.Name;
+        // v26 (#1163): the header's label, pending first.
+        headerEdits.TryGetValue(item.File, out var header) ? header.Label ?? item.Name
+        : standardNameEdits.TryGetValue(item.File, out var name) ? name : item.Name;
 
     // #946: rename a data-item's display name — writes its index.json items[].name.
     private async Task RenameStandardAsync(WorkflowManifestReader.DataItemView item, string? value)
@@ -7564,6 +7938,14 @@
         if (name.Length == 0)
         {
             declaredError = $"Standard '{item.Id}' has no name.";
+            return;
+        }
+
+        // v26 (#1163): the label lives in the item file's header.
+        if (At26)
+        {
+            SetHeader(item.File, (EffectiveHeader(item.File) ?? new PF.WorkflowTextHeader(item.Name)) with { Label = name });
+            await CommitDeclarationAsync();
             return;
         }
 
@@ -7688,10 +8070,19 @@
     private const string ItemWhenKeyPrefix = "item-when:";
 
     private string? ItemWhenValue(WorkflowManifestReader.DataItemView item) =>
-        itemWhenEdits.TryGetValue(item.File, out var edited) ? edited : item.When;
+        // v26 (#1163): the header's if, pending first.
+        headerEdits.TryGetValue(item.File, out var header) ? (string.IsNullOrWhiteSpace(header.If) ? null : header.If)
+        : itemWhenEdits.TryGetValue(item.File, out var edited) ? edited : item.When;
 
     private void SetItemWhen(WorkflowManifestReader.DataItemView item, string? text)
     {
+        // v26 (#1163): the gate lives in the item file's header.
+        if (At26)
+        {
+            SetHeader(item.File, (EffectiveHeader(item.File) ?? new PF.WorkflowTextHeader(item.Name)) with { If = string.IsNullOrWhiteSpace(text) ? null : text });
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(text) ? string.IsNullOrWhiteSpace(item.When) : text == item.When)
         {
             itemWhenEdits.Remove(item.File);
@@ -7700,6 +8091,30 @@
         {
             itemWhenEdits[item.File] = text;
         }
+    }
+
+    // ----- v26 (#1163): a macro folder's item — instruction, optional and default in its header -----
+
+    private async Task SetItemInstructionAsync(WorkflowManifestReader.DataItemView item, string? value)
+    {
+        var instruction = value ?? string.Empty;
+        SetHeader(item.File, (EffectiveHeader(item.File) ?? new PF.WorkflowTextHeader(item.Name)) with { Instruction = instruction.Length > 0 ? instruction : null });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task SetItemOptionalAsync(WorkflowManifestReader.DataItemView item, bool optional)
+    {
+        var current = EffectiveHeader(item.File) ?? new PF.WorkflowTextHeader(item.Name);
+        SetHeader(item.File, current with { Optional = optional ? true : null, Default = optional ? current.Default : null });
+        await CommitDeclarationAsync();
+    }
+
+    private async Task SetItemDefaultAsync(WorkflowManifestReader.DataItemView item, string? raw)
+    {
+        bool? chosen = raw switch { "true" => true, "false" => false, _ => null };
+        var current = EffectiveHeader(item.File) ?? new PF.WorkflowTextHeader(item.Name);
+        SetHeader(item.File, current with { Optional = current.Optional == true ? true : null, Default = chosen });
+        await CommitDeclarationAsync();
     }
 
     /// <summary>The folder a loaded item belongs to, by its directory.</summary>
@@ -7723,6 +8138,7 @@
     {
         RevertFileEdits(file);
         itemWhenEdits.Remove(file);
+        headerEdits.Remove(file); // v26 (#1163): the header edit is the pane's too.
         conditionDrafts.Remove($"{ItemWhenKeyPrefix}{file}");
     }
 
@@ -8498,6 +8914,9 @@
 
         /// <summary>v25 (C3 #1009): the instruction — born blank (explicit init; the desk refuses it until written).</summary>
         public string Instruction { get; set; } = string.Empty;
+
+        /// <summary>v26 (#1163): the macro's own gate, the header's <c>if</c>; null = always.</summary>
+        public string? If { get; set; }
     }
 
     // v25 (C3 #1009): pending instruction edits on DECLARED macros (writes
@@ -8515,6 +8934,11 @@
         if (addedMacros.FirstOrDefault(m => m.Id == macroId) is { } pending)
         {
             pending.Instruction = instruction;
+        }
+        else if (At26 && EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } headed)
+        {
+            // v26 (#1163): the instruction lives in the macro file's header (blank = none).
+            SetHeader(headed.File, (EffectiveHeader(headed.File) ?? new PF.WorkflowTextHeader(headed.Label)) with { Instruction = instruction.Length > 0 ? instruction : null });
         }
         else
         {
@@ -8779,6 +9203,12 @@
             pending.Optional = optional;
             pending.Default = optional ? pending.Default : null;
         }
+        else if (At26 && EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } headed)
+        {
+            // v26 (#1163): the pair lives in the macro file's header — written or removed together.
+            var current = EffectiveHeader(headed.File) ?? new PF.WorkflowTextHeader(headed.Label);
+            SetHeader(headed.File, current with { Optional = optional ? true : null, Default = optional ? current.Default : null });
+        }
         else
         {
             var declared = content == null
@@ -8815,6 +9245,11 @@
         {
             pending.Label = label;
         }
+        else if (At26 && EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } headed)
+        {
+            // v26 (#1163): the label lives in the macro file's header.
+            SetHeader(headed.File, (EffectiveHeader(headed.File) ?? new PF.WorkflowTextHeader(headed.Label)) with { Label = label });
+        }
         else
         {
             var declared = content == null
@@ -8841,6 +9276,12 @@
         {
             pending.Default = chosen;
         }
+        else if (At26 && EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } headed)
+        {
+            // v26 (#1163): the default lives in the macro file's header beside optional.
+            var current = EffectiveHeader(headed.File) ?? new PF.WorkflowTextHeader(headed.Label);
+            SetHeader(headed.File, current with { Optional = current.Optional == true ? true : null, Default = chosen });
+        }
         else
         {
             var declared = content == null
@@ -8866,7 +9307,8 @@
     private IReadOnlyList<WorkflowManifestReader.MacroView> EffectiveMacros =>
         (content == null
             ? Array.Empty<WorkflowManifestReader.MacroView>()
-            : WorkflowManifestReader.ReadMacros(content.Manifest))
+            // v26 (#1163): at 26 the headers carry the facts; a folder entry is a collection, not a row.
+            : At26 ? WorkflowManifestReader.ReadMacros(content.Manifest, content.Files) : WorkflowManifestReader.ReadMacros(content.Manifest))
         // #571: a pending removal is effective everywhere this list is read —
         // the nav, the panes, the Deliverables dropdown and the desk's rules.
         .Where(m => !removedMacroIds.Contains(m.Id))
@@ -8878,9 +9320,33 @@
         .Select(m => macroLabelEdits.TryGetValue(m.Id, out var label) ? m with { Label = label } : m)
         // v25 (C3 #1009): a pending instruction edit is effective everywhere.
         .Select(m => macroInstructionEdits.TryGetValue(m.Id, out var instruction) ? m with { Instruction = instruction } : m)
+        // v26 (#1163): a pending header (label, instruction, optional, default, if) is effective everywhere.
+        .Select(m => headerEdits.TryGetValue(m.File, out var header)
+            ? m with { Label = header.Label ?? m.Id, Instruction = header.Instruction, Optional = header.Optional, Default = header.Default, If = string.IsNullOrWhiteSpace(header.If) ? null : header.If }
+            : m)
         .Concat(addedMacros.Select(m => new WorkflowManifestReader.MacroView(
-            m.Id, m.Label, AddedMacroFile(m.Id), m.Optional ? true : null, m.Default, m.Instruction.Length > 0 ? m.Instruction : null)))
+            m.Id, m.Label, AddedMacroFile(m.Id), m.Optional ? true : null, m.Default, m.Instruction.Length > 0 ? m.Instruction : null, m.If)))
         .ToList();
+
+    // ----- v26 (#1163): the macro's own gate, the header's if -----
+
+    private const string MacroIfKeyPrefix = "macro-if:";
+
+    private void SetMacroIf(WorkflowManifestReader.MacroView macro, string? text)
+    {
+        var value = string.IsNullOrWhiteSpace(text) ? null : text;
+        if (addedMacros.FirstOrDefault(m => m.Id == macro.Id) is { } pending)
+        {
+            pending.If = value;
+            return;
+        }
+
+        SetHeader(macro.File, (EffectiveHeader(macro.File) ?? new PF.WorkflowTextHeader(macro.Label)) with { If = value });
+    }
+
+    /// <summary>v26 (#1163): the macro's own if — inputs only, written to its header; "Always" when absent.</summary>
+    private ConditionTarget MacroIfTarget(WorkflowManifestReader.MacroView macro) =>
+        new($"{MacroIfKeyPrefix}{macro.Id}", $"macro {macro.Id}", macro.If, text => SetMacroIf(macro, text), InputsOnly: true);
 
     private WorkflowManifestReader.MacroView? SelectedMacro() =>
         EffectiveMacros.FirstOrDefault(m => m.File == selectedKey);
@@ -8909,9 +9375,7 @@
 
         // A blank label defaults from the id, humanized — the validator's
         // no-label refusal never fires from editor-authored macros.
-        var label = string.IsNullOrWhiteSpace(newMacroLabel)
-            ? char.ToUpperInvariant(id[0]) + id[1..].Replace('_', ' ')
-            : newMacroLabel!.Trim();
+        var label = string.IsNullOrWhiteSpace(newMacroLabel) ? Humanise(id) : newMacroLabel!.Trim();
         addedMacros.Add(new AddedMacro { Id = id, Label = label });
         newMacroId = null;
         newMacroLabel = null;
@@ -9911,7 +10375,35 @@
 
         var errors = formatsCatalog is null
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
-            : result.Errors;
+            : result.Errors.ToList();
+
+        // v26 (#1163): the optional/default pair lives in the header — the v12 explicit-init
+        // rule (no silent default), in the validator's words, over the macros and the macro
+        // folders' items (the library judges the manifest's pair, which is empty at 26).
+        if (At26)
+        {
+            foreach (var macro in EffectiveMacros)
+            {
+                if (macro.Optional == true && macro.Default == null)
+                {
+                    errors.Add($"Macro '{macro.Id}' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
+                }
+            }
+
+            foreach (var folder in MacroCollections)
+            {
+                foreach (var (item, added) in OrderedItems(folder))
+                {
+                    var key = $"{folder.Id}/{item?.Id ?? added!.Id}";
+                    var optional = item is not null ? EffectiveHeader(item.File)?.Optional == true : added!.Optional;
+                    var chosen = item is not null ? EffectiveHeader(item.File)?.Default : added!.Default;
+                    if (optional && chosen == null)
+                    {
+                        errors.Add($"Macro '{key}' is optional and declares no default; an optional macro must say what a run that makes no choice does.");
+                    }
+                }
+            }
+        }
 
         return (errors.Distinct(StringComparer.Ordinal).ToList(), result.Warnings.Distinct(StringComparer.Ordinal).ToList());
     }
@@ -13513,7 +14005,7 @@
         return effective.Where(n => !reached.Contains(n.Id)).Select(n => n.Label).ToList();
     }
 
-    private IReadOnlyList<string> CollectionIds => EffectiveCollections.Select(c => c.Id).ToList();
+    private IReadOnlyList<string> CollectionIds => SnippetCollections.Select(c => c.Id).ToList();
 
     // Loaded plus pending, the same deal CollectionIds gets. A pending folder
     // can be forEached the moment it exists; a pending value has to be
@@ -14640,7 +15132,9 @@
         : AddedSchemaForFile(path) is { } addedSchema ? WorkflowOutputContracts.Declarable[addedSchema]
         : AddedFormatForFile(path) is { } addedFormat ? addedFormats[addedFormat]
         : AddedScalarIdForPath(path) is { } pendingScalar ? addedScalars[pendingScalar]
-        : edits.TryGetValue(path, out var edited) ? edited : content!.Files.GetValueOrDefault(path, string.Empty);
+        : edits.TryGetValue(path, out var edited) ? edited
+        // v26 (#1163): a headed file's pane edits the body; a refused header shows the file whole.
+        : LoadedBodyOf(path);
 
     /// <summary>The pending value at this path, or null — a published one has a real file.</summary>
     private string? AddedScalarIdForPath(string path) =>
@@ -14777,13 +15271,28 @@
         previewAsMarkdown = false; // #1124: the preview is the bytes again.
         prompts = WorkflowManifestReader.ReadPrompts(content!.Manifest);
         nodes = WorkflowManifestReader.ReadNodes(content.Manifest);
-        collections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);
-        scalarEntries = WorkflowManifestReader.ReadScalarEntries(content.Manifest, DataTableKey);
+        // v26 (#1163): the headers are read once; macro folders ride collections by kind;
+        // a standalone snippet's label and if come from its file.
+        headers = At26
+            ? WorkflowManifestReader.ReadTextHeaders(content.Manifest, content.Files)
+            : new Dictionary<string, WorkflowManifestReader.TextHeaderView>(StringComparer.Ordinal);
+        collections = At26
+            ? WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey)
+                .Concat(WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, "macros", PF.WorkflowTextKind.Macro)).ToList()
+            : WorkflowManifestReader.ReadCollections(content.Manifest, content.Files, DataTableKey);
+        scalarEntries = At26
+            ? WorkflowManifestReader.ReadScalarEntries(content.Manifest, content.Files, DataTableKey)
+            : WorkflowManifestReader.ReadScalarEntries(content.Manifest, DataTableKey);
         publishedScalarIds = scalarEntries.Select(entry => entry.Id).ToList();
         schemaIds = WorkflowManifestReader.ReadSchemaIds(content.Manifest);
     }
 
-    private sealed record DraftAdded(string Collection, string Id, string Name, string Content, string? When = null);
+    private sealed record DraftAdded(string Collection, string Id, string Name, string Content, string? When = null,
+        // v26 (#1163): a macro-folder item's header facts. Trailing.
+        string? Instruction = null, bool Optional = false, bool? Default = null);
+
+    /// <summary>v26 (#1163): a file's pending header tuple, by path. Trailing optional on the payload.</summary>
+    private sealed record DraftHeader(string File, string? Label, string? If = null, string? Instruction = null, bool? Optional = null, bool? Default = null);
 
     /// <summary>v25 (#1008): a published folder item's pending when, by file.</summary>
     private sealed record DraftItemWhen(string File, string? When);
@@ -14804,7 +15313,9 @@
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
-    private sealed record DraftAddedMacro(string Id, string Label, string Text, bool Optional = false, bool? Default = null, string? Instruction = null);
+    private sealed record DraftAddedMacro(string Id, string Label, string Text, bool Optional = false, bool? Default = null, string? Instruction = null,
+        // v26 (#1163): the macro's own if. Trailing.
+        string? If = null);
 
     private sealed record DraftMacroEdit(string Id, bool Optional, bool? Default = null);
 
@@ -14907,7 +15418,10 @@
         // v26 (#1160): pending loop tuples. Trailing optional.
         List<DraftLoopEdit>? LoopEdits = null,
         // v26 (#1159): pending if/case tuples. Trailing optional.
-        List<DraftFlowEdit>? FlowEdits = null);
+        List<DraftFlowEdit>? FlowEdits = null,
+        // v26 (#1163): pending file headers and pending macro folders. Trailing optional.
+        List<DraftHeader>? Headers = null,
+        List<string>? AddedMacroCollections = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -15063,6 +15577,19 @@
             }
         }
 
+        // v26 (#1163): a pending macro folder is kept while no macro or folder of its id exists.
+        foreach (var folderId in payload.AddedMacroCollections ?? new List<string>())
+        {
+            if (PF.WorkflowDeclaredIds.IsValid(folderId)
+                && collections.All(c => c.Id != folderId)
+                && EffectiveMacros.All(m => m.Id != folderId)
+                && !addedCollections.Contains(folderId)
+                && !addedMacroCollections.Contains(folderId))
+            {
+                addedMacroCollections.Add(folderId);
+            }
+        }
+
         // Values get the same treatment as folders: a pending one whose id now
         // exists in the loaded package — published elsewhere, or colliding
         // with a collection — is dropped rather than restored into a conflict.
@@ -15079,7 +15606,7 @@
         }
 
         var loadedIds = collections.SelectMany(c => c.Items.Select(i => (c.Id, i.Id))).ToHashSet();
-        var validCollections = collections.Select(c => c.Id).Concat(addedCollections).ToHashSet(StringComparer.Ordinal);
+        var validCollections = collections.Select(c => c.Id).Concat(addedCollections).Concat(addedMacroCollections).ToHashSet(StringComparer.Ordinal);
 
         foreach (var draftItem in added ?? new List<DraftAdded>())
         {
@@ -15087,7 +15614,13 @@
                 && validCollections.Contains(draftItem.Collection)
                 && !loadedIds.Contains((draftItem.Collection, draftItem.Id)))
             {
-                addedItems.Add(new AddedItem { Collection = draftItem.Collection, Id = draftItem.Id, Name = draftItem.Name, Content = draftItem.Content, When = draftItem.When });
+                addedItems.Add(new AddedItem
+                {
+                    Collection = draftItem.Collection, Id = draftItem.Id, Name = draftItem.Name, Content = draftItem.Content, When = draftItem.When,
+                    // v26 (#1163): a macro-folder item's header facts (an older draft restores a blank instruction).
+                    Instruction = IsMacroCollection(draftItem.Collection) ? draftItem.Instruction ?? string.Empty : null,
+                    Optional = draftItem.Optional, Default = draftItem.Default
+                });
             }
         }
 
@@ -15153,7 +15686,8 @@
                 {
                     Id = draftAddedMacro.Id, Label = draftAddedMacro.Label, Text = draftAddedMacro.Text,
                     Optional = draftAddedMacro.Optional, Default = draftAddedMacro.Default,
-                    Instruction = draftAddedMacro.Instruction ?? string.Empty
+                    Instruction = draftAddedMacro.Instruction ?? string.Empty,
+                    If = draftAddedMacro.If
                 });
             }
         }
@@ -15214,6 +15748,15 @@
                     kept.AddRange(NaturalItemIds(orderedFolder).Where(id => !kept.Contains(id, StringComparer.Ordinal)));
                     SetItemOrder(orderedFolder, kept);
                 }
+            }
+        }
+
+        // v26 (#1163): a drafted header is kept while its file is loaded (a headed file) or is a pending snippet's path.
+        foreach (var draftHeader in payload.Headers ?? new List<DraftHeader>())
+        {
+            if (headers.ContainsKey(draftHeader.File) || AddedScalarIdForPath(draftHeader.File) is not null)
+            {
+                headerEdits[draftHeader.File] = new PF.WorkflowTextHeader(draftHeader.Label, draftHeader.If, draftHeader.Instruction, draftHeader.Optional, draftHeader.Default);
             }
         }
 
@@ -15601,7 +16144,7 @@
         new DraftPayload(
             15,
             edits,
-            addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content, a.When)).ToList(),
+            addedItems.Select(a => new DraftAdded(a.Collection, a.Id, a.Name, a.Content, a.When, a.Instruction, a.Optional, a.Default)).ToList(),
             removedFiles.ToList(),
             bindingEdits.Select(pair =>
             {
@@ -15637,7 +16180,7 @@
             titleEdit,
             descriptionEdit,
             tagsEdit,
-            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default, m.Instruction)).ToList(),
+            addedMacros.Select(m => new DraftAddedMacro(m.Id, m.Label, m.Text, m.Optional, m.Default, m.Instruction, m.If)).ToList(),
             removedMacroIds.ToList(),
             macroEdits.Select(pair => new DraftMacroEdit(pair.Key, pair.Value.Optional, pair.Value.Default)).ToList(),
             promptRawEdits.Select(pair => new DraftPromptRawEdit(pair.Key, pair.Value)).ToList(),
@@ -15658,7 +16201,9 @@
             macroInstructionEdits.Select(pair => new DraftMacroInstruction(pair.Key, pair.Value)).ToList(),
             itemOrderEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal),
             loopEdits.Select(pair => new DraftLoopEdit(pair.Key, pair.Value.Label, pair.Value.For, pair.Value.Nodes.ToList(), pair.Value.Ret)).ToList(),
-            flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList());
+            flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList(),
+            headerEdits.Select(pair => new DraftHeader(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Instruction, pair.Value.Optional, pair.Value.Default)).ToList(),
+            addedMacroCollections.ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -15827,7 +16372,23 @@
             return;
         }
 
-        if (content!.Files.TryGetValue(path, out var original) && string.Equals(original, value, StringComparison.Ordinal))
+        // v26 (#1163): a headed file whose loaded header is refused is edited whole; the
+        // moment the text parses as a header, the header becomes the pending tuple and the
+        // text the body — the fields return, the composer writes header + body.
+        if (headers.TryGetValue(path, out var headed) && headed.Refused && !headerEdits.ContainsKey(path))
+        {
+            var (headerJson, body) = PF.WorkflowTextHeaders.Split(value);
+            var errors = new List<string>();
+            if (headerJson is not null && PF.WorkflowTextHeaders.Parse(headed.Kind, path, headerJson, errors) is { } parsed && errors.Count == 0)
+            {
+                headerEdits[path] = parsed;
+                edits[path] = body;
+                return;
+            }
+        }
+
+        // The loaded body (the text after a valid header at 26; the file otherwise).
+        if (content!.Files.ContainsKey(path) && string.Equals(LoadedBodyOf(path), value, StringComparison.Ordinal))
         {
             edits.Remove(path);
         }
@@ -15843,6 +16404,21 @@
 
     private string ComposeIndexJson(WorkflowManifestReader.CollectionView collection)
     {
+        // v26 (#1163): the index is the ordered list [{ id, file }] — label and if live in each
+        // item file's header; the migrator's bytes (indented, a trailing newline).
+        if (At26)
+        {
+            var list = new System.Text.Json.Nodes.JsonArray();
+            foreach (var pair in OrderedItems(collection))
+            {
+                list.Add(pair.Item is { } item
+                    ? new System.Text.Json.Nodes.JsonObject { ["id"] = item.Id, ["file"] = item.File[collection.Directory.Length..] }
+                    : new System.Text.Json.Nodes.JsonObject { ["id"] = pair.Added!.Id, ["file"] = $"{pair.Added.Id}.md" });
+            }
+
+            return list.ToJsonString(new JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n";
+        }
+
         // Preserve the loaded field list (new folders have none — the default
         // applies); existing items keep their order, removals drop, additions
         // append.
@@ -16274,7 +16850,10 @@
     {
         edits.Remove(file);
         macroEdits.Remove(macroId);
+        macroLabelEdits.Remove(macroId);
         macroInstructionEdits.Remove(macroId);
+        headerEdits.Remove(file); // v26 (#1163): the header edit and its if draft are the pane's too.
+        conditionDrafts.Remove($"{MacroIfKeyPrefix}{macroId}");
     }
 
     private void RevertDeliverablesEdits()
@@ -16332,13 +16911,14 @@
 
     private bool MacroCanDiscard(WorkflowManifestReader.MacroView macro) =>
         AddedMacroForFile(macro.File) == null
-        && (edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id) || macroInstructionEdits.ContainsKey(macro.Id));
+        && (edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id) || macroInstructionEdits.ContainsKey(macro.Id)
+            || macroLabelEdits.ContainsKey(macro.Id) || headerEdits.ContainsKey(macro.File) || conditionDrafts.ContainsKey($"{MacroIfKeyPrefix}{macro.Id}"));
 
     private bool PreludeCanDiscard(WorkflowManifestReader.PreludeView prelude) =>
         edits.ContainsKey(prelude.File);
 
     private bool ScalarCanDiscard(WorkflowManifestReader.ScalarView scalar) =>
-        !addedScalars.ContainsKey(scalar.Id) && edits.ContainsKey(scalar.Path);
+        !addedScalars.ContainsKey(scalar.Id) && (edits.ContainsKey(scalar.Path) || headerEdits.ContainsKey(scalar.Path));
 
     private bool PackageCanDiscard => titleEdit != null || descriptionEdit != null || tagsEdit != null;
     private bool InputsCanDiscard => inputsEdit != null;
@@ -16387,7 +16967,8 @@
         newVariableSource = string.Empty;
         newItemId = newItemName = newItemContent = newItemError = null;
         newCollectionId = newCollectionError = null;
-        newScalarId = newScalarError = null;
+        newScalarId = newScalarLabel = newScalarError = null;
+        newMacroCollectionId = newMacroCollectionError = null;
         newNodeId = newNodeLabel = newNodeError = null;
         newNodeForEach = string.Empty;
         newNodeOutput = string.Empty;
@@ -16548,6 +17129,42 @@
             files.Remove(removedMacro.File);
         }
 
+        // v26 (#1163): the header is the write target — a headed file is recomposed as its
+        // header serialised ahead of its body ONLY when something pends for it (a text edit,
+        // a header edit, a new file); an untouched file passes through byte-identical (files
+        // hash whole), and a refused header nothing has made parse passes through as held.
+        if (At26)
+        {
+            foreach (var (path, loaded) in headers)
+            {
+                if (files.ContainsKey(path) && (edits.ContainsKey(path) || headerEdits.ContainsKey(path)) && EffectiveHeader(path) is { } header)
+                {
+                    var written = loaded.Kind == PF.WorkflowTextKind.Snippet ? SnippetHeader(header) : header;
+                    files[path] = PF.WorkflowTextHeaders.Compose(written) + (edits.TryGetValue(path, out var body) ? body : loaded.Body);
+                }
+            }
+
+            foreach (var (scalarId, text) in addedScalars)
+            {
+                files[ScalarPath(scalarId)] = PF.WorkflowTextHeaders.Compose(SnippetHeader(EffectiveHeader(ScalarPath(scalarId)) ?? new PF.WorkflowTextHeader(Humanise(scalarId)))) + text;
+            }
+
+            foreach (var added in addedItems)
+            {
+                var header = IsMacroCollection(added.Collection)
+                    ? new PF.WorkflowTextHeader(added.Name, added.When, string.IsNullOrEmpty(added.Instruction) ? null : added.Instruction, added.Optional ? true : null, added.Optional ? added.Default : null)
+                    : new PF.WorkflowTextHeader(added.Name, added.When);
+                files[AddedPath(added)] = PF.WorkflowTextHeaders.Compose(header) + added.Content;
+            }
+
+            foreach (var pendingMacro in addedMacros)
+            {
+                files[AddedMacroFile(pendingMacro.Id)] = PF.WorkflowTextHeaders.Compose(new PF.WorkflowTextHeader(
+                    pendingMacro.Label, pendingMacro.If, pendingMacro.Instruction.Length > 0 ? pendingMacro.Instruction : null,
+                    pendingMacro.Optional ? true : null, pendingMacro.Optional ? pendingMacro.Default : null)) + pendingMacro.Text;
+            }
+        }
+
         foreach (var removedNodeId in removedNodeIds)
         {
             var promptId = nodes.FirstOrDefault(n => n.Id == removedNodeId)?.Prompt;
@@ -16564,8 +17181,9 @@
         // the authority on the result.
         foreach (var collection in EffectiveCollections)
         {
-            if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id)
-                || CollectionHasNameEdits(collection) || CollectionHasWhenEdits(collection) || CollectionHasOrderEdits(collection))
+            // v26 (#1163): a name or gate edit is a header edit — the index carries id and file alone.
+            if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id) || addedMacroCollections.Contains(collection.Id)
+                || (!At26 && (CollectionHasNameEdits(collection) || CollectionHasWhenEdits(collection))) || CollectionHasOrderEdits(collection))
             {
                 files[collection.Directory + "index.json"] = ComposeIndexJson(collection);
             }
@@ -17300,7 +17918,38 @@
         // none yet (the data-block pattern), then append each declaration.
         // #571: a removal drops its declaration here, and the array itself
         // when nothing remains.
-        if (addedMacros.Count > 0 || removedMacroIds.Count > 0)
+        // v26 (#1163): macros is the map id → file (a folder "<dir>/"); label, instruction,
+        // optional, default and if are the file's header, never written here.
+        if (At26 && (addedMacros.Count > 0 || addedMacroCollections.Count > 0 || removedMacroIds.Count > 0))
+        {
+            var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
+            if (root[macrosKey] is not System.Text.Json.Nodes.JsonObject macrosMap)
+            {
+                macrosMap = new System.Text.Json.Nodes.JsonObject();
+                root[macrosKey] = macrosMap;
+            }
+
+            foreach (var removedMacroId in removedMacroIds)
+            {
+                macrosMap.Remove(removedMacroId);
+            }
+
+            foreach (var pendingMacro in addedMacros)
+            {
+                macrosMap[pendingMacro.Id] = AddedMacroFile(pendingMacro.Id);
+            }
+
+            foreach (var folderId in addedMacroCollections)
+            {
+                macrosMap[folderId] = $"macros/{folderId}/";
+            }
+
+            if (macrosMap.Count == 0)
+            {
+                root.AsObject().Remove(macrosKey);
+            }
+        }
+        else if (addedMacros.Count > 0 || removedMacroIds.Count > 0)
         {
             var macrosKey = root["Macros"] is not null ? "Macros" : "macros";
 

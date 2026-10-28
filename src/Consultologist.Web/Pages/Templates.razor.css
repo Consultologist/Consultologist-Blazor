@@ -1054,3 +1054,15 @@ fluent-select.branch-table__pick {
 .editor-nav__tag {
 	font-size: 0.85em;
 }
+
+/* v26 (#1163): the macro's own gate — the header's if — sits between the instruction and Where it goes. */
+.macro-if {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin: 0.5rem 0;
+}
+
+.macro-if p.muted-text {
+    margin: 0;
+}

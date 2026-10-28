@@ -950,6 +950,40 @@ public static class EditorFixtures
     }
 
     /// <summary>
+    /// v26 (#1163): the V26 fixture with a macro folder — `notes` (`macros/notes/`), two items
+    /// with label + instruction (plan gated by if), iterated by the assessment prompt
+    /// ({{ for m in macro.notes }}) so the folder is read. A real 26 package.
+    /// </summary>
+    public static WorkflowPackageContentResponse V26Macros()
+    {
+        var at26 = V26();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(at26.Manifest.GetRawText())!.AsObject();
+        root["macros"]!.AsObject()["notes"] = "macros/notes/";
+        var files = new Dictionary<string, string>(at26.Files, StringComparer.Ordinal)
+        {
+            ["macros/notes/index.json"] = "[\n  {\n    \"id\": \"hpi\",\n    \"file\": \"hpi.md\"\n  },\n  {\n    \"id\": \"plan\",\n    \"file\": \"plan.md\"\n  }\n]\n",
+            ["macros/notes/hpi.md"] = Consultologist.PackageFormat.WorkflowTextHeaders.Compose(new("HPI notes", null, "Note the history.")) + "History notes.",
+            ["macros/notes/plan.md"] = Consultologist.PackageFormat.WorkflowTextHeaders.Compose(new("Plan notes", "input.kind == \"new\"", "Note the plan.")) + "Plan notes.",
+        };
+        files["prompts/assessment.md"] += "\n{{ for m in macro.notes }}{{ m.content }}\n{{ end }}";
+        return new(at26.Name, at26.Version, 26, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
+    }
+
+    /// <summary>
+    /// v26 (#1163): the V26 fixture with snippets/standards.md carrying a header the library
+    /// refuses — `name` is not a header key (the 25 word, hand-written).
+    /// </summary>
+    public static WorkflowPackageContentResponse V26RefusedHeader()
+    {
+        var at26 = V26();
+        var files = new Dictionary<string, string>(at26.Files, StringComparer.Ordinal)
+        {
+            ["snippets/standards.md"] = "{\n  \"name\": \"Standards\"\n}\nFollow the local standards.",
+        };
+        return new(at26.Name, at26.Version, 26, at26.Manifest, files);
+    }
+
+    /// <summary>
     /// v26 (#1159): the V26 fixture with the two other flow nodes — `triage`, an if over
     /// input.kind whose then body holds assessment (returned; the deliverable sources
     /// node.triage instead of node.assessment), and `route`, a case over node.scope.value
