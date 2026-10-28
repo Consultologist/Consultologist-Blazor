@@ -1700,10 +1700,20 @@
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">Deliverables</h3>
-                                <p class="muted-text">
-                                    Each deliverable this package produces. Every one names its own aggregator
-                                    node, and its id becomes the delivered file's name.
-                                </p>
+                                @if (At26)
+                                {
+                                    <p class="muted-text">
+                                        Each deliverable this package produces. Every one names its sources — the
+                                        nodes composed in order — and its id becomes the delivered file's name.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        Each deliverable this package produces. Every one names its own aggregator
+                                        node, and its id becomes the delivered file's name.
+                                    </p>
+                                }
                             </div>
                             @PaneDiscardButton(ResultsKey, DeliverablesCanDiscard, RevertDeliverablesEdits)
                         </div>
@@ -2130,11 +2140,21 @@
                         <div class="pane-header">
                             <div>
                                 <h3 class="panel-title">Workflow graph</h3>
-                                <p class="muted-text">
-                                    A node's output contract, prompt bindings and variables are editable in
-                                    its card below. Refresh redraws the graph — pending edits included,
-                                    highlighted in blue.
-                                </p>
+                                @if (At25)
+                                {
+                                    <p class="muted-text">
+                                        A node's format, prompt and reads are editable in its card below.
+                                        Refresh redraws the graph — pending edits included, highlighted in blue.
+                                    </p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">
+                                        A node's output contract, prompt bindings and variables are editable in
+                                        its card below. Refresh redraws the graph — pending edits included,
+                                        highlighted in blue.
+                                    </p>
+                                }
                             </div>
                             <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add"
                                           Disabled="@isDiagramRefreshing"
@@ -2160,22 +2180,28 @@
                         <div class="pane-header">
                             <h2 class="panel-title">Node details</h2>
                             <div class="result-selector">
-                                <label class="node-field">
-                                    <span>deliverable</span>
-                                    <FluentSelect TOption="string" class="binding-row__select"
-                                            Value="@(EffectiveResultRef ?? string.Empty)"
-                                            ValueChanged="OnResultChangedAsync"
-                                            aria-label="Deliverable node">
-                                        @foreach (var candidate in DeliverableCandidates)
+                                @* The string `result` door — the single-deliverable form only (#1222). A
+                                   package with a deliverables list edits them on the Deliverables pane;
+                                   a pick here would compose a stray `result` beside the list. *@
+                                @if (EffectiveResults.Count == 0)
+                                {
+                                    <label class="node-field">
+                                        <span>deliverable</span>
+                                        <FluentSelect TOption="string" class="binding-row__select"
+                                                Value="@(EffectiveResultRef ?? string.Empty)"
+                                                ValueChanged="OnResultChangedAsync"
+                                                aria-label="Deliverable node">
+                                            @foreach (var candidate in DeliverableCandidates)
+                                            {
+                                                <FluentOption TOption="string" Value="@NodeRef(candidate.Id)">@candidate.Label</FluentOption>
+                                            }
+                                        </FluentSelect>
+                                        @if (resultEdit != null)
                                         {
-                                            <FluentOption TOption="string" Value="@NodeRef(candidate.Id)">@candidate.Label</FluentOption>
+                                            <span class="binding-row__pending" title="Pending change">●</span>
                                         }
-                                    </FluentSelect>
-                                    @if (resultEdit != null)
-                                    {
-                                        <span class="binding-row__pending" title="Pending change">●</span>
-                                    }
-                                </label>
+                                    </label>
+                                }
                                 <FluentButton Appearance="Appearance.Stealth" Class="variable-chips__add" @onclick="() => Select(AddNodeKey)">+ Node</FluentButton>
                             </div>
                         </div>
@@ -14276,7 +14302,9 @@
     // #904: FluentSelect's ValueChanged hands us the chosen string directly.
     private async Task OnResultChangedAsync(string? selected)
     {
-        if (string.IsNullOrEmpty(selected))
+        // The string `result` belongs to the single-deliverable form alone; a
+        // listed package never reaches this (#1222).
+        if (string.IsNullOrEmpty(selected) || EffectiveResults.Count > 0)
         {
             return;
         }
@@ -14291,7 +14319,10 @@
     // the authority at publish.
     private IReadOnlyList<string> UnreachableNodeLabels()
     {
-        if (EffectiveSpecVersion < 6 || DeliverableRootIds.Count == 0)
+        // From 25 a node is reached through reads and sources, not bindings
+        // and aggregators; the validator judges that and the desk says it in
+        // its own sentences (#1222).
+        if (At25 || EffectiveSpecVersion < 6 || DeliverableRootIds.Count == 0)
         {
             return Array.Empty<string>();
         }
