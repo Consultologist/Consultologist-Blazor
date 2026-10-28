@@ -1474,6 +1474,19 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   download stays open. The 26-pane tests render through a test-only page parameter,
   `AuthorsAboveCeiling`, so #1160's loop pane and the panes to come keep being exercised; the
   gate, the banner, the seam and the banner's test go together with #1164.)*
+  *(As built by #1164, 2026-10-27 — the ceiling moves: `Templates.NewestSpecVersion` is 26, the mirror test is the
+  equality again, and the one button reads "Upgrade to specVersion 26" on any package below it. The chain
+  (`MigrateToNewestAsync`, the C6 shape with one more rung): below 24 the staged 24 rung (the prelude migration),
+  then the composed package through `WorkflowPackageMigration24To25` where it is below 25, then through
+  `WorkflowPackageMigration25To26` — one publish, one notice ("Migrated to specVersion 26. Through 24: … Through 25:
+  … " then the 26 rewrites). **A refusal at any rung refuses whole** (decided 2026-10-27): nothing applies, the
+  author's pending state comes back, the package stays as loaded, and the toolbar says the rung — *"At specVersion
+  26: Node 'x' fans 'f' but no aggregator sources it …"*. The stored upgrade is v2 (a held 25 upgrade from before the
+  chain reached 26 is not restored as a 26 one). The #1209 interim — the gate, the banner, `inert`, the guards, the
+  `AuthorsAboveCeiling` seam and its test — is retired whole; a 26 package opens live and the 26-pane suites render
+  plain. Below 25 a package's upgrade now lands at 26: the older suites' expectations moved with it (a chained
+  7 → 26 package has no `prompts[]`, its snippet opens with a header, its aggregator dissolves into `sources`; at 26 an
+  instruction is required only where read inline, so the explicit-init desk names the inline macro alone).)*
 
 The macro pane is § 2.6's picture.
 

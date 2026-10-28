@@ -21,7 +21,7 @@ public class TemplatesV26DeliverablesTests : ClientRenderTestContext
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V26());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
-        return Render<Templates>(parameters => parameters.Add(p => p.AuthorsAboveCeiling, true));
+        return Render<Templates>();
     }
 
     private IRenderedComponent<Templates> ShowDeliverables(WorkflowPackageContentResponse? fixture = null, string deliverableId = "consult")

@@ -20,7 +20,7 @@ public class TemplatesV26PromptPaneTests : ClientRenderTestContext
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V26());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
-        return Render<Templates>(parameters => parameters.Add(p => p.AuthorsAboveCeiling, true));
+        return Render<Templates>();
     }
 
     private void Select(IRenderedComponent<Templates> page, string key)

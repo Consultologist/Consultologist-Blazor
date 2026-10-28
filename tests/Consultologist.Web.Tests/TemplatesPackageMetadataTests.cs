@@ -190,7 +190,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "The package declares a title, which requires specVersion 9. Use \"Upgrade to specVersion 25\" and publish.",
+            "The package declares a title, which requires specVersion 9. Use \"Upgrade to specVersion 26\" and publish.",
             Refusals(page));
 
         WithPublishAccepted();
@@ -202,7 +202,7 @@ public class TemplatesPackageMetadataTests : ClientRenderTestContext
         Publish(page);
         Assert.NotNull(sent);
         Assert.Equal("Too early", SentManifest(sent!).GetProperty("title").GetString());
-        Assert.Equal(25, SentManifest(sent!).GetProperty("specVersion").GetInt32());
+        Assert.Equal(26, SentManifest(sent!).GetProperty("specVersion").GetInt32());
     }
 
     [Fact]

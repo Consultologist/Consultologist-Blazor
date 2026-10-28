@@ -24,7 +24,7 @@ public class TemplatesV26FlowPaneTests : ClientRenderTestContext
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V26Flow());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
-        return Render<Templates>(parameters => parameters.Add(p => p.AuthorsAboveCeiling, true));
+        return Render<Templates>();
     }
 
     private IRenderedComponent<Templates> ShowNode(string nodeId, WorkflowPackageContentResponse? fixture = null)

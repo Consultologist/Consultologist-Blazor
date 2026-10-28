@@ -335,7 +335,7 @@ public class TemplatesNodeMacrosTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Node 'draft-section' macro 'tool_guidance' declares forItem, which requires specVersion 24. Use \"Upgrade to specVersion 25\" and publish.",
+            "Node 'draft-section' macro 'tool_guidance' declares forItem, which requires specVersion 24. Use \"Upgrade to specVersion 26\" and publish.",
             Refusals(page));
     }
 
@@ -359,7 +359,7 @@ public class TemplatesNodeMacrosTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Macro 'tool_guidance' placeholder '{{item:name}}' requires specVersion 24. Use \"Upgrade to specVersion 25\" and publish.",
+            "Macro 'tool_guidance' placeholder '{{item:name}}' requires specVersion 24. Use \"Upgrade to specVersion 26\" and publish.",
             Refusals(page));
     }
 
