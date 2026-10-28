@@ -329,8 +329,9 @@ public static class WorkflowManifestReader
 
     /// <summary>One declared macro (v11 § 4): package-owned template text.
     /// v12 § 3 (#621): optional and its default, carried as read.
-    /// v25 (C3 #1009): the instruction — mandatory at 25 — carried as read (null when absent).</summary>
-    public sealed record MacroView(string Id, string Label, string File, bool? Optional = null, bool? Default = null, string? Instruction = null);
+    /// v25 (C3 #1009): the instruction — mandatory at 25 — carried as read (null when absent).
+    /// v26 (#1163): <paramref name="If"/> — the macro's own gate, from its file header (null when absent).</summary>
+    public sealed record MacroView(string Id, string Label, string File, bool? Optional = null, bool? Default = null, string? Instruction = null, string? If = null);
 
     /// <summary>One declared output-contract schema: its id and the package file its JSON body lives in.</summary>
     public sealed record SchemaView(string Id, string File);
@@ -345,10 +346,23 @@ public static class WorkflowManifestReader
     /// One collection (≤24 data) or snippet-folder (25) item. <paramref name="When"/>
     /// is the item's input-only condition as written in index.json (25; null
     /// when absent — the item is always included).
+    /// v26 (#1163): at 26 <paramref name="Name"/> is the header's label and <paramref name="When"/>
+    /// its <c>if</c>; a macro folder's item also carries its header's instruction, optional and default.
     /// </summary>
-    public sealed record DataItemView(string Id, string Name, string File, string? When = null);
+    public sealed record DataItemView(string Id, string Name, string File, string? When = null, string? Instruction = null, bool? Optional = null, bool? Default = null);
 
-    public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items);
+    /// <summary>A folder; <paramref name="Kind"/> (v26 #1163) follows the declaration — the snippets map or the macros map.</summary>
+    public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items, Consultologist.PackageFormat.WorkflowTextKind Kind = Consultologist.PackageFormat.WorkflowTextKind.Snippet);
+
+    /// <summary>
+    /// v26 (#1163): one snippet or macro file's header as loaded — the parsed header (null when the
+    /// JSON does not parse), the library's sentences when it is refused (none, an unknown key, no
+    /// label …) and the body after it (the whole file when refused, so the editor shows it as held).
+    /// </summary>
+    public sealed record TextHeaderView(string File, Consultologist.PackageFormat.WorkflowTextKind Kind, Consultologist.PackageFormat.WorkflowTextHeader? Header, IReadOnlyList<string> Errors, string Body)
+    {
+        public bool Refused => Header is null || Errors.Count > 0;
+    }
 
     public static IReadOnlyList<PromptView> ReadPrompts(JsonElement manifest)
     {
@@ -604,14 +618,96 @@ public static class WorkflowManifestReader
         return scalars;
     }
 
-    /// <summary>One single-value data entry: the bindable id and the file holding its text.</summary>
-    public sealed record ScalarView(string Id, string Path);
+    /// <summary>
+    /// v26 (#1163): the same entries with each file's header read — a standalone snippet's
+    /// label and <c>if</c> live in its file at 26 (null when the file has no parseable header).
+    /// </summary>
+    public static IReadOnlyList<ScalarView> ReadScalarEntries(JsonElement manifest, IReadOnlyDictionary<string, string> files, string key = DataKey) =>
+        ReadScalarEntries(manifest, key)
+            .Select(scalar => ReadHeader(Consultologist.PackageFormat.WorkflowTextKind.Snippet, scalar.Path, files) is { Refused: false, Header: { } header }
+                ? scalar with { Label = header.Label, If = string.IsNullOrWhiteSpace(header.If) ? null : header.If }
+                : scalar)
+            .ToList();
+
+    /// <summary>One single-value data entry: the bindable id and the file holding its text; v26 (#1163) its header's label and <c>if</c>.</summary>
+    public sealed record ScalarView(string Id, string Path, string? Label = null, string? If = null);
+
+    /// <summary>v26 (#1163): one file's header, split and parsed with its declared kind; null when the file is absent.</summary>
+    public static TextHeaderView? ReadHeader(Consultologist.PackageFormat.WorkflowTextKind kind, string path, IReadOnlyDictionary<string, string> files)
+    {
+        if (!files.TryGetValue(path, out var text))
+        {
+            return null;
+        }
+
+        var (headerJson, body) = Consultologist.PackageFormat.WorkflowTextHeaders.Split(text);
+        if (headerJson is null)
+        {
+            return new TextHeaderView(path, kind, null, new[] { Consultologist.PackageFormat.WorkflowTextHeaders.MissingHeaderSentence(kind, path) }, text);
+        }
+
+        var errors = new List<string>();
+        var header = Consultologist.PackageFormat.WorkflowTextHeaders.Parse(kind, path, headerJson, errors);
+        return header is null || errors.Count > 0
+            ? new TextHeaderView(path, kind, header, errors, text)
+            : new TextHeaderView(path, kind, header, errors, body);
+    }
+
+    /// <summary>
+    /// v26 (#1163): every snippet and macro file the manifest names — the scalars, each folder's
+    /// items (the 26 list index) and the macros map's files and folder items — with its header
+    /// read by its declared kind, keyed by path. Empty below 26 (no map holds a headed file).
+    /// </summary>
+    public static IReadOnlyDictionary<string, TextHeaderView> ReadTextHeaders(JsonElement manifest, IReadOnlyDictionary<string, string> files)
+    {
+        var headers = new Dictionary<string, TextHeaderView>(StringComparer.Ordinal);
+
+        void Take(Consultologist.PackageFormat.WorkflowTextKind kind, string path)
+        {
+            if (!headers.ContainsKey(path) && ReadHeader(kind, path, files) is { } view)
+            {
+                headers[path] = view;
+            }
+        }
+
+        foreach (var scalar in ReadScalarEntries(manifest, SnippetsKey))
+        {
+            Take(Consultologist.PackageFormat.WorkflowTextKind.Snippet, scalar.Path);
+        }
+
+        foreach (var collection in ReadCollections(manifest, files, SnippetsKey))
+        {
+            foreach (var item in collection.Items)
+            {
+                Take(Consultologist.PackageFormat.WorkflowTextKind.Snippet, item.File);
+            }
+        }
+
+        if (TryGetProperty(manifest, "macros", out var macros) && macros.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var macro in ReadMacros(manifest))
+            {
+                Take(Consultologist.PackageFormat.WorkflowTextKind.Macro, macro.File);
+            }
+
+            foreach (var collection in ReadCollections(manifest, files, "macros", Consultologist.PackageFormat.WorkflowTextKind.Macro))
+            {
+                foreach (var item in collection.Items)
+                {
+                    Take(Consultologist.PackageFormat.WorkflowTextKind.Macro, item.File);
+                }
+            }
+        }
+
+        return headers;
+    }
 
     /// <summary>
     /// The manifest's collections joined with each directory's index.json (from
     /// the files dict) so the editor can render one card per item.
     /// </summary>
-    public static IReadOnlyList<CollectionView> ReadCollections(JsonElement manifest, IReadOnlyDictionary<string, string> files, string key = DataKey)
+    public static IReadOnlyList<CollectionView> ReadCollections(JsonElement manifest, IReadOnlyDictionary<string, string> files, string key = DataKey,
+        Consultologist.PackageFormat.WorkflowTextKind kind = Consultologist.PackageFormat.WorkflowTextKind.Snippet)
     {
         var collections = new List<CollectionView>();
 
@@ -638,8 +734,10 @@ public static class WorkflowManifestReader
                     using var index = JsonDocument.Parse(indexJson);
 
                     // v26 (#1160): a folder's index.json is an ordered list [{ id, file }];
-                    // name and the gate live in the item file's header (design § 6). Read
-                    // so a 26 package loads; the header fields as a write target are #1163's.
+                    // name and the gate live in the item file's header (design § 5). #1163:
+                    // the header is read by the folder's declared kind (a macro folder's item
+                    // carries its instruction, optional and default); the write target is the
+                    // header, composed by the editor.
                     if (index.RootElement.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var item in index.RootElement.EnumerateArray())
@@ -651,15 +749,9 @@ public static class WorkflowManifestReader
                             }
 
                             var id = ReadString(item, "id") ?? file;
-                            Consultologist.PackageFormat.WorkflowTextHeader? header = null;
-                            if (files.TryGetValue(directory + file, out var itemText)
-                                && Consultologist.PackageFormat.WorkflowTextHeaders.Split(itemText).HeaderJson is { } headerJson)
-                            {
-                                header = Consultologist.PackageFormat.WorkflowTextHeaders.Parse(
-                                    Consultologist.PackageFormat.WorkflowTextKind.Snippet, directory + file, headerJson, new List<string>());
-                            }
-
-                            items.Add(new DataItemView(id, header?.Label ?? id, directory + file, string.IsNullOrWhiteSpace(header?.If) ? null : header!.If));
+                            var header = ReadHeader(kind, directory + file, files) is { Refused: false } view ? view.Header : null;
+                            items.Add(new DataItemView(id, header?.Label ?? id, directory + file, string.IsNullOrWhiteSpace(header?.If) ? null : header!.If,
+                                header?.Instruction, header?.Optional, header?.Default));
                         }
                     }
                     else if (index.RootElement.ValueKind == JsonValueKind.Object
@@ -687,7 +779,7 @@ public static class WorkflowManifestReader
                 }
             }
 
-            collections.Add(new CollectionView(entry.Name, directory, items));
+            collections.Add(new CollectionView(entry.Name, directory, items, kind));
         }
 
         return collections;
@@ -857,6 +949,42 @@ public static class WorkflowManifestReader
     }
 
     /// <summary>The declared macros (v11 § 4). Empty below 11.</summary>
+    /// <summary>
+    /// v26 (#1163): the macros with each file's header read — label, instruction, optional,
+    /// default and the macro's own <c>if</c> live in the file at 26. A folder entry is not a
+    /// macro row: <see cref="ReadCollections"/> over the macros key reads it. Below 26 (a list)
+    /// the manifest's facts, as <see cref="ReadMacros(JsonElement)"/> reads them.
+    /// </summary>
+    public static IReadOnlyList<MacroView> ReadMacros(JsonElement manifest, IReadOnlyDictionary<string, string> files)
+    {
+        if (!TryGetProperty(manifest, "macros", out var table) || table.ValueKind != JsonValueKind.Object)
+        {
+            return ReadMacros(manifest);
+        }
+
+        var macros = new List<MacroView>();
+        foreach (var macro in ReadMacros(manifest))
+        {
+            if (macro.File.EndsWith('/'))
+            {
+                continue;
+            }
+
+            macros.Add(ReadHeader(Consultologist.PackageFormat.WorkflowTextKind.Macro, macro.File, files) is { Refused: false, Header: { } header }
+                ? macro with
+                {
+                    Label = string.IsNullOrWhiteSpace(header.Label) ? macro.Id : header.Label!,
+                    Instruction = header.Instruction,
+                    Optional = header.Optional,
+                    Default = header.Default,
+                    If = string.IsNullOrWhiteSpace(header.If) ? null : header.If,
+                }
+                : macro);
+        }
+
+        return macros;
+    }
+
     public static IReadOnlyList<MacroView> ReadMacros(JsonElement manifest)
     {
         var macros = new List<MacroView>();
