@@ -15,7 +15,8 @@ namespace Consultologist.Web.Tests;
 /// and a discard reloads the registry's), with one notice naming every rewrite. A5
 /// (#1018) moved the ceilings: the toolbar offers the one button, "Upgrade to
 /// specVersion 25", and below 24 it chains the staged 24 rung (the prelude migration)
-/// into the rewrite.
+/// into the rewrite. #1164 moved the ceiling to 26: the one button chains on through the
+/// 26 rewrite (the notice says "Through 25: …"), so every expectation here lands at 26.
 /// </summary>
 public class TemplatesV25MigrationTests : ClientRenderTestContext
 {
@@ -77,7 +78,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
     {
         var page = RenderEditor();
 
-        Assert.Equal(new[] { "Upgrade to specVersion 25" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 26" }, UpgradeButtons(page));
         Assert.Contains("Data", Groups(page));
         Assert.DoesNotContain("Snippets", Groups(page));
     }
@@ -93,8 +94,8 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         await UpgradeTo25Async(page);
 
         var notice = page.Find(".migration-notice").TextContent;
-        Assert.Contains("Migrated to specVersion 25. Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
-        Assert.Contains("upgraded 7 → 25", page.Markup);
+        Assert.Contains("Migrated to specVersion 26. Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
+        Assert.Contains("upgraded 7 → 26", page.Markup);
         Assert.Contains("Snippets", Groups(page));
         Assert.DoesNotContain("Preludes", Groups(page));
         Assert.Empty(UpgradeButtons(page));
@@ -123,7 +124,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".migration-notice"));
         Assert.Contains("Preludes", Groups(page));
         Assert.DoesNotContain("Snippets", Groups(page));
-        Assert.Equal(new[] { "Upgrade to specVersion 25" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 26" }, UpgradeButtons(page));
         Assert.DoesNotContain("●", page.Markup);
     }
 
@@ -142,7 +143,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         Assert.DoesNotContain("Schemas", groups);
 
         var notice = page.Find(".migration-notice").TextContent;
-        Assert.Contains("Migrated to specVersion 25.", notice);
+        Assert.Contains("Migrated to specVersion 26.", notice);
         Assert.Contains("Node 'identify-problem' renamed 'identify_problem'", notice);
         Assert.Contains("results is now deliverables", notice);
         Assert.Contains("data is now snippets", notice);
@@ -150,7 +151,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
 
         // Said in the publish button, and publish is open.
         var publish = page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish new version"));
-        Assert.Contains("upgraded 24 → 25", publish.TextContent);
+        Assert.Contains("upgraded 24 → 26", publish.TextContent);
         Assert.Null(publish.GetAttribute("disabled"));
         // Still the same package, not an import.
         Assert.DoesNotContain("Imported", page.Markup);
@@ -166,23 +167,20 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         Publish(page);
         Assert.Null(sent);
         var refusals = Refusals(page);
-        foreach (var macro in new[] { "closing", "footer", "handoff" })
-        {
-            Assert.Contains($"Macro '{macro}' must declare an instruction at specVersion 25; placed text tells the model when to write its text read.", refusals);
-        }
+        // #1164: at 26 an instruction is required only where the macro is read inline (§ 2.5) —
+        // handoff is; closing and footer are placed only (kept, optional, the "unread" note).
+        Assert.Contains("Macro 'handoff' is read inline by node 'assessment' and declares no instruction; the model is told nothing (macros/handoff.md).", refusals);
+        Assert.DoesNotContain(refusals, r => r.StartsWith("Macro 'closing'", StringComparison.Ordinal));
 
-        foreach (var macro in new[] { "closing", "footer", "handoff" })
-        {
-            Navigate(page, macro);
-            page.Find($"fluent-text-area[aria-label='Instruction for macro {macro}']").Change("Say when it applies.");
-        }
+        Navigate(page, "handoff");
+        page.Find("fluent-text-area[aria-label='Instruction for macro handoff']").Change("Say when it applies.");
 
         Publish(page);
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         var manifest = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
-        Assert.Equal(25, manifest.GetProperty("specVersion").GetInt32());
-        foreach (var key in new[] { "data", "results", "schemas", "schemaRefs", "customSchemas" })
+        Assert.Equal(26, manifest.GetProperty("specVersion").GetInt32());
+        foreach (var key in new[] { "data", "results", "schemas", "schemaRefs", "customSchemas", "prompts" })
         {
             Assert.False(manifest.TryGetProperty(key, out _), key);
         }
@@ -204,8 +202,11 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
 
         await UpgradeTo25Async(page);
 
-        Navigate(page, "extract");
-        Assert.Equal("Extract EVERY concept from:\n{{ input.notes }}", page.Find(".editor-pane fluent-text-area").GetAttribute("current-value"));
+        // #1164: at 26 the prompt lives on its node's pane.
+        Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = "node:extract_patient_concepts";
+        page.Render();
+        var section = page.FindAll(".node-section").Single(s => s.QuerySelector(".node-section__head")?.TextContent.Trim() == "Prompt text");
+        Assert.Equal("Extract EVERY concept from:\n{{ input.notes }}", section.QuerySelector("fluent-text-area")!.GetAttribute("current-value"));
     }
 
     [Fact]
@@ -257,7 +258,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         var again = Render<Templates>();
 
         Assert.Contains("Snippets", Groups(again));
-        Assert.Contains("Migrated to specVersion 25.", again.Find(".migration-notice").TextContent);
-        Assert.Contains("upgraded 24 → 25", again.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish new version")).TextContent);
+        Assert.Contains("Migrated to specVersion 26.", again.Find(".migration-notice").TextContent);
+        Assert.Contains("upgraded 24 → 26", again.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish new version")).TextContent);
     }
 }

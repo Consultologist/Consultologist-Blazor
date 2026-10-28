@@ -51,17 +51,16 @@ public class SpecVersionMirrorTests
     }
 
     [Fact]
-    public void TheEditorsCeiling_LagsTheRegistryByName_UntilTheEditorsChainTo26Lands()
+    public void TheEditorsCeiling_IsTheNewestFormatTheRegistryAccepts()
     {
         // What the newest "Upgrade to specVersion N" stamps (#429). Ahead of
         // the registry, publish refuses the package the author just built;
         // behind it, the newest format is unreachable from the editor — which
-        // was #347's defect. #1149 (2026-10-27): the registry accepts 26 and the
-        // engine runs it, but the editor's upgrade chain and panes for 26 are
-        // Milestone 33's (#1164) — so the authoring ceiling stays 25 ON PURPOSE,
-        // pinned here by name. When #1164 lands, this becomes the equality again.
-        Assert.Equal(26, WorkflowPackageValidator.AcceptedSpecVersions.Max());
-        Assert.Equal(25, Templates.NewestSpecVersion);
+        // was #347's defect. #1149 ran 26 ahead of the editor and pinned the
+        // lag by name; #1164 brought the editor's chain to 26 — the equality again.
+        Assert.Equal(
+            WorkflowPackageValidator.AcceptedSpecVersions.Max(),
+            Templates.NewestSpecVersion);
     }
 
     [Fact]
