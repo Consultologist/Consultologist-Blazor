@@ -505,8 +505,10 @@ The text begins on the line after the closing brace.
   standards/hpi.md has no header; a snippet file opens with { "label": … }"*). A header on a
   **prompt** file is refused (a prompt has none of these facts).
 - **Closed key set.** Snippet: `label` (required), `if`. Macro: `label` (required),
-  `instruction` (required where read inline, § 2.5; built 2026-10-26), `optional`, `default`, `if` (the
-  key is carried from #1105; #1090 and #1094
+  `instruction` (required where read inline, § 2.5; built 2026-10-26), `optional`, `default` (the pair
+  judged as at v12 — optional without a default, default without optional — over the header, on a
+  standalone macro and on a folder item keyed `<folder>/<item>`; #1224, package-format v2026.10.13),
+  `if` (the key is carried from #1105; #1090 and #1094
   give a macro's and a snippet's `if` their effect). Anything else
   is refused naming the key; the reserved names `id`, `file`, `content`, `value`, `prompt` are
   refused by name (they are the object's members, not the file's facts).
@@ -1271,7 +1273,7 @@ targets `min(Runnable, Newest)` so "Upgrade to specVersion 25" keeps showing and
 **Engine:** `AcceptedSpecVersions` and `SupportedSpecVersions` += 26; the migration runner's 26 stage now
 validates at 26 before writing; the next-is-refused tests moved to 27. **Registry (`package-format
 v2026.10.12`):** `spec-versions.json` lists 26 with the document and the generated schema; `conformance/v26/`
-holds 113 vectors (19 valid, 94 invalid: 5 schema-caught, 89 `SHAPE_BLIND` — the flow bodies, the gates'
+holds 117 vectors (19 valid, 98 invalid: 5 schema-caught, 93 `SHAPE_BLIND` — the flow bodies, the gates'
 expressions, the sources, the headers and every template read are relations and file facts) and eight
 below-26 gates sit under `v25/` (`invalid-<key>-at-v25`, each one sentence, all caught by the 25 schema); the
 `any` case's sentence gains 26; the README's counts. **Three facts the export surfaced:** the 26 schema still
@@ -1440,9 +1442,10 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   byte-identical (files hash whole). The `macros` map gains and loses keys (a file, a `"<dir>/"`
   folder) and never a label; a folder's index is written as the `[{ id, file }]` list, recomposed
   on membership and order alone. New: the macro pane's **if** section ("Always" at rest, the
-  § 2.6 sentence), the optional/default pair back on the pane at 26 (the desk refuses optional
-  without a default in the validator's words, since the library judges the manifest's pair, empty
-  at 26), the standalone snippet pane's **label** and **if** fields, "+ Snippet" with a label that
+  § 2.6 sentence), the optional/default pair back on the pane at 26 (the library judges the pair
+  over the headers since #1224 — a standalone macro and a folder item alike — and the desk shows
+  its words; until then the desk mirrored the sentence itself, the library judging the manifest's
+  pair, empty at 26), the standalone snippet pane's **label** and **if** fields, "+ Snippet" with a label that
   defaults from the id as "+ Macro"'s does, "+ Macro folder" and a macro folder's item pane with
   its instruction and pair. **A refused header** (none, an unknown or reserved key, no label, bad
   JSON) opens as the whole file in the text editor with the library's own sentences in a bar and
