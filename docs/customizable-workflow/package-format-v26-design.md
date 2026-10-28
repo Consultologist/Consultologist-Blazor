@@ -1542,6 +1542,19 @@ The 25 shape, one layer per PR, each green on its own; the bump is the last sub-
   26 — *landed 2026-10-27 (#1149) ahead of C, with the editor's authoring ceiling
   (`Templates.NewestSpecVersion`) held at 25 by name until #1164*; the seven packages republish and
   the pins move **after C** (Milestone 33's closing step).
+  *(The content moved 2026-10-28, #1204 — Milestone 33 complete: the seven public packages migrated
+  with the runner at engine v2026.10.13 (`consultologist-workflows` PR #43; each 0 errors / 0 warnings;
+  the one hand edit "SNOMED tool guidance", the other invented labels kept) and published — general
+  v2026.10.2, test/general v2026.10.12, example-two-documents v2026.10.2, example-v12-constructs
+  v2026.10.2, example-classifier-scope v2026.10.3, example-conditional-documents v2026.10.2,
+  example-structured-intake v2026.10.2 — every `latest.json` moved and every manifest served at 26; the
+  production default pin `WorkflowPackages__Default` moved to `test/general@v2026.10.12` (the operator
+  account's own pin was absent); a 26 smoke on the pinned package (job `43e4dfeb658642009bb167eb59cbc9cf`)
+  completed 9/9 with a storage-8 record — the `standards` row `kind: for` over `snippet.standards`, body
+  of three, `ret` section_instructions, `count` 9; body nodes' `in`; prompts by path; the document's
+  `sources` [standards] and `composedHash` equal to the loop row's output hash. Gotcha for the next
+  republish: pushing more than three tags in one push creates no GitHub event — dispatch `publish.yml`
+  per tag.)*
 - **Siblings:** #1063 audio (engine + Create page) rides B's release or its own; #1144
   (`array<text>` element order) is an engine and provenance matter, **not a 26 item**; the
   Milestone 31 editor rows keep landing at 25 and are re-keyed by C.
