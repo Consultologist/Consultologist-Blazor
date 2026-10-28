@@ -222,7 +222,8 @@ public class WorkflowPackageStoreMaterialiseTests
     public void A26PackageWithAMacroFolder_MaterialisesItsFolder_BesideTheFlatMacros()
     {
         var (manifest, files) = WorkflowV26MacroFolderTests.WithFolder();
-        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @if: "input.kind == \"follow_up\"", optional: true) + "Plan noted.";
+        // #1224: an optional item says its default — the pair is judged over the header now.
+        files["macros/section_notes/plan.md"] = V26Package.Header("Plan notes", instruction: "Note the plan.", @if: "input.kind == \"follow_up\"", optional: true, @default: false) + "Plan noted.";
         var package = Load(manifest, files);
 
         var folder = Assert.Single(package.MacroFolders!.Collections).Value;
