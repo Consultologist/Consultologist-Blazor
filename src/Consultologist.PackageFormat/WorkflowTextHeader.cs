@@ -48,6 +48,52 @@ public static class WorkflowTextHeaders
     private static readonly IReadOnlyList<string> MacroKeys = new[] { "label", "instruction", "optional", "default", "if" };
     private static readonly IReadOnlySet<string> Reserved = new HashSet<string>(StringComparer.Ordinal) { "id", "file", "content", "value", "prompt" };
 
+    private static readonly System.Text.Json.JsonSerializerOptions HeaderValueJson = new() { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    /// <summary>
+    /// The header text a 26 file opens with (§ 5.1): the first line `{`, one key per present
+    /// fact in the order label, instruction, optional, default, if, the last line `}` — the
+    /// migration's bytes (#1152), composed here so the editor (#1163) writes the same header.
+    /// A null label writes none; the validator names the missing label.
+    /// </summary>
+    public static string Compose(WorkflowTextHeader header)
+    {
+        var lines = new List<string>();
+        if (header.Label is not null)
+        {
+            lines.Add($"  \"label\": {System.Text.Json.JsonSerializer.Serialize(header.Label, HeaderValueJson)}");
+        }
+
+        if (header.Instruction is not null)
+        {
+            lines.Add($"  \"instruction\": {System.Text.Json.JsonSerializer.Serialize(header.Instruction, HeaderValueJson)}");
+        }
+
+        if (header.Optional is not null)
+        {
+            lines.Add($"  \"optional\": {(header.Optional.Value ? "true" : "false")}");
+        }
+
+        if (header.Default is not null)
+        {
+            lines.Add($"  \"default\": {(header.Default.Value ? "true" : "false")}");
+        }
+
+        if (header.If is not null)
+        {
+            lines.Add($"  \"if\": {System.Text.Json.JsonSerializer.Serialize(header.If, HeaderValueJson)}");
+        }
+
+        return "{\n" + string.Join(",\n", lines) + "\n}\n";
+    }
+
+    /// <summary>The sentence a snippet or macro file with no header is refused with — the editor shows it on the pane (#1163).</summary>
+    public static string MissingHeaderSentence(WorkflowTextKind kind, string path)
+    {
+        var noun = kind == WorkflowTextKind.Macro ? "macro" : "snippet";
+        return $"{path} has no header; a {noun} file opens with {{ \"label\": … }}.";
+    }
+
     /// <summary>The header's JSON and the body, or (null, text) when the file opens with no header.</summary>
     public static (string? HeaderJson, string Body) Split(string text)
     {
@@ -284,8 +330,7 @@ public static class WorkflowTextHeaders
             var (headerJson, body) = Split(text);
             if (headerJson is null)
             {
-                var noun = kind == WorkflowTextKind.Macro ? "macro" : "snippet";
-                errors.Add($"{path} has no header; a {noun} file opens with {{ \"label\": … }}.");
+                errors.Add(MissingHeaderSentence(kind, path));
                 return;
             }
 
