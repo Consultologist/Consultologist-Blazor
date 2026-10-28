@@ -991,6 +991,22 @@ public static class EditorFixtures
     }
 
     /// <summary>
+    /// v26 (#1206): the V26Gated fixture (closing's header if `input.kind == "new"`) with two instances
+    /// that contradict it — the consult deliverable's closing `if input.kind == "follow_up"` and the
+    /// assessment node's closing `if input.kind != "new"` — and the `or` shape on tool_note's
+    /// section_notes instance left as the migrated item gate. A real 26 package.
+    /// </summary>
+    public static WorkflowPackageContentResponse V26Contradiction()
+    {
+        var gated = V26Gated();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(gated.Manifest.GetRawText())!.AsObject();
+        root["deliverables"]![0]!["macros"]![0]!["if"] = "input.kind == \"follow_up\"";
+        var assessment = root["nodes"]!.AsArray().First(n => n!["id"]!.GetValue<string>() == "assessment")!;
+        assessment["macros"]![0]!["if"] = "input.kind != \"new\"";
+        return new(gated.Name, gated.Version, 26, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), gated.Files);
+    }
+
+    /// <summary>
     /// v26 (#1163): the V26 fixture with snippets/standards.md carrying a header the library
     /// refuses — `name` is not a header key (the 25 word, hand-written).
     /// </summary>

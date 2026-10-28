@@ -1077,3 +1077,9 @@ fluent-select.branch-table__pick {
 .rendered-preview__gate--waiting {
     opacity: 0.8;
 }
+
+/* v26 (#1206): a desk note on an instance row — never fires. */
+.instance-note {
+    margin: 0.15rem 0 0;
+    font-size: 0.85rem;
+}

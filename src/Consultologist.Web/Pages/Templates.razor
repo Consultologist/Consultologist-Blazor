@@ -2014,6 +2014,7 @@
                                                        the condition builder has room to expand. *@
                                                     <span class="result-macro-when">
                                                         @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(deliverable, macroIndex), At26 ? "Always" : "Always produced"))
+                                                        @InstanceNote(NeverFiresNote(macroId, MacroWhenTarget(deliverable, macroIndex).When))
                                                     </span>
                                                 }
                                                 </div>
@@ -3012,6 +3013,7 @@
                                                       @onclick="() => RemoveNodeMacroAsync(selectedNode.Id, index)"
                                                       aria-label="@($"Remove macro {entry.Id} from {selectedNode.Id}")" />
                                         @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(selectedNode, index), "Always"))
+                                        @InstanceNote(NeverFiresNote(entry.Id, NodeMacroWhenTarget(selectedNode, index).When))
                                     </div>
                                 }
                                 @if (nodeMacros.Count == 0)
@@ -3542,9 +3544,19 @@
                                     {
                                         <pre class="plain-preview macro-prompt-preview__text @(promptPreviewIsError ? "editor-warning" : null)">@promptPreview</pre>
                                     }
-                                    @if (!readInline)
+                                    @if (!readInline && At26 && MacroPlacedOn(macro.Id).Count > 0 && !string.IsNullOrWhiteSpace(MacroInstruction(macro)))
+                                    {
+                                        @* v26 (#1206, § 2.5): placed only — the instruction is kept, not shown to the model. *@
+                                        <p class="muted-text macro-prompt-preview__note" data-macro-note="unread">unread: no prompt reads macro.@(macro.Id).prompt; the instruction is kept, not shown.</p>
+                                    }
+                                    else if (!readInline)
                                     {
                                         <p class="muted-text macro-prompt-preview__note">Read inline by nothing yet — placed instances do not use the instruction.</p>
+                                    }
+                                    @if (readInline && At26 && InstructionRendersEmpty(macro, (promptPreview, promptPreviewIsError)))
+                                    {
+                                        @* v26 (#1206, the #1096 rule): an empty read — no mechanics sentence, the model is told nothing where it is read. *@
+                                        <p class="muted-text macro-prompt-preview__note" data-macro-note="empty-prompt">empty prompt: macro.@(macro.Id).prompt renders to nothing — the model is told nothing where it is read (@(string.Join(", ", MacroInlineReadRows(macro.Id).Select(r => r.Label)))).</p>
                                     }
                                     @if (selfRead)
                                     {
@@ -3782,6 +3794,7 @@
                                                 </span>
                                                 <span class="result-macro-when">
                                                     @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(instanceNode, instanceIndex), "Always"))
+                                                    @InstanceNote(NeverFiresNote(macro.Id, NodeMacroWhenTarget(instanceNode, instanceIndex).When))
                                                 </span>
                                             </div>
                                         }
@@ -3827,6 +3840,7 @@
                                                 </span>
                                                 <span class="result-macro-when">
                                                     @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(instanceResult, instanceIndex), At26 ? "Always" : "Always produced"))
+                                                    @InstanceNote(NeverFiresNote(macro.Id, MacroWhenTarget(instanceResult, instanceIndex).When))
                                                 </span>
                                             </div>
                                         }
@@ -9291,6 +9305,88 @@
     /// <summary>#1073: the Remove macro button's tooltip — what removing takes with it.</summary>
     private string MacroRemovalReach(WorkflowManifestReader.MacroView macro) =>
         MacroPlacedOn(macro.Id) is { Count: > 0 } placedOn ? $"Removes its instances on {string.Join(", ", placedOn)}." : "Removes the macro.";
+
+    // ----- v26 (#1206, design § 2.2, § 2.5, § 11): the desk notes — never fires, unread, empty prompt -----
+
+    /// <summary>
+    /// Whether a macro's own if and an instance's if can never both hold — judged over ONE enum
+    /// input by brute force (decided 2026-10-27): both parse into the builder's tree, every clause
+    /// is == or != on the same enum input with a literal, and no declared value satisfies both.
+    /// Any other shape says nothing (the library records no compared literals; a sound no is
+    /// better than a guess).
+    /// </summary>
+    private bool NeverFires(string? macroIf, string? instanceIf)
+    {
+        if (string.IsNullOrWhiteSpace(macroIf) || string.IsNullOrWhiteSpace(instanceIf)
+            || !ConditionBuilderModel.TryFromText(macroIf, out var macroTree, out _)
+            || !ConditionBuilderModel.TryFromText(instanceIf, out var instanceTree, out _))
+        {
+            return false;
+        }
+
+        var operands = ConditionBuilderModel.Clauses(macroTree).Concat(ConditionBuilderModel.Clauses(instanceTree)).Select(c => c.Operand).Distinct(StringComparer.Ordinal).ToList();
+        if (operands.Count != 1
+            || EffectiveInputs.FirstOrDefault(i => i.Id == operands[0]) is not { } input
+            || WorkflowInputTypes.Of(input) != WorkflowInputTypes.Enum
+            || input.Values is not { Count: > 0 } values
+            || !ConditionBuilderModel.Clauses(macroTree).Concat(ConditionBuilderModel.Clauses(instanceTree)).All(c => !c.IsEmpty && c.Arithmetic is null && c.Operator is "==" or "!="))
+        {
+            return false;
+        }
+
+        return !values.Any(value => EvaluateOver(macroTree, value) && EvaluateOver(instanceTree, value));
+    }
+
+    /// <summary>The builder's tree over one value of its single operand: a clause compares, Not flips, a group folds and/or.</summary>
+    private static bool EvaluateOver(ConditionNode node, string value)
+    {
+        var holds = node switch
+        {
+            ConditionClause clause => clause.Operator == "==" ? clause.Literal == value : clause.Literal != value,
+            ConditionGroup group => group.Join == ConditionGroup.Or ? group.Items.Any(i => EvaluateOver(i, value)) : group.Items.All(i => EvaluateOver(i, value)),
+            _ => true,
+        };
+        return node.Not ? !holds : holds;
+    }
+
+    /// <summary>v26 (#1206): the instance row's note when the macro's if and the instance's if cannot both hold; null otherwise and below 26.</summary>
+    private string? NeverFiresNote(string macroId, string? instanceIf) =>
+        At26 && EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { If: { } macroIf } && NeverFires(macroIf, instanceIf)
+            ? $"never fires: the macro's if ({macroIf.Trim()}) and this instance's if ({instanceIf!.Trim()}) cannot both hold"
+            : null;
+
+    private RenderFragment<string?> InstanceNote => note => @<text>
+        @if (note is not null)
+        {
+            <p class="muted-text instance-note instance-note--never-fires" data-instance-note="never-fires">@note</p>
+        }
+    </text>;
+
+    /// <summary>
+    /// v26 (#1206, the #1096 renderer rule): whether macro.&lt;id&gt;.prompt is an empty read — the
+    /// instruction blank, or rendering to whitespace over the token scope while its walk reads
+    /// nothing a run could change (no input, node, item, run or profile fact; decided 2026-10-27).
+    /// </summary>
+    private bool InstructionRendersEmpty(WorkflowManifestReader.MacroView macro, (string Text, bool IsError) preview)
+    {
+        if (string.IsNullOrWhiteSpace(MacroInstruction(macro)))
+        {
+            return true;
+        }
+
+        if (preview.IsError || !string.IsNullOrWhiteSpace(preview.Text))
+        {
+            return false;
+        }
+
+        var walked = PackageWalk?.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Instruction && t.Id == macro.Id);
+        return walked is { } instruction
+            && instruction.References.Inputs.Count == 0
+            && instruction.References.Nodes.Count == 0
+            && instruction.References.ItemMembers.Count == 0
+            && instruction.References.RunFacts.Count == 0
+            && instruction.References.ProfileFacts.Count == 0;
+    }
 
     /// <summary>v25 (C3 #1009): where a macro is placed — the nodes and deliverables carrying an instance of it.</summary>
     private IReadOnlyList<string> MacroPlacedOn(string macroId) =>
