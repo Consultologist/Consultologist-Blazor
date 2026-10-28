@@ -473,9 +473,25 @@ public sealed class WorkflowPackages
         }
 
         // The same generator that produces the checked-in dag.mmd (pinned by
-        // WorkflowDagDiagramTests) — a read-only projection of the manifest.
+        // WorkflowDagDiagramTests) — a read-only projection of the manifest and,
+        // from 25 (#1227), of the reads its templates make: the walk the job
+        // starter runs, over the package's own files and formats. A walk that
+        // cannot be made leaves the declarations alone.
+        WorkflowDerivedEdges.Walk? walk = null;
+        if (package.Manifest.SpecVersion >= 25 && package.SourceFiles is { } files)
+        {
+            try
+            {
+                walk = WorkflowDerivedEdges.WalkOf(package.Manifest, files, package.Formats);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or System.Text.Json.JsonException)
+            {
+                _logger.LogWarning(ex, "Workflow package diagram walk failed; drawing declarations alone. Ref={Ref}", packageRef);
+            }
+        }
+
         return await CreateJsonResponseAsync(req, HttpStatusCode.OK,
-            new { diagram = WorkflowDagDiagram.Generate(package.Manifest) }, cancellationToken);
+            new { diagram = WorkflowDagDiagram.Generate(package.Manifest, walk) }, cancellationToken);
     }
 
     [Function("WorkflowPackageDiagramPreview")]
