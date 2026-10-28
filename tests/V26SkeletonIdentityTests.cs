@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
@@ -5,24 +6,18 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// #1154 (package-format-v26-design.md § 1.4, § 14): the same skeleton — for
-/// each public package, the 25 package and its migrated 26 twin resolve the
-/// same blocks (count, names, items; the id's middle segment the loop's where
-/// it was the fanned node's), the same collections and rosters, and decide
-/// the same fire set over the same inputs. The offline half of the issue's
-/// done-when; the run with equal hashes is the bump's.
+/// #1154 (package-format-v26-design.md § 1.4, § 14): the same skeleton — a 25
+/// package and its migrated 26 twin resolve the same blocks (count, names,
+/// items; the id's middle segment the loop's where it was the fanned node's),
+/// the same collections and rosters, and decide the same fire set over the
+/// same inputs. The seven public packages were the dry run at the bump
+/// (2026-10-27) and proved it once; #1229 retires that read of a sibling
+/// checkout (green on CI, which has none; red once the content moved to 26)
+/// and keeps the proof here, over the 25 minimal and its twin — gated (the
+/// coverage check, a folder item's when) and ungated, so both branches run.
 /// </summary>
 public class V26SkeletonIdentityTests
 {
-    private static readonly string Packages = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Projects", "Consultologist", "consultologist-workflows", "packages");
-
-    private static readonly string[] Names = { "general", "test/general", "example-two-documents", "example-v12-constructs", "example-classifier-scope", "example-conditional-documents", "example-structured-intake" };
-
-    private static Dictionary<string, string> FilesOf(string dir) =>
-        Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories)
-            .Where(p => !p.EndsWith("manifest.json", StringComparison.Ordinal) && !p.EndsWith("dag.mmd", StringComparison.Ordinal) && !p.EndsWith(".stamp.json", StringComparison.Ordinal))
-            .ToDictionary(p => Path.GetRelativePath(dir, p).Replace('\\', '/'), File.ReadAllText, StringComparer.Ordinal);
-
     private static WorkflowPackage Load(WorkflowPackageManifest manifest, Dictionary<string, string> files)
     {
         var errors = new List<string>();
@@ -41,6 +36,19 @@ public class V26SkeletonIdentityTests
             Formats: TestFormats.Catalog,
             FormatsRef: TestFormats.Catalog.ResolvedRef,
             Texts: texts);
+    }
+
+    /// <summary>The 25 minimal (as given) and its migrated 26 twin, each loaded.</summary>
+    private static (WorkflowPackage At25, WorkflowPackage At26) Twins(Func<WorkflowPackageManifest, WorkflowPackageManifest>? reshape = null)
+    {
+        var (manifest, bundleFiles) = V25Package.Minimal();
+        manifest = reshape?.Invoke(manifest) ?? manifest;
+        var at25 = Load(manifest, new Dictionary<string, string>(bundleFiles, StringComparer.Ordinal));
+
+        var migrated = WorkflowPackageMigration25To26.Migrate(JsonSerializer.Serialize(manifest, WorkflowPackageManifestJson.WriteOptions), bundleFiles);
+        Assert.True(migrated.Succeeded, string.Join(" | ", migrated.Refusals));
+        var twin = WorkflowPackageManifestJson.Read(migrated.ManifestJson, "twin", V26Package.Accepting26.ToList());
+        return (at25, Load(twin, new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal)));
     }
 
     /// <summary>One value per declared input, by type — enough for every condition to decide.</summary>
@@ -63,78 +71,82 @@ public class V26SkeletonIdentityTests
         ConsultGenerationJobStarter.StartScope(package, V26JobStartTests.Effective(supplied), supplied, "job00000000", "host", new DateTime(2026, 1, 2));
 
     [Fact]
-    public void ThePublicPackages_ResolveTheSameSkeletonAt26()
+    public void TheMinimal25_AndItsMigratedTwin_ResolveTheSameSkeleton_AndFireSet()
     {
-        if (!Directory.Exists(Packages))
+        // The minimal's gates read inputs alone (a folder item's when, the check): no gating read of a
+        // node, so the fire set is decided at the start and compared too.
+        var (at25, at26) = Twins();
+        Assert.Empty(ConsultGenerationJobStarter.GatingReads(at25)!);
+        AssertSameSkeleton("minimal", at25, at26);
+    }
+
+    [Fact]
+    public void TheMinimal25_AndItsMigratedTwin_ResolveTheSameSkeleton_WhenADeliverableGatesOnANode()
+    {
+        // A deliverable when over the classifier's value: a gating read, so the start cannot decide
+        // the fire set — the skeleton alone is compared, as it was for the gated public packages.
+        var (at25, at26) = Twins(m => m with { Deliverables = m.Deliverables!.Select(d => d with { When = "node.scope.value == \"in_scope\"" }).ToList() });
+        Assert.Equal(new[] { "scope" }, ConsultGenerationJobStarter.GatingReads(at25)!.Order());
+        AssertSameSkeleton("minimal, gated on scope", at25, at26);
+    }
+
+    private static void AssertSameSkeleton(string name, WorkflowPackage at25, WorkflowPackage at26)
+    {
+        var loops = at26.Nodes!.Where(n => n.For is not null).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        var fanned = at25.Nodes!.Where(n => n.ForEach is not null).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        Assert.NotEmpty(loops);
+
+        var supplied = SuppliedFor(at25.Manifest);
+        var gating25 = ConsultGenerationJobStarter.GatingReads(at25)!;
+        var gating26 = ConsultGenerationJobStarter.GatingReads(at26)!;
+        Assert.True(gating25.SetEquals(gating26), $"{name}: gating reads {string.Join(",", gating25.Order())} vs {string.Join(",", gating26.Order())}");
+
+        var package25 = at25;
+        var package26 = at26;
+        if (gating25.Count == 0)
         {
-            return;
+            // Not deciding: the fire set is the start's, over the same inputs.
+            var fire25 = ConsultGenerationJobStarter.DecideFireSet(at25, supplied, null, ScopeOf(at25, supplied));
+            var fire26 = ConsultGenerationJobStarter.DecideFireSet(at26, supplied, null, ScopeOf(at26, supplied));
+            Assert.Equal(fire25.Firing.Select(r => r.Id), fire26.Firing.Select(r => r.Id));
+            Assert.Equal(fire25.Skipped.Select(s => (s.ResultId, s.Reason)), fire26.Skipped.Select(s => (s.ResultId, s.Reason)));
+            package25 = fire25.Package;
+            package26 = fire26.Package;
         }
 
-        foreach (var name in Names)
+        var skeleton25 = ConsultGenerationJobStarter.ResolveSkeleton(package25, supplied, ScopeOf(package25, supplied));
+        var skeleton26 = ConsultGenerationJobStarter.ResolveSkeleton(package26, supplied, ScopeOf(package26, supplied));
+
+        Assert.Equal(skeleton25.Items.Count, skeleton26.Items.Count);
+        Assert.Equal(skeleton25.Items.Select(i => i["name"]), skeleton26.Items.Select(i => i["name"]));
+        foreach (var (block25, block26) in skeleton25.Items.Zip(skeleton26.Items))
         {
-            var dir = Path.Combine(Packages, name.Replace('/', Path.DirectorySeparatorChar));
-            var files = FilesOf(dir);
-            var json = File.ReadAllText(Path.Combine(dir, "manifest.json"));
-            var at25 = Load(WorkflowPackageManifestJson.Read(json, name, WorkflowPackageValidator.AcceptedSpecVersions), files);
-
-            var migrated = WorkflowPackageMigration25To26.Migrate(json, files);
-            Assert.True(migrated.Succeeded, $"{name}: {string.Join(" | ", migrated.Refusals)}");
-            var at26 = Load(WorkflowPackageManifestJson.Read(migrated.ManifestJson, name, V26Package.Accepting26.ToList()), migrated.Files);
-            var loops = at26.Nodes!.Where(n => n.For is not null).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-            var fanned = at25.Nodes!.Where(n => n.ForEach is not null).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-
-            var supplied = SuppliedFor(at25.Manifest);
-            var gating25 = ConsultGenerationJobStarter.GatingReads(at25)!;
-            var gating26 = ConsultGenerationJobStarter.GatingReads(at26)!;
-            Assert.True(gating25.SetEquals(gating26), $"{name}: gating reads {string.Join(",", gating25.Order())} vs {string.Join(",", gating26.Order())}");
-
-            var package25 = at25;
-            var package26 = at26;
-            if (gating25.Count == 0)
+            var parts25 = block25["id"].Split(':');
+            var parts26 = block26["id"].Split(':');
+            Assert.Equal(parts25.Length, parts26.Length);
+            Assert.Equal(parts25[0], parts26[0]);
+            if (parts25.Length == 3)
             {
-                // Not deciding: the fire set is the start's, over the same inputs.
-                var fire25 = ConsultGenerationJobStarter.DecideFireSet(at25, supplied, null, ScopeOf(at25, supplied));
-                var fire26 = ConsultGenerationJobStarter.DecideFireSet(at26, supplied, null, ScopeOf(at26, supplied));
-                Assert.Equal(fire25.Firing.Select(r => r.Id), fire26.Firing.Select(r => r.Id));
-                Assert.Equal(fire25.Skipped.Select(s => (s.ResultId, s.Reason)), fire26.Skipped.Select(s => (s.ResultId, s.Reason)));
-                package25 = fire25.Package;
-                package26 = fire26.Package;
+                // A fanned block: the 25 id named the fanned node, the 26 id names the loop; the item is the same.
+                Assert.Equal(parts25[2], parts26[2]);
+                Assert.True(fanned.Contains(parts25[1]), $"{name}: {block25["id"]} names no fanned node");
+                Assert.True(loops.Contains(parts26[1]), $"{name}: {block26["id"]} names no loop");
             }
-
-            var skeleton25 = ConsultGenerationJobStarter.ResolveSkeleton(package25, supplied, ScopeOf(package25, supplied));
-            var skeleton26 = ConsultGenerationJobStarter.ResolveSkeleton(package26, supplied, ScopeOf(package26, supplied));
-
-            Assert.Equal(skeleton25.Items.Count, skeleton26.Items.Count);
-            Assert.Equal(skeleton25.Items.Select(i => i["name"]), skeleton26.Items.Select(i => i["name"]));
-            foreach (var (block25, block26) in skeleton25.Items.Zip(skeleton26.Items))
+            else
             {
-                var parts25 = block25["id"].Split(':');
-                var parts26 = block26["id"].Split(':');
-                Assert.Equal(parts25.Length, parts26.Length);
-                Assert.Equal(parts25[0], parts26[0]);
-                if (parts25.Length == 3)
-                {
-                    // A fanned block: the 25 id named the fanned node, the 26 id names the loop; the item is the same.
-                    Assert.Equal(parts25[2], parts26[2]);
-                    Assert.True(fanned.Contains(parts25[1]), $"{name}: {block25["id"]} names no fanned node");
-                    Assert.True(loops.Contains(parts26[1]), $"{name}: {block26["id"]} names no loop");
-                }
-                else
-                {
-                    Assert.Equal(block25["id"], block26["id"]);
-                }
+                Assert.Equal(block25["id"], block26["id"]);
             }
-
-            Assert.Equal(skeleton25.CollectionSets.Keys.Order(), skeleton26.CollectionSets.Keys.Order());
-            foreach (var (key, items25) in skeleton25.CollectionSets)
-            {
-                Assert.Equal(items25.Select(i => i["id"]), skeleton26.CollectionSets[key].Select(i => i["id"]));
-            }
-
-            Assert.Equal(
-                skeleton25.CollectionRosters.Select(r => (r.CollectionId, string.Join("|", r.Items.Select(i => $"{i.Id}={i.Name}")))),
-                skeleton26.CollectionRosters.Select(r => (r.CollectionId, string.Join("|", r.Items.Select(i => $"{i.Id}={i.Name}")))));
-            Assert.Equal(skeleton25.EmptyFanLabels, skeleton26.EmptyFanLabels);
         }
+
+        Assert.Equal(skeleton25.CollectionSets.Keys.Order(), skeleton26.CollectionSets.Keys.Order());
+        foreach (var (key, items25) in skeleton25.CollectionSets)
+        {
+            Assert.Equal(items25.Select(i => i["id"]), skeleton26.CollectionSets[key].Select(i => i["id"]));
+        }
+
+        Assert.Equal(
+            skeleton25.CollectionRosters.Select(r => (r.CollectionId, string.Join("|", r.Items.Select(i => $"{i.Id}={i.Name}")))),
+            skeleton26.CollectionRosters.Select(r => (r.CollectionId, string.Join("|", r.Items.Select(i => $"{i.Id}={i.Name}")))));
+        Assert.Equal(skeleton25.EmptyFanLabels, skeleton26.EmptyFanLabels);
     }
 }
