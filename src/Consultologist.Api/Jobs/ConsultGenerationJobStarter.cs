@@ -1224,7 +1224,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // the branch. A flow node's derived edges are its decision's reads;
         // its bodies join the map here, the taken body only, so the prune keeps
         // what runs and drops what the decision excluded. A loop's body joins
-        // whole: a loop is never decided.
+        // whole: a loop is never decided. The record names a pruned node by its
+        // flow row's body and branch alone — never a descriptor of its own: the
+        // served nodes are the run graph (#1223, provenance v2026.10.9).
         var flows = FlowsOf(package);
         var branches = new Dictionary<string, string>(StringComparer.Ordinal);
         var pruned = new HashSet<string>(StringComparer.Ordinal);

@@ -29,8 +29,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
     /// <summary>
     /// v26 (#1156, record storage 8): the storage shape a path stamps — 8 for a
-    /// job whose package is at specVersion 26 (every path; the flow rows, the
-    /// pruned node's row, a document's sources and composedHash), else the
+    /// job whose package is at specVersion 26 (every path; the flow rows, whose
+    /// body and branch name a pruned node — it has no row of its own (#1223,
+    /// provenance v2026.10.9) — a document's sources and composedHash), else the
     /// value the path wrote before (6 for a node, 7 for a deliverable).
     /// </summary>
     internal static void Stamp(ConsultGenerationJobState state, int at25) =>

@@ -207,8 +207,9 @@ A flow node has a row in the record's `nodes` snapshot (§ 10): `kind: if | case
 expression or collection, its body ids and `ret`; an `if`/`case` row names the **branch taken**
 (or "none"); a `for` row carries the item count. A body node's output rows keep their 25 ids
 (`nodeId`, `nodeId:itemId`) — no nesting at 26 means no paths. A node that 25 *pruned* when its
-`when` failed had no row at all; at 26 it is the untaken branch of an `if` row, which is the
-first time the record says why a node did not run.
+`when` failed had no row at all; at 26 it is the untaken branch of an `if` row — named in the
+row's `body`, the row's `branch` saying why, no row of its own (#1223, provenance v2026.10.9) —
+which is the first time the record says why a node did not run.
 
 ## 2. Gates as data, keyed `if`
 
@@ -707,8 +708,9 @@ its fixed-form reason and gains the branch spelling for a source skipped by a fl
 unchanged in shape — an instance excluded by its `if` carries the gate's text as it carries the
 `when`'s today. **Unchanged:** `effectiveInputHash` (and its version), the node hash ladder
 (`NodeHashVersion` 6 — a label, an instruction and a header are declaration, and files hash
-whole), the stamp. The reason the storage version bumps is the flow rows and the pruned node
-that now has one (§ 1.5), not any hash.
+whole), the stamp. The reason the storage version bumps is the flow rows, whose `body` and
+`branch` name a pruned node for the first time (§ 1.5; #1223 — the node has no row of its own),
+not any hash.
 
 **Package-format registry.** `package-format-v26.md` — a full grammar, not a delta, as the 25
 spec is — with headings mirroring it: Objects in templates (+ `deliverable`, the item path, the
@@ -1498,7 +1500,8 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   per pruned body; the Consults run rail fans a body node through its loop. **A pruned node is derived** (decided
   2026-10-27): a body id of an if/case row with neither a descriptor nor an output row — the engine's served
   `nodes` leaves pruned bodies out (`ConsultGenerationJobStarter` filters them at the fire set) where the
-  registry's sentence lists them; both shapes draw the same. That engine/spec mismatch is noted, not fixed, here.
+  registry's sentence listed them; both shapes draw the same. That engine/spec mismatch was resolved by #1223
+  (2026-10-28): the registry's sentence now describes the engine's shape (provenance v2026.10.9).
   A storage-7 record draws and reads byte-identical.)*
 - **The upgrade button**: "Upgrade to specVersion 26" on any 25 package (below 25, the chain
   runs 24 → 25 → 26, one publish, one notice naming the steps); a refusal (an unfillable `ret`,
