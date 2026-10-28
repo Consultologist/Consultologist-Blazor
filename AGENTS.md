@@ -159,6 +159,17 @@ never a wrapper that holds a file input, checkbox, select or date input. bUnit
 has no browser: pin the wrapper's `blazor:onclick:preventdefault` attribute in
 markup, and verify live.
 
+### A test that reads a sibling checkout is green on CI and red on the one machine that has it
+
+*Symptom: three tests fail with "The package is already at specVersion 26"
+after a content bump, and CI never noticed.* A test that `return`s when
+`~/Projects/…/consultologist-workflows` is absent runs nowhere CI runs, so its
+expectations rot silently until the content moves and the one developer with
+the checkout sees red the suite never reported (#1229). What a test proves
+must live on an in-repo fixture; if it truly needs the sibling's content, pin
+the tag it expects (`git show <tag>:packages/<name>/manifest.json`) and fail
+loudly when it is not there — never skip.
+
 ### `az functionapp show --query state` is null on Flex Consumption
 
 *Symptom: `state`, `defaultHostName` and `availabilityState` all return

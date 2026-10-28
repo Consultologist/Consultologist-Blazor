@@ -1005,8 +1005,9 @@ prompts by path; the renderer pipes taking the node; the folder indexes as lists
 macro file opening with its header (a standalone snippet's label invented and named in the notice);
 `macros` the map; `.name` reading `.label`; one notice per rewrite, refusals applying nothing. The 25 minimal
 migrates into a valid 26 package (the conformance baseline `v26-minimal-is-the-migrated-v25-minimal`); a pipe
-on the node renders the bytes the `.content` one did. **The seven public packages migrate without a refusal
-and validate at 26** through the seam: loops `standards` (general, test/general, two-documents),
+on the node renders the bytes the `.content` one did. **The seven public packages migrated without a refusal
+and validated at 26** through the seam (the dry run at the bump; its three tests read the sibling checkout
+and retired to in-repo twins over the 25 minimal once the content moved to 26 — #1229): loops `standards` (general, test/general, two-documents),
 `standards_section_instructions` + `standards_letter_body` (v12), `plan_sections` + `letter_decline_letter` +
 `letter_information_request` (classifier-scope), `sections_consult_note_section` + `sections_progress_note_section`
 (conditional-documents), the five of structured-intake. The runner `scripts/migrate-workflow-package.cs` gains
