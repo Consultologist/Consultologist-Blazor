@@ -1411,6 +1411,26 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   JSON) opens as the whole file in the text editor with the library's own sentences in a bar and
   the fields hidden; a text edit that makes it parse brings the fields back live, and nothing is
   rewritten silently. "Composed as" shows the macro's label (#1161's caveat closes).)*
+  *(#1205, 2026-10-27 — the rendered preview judges the three gates over a pick, through the library:
+  `TemplatePreviewScope.Gates(manifest, walk)` lists every gate the walk's conditions carry at 26 (a
+  node instance's `if` with the node as owner — an ungated instance listed too, since it keeps its
+  macro's read live; a macro's own, keyed id or `<folder>/<item>`; a snippet's; a folder item's) with
+  what each reads, and `Judged(picked, gates, pickedInputs, pickedNodes, itemPicked, reader, item)`
+  applies `WorkflowInlineGates.Suppressed/Inert/InertSnippets` and, for an item, `Holds` with the item
+  bound (the starter's filter) — **only over gates whose every read has a pick** (decided 2026-10-27: an
+  unchosen token compares false and would gate everything off); the rest wait, naming the picks. The
+  editor's preview judges the gates **its own text reads** (a macro's where `macro.<id>` is read or its
+  folder iterated, a snippet's where read, an item's where its folder is iterated or the item read, the
+  reader node's instances where `macro.<id>.prompt` is read — the node pane passes the node), offers a
+  control for every input a judged gate reads, and lists beside the pane what it applied (*"macro
+  'closing' is inert for this pick: its if (…) does not hold"*, *"the read of macro.x.prompt is
+  suppressed …: node 'n''s instance if (…) does not hold"*, *"snippet 's' renders empty …"*, *"item 'i'
+  of folder 'f' is out of the loop … (its direct read renders empty)"*) and what waits (*"pick input.kind
+  to judge …"*, *"pick an item to judge …"*). Without a gate, or below 26, the bytes are the ones they
+  were. Folded in: the node instance's gate is `if` at 26 — read into `NodeMacroView.If`, the rows read
+  "if", the composer writes `if` and never `when`/`forItem` (a #1159 leftover: the editor wrote `when`
+  at 26, which the validator refuses). The preview scope's macro sources carry their header `if` now,
+  as the engine's do.)*
 - **The upgrade button**: "Upgrade to specVersion 26" on any 25 package (below 25, the chain
   runs 24 → 25 → 26, one publish, one notice naming the steps); a refusal (an unfillable `ret`,
   § 13) is said in the toolbar and leaves the package as loaded.
