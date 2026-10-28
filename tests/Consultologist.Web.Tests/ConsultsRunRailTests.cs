@@ -337,4 +337,30 @@ public class ConsultsRunRailTests : ClientRenderTestContext
         // The node grid announces its busy state.
         Assert.NotNull(page.Find(".node-grid").GetAttribute("aria-busy"));
     }
+
+    [Fact]
+    public void AStorage8BodyNode_FansThroughItsLoopRow()
+    {
+        // v26 (#1208): at record storage 8 a body node carries no forEach — its loop row's collection is the fan.
+        WithTwoNodePackage();
+        WithJobDeclaring(
+            new ConsultGenerationNodeDescriptor[]
+            {
+                new("sections", "Sections", Kind: "for", Collection: "snippet.standards", Body: new[] { "fan" }, Ret: "node.fan", Count: 2),
+                new("fan", "Drafting", In: "sections", Prompt: "prompts/section.md"),
+            },
+            collections: new[]
+            {
+                new ConsultCollectionRoster("standards", new[]
+                {
+                    new ConsultCollectionItem("intro", "Introduction"),
+                    new ConsultCollectionItem("plan", "Plan")
+                })
+            });
+
+        var page = RenderRail();
+        var items = page.FindAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        Assert.Equal(new[] { "Introduction", "Plan" }, items);
+    }
 }

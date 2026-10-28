@@ -190,4 +190,119 @@ public class RunDagDiagramTests
 
         Assert.Equal(RunDagDiagram.Build(job), RunDagDiagram.Build(job));
     }
+
+    // ----- v26 (#1208): a storage-8 record's flow rows -----
+
+    private static ConsultGenerationNodeDescriptor[] Storage8Nodes() => new ConsultGenerationNodeDescriptor[]
+    {
+        new("extract", "Extract", Format: "concept_list", Producer: "attested", Prompt: "prompts/extract.md"),
+        new("scope", "Scope", Format: "classification", Producer: "attested", Prompt: "prompts/scope.md"),
+        new("triage", "Triage", Kind: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup", "brief_update" }, Ret: "node.brief_update", Branch: "else"),
+        new("brief_update", "Brief update", Format: "prose", Producer: "attested", Prompt: "prompts/brief.md", Reads: new[] { "extract" }),
+        new("route", "Route", Kind: "case", Expression: "node.scope.value", Body: new[] { "meds" }, Ret: "node.meds", Branch: "in_scope"),
+        new("meds", "Medications", Format: "medication_list", Producer: "attested", Prompt: "prompts/meds.md"),
+        new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "node.section_notes", Count: 2),
+        new("section_notes", "Section notes", Format: "prose", Producer: "attested", Prompt: "prompts/section.md", In: "sections"),
+    };
+
+    private static Dictionary<string, ConsultGenerationNodeStatus> Storage8Outputs() => new()
+    {
+        ["extract"] = Row("extract", "Completed"),
+        ["scope"] = Row("scope", "Completed"),
+        ["triage"] = Row("triage", "Completed"),
+        ["brief_update"] = Row("brief_update", "Completed"),
+        ["route"] = Row("route", "Completed"),
+        ["meds"] = Row("meds", "Completed"),
+        ["sections"] = Row("sections", "Completed"),
+        ["section_notes:hpi"] = Row("section_notes", "Completed"),
+        ["section_notes:plan"] = Row("section_notes", "Running"),
+    };
+
+    [Fact]
+    public void AStorage8Loop_DrawsAsTheFan_WithItsCountAndRet()
+    {
+        var diagram = RunDagDiagram.Build(Job(nodes: Storage8Nodes(), outputs: Storage8Outputs()));
+
+        Assert.Contains("subgraph for_sections[\"sections: per snippet.sections item (1/2)\"]", diagram);
+        // The body node sits inside the subgraph, tallied through its loop, never at the top level.
+        var inside = diagram[(diagram.IndexOf("subgraph for_sections", StringComparison.Ordinal))..];
+        inside = inside[..inside.IndexOf("end\n", StringComparison.Ordinal)];
+        Assert.Contains("section_notes[\"section_notes<br/>Section notes<br/>(1/2) items<br/>prose · attested<br/>prompts/section.md\"]", inside);
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(diagram, @"\nsection_notes\[").Count);
+        Assert.Contains("src_snippet_sections([\"snippet.sections\"])", diagram);
+        Assert.Contains("src_snippet_sections -->|\"for\"| for_sections", diagram);
+        Assert.Contains("sections[\"sections<br/>Sections<br/>for item in snippet.sections\"]", diagram);
+        Assert.Contains("section_notes --> |\"ret\"| sections", diagram);
+        Assert.Matches(@"class [^\n]*\bsection_notes\b[^\n]* running", diagram);
+    }
+
+    [Fact]
+    public void AStorage8If_DrawsItsBranch_AndThePrunedBodyDashed()
+    {
+        var diagram = RunDagDiagram.Build(Job(nodes: Storage8Nodes(), outputs: Storage8Outputs()));
+
+        Assert.Contains("subgraph if_triage[\"triage: if input.kind == \"new\" — branch: else\"]", diagram);
+        Assert.Contains("full_workup[\"full_workup<br/>pruned\"]", diagram);
+        Assert.Matches(@"class [^\n]*\bfull_workup\b[^\n]* skipped", diagram);
+        Assert.Contains("triage{\"triage<br/>Triage<br/>if: input.kind == \"new\"<br/>branch: else\"}", diagram);
+        Assert.Contains("brief_update --> |\"ret\"| triage", diagram);
+        Assert.Contains("extract --> brief_update", diagram);
+    }
+
+    [Fact]
+    public void AStorage8Case_DrawsTheDottedEdgeFromItsSubject()
+    {
+        var diagram = RunDagDiagram.Build(Job(nodes: Storage8Nodes(), outputs: Storage8Outputs()));
+
+        Assert.Contains("subgraph case_route[\"route: case node.scope.value — branch: in_scope\"]", diagram);
+        Assert.Contains("scope -.->|\"case\"| route", diagram);
+        Assert.Contains("meds --> |\"ret\"| route", diagram);
+    }
+
+    [Fact]
+    public void AStorage8Flow_ThatTookNoBranch_IsSkipped_AndNamesNone()
+    {
+        var outputs = Storage8Outputs();
+        outputs["triage"] = Row("triage", "Skipped");
+        outputs.Remove("brief_update");
+        var nodes = Storage8Nodes().Select(n => n.Id == "triage" ? n with { Ret = null, Branch = null } : n).ToArray();
+
+        var diagram = RunDagDiagram.Build(Job(nodes: nodes, outputs: outputs));
+
+        Assert.Contains("branch: none", diagram);
+        Assert.Matches(@"class [^\n]*\btriage\b[^\n]* skipped", diagram);
+        // Both bodies are pruned: neither ran.
+        Assert.Contains("brief_update[\"brief_update<br/>pruned\"]", diagram);
+        Assert.DoesNotContain("|\"ret\"| triage", diagram);
+    }
+
+    [Fact]
+    public void AStorage8Document_DrawsItsSources()
+    {
+        var diagram = RunDagDiagram.Build(Job(
+            nodes: Storage8Nodes(),
+            outputs: Storage8Outputs(),
+            documents: new[] { new ConsultGenerationResultDocumentResponse("consult", "Consultation note", "…", Sources: new[] { "node.triage", "node.sections" }) }));
+
+        Assert.Contains("triage -->|\"source\"| result_consult", diagram);
+        Assert.Contains("sections -->|\"source\"| result_consult", diagram);
+    }
+
+    [Fact]
+    public void A25Record_WithTheStorage8FieldsNull_DrawsTheSameBytes()
+    {
+        var nodes = new ConsultGenerationNodeDescriptor[]
+        {
+            new("extract", "Extracting", "p", Format: "concept_list", Producer: "attested"),
+            new("section", "Sectioning", "p", ForEach: "snippet.standards", Format: "prose", Producer: "attested", Reads: new[] { "extract" }),
+        };
+        var outputs = new Dictionary<string, ConsultGenerationNodeStatus> { ["extract"] = Row("extract", "Completed"), ["section:hpi"] = Row("section", "Completed") };
+
+        var before = RunDagDiagram.Build(Job(nodes: nodes, outputs: outputs));
+        var again = RunDagDiagram.Build(Job(nodes: nodes.Select(n => n with { Kind = null, In = null, Prompt = null, Count = null }).ToArray(), outputs: outputs));
+
+        Assert.Equal(before, again);
+        Assert.DoesNotContain("subgraph", before);
+        Assert.Contains("per snippet.standards item (1/1)", before);
+    }
 }

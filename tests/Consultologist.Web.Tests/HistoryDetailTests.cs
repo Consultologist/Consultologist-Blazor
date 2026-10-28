@@ -1635,6 +1635,71 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.NotEmpty(page.FindAll(".rerun-comparison__table"));
         Assert.Empty(page.FindAll(".rerun-verdict"));
     }
+
+    // ----- v26 (#1208): a storage-8 record's rows -----
+
+    [Fact]
+    public void AStorage8Record_ReadsItsLoop_ItsBranch_ItsPrunedBody_AndThePromptPath()
+    {
+        WithEngine();
+        WithJob(6,
+            packageSpecVersion: 26,
+            schemaVersion: 8,
+            nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("extract", "Extract", Format: "concept_list", Producer: "attested", Prompt: "prompts/extract.md"),
+                new("triage", "Triage", Kind: "if", Expression: "input.kind == \"new\"", Body: new[] { "full_workup", "brief_update" }, Ret: "node.brief_update", Branch: "else"),
+                new("brief_update", "Brief update", Format: "prose", Producer: "attested", Prompt: "prompts/brief.md"),
+                new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes" }, Ret: "node.section_notes", Count: 2),
+                new("section_notes", "Section notes", Format: "prose", Producer: "attested", Prompt: "prompts/section.md", In: "sections"),
+            },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["extract"] = new("extract", "Extract", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["triage"] = new("triage", "Triage", "Completed", null, null, DateTimeOffset.UtcNow, null),
+                ["brief_update"] = new("brief_update", "Brief update", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["sections"] = new("sections", "Sections", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["section_notes:hpi"] = new("section_notes", "Section notes", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["section_notes:plan"] = new("section_notes", "Section notes", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var flows = page.FindAll(".node-row__flow").Select(f => f.TextContent.Trim()).ToList();
+        Assert.Contains("· if input.kind == \"new\" · branch: else", flows);
+        Assert.Contains("· for item in snippet.sections (2)", flows);
+        Assert.Contains("· in sections", flows);
+        // The body node's group fans through its loop.
+        Assert.Contains("per snippet.sections item (2)", page.Find(".node-group summary .node-row__contract").TextContent);
+        // The pruned body, under its if, with no row of its own.
+        var pruned = Assert.Single(page.FindAll(".node-row--pruned"));
+        Assert.Equal("triage", pruned.GetAttribute("data-pruned-by"));
+        Assert.Equal("full_workup", pruned.QuerySelector(".node-row__label")!.TextContent.Trim());
+        Assert.Equal("pruned by triage", pruned.QuerySelector(".node-row__contract")!.TextContent.Trim());
+        // The prompt by path.
+        Assert.Contains("prompts/extract.md", page.FindAll(".node-row__prompt").Select(p => p.TextContent.Trim()));
+        Assert.Contains("prompts/section.md", page.FindAll(".node-row__prompt").Select(p => p.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void AStorage7Record_HasNoFlowTag_NoPrunedRow_NoPromptPath()
+    {
+        WithEngine();
+        WithJob(3,
+            schemaVersion: 7,
+            nodes: new[] { CustomShape with { ForEach = "data:standards" } },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["shape"] = new("shape", "Assessment shape", "Completed", null, null, DateTimeOffset.UtcNow, null),
+                ["shape:hpi"] = new("shape", "Assessment shape", "Completed", "in-h", "out-h", DateTimeOffset.UtcNow, null),
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Empty(page.FindAll(".node-row__flow"));
+        Assert.Empty(page.FindAll(".node-row--pruned"));
+        Assert.Empty(page.FindAll(".node-row__prompt"));
+        Assert.Contains("per data:standards item (1)", page.Find(".node-group summary .node-row__contract").TextContent);
+    }
+
 }
 
 /// <summary>
