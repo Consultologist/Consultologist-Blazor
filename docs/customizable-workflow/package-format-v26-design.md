@@ -1349,6 +1349,32 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   `if` from the item file's header — read only; the write target is #1163's) and a node born
   at 26 naming its prompt by file. The Prompt-text section on a body node waits on #1162
   (prompts by file); "Runs when" on a plain node is #1159's to retire.)*
+  *(As built by #1227, found live over the first 25 and 26 packages the Graph pane drew: the
+  diagram had drawn declarations alone — bindings, `aggregate`, `forEach`, the loop and if/case
+  boxes, a deliverable's sources — so from 25, where a node's inputs are the reads its
+  templates make, a package drew as a row of boxes. The generator now takes the walk
+  (`WorkflowDerivedEdges.Walk.ReadsOf`, the closure `EdgesOf` closes, one read per source with
+  its members): a node read is an edge labelled `value` / `content` / `value, content`, with
+  `via snippet.x` or `via macro.y` when the prompt never reads the node itself but a carrier it
+  reads does; an input, a snippet or folder, a macro folder is a stadium (`input.notes`,
+  `snippet.standards`, `macro.notes`) feeding its reader plain; a read only the node's gates make
+  — its `when`, an instance's `if`, an if/case node's own expression — draws dotted and
+  labelled `if` (`when` at 25), the predicate convention; a body node's reads of the same body
+  draw inside its subgraph, the rest cross the boundary after the box and its `ret`; a loop
+  element read (`e.content`, `e.value`) draws from the **loop's box**, never its collection —
+  the walk records it on the loop, the flow node is the only name the outside sees (§ 1.2),
+  and the box is the loop's output where the stadium is its input; a case node's subject
+  draws once, the dotted `case` edge as before. Below 25 the walk is never consulted. **The
+  editor draws it in the browser** from its own walk (`EditorPackageWalk.Diagram`) — the
+  loaded package, an import, an upgrade and pending edits alike, prompt edits included, with
+  no round trip and live on merge — and asks the engine only when it cannot (no format
+  catalogue, a manifest that does not parse); the engine's `GET …/Current/Diagram` and the
+  `--dag` script run the same generator over the package's files and catalogue, so the
+  checked-in `dag.mmd` matches; the preview `POST` stays the declared-only fallback. The
+  pending-edit decoration counts every Mermaid link line for `linkStyle` — the dotted edges a
+  case or a gate draws had shifted every index after them. Not built: a pending READ shown
+  blue (a prompt edit adding a read — needs a walk of the loaded content and a (source,
+  target) diff); the 26 deliverable `if` is still not drawn.)*
 - **The `forItem` picker** (node instance "— every item —") goes; its row is the gate, with the
   `case item.id` spelling offered when the gate is a disjunction of `item.id` equalities.
 - **The aggregator node** goes from the palette; the Deliverables card's node select becomes an

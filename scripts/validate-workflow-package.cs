@@ -84,13 +84,6 @@ if (manifest is null)
     return 1;
 }
 
-if (wantsDiagram)
-{
-    // Before validation, so a package that is still being worked on can still
-    // have its graph drawn — the diagram is a projection of nodes alone.
-    Console.Out.Write(WorkflowDagDiagram.Generate(manifest));
-    return 0;
-}
 
 // Package-relative, forward-slash keys: the shape Validate and
 // WorkflowDataResolver expect, and what the store builds from blob names.
@@ -129,6 +122,18 @@ if (repo is null)
 var agentsDir = Path.Combine(repo.FullName, "external", "consultologist-agents", "agents");
 var catalog = OutputContractCatalog.Load(agentsDir);
 var formats = FormatCatalogLoader.Load(agentsDir);
+
+if (wantsDiagram)
+{
+    // Before validation, so a package that is still being worked on can still
+    // have its graph drawn — the diagram is a projection of nodes and, from 25
+    // (#1227), of the reads its templates make: the walk the engine runs, over
+    // the files and the bundled catalogue. The engine's GET and the editor draw
+    // the same picture from the same inputs.
+    var walk = manifest.SpecVersion >= 25 ? WorkflowDerivedEdges.WalkOf(manifest, files, formats) : null;
+    Console.Out.Write(WorkflowDagDiagram.Generate(manifest, walk));
+    return 0;
+}
 var catalogSchemas = catalog.Entries.Values
     .Where(entry => entry.SchemaJson != null)
     .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);

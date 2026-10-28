@@ -55,6 +55,20 @@ public static class WorkflowDerivedEdges
     /// <summary>The key a folder item walks under: <c>&lt;folder&gt;/&lt;item&gt;</c>.</summary>
     public static string SnippetItemKey(string folder, string item) => $"{folder}/{item}";
 
+    /// <summary>#1227: what a read's source is — a node, or an external object the diagram draws as a stadium.</summary>
+    public enum ReadSourceKind { Node, Input, Snippet, SnippetFolder, MacroFolder }
+
+    /// <summary>
+    /// #1227: one read a node makes, for the diagram — the source and, for a node, the
+    /// members read (<c>content</c> / <c>value</c>) merged over the closure;
+    /// <see cref="GateOnly"/> when only the node's own gates (its when, an instance's
+    /// when/if, a flow node's expression) reach it; <see cref="Via"/> the carrier the
+    /// node's prompt reads directly (<c>snippet.x</c>, <c>macro.y</c>, an instance's
+    /// <c>macro.z</c>) through whose closure the source is reached when the prompt itself
+    /// never reads it — null for a direct read.
+    /// </summary>
+    public sealed record NodeRead(ReadSourceKind Kind, string Id, bool Content, bool Value, bool GateOnly, string? Via);
+
     /// <summary>The walk, frozen: every template walked and each node's <c>with</c> references.</summary>
     public sealed class Walk
     {
@@ -141,6 +155,122 @@ public static class WorkflowDerivedEdges
         }
 
         /// <summary>
+        /// #1227: a node's reads for the diagram, one per (kind, id) in first-read
+        /// order, closed as <see cref="EdgesOf"/> closes — the prompt and its fan
+        /// items, the instances' texts, the inline fills, the node's gates, then the
+        /// <c>with</c> parameters; a <c>deliverable.&lt;id&gt;.content</c> read is that
+        /// deliverable's sources, read as content. A case node's subject is
+        /// structural, not listed (the diagram draws it on its own).
+        /// </summary>
+        public IReadOnlyList<NodeRead> ReadsOf(string nodeId)
+        {
+            var order = new List<(ReadSourceKind Kind, string Id)>();
+            var reads = new Dictionary<(ReadSourceKind, string), (bool Content, bool Value, bool GateOnly)>();
+
+            void Take(ReadSourceKind kind, string id, bool content, bool value, bool gate)
+            {
+                var key = (kind, id);
+                if (reads.TryGetValue(key, out var seen))
+                {
+                    reads[key] = (seen.Content || content, seen.Value || value, seen.GateOnly && gate);
+                }
+                else
+                {
+                    order.Add(key);
+                    reads[key] = (content, value, gate);
+                }
+            }
+
+            void TakeRefs(TemplateReferences refs, bool gate)
+            {
+                foreach (var (id, read) in refs.Nodes)
+                {
+                    Take(ReadSourceKind.Node, id, read.ReadsContent, read.ReadsValue, gate);
+                }
+
+                foreach (var deliverable in refs.DeliverableReads)
+                {
+                    foreach (var source in _deliverableSources.GetValueOrDefault(deliverable) ?? Array.Empty<string>())
+                    {
+                        Take(ReadSourceKind.Node, source, content: true, value: false, gate);
+                    }
+                }
+
+                foreach (var id in refs.Inputs) { Take(ReadSourceKind.Input, id, false, false, gate); }
+                foreach (var id in refs.Snippets) { Take(ReadSourceKind.Snippet, id, false, false, gate); }
+                foreach (var id in refs.SnippetFolders) { Take(ReadSourceKind.SnippetFolder, id, false, false, gate); }
+                foreach (var id in refs.MacroFolders) { Take(ReadSourceKind.MacroFolder, id, false, false, gate); }
+            }
+
+            VisitNodeClosure(nodeId, TakeRefs);
+
+            if (Parameters.TryGetValue(nodeId, out var parameters))
+            {
+                TakeRefs(parameters, gate: false);
+            }
+
+            _byKey.TryGetValue((TemplateKind.Prompt, nodeId), out var prompt);
+
+            return order.Select(key =>
+            {
+                var (content, value, gateOnly) = reads[key];
+                var direct = (prompt?.Nodes.ContainsKey(key.Id) ?? false) || (parameters?.Nodes.ContainsKey(key.Id) ?? false);
+                var via = key.Kind == ReadSourceKind.Node && !gateOnly && !direct ? CarrierOf(nodeId, prompt, key.Id) : null;
+                return new NodeRead(key.Kind, key.Id, content, value, gateOnly, via);
+            }).ToList();
+        }
+
+        /// <summary>
+        /// #1227: the carrier the node reads directly — a snippet or folder item its
+        /// prompt reads, a macro whose content or prompt it reads, an instance placed
+        /// on it — through whose closure the source node is reached; the first in the
+        /// prompt's read order, as <c>snippet.x</c> / <c>macro.y</c>. Null when none.
+        /// </summary>
+        private string? CarrierOf(string nodeId, TemplateReferences? prompt, string source)
+        {
+            IEnumerable<((TemplateKind Kind, string Id) Key, string Text)> Carriers()
+            {
+                if (prompt != null)
+                {
+                    foreach (var snippet in prompt.Snippets) { yield return ((TemplateKind.Snippet, snippet), TemplateObjectReference.Snippet(snippet)); }
+                    foreach (var folder in prompt.SnippetFolders)
+                    {
+                        foreach (var item in _folders.GetValueOrDefault(folder) ?? Array.Empty<string>()) { yield return ((TemplateKind.Snippet, item), TemplateObjectReference.SnippetPrefix + item); }
+                    }
+
+                    foreach (var item in FanItemsReadBy(nodeId, prompt, null)) { yield return ((TemplateKind.Snippet, item), TemplateObjectReference.SnippetPrefix + item); }
+                    foreach (var macro in prompt.MacroContents) { yield return ((TemplateKind.Macro, macro), TemplateObjects.Macro + "." + macro); }
+                    foreach (var macro in prompt.MacroPrompts) { yield return ((TemplateKind.Instruction, macro), TemplateObjects.Macro + "." + macro); }
+                    foreach (var item in MacroFolderItems(prompt.MacroFolderContents)) { yield return ((TemplateKind.Macro, item), TemplateObjects.Macro + "." + item); }
+                    foreach (var item in MacroFolderItems(prompt.MacroFolderPrompts)) { yield return ((TemplateKind.Instruction, item), TemplateObjects.Macro + "." + item); }
+                }
+
+                if (_nodes.TryGetValue(nodeId, out var node))
+                {
+                    foreach (var instance in node.Node.Macros ?? new List<WorkflowNodeMacroSpec>()) { yield return ((TemplateKind.Macro, instance.Id), TemplateObjects.Macro + "." + instance.Id); }
+                }
+            }
+
+            foreach (var (key, text) in Carriers())
+            {
+                var edges = new HashSet<string>(StringComparer.Ordinal);
+                VisitKey(key, new HashSet<(TemplateKind, string)>(), refs => edges.UnionWith(EdgesIn(refs)));
+                if (key.Kind == TemplateKind.Instruction)
+                {
+                    // The instruction's fill renders too (§ 5.2): the inline macro's own text.
+                    VisitKey((TemplateKind.Macro, key.Id), new HashSet<(TemplateKind, string)>(), refs => edges.UnionWith(EdgesIn(refs)));
+                }
+
+                if (edges.Contains(source))
+                {
+                    return text;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
         /// #1155 (v26 design § 3.1): the deliverable ids a node's prompt reads as
         /// <c>deliverable.&lt;id&gt;.content</c>, closed exactly as <see cref="EdgesOf"/>
         /// closes (the snippets and macro texts the prompt reads, its instances,
@@ -169,14 +299,25 @@ public static class WorkflowDerivedEdges
         /// macros its prompt instructs — visited until no new slot (a fill never
         /// reads a .prompt, § 5.2, so this settles).
         /// </summary>
-        private void VisitNodeClosure(string nodeId, Action<TemplateReferences> take)
+        private void VisitNodeClosure(string nodeId, Action<TemplateReferences> take) =>
+            VisitNodeClosure(nodeId, (refs, _) => take(refs));
+
+        /// <summary>#1227: the closure with each template flagged — <c>gate</c> true for what the node's own gates read (its when, an instance's when/if, a flow's expression), false for its texts.</summary>
+        private void VisitNodeClosure(string nodeId, Action<TemplateReferences, bool> take)
         {
             var seen = new HashSet<(TemplateKind, string)>();
             var slots = new HashSet<string>(StringComparer.Ordinal);
 
             void Take(TemplateReferences refs)
             {
-                take(refs);
+                take(refs, false);
+                slots.UnionWith(refs.MacroPrompts);
+                slots.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
+            }
+
+            void TakeGate(TemplateReferences refs)
+            {
+                take(refs, true);
                 slots.UnionWith(refs.MacroPrompts);
                 slots.UnionWith(MacroFolderItems(refs.MacroFolderPrompts));
             }
@@ -203,7 +344,7 @@ public static class WorkflowDerivedEdges
             // if/case node's expression likewise — the flow node waits on it.
             foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance, ConditionSite.Flow))
             {
-                Visit(condition.Walk.References, seen, Take);
+                Visit(condition.Walk.References, seen, TakeGate);
             }
 
             var pending = new Queue<string>(slots);
@@ -923,11 +1064,22 @@ public static class WorkflowDerivedEdges
     public static IReadOnlyDictionary<string, IReadOnlySet<string>> Derive(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
+        WorkflowFormatCatalog? formats) => WalkOf(manifest, files, formats).Edges;
+
+    /// <summary>
+    /// #1227: the walk of a package from its manifest and files alone —
+    /// <see cref="PrepareNodes(WorkflowPackageManifest, IReadOnlyDictionary{string, string}, WorkflowFormatCatalog?, out WorkflowPackageData, out Func{TemplateFan?, TemplateReferenceContext}, out WorkflowPackageData?)"/>
+    /// then <see cref="WalkAll"/>, macro folders included — the one entry the
+    /// diagram, the editor and <see cref="Derive"/> share.
+    /// </summary>
+    public static Walk WalkOf(
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? formats)
     {
         var nodes = PrepareNodes(manifest, files, formats, out var snippets, out var contextFor, out var macroFolders);
 
-        return WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders).Edges;
+        return WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders);
     }
 
     /// <summary>

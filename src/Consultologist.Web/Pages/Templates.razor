@@ -2144,7 +2144,8 @@
                                 {
                                     <p class="muted-text">
                                         A node's format, prompt and reads are editable in its card below.
-                                        Refresh redraws the graph — pending edits included, highlighted in blue.
+                                        Refresh redraws the graph — pending edits included, the reads of edited
+                                        prompts among them, highlighted in blue.
                                     </p>
                                 }
                                 else
@@ -15252,13 +15253,28 @@
         // #855: an imported package has no registry ref (editingRef is null), so
         // fetch-by-ref would return the pinned package's diagram. Draw it from the
         // uploaded manifest via the server generator instead (ComposeManifest is the
-        // imported content unchanged when nothing is pending).
-        diagramText = imported
-            ? await WorkflowService.GetDiagramForManifestAsync(ComposeManifest())
-            : await WorkflowService.GetCurrentDiagramAsync(editingRef);
+        // imported content unchanged when nothing is pending). #1227: from 25 the
+        // page draws it itself first, reads included.
+        diagramText = LocalDiagram()
+            ?? (imported
+                ? await WorkflowService.GetDiagramForManifestAsync(ComposeManifest())
+                : await WorkflowService.GetCurrentDiagramAsync(editingRef));
         diagramIncludesPending = false;
         await InvokeAsync(StateHasChanged);
     }
+
+    /// <summary>
+    /// #1227: from 25 the diagram is the engine's generator run here over the composed
+    /// manifest and the editor's own walk — the reads of every template, pending edits
+    /// included, with no round trip. Null below 25, without the format catalogue (a
+    /// walk without it sees no catalogue-format node's prompt and would draw a thinner
+    /// graph than the engine, which has the catalogue), or when the manifest does not
+    /// read as one — the caller then asks the engine, as before.
+    /// </summary>
+    private string? LocalDiagram() =>
+        At25 && !formatsCatalogUnavailable && PackageWalk is { } walk
+            ? EditorPackageWalk.Diagram(ComposeManifest().GetRawText(), walk)
+            : null;
 
     private async Task RefreshDiagramAsync()
     {
@@ -15273,7 +15289,7 @@
         {
             if (HasManifestEdits)
             {
-                var diagram = await WorkflowService.GetDiagramForManifestAsync(ComposeManifest());
+                var diagram = LocalDiagram() ?? await WorkflowService.GetDiagramForManifestAsync(ComposeManifest());
 
                 if (diagram != null)
                 {
@@ -15287,7 +15303,7 @@
                 // #855: an unedited import has no pending decoration — it IS the
                 // content. Draw it from the manifest (no registry ref exists).
                 // C6 (#1012): a migrated package likewise — the registry's diagram is the old one.
-                var diagram = await WorkflowService.GetDiagramForManifestAsync(ComposeManifest());
+                var diagram = LocalDiagram() ?? await WorkflowService.GetDiagramForManifestAsync(ComposeManifest());
 
                 if (diagram != null)
                 {
@@ -15297,7 +15313,7 @@
             }
             else
             {
-                diagramText = await WorkflowService.GetCurrentDiagramAsync(editingRef);
+                diagramText = LocalDiagram() ?? await WorkflowService.GetCurrentDiagramAsync(editingRef);
                 diagramIncludesPending = false;
             }
         }
@@ -15403,7 +15419,28 @@
         || from.StartsWith("input:", StringComparison.Ordinal)
         || from.StartsWith("data:", StringComparison.Ordinal);
 
-    private static string DecoratePendingDiagram(
+    /// <summary>
+    /// #1227: whether a generated line is a Mermaid link — Mermaid numbers links by
+    /// document order for <c>linkStyle</c>, every arrow counted: the solid
+    /// <c>--&gt;</c>, the dotted <c>-.-&gt;</c> a predicate or gate draws, the dashed
+    /// <c>-. "…" .-&gt;</c> a removed edge is appended as. Boxes, subgraphs, classes
+    /// and styles are not links.
+    /// </summary>
+    internal static bool IsLinkLine(string line)
+    {
+        var trimmed = line.TrimStart();
+
+        if (trimmed.StartsWith("subgraph", StringComparison.Ordinal) || trimmed.StartsWith("classDef", StringComparison.Ordinal)
+            || trimmed.StartsWith("class ", StringComparison.Ordinal) || trimmed.StartsWith("linkStyle", StringComparison.Ordinal)
+            || trimmed.StartsWith("%%", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        return trimmed.Contains("-->", StringComparison.Ordinal) || trimmed.Contains(".->", StringComparison.Ordinal);
+    }
+
+    internal static string DecoratePendingDiagram(
         string diagram,
         IReadOnlyList<(string NodeId, string Variable)> changed,
         IReadOnlyList<(string From, string NodeId, string Variable, bool Rebound)> removed,
@@ -15425,7 +15462,7 @@
 
         foreach (var line in diagram.Split('\n'))
         {
-            if (!line.Contains("-->", StringComparison.Ordinal))
+            if (!IsLinkLine(line))
             {
                 continue;
             }

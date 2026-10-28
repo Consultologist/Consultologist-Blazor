@@ -77,6 +77,144 @@ public class WorkflowDagDiagramTests
         Assert.Equal(1, diagram.Split("plan[\"").Length - 1);
     }
 
+    // #1227: from 25 a node's inputs are the reads its templates make — the walk's
+    // edges drawn when the caller hands one, labelled by the members read; an input,
+    // snippet or macro folder a stadium; a read only a gate makes dotted. Below 25
+    // the walk is never consulted. The same generator the GET endpoint, the --dag
+    // script and the editor run.
+
+    private static WorkflowDerivedEdges.Walk WalkOf(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files) =>
+        WorkflowDerivedEdges.WalkOf(manifest, files, V25Package.Catalog());
+
+    [Fact]
+    public void Generate_Below25_IgnoresTheWalk()
+    {
+        var (manifest, files) = V24Fixtures.Base();
+
+        Assert.Equal(WorkflowDagDiagram.Generate(manifest), WorkflowDagDiagram.Generate(manifest, WalkOf(manifest, files)));
+        Assert.Equal(WorkflowDagDiagram.Generate(V8Fixtures.Conditional()), WorkflowDagDiagram.Generate(V8Fixtures.Conditional(), walk: null));
+    }
+
+    [Fact]
+    public void Diagram_At25_DrawsReadsAsLabelledEdges_AndTheirStadiums()
+    {
+        var (manifest, files) = V25Package.Minimal();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest, WalkOf(manifest, files));
+
+        // A node read, labelled by the member; an input and a snippet, plain, from their stadiums.
+        Assert.Contains("    extract -->|\"value\"| assessment", diagram);
+        Assert.Contains("    input_notes --> assessment", diagram);
+        Assert.Contains("    snippet_standards --> assessment", diagram);
+        Assert.Contains("input_notes([\"input.notes\"])", diagram);
+        Assert.Contains("snippet_standards([\"snippet.standards\"])", diagram);
+        // A with parameter reads too.
+        Assert.Contains("    extract -->|\"value\"| coverage", diagram);
+        // A fanned node's read (its item's text reads the input) crosses the box from outside.
+        Assert.True(diagram.IndexOf("    input_notes --> section_notes", StringComparison.Ordinal) > diagram.IndexOf("    end\n", StringComparison.Ordinal));
+        // Each stadium once.
+        Assert.Equal(1, diagram.Split("input_notes([").Length - 1);
+    }
+
+    [Fact]
+    public void Diagram_At25_WithoutAWalk_DrawsTheDeclarationsAlone()
+    {
+        var (manifest, _) = V25Package.Minimal();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest);
+
+        Assert.DoesNotContain("-->|\"value\"|", diagram);
+        Assert.DoesNotContain("input_notes", diagram);
+        Assert.Contains("-->|\"aggregate\"| all", diagram);
+    }
+
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Rich26()
+    {
+        var (m26, f26) = V26Package.Minimal();
+        var files = new Dictionary<string, string>(f26, StringComparer.Ordinal)
+        {
+            ["prompts/summary.md"] = "Summary of {{ node.section_notes.content }} and {{ node.extract.value }}",
+            ["prompts/wrap.md"] = "{{ for e in node.sections }}{{ e.content }}{{ end }} {{ snippet.x.content }} {{ node.extract.value }} {{ node.extract.value }} {{ node.extract.content }}",
+            ["snippets/x.md"] = V26Package.Header("X") + "X: {{ node.scope.value }}",
+        };
+        var manifest = m26 with
+        {
+            Snippets = new Dictionary<string, string>(m26.Snippets!) { ["x"] = "snippets/x.md" },
+            Nodes = m26.Nodes!
+                .Select(n => n.Id == "sections" ? n with { Nodes = new List<string> { "section_notes", "section_summary" }, Ret = "node.section_summary" } : n)
+                .Concat(new[]
+                {
+                    new WorkflowNodeSpec("section_summary", "Section summary", Prompt: "prompts/summary.md", Format: "prose"),
+                    new WorkflowNodeSpec("wrap", "Wrap", Prompt: "prompts/wrap.md", Format: "prose"),
+                })
+                .ToList(),
+        };
+        return (manifest, files);
+    }
+
+    [Fact]
+    public void Diagram_At26_DrawsABodySiblingRead_InsideTheLoopSubgraph_AndTheRestOutside()
+    {
+        var (manifest, files) = Rich26();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest, WalkOf(manifest, files));
+
+        var start = diagram.IndexOf("subgraph for_sections", StringComparison.Ordinal);
+        var end = diagram.IndexOf("    end\n", start, StringComparison.Ordinal);
+        var sibling = diagram.IndexOf("        section_notes -->|\"content\"| section_summary", StringComparison.Ordinal);
+        Assert.True(start < sibling && sibling < end, diagram);
+        // A body node's read of a top-level node crosses the boundary, after the ret edge.
+        var outside = diagram.IndexOf("    extract -->|\"value\"| section_summary", StringComparison.Ordinal);
+        Assert.True(outside > diagram.IndexOf("section_summary -->|\"ret\"| sections", StringComparison.Ordinal), diagram);
+    }
+
+    [Fact]
+    public void Diagram_At26_DrawsALoopElementRead_FromTheLoopBox_AndOneEdgePerSource()
+    {
+        var (manifest, files) = Rich26();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest, WalkOf(manifest, files));
+
+        // {{ for e in node.sections }}{{ e.content }} is a read of the loop — never of its collection.
+        Assert.Contains("    sections -->|\"value, content\"| wrap", diagram);
+        Assert.DoesNotContain("snippet_sections -->|\"value", diagram);
+        // Three reads of extract, two members, one edge.
+        Assert.Contains("    extract -->|\"value, content\"| wrap", diagram);
+        Assert.Equal(1, diagram.Split('\n').Count(line => line.StartsWith("    extract ", StringComparison.Ordinal) && line.EndsWith("| wrap", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public void Diagram_At26_ReadReachedThroughASnippet_SaysVia()
+    {
+        var (manifest, files) = Rich26();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest, WalkOf(manifest, files));
+
+        // wrap reads snippet.x, whose text reads node.scope.value: the snippet's stadium, and the node's edge via it.
+        Assert.Contains("snippet_x([\"snippet.x\"])", diagram);
+        Assert.Contains("    snippet_x --> wrap", diagram);
+        Assert.Contains("    scope -->|\"value via snippet.x\"| wrap", diagram);
+    }
+
+    [Fact]
+    public void Diagram_At26_DrawsAGateOnlyRead_Dotted_AndTheCaseSubjectOnce()
+    {
+        var (m26, files) = V26Package.Minimal();
+
+        var triage = V26JobStartTests.WithTriage(m26);
+        var withIf = WorkflowDagDiagram.Generate(triage, WalkOf(triage, files));
+        Assert.Contains("input_kind([\"input.kind\"])", withIf);
+        Assert.Contains("    input_kind -.->|\"if\"| triage", withIf);
+        // The body nodes' own reads cross their subgraphs from outside.
+        Assert.Contains("    input_notes --> full_workup", withIf);
+
+        var route = V26JobStartTests.WithRoute(m26, onNode: true);
+        var withCase = WorkflowDagDiagram.Generate(route, WalkOf(route, files));
+        // The subject draws once, dotted — ReadsOf leaves it to the case edge.
+        Assert.Equal(1, withCase.Split('\n').Count(line => line.StartsWith("    scope ", StringComparison.Ordinal) && line.EndsWith("| route", StringComparison.Ordinal)));
+        Assert.Contains("    scope -.->|\"case\"| route", withCase);
+    }
+
     [Fact]
     public void Diagram_At25_HasNoLoopSubgraph()
     {
