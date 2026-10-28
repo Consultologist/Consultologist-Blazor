@@ -1236,6 +1236,8 @@ package is at 26, else what the path wrote (6 for a node, 7 for a deliverable); 
 so a 26 record never says 2, 6 or 7 — the registry's sentence. A 25 run still writes 6/7 (the existing pins
 unchanged). History's DAG reads `forEach`/`promptId` to mark a fanned node and loses the marker for 26 runs
 until a Web follow-up — noted, not filed. Left to the bump (#1149).)*
+*(The Web follow-up is #1208 (2026-10-27, Milestone 33): the client's row mirrors the storage-8 fields and
+History reads them — see § 12.)*
 
 *(#1063, 2026-10-27 — audio transcripts with speech-to-text, as § 7.2 says; engine, Create page and a
 provenance sentence, not a manifest change. Built INERT behind `SpeechToText__Endpoint` (unset everywhere; the
@@ -1444,6 +1446,21 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   profile fact — decided 2026-10-27, so a conditional instruction with unchosen tokens is not called empty) —
   *"empty prompt: macro.<id>.prompt renders to nothing — the model is told nothing where it is read (…)"*
   naming the readers. Macros only: a prompt whose only content is a gated snippet is #1205's preview note.)*
+- **History at storage 8** *(#1208, 2026-10-27 — Milestone 33's subtitle, not the editor: the surfaces that read
+  a record catch up with the 26 model. The client's `ConsultGenerationNodeDescriptor` mirrors the storage-8 row
+  (`kind`, `collection`, `expression`, `body`, `ret`, `in`, `branch`, `deliverableReads`, `prompt`, `count`; a
+  document's `sources` and `composedHash`), and one reading, `RecordFlow`, answers the fan for every surface —
+  a node's own `forEach` below 8, its loop row's `collection` at 8. The run diagram draws a loop as the fan it is
+  (a subgraph of its body with the settled count, the collection's `for` edge, the loop's box, the `ret` edge), an
+  if/case as the decided set (a subgraph titled with the expression and the branch taken, a rhombus for the
+  flow, `ret` when taken, a dotted `case` edge from a subject node) with its **pruned** bodies dashed inside, a
+  node's prompt by path on its box, and a storage-8 document's `source` edges. History's rows gain a flow tag
+  (`for item in … (count)`, `if … · branch: …`, `in <loop>`), the prompt path, and a muted *"pruned by <flow>"* row
+  per pruned body; the Consults run rail fans a body node through its loop. **A pruned node is derived** (decided
+  2026-10-27): a body id of an if/case row with neither a descriptor nor an output row — the engine's served
+  `nodes` leaves pruned bodies out (`ConsultGenerationJobStarter` filters them at the fire set) where the
+  registry's sentence lists them; both shapes draw the same. That engine/spec mismatch is noted, not fixed, here.
+  A storage-7 record draws and reads byte-identical.)*
 - **The upgrade button**: "Upgrade to specVersion 26" on any 25 package (below 25, the chain
   runs 24 → 25 → 26, one publish, one notice naming the steps); a refusal (an unfillable `ret`,
   § 13) is said in the toolbar and leaves the package as loaded.
