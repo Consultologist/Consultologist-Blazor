@@ -90,9 +90,28 @@ public static class EditorPackageWalk
 
             // v26 (#1207; a #1099 leftover): the macro folders resolved ride the walk, so a macro
             // folder's items are walked as macro texts keyed <folder>/<item> in the editor too —
-            // the item pane's reads, its readers and the direct read's target.
-            var nodes = PF.WorkflowDerivedEdges.PrepareNodes(manifest, files, catalogue, out var snippets, out var contextFor, out var macroFolders);
-            return PF.WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders);
+            // the item pane's reads, its readers and the direct read's target. #1227: the one
+            // entry the engine's diagram and job starter share.
+            return PF.WorkflowDerivedEdges.WalkOf(manifest, files, catalogue);
+        }
+        catch (Exception exception) when (exception is JsonException or InvalidOperationException or ArgumentException or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// #1227: the DAG diagram of the composed manifest drawn here, from the editor's own
+    /// walk — the engine's generator over the same inputs, so the Graph pane shows the
+    /// reads of pending prompt edits without a round trip. Null when the manifest does
+    /// not read as one (the caller falls back to the engine's diagram).
+    /// </summary>
+    public static string? Diagram(string manifestJson, PF.WorkflowDerivedEdges.Walk? walk)
+    {
+        try
+        {
+            var manifest = JsonSerializer.Deserialize<PF.WorkflowPackageManifest>(manifestJson, ManifestOptions);
+            return manifest is null ? null : PF.WorkflowDagDiagram.Generate(manifest, walk);
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or ArgumentException or NotSupportedException)
         {
