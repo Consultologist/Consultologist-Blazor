@@ -1368,6 +1368,15 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   (never `when`); the composer never writes `node` at 26. "Delivers →" became *"Sourced by
   deliverable 'd'"* on the node, loop, if and case panes. A macro's label at 26 lives in its file
   header and shows as its id in "Composed as" until #1163 reads the headers.)*
+  *(As built by #1222, found live over the first 26 package the editor opened: the Graph pane's
+  "deliverable" select is the string-`result` door of the single-deliverable form and renders only
+  while the package has no deliverables list — a listed package, at any version, edits its
+  deliverables on the Deliverables pane, and a pick here would have composed a stray `result`
+  beside `deliverables[]`; the ≤24 "Not feeding the deliverable yet" warning (bindings and
+  `aggregate`, a reverse walk the page does itself) yields from 25 to the validator, whose own
+  sentences the desk says — at 26 it had named every top-level node of a package that runs; the
+  Deliverables subtitle names sources at 26; the Graph intro names format, prompt and reads from
+  25. The ≤24 pane is byte-identical.)*
 - **The Prompts nav** goes at 26; the node pane holds the prompt editor, its Reads rows and its
   preview (one `TemplatePreviewScope` owner). "Prompt 'p' reads" rows read "Node 'x''s prompt".
   *(As built by #1162: the editor's prompt model at 26 is DERIVED from the nodes — one
