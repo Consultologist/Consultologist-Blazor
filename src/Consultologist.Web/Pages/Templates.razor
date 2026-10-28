@@ -947,7 +947,7 @@
                     else if (SelectedAdded() is { } addedItem)
                     {
                         <WorkflowEditorPane Title="@addedItem.Name"
-                                            EditorExtra="@(At25 ? InsertReferencePalette((AddedPath(addedItem), null, false)) : null)"
+                                            EditorExtra="@(At25 ? InsertReferencePalette((AddedPath(addedItem), null, IsMacroCollection(addedItem.Collection))) : null)"
                                             Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(AddedPath(addedItem), $"{(IsMacroCollection(addedItem.Collection) ? "Macro" : "Snippet")} '{addedItem.Collection}/{addedItem.Id}'", addedItem.Content)) : null)"
                                             Subtitle="— new, unpublished"
                                             IdentityId="@addedItem.Id"
@@ -977,12 +977,17 @@
                                         new Func<string?, Task>(async raw => { addedItem.Default = raw switch { "true" => true, "false" => false, _ => null }; await CommitDeclarationAsync(); })))
                                     <p class="muted-text">Read as <code>m.content</code> where <code>{{ for m in macro.@(addedItem.Collection) }}</code> iterates, or directly as <code>macro.@(addedItem.Collection).@(addedItem.Id).content</code>.</p>
                                     @ConditionField(("if", AddedItemWhenTarget(addedItem), "Always"))
+                                    @FolderItemReadersList((addedItem.Collection, addedItem.Id, true))
                                 }
                                 else if (At25)
                                 {
                                     <p class="muted-text">Read as <code>item.content</code> by the node fanning '@addedItem.Collection'.</p>
                                     @ConditionField((At26 ? "if" : "Included when", AddedItemWhenTarget(addedItem), At26 ? "Always" : "Every run"))
                                     @SnippetReadersList((addedItem.Collection, true))
+                                    @if (At26)
+                                    {
+                                        @FolderItemReadersList((addedItem.Collection, addedItem.Id, false))
+                                    }
                                 }
                                 else
                                 {
@@ -3188,7 +3193,7 @@
                     else if (SelectedStandard() is { } standard)
                     {
                         <WorkflowEditorPane Title="@StandardName(standard)"
-                                            EditorExtra="@(At25 ? InsertReferencePalette((standard.File, null, false)) : null)"
+                                            EditorExtra="@(At25 ? InsertReferencePalette((standard.File, null, IsMacroCollection(FolderOfItem(standard.File)))) : null)"
                                             Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(standard.File, $"{(IsMacroCollection(FolderOfItem(standard.File)) ? "Macro" : "Snippet")} '{FolderOfItem(standard.File)}/{standard.Id}'", GetText(standard.File))) : null)"
                                             IdentityId="@standard.Id"
                                             IdentityFile="@standard.File"
@@ -3236,6 +3241,7 @@
                                             new Func<string?, Task>(raw => SetItemDefaultAsync(standard, raw))))
                                         <p class="muted-text">Read as <code>m.content</code> where <code>{{ for m in macro.@(FolderOfItem(standard.File)) }}</code> iterates, or directly as <code>macro.@(FolderOfItem(standard.File)).@(standard.Id).content</code>.</p>
                                         @ConditionField(("if", ItemWhenTarget(standard), "Always"))
+                                        @FolderItemReadersList((FolderOfItem(standard.File), standard.Id, true))
                                     }
                                 }
                                 else if (At25 && !HeaderRefused(standard.File))
@@ -3244,6 +3250,10 @@
                                     @* v25 (#1008): the item's input-only when — a folder's size is settled at job start. *@
                                     @ConditionField((At26 ? "if" : "Included when", ItemWhenTarget(standard), At26 ? "Always" : "Every run"))
                                     @SnippetReadersList((FolderOfItem(standard.File), true))
+                                    @if (At26)
+                                    {
+                                        @FolderItemReadersList((FolderOfItem(standard.File), standard.Id, false))
+                                    }
                                 }
                                 else
                                 {
@@ -6038,10 +6048,14 @@
         if (addedItems.FirstOrDefault(a => AddedPath(a) == file) is { } added)
         {
             var addedKey = PF.WorkflowDerivedEdges.SnippetItemKey(added.Collection, added.Id);
-            return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Snippet && t.Id == addedKey);
+            // v26 (#1207): a macro folder's pending item is walked as a macro text under the same key.
+            var addedKind = IsMacroCollection(added.Collection) ? PF.TemplateKind.Macro : PF.TemplateKind.Snippet;
+            return walk.Templates.FirstOrDefault(t => t.Kind == addedKind && t.Id == addedKey);
         }
 
-        return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Snippet && PaneKeyOf(t) == file);
+        // v26 (#1207): a macro folder's item is walked as a macro text keyed <folder>/<item>.
+        return walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Snippet && PaneKeyOf(t) == file)
+            ?? walk.Templates.FirstOrDefault(t => t.Kind == PF.TemplateKind.Macro && t.Id.Contains('/') && PaneKeyOf(t) == file);
     }
 
     /// <summary>
@@ -6094,19 +6108,44 @@
                 : row;
         }
 
+        // v26 (#1207, design § 5.4): a folder item read directly is keyed <folder>/<item> in the
+        // same sets as a standalone read — its row names the item and its folder, opens the item's
+        // pane, spells the member with dots (so its guard site matches) and says "directly".
+        TemplateReadRow ItemRow(bool macroFolder, string key, string member, string? qualifier)
+        {
+            var slash = key.IndexOf('/');
+            var folder = key[..slash];
+            var item = key[(slash + 1)..];
+            return new TemplateReadRow($"{(macroFolder ? "Macro item" : "Item")} '{item}' of folder '{folder}'", FolderItemPaneKey(macroFolder, folder, item),
+                $"{(macroFolder ? "macro" : "snippet")}.{folder}.{item}.{member}", qualifier, "directly");
+        }
+
         foreach (var macro in references.MacroPrompts.Order(StringComparer.Ordinal))
         {
-            rows.Add(Guarded(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.prompt", "inline", null)));
+            rows.Add(Guarded(macro.Contains('/')
+                ? ItemRow(true, macro, "prompt", "inline")
+                : new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.prompt", "inline", null)));
         }
 
         foreach (var macro in references.MacroContents.Order(StringComparer.Ordinal))
         {
-            rows.Add(Guarded(new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.content", null, null)));
+            rows.Add(Guarded(macro.Contains('/')
+                ? ItemRow(true, macro, "content", null)
+                : new TemplateReadRow($"Macro '{MacroLabel(macro)}'", EffectiveMacros.FirstOrDefault(m => m.Id == macro)?.File, $"macro.{macro}.content", null, null)));
+        }
+
+        // v26 (#1207): a macro folder iterated — the row the snippet folder's has.
+        foreach (var folder in references.MacroFolders.Order(StringComparer.Ordinal))
+        {
+            var firstItem = MacroCollections.FirstOrDefault(c => c.Id == folder)?.Items.FirstOrDefault(i => !removedFiles.Contains(i.File));
+            rows.Add(new TemplateReadRow($"Macro folder '{folder}'", firstItem?.File, $"macro.{folder}", null, "iterates its items"));
         }
 
         foreach (var snippet in references.Snippets.Order(StringComparer.Ordinal))
         {
-            rows.Add(Guarded(new TemplateReadRow($"Snippet '{snippet}'", ScalarPath(snippet), $"snippet.{snippet}.content", null, null)));
+            rows.Add(Guarded(snippet.Contains('/')
+                ? ItemRow(false, snippet, "content", null)
+                : new TemplateReadRow($"Snippet '{snippet}'", ScalarPath(snippet), $"snippet.{snippet}.content", null, null)));
         }
 
         foreach (var folder in references.SnippetFolders.Order(StringComparer.Ordinal))
@@ -6656,11 +6695,23 @@
         foreach (var folder in SnippetCollections)
         {
             choices.Add(new ReferenceChoice($"{{{{ for s in snippet.{folder.Id} }}}}\n{{{{ s.content }}}}\n{{{{ end }}}}", $"for s in snippet.{folder.Id} (each item)", "snippets"));
+
+            // v26 (#1207, design § 5.4): each item readable directly, under its folder's loop —
+            // one pick per item (.content; .label and .id stay typable), never the reading item.
+            if (At26)
+            {
+                foreach (var (itemId, itemLabel) in LiveItemsOf(folder, file))
+                {
+                    choices.Add(new ReferenceChoice($"{{{{ snippet.{folder.Id}.{itemId}.content }}}}", $"snippet.{folder.Id}.{itemId}.content — {itemLabel}", "snippets"));
+                }
+            }
         }
 
         if (fanNode != null && WorkflowManifestReader.NodeView.EffectiveFan(fanNode, EffectiveNodes) is { } forEach)
         {
-            var members = PF.WorkflowFanSources.IsSnippetFan(forEach) ? new[] { "id", "name", "content" } : new[] { "id", "name", "value" };
+            // v26 (#1207): the item's member is label at 26 (design § 5.2).
+            var nameMember = At26 ? "label" : "name";
+            var members = PF.WorkflowFanSources.IsSnippetFan(forEach) ? new[] { "id", nameMember, "content" } : new[] { "id", nameMember, "value" };
             foreach (var member in members)
             {
                 choices.Add(new ReferenceChoice($"{{{{ item.{member} }}}}", $"item.{member}", "the fan item"));
@@ -6673,6 +6724,24 @@
             if (!isMacroText)
             {
                 choices.Add(new ReferenceChoice($"{{{{ macro.{macro.Id}.prompt }}}}", $"macro.{macro.Id}.prompt (inline)", "macros"));
+            }
+        }
+
+        // v26 (#1207, design § 5.3/5.4): a macro folder's loop, then each item readable directly
+        // with the macro idiom (.content; .prompt inline outside macro text), never the reading item.
+        if (At26)
+        {
+            foreach (var folder in MacroCollections)
+            {
+                choices.Add(new ReferenceChoice($"{{{{ for m in macro.{folder.Id} }}}}\n{{{{ m.content }}}}\n{{{{ end }}}}", $"for m in macro.{folder.Id} (each item)", "macros"));
+                foreach (var (itemId, itemLabel) in LiveItemsOf(folder, file))
+                {
+                    choices.Add(new ReferenceChoice($"{{{{ macro.{folder.Id}.{itemId}.content }}}}", $"macro.{folder.Id}.{itemId}.content — {itemLabel}", "macros"));
+                    if (!isMacroText)
+                    {
+                        choices.Add(new ReferenceChoice($"{{{{ macro.{folder.Id}.{itemId}.prompt }}}}", $"macro.{folder.Id}.{itemId}.prompt (inline) — {itemLabel}", "macros"));
+                    }
+                }
             }
         }
 
@@ -6713,6 +6782,28 @@
     /// warnings), and how the picked snippet is appended.
     /// </summary>
     private sealed record PaletteTarget(string Name, IReadOnlyList<ReferenceChoice> Choices, PF.WorkflowDerivedEdges.WalkedTemplate? Walked, Func<string, Task> Append, string Noun = "the text", string? File = null);
+
+    /// <summary>v26 (#1207): a folder's live items in the nav's order — (id, label) — leaving out the item whose file is being edited.</summary>
+    private IEnumerable<(string Id, string Label)> LiveItemsOf(WorkflowManifestReader.CollectionView folder, string? exceptFile) =>
+        OrderedItems(folder)
+            .Where(pair => pair.Item is { } item ? item.File != exceptFile : AddedPath(pair.Added!) != exceptFile)
+            .Select(pair => pair.Item is { } item ? (item.Id, StandardName(item)) : (pair.Added!.Id, pair.Added.Name));
+
+    /// <summary>v26 (#1207): a folder item's pane key — the loaded item's file, or the pending item's Key; null when neither exists.</summary>
+    private string? FolderItemPaneKey(bool macroFolder, string folder, string item) =>
+        (macroFolder ? MacroCollections : SnippetCollections).FirstOrDefault(c => c.Id == folder)?.Items.FirstOrDefault(i => i.Id == item)?.File
+        ?? addedItems.FirstOrDefault(a => a.Collection == folder && a.Id == item && IsMacroCollection(a.Collection) == macroFolder)?.Key;
+
+    /// <summary>v26 (#1207): a folder item's header label by its walk key <c>&lt;folder&gt;/&lt;item&gt;</c>, else the item id.</summary>
+    private string FolderItemLabel(bool macroFolder, string key)
+    {
+        var slash = key.IndexOf('/');
+        var folder = key[..slash];
+        var item = key[(slash + 1)..];
+        return (macroFolder ? MacroCollections : SnippetCollections).FirstOrDefault(c => c.Id == folder)?.Items.FirstOrDefault(i => i.Id == item) is { } loaded
+            ? StandardName(loaded)
+            : addedItems.FirstOrDefault(a => a.Collection == folder && a.Id == item)?.Name ?? item;
+    }
 
     /// <summary>A file's palette target: the choices for its text, its walk, appended through the text editor; the file names where a read row's guard is rewritten (#1088).</summary>
     private PaletteTarget FilePaletteTarget(string file, WorkflowManifestReader.NodeView? fanNode, bool isMacroText) =>
@@ -6877,7 +6968,9 @@
 
     /// <summary>#1081: a macro's label for the Deliverables pane's rows, the id when it has none.</summary>
     private string MacroLabel(string macroId) =>
-        EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } macro && !string.IsNullOrWhiteSpace(macro.Label) ? macro.Label : macroId;
+        // v26 (#1207): a macro folder's item, keyed <folder>/<item>, is labelled by its header.
+        macroId.Contains('/') ? FolderItemLabel(true, macroId)
+        : EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { } macro && !string.IsNullOrWhiteSpace(macro.Label) ? macro.Label : macroId;
 
     /// <summary>One part of a deliverable's composition: its text, the pane it opens (null for the signature), its gate's text, and a tooltip.</summary>
     private sealed record CompositionPart(string Text, string? Key, string? When, string Title);
@@ -7541,6 +7634,85 @@
     }
 
     /// <summary>The snippet pane's "Read by": the shared descriptive rows (#1086), each opening the reader's pane, or the empty sentence.</summary>
+    /// <summary>
+    /// v26 (#1207, design § 5.4): the templates reading a snippet folder's item DIRECTLY
+    /// (snippet.&lt;folder&gt;.&lt;item&gt;.content — the walk keys it &lt;folder&gt;/&lt;item&gt; in Snippets),
+    /// each row noted "reads it directly", its guard or case table below as a scalar's.
+    /// </summary>
+    private IReadOnlyList<TemplateReadRow> SnippetItemReadRows(string folder, string item)
+    {
+        var rows = new List<TemplateReadRow>();
+        var seen = new HashSet<(string Label, string? Key)>();
+        var key = PF.WorkflowDerivedEdges.SnippetItemKey(folder, item);
+        var member = $"snippet.{folder}.{item}.content";
+
+        if (PackageWalk is { } walk)
+        {
+            foreach (var template in walk.Templates.Where(t => t.References.Snippets.Contains(key)))
+            {
+                var row = ReaderRowOf(template, member, null) with { Note = "reads it directly" };
+                var blocks = BranchBlocksOf(template.References, member);
+                var sites = template.References.Occurrences.Where(o => o.Member == member).ToList();
+                if (blocks.Count > 0)
+                {
+                    row = row with { Below = BranchTablesBelow((TemplateFileOf(template), template.Subject, blocks)) };
+                }
+                else if (sites.Count > 0)
+                {
+                    row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites, template.References.Branches)) };
+                }
+
+                if (seen.Add((row.Label, row.Key)))
+                {
+                    rows.Add(row);
+                }
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>v26 (#1207): a macro folder item's readers — inline and text reads keyed &lt;folder&gt;/&lt;item&gt; (the macro idiom), then every template iterating the folder.</summary>
+    private IReadOnlyList<TemplateReadRow> MacroItemReadRows(string folder, string item)
+    {
+        var key = PF.WorkflowDerivedEdges.SnippetItemKey(folder, item);
+        var rows = new List<TemplateReadRow>(MacroReadRowsOf(key, refs => refs.MacroPrompts, $"macro.{folder}.{item}.prompt", "inline"));
+        rows.AddRange(MacroReadRowsOf(key, refs => refs.MacroContents, $"macro.{folder}.{item}.content", null));
+        if (PackageWalk is { } walk)
+        {
+            // One reader may both read the item inline and iterate its folder — two rows, by member.
+            var seen = rows.Select(r => (r.Label, r.Key, r.Member)).ToHashSet();
+            foreach (var template in walk.Templates.Where(t => t.References.MacroFolders.Contains(folder)))
+            {
+                var row = ReaderRowOf(template, $"macro.{folder}", null) with { Note = "iterates the folder" };
+                if (seen.Add((row.Label, row.Key, row.Member)))
+                {
+                    rows.Add(row);
+                }
+            }
+        }
+
+        return rows;
+    }
+
+    /// <summary>v26 (#1207): the item pane's own "Read by" — the direct readers of a snippet folder's item, or a macro folder item's readers.</summary>
+    private RenderFragment<(string Folder, string Item, bool Macro)> FolderItemReadersList => spec => @<text>
+        @{ var itemReaders = spec.Macro ? MacroItemReadRows(spec.Folder, spec.Item) : SnippetItemReadRows(spec.Folder, spec.Item); }
+        @if (itemReaders.Count > 0)
+        {
+            <p class="muted-text">@(spec.Macro ? "Read by" : "Read directly by")</p>
+            @TemplateReadRows(($"Readers of {spec.Folder}/{spec.Item}", itemReaders))
+        }
+        else if (spec.Macro)
+        {
+            <p class="muted-text folder-item-readers__empty">Not read by any template yet — read it as <code>{{ macro.@(spec.Folder).@(spec.Item).content }}</code>, <code>.prompt</code> inline, or through <code>{{ for m in macro.@spec.Folder }}</code>.</p>
+        }
+        else
+        {
+            <p class="muted-text folder-item-readers__empty">Not read directly by any template — read it as <code>{{ snippet.@(spec.Folder).@(spec.Item).content }}</code> or through the folder's loop.</p>
+        }
+    </text>;
+
     private RenderFragment<(string Id, bool Folder)> SnippetReadersList => spec => @<text>
         @{ var readers = SnippetReadRows(spec.Id, spec.Folder); }
         @if (readers.Count > 0)

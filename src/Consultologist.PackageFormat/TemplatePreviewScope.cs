@@ -137,11 +137,21 @@ public static class TemplatePreviewScope
             nodes,
             content.Scalars,
             folders,
-            new TemplateFanItem(Token($"{TemplateObjects.Item}.{TemplateMembers.Id}"), Token($"{TemplateObjects.Item}.{TemplateMembers.Name}"), Text: Token($"{TemplateObjects.Item}.{TemplateMembers.Content}")),
+            // #1207: at 26 the fan item's name member is label — the token says so.
+            new TemplateFanItem(Token($"{TemplateObjects.Item}.{TemplateMembers.Id}"), Token($"{TemplateObjects.Item}.{(manifest.SpecVersion >= 26 ? TemplateMembers.Label : TemplateMembers.Name)}"), Text: Token($"{TemplateObjects.Item}.{TemplateMembers.Content}")),
             macros,
             new TemplateRunFacts(Token("run.date"), Token("run.job"), Token("run.package"), Token("run.host")),
             new TemplateProfileFacts(Token("profile.name"), Token("profile.signature")),
-            MacroFolders: macroFolders);
+            MacroFolders: macroFolders,
+            // #1207 (v26 design § 5): the preview renders the 26 members — item.label, a folder
+            // item's .label, a macro's .label/.instruction — as the engine's render does, and a
+            // standalone snippet's label is its header's (the #1179 slice the preview lacked).
+            Labelled: manifest.SpecVersion >= 26,
+            SnippetLabels: texts is null
+                ? null
+                : (manifest.Snippets ?? new Dictionary<string, string>())
+                    .Where(entry => !entry.Value.EndsWith('/') && texts.Headers.GetValueOrDefault(entry.Value)?.Label is not null)
+                    .ToDictionary(entry => entry.Key, entry => texts.Headers[entry.Value].Label!, StringComparer.Ordinal));
     }
 
     /// <summary>What the model is told where <c>macro.&lt;id&gt;.prompt</c> is read — the instruction rendered over the scope, then the mechanics sentence; the renderer's own sentence when the instruction does not render.</summary>

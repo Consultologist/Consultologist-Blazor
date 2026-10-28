@@ -88,8 +88,11 @@ public static class EditorPackageWalk
                 return null;
             }
 
-            var nodes = PF.WorkflowDerivedEdges.PrepareNodes(manifest, files, catalogue, out var snippets, out var contextFor);
-            return PF.WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+            // v26 (#1207; a #1099 leftover): the macro folders resolved ride the walk, so a macro
+            // folder's items are walked as macro texts keyed <folder>/<item> in the editor too —
+            // the item pane's reads, its readers and the direct read's target.
+            var nodes = PF.WorkflowDerivedEdges.PrepareNodes(manifest, files, catalogue, out var snippets, out var contextFor, out var macroFolders);
+            return PF.WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor, macros: macroFolders);
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or ArgumentException or NotSupportedException)
         {
