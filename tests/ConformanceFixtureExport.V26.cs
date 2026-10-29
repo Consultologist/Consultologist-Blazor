@@ -124,7 +124,7 @@ public partial class ConformanceFixtureExport
             Manifest(m, x => V26Package.WithNodes(x,
                 new WorkflowNodeSpec("paragraphs", "Paragraphs", For: "item in snippet.sections", Nodes: new List<string> { "assessment" }, Ret: "node.assessment"),
                 new WorkflowNodeSpec("outer", "Outer", For: "item in snippet.sections", Nodes: new List<string> { "paragraphs" }, Ret: "node.paragraphs"))));
-        Invalid("invalid-if-inside-a-for-at-26", "An if node inside a loop's body — at 26 a body holds plain nodes.", Node(Triage(), "sections", n => n with { Nodes = new List<string> { "section_notes", "triage" } }));
+        Invalid("invalid-if-inside-a-for-at-26", "An if node inside a loop's body — a flow node inside a loop requires specVersion 27 (#1234).", Node(Triage(), "sections", n => n with { Nodes = new List<string> { "section_notes", "triage" } }));
         Invalid("invalid-if-without-then-at-26", "An if node without then.", Node(Triage(), "triage", n => n with { Then = null }));
         Invalid("invalid-case-without-branches-at-26", "A case node without branches.", Node(Route(), "route", n => n with { Branches = new List<WorkflowCaseBranchSpec>() }));
         Invalid("invalid-case-over-a-text-at-26", "A case switching on a text input — a closed set only.", Route("input.notes"));

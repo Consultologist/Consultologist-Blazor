@@ -1210,6 +1210,8 @@ public partial class ConformanceFixtureExport
 
         // ----- v26 (#1151, #1149): the program manifest — ConformanceFixtureExport.V26.cs -----
         AddV26Cases(cases);
+        // ----- v27 (#1234): a flow node inside a for — ConformanceFixtureExport.V27.cs -----
+        AddV27Cases(cases);
         // ----- #1149: the below-26 gates, filed under v25/ -----
         AddV25GateCases(cases);
 
@@ -1229,29 +1231,35 @@ public partial class ConformanceFixtureExport
         return cases.Where(c => c.SpecVersion > ceiling).ToList();
     }
 
-    [Fact]
-    public void TheCasesAboveTheCeiling_AreHeldBack_UntilTheBump()
+    [Theory]
+    [InlineData(26)]
+    [InlineData(27)]
+    public void TheCasesAboveTheCeiling_AreHeldBack_UntilTheBump(int version)
     {
         var cases = Cases();
         var held = HeldBack(cases);
-        var at26 = cases.Where(c => c.SpecVersion == 26).ToList();
+        var atVersion = cases.Where(c => c.SpecVersion == version).ToList();
 
-        Assert.NotEmpty(at26);
-        Assert.Equal(WorkflowPackageValidator.AcceptedSpecVersions.Contains(26) ? 0 : at26.Count, held.Count(c => c.SpecVersion == 26));
+        Assert.NotEmpty(atVersion);
+        Assert.Equal(WorkflowPackageValidator.AcceptedSpecVersions.Contains(version) ? 0 : atVersion.Count, held.Count(c => c.SpecVersion == version));
         // The one case about the accepted set itself (specVersion 3) is below the ceiling and exports as ever.
         Assert.DoesNotContain(held, c => c.Id == "invalid-spec-version-unsupported");
     }
 
-    [Fact]
-    public void TheV26Cases_SayWhatTheValidatorSays_AtTheSeam()
+    [Theory]
+    [InlineData(26)]
+    [InlineData(27)]
+    public void TheCases_SayWhatTheValidatorSays_AtTheSeam(int version)
     {
         // What the export will capture at the bump is what the seam says today:
         // a valid case validates, an invalid one meets at least one sentence —
         // the suites pin the sentences themselves.
-        foreach (var testCase in Cases().Where(c => c.SpecVersion == 26))
+        var accepting = version == 26 ? V26Package.Accepting26 : V27Package.Accepting27;
+
+        foreach (var testCase in Cases().Where(c => c.SpecVersion == version))
         {
             var result = WorkflowPackageValidator.Validate(
-                testCase.Manifest, testCase.Files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog(), V26Package.Accepting26);
+                testCase.Manifest, testCase.Files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog(), accepting);
 
             if (testCase.Id.StartsWith("invalid-", StringComparison.Ordinal))
             {
