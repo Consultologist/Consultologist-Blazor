@@ -603,7 +603,9 @@ public static partial class WorkflowPackageValidator
 
                 if (fan is not InputArrayFan input)
                 {
-                    errors.Add($"Node '{flow.Node.Id}' switches on {subject}, but it runs in no loop over an array input; {rule}.");
+                    errors.Add(fan is SnippetFolderFan
+                        ? $"Node '{flow.Node.Id}' switches on {subject}, but a folder item's fields are text; {rule}."
+                        : $"Node '{flow.Node.Id}' switches on {subject}, but it runs in no loop; {rule}.");
                 }
                 else if (input.Element.Fields?.FirstOrDefault(f => string.Equals(f.Id, field, StringComparison.Ordinal)) is not { } declared)
                 {
@@ -1104,6 +1106,12 @@ public static partial class WorkflowPackageValidator
             foreach (var body in flow.Bodies)
             {
                 var members = body.Nodes.Where(id => nodes.ContainsKey(id) && flows.Owner.TryGetValue(id, out var o) && o == flow.Node.Id).Distinct(StringComparer.Ordinal).ToList();
+                // #1234 (v27 design § 1.1): a branch node of an inner flow node reads
+                // the loop's body nodes one level up — its read keeps a sibling reachable.
+                var readers = members
+                    .Concat(flows.Owner.Where(pair => flows.Flows.ContainsKey(pair.Value) && members.Contains(pair.Value, StringComparer.Ordinal)).Select(pair => pair.Key))
+                    .Distinct(StringComparer.Ordinal)
+                    .ToList();
 
                 foreach (var id in members)
                 {
@@ -1112,7 +1120,7 @@ public static partial class WorkflowPackageValidator
                         continue;
                     }
 
-                    var read = members.Any(m => m != id && edges.TryGetValue(m, out var targets) && targets.Contains(id));
+                    var read = readers.Any(m => m != id && edges.TryGetValue(m, out var targets) && targets.Contains(id));
 
                     if (!read)
                     {
