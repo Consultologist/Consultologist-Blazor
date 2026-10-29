@@ -467,6 +467,26 @@ public class WorkflowMacroMechanicsTests
     // structurally.
 
     [Fact]
+    public void At27_AnInnerFlowsCondition_IsTheFlowNodesEdge_NotAGatingRead()
+    {
+        // #1234 (v27 design § 1.3): an if inside a loop is decided once per item,
+        // inside the loop's run — its reads are the flow node's edges, never the
+        // job's gating reads; a top-level if's stay gating.
+        var (manifest, files) = V27Package.WithTriageInLoop(V27Package.Minimal(), "node.scope.value == \"in_scope\"");
+        var nodes = WorkflowDerivedEdges.PrepareNodes(manifest, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(manifest, files, nodes, snippets, contextFor);
+
+        var condition = Assert.Single(walk.Conditions, c => c.Site == WorkflowDerivedEdges.ConditionSite.Flow);
+        Assert.True(condition.Walk.IsValid, string.Join(" | ", condition.Walk.References.Errors));
+        Assert.Contains("scope", walk.EdgesOf("triage"));
+        Assert.DoesNotContain("scope", walk.GatingReads());
+        Assert.Contains(walk.ReadsOf("triage"), r => r.Id == "scope" && r.GateOnly);
+
+        var routed = V27Package.WithRouteInLoop(V27Package.Minimal());
+        Assert.Empty(WorkflowDerivedEdges.GatingReads(routed.Manifest, routed.Files, V25Package.Catalog()));
+    }
+
+    [Fact]
     public void At26_AFlowNodesEdges_AreItsDecisionsReads_NotItsBodies()
     {
         var (manifest, files) = V26Package.Minimal();

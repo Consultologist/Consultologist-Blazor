@@ -208,9 +208,10 @@ public class WorkflowV26FlowTests
     }
 
     [Fact]
-    public void AnIfInsideAFor_AndAForInsideAnIf_AreLaterIssues()
+    public void AnIfInsideAFor_RequiresTwentySeven_AndAForInsideAnIf_IsALaterIssue()
     {
-        Assert.Contains("Node 'triage' runs inside loop 'sections'; at specVersion 26 a body holds plain nodes — a flow node inside a body is a later issue.",
+        // #1234: at 27 a loop's body may hold an if/case — below, the gate names the version.
+        Assert.Contains("Node 'triage' runs inside loop 'sections'; a flow node inside a loop requires specVersion 27.",
             V26Package.FlowErrors(m => V26Package.WithNode(WithTriage(m), "sections", n => n with { Nodes = new List<string> { "section_notes", "triage" } })));
         Assert.Contains("Loop 'sections' runs inside node 'triage'; nesting waits for the scheduler redesign.",
             V26Package.FlowErrors(m => WithTriage(m, then: Body("node.sections", "sections"))));
