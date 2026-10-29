@@ -7,7 +7,10 @@ namespace Consultologist.PackageFormat;
 /// run (which discards them): a node carrying <c>for</c>, <c>if</c> or
 /// <c>case</c>, its bodies of plain nodes attached by id, its returned node,
 /// and — for a loop — the fan its body runs under. B3 #1002's rule holds: the
-/// scheduler never sees a graph the validator did not.
+/// scheduler never sees a graph the validator did not. #1234 (v27 design § 1.1,
+/// § 4): at 27 a loop's body may hold an if/case node, whose branches' nodes are
+/// body nodes of the loop too — the owner map keeps two levels (a branch node →
+/// its flow node → the loop); a branch holds plain nodes (one level).
 /// </summary>
 internal static class WorkflowFlowNodes
 {
@@ -65,15 +68,44 @@ internal static class WorkflowFlowNodes
 
         public bool IsLoop(string id) => Flows.TryGetValue(id, out var flow) && flow.Kind == Kind.For;
 
-        /// <summary>The walker's view of the bodies: body node id → where it runs.</summary>
+        /// <summary>#1234: a flow node listed in a loop's body — an if/case decided per item at 27.</summary>
+        public bool IsInner(string flowId) => Flows.ContainsKey(flowId) && Owner.ContainsKey(flowId);
+
+        /// <summary>
+        /// #1234 (v27 design § 4): the loop a node runs in — its owner when that is
+        /// a loop, its owner's owner when it runs in a branch of an inner flow node
+        /// (two levels; a branch holds plain nodes); null for a top-level node and
+        /// for a node of a top-level if/case.
+        /// </summary>
+        public string? LoopOf(string nodeId)
+        {
+            var id = nodeId;
+
+            for (var depth = 0; depth < 2 && Owner.TryGetValue(id, out var ownerId); depth++)
+            {
+                if (IsLoop(ownerId))
+                {
+                    return ownerId;
+                }
+
+                id = ownerId;
+            }
+
+            return null;
+        }
+
+        /// <summary>The walker's view of the bodies: body node id → where it runs (the chain is read through the map — a scope's own entry names its owner).</summary>
         public IReadOnlyDictionary<string, TemplateBodyScope> BodyScopes =>
             Owner.ToDictionary(pair => pair.Key, pair => new TemplateBodyScope(pair.Value, IsLoop(pair.Value)), StringComparer.Ordinal);
 
-        /// <summary>The fan a plain node's template runs under: its owner loop's, or none.</summary>
+        /// <summary>The fan a node's template runs under: its loop's (through its flow node at 27), or none.</summary>
         public (TemplateFan? Fan, WorkflowDataCollection? Folder) FanOf(string nodeId) =>
-            Owner.TryGetValue(nodeId, out var ownerId) && Flows.TryGetValue(ownerId, out var loop)
+            LoopOf(nodeId) is { } loopId && Flows.TryGetValue(loopId, out var loop)
                 ? (loop.Fan, loop.Folder)
                 : (null, null);
+
+        /// <summary>#1234: the flow nodes in the order their shapes are built — an if/case before a loop, so a loop returning one finds its branch shape (§ 1.5).</summary>
+        public IEnumerable<Flow> InShapeOrder => Flows.Values.OrderBy(f => f.Kind == Kind.For ? 1 : 0);
     }
 
     /// <summary>
@@ -213,9 +245,26 @@ internal static class WorkflowFlowNodes
             flows[node.Id] = new Flow(node, kind, bodies, fan, folder, expression);
         }
 
-        // The bodies: declared plain nodes, each attached once, a loop's body
-        // never a flow node (nesting waits, § 6); ret required and a member.
+        // The bodies: declared nodes, each attached once; at 26 a body holds
+        // plain nodes (nesting waits, § 6); at 27 a loop's body may hold an
+        // if/case, whose branches hold plain nodes (#1234, v27 design § 1.1);
+        // ret required and a member.
+        var at27 = manifest.SpecVersion >= 27;
         var owner = new Dictionary<string, string>(StringComparer.Ordinal);
+        // The loop each if/case is listed in, read before ownership settles so
+        // the sentences below do not depend on the manifest's node order.
+        var loopListing = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var loop in flows.Values.Where(f => f.Kind == Kind.For))
+        {
+            foreach (var id in loop.BodyNodeIds)
+            {
+                if (flows.TryGetValue(id, out var listed) && listed.Kind != Kind.For)
+                {
+                    loopListing.TryAdd(id, loop.Node.Id);
+                }
+            }
+        }
 
         foreach (var flow in flows.Values)
         {
@@ -240,15 +289,45 @@ internal static class WorkflowFlowNodes
 
                     if (flows.TryGetValue(id, out var inner))
                     {
-                        errors.Add(inner.Kind == Kind.For
-                            ? $"Loop '{id}' runs inside {flow.Inside}; nesting waits for the scheduler redesign."
-                            : $"Node '{id}' runs inside {flow.Inside}; at specVersion 26 a body holds plain nodes — a flow node inside a body is a later issue.");
-                        continue;
+                        if (inner.Kind == Kind.For)
+                        {
+                            errors.Add($"Loop '{id}' runs inside {flow.Inside}; nesting waits for the scheduler redesign.");
+                            continue;
+                        }
+
+                        if (flow.Kind != Kind.For)
+                        {
+                            // One level (§ 1.1): a branch holds plain nodes — inside a loop
+                            // naming the chain; at the top level the 26 sentence below 27.
+                            errors.Add(!at27
+                                ? $"Node '{id}' runs inside {flow.Inside}; at specVersion 26 a body holds plain nodes — a flow node inside a body is a later issue."
+                                : loopListing.TryGetValue(flow.Node.Id, out var loopId)
+                                    ? $"Node '{id}' runs inside {flow.Inside}, which runs inside loop '{loopId}'; at specVersion {manifest.SpecVersion} a branch holds plain nodes."
+                                    : $"Node '{id}' runs inside {flow.Inside}; at specVersion {manifest.SpecVersion} a branch holds plain nodes.");
+                            continue;
+                        }
+
+                        if (!at27)
+                        {
+                            errors.Add($"Node '{id}' runs inside {flow.Inside}; a flow node inside a loop requires specVersion 27.");
+                            continue;
+                        }
+
+                        // At 27 the if/case is a body node of the loop; its own bodies
+                        // attach their nodes to it below (the second level).
                     }
 
                     if (owner.TryGetValue(id, out var first))
                     {
-                        errors.Add($"Node '{id}' runs inside {flows[first].Inside} and inside {flow.Inside}; a node runs in one body.");
+                        // #1234 (§ 1.1): a branch node listed in the loop's nodes[] too is
+                        // attached twice — named by the pair, whichever body came first.
+                        var (innerId, loopId) =
+                            flow.Kind == Kind.For && flows[first].Kind != Kind.For && loopListing.GetValueOrDefault(first) == flow.Node.Id ? (first, flow.Node.Id)
+                            : flow.Kind != Kind.For && flows[first].Kind == Kind.For && loopListing.GetValueOrDefault(flow.Node.Id) == first ? (flow.Node.Id, first)
+                            : (null, null);
+                        errors.Add(innerId is not null
+                            ? $"Node '{id}' is attached to '{innerId}' and to loop '{loopId}'; a branch node is attached once, through its flow node."
+                            : $"Node '{id}' runs inside {flows[first].Inside} and inside {flow.Inside}; a node runs in one body.");
                         continue;
                     }
 
@@ -279,6 +358,16 @@ internal static class WorkflowFlowNodes
             && obj == TemplateObjects.Node
             && rest.TrimStart('.') == TemplateMembers.Value
             ? id
+            : null;
+
+    /// <summary>#1234 (v27 design § 1.2): <c>item.value.&lt;field&gt;</c> → the field; anything else → null. Inside a loop over an array input a case switches on an enum field of the item.</summary>
+    public static string? CaseItemSubjectOf(string subject) =>
+        TemplateObjectReference.TryParse(subject, out var obj, out var id, out var rest)
+            && obj == TemplateObjects.Item
+            && id == TemplateMembers.Value
+            && rest.Length > 1
+            && rest.IndexOf('.', 1) < 0
+            ? rest[1..]
             : null;
 
     private const string LoopPrefix = "item in ";
@@ -360,12 +449,18 @@ internal static class WorkflowFlowNodes
     /// returned node (iterable; <c>.content</c> the concatenation, <c>.value</c> the
     /// array) over the fan its body runs under, with its body nodes as the
     /// element's members; an if/case is its returned node's shape when every
-    /// branch returns one format, else text with the disagreement named.
+    /// branch returns one format, else text with the disagreement named. #1234
+    /// (v27 design § 1.5): <paramref name="shapes"/> holds the shapes built so far
+    /// — the plain nodes' and, built first (<see cref="Resolved.InShapeOrder"/>),
+    /// the if/case nodes' — so a loop returning an inner flow node takes that
+    /// branch shape as its element (one format when the branches agree, else
+    /// the disagreement by name); the Aggregator stands in only for a ret with
+    /// no shape at all.
     /// </summary>
-    public static TemplateNodeShape ShapeOf(Flow flow, IReadOnlyDictionary<string, TemplateNodeShape> plainShapes)
+    public static TemplateNodeShape ShapeOf(Flow flow, IReadOnlyDictionary<string, TemplateNodeShape> shapes)
     {
         var rets = flow.Bodies
-            .Select(b => b.RetNodeId is { } id && plainShapes.TryGetValue(id, out var shape) ? (Id: id, Shape: shape) : (Id: b.RetNodeId, Shape: (TemplateNodeShape?)null))
+            .Select(b => b.RetNodeId is { } id && shapes.TryGetValue(id, out var shape) ? (Id: id, Shape: shape) : (Id: b.RetNodeId, Shape: (TemplateNodeShape?)null))
             .ToList();
 
         if (flow.Kind == Kind.For)
@@ -375,8 +470,8 @@ internal static class WorkflowFlowNodes
                 : (rets.FirstOrDefault().Id ?? string.Empty, TemplateNodeShape.Aggregator());
             var body = flow.BodyNodeIds
                 .Distinct(StringComparer.Ordinal)
-                .Where(plainShapes.ContainsKey)
-                .ToDictionary(id => id, id => plainShapes[id], StringComparer.Ordinal);
+                .Where(shapes.ContainsKey)
+                .ToDictionary(id => id, id => shapes[id], StringComparer.Ordinal);
             return TemplateNodeShape.Loop(ret.Item1, ret.Item2, flow.Fan, body);
         }
 

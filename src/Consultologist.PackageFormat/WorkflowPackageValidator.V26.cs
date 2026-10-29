@@ -75,10 +75,10 @@ public static partial class WorkflowPackageValidator
         var nodeShapes = nodes.Values
             .Where(n => n.Format is not null)
             .ToDictionary(n => n.Node.Id, n => new TemplateNodeShape(n.Format!.Id, n.Format.Spec.Type, n.Format.Spec.Schema, EnumValuesAt25(n, inputsById)), StringComparer.Ordinal);
-        var plainShapes = new Dictionary<string, TemplateNodeShape>(nodeShapes, StringComparer.Ordinal);
-        foreach (var flow in flows.Flows.Values)
+        // #1234: an if/case before a loop, so a loop returning one finds its shape.
+        foreach (var flow in flows.InShapeOrder)
         {
-            nodeShapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, plainShapes);
+            nodeShapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, nodeShapes);
         }
         var macroFolderIds = macroFolders?.Collections.Keys.ToHashSet(StringComparer.Ordinal) ?? TemplateReferenceContext.NoIds;
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).Where(id => !macroFolderIds.Contains(id)).ToHashSet(StringComparer.Ordinal);

@@ -1283,10 +1283,10 @@ public static class WorkflowDerivedEdges
         var flows = manifest.SpecVersion >= 26
             ? WorkflowFlowNodes.Resolve(manifest, content, inputsById, discard)
             : WorkflowFlowNodes.Resolved.None;
-        var plainShapes = new Dictionary<string, TemplateNodeShape>(shapes, StringComparer.Ordinal);
-        foreach (var flow in flows.Flows.Values)
+        // #1234: an if/case before a loop, so a loop returning one finds its shape.
+        foreach (var flow in flows.InShapeOrder)
         {
-            shapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, plainShapes);
+            shapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, shapes);
         }
 
         var snippetIds = content.Scalars.Keys.ToHashSet(StringComparer.Ordinal);
