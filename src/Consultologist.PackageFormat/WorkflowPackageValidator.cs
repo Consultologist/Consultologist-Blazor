@@ -117,6 +117,7 @@ public static partial class WorkflowPackageValidator
         var warnings = new List<string>();
         var at25 = manifest.SpecVersion >= 25;
         var at26 = manifest.SpecVersion >= 26;
+        var at27 = manifest.SpecVersion >= 27;
 
         if (manifest.Templating is null
             || !string.Equals(manifest.Templating.Engine, "scriban", StringComparison.OrdinalIgnoreCase))
@@ -198,6 +199,10 @@ public static partial class WorkflowPackageValidator
         if (!accepted.Contains(manifest.SpecVersion))
         {
             errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion {DescribeAcceptedSpecVersions()} (pre-v5 packages are archived; see registry-operations.md).");
+        }
+        else if (at27)
+        {
+            ValidateAt27(manifest, files, formats, errors, warnings);
         }
         else if (at26)
         {

@@ -428,7 +428,9 @@ public static partial class WorkflowPackageValidator
 
             if (flows.Flows.TryGetValue(node.Id, out var flow))
             {
-                nodes[node.Id] = new NodeAt25(node, null, flow.Fan, flow.Folder);
+                // #1234: an if/case inside a loop runs under the loop's fan (its condition reads the item).
+                var (loopFan, loopFolder) = flow.Kind == WorkflowFlowNodes.Kind.For ? (flow.Fan, flow.Folder) : flows.FanOf(node.Id);
+                nodes[node.Id] = new NodeAt25(node, null, loopFan, loopFolder);
                 continue;
             }
 
@@ -535,10 +537,18 @@ public static partial class WorkflowPackageValidator
         WorkflowFlowNodes.Resolved flows,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        List<string> errors)
-    {
-        const string rule = "a case switches on an enum input (input.<id>) or an enum-format node's value (node.<id>.value)";
+        List<string> errors) =>
+        ValidateCaseSubjects(flows, nodes, inputsById, errors, "a case switches on an enum input (input.<id>) or an enum-format node's value (node.<id>.value)", itemSubjects: false);
 
+    /// <summary>The case subjects' core, shared by 26 and 27 (#1234: at 27 an inner case may switch on an enum field of the item, <c>item.value.&lt;field&gt;</c>).</summary>
+    private static void ValidateCaseSubjects(
+        WorkflowFlowNodes.Resolved flows,
+        IReadOnlyDictionary<string, NodeAt25> nodes,
+        IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
+        List<string> errors,
+        string rule,
+        bool itemSubjects)
+    {
         foreach (var flow in flows.Flows.Values.Where(f => f.Kind == WorkflowFlowNodes.Kind.Case && f.Expression is not null))
         {
             var subject = flow.Expression!;
@@ -583,6 +593,30 @@ public static partial class WorkflowPackageValidator
                 else
                 {
                     values = EnumValuesAt25(node, inputsById);
+                }
+            }
+            else if (itemSubjects && WorkflowFlowNodes.CaseItemSubjectOf(subject) is { } field)
+            {
+                // #1234 (v27 design § 1.2): inside a loop over an array input, an enum
+                // field of the element is a closed set; a folder item's fields are text.
+                var (fan, _) = flows.FanOf(flow.Node.Id);
+
+                if (fan is not InputArrayFan input)
+                {
+                    errors.Add($"Node '{flow.Node.Id}' switches on {subject}, but it runs in no loop over an array input; {rule}.");
+                }
+                else if (input.Element.Fields?.FirstOrDefault(f => string.Equals(f.Id, field, StringComparison.Ordinal)) is not { } declared)
+                {
+                    var fields = input.Element.Fields?.Select(f => f.Id).Order(StringComparer.Ordinal).ToList() ?? new List<string>();
+                    errors.Add($"Node '{flow.Node.Id}' switches on {subject}, which the item does not carry (fields: {(fields.Count > 0 ? string.Join(", ", fields) : "none")}); {rule}.");
+                }
+                else if (declared.Type != WorkflowInputTypes.Enum || declared.Values is not { Count: > 0 })
+                {
+                    errors.Add($"Node '{flow.Node.Id}' switches on {subject}, which is a {declared.Type}; {rule}.");
+                }
+                else
+                {
+                    values = declared.Values;
                 }
             }
             else
@@ -686,6 +720,13 @@ public static partial class WorkflowPackageValidator
                         continue; // siblings of one body
                     }
 
+                    // #1234 (v27 design § 4): one level up — a branch node reads the
+                    // loop's body nodes its flow node runs beside.
+                    if (fromOwner is not null && flows.Owner.TryGetValue(fromOwner, out var up) && up == targetOwner)
+                    {
+                        continue;
+                    }
+
                     if (fromOwner is not null)
                     {
                         errors.Add(flows.IsLoop(fromOwner) && flows.IsLoop(targetOwner)
@@ -697,8 +738,9 @@ public static partial class WorkflowPackageValidator
                         errors.Add($"Node '{fromId}' reads node '{targetId}', which runs inside {flows.Flows[targetOwner].Inside}; read node.{targetOwner}.");
                     }
                 }
-                else if (fromOwner is not null && fromOwner == targetId)
+                else if (fromOwner is not null && (fromOwner == targetId || flows.LoopOf(fromId) == targetId))
                 {
+                    // #1234: the loop two levels up (a branch node reading the loop its flow node runs in) is the loop it runs in too.
                     errors.Add(flows.IsLoop(targetId)
                         ? $"Node '{fromId}' reads node.{targetId}, the loop it runs in; a body node reads its siblings, the outside reads the loop."
                         : $"Node '{fromId}' reads node.{targetId}, the branch it runs in; a body node reads its siblings, the outside reads node.{targetId}.");
@@ -721,6 +763,12 @@ public static partial class WorkflowPackageValidator
             }
         }
 
+        ValidateFolderItemConditionsAt26(walk, errors);
+    }
+
+    /// <summary>#1094 (§ 5.4): a folder item's if reads inputs and item.id only — shared by 26 and 27.</summary>
+    private static void ValidateFolderItemConditionsAt26(WorkflowDerivedEdges.Walk walk, List<string> errors)
+    {
         foreach (var condition in walk.Conditions.Where(c => c.Site == WorkflowDerivedEdges.ConditionSite.FolderItem && c.Walk.IsValid))
         {
             var refs = condition.Walk.References;
@@ -832,7 +880,14 @@ public static partial class WorkflowPackageValidator
 
                         if (flow.Kind == WorkflowFlowNodes.Kind.For)
                         {
-                            if (ret is null || ret.Type != WorkflowInputTypes.Text || ret.Aggregates)
+                            // #1234 (v27 design § 1.5): a loop returning an if/case composes
+                            // only when every branch returns prose — the first that does not is named.
+                            if (ret?.Flow is { Kind: not TemplateFlowKind.For } && shape?.Flow?.RetId is { } innerId && flows.Flows.TryGetValue(innerId, out var inner)
+                                && NonProseBranchOf(inner, shapes) is { } branch)
+                            {
+                                errors.Add($"{subject} source node.{sourceId} loops over '{innerId}', whose {branch.Label} returns '{branch.RetId}' of format '{branch.Format}'; a deliverable composes prose.");
+                            }
+                            else if (ret is null || ret.Type != WorkflowInputTypes.Text || ret.Aggregates)
                             {
                                 errors.Add($"{subject} source node.{sourceId} loops over '{shape?.Flow?.RetId}' of format '{ret?.Format}'; a deliverable composes prose.");
                             }
@@ -954,6 +1009,20 @@ public static partial class WorkflowPackageValidator
     /// deliverable's closure, but for an enum node (read by conditions) and a
     /// check's chain. A flow node's bodies are reached when it is.
     /// </summary>
+    /// <summary>#1234: the first branch of an if/case whose returned node is not prose (a typed format, or an aggregate), or null when every branch composes.</summary>
+    private static (string Label, string RetId, string Format)? NonProseBranchOf(WorkflowFlowNodes.Flow flow, IReadOnlyDictionary<string, TemplateNodeShape> shapes)
+    {
+        foreach (var body in flow.Bodies)
+        {
+            if (body.RetNodeId is { } retId && shapes.TryGetValue(retId, out var ret) && (ret.Type != WorkflowInputTypes.Text || ret.Aggregates))
+            {
+                return (body.Label, retId, ret.Format);
+            }
+        }
+
+        return null;
+    }
+
     private static void ValidateReachabilityAt26(
         WorkflowPackageManifest manifest,
         IReadOnlyList<WorkflowNodeSpec> specs,
