@@ -478,18 +478,26 @@ public static class WorkflowDerivedEdges
         /// </summary>
         public IReadOnlySet<string> GatingReads()
         {
+            // #1234 (v27 design § 1.3): an if/case inside a loop is decided once per
+            // item, inside the loop's run — its condition gates no job boundary.
             var reads = new HashSet<string>(
-                ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance or ConditionSite.Flow)),
+                ConditionReads(Conditions.Where(c => c.Site is ConditionSite.Node or ConditionSite.Deliverable or ConditionSite.DeliverableInstance
+                    || (c.Site is ConditionSite.Flow && !IsInnerFlow(c.OwnerId)))),
                 StringComparer.Ordinal);
 
             // #1154: a case node's subject gates its bodies as an if's expression
             // does — a node it switches on is a deciding read.
             reads.UnionWith(_nodes.Values
+                .Where(n => !IsInnerFlow(n.Node.Id))
                 .Select(n => n.Node.Case is { } subject ? WorkflowFlowNodes.CaseNodeSubjectOf(subject) : null)
                 .Where(id => id is not null && _nodes.ContainsKey(id))!);
 
             return reads;
         }
+
+        /// <summary>#1234: a flow node with a scope runs inside a loop's body — decided per item, not at the job's boundary.</summary>
+        private bool IsInnerFlow(string nodeId) =>
+            _nodes.TryGetValue(nodeId, out var node) && node.Scope is not null && (node.Node.If is not null || node.Node.Case is not null);
 
         /// <summary>#1038: whether any gating when reads a profile fact (directly or through a text) — a read only the boundary can serve, since the starter judges before the profile is fetched.</summary>
         public bool GatingReadsProfile()
@@ -870,10 +878,15 @@ public static class WorkflowDerivedEdges
 
             // #1100 (v26 design § 1): an if node's expression is a condition of
             // its own site — walked as a node's when is (one boolean), read as
-            // the flow node's edges; a flow node runs in no loop, so no fan. A
-            // case node's subject is a value, not a truth — the validator reads
-            // it structurally (ValidateCaseSubjectsAt26) and adds its edge itself.
-            WalkCondition(ConditionSite.Flow, node.Id, null, $"Node '{node.Id}' if", node.If, null);
+            // the flow node's edges; a top-level flow node runs in no loop, so
+            // no fan. #1234 (v27 design § 1.2, § 4): an if inside a loop reads
+            // the item under the loop's fan and the loop's body nodes by bare
+            // id — walked under the flow node's OWN id as its scope, so the
+            // walker sees the loop's body one level up and the validator says
+            // the sentence for a read of its own branch nodes. A case node's
+            // subject is a value, not a truth — the validator reads it
+            // structurally (ValidateCaseSubjectsAt26) and adds its edge itself.
+            WalkCondition(ConditionSite.Flow, node.Id, null, $"Node '{node.Id}' if", node.If, walkNode.Scope is null ? null : walkNode.Fan, walkNode.Scope is null ? null : node.Id);
 
             foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
             {
@@ -1346,9 +1359,9 @@ public static class WorkflowDerivedEdges
             .ToList();
     }
 
-    /// <summary>#1100: at 26 a plain node's fan is its owner loop's, and a loop's its own.</summary>
+    /// <summary>#1100: at 26 a plain node's fan is its owner loop's, and a loop's its own; #1234: at 27 an inner if/case's (and its branch nodes') is the loop's, through the chain.</summary>
     private static TemplateFan? FanAt26(WorkflowNodeSpec node, WorkflowFlowNodes.Resolved flows) =>
-        flows.Flows.TryGetValue(node.Id, out var flow) ? flow.Fan : flows.FanOf(node.Id).Fan;
+        flows.Flows.TryGetValue(node.Id, out var flow) ? flow.Fan ?? flows.FanOf(node.Id).Fan : flows.FanOf(node.Id).Fan;
 
     /// <summary>The fan a node's template sees: a snippet folder, an array input's element, or nothing.</summary>
     public static TemplateFan? FanOf(WorkflowNodeSpec node, WorkflowPackageData content, IReadOnlyDictionary<string, WorkflowInputSpec> inputsById)
