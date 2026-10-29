@@ -110,6 +110,10 @@ would otherwise have carried it (#397).
   `ret`; gates keyed `if`; the aggregator folded into `deliverables[].sources` with
   `deliverable.<id>.content`; a node names its prompt file; a JSON header on snippet and macro
   files; 26 is the static half — dynamic fan sizes, `while` and nested loops are the next bump's)
+  [package format v27 design](customizable-workflow/package-format-v27-design.md) — a flow node
+  inside a `for` (Milestone 35, specVersion 27, revision 1): an `if`/`case` in a loop's body decided
+  once per item, the loop returning it, every item still a row — *skipped by condition* recorded with
+  the condition's text, never a value — record storage 9; the dynamic half is 28,
 
 ## Research
 
