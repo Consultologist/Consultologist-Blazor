@@ -1399,7 +1399,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             MacroTarget => MacroMembers.Contains(name, StringComparer.Ordinal),
             NodeTarget => TemplateMembers.Node.Contains(name, StringComparer.Ordinal),
             DeliverableTarget => TemplateMembers.Deliverable.Contains(name, StringComparer.Ordinal),
-            LoopElementTarget element => TemplateMembers.LoopElement.Contains(name, StringComparer.Ordinal) || (element.Flow.Body?.ContainsKey(name) ?? false),
+            LoopElementTarget element => LoopElementMembers.Contains(name, StringComparer.Ordinal) || (element.Flow.Body?.ContainsKey(name) ?? false),
             FactsTarget { Object: TemplateObjects.Run } => TemplateMembers.Run.Contains(name, StringComparer.Ordinal),
             FactsTarget { Object: TemplateObjects.Profile } => TemplateMembers.Profile.Contains(name, StringComparer.Ordinal),
             ShapeTarget { Shape: { IsObject: true } shape } => shape.Fields?.ContainsKey(name) ?? false,
@@ -1410,6 +1410,9 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
         private string NameMember => _context.Labelled ? TemplateMembers.Label : TemplateMembers.Name;
         private IReadOnlyList<string> SnippetMembers => _context.Labelled ? TemplateMembers.SnippetAt26 : TemplateMembers.Snippet;
         private IReadOnlyList<string> MacroMembers => _context.Labelled ? TemplateMembers.MacroAt26 : TemplateMembers.Macro;
+        /// <summary>#1235: at 27 a loop element also carries `skipped`.</summary>
+        private IReadOnlyList<string> LoopElementMembers => _context.SkippedElements ? TemplateMembers.LoopElementAt27 : TemplateMembers.LoopElement;
+
         private IReadOnlyList<string> SnippetFanItemMembers => _context.Labelled ? TemplateMembers.SnippetFanItemAt26 : TemplateMembers.SnippetFanItem;
         private IReadOnlyList<string> InputFanItemMembers => _context.Labelled ? TemplateMembers.InputFanItemAt26 : TemplateMembers.InputFanItem;
         private IReadOnlyList<string> AnyFanItemMembers => _context.Labelled ? TemplateMembers.AnyFanItemAt26 : TemplateMembers.AnyFanItem;
@@ -1668,6 +1671,12 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                 case TemplateMembers.Item:
                     return new ItemTarget(flow.Fan);
 
+                // #1235 (v27 design § 1.4): whether the item was skipped by an inner
+                // if/case — a boolean, read as the loop's (the element is the loop's).
+                case TemplateMembers.Skipped when _context.SkippedElements:
+                    _refs.ReadNode(element.LoopId, content: true, value: false);
+                    return new ShapeTarget(TemplateValueShape.Boolean);
+
                 case TemplateMembers.Content:
                     _refs.ReadNode(element.LoopId, content: true, value: false);
                     return new NodeContentTarget(before, element.LoopId, flow.Ret ?? TemplateNodeShape.Aggregator(), flow.RetId);
@@ -1695,7 +1704,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         return new NodeTarget(name, shape, element.LoopId);
                     }
 
-                    Errors.Add($"{_subject} reads {walked}, which is not a member (a loop element has item, content, value and the body nodes: {string.Join(", ", (flow.Body?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
+                    Errors.Add($"{_subject} reads {walked}, which is not a member (a loop element has {string.Join(", ", LoopElementMembers)} and the body nodes: {string.Join(", ", (flow.Body?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
                     return Refused;
             }
         }

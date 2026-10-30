@@ -47,7 +47,11 @@ public sealed record TemplateReferenceContext(
     // read directly with the folder's member set; null (≤25) and a folder is
     // iterated only.
     IReadOnlyDictionary<string, IReadOnlyList<string>>? SnippetFolderItems = null,
-    IReadOnlyDictionary<string, IReadOnlyList<string>>? MacroFolderItems = null)
+    IReadOnlyDictionary<string, IReadOnlyList<string>>? MacroFolderItems = null,
+    // #1235 (v27 design § 1.4): at 27 a loop element carries `skipped` — true for
+    // an item an inner if/case skipped by condition (its content and value null).
+    // False (≤26) and the member is refused with the element's set.
+    bool SkippedElements = false)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -218,6 +222,10 @@ public static class TemplateMembers
     public const string Item = "item";
     public static readonly IReadOnlyList<string> LoopElement = new[] { Item, Content, Value };
 
+    /// <summary>#1235 (v27 design § 1.4): at 27 the element also says whether its item was skipped by condition.</summary>
+    public const string Skipped = "skipped";
+    public static readonly IReadOnlyList<string> LoopElementAt27 = new[] { Item, Content, Value, Skipped };
+
     /// <summary>#1101: a deliverable's one member — its composed text, before its macros and signature.</summary>
     public static readonly IReadOnlyList<string> Deliverable = new[] { Content };
 
@@ -246,6 +254,9 @@ public sealed record TemplateValueShape(
     public bool IsUnknown => Kind == Unknown;
 
     public static readonly TemplateValueShape Text = new(WorkflowInputTypes.Text, null, null, null);
+
+    /// <summary>#1235: a boolean member (a loop element's <c>skipped</c>).</summary>
+    public static readonly TemplateValueShape Boolean = new(WorkflowInputTypes.Boolean, null, null, null);
 
     public static TemplateValueShape FromDeclaration(WorkflowDeclarationNode node) =>
         new(

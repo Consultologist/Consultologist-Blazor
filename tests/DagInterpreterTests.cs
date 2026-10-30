@@ -1163,6 +1163,85 @@ public class ConsultGenerationNodeEntityTests
         Assert.Equal(7, state().SchemaVersion);
     }
 
+    // ----- record storage 9 (#1235): a 27 job stamps 9 on every path, the per-item rows and the skipped block -----
+
+    [Fact]
+    public void A27Job_IsAtStorage9_FromItsCreation_AndOnEveryPath()
+    {
+        var (entity, state) = CreateEntityAt(27);
+        Assert.Equal(9, state().SchemaVersion);
+        Assert.Contains(9, ConsultGenerationJobState.StorageVersions);
+
+        entity.MarkNodeCompleted(new ConsultGenerationNodeUpdate("extract", "Extract", null, "i", "o", 1, 3));
+        Assert.Equal(9, state().SchemaVersion);
+        entity.MarkNodeSkipped(new ConsultGenerationNodeSkip("gate", "Gate", "took no branch", 2, 3));
+        Assert.Equal(9, state().SchemaVersion);
+        entity.MarkNodeItemSkipped(new ConsultGenerationNodeItemSkip("triage", "plan", "Triage", "needs `item.id == \"hpi\"`; it does not hold"));
+        Assert.Equal(9, state().SchemaVersion);
+        entity.RecordFlowBranch(new ConsultGenerationFlowBranch("triage", "plan", "none"));
+        Assert.Equal(9, state().SchemaVersion);
+        entity.SkipBlock(new ConsultGenerationBlockSkip("consult:sections:plan", "Plan", "needs `item.id == \"hpi\"`; it does not hold")).GetAwaiter().GetResult();
+        Assert.Equal(9, state().SchemaVersion);
+        entity.CompleteResultDocument(new ConsultGenerationResultDocument("consult_note", "Consultation note", "The note.", 0)).GetAwaiter().GetResult();
+        Assert.Equal(9, state().SchemaVersion);
+
+        // A 26 job stays at 8.
+        var (at26, state26) = CreateEntityAt(26);
+        at26.MarkNodeCompleted(new ConsultGenerationNodeUpdate("extract", "Extract", null, "i", "o", 1, 3));
+        Assert.Equal(8, state26().SchemaVersion);
+    }
+
+    [Fact]
+    public void AnInnerFlowsPerItemRows_TheBranchesMap_AndTheSkippedBlock_AreServedAt9()
+    {
+        var (entity, state) = CreateEntityAt(27);
+        state().Nodes = new List<ConsultNodeDescriptor>
+        {
+            new("triage", "Triage", ForEach: "snippet.sections", Kind: "if", Expression: "item.id == \"hpi\"", Body: new[] { "patient_draft", "table_draft" }, In: "sections"),
+            new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes", "triage" }, Ret: "triage", Count: 2),
+        };
+        const string reason = "needs `item.id == \"hpi\"`; it does not hold";
+
+        entity.RecordFlowBranch(new ConsultGenerationFlowBranch("triage", "hpi", "then"));
+        entity.RecordFlowBranch(new ConsultGenerationFlowBranch("triage", "plan", "none"));
+        entity.MarkNodeItemSkipped(new ConsultGenerationNodeItemSkip("triage", "plan", "Triage", reason));
+        entity.SkipBlock(new ConsultGenerationBlockSkip("consult:sections:plan", "Plan", reason)).GetAwaiter().GetResult();
+        entity.CompleteBlock(new BlockGenerationResult("consult:sections:hpi", "HPI", true, "Drafted.", null)).GetAwaiter().GetResult();
+
+        var served = state().ToResponse();
+
+        // The flow row: branches per item, never branch; the working ForEach projected away, In kept.
+        var row = served.Nodes!.First(n => n.Id == "triage");
+        Assert.Equal(new Dictionary<string, string> { ["hpi"] = "then", ["plan"] = "none" }, row.Branches);
+        Assert.Null(row.Branch);
+        Assert.Null(row.ForEach);
+        Assert.Equal("sections", row.In);
+        Assert.Equal(9, served.SchemaVersion);
+
+        // The per-item skipped row with its reason; a taken item has no flow row.
+        var skipped = served.NodeOutputs!["triage:plan"];
+        Assert.Equal((ConsultGenerationNodeStatuses.Skipped, reason, "triage"), (skipped.Status, skipped.Reason, skipped.NodeId));
+        Assert.Null(skipped.InputHash);
+        Assert.DoesNotContain("triage:hpi", served.NodeOutputs.Keys);
+        Assert.Equal("plan", state().NodeOutputs!["triage:plan"].ItemId);
+        // The stage counts do not move for an item's row.
+        Assert.Equal((0, 0), (state().CompletedStageCount, state().TotalStageCount));
+
+        // The skipped block: a named state with the reason, counted as done, no text.
+        Assert.Equal(ConsultGenerationBlockStatuses.Skipped, state().Blocks["consult:sections:plan"].Status);
+        Assert.Equal(new Dictionary<string, string> { ["consult:sections:plan"] = reason }, served.SkippedBlocks);
+        Assert.Equal(new[] { "consult:sections:hpi" }, served.GeneratedBlocks.Keys);
+        Assert.Empty(served.FailedBlocks);
+        Assert.Equal(2, served.CompletedBlockCount);
+        Assert.Contains(state().History, e => e.Kind == "skipped" && e.Label == "Section skipped: Plan" && e.Detail == reason);
+        Assert.Contains(state().History, e => e.Kind == "skipped" && e.Label == "Triage (plan)" && e.Detail == reason);
+
+        // The events: a block-skipped candidate beside the completed one.
+        var candidates = ConsultGenerationJobs.CreateSemanticEventCandidates(served);
+        Assert.Contains(candidates, c => c.EventType == "block-skipped" && c.EventKey == "block-skipped:consult:sections:plan" && c.PayloadJson.Contains("\"Reason\":", StringComparison.Ordinal));
+        Assert.Contains(candidates, c => c.EventType == "block-completed" && c.EventKey == "block-completed:consult:sections:hpi");
+    }
+
     [Fact]
     public void A26JobsResponse_ServesTheStorage8Rows()
     {

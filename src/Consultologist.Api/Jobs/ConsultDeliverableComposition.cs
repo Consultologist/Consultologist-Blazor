@@ -31,7 +31,11 @@ internal static class ConsultDeliverableComposition
         IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
         IReadOnlyDictionary<string, NodeRunResult> outputs,
         Func<ConsultNodeDescriptor, IReadOnlyList<IReadOnlyDictionary<string, string>>> fanItems,
-        Func<ConsultNodeDescriptor, string, bool> itemFailed)
+        Func<ConsultNodeDescriptor, string, bool> itemFailed,
+        // v27 (#1235, design § 1.4): the instance keys an inner if/case skipped by
+        // condition — a loop source composes the items that returned; a loop whose
+        // every item was skipped is a document with no section, not a skipped one.
+        IReadOnlySet<string>? skipped = null)
     {
         var parts = new List<ConsultAggregateRenderer.Part>();
         var hashes = new List<string>();
@@ -62,13 +66,14 @@ internal static class ConsultDeliverableComposition
                     return null;
                 }
 
-                parts.Add(new ConsultAggregateRenderer.ForEachPart(items
+                var present = items.Where(item => skipped?.Contains(ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])) != true).ToList();
+                parts.Add(new ConsultAggregateRenderer.ForEachPart(present
                     .Select(item => (
                         item["id"],
                         WorkflowPackageBlocks.ItemName(item),
                         outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].RawOutput.Trim()))
                     .ToList()));
-                hashes.AddRange(items.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].OutputHash));
+                hashes.AddRange(present.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].OutputHash));
                 continue;
             }
 

@@ -273,6 +273,28 @@ retired for that case.
 - **Record:** the inner flow row's `branches` map, the skipped `nodeOutputs` row with its reason,
   storage 9; `Public/Engine` reports the provenance version from the pin.
 
+**As built (#1235, 2026-10-29).** The decision is the activity `decide-flow-item`, one call per
+(flow node, item), dispatched by the orchestrator exactly as a node instance is — when the flow
+node's reads settle for the item (`InstanceReady` over its `Reads`, item-aligned through the
+loop's collection as its working `ForEach`) — over `ConsultConditionScope.WithFanItem`; the
+result carries the branch, the taken body's node ids and returned node, and the reason when none
+(`WorkflowConditionAt25.Reason` for an `if`; *"switches on \`<subject>\`; no branch lists its
+value"* for a `case` — never a value). The orchestrator keeps the calculus in `ConsultInnerFlows`
+(taken, untaken, settled, the taken ret, the loop returning the flow): a branch node's instance
+starts only once its flow node took the branch holding it; an untaken instance is settled for the
+chain's completion and the stall guard; the flow's instance completes as the taken branch's
+returned node did — the alias `flow:item` — which also completes the loop's block for the item;
+a skipped item's instance key joins the skipped set the readiness check and the payload consult.
+The skipped item's block is a named state, **`Skipped`**, with the reason (decided 2026-10-29),
+counted among the completed blocks, served as `skippedBlocks` and streamed as `block-skipped`.
+`FlowRets` carries the returned node per item (`flow:item`), so a body node's bare-id read of the
+flow and a loop element type by the item's branch. `SupportedSpecVersions` stays at 26 until the
+bump (the store's set is pinned by test against the registry and the conformance suite) — the §
+9 B line "`SupportedSpecVersions` += 27" is the bump's. Found and fixed on the way: the engine's
+render scope typed an input fan's element from the ≤24 typed-variables map (empty at 25+), so
+`item.value.<field>` of an array of objects rendered null where the validator typed it; it now
+reads the array's declaration by input id.
+
 ## 6. The editor (at 27)
 
 - A loop's body list may hold an `if`/`case`: the loop pane's "+ add" offers flow nodes too; the

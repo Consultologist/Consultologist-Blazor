@@ -106,7 +106,11 @@ public sealed record ConsultLoopPayload(
     string Collection,
     string RetId,
     IReadOnlyList<IReadOnlyDictionary<string, string>> Items,
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Texts);
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>> Texts,
+    // v27 (#1235, design § 1.4): the items an inner if/case skipped by condition —
+    // elements with `skipped` true and no returned text; the texts map is sparse
+    // for an inner flow node and its branch nodes (the items they ran). Null (26).
+    IReadOnlyList<string>? Skipped = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable

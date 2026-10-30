@@ -1234,7 +1234,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         foreach (var flow in flows.Flows.Values)
         {
             IEnumerable<string> kept;
-            if (flow.Kind == WorkflowFlowNodes.Kind.For)
+            // v27 (#1235, design § 5): an if/case INSIDE a loop is decided once
+            // per item by the engine — nothing here: every body kept, no branch,
+            // nothing pruned; its edge to its bodies closes the reachable set.
+            if (flow.Kind == WorkflowFlowNodes.Kind.For || flows.IsInner(flow.Node.Id))
             {
                 kept = flow.BodyNodeIds;
             }
@@ -3324,7 +3327,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // prompt — and its row carries its kind, its bodies and its decision.
         if (flows is not null && flows.Flows.TryGetValue(node.Id, out var flow))
         {
-            return DescribeFlowNodeAt26(flow, reads, branch, collectionSets);
+            return DescribeFlowNodeAt26(flow, reads, branch, collectionSets, flows);
         }
 
         // v25 (B2 #1001, design § 3.7): a node that declares a format is
@@ -3492,7 +3495,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // v26 (#1154, design § 1.4): a body node fans under its loop — the
             // loop's collection is its forEach, so it runs once per item and
             // reads its siblings item-aligned as a 25 fanned node did.
-            ForEach: node.ForEach ?? (flows is not null && flows.Owner.TryGetValue(node.Id, out var ownerId) && flows.Flows.TryGetValue(ownerId, out var owner) ? owner.Collection : null),
+            // v27 (#1235): a branch node of an inner if/case fans under the LOOP
+            // two levels up (LoopOf), as a loop's own body node does.
+            ForEach: node.ForEach ?? (flows?.LoopOf(node.Id) is { } loopId && flows.Flows.TryGetValue(loopId, out var loop) ? loop.Collection : null),
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
             Aggregate: node.Aggregate,
             // v25 (B8 #1027): an enum format's own answer set when no with
@@ -3532,15 +3537,24 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         WorkflowFlowNodes.Flow flow,
         IReadOnlySet<string>? reads,
         string? branch,
-        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null)
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null,
+        // v27 (#1235): the flow nodes resolved — an INNER if/case (one listed in a
+        // loop's body) carries In (the loop) and the loop's collection as its
+        // ForEach, so the engine decides it once per item, item-aligned; its
+        // Ret and Branch stay null (per item: the Branches map, written as the
+        // items decide).
+        WorkflowFlowNodes.Resolved? flows = null)
     {
         var taken = flow.Kind == WorkflowFlowNodes.Kind.For
             ? flow.Bodies.FirstOrDefault()
             : branch is null ? null : flow.Bodies.FirstOrDefault(body => WorkflowFlowDecision.BranchLabel(body) == branch);
+        var inner = flows is not null && flows.IsInner(flow.Node.Id);
+        var loopOf = inner && flows!.LoopOf(flow.Node.Id) is { } loopId && flows.Flows.TryGetValue(loopId, out var loop) ? loop : null;
 
         return new ConsultNodeDescriptor(
             flow.Node.Id,
             flow.Node.Label,
+            ForEach: loopOf?.Collection,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(flow.Node.Id, flow.Node.Id),
             Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
             Kind: flow.Kind switch { WorkflowFlowNodes.Kind.For => "for", WorkflowFlowNodes.Kind.If => "if", _ => "case" },
@@ -3548,6 +3562,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Expression: flow.Expression,
             Body: flow.BodyNodeIds.Distinct(StringComparer.Ordinal).ToList(),
             Ret: taken?.RetNodeId,
+            In: inner ? flows!.Owner.GetValueOrDefault(flow.Node.Id) : null,
             Branch: branch,
             // v26 (#1156, record storage 8): a loop row's count — the settled
             // fan's items (the folder after its items' gates, or the array input).
@@ -3583,7 +3598,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     {
         var flows = FlowsOf(package);
         return package.Nodes
-            .Where(node => node.ForEach != null || (flows.Owner.TryGetValue(node.Id, out var owner) && flows.IsLoop(owner)))
+            // v27 (#1235): a branch node of an inner if/case fans under the loop two levels up; the flow node itself is no step.
+            .Where(node => node.ForEach != null || (node.If is null && node.Case is null && flows.LoopOf(node.Id) is not null))
             .Select(node => new ConsultItemStepDescriptor(node.Id, node.Label))
             .ToList();
     }

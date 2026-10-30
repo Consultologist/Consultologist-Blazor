@@ -2155,6 +2155,17 @@ public sealed class ConsultGenerationJobs
                 new ConsultGenerationJobBlockFailedEvent(response.JobId, failedSection.Key, failedSection.Value));
         }
 
+        // v27 (#1235, design § 1.4): a block an inner if/case skipped by condition —
+        // done with no text, the reason the condition's text.
+        foreach (var skippedSection in (response.SkippedBlocks ?? new Dictionary<string, string>()).OrderBy(section => section.Key, StringComparer.Ordinal))
+        {
+            AddEventCandidate(
+                candidates,
+                "block-skipped",
+                $"block-skipped:{skippedSection.Key}",
+                new ConsultGenerationJobBlockSkippedEvent(response.JobId, skippedSection.Key, skippedSection.Value));
+        }
+
         if (IsTerminalJobStatus(response.Status))
         {
             if (response.Status == ConsultGenerationJobStatuses.Failed)
@@ -2496,6 +2507,12 @@ public sealed record ConsultGenerationJobBlockFailedEvent(
     string JobId,
     string BlockId,
     string Error);
+
+/// <summary>v27 (#1235): a block skipped by condition — no text; the reason is the condition's text.</summary>
+public sealed record ConsultGenerationJobBlockSkippedEvent(
+    string JobId,
+    string BlockId,
+    string Reason);
 
 public sealed record ConsultGenerationJobHeartbeatEvent(
     string JobId,

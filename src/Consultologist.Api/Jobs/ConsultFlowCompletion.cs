@@ -28,7 +28,12 @@ internal static class ConsultFlowCompletion
         IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
         IReadOnlyDictionary<string, NodeRunResult> outputs,
         Func<ConsultNodeDescriptor, IReadOnlyList<IReadOnlyDictionary<string, string>>> fanItems,
-        Func<ConsultNodeDescriptor, string, bool> itemFailed)
+        Func<ConsultNodeDescriptor, string, bool> itemFailed,
+        // v27 (#1235, design § 1.4): the instance keys (flow:item) an inner if/case
+        // skipped by condition — a loop returning that flow composes over the
+        // items that returned, in item order; the skipped ones contribute nothing
+        // (the count is kept on the record). Null (26) and every item returns.
+        IReadOnlySet<string>? skipped = null)
     {
         if (flow.Ret is null || !nodesById.TryGetValue(flow.Ret, out var ret))
         {
@@ -47,14 +52,15 @@ internal static class ConsultFlowCompletion
             return new Composed(null, $"{flow.Label} could not assemble: {string.Join(", ", failed)} did not complete.");
         }
 
-        if (!items.All(item => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(ret.Id, item["id"]))))
+        var present = items.Where(item => skipped?.Contains(ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])) != true).ToList();
+        if (!present.All(item => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(ret.Id, item["id"]))))
         {
             return null;
         }
 
         var parts = new List<ConsultAggregateRenderer.Part>
         {
-            new ConsultAggregateRenderer.ForEachPart(items
+            new ConsultAggregateRenderer.ForEachPart(present
                 .Select(item => (
                     item["id"],
                     WorkflowPackageBlocks.ItemName(item),
@@ -68,7 +74,7 @@ internal static class ConsultFlowCompletion
             new NodeRunResult(
                 rendered,
                 null,
-                ConsultGenerationProvenance.ComputeAggregateInputHash(items.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].OutputHash).ToList()),
+                ConsultGenerationProvenance.ComputeAggregateInputHash(present.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].OutputHash).ToList()),
                 hash,
                 ConsultGenerationProvenance.NodeHashVersionAt25,
                 AgentOutputHash: hash),
