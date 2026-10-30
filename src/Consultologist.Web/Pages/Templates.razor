@@ -379,10 +379,10 @@
                         <EmptyState Compact Class="editor-nav__empty" Description="No nodes yet." />
                     }
                     @* v26 (#1160): a loop's body nests beneath it in body order; a ≤25 list is flat. *@
-                    @foreach (var (navNode, nested, bodyTag) in NavNodeRows())
+                    @foreach (var (navNode, depth, bodyTag) in NavNodeRows())
                     {
                         <button type="button"
-                                class="editor-nav__item @(nested ? "editor-nav__item--nested" : "") @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
+                                class="editor-nav__item @(depth > 0 ? "editor-nav__item--nested" : "") @(depth > 1 ? "editor-nav__item--nested-2" : "") @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(NodeKeyFor(navNode.Id))">
                             <span class="editor-nav__dot">@(NodeHasPending(navNode) ? "●" : "")</span>
                             <span>@navNode.Label</span>
@@ -2430,23 +2430,35 @@
                                     <span>over — what the case switches on</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-case-subject" @bind-Value="newNodeCase" aria-label="New case subject">
                                         <FluentOption TOption="string" Value="">choose…</FluentOption>
-                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptions)
+                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptionsFor(newNodeLoop.Length > 0 ? newNodeLoop : null))
                                         {
                                             <FluentOption TOption="string" Value="@subject">@subjectLabel</FluentOption>
                                         }
                                     </FluentSelect>
                                 </label>
                             }
-                            else if (At26 && newNodeFormat != IfChoice)
+                            @if (At26 && newNodeFormat != LoopChoice && (At27 || (newNodeFormat != IfChoice && newNodeFormat != CaseChoice)))
                             {
-                                @* v26: a plain node is placed in a body, not given a fan key (#1159: any body). *@
+                                @* v26: a plain node is placed in a body, not given a fan key (#1159: any body).
+                                   v27 (#1236, design § 1.1): an if/case may be born in a loop's body — loops only. *@
+                                var flowBorn = newNodeFormat == IfChoice || newNodeFormat == CaseChoice;
                                 <label class="input-field">
                                     <span>in</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-node-loop" @bind-Value="newNodeLoop" aria-label="New node loop">
-                                        <FluentOption TOption="string" Value="">— not in a body —</FluentOption>
-                                        @foreach (var body in EffectiveBodies)
+                                        <FluentOption TOption="string" Value="">@(flowBorn ? "— not in a loop —" : "— not in a body —")</FluentOption>
+                                        @if (flowBorn)
                                         {
-                                            <FluentOption TOption="string" Value="@body.Key">@body.Label</FluentOption>
+                                            @foreach (var loopChoice in EffectiveLoops)
+                                            {
+                                                <FluentOption TOption="string" Value="@loopChoice.Id">@loopChoice.Label (@loopChoice.Id)</FluentOption>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            @foreach (var body in EffectiveBodies)
+                                            {
+                                                <FluentOption TOption="string" Value="@body.Key">@body.Label</FluentOption>
+                                            }
                                         }
                                     </FluentSelect>
                                 </label>
@@ -2608,6 +2620,11 @@
                                     var bodyNode = EffectiveNodes.FirstOrDefault(n => n.Id == bodyId);
                                     <li class="loop-body__row">
                                         <button type="button" class="snippet-readers__row" title="@($"node '{bodyId}' — open its pane")" @onclick="() => Select(NodeKeyFor(bodyId))">@(bodyNode?.Label ?? bodyId)</button>
+                                        @if (bodyNode is { IsFlow: true } innerFlow)
+                                        {
+                                            @* v27 (#1236, design § 1.1): an if/case in the body — decided once per item; its branches' nodes run under this loop. *@
+                                            <span class="muted-text loop-body__flow">· @(innerFlow.IsIf ? "if" : "case") @(innerFlow.If ?? innerFlow.Case) — per item</span>
+                                        }
                                         @if (selectedLoop.RetNodeId == bodyId)
                                         {
                                             <span class="muted-text loop-body__ret">· returned</span>
@@ -2673,6 +2690,23 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedIf.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedIf, v))" aria-label="If label" />
                                 </label>
+                                @if (At27)
+                                {
+                                <label class="node-field">
+                                    <span>in</span>
+                                    @* v27 (#1236, design § 1.1): an if/case may sit in a loop's body — decided once per item, its branches' nodes running under the loop. *@
+                                    <FluentSelect TOption="string" class="binding-row__select flow-in-loop"
+                                                  Value="@(LoopIdOf(selectedIf.Id) ?? string.Empty)"
+                                                  ValueChanged="@(v => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(selectedIf.Id, string.IsNullOrEmpty(v) ? null : v)))"
+                                                  aria-label="If loop">
+                                        <FluentOption TOption="string" Value="">— not in a loop —</FluentOption>
+                                        @foreach (var loopChoice in EffectiveLoops)
+                                        {
+                                            <FluentOption TOption="string" Value="@loopChoice.Id">@loopChoice.Label (@loopChoice.Id)</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                                }
                             </div>
                         </div>
                         <div class="node-section">
@@ -2727,17 +2761,34 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedCase.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedCase, v))" aria-label="Case label" />
                                 </label>
+                                @if (At27)
+                                {
+                                <label class="node-field">
+                                    <span>in</span>
+                                    @* v27 (#1236, design § 1.1): an if/case may sit in a loop's body — decided once per item, its branches' nodes running under the loop. *@
+                                    <FluentSelect TOption="string" class="binding-row__select flow-in-loop"
+                                                  Value="@(LoopIdOf(selectedCase.Id) ?? string.Empty)"
+                                                  ValueChanged="@(v => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(selectedCase.Id, string.IsNullOrEmpty(v) ? null : v)))"
+                                                  aria-label="Case loop">
+                                        <FluentOption TOption="string" Value="">— not in a loop —</FluentOption>
+                                        @foreach (var loopChoice in EffectiveLoops)
+                                        {
+                                            <FluentOption TOption="string" Value="@loopChoice.Id">@loopChoice.Label (@loopChoice.Id)</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                                }
                                 <label class="node-field">
                                     <span>over</span>
                                     <FluentSelect TOption="string" class="binding-row__select case-subject"
                                                   Value="@(selectedCase.Case ?? string.Empty)"
                                                   ValueChanged="@(v => OnCaseSubjectChangedAsync(selectedCase, v))"
                                                   aria-label="Case subject">
-                                        @if (selectedCase.Case is not { Length: > 0 } authoredSubject || CaseSubjectOptions.All(o => o.Subject != authoredSubject))
+                                        @if (selectedCase.Case is not { Length: > 0 } authoredSubject || CaseSubjectOptionsFor(LoopIdOf(selectedCase.Id), selectedCase).All(o => o.Subject != authoredSubject))
                                         {
                                             <FluentOption TOption="string" Value="@(selectedCase.Case ?? string.Empty)">@(string.IsNullOrEmpty(selectedCase.Case) ? "choose…" : selectedCase.Case)</FluentOption>
                                         }
-                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptions)
+                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptionsFor(LoopIdOf(selectedCase.Id), selectedCase))
                                         {
                                             <FluentOption TOption="string" Value="@subject">@subjectLabel</FluentOption>
                                         }
@@ -3989,7 +4040,8 @@
   /// folder item's when reads inputs only, so the builder offers no node: operand and no
   /// Extra — the registry's rule ("so the folder's size is known at job start").
   /// </summary>
-  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null, bool InputsOnly = false);
+  // v27 (#1236): NodeFilter narrows the node operands a target may read (an if inside a loop reads the loop's earlier body nodes, never the loop or its own branches).
+  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null, bool InputsOnly = false, Func<string, bool>? NodeFilter = null);
 
   // #1125: EmptyWord is the field's resting label, lower-cased — what the sole clause's empty choice says, so the
   // open builder and the collapsed button agree ("always produced", "always run", "always", "every run").
@@ -4932,6 +4984,19 @@
     internal const int NewestSpecVersion = 26;
 
     /// <summary>
+    /// v27 (#1236; decided 2026-10-29): a test-only seam — the editor authors the
+    /// version above the accepted ceiling (27, built by #1234/#1235) before the
+    /// bump (#1237) lifts the ceiling: the manifest reads and the desk's validate
+    /// accept it. No banner: the API refuses 27 until the bump, so no user opens
+    /// one. Retired at the bump, as #1164 retired #1209's.
+    /// </summary>
+    [Parameter]
+    public bool AuthorsAboveCeiling { get; set; }
+
+    private IReadOnlyList<int> AcceptedSet =>
+        AuthorsAboveCeiling ? PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(NewestSpecVersion + 1).ToList() : PF.WorkflowPackageValidator.AcceptedSpecVersions;
+
+    /// <summary>
     /// The newest version a bump can STAGE as pending state (specVersionBump).
     /// From 25 the upgrade is the § 14 rewrite — the whole package replaced,
     /// never a staged bump (C6 #1012) — so the toolbar's one button chains: a
@@ -5181,7 +5246,10 @@
         }
 
         // v26 (#1164, design § 13): the 26 rung — the library's rewrite to 26 over the 25 package.
-        var result = PF.WorkflowPackageMigration25To26.Migrate(manifestJson, files);
+        // v27 (#1236, design § 7): from 26 on, the newest rung is a version raise — nothing rewritten.
+        var result = EffectiveSpecVersion >= 26
+            ? WorkflowPackageVersionRaise.To(manifestJson, files, NewestSpecVersion)
+            : PF.WorkflowPackageMigration25To26.Migrate(manifestJson, files);
 
         if (!result.Succeeded)
         {
@@ -5708,7 +5776,7 @@
                 IReadOnlyList<PF.TemplatePreviewGate> gates = Array.Empty<PF.TemplatePreviewGate>();
                 try
                 {
-                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
                     scope = PF.TemplatePreviewScope.Tokens(manifest, AssembleFiles(), EditorPackageWalk.CatalogFrom(formatsCatalog));
                     // v26 (#1205): the gates ride the same tick as the scope.
                     gates = PackageWalk is { } walk ? PF.TemplatePreviewScope.Gates(manifest, walk) : Array.Empty<PF.TemplatePreviewGate>();
@@ -5848,6 +5916,8 @@
             PF.TemplatePreviewGateKind.Instance => gate.Owner == readerNodeId && refs.MacroPrompts.Contains(gate.Key),
             PF.TemplatePreviewGateKind.Macro => ReadsMacro(gate.Key),
             PF.TemplatePreviewGateKind.Snippet => refs.Snippets.Contains(gate.Key),
+            // v27 (#1236; decided 2026-10-29): a flow node's gate is its branch nodes' — a top-level if/case over the picks, one inside a loop over the picked item.
+            PF.TemplatePreviewGateKind.Flow => readerNodeId is not null && gate.Bodies?.Any(body => body.Nodes.Contains(readerNodeId, StringComparer.Ordinal)) == true,
             _ => refs.SnippetFolders.Contains(gate.Owner) || refs.Snippets.Contains(gate.Key),
         }).ToList();
     }
@@ -5956,7 +6026,7 @@
     }
 
     /// <summary>v26 (#1205): a rendered preview — the text, whether it is the renderer's sentence, and the gates judged over the pick (applied: they did not hold; waiting: on picks).</summary>
-    private sealed record RenderedPreviewResult(string Text, bool IsError, IReadOnlyList<PF.TemplatePreviewGate> Applied, IReadOnlyList<PF.TemplatePreviewWaitingGate> Waiting);
+    private sealed record RenderedPreviewResult(string Text, bool IsError, IReadOnlyList<PF.TemplatePreviewGate> Applied, IReadOnlyList<PF.TemplatePreviewWaitingGate> Waiting, IReadOnlyList<PF.TemplatePreviewFlowOutcome>? Flows = null);
 
     private static readonly RenderedPreviewResult NoPreviewScope = new("The package does not read yet — fix the publish refusals to preview.", true, Array.Empty<PF.TemplatePreviewGate>(), Array.Empty<PF.TemplatePreviewWaitingGate>());
 
@@ -5983,7 +6053,7 @@
                 item is not null,
                 readerNodeId,
                 item?.Id);
-            return new(PF.TemplateRenderer.Render(subject, text, judged.Scope, PF.TemplatePreviewScope.Pipes), false, judged.Applied, judged.Waiting);
+            return new(PF.TemplateRenderer.Render(subject, text, judged.Scope, PF.TemplatePreviewScope.Pipes), false, judged.Applied, judged.Waiting, judged.Flows);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -5992,8 +6062,22 @@
     }
 
     /// <summary>v26 (#1205): what an applied gate did for this pick, in the pane's words.</summary>
+    /// <summary>v27 (#1236): what a flow node decides for this pick, and what that means for the node previewed.</summary>
+    private static string FlowSentence(PF.TemplatePreviewFlowOutcome outcome)
+    {
+        var gate = outcome.Gate;
+        var what = gate.IsCase ? $"case over {gate.If}" : $"if ({gate.If})";
+        var scope = gate.Loop is { } loop ? $" for this item of loop '{loop}'" : string.Empty;
+        return outcome.Branch == "none"
+            ? $"node '{gate.Owner}' takes no branch for this pick{scope}: its {what} — this node does not run (its text renders all the same)"
+            : outcome.RunsReader
+                ? $"node '{gate.Owner}' takes {outcome.Branch} for this pick{scope}: its {what} — this node runs"
+                : $"node '{gate.Owner}' takes {outcome.Branch} for this pick{scope}: its {what} — this node does not run (its text renders all the same)";
+    }
+
     private static string GateSentence(PF.TemplatePreviewGate gate) => gate.Kind switch
     {
+        PF.TemplatePreviewGateKind.Flow => $"node '{gate.Owner}' takes another branch for this pick: its {(gate.IsCase ? $"case over {gate.If}" : $"if ({gate.If})")} — this node does not run",
         PF.TemplatePreviewGateKind.Instance => $"the read of macro.{gate.Key}.prompt is suppressed for this pick: node '{gate.Owner}''s instance if ({gate.If}) does not hold",
         PF.TemplatePreviewGateKind.Macro => $"macro '{gate.Key}' is inert for this pick: its if ({gate.If}) does not hold — .prompt and .content render empty",
         PF.TemplatePreviewGateKind.Snippet => $"snippet '{gate.Key}' renders empty for this pick: its if ({gate.If}) does not hold",
@@ -6010,6 +6094,7 @@
             PF.TemplatePreviewGateKind.Instance => $"node '{gate.Owner}''s instance if of macro '{gate.Key}'",
             PF.TemplatePreviewGateKind.Macro => $"macro '{gate.Key}''s if",
             PF.TemplatePreviewGateKind.Snippet => $"snippet '{gate.Key}''s if",
+            PF.TemplatePreviewGateKind.Flow => $"node '{gate.Owner}''s {(gate.IsCase ? "case subject" : "if")}{(gate.Loop is { } loop ? $" (per item of loop '{loop}')" : string.Empty)}",
             _ => $"item '{gate.Key[(gate.Owner.Length + 1)..]}' of folder '{gate.Owner}''s if",
         };
         return $"pick {picks} to judge {whose} ({gate.If})";
@@ -7076,11 +7161,16 @@
                 <p class="muted-text rendered-preview__note">An unchosen value renders as its token — an equality against it is false, a bare <code>if</code> or an ordering sees a non-empty text — choose a value to see the branch you mean.</p>
             }
         }
-        @if (preview.Applied.Count > 0 || preview.Waiting.Count > 0)
+        @if (preview.Applied.Count > 0 || preview.Waiting.Count > 0 || preview.Flows is { Count: > 0 })
         {
-            @* v26 (#1205): the gates judged over this pick — each applied one named, each waiting one with what to pick. *@
+            @* v26 (#1205): the gates judged over this pick — each applied one named, each waiting one with what to pick.
+               v27 (#1236): a flow gate names the branch its node takes for this pick, and whether this node runs. *@
             <ul class="muted-text rendered-preview__gates" aria-label="@($"Gates judged for {subject}")">
-                @foreach (var applied in preview.Applied)
+                @foreach (var flow in preview.Flows ?? Array.Empty<PF.TemplatePreviewFlowOutcome>())
+                {
+                    <li class="rendered-preview__gate rendered-preview__gate--flow @(flow.RunsReader ? "" : "rendered-preview__gate--applied")" data-gate-kind="flow" data-gate-key="@flow.Gate.Key" data-branch="@flow.Branch">@FlowSentence(flow)</li>
+                }
+                @foreach (var applied in preview.Applied.Where(gate => gate.Kind != PF.TemplatePreviewGateKind.Flow))
                 {
                     <li class="rendered-preview__gate" data-gate-kind="@applied.Kind.ToString().ToLowerInvariant()" data-gate-key="@applied.Key">@GateSentence(applied)</li>
                 }
@@ -10761,7 +10851,7 @@
         PF.WorkflowPackageManifest manifest;
         try
         {
-            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -10773,7 +10863,9 @@
             AssembleFiles(),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorPackageWalk.CatalogFrom(formatsCatalog));
+            EditorPackageWalk.CatalogFrom(formatsCatalog),
+            // #1236: the seam's set — the public entry's until the bump.
+            AcceptedSet);
 
         var errors = formatsCatalog is null
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
@@ -12431,9 +12523,19 @@
     private sealed record ConditionOperand(string Key, string Type, IReadOnlyList<string>? Values, IReadOnlyList<string>? Labels = null);
 
     /// <summary>The operands a target's clauses may read: its own (v24 item:id on a fan node's macro) before the package-wide list.</summary>
-    private IReadOnlyList<ConditionOperand> OperandsFor(ConditionTarget target) =>
-        target.InputsOnly ? ConditionOperands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)).ToList()
-        : target.Extra is { Count: > 0 } extra ? extra.Concat(ConditionOperands).ToList() : ConditionOperands;
+    private IReadOnlyList<ConditionOperand> OperandsFor(ConditionTarget target)
+    {
+        var operands = target.InputsOnly
+            ? ConditionOperands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)).ToList()
+            : ConditionOperands.ToList();
+        // v27 (#1236, design § 1.2): a target's own view of the nodes it may read.
+        if (target.NodeFilter is { } filter)
+        {
+            operands = operands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal) || filter(operand.Key[NodeKeyPrefix.Length..])).ToList();
+        }
+
+        return target.Extra is { Count: > 0 } extra ? extra.Concat(operands).ToList() : operands;
+    }
 
     /// <summary>v24 (#957): the one item operand a condition reads, and its pseudo-type (a closed set, like a classifier's values).</summary>
     private const string ItemIdKey = "item:id";
@@ -12631,6 +12733,9 @@
 
     private bool At26 => EffectiveSpecVersion >= 26;
 
+    /// <summary>v27 (#1236): the panes a flow node inside a loop needs — offered at 27 only, so the 26 panes stay byte-identical below it.</summary>
+    private bool At27 => EffectiveSpecVersion >= 27;
+
     /// <summary>v26: the loops among the effective nodes.</summary>
     private IReadOnlyList<WorkflowManifestReader.NodeView> EffectiveLoops =>
         At26 ? EffectiveNodes.Where(n => n.IsLoop).ToList() : Array.Empty<WorkflowManifestReader.NodeView>();
@@ -12642,33 +12747,54 @@
     private IReadOnlyList<string> LoopCollectionOptions => WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, at25: true);
 
     /// <summary>v26: the plain nodes a loop's body may take — the same set any body takes (#1159).</summary>
-    private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) => BodyChoices();
+    /// <summary>v27 (#1236, design § 1.1): a loop's body takes the plain nodes any body takes, and an unplaced if/case — decided once per item (a flow holding a flow the desk refuses by sentence).</summary>
+    private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) =>
+        BodyChoices()
+            .Concat(EffectiveNodes
+                .Where(n => At27 && n.IsFlow && !n.IsLoop && BodyKeyOf(n.Id) == null)
+                .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id}, {(n.IsIf ? "if" : "case")})")))
+            .ToList();
 
     /// <summary>
     /// v26: the nav's Nodes rows — every flow node with its bodies nested beneath in body
     /// order (#1159: an if's then and else, a case's branches and else carry a tag so two
     /// bodies read apart), nodes in no body at the top level.
     /// </summary>
-    private IEnumerable<(WorkflowManifestReader.NodeView Node, bool Nested, string? Tag)> NavNodeRows()
+    private IEnumerable<(WorkflowManifestReader.NodeView Node, int Depth, string? Tag)> NavNodeRows()
     {
         if (!At26)
         {
-            foreach (var node in EffectiveNodes) { yield return (node, false, null); }
+            foreach (var node in EffectiveNodes) { yield return (node, 0, null); }
             yield break;
         }
 
-        foreach (var node in EffectiveNodes.Where(n => n.IsFlow || BodyKeyOf(n.Id) == null))
+        // The top level: every node in no body (a flow node is in none at 26; at 27 an
+        // if/case may sit in a loop's body and nests beneath it, its branches a level deeper).
+        foreach (var node in EffectiveNodes.Where(n => BodyKeyOf(n.Id) == null))
         {
-            yield return (node, false, null);
-            if (!node.IsFlow) { continue; }
-            foreach (var body in node.Bodies())
+            yield return (node, 0, null);
+            foreach (var row in NavBodyRows(node, 1))
             {
-                var tag = body.Ref.IsLoop ? null : body.Ref.IsThen ? "then" : body.Ref.IsElse ? "else" : body.Label[(node.Label.Length + 3)..];
-                foreach (var bodyId in body.Nodes)
+                yield return row;
+            }
+        }
+    }
+
+    /// <summary>v26 (#1160): a flow node's bodies nest beneath it with their tags; v27 (#1236, design § 6): one level deeper for an if/case inside a loop.</summary>
+    private IEnumerable<(WorkflowManifestReader.NodeView Node, int Depth, string? Tag)> NavBodyRows(WorkflowManifestReader.NodeView node, int depth)
+    {
+        if (!node.IsFlow) { yield break; }
+        foreach (var body in node.Bodies())
+        {
+            var tag = body.Ref.IsLoop ? null : body.Ref.IsThen ? "then" : body.Ref.IsElse ? "else" : body.Label[(node.Label.Length + 3)..];
+            foreach (var bodyId in body.Nodes)
+            {
+                if (EffectiveNodes.FirstOrDefault(n => n.Id == bodyId) is { } bodyNode)
                 {
-                    if (EffectiveNodes.FirstOrDefault(n => n.Id == bodyId) is { } bodyNode)
+                    yield return (bodyNode, depth, tag ?? (bodyNode.IsIf ? "if" : bodyNode.IsCase ? "case" : null));
+                    foreach (var inner in NavBodyRows(bodyNode, depth + 1))
                     {
-                        yield return (bodyNode, true, tag);
+                        yield return inner;
                     }
                 }
             }
@@ -12759,16 +12885,36 @@
             .ToList();
 
     /// <summary>v26 (#1159): what a case may switch on — enum inputs as input.&lt;id&gt;, enum-format nodes as node.&lt;id&gt;.value.</summary>
-    private IReadOnlyList<(string Subject, string Label)> CaseSubjectOptions =>
-        EffectiveInputs.Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum)
+    private IReadOnlyList<(string Subject, string Label)> CaseSubjectOptions => CaseSubjectOptionsFor(null);
+
+    /// <summary>
+    /// v27 (#1236, design § 1.2): the subjects a case in a loop may switch on — the enum
+    /// inputs, the classifier-like nodes it may read (top-level ones and the same loop's
+    /// body nodes, never another loop's and never its own branches) and the item's enum
+    /// fields (item.value.&lt;field&gt;) of the loop's array input.
+    /// </summary>
+    private IReadOnlyList<(string Subject, string Label)> CaseSubjectOptionsFor(string? loopId, WorkflowManifestReader.NodeView? node = null)
+    {
+        var own = node?.Bodies().SelectMany(body => body.Nodes).ToHashSet(StringComparer.Ordinal) ?? new HashSet<string>(StringComparer.Ordinal);
+        return EffectiveInputs.Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum)
             .Select(input => ($"input.{input.Id}", $"input.{input.Id} — {input.Label}"))
-            .Concat(EffectiveNodes.Where(n => !n.IsFlow && ClassifierLike(n)).Select(n => ($"node.{n.Id}.value", $"node.{n.Id}.value — {n.Label}")))
+            .Concat(EffectiveNodes
+                .Where(n => !n.IsFlow && ClassifierLike(n) && !own.Contains(n.Id) && (BodyKeyOf(n.Id) == null || (loopId is not null && LoopIdOf(n.Id) == loopId)))
+                .Select(n => ($"node.{n.Id}.value", $"node.{n.Id}.value — {n.Label}")))
+            .Concat(LoopItemEnumFields(loopId).Select(field => ($"item.value.{field.Id}", $"item.value.{field.Id} — {field.Label}")))
             .ToList();
+    }
 
     /// <summary>v26 (#1159): the values a case subject declares — the input's, or the enum-format node's; empty when unknown.</summary>
-    private IReadOnlyList<string> CaseValuesOf(string? subject)
+    private IReadOnlyList<string> CaseValuesOf(string? subject, string? loopId = null)
     {
         if (string.IsNullOrEmpty(subject)) { return Array.Empty<string>(); }
+        // v27 (#1236): an item's enum field — the loop's array input declares its values.
+        if (subject.StartsWith("item.value.", StringComparison.Ordinal))
+        {
+            return LoopItemEnumFields(loopId).FirstOrDefault(field => field.Id == subject["item.value.".Length..])?.Values ?? Array.Empty<string>();
+        }
+
         if (subject.StartsWith("input.", StringComparison.Ordinal))
         {
             return EffectiveInputs.FirstOrDefault(i => i.Id == subject["input.".Length..])?.Values ?? Array.Empty<string>();
@@ -12956,9 +13102,56 @@
     }
 
     /// <summary>v26 (#1159): the if node's condition — the 25 node-when builder, writing the node's if.</summary>
-    private ConditionTarget IfConditionTarget(WorkflowManifestReader.NodeView node) =>
-        new($"node-if:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.If) ? null : node.If,
-            text => SetFlow(node.Id, FlowChangeOf(node) with { If = text ?? string.Empty }));
+    private ConditionTarget IfConditionTarget(WorkflowManifestReader.NodeView node)
+    {
+        // v27 (#1236, design § 1.2): inside a loop the condition reads the item (a
+        // folder's item.id; an array input's item.value.<field>), the inputs and the
+        // loop's earlier body nodes — never the loop itself, never its own branch nodes.
+        var loop = At26 ? WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, node.Id) : null;
+        var own = node.Bodies().SelectMany(body => body.Nodes).ToHashSet(StringComparer.Ordinal);
+        return new($"node-if:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.If) ? null : node.If,
+            text => SetFlow(node.Id, FlowChangeOf(node) with { If = text ?? string.Empty }),
+            Extra: loop is null ? null : LoopItemOperands(loop),
+            NodeFilter: loop is null ? null : id => id != loop.Id && !own.Contains(id) && (BodyKeyOf(id) == null || LoopIdOf(id) == loop.Id));
+    }
+
+    /// <summary>
+    /// v27 (#1236, design § 1.2): the item operands a condition inside a loop reads — a
+    /// folder's item ids (item:id, labelled by name), or an array input's element fields
+    /// (item:value.&lt;field&gt;, typed as the declaration types them; an enum's values).
+    /// </summary>
+    private IReadOnlyList<ConditionOperand> LoopItemOperands(WorkflowManifestReader.NodeView loop)
+    {
+        var operands = new List<ConditionOperand>();
+        var fan = loop.Collection;
+
+        if (FanFolderOf(fan) is { } folderId)
+        {
+            var items = EffectiveCollections.FirstOrDefault(c => c.Id == folderId)?.Items ?? Array.Empty<WorkflowManifestReader.DataItemView>();
+            if (items.Count > 0)
+            {
+                operands.Add(new ConditionOperand(ItemIdKey, ItemValueType, items.Select(item => item.Id).ToList(), items.Select(StandardName).ToList()));
+            }
+        }
+        else if (LoopInputOf(loop) is { } input)
+        {
+            AddFieldOperands(operands, "item:value", input.Items?.Fields ?? input.Fields);
+        }
+
+        return operands;
+    }
+
+    /// <summary>v27 (#1236): the array input a loop iterates (its elements the items), or null for a folder loop.</summary>
+    private WorkflowManifestReader.InputView? LoopInputOf(WorkflowManifestReader.NodeView loop) =>
+        loop.Collection is { } fan && PF.WorkflowInputFans.IsInputFan(fan)
+            ? EffectiveInputs.FirstOrDefault(input => input.Id == PF.WorkflowInputFans.InputIdOf(fan))
+            : null;
+
+    /// <summary>v27 (#1236): the enum fields of the element a loop's array input declares — what a case inside the loop may switch on.</summary>
+    private IReadOnlyList<WorkflowManifestReader.FieldView> LoopItemEnumFields(string? loopId) =>
+        loopId is not null && EffectiveNodes.FirstOrDefault(n => n.Id == loopId) is { IsLoop: true } loop && LoopInputOf(loop) is { } input
+            ? (input.Items?.Fields ?? input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()).Where(field => WorkflowInputTypes.Of(field) == WorkflowInputTypes.Enum).ToList()
+            : Array.Empty<WorkflowManifestReader.FieldView>();
 
     private async Task OnBodyRetChangedAsync(string bodyKey, string? bodyNodeId)
     {
@@ -13032,7 +13225,7 @@
     private IReadOnlyList<string> UnroutedCaseValues(WorkflowManifestReader.NodeView node)
     {
         var listed = (node.Branches ?? Array.Empty<WorkflowManifestReader.BranchView>()).SelectMany(b => b.When).ToHashSet(StringComparer.Ordinal);
-        return CaseValuesOf(node.Case).Where(v => !listed.Contains(v)).ToList();
+        return CaseValuesOf(node.Case, LoopIdOf(node.Id)).Where(v => !listed.Contains(v)).ToList();
     }
 
     /// <summary>
@@ -13917,7 +14110,8 @@
     /// <summary>v26: the nodes that can compose prose — the candidate set behind the picker and "+ Deliverable".</summary>
     private IReadOnlyList<WorkflowManifestReader.NodeView> DeliverableSourceNodes =>
         EffectiveNodes
-            .Where(n => n.IsFlow
+            // v27 (#1236, design § 1.5): an if/case inside a loop has no job-level value — the loop is the source.
+            .Where(n => (n.IsFlow && BodyKeyOf(n.Id) == null)
                 || (n.Aggregate == null && BodyKeyOf(n.Id) == null && n.Format != null
                     && FormatOptions.FirstOrDefault(f => f.Id == n.Format)?.Type == WorkflowInputTypes.Text))
             .ToList();
@@ -14539,8 +14733,8 @@
             Case = caseNode ? newNodeCase : null,
             Branches = caseNode ? new List<FlowBranch>() : null
         });
-        // v26: a plain node born "in" a body joins it (#1159: any body).
-        if (At26 && !flow && newNodeLoop.Length > 0)
+        // v26: a plain node born "in" a body joins it (#1159: any body); v27 (#1236): an if/case born in a loop too.
+        if (At26 && !loop && newNodeLoop.Length > 0)
         {
             PlaceInBody(id, newNodeLoop);
         }
@@ -17680,7 +17874,7 @@
             ImportedPackage built;
             try
             {
-                built = BuildImportedContent(bytes);
+                built = BuildImportedContent(bytes, AcceptedSet);
             }
             catch (JsonException ex)
             {
@@ -17746,7 +17940,7 @@
     // JsonException (bad manifest JSON), or the manifest reader's own exception.
     private sealed record ImportedPackage(WorkflowPackageContentResponse Content, PF.WorkflowPackageManifest Manifest, Dictionary<string, string> Files);
 
-    private static ImportedPackage BuildImportedContent(byte[] zipBytes)
+    private static ImportedPackage BuildImportedContent(byte[] zipBytes, IReadOnlyList<int> accepted)
     {
         var files = new Dictionary<string, string>(PF.WorkflowPackageArchive.Unzip(zipBytes), StringComparer.Ordinal);
 
@@ -17757,7 +17951,7 @@
 
         files.Remove("manifest.json");
 
-        var manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+        var manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", accepted);
         var manifestElement = JsonDocument.Parse(manifestText).RootElement.Clone();
         var content = new WorkflowPackageContentResponse(manifest.Name, manifest.Version, manifest.SpecVersion, manifestElement, files);
         return new ImportedPackage(content, manifest, files);
@@ -17768,7 +17962,7 @@
     // corrupt stored import falls back to the registry rather than wedging.
     private void ApplyStoredImport(ImportDraft draft)
     {
-        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64));
+        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64), AcceptedSet);
         content = built.Content;
         importZipBase64 = draft.ZipBase64;
         editingRef = null;

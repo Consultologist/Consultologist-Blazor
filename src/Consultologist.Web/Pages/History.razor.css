@@ -564,3 +564,13 @@
 .node-row__prompt {
     font-size: 0.85rem;
 }
+
+/* v27 (#1236, record storage 9): a row skipped by condition — a named state, dashed. */
+.node-status--skipped {
+	color: var(--neutral-foreground-hint);
+}
+
+.node-row--skipped .node-row__label {
+	text-decoration: line-through dashed;
+	opacity: 0.75;
+}

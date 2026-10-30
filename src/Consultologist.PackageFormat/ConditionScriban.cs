@@ -216,8 +216,10 @@ public static class ConditionScriban
             [TemplateObjects.Node, var node, TemplateMembers.Value] => $"node:{node}",
             [TemplateObjects.Node, var node, var member] => throw new UnspellException($"reads node.{node}.{member}; the builder reads an enum node's value (node.{node}.value)."),
             [TemplateObjects.Item, var member] => $"item:{member}",
+            // #1236 (v27 design § 1.2): an array input's element field — item.value.<field>, the builder's item:value.<field>.
+            [TemplateObjects.Item, TemplateMembers.Value, var field] => $"item:{TemplateMembers.Value}.{field}",
             [TemplateObjects.Input, .. var path] when path.Length > 0 => string.Join('.', path),
-            [var root, ..] => throw new UnspellException($"reads {string.Join('.', chain)}; the builder reads input.<path>, node.<id>.value and item.id ({root} is beyond it)."),
+            [var root, ..] => throw new UnspellException($"reads {string.Join('.', chain)}; the builder reads input.<path>, node.<id>.value, item.id and item.value.<field> ({root} is beyond it)."),
             _ => throw new UnspellException("has a term the builder cannot read.")
         };
     }

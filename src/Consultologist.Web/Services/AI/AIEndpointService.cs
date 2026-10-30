@@ -691,7 +691,11 @@ public record ConsultGenerationJobResponse(
     IReadOnlyDictionary<string, string>? FailedBlockStacks = null,
     // v25 (B7 #1006): the formats catalogue version the job ran under
     // (formats@vYYYY.MM.N); null on records from before.
-    string? FormatsRef = null);
+    string? FormatsRef = null,
+    // v27 (#1236, record storage 9): the blocks an if/case inside a loop skipped by
+    // condition — block id → the reason (the condition's text); counted among the
+    // completed blocks, no text. Null when none.
+    IReadOnlyDictionary<string, string>? SkippedBlocks = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -806,7 +810,11 @@ public record ConsultGenerationNodeDescriptor(
     string? Branch = null,
     IReadOnlyList<string>? DeliverableReads = null,
     string? Prompt = null,
-    int? Count = null);
+    int? Count = null,
+    // v27 (#1236, record storage 9): an if/case INSIDE a loop decides once per item —
+    // its row carries this map (item id → then | else | <values> | none) and never
+    // branch. Null below 9 and on a top-level flow row. Trailing.
+    IReadOnlyDictionary<string, string>? Branches = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultNodeBindingDescriptor (#642).</summary>
 public record ConsultNodeBindingDescriptor(string From, string? As = null);

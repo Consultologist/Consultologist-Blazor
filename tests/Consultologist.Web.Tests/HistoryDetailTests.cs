@@ -1681,6 +1681,59 @@ public class HistoryDetailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AStorage9Record_ReadsAnInnerIf_PerItem_ASkippedItemWithItsReason_AndABranchNodeThroughItsLoop()
+    {
+        // v27 (#1236, record storage 9; decided 2026-10-29): the inner if is a group of its items
+        // from the branches map; a branch node fans through its loop two levels up; nothing is pruned.
+        WithEngine();
+        const string reason = "needs `item.id == \"hpi\"`; it does not hold";
+        WithJob(6, packageSpecVersion: 27, schemaVersion: 9,
+            nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes", "triage" }, Ret: "triage", Count: 3),
+                new("section_notes", "Section notes", Format: "prose", Producer: "attested", Prompt: "prompts/section.md", In: "sections"),
+                new("triage", "Triage", Kind: "if", Expression: "item.id == \"hpi\"", Body: new[] { "patient_draft", "table_draft" }, In: "sections",
+                    Branches: new Dictionary<string, string> { ["hpi"] = "then", ["plan"] = "none", ["exam"] = "else" }),
+                new("patient_draft", "Patient draft", Format: "prose", Producer: "attested", Prompt: "prompts/patient.md", In: "triage"),
+                new("table_draft", "Table draft", Format: "prose", Producer: "attested", Prompt: "prompts/table.md", In: "triage"),
+            },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["sections"] = new("sections", "Sections", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["section_notes:hpi"] = new("section_notes", "Section notes", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["section_notes:plan"] = new("section_notes", "Section notes", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["section_notes:exam"] = new("section_notes", "Section notes", "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["triage:plan"] = new("triage", "Triage", "Skipped", null, null, DateTimeOffset.UtcNow, null, Reason: reason),
+                ["patient_draft:hpi"] = new("patient_draft", "Patient draft", "Completed", "i1", "o1", DateTimeOffset.UtcNow, null),
+                ["table_draft:exam"] = new("table_draft", "Table draft", "Completed", "i2", "o2", DateTimeOffset.UtcNow, null),
+            });
+
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var flows = page.FindAll(".node-row__flow").Select(f => f.TextContent.Trim()).ToList();
+        Assert.Contains("· for item in snippet.sections (3)", flows);
+        Assert.Contains("· if item.id == \"hpi\" · per item", flows);
+        Assert.DoesNotContain(flows, f => f.Contains("branch: none"));
+
+        // The inner if's group: one row per item of the branches map, tagged.
+        var groups = page.FindAll(".node-group");
+        var triage = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Triage");
+        Assert.Contains("per snippet.sections item (3)", triage.QuerySelector("summary .node-row__contract")!.TextContent);
+        var tags = triage.QuerySelectorAll(".node-row--item [data-item-branch]").Select(t => t.GetAttribute("data-item-branch")).ToList();
+        Assert.Equal(new[] { "then → patient_draft", $"skipped — {reason}", "else → table_draft" }, tags);
+        var skipped = Assert.Single(triage.QuerySelectorAll(".node-row--item.node-row--skipped"));
+        Assert.Equal("plan", skipped.QuerySelector(".node-row__label")!.TextContent.Trim());
+        Assert.Contains("node-status--skipped", skipped.QuerySelector(".node-row__status")!.ClassName);
+
+        // A branch node fans through its loop; nothing is pruned; the storage line says v9.
+        var patient = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Patient draft");
+        Assert.Contains("per snippet.sections item (1)", patient.QuerySelector("summary .node-row__contract")!.TextContent);
+        Assert.Contains("· in triage", patient.QuerySelector("summary .node-row__flow")!.TextContent);
+        Assert.Empty(page.FindAll(".node-row--pruned"));
+        Assert.Contains("v9", page.Markup);
+    }
+
+    [Fact]
     public void AStorage7Record_HasNoFlowTag_NoPrunedRow_NoPromptPath()
     {
         WithEngine();

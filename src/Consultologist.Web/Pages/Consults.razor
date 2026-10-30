@@ -911,7 +911,7 @@
                                 }
                             </div>
                         }
-                        else if (generatedBlocks.Count > 0)
+                        else if (generatedBlocks.Count > 0 || skippedBlocks.Count > 0)
                         {
                             <div>
                                 <div class="result-header">
@@ -944,6 +944,15 @@
                                                 </h3>
                                                 <p>@prose</p>
                                             </section>
+                                        }
+                                        else if (skippedBlocks.TryGetValue(standard.Id, out var skippedReason))
+                                        {
+                                            @* v27 (#1236; decided 2026-10-29): a section an if/case inside a loop skipped by
+                                               condition — a named state in the section's place; the reason is the condition's
+                                               text, authored package content. *@
+                                            <p class="muted-text note-section--skipped" data-skipped-block="@standard.Id">
+                                                <strong>@standard.Name</strong> was skipped: it @skippedReason.
+                                            </p>
                                         }
                                     }
                                 </article>
@@ -1126,6 +1135,7 @@
                                                 {
                                                     var sectionStatus = generatedBlocks.ContainsKey(sec.Id) ? "Completed"
                                                         : failedBlockErrors.ContainsKey(sec.Id) ? "Failed"
+                                                        : skippedBlocks.ContainsKey(sec.Id) ? "Skipped"
                                                         : current ? "Running" : null;
                                                     <div class="node-row node-row--item">
                                                         <span class="node-row__chevron" aria-hidden="true"></span>
@@ -1163,7 +1173,7 @@
                                     }
                                     else if (doneStatus != null)
                                     {
-                                        <span class="node-row__count muted-text">@generatedBlocks.Count/@totalBlockCount sections</span>
+                                        <span class="node-row__count muted-text">@(generatedBlocks.Count + skippedBlocks.Count)/@totalBlockCount sections</span>
                                     }
                                 </div>
                             </div>
@@ -1534,6 +1544,11 @@
   private bool showRunDiagram;
   private Dictionary<string, string> generatedBlocks = new();
   private Dictionary<string, string> failedBlockErrors = new();
+  // v27 (#1236, record storage 9; decided 2026-10-29): the blocks an if/case inside a loop
+  // skipped by condition — block id → the reason; a named state beside completed and failed.
+  private Dictionary<string, string> skippedBlocks = new();
+  // v27: the fan instances (nodeId:itemId) an inner if/case skipped — the rail's item rows read them.
+  private HashSet<string> skippedNodeItems = new(StringComparer.Ordinal);
   private bool isBlocksLoading;
   private string? blocksLoadError;
   private bool isAiRequestLoading;
@@ -2347,7 +2362,20 @@
             var nextFailedSections = new Dictionary<string, string>(failedBlockErrors);
             nextFailedSections.Remove(completed.BlockId);
             failedBlockErrors = nextFailedSections;
-            completedBlockCount = generatedBlocks.Count + failedBlockErrors.Count;
+            completedBlockCount = generatedBlocks.Count + failedBlockErrors.Count + skippedBlocks.Count;
+          }
+          break;
+
+        // v27 (#1236): a block skipped by condition — done with no text, the reason the condition's text.
+        case "block-skipped":
+          var skippedBlock = JsonSerializer.Deserialize<ConsultGenerationBlockSkippedEvent>(json, SseJsonOptions);
+          if (skippedBlock != null)
+          {
+            skippedBlocks = new Dictionary<string, string>(skippedBlocks)
+            {
+              [skippedBlock.BlockId] = skippedBlock.Reason
+            };
+            completedBlockCount = generatedBlocks.Count + failedBlockErrors.Count + skippedBlocks.Count;
           }
           break;
 
@@ -2362,7 +2390,7 @@
             var nextGeneratedSections = new Dictionary<string, string>(generatedBlocks);
             nextGeneratedSections.Remove(failed.BlockId);
             generatedBlocks = nextGeneratedSections;
-            completedBlockCount = generatedBlocks.Count + failedBlockErrors.Count;
+            completedBlockCount = generatedBlocks.Count + failedBlockErrors.Count + skippedBlocks.Count;
             UpdateFailedBlockError(GetActiveBlockSnapshots());
           }
           break;
@@ -2538,6 +2566,8 @@
       };
     }
     failedBlockErrors = response.FailedBlocks;
+    // v27 (#1236): the skipped blocks, with their reasons.
+    skippedBlocks = response.SkippedBlocks is { } skipped ? new Dictionary<string, string>(skipped) : new Dictionary<string, string>();
     // v10 (#496): while the job is deciding, zero means "not yet decided" and
     // must not fall back to the pinned skeleton's size.
     totalBlockCount = response.TotalBlockCount == 0 && !(deciding && response.DecidedAtUtc == null) ? blockSnapshots.Count : response.TotalBlockCount;
@@ -2570,6 +2600,12 @@
       {
         nodeStatuses[key] = output.Status;
       }
+
+      // v27 (#1236, storage 9): an inner if/case's item it skipped by condition — the item row's state.
+      skippedNodeItems = response.NodeOutputs
+        .Where(entry => entry.Key.Contains(':', StringComparison.Ordinal) && entry.Value.Status == "Skipped")
+        .Select(entry => entry.Key)
+        .ToHashSet(StringComparer.Ordinal);
     }
 
     if (response.Status != "Failed"
@@ -3428,6 +3464,12 @@
     if (failedBlockErrors.Keys.Any(key => key == itemId || ItemPart(key) == itemId))
     {
       return "Failed";
+    }
+
+    // v27 (#1236, storage 9): an inner if/case skipped this item by condition.
+    if (skippedNodeItems.Contains($"{node.Id}:{itemId}") || skippedNodeItems.Contains($"{node.Id}:{ItemPart(itemId)}"))
+    {
+      return "Skipped";
     }
 
     if (nodeDone)
@@ -4516,6 +4558,12 @@
     string JobId,
     string BlockId,
     string Error);
+
+  /// <summary>v27 (#1236): a block skipped by condition — no text; the reason is the condition's text.</summary>
+  private sealed record ConsultGenerationBlockSkippedEvent(
+    string JobId,
+    string BlockId,
+    string Reason);
 
   private sealed record ConsultGenerationNodeCompletedEvent(
     string JobId,

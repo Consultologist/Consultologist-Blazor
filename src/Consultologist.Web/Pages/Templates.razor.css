@@ -187,6 +187,11 @@
 	padding-left: 1.6rem;
 }
 
+/* v27 (#1236): a branch node of an if/case inside a loop — one level deeper. */
+.editor-nav__item--nested-2 {
+	padding-left: 2.6rem;
+}
+
 ::deep .dag-view__canvas {
 	overflow-x: auto;
 	padding: 0.5rem 0 1rem;

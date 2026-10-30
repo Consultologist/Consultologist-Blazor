@@ -149,4 +149,87 @@ public class TemplatePreviewGatesTests
         Assert.Contains(asPlan.Applied, g => g.Kind == TemplatePreviewGateKind.Instance && g.Owner == "section_notes");
         Assert.Equal("Plan: Plan. ", TemplateRenderer.Render("Node 'section_notes' prompt", files["prompts/section.md"], asPlan.Scope, TemplatePreviewScope.Pipes));
     }
+
+    // ----- #1236: the flow gate — a top-level if over the picks, an inner one over the picked item -----
+
+    private static (TemplateRenderScope Scope, IReadOnlyList<TemplatePreviewGate> Gates) Prepared27((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
+    {
+        Assert.Empty(V27Package.Errors(bundle));
+        var catalog = V25Package.Catalog();
+        var nodes = WorkflowDerivedEdges.PrepareNodes(bundle.Manifest, bundle.Files, catalog, out var snippets, out var contextFor, out var macroFolders);
+        var walk = WorkflowDerivedEdges.WalkAll(bundle.Manifest, bundle.Files, nodes, snippets, contextFor, macros: macroFolders);
+        return (TemplatePreviewScope.Tokens(bundle.Manifest, bundle.Files, catalog), TemplatePreviewScope.Gates(bundle.Manifest, walk));
+    }
+
+    [Fact]
+    public void ATopLevelIf_IsAFlowGate_JudgedForItsBranchNodes_OverThePick()
+    {
+        var (manifest, files) = V26Package.Minimal();
+        manifest = V26JobStartTests.WithTriage(manifest);
+        var (scope, gates) = Prepared((manifest, files));
+
+        var gate = Assert.Single(gates, g => g.Kind == TemplatePreviewGateKind.Flow);
+        Assert.Equal(("triage", "triage", "input.kind == \"new\"", false), (gate.Owner, gate.Key, gate.If, gate.IsCase));
+        Assert.Null(gate.Loop);
+        Assert.Equal(new[] { "then", "else" }, gate.Bodies!.Select(b => b.Label));
+        Assert.Equal(new[] { "full_workup" }, gate.Bodies[0].Nodes);
+        Assert.Equal("full_workup", gate.Bodies[0].Ret);
+
+        // Unpicked: the gate waits on input.kind; a reader outside the bodies never meets it.
+        Assert.Equal(new[] { "input.kind" }, Assert.Single(TemplatePreviewScope.Judged(scope, gates, None, None, false, "full_workup", null).Waiting, w => w.Gate.Kind == TemplatePreviewGateKind.Flow).Missing);
+        Assert.Empty(TemplatePreviewScope.Judged(scope, gates, None, None, false, "assessment", null).Waiting.Where(w => w.Gate.Kind == TemplatePreviewGateKind.Flow));
+
+        // Picked new: then — full_workup runs, brief_update does not (its gate applies).
+        var asNew = TemplatePreviewScope.Judged(Picked(scope, "new"), gates, Kind, None, false, "full_workup", null);
+        var outcome = Assert.Single(asNew.Flows!);
+        Assert.Equal(("then", true), (outcome.Branch, outcome.RunsReader));
+        Assert.DoesNotContain(asNew.Applied, g => g.Kind == TemplatePreviewGateKind.Flow);
+
+        var brief = TemplatePreviewScope.Judged(Picked(scope, "new"), gates, Kind, None, false, "brief_update", null);
+        Assert.Equal(("then", false), (brief.Flows![0].Branch, brief.Flows[0].RunsReader));
+        Assert.Contains(brief.Applied, g => g.Kind == TemplatePreviewGateKind.Flow && g.Key == "triage");
+
+        var asFollowUp = TemplatePreviewScope.Judged(Picked(scope, "follow_up"), gates, Kind, None, false, "brief_update", null);
+        Assert.Equal(("else", true), (asFollowUp.Flows![0].Branch, asFollowUp.Flows[0].RunsReader));
+    }
+
+    [Fact]
+    public void AnInnerIf_WaitsOnTheItemPick_ThenNamesTheBranchForThatItem()
+    {
+        var bundle = V27Package.WithTriageInLoop(V27Package.Minimal());
+        var (scope, gates) = Prepared27(bundle);
+
+        var gate = Assert.Single(gates, g => g.Kind == TemplatePreviewGateKind.Flow);
+        Assert.Equal(("triage", "sections", true), (gate.Key, gate.Loop, gate.ReadsItem));
+
+        var waiting = TemplatePreviewScope.Judged(scope, gates, None, None, itemPicked: false, "patient_draft", null);
+        Assert.Equal(new[] { "item" }, Assert.Single(waiting.Waiting, w => w.Gate.Kind == TemplatePreviewGateKind.Flow).Missing);
+
+        var asHpi = TemplatePreviewScope.Judged(scope with { Item = new TemplateFanItem("hpi", "HPI", Text: "History.") }, gates, None, None, itemPicked: true, "patient_draft", "hpi");
+        Assert.Equal(("then", true), (asHpi.Flows![0].Branch, asHpi.Flows[0].RunsReader));
+
+        var asPlan = TemplatePreviewScope.Judged(scope with { Item = new TemplateFanItem("plan", "Plan", Text: "Plan.") }, gates, None, None, itemPicked: true, "patient_draft", "plan");
+        Assert.Equal(("else", false), (asPlan.Flows![0].Branch, asPlan.Flows[0].RunsReader));
+        Assert.Contains(asPlan.Applied, g => g.Kind == TemplatePreviewGateKind.Flow);
+
+        // The loop's own body node is not a branch node: no flow gate on its pane.
+        Assert.Empty(TemplatePreviewScope.Judged(scope with { Item = new TemplateFanItem("plan", "Plan", Text: "Plan.") }, gates, None, None, true, "section_notes", "plan").Flows!);
+    }
+
+    [Fact]
+    public void AnInnerCase_OnTheItemsField_IsAFlowGate_WithTheSubjectAsItsText()
+    {
+        var bundle = V27Package.WithRouteInLoop(V27Package.Minimal());
+        var (scope, gates) = Prepared27(bundle);
+
+        var gate = Assert.Single(gates, g => g.Kind == TemplatePreviewGateKind.Flow);
+        Assert.Equal(("route", "topic_sections", "item.value.kind", true, true), (gate.Key, gate.Loop, gate.If, gate.IsCase, gate.ReadsItem));
+        Assert.Equal(new[] { "branch 1", "branch 2" }, gate.Bodies!.Select(b => b.Label));
+        Assert.Equal(new[] { "table" }, gate.Bodies[1].Values);
+
+        var asTable = TemplatePreviewScope.Judged(
+            scope with { Item = new TemplateFanItem("1", "Topics 2", Value: """{"title":"T","kind":"table"}""", Element: WorkflowDeclarationNode.Of(bundle.Manifest.Inputs!.First(i => i.Id == "topics")).Items) },
+            gates, None, None, itemPicked: true, "letter", "1");
+        Assert.Equal(("table", true), (asTable.Flows![0].Branch, asTable.Flows[0].RunsReader));
+    }
 }

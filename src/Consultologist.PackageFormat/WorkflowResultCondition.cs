@@ -706,7 +706,12 @@ public static class WorkflowResultConditions
             // macro of a data: fan, is the validator's to say.
             var field = raw[ItemPrefix.Length..];
 
-            if (!WorkflowDeclaredIds.IsValid(field))
+            // #1236 (v27 design § 1.2): `item:value.<field>` — a field of an array
+            // input's element, read as item.value.<field> at 25+; the field is an id.
+            const string valuePrefix = "value.";
+            var declared = field.StartsWith(valuePrefix, StringComparison.Ordinal) ? field[valuePrefix.Length..] : field;
+
+            if (!WorkflowDeclaredIds.IsValid(declared))
             {
                 return false;
             }

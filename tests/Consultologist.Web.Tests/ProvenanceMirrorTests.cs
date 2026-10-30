@@ -278,6 +278,31 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void TheStorage9Row_ReachesTheClient()
+    {
+        // v27 (#1236, record storage 9): the inner flow row's branches, the skipped row's reason, the skipped blocks.
+        var inner = new ApiModels.ConsultNodeDescriptor("triage", "Triage", ForEach: "snippet.sections", Kind: "if", Expression: "item.id == \"hpi\"", Body: new[] { "patient_draft" }, In: "sections",
+            Branches: new Dictionary<string, string> { ["hpi"] = "then", ["plan"] = "none" }).AsRecordRowAt8();
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 2, 2, 0,
+            new Dictionary<string, string> { ["consult:sections:hpi"] = "Drafted." }, new Dictionary<string, string>(), true,
+            Nodes: new[] { inner },
+            NodeOutputs: new Dictionary<string, ApiModels.ConsultGenerationNodeStatusResponse>
+            {
+                ["triage:plan"] = new("triage", "Triage", "Skipped", Reason: "needs `item.id == \"hpi\"`; it does not hold"),
+            },
+            SkippedBlocks: new Dictionary<string, string> { ["consult:sections:plan"] = "needs `item.id == \"hpi\"`; it does not hold" });
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(JsonSerializer.Serialize(response, Web), Web)!;
+
+        var row = Assert.Single(mirrored.Nodes!);
+        Assert.Equal(new Dictionary<string, string> { ["hpi"] = "then", ["plan"] = "none" }, row.Branches);
+        Assert.Equal((null, null, "sections"), (row.Branch, row.ForEach, row.In));
+        Assert.Equal("needs `item.id == \"hpi\"`; it does not hold", mirrored.NodeOutputs!["triage:plan"].Reason);
+        Assert.Equal(new Dictionary<string, string> { ["consult:sections:plan"] = "needs `item.id == \"hpi\"`; it does not hold" }, mirrored.SkippedBlocks);
+    }
+
+    [Fact]
     public void TheNodeDescriptorMirror_IsASubsetOfTheApis()
     {
         // The Web row mirrors the fields its pages read; every one of them must exist on the Api's with its type.

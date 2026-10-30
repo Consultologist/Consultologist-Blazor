@@ -363,4 +363,44 @@ public class ConsultsRunRailTests : ClientRenderTestContext
 
         Assert.Equal(new[] { "Introduction", "Plan" }, items);
     }
+
+    [Fact]
+    public void AStorage9BranchNode_FansThroughItsLoop_AndASkippedItemReadsSkipped()
+    {
+        // v27 (#1236, record storage 9): a branch node's in names its if/case, whose in names the loop —
+        // the rail fans it through the loop; the inner if's item it skipped by condition reads Skipped.
+        WithTwoNodePackage();
+        const string reason = "needs `item.id == \"intro\"`; it does not hold";
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed",
+            TotalBlockCount: 2, CompletedBlockCount: 2, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(), FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            Nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("sections", "Sections", Kind: "for", Collection: "snippet.standards", Body: new[] { "triage" }, Ret: "triage", Count: 2),
+                new("triage", "Triage", Kind: "if", Expression: "item.id == \"intro\"", Body: new[] { "fan" }, In: "sections",
+                    Branches: new Dictionary<string, string> { ["intro"] = "then", ["plan"] = "none" }),
+                new("fan", "Drafting", In: "triage", Prompt: "prompts/section.md"),
+            },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["sections"] = new("sections", "Sections", "Completed", null, null, null, null),
+                ["triage"] = new("triage", "Triage", "Completed", null, null, null, null),
+                ["triage:plan"] = new("triage", "Triage", "Skipped", null, null, null, null, Reason: reason),
+                ["fan"] = new("fan", "Drafting", "Completed", null, null, null, null),
+                ["fan:intro"] = new("fan", "Drafting", "Completed", "i", "o", null, null),
+            },
+            AssembledDocument: "The note.",
+            Collections: new[] { new ConsultCollectionRoster("standards", new[] { new ConsultCollectionItem("intro", "Introduction"), new ConsultCollectionItem("plan", "Plan") }) }));
+
+        var page = RenderRail();
+
+        var groups = page.FindAll(".node-group").ToList();
+        var drafting = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Drafting");
+        Assert.Equal(new[] { "Introduction", "Plan" }, drafting.QuerySelectorAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()));
+        var triage = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Triage");
+        var plan = triage.QuerySelectorAll(".node-row--item").Single(row => row.QuerySelector(".node-row__label")!.TextContent.Trim() == "Plan");
+        Assert.Contains("node-status--skipped", plan.QuerySelector(".node-row__status")!.ClassName);
+    }
 }
