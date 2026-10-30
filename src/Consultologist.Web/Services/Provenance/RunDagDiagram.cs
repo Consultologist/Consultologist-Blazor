@@ -113,7 +113,7 @@ public static class RunDagDiagram
                 label.Append(($"<br/>{promptPath}"));
             }
 
-            body.Append(($"{id}[\"{label}\"]\n"));
+            body.Append(($"{id}[\"{Label(label.ToString())}\"]\n"));
 
             // Edges into the node — dashed when either endpoint was skipped,
             // the rails' "dashed lines for skipped" read.
@@ -195,14 +195,15 @@ public static class RunDagDiagram
                 }
 
                 byClass[status].Add(id);
-                body.Append(($"{id}[\"{flow.Id}<br/>{flow.Label}<br/>for item in {collection}\"]\n"));
+                body.Append(($"{id}[\"{Label($"{flow.Id}<br/>{flow.Label}<br/>for item in {collection}")}\"]\n"));
             }
             else
             {
                 // v27 (#1236): an if/case inside a loop decides per item — the branches tallied, no pruned rows.
                 var inner = RecordFlow.IsInner(flow, nodes);
                 var branch = inner ? BranchesTally(flow) : RecordFlow.BranchText(flow);
-                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: {kind} {flow.Expression} — {(inner ? "per item" : $"branch: {branch}")}\"]\n"));
+                // #1247: the expression is package-authored text — its quotes would close the label.
+                body.Append(($"subgraph {subgraphId}[\"{Label($"{flow.Id}: {kind} {flow.Expression} — {(inner ? "per item" : $"branch: {branch}")}")}\"]\n"));
                 foreach (var bodyNode in bodies)
                 {
                     EmitNode(bodyNode);
@@ -216,7 +217,7 @@ public static class RunDagDiagram
 
                 body.Append("end\n");
                 byClass[status].Add(id);
-                body.Append(($"{id}{{\"{flow.Id}<br/>{flow.Label}<br/>{kind}: {flow.Expression}<br/>{(inner ? branch : $"branch: {branch}")}\"}}\n"));
+                body.Append(($"{id}{{\"{Label($"{flow.Id}<br/>{flow.Label}<br/>{kind}: {flow.Expression}<br/>{(inner ? branch : $"branch: {branch}")}")}\"}}\n"));
                 // A case over a node's value (node.<id>.value) draws the dotted edge from that node.
                 if (kind == "case" && SubjectNodeOf(flow.Expression) is { } subjectId)
                 {
@@ -420,4 +421,12 @@ public static class RunDagDiagram
     }
 
     private static string Sanitize(string raw) => new(raw.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+
+    /// <summary>
+    /// #1247: package-authored text inside a Mermaid quoted label — an if/case expression
+    /// (<c>item.value.kind == "narrative"</c>), a node's label, a prompt path. A double quote
+    /// would close the label and fail the whole diagram ("Parse error on line 14"); Mermaid's
+    /// entity for it is <c>#quot;</c>. The <c>&lt;br/&gt;</c> breaks are ours and pass through.
+    /// </summary>
+    private static string Label(string text) => text.Replace("\"", "#quot;", StringComparison.Ordinal);
 }

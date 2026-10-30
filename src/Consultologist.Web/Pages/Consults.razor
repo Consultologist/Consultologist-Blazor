@@ -1075,7 +1075,7 @@
 
                                         if (node.ForEach != null)
                                         {
-                                            var nodeItems = ItemsFor(node);
+                                            var nodeItems = RailItemsFor(node);
                                             var doneItems = nodeItems.Count(item => NodeItemStatus(node, done, current, item.Id) == "Completed");
                                             <details class="node-group" open>
                                                 <summary class="node-row">
@@ -1500,6 +1500,8 @@
   // whatever had been published since. Null until a snapshot arrives, and null
   // for a job recorded before the job carried its own roster.
   private IReadOnlyList<RailNode>? jobNodes;
+  // v27 (#1248): the job's served descriptors — a branch node's rows are the items its inner if/case decided for it.
+  private IReadOnlyList<ConsultGenerationNodeDescriptor>? jobDescriptors;
   private IReadOnlyList<ConsultCollectionRoster>? jobCollections;
 
   /// <summary>
@@ -1795,6 +1797,64 @@
   // #361: the JOB's roster wins when it has one. The collections below belong
   // to the pinned package, which is the right answer only before a job exists —
   // afterwards it describes whatever has been published since.
+  /// <summary>
+  /// v27 (#1248): the rows a fanned node shows. A branch node of an inner if/case ran for the
+  /// items its flow node decided for it — History's "per … item (1)" — so its rows are those:
+  /// an item with a row of its own (completed or failed); an item the flow has not decided yet
+  /// (pending); an item decided but not yet run, unless a sibling branch node has its row (the
+  /// flow took another branch). An item the flow skipped ("none") or sent elsewhere is not a
+  /// row here — the flow node's own group names it skipped. Every other fanned node keeps its
+  /// roster.
+  /// </summary>
+  private IReadOnlyList<(string Id, string Name)> RailItemsFor(RailNode node)
+  {
+    var items = ItemsFor(node);
+    var flow = BranchFlowOf(node.Id);
+    if (flow is null)
+    {
+      return items;
+    }
+
+    var siblings = (flow.Body ?? Array.Empty<string>()).Where(id => !string.Equals(id, node.Id, StringComparison.Ordinal)).ToList();
+    return items.Where(item =>
+      {
+        if (HasItemRow(node.Id, item.Id))
+        {
+          return true;
+        }
+
+        if (flow.Branches is null || !flow.Branches.TryGetValue(item.Id, out var branch))
+        {
+          return true; // undecided: pending
+        }
+
+        if (string.Equals(branch, "none", StringComparison.Ordinal))
+        {
+          return false; // skipped by the flow — its own group says so
+        }
+
+        return !siblings.Any(sibling => HasItemRow(sibling, item.Id));
+      })
+      .ToList();
+  }
+
+  private bool HasItemRow(string nodeId, string itemId) =>
+    completedNodeItems.Contains($"{nodeId}:{itemId}")
+    || failedBlockErrors.Keys.Any(key => string.Equals(ItemPart(key), itemId, StringComparison.Ordinal) && key.StartsWith(nodeId + ":", StringComparison.Ordinal));
+
+  /// <summary>The inner if/case whose body lists the node, or null for every other node.</summary>
+  private ConsultGenerationNodeDescriptor? BranchFlowOf(string nodeId)
+  {
+    if (jobDescriptors is null)
+    {
+      return null;
+    }
+
+    var descriptor = jobDescriptors.FirstOrDefault(d => string.Equals(d.Id, nodeId, StringComparison.Ordinal));
+    return descriptor is null ? null : Consultologist.Web.Services.Provenance.RecordFlow.FlowOf(descriptor, jobDescriptors) is { } flow
+      && Consultologist.Web.Services.Provenance.RecordFlow.IsInner(flow, jobDescriptors) ? flow : null;
+  }
+
   private IReadOnlyList<(string Id, string Name)> ItemsFor(RailNode node)
   {
     // #1039: data:<collection> below 25, snippet.<folder> at 25 — the library strips either.
@@ -2578,6 +2638,7 @@
     // since its package and the pin are the same package.
     if (response.Nodes is { Count: > 0 })
     {
+      jobDescriptors = response.Nodes;
       jobNodes = response.Nodes
         // v26 (#1208): a body node fans through its loop row at record storage 8.
         .Select(node => new RailNode(node.Id, node.Label, Consultologist.Web.Services.Provenance.RecordFlow.FanOf(node, response.Nodes), node.Aggregate is { Count: > 0 },
@@ -2600,6 +2661,12 @@
       {
         nodeStatuses[key] = output.Status;
       }
+
+      // v27 (#1248): the fan instances the record has completed — the polled response feeds the
+      // same set the item-step events do, so a branch node's rows know which items it ran for.
+      completedNodeItems.UnionWith(response.NodeOutputs
+        .Where(entry => entry.Key.Contains(':', StringComparison.Ordinal) && entry.Value.Status == "Completed")
+        .Select(entry => entry.Key));
 
       // v27 (#1236, storage 9): an inner if/case's item it skipped by condition — the item row's state.
       skippedNodeItems = response.NodeOutputs

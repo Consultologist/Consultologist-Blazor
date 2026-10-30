@@ -398,9 +398,52 @@ public class ConsultsRunRailTests : ClientRenderTestContext
 
         var groups = page.FindAll(".node-group").ToList();
         var drafting = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Drafting");
-        Assert.Equal(new[] { "Introduction", "Plan" }, drafting.QuerySelectorAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()));
+        // #1248: the branch node's rows are the items its if decided for it — Plan took no branch, so it is the flow's row, not this node's.
+        Assert.Equal(new[] { "Introduction" }, drafting.QuerySelectorAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()));
+        Assert.Equal("1/1", drafting.QuerySelector("summary .node-row__count")!.TextContent.Trim());
         var triage = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Triage");
         var plan = triage.QuerySelectorAll(".node-row--item").Single(row => row.QuerySelector(".node-row__label")!.TextContent.Trim() == "Plan");
         Assert.Contains("node-status--skipped", plan.QuerySelector(".node-row__status")!.ClassName);
+    }
+
+    [Fact]
+    public void ABranchNodesRows_AreTheItemsItsFlowDecidedForIt_TakenShown_SentElsewhereHidden_UndecidedPending()
+    {
+        // #1248: a case with two branches over three items, mid-run — item 0 took narrative (its row is in),
+        // item 1 took table (the sibling's row is in), item 2 is undecided. The narrative node lists
+        // 0 (done) and 2 (pending), never 1; the table node lists 1 (done) and 2 (pending), never 0.
+        WithTwoNodePackage();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Running",
+            TotalBlockCount: 3, CompletedBlockCount: 2, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(), FailedBlocks: new Dictionary<string, string>(),
+            Success: false,
+            Nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("sections", "Sections", Kind: "for", Collection: "input.sections", Body: new[] { "route" }, Ret: "route", Count: 3),
+                new("route", "Route", Kind: "case", Expression: "item.value.kind", Body: new[] { "narrative_draft", "table_draft" }, In: "sections",
+                    Branches: new Dictionary<string, string> { ["0"] = "narrative", ["1"] = "table" }),
+                new("narrative_draft", "Narrative", In: "route", Prompt: "prompts/n.md"),
+                new("table_draft", "Table", In: "route", Prompt: "prompts/t.md"),
+            },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["narrative_draft:0"] = new("narrative_draft", "Narrative", "Completed", "i", "o", null, null),
+                ["table_draft:1"] = new("table_draft", "Table", "Completed", "i", "o", null, null),
+            },
+            Collections: new[] { new ConsultCollectionRoster("input.sections", new[] { new ConsultCollectionItem("0", "One"), new ConsultCollectionItem("1", "Two"), new ConsultCollectionItem("2", "Three") }) }));
+
+        var page = RenderRail();
+
+        var groups = page.FindAll(".node-group").ToList();
+        var narrative = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Narrative");
+        var table = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Table");
+        Assert.Equal(new[] { "One", "Three" }, narrative.QuerySelectorAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()));
+        Assert.Equal(new[] { "Two", "Three" }, table.QuerySelectorAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()));
+        Assert.Equal("1/2", narrative.QuerySelector("summary .node-row__count")!.TextContent.Trim());
+        Assert.Contains("node-status--success", narrative.QuerySelectorAll(".node-row--item .node-row__status").First().ClassName);
+        Assert.Contains("node-status--muted", narrative.QuerySelectorAll(".node-row--item .node-row__status").Last().ClassName);
+        var route = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Route");
+        Assert.Equal(new[] { "One", "Two", "Three" }, route.QuerySelectorAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()));
     }
 }
