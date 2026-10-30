@@ -315,7 +315,7 @@ reads the array's declaration by input id.
 reads use the library's public accepted set), so the 27 panes are built and tested behind a
 test-only seam — `Templates.AuthorsAboveCeiling` widens the accepted set at the three manifest reads
 and the desk's validate (`InternalsVisibleTo` the Web); no banner, since the API refuses 27 until
-the bump; #1237 retires it as #1164 retired #1209's. The flow-in-loop controls (the loop pane's
+the bump; #1237 retired it (2026-10-29) as #1164 retired #1209's. The flow-in-loop controls (the loop pane's
 if/case choices, the if/case panes' "in loop" picker, the + Node form's loop for an if/case) are
 offered at 27 only, so the 26 panes stay byte-identical. The editor's reader resolves a branch
 node's loop two levels up (`NodeView.LoopOf` through `FlowOf`); the Nodes nav nests two levels. The
@@ -374,6 +374,25 @@ One layer per PR, each green on its own; the bump is the last.
   registry PR), `SupportedSpecVersions` += 27; an engine release.
 - **C — editor** (§ 6); the version raise as the upgrade.
 - **The bump:** both sets += 27 together; the registry lists 27; the editor's ceiling follows C.
+  *Landed 2026-10-29 (#1237), engine + registry.* Engine: `AcceptedSpecVersions` and
+  `SupportedSpecVersions` += 27 together; the version raise moved into the library
+  (`WorkflowPackageVersionRaise` — the editor's newest rung and
+  `scripts/migrate-workflow-package.cs --to 27` share it, as they share the 25 → 26 rewrite; the
+  script's 27 stage validates in memory and writes `manifest.json` and `dag.mmd` alone); the
+  editor's two ceilings to 27 at once, the #1236 seam and the library's `InternalsVisibleTo` for it
+  retired, the one button "Upgrade to specVersion 27" — and the upgrade chained: a package below 26
+  takes the 26 rewrite (its notices under "Through 26:") and then the raise, each rung refusing by
+  its own name (the gap the bump would have opened: a 25 package rewritten to 26 and stamped 27 —
+  found in planning, closed here); the stored upgrade's version 3; the next-is-refused tests moved
+  to 28; the editor's 27 suites render without the seam. Registry package-format **v2026.10.15**
+  (consultologist-package-format#42): 27 listed with `package-format-v27.md` and the generated
+  `schemas/package-format-v27.schema.json` (the 26 shape with its version); `conformance/v27/` —
+  18 vectors, 6 valid and 12 invalid, all 12 `SHAPE_BLIND` in three reasoned groups (a branch
+  node's attachment and the one level; the inner condition's reach; the loop's read of its inner
+  flow); the `any` case's sentence ends "or 27"; the README's counts (607 cases, 514 invalid, 148
+  schema-rejected unchanged, 365 schema-blind); the v27 document's accepted-set sentences in the
+  listed form. **Left:** the engine release carrying it (`Public/Engine` reports 5–27 — on the
+  word, closes #1237) and the content smoke (#1238).
 - **Content:** `example-conditional-sections` in consultologist-workflows; a 27 smoke on it with a
   storage-9 record; the pins stay (no public package needs 27).
 
