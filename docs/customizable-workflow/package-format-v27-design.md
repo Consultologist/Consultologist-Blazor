@@ -395,6 +395,36 @@ One layer per PR, each green on its own; the bump is the last.
   word, closes #1237) and the content smoke (#1238).
 - **Content:** `example-conditional-sections` in consultologist-workflows; a 27 smoke on it with a
   storage-9 record; the pins stay (no public package needs 27).
+  *Landed 2026-10-30 (#1238; consultologist-workflows#45, published as
+  `example-conditional-sections@v2026.10.1`).* Two premises of the issue gave way to the format: an
+  `if` with both bodies never skips (§ 1.4 — a skip is a flow node taking no branch), and a folder item
+  carries no `kind` (v26 § header keys: `label`, `if`), so a kind lives on an `array<object>` input and a
+  folder condition reads `item.id`. The package (decided 2026-10-30: three loops, each producing
+  something distinct): a `case` on `item.value.kind` (narrative → prose, table → a table, an `omit`
+  section skipped, no `else`); an `if` with no `else` writing one patient-facing line per narrative
+  section; an `if` over a folder of standing sections (`item.id != "billing" || input.include_billing ==
+  true`); a closing node reading the first loop's elements (`{{ for e in node.sections_draft }} … e.skipped
+  … e.item.value.title`) to name what was left out. Validated at 27 with 0 errors / 0 warnings first pass;
+  `dag.mmd` by `--dag`. **The smoke** (job `43812b8ea261456d98c0a22b3979d544`, 2026-10-30, named on the
+  start body — no pin moved, no owned publish): Completed 10/10 in 13 s, **record storage 9**; `route`
+  (`case`, in `sections_draft`) `branches {0: narrative, 1: table, 2: none}`; `narrative_only` (`if`, in
+  `patient_summaries`) `{0: then, 1: none, 2: none}`; `applies` (`if`, in `standing_sections`)
+  `{safety_netting: then, follow_up: then, billing: none}`; four `<flow>:<item>` rows `Skipped` with the
+  condition's text as reason (*"switches on `item.value.kind`; no branch lists its value"*, *"needs
+  `item.value.kind == "narrative"`; it does not hold"*, *"needs `item.id != "billing" || …`; it does not
+  hold"*); `skippedBlocks` names the four blocks by `<deliverable>:<loop>:<item>`; every loop's `count` 3
+  and its composition over the returned items alone; both deliverables produced (the consult note ends
+  *"Billing codes were left out at the author's request."* — the `e.skipped` read, live). The seven public
+  packages and the pin `test/general@v2026.10.12` stay at 26. **History seen live** (2026-10-30, the
+  job's page): `format v27`, the record storage line linking *storage version 9 in provenance-record.md,
+  provenance@v2026.10.10*; each inner flow a group of its items — `0 · narrative → narrative_draft`,
+  `1 · table → table_draft`, `2 · skipped — switches on \`item.value.kind\`; no branch lists its value`
+  (struck through); `narrative_only` with `0 · then → patient_summary` and two skipped; `applies` with
+  `safety_netting` and `follow_up` then and `billing` skipped — the flow tags `· case item.value.kind ·
+  per item` / `· if … · per item`, the branch nodes `in route` / `in narrative_only` / `in applies` fanning
+  per item with their counts (1), (1), (2). Observed, not a defect of this issue: an
+  `array<object>` loop's item label composes as the input's label plus the position ("Sections to produce
+  1"), not the item's `title` — an issue to file on the word.
 
 **Done when** (#1173): this doc exists with a decision or a named open question for every port-list
 row — it does; each Milestone 35 issue links its section; the bump issue is filed.
