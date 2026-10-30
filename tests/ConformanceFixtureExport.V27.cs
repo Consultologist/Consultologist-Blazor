@@ -7,10 +7,10 @@ namespace Consultologist.Api.Tests;
 /// vectors — a flow node inside a for. The valid baseline is the 26 minimal
 /// raised (§ 7: no migration); each valid case is a shape 27 opens, each
 /// invalid one breaks one § 3 sentence against it; the recorded outcome is
-/// whatever the validator says. Held back by the export while 27 is above the
-/// accepted ceiling (the bump, #1237, lifts them); the suite's facts pin the
-/// sentences until then. The below-27 gate (`invalid-if-inside-a-for-at-26`)
-/// is a 26 case and exports now, with its new sentence.
+/// whatever the validator says. Held back by the export while 27 was above the
+/// accepted ceiling; the bump (#1237) lifted them into `conformance/v27/`. The
+/// below-27 gate (`invalid-if-inside-a-for-at-26`) is a 26 case, with its new
+/// sentence.
 /// </summary>
 public partial class ConformanceFixtureExport
 {

@@ -10,17 +10,26 @@ namespace Consultologist.Web.Tests;
 /// v27 (#1236, package-format-v27-design.md § 6): the editor at 27 — a loop's body holds an
 /// if/case (the loop pane lists it per item and returns it; its add offers an unplaced one),
 /// the if pane's "in" picker places it in a loop, the nav nests two levels, the + Node form
-/// births an if in a loop, and the desk says the 27 sentences — all through the test-only
-/// seam (AuthorsAboveCeiling) until the bump (#1237). Without the seam a 27 package meets
+/// births an if in a loop, and the desk says the 27 sentences (built behind a test-only seam
+/// the bump, #1237, retired: the public accepted set carries 27). The version after 27 meets
 /// the accepted-set sentence.
 /// </summary>
 public class TemplatesV27LoopPaneTests : ClientRenderTestContext
 {
-    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse? fixture = null, bool seam = true)
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse? fixture = null)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V27Flow());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
-        return Render<Templates>(parameters => parameters.Add(p => p.AuthorsAboveCeiling, seam));
+        return Render<Templates>();
+    }
+
+    /// <summary>The 27 fixture with its version raised past the ceiling — what the set refuses now.</summary>
+    private static WorkflowPackageContentResponse V27FlowAt28()
+    {
+        var fixture = EditorFixtures.V27Flow();
+        var manifest = System.Text.Json.Nodes.JsonNode.Parse(fixture.Manifest.GetRawText())!.AsObject();
+        manifest["specVersion"] = 28;
+        return fixture with { SpecVersion = 28, Manifest = System.Text.Json.JsonDocument.Parse(manifest.ToJsonString()).RootElement.Clone() };
     }
 
     private IRenderedComponent<Templates> ShowNode(string nodeId, WorkflowPackageContentResponse? fixture = null)
@@ -70,8 +79,9 @@ public class TemplatesV27LoopPaneTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void A27Package_PublishesClean_ThroughTheSeam_AndMeetsTheVersionSentence_Without()
+    public void A27Package_PublishesClean_AndTheVersionAfter_MeetsTheVersionSentence()
     {
+        // #1237: 27 is the public accepted set's newest — no seam; 28 is what it refuses.
         CapturePublish();
         var page = RenderEditor();
         Nudge(page);
@@ -80,12 +90,12 @@ public class TemplatesV27LoopPaneTests : ClientRenderTestContext
         Assert.NotNull(sent);
 
         sent = null;
-        var bare = RenderEditor(seam: false);
-        Nudge(bare);
-        Publish(bare);
+        var beyond = RenderEditor(V27FlowAt28());
+        Nudge(beyond);
+        Publish(beyond);
         Assert.Null(sent);
-        // The manifest read's sentence — the public accepted set, the bump's to move.
-        Assert.Contains(Refusals(bare), r => r.Contains("is specVersion 27; this engine runs specVersion", StringComparison.Ordinal));
+        // The manifest read's sentence — the public accepted set, the next bump's to move.
+        Assert.Contains(Refusals(beyond), r => r.Contains("is specVersion 28; this engine runs specVersion", StringComparison.Ordinal));
     }
 
     [Fact]

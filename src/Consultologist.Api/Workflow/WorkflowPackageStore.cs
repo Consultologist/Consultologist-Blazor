@@ -40,7 +40,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // a required ret, gates keyed if, a deliverable's sources[] and
     // deliverable.<id>.content, the prompt by path, the JSON header, the
     // macros map, the pipe operand; record storage 8.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26 };
+    // v27 (#1237): a flow node inside a for — an if or case in a loop's body,
+    // decided per item at item readiness, a skipped item a named block state;
+    // record storage 9. A version raise from 26, nothing rewritten.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

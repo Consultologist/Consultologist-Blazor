@@ -95,7 +95,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         Navigate(page, "+ Prelude");
 
         Assert.Contains("A prelude publishes only as a node macro from specVersion 23.", page.Find(".prelude-retired").TextContent);
-        Assert.Contains("Upgrade to specVersion 26", page.Find(".prelude-retired").TextContent);
+        Assert.Contains("Upgrade to specVersion 27", page.Find(".prelude-retired").TextContent);
         Assert.Empty(page.FindAll("fluent-text-field[placeholder='snomed_tool_guidance']"));
         Assert.DoesNotContain(page.FindAll("fluent-button"), button => button.TextContent.Contains("Create prelude"));
         // Nothing pending: Publish has nothing to send.
@@ -243,7 +243,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         var manifest = Manifest(sent!);
-        Assert.Equal(26, manifest.GetProperty("specVersion").GetInt32());
+        Assert.Equal(27, manifest.GetProperty("specVersion").GetInt32());
         Assert.False(manifest.TryGetProperty("preludes", out _));
         Assert.False(manifest.TryGetProperty("macros", out _));
         // #1164: the chain lands at 26 — prompts[] retired, the node names its file; the snippet opens with its header.
@@ -289,7 +289,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
 
         Assert.Contains("Prelude 'guidance' has the id of a declared macro; rename one, then upgrade.", page.Find(".upgrade-refusal").TextContent);
         // Nothing staged: the rung is still on offer, the preludes untouched.
-        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Upgrade to specVersion 26"));
+        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Upgrade to specVersion 27"));
         Assert.Contains("Preludes", NavGroups(page));
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);

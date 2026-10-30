@@ -57,7 +57,8 @@ public class SpecVersionMirrorTests
         // the registry, publish refuses the package the author just built;
         // behind it, the newest format is unreachable from the editor — which
         // was #347's defect. #1149 ran 26 ahead of the editor and pinned the
-        // lag by name; #1164 brought the editor's chain to 26 — the equality again.
+        // lag by name; #1164 brought the editor's chain to 26 — the equality again;
+        // #1237 moved the set and both ceilings to 27 at once.
         Assert.Equal(
             WorkflowPackageValidator.AcceptedSpecVersions.Max(),
             Templates.NewestSpecVersion);
