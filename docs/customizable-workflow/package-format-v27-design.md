@@ -415,7 +415,14 @@ One layer per PR, each green on its own; the bump is the last.
   hold"*); `skippedBlocks` names the four blocks by `<deliverable>:<loop>:<item>`; every loop's `count` 3
   and its composition over the returned items alone; both deliverables produced (the consult note ends
   *"Billing codes were left out at the author's request."* — the `e.skipped` read, live). The seven public
-  packages and the pin `test/general@v2026.10.12` stay at 26. Observed, not a defect of this issue: an
+  packages and the pin `test/general@v2026.10.12` stay at 26. **History seen live** (2026-10-30, the
+  job's page): `format v27`, the record storage line linking *storage version 9 in provenance-record.md,
+  provenance@v2026.10.10*; each inner flow a group of its items — `0 · narrative → narrative_draft`,
+  `1 · table → table_draft`, `2 · skipped — switches on \`item.value.kind\`; no branch lists its value`
+  (struck through); `narrative_only` with `0 · then → patient_summary` and two skipped; `applies` with
+  `safety_netting` and `follow_up` then and `billing` skipped — the flow tags `· case item.value.kind ·
+  per item` / `· if … · per item`, the branch nodes `in route` / `in narrative_only` / `in applies` fanning
+  per item with their counts (1), (1), (2). Observed, not a defect of this issue: an
   `array<object>` loop's item label composes as the input's label plus the position ("Sections to produce
   1"), not the item's `title` — an issue to file on the word.
 
