@@ -404,7 +404,7 @@ public class WorkflowConditionAt25Tests
 
     [Theory]
     [InlineData("node.assessment.content == \"\"", "reads node.assessment.content; the builder reads an enum node's value (node.assessment.value).")]
-    [InlineData("snippet.standards.content == \"x\"", "reads snippet.standards.content; the builder reads input.<path>, node.<id>.value and item.id (snippet is beyond it).")]
+    [InlineData("snippet.standards.content == \"x\"", "reads snippet.standards.content; the builder reads input.<path>, node.<id>.value, item.id and item.value.<field> (snippet is beyond it).")]
     [InlineData("input.notes | string.upcase", "pipes a value; a condition counts an array as (input.<id> | array.size) and reads nothing else through a pipe.")]
     public void ARead_BeyondTheBuildersSubset_IsSaid(string when, string tail)
     {

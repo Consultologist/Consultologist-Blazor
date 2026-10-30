@@ -450,6 +450,29 @@ public class ConsultsResultTests : ClientRenderTestContext
         Assert.Contains("The v6 assembled note.", page.Find(".note-preview").TextContent);
         Assert.Empty(page.FindAll("fluent-tab"));
     }
+    [Fact]
+    public void ASkippedBlock_IsANamedLine_InTheSectionsPlace_AndCountsAsDone()
+    {
+        // v27 (#1236, record storage 9; decided 2026-10-29): an if/case inside a loop skipped the item —
+        // the section is a named state with the condition's text, not an absence.
+        const string reason = "needs `item.id == \"hpi\"`; it does not hold";
+        WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness"), Block("section-instructions:plan", "Plan") });
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed",
+            TotalBlockCount: 2, CompletedBlockCount: 2, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string> { ["section-instructions:hpi"] = "Section prose." },
+            FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            SkippedBlocks: new Dictionary<string, string> { ["section-instructions:plan"] = reason }));
+
+        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var skipped = page.Find("[data-skipped-block='section-instructions:plan']");
+        Assert.Equal($"Plan was skipped: it {reason}.", skipped.TextContent.Trim().Replace("\n", " "));
+        Assert.Contains("Section prose.", page.Find(".generated-note").TextContent);
+        Assert.Contains("2/2 sections", page.Markup);
+    }
+
 }
 
 /// <summary>
@@ -485,29 +508,5 @@ public class ConsultsRunDagTests : ClientRenderTestContext
 
         page.Find(".run-dag-close").Click();
         Assert.Empty(page.FindAll(".run-dag-panel"));
-    }
-
-    [Fact]
-    public void ASkippedBlock_IsANamedLine_InTheSectionsPlace_AndCountsAsDone()
-    {
-        // v27 (#1236, record storage 9; decided 2026-10-29): an if/case inside a loop skipped the item —
-        // the section is a named state with the condition's text, not an absence.
-        const string reason = "needs `item.id == \"hpi\"`; it does not hold";
-        WithPinnedPackage(blocks: new[] { Block("section-instructions:hpi", "History of Present Illness"), Block("section-instructions:plan", "Plan") });
-        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
-            JobId, "user-1", "Completed",
-            TotalBlockCount: 2, CompletedBlockCount: 2, FailedBlockCount: 0,
-            GeneratedBlocks: new Dictionary<string, string> { ["section-instructions:hpi"] = "Section prose." },
-            FailedBlocks: new Dictionary<string, string>(),
-            Success: true,
-            AssembledDocument: "Section prose.",
-            SkippedBlocks: new Dictionary<string, string> { ["section-instructions:plan"] = reason }));
-
-        var page = Render<Consults>(parameters => parameters.Add(p => p.JobId, JobId));
-
-        var skipped = page.Find("[data-skipped-block='section-instructions:plan']");
-        Assert.Equal($"Plan was skipped: it {reason}.", skipped.TextContent.Trim().Replace("\n", " "));
-        Assert.Contains("Section prose.", page.Find(".generated-note").TextContent);
-        Assert.Contains("2/2 sections", page.Markup);
     }
 }
