@@ -542,6 +542,12 @@ public sealed class ConsultGenerationOrchestrator
             // A forEach node completes at the node level once every item is either
             // done for it or failed earlier in its chain — this is what drives the
             // stage checklist and the node-completed events.
+            // #1246: an inner if/case's items settle through the alias flow:item, and
+            // this pass ran before the aggregator pass wrote it — so the flow's row
+            // was marked one FANNED completion late, and never when its loop was
+            // the last fan to finish (the smoke's `applies`). The aliases land first.
+            inner.AliasTakenRets(outputs, FanItems);
+
             foreach (var node in chainNodes)
             {
                 if (nodeLevelCompleted.Contains(node.Id))
@@ -974,24 +980,9 @@ public sealed class ConsultGenerationOrchestrator
                 // The deliverable's composition from its sources is #1155.
                 // v27 (#1235): an if/case inside a loop completes PER ITEM as the branch
                 // it took did — the alias flow:item, once the taken branch's returned
-                // node has its output for the item; a skipped item has no alias.
-                foreach (var flow in flowNodes.Where(ConsultInnerFlows.IsInner))
-                {
-                    foreach (var item in FanItems(flow))
-                    {
-                        var key = ConsultNodeScheduler.InstanceKey(flow.Id, item["id"]);
-                        if (outputs.ContainsKey(key) || inner.RetOf(flow.Id, item["id"]) is not { } ret)
-                        {
-                            continue;
-                        }
-
-                        if (outputs.TryGetValue(ConsultNodeScheduler.InstanceKey(ret, item["id"]), out var branchResult))
-                        {
-                            outputs[key] = branchResult;
-                            progressed = true;
-                        }
-                    }
-                }
+                // node has its output for the item; a skipped item has no alias
+                // (#1246: the one alias writer, shared with the summary pass).
+                progressed |= inner.AliasTakenRets(outputs, FanItems);
 
                 foreach (var flow in flowNodes)
                 {

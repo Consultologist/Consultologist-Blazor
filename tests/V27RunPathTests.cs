@@ -173,4 +173,62 @@ public class V27RunPathTests
 
         Assert.Null(ConsultRenderPayload.FlowRetsFor(Notes, NodesById, itemRets));
     }
+
+    // ----- #1246: the alias lands before the summary pass judges the flow settled -----
+
+    private static ConsultInnerFlows DecidedInner()
+    {
+        var inner = new ConsultInnerFlows(NodesById);
+        inner.Decisions["triage:hpi"] = new ConsultFlowItemDecision("triage", "hpi", "then", new[] { "patient_draft" }, "patient_draft", null);
+        inner.Decisions["triage:plan"] = new ConsultFlowItemDecision("triage", "plan", "none", Array.Empty<string>(), null, "needs `item.id == \"hpi\"`; it does not hold");
+        inner.Decisions["triage:exam"] = new ConsultFlowItemDecision("triage", "exam", "else", new[] { "table_draft" }, "table_draft", null);
+        inner.SkippedInstances.Add("triage:plan");
+        return inner;
+    }
+
+    [Fact]
+    public void TheInnerFlowsItems_SettleOnlyThroughTheAlias_WhichTheSummaryPassNowWritesFirst()
+    {
+        // #1246: the smoke's `applies` row went missing — every item decided, the
+        // taken branches' outputs in place, and still the flow was not "settled"
+        // for the summary pass, because the alias flow:item had not been written
+        // yet (the aggregator pass wrote it, after). With the outputs of the taken
+        // returned nodes present and no alias, the flow's taken items are unsettled;
+        // one alias pass settles them, and the pass is idempotent.
+        var inner = DecidedInner();
+        var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal)
+        {
+            ["patient_draft:hpi"] = Output("Drafted h."),
+            ["table_draft:exam"] = Output("Drafted e."),
+        };
+
+        Assert.False(inner.Settled(Triage, "hpi", outputs, failed: false));
+        Assert.True(inner.Settled(Triage, "plan", outputs, failed: false)); // skipped by condition: settled with nothing to read
+        Assert.False(inner.Settled(Triage, "exam", outputs, failed: false));
+
+        Assert.True(inner.AliasTakenRets(outputs, _ => Items));
+
+        Assert.Same(outputs["patient_draft:hpi"], outputs["triage:hpi"]);
+        Assert.Same(outputs["table_draft:exam"], outputs["triage:exam"]);
+        Assert.False(outputs.ContainsKey("triage:plan"));
+        Assert.True(Items.All(item => inner.Settled(Triage, item["id"], outputs, failed: false)));
+        Assert.False(inner.AliasTakenRets(outputs, _ => Items));
+    }
+
+    [Fact]
+    public void TheAlias_WaitsForTheTakenReturnedNodesOutput_AndNeverAliasesAnUndecidedItem()
+    {
+        var inner = new ConsultInnerFlows(NodesById);
+        inner.Decisions["triage:hpi"] = new ConsultFlowItemDecision("triage", "hpi", "then", new[] { "patient_draft" }, "patient_draft", null);
+        var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal) { ["table_draft:exam"] = Output("Drafted e.") };
+
+        // hpi decided, its returned node not yet done: no alias; exam undecided though its would-be branch has output: no alias.
+        Assert.False(inner.AliasTakenRets(outputs, _ => Items));
+        Assert.False(outputs.ContainsKey("triage:hpi"));
+        Assert.False(outputs.ContainsKey("triage:exam"));
+
+        outputs["patient_draft:hpi"] = Output("Drafted h.");
+        Assert.True(inner.AliasTakenRets(outputs, _ => Items));
+        Assert.Same(outputs["patient_draft:hpi"], outputs["triage:hpi"]);
+    }
 }
