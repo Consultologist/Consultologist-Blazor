@@ -305,4 +305,46 @@ public class RunDagDiagramTests
         Assert.DoesNotContain("subgraph", before);
         Assert.Contains("per snippet.standards item (1/1)", before);
     }
+
+    // ----- v27 (#1236): a storage-9 record's inner if/case -----
+
+    private static ConsultGenerationNodeDescriptor[] Storage9Nodes() => new ConsultGenerationNodeDescriptor[]
+    {
+        new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_notes", "triage" }, Ret: "triage", Count: 3),
+        new("section_notes", "Section notes", Format: "prose", Producer: "attested", Prompt: "prompts/section.md", In: "sections"),
+        new("triage", "Triage", Kind: "if", Expression: "item.id == \"hpi\"", Body: new[] { "patient_draft", "table_draft" }, In: "sections",
+            Branches: new Dictionary<string, string> { ["hpi"] = "then", ["plan"] = "none", ["exam"] = "else" }),
+        new("patient_draft", "Patient draft", Format: "prose", Producer: "attested", Prompt: "prompts/patient.md", In: "triage", Reads: new[] { "section_notes" }),
+        new("table_draft", "Table draft", Format: "prose", Producer: "attested", Prompt: "prompts/table.md", In: "triage"),
+    };
+
+    private static Dictionary<string, ConsultGenerationNodeStatus> Storage9Outputs() => new()
+    {
+        ["sections"] = Row("sections", "Completed"),
+        ["section_notes:hpi"] = Row("section_notes", "Completed"),
+        ["section_notes:plan"] = Row("section_notes", "Completed"),
+        ["section_notes:exam"] = Row("section_notes", "Completed"),
+        ["triage:plan"] = new("triage", "Triage", "Skipped", null, null, null, null, Reason: "needs `item.id == \"hpi\"`; it does not hold"),
+        ["patient_draft:hpi"] = Row("patient_draft", "Completed"),
+        ["table_draft:exam"] = Row("table_draft", "Completed"),
+    };
+
+    [Fact]
+    public void AStorage9InnerIf_IsASubgraphInsideTheLoops_WithItsBranchesTallied_AndNothingPruned()
+    {
+        var diagram = RunDagDiagram.Build(Job(nodes: Storage9Nodes(), outputs: Storage9Outputs()));
+
+        // The loop's tally is its ret's — the inner if, three items decided.
+        Assert.Contains("subgraph for_sections[\"sections: per snippet.sections item (3/3)\"]", diagram);
+        var loop = diagram[diagram.IndexOf("subgraph for_sections", StringComparison.Ordinal)..];
+        Assert.Contains("subgraph if_triage[\"triage: if item.id == \"hpi\" — per item\"]", loop);
+        Assert.True(loop.IndexOf("subgraph if_triage", StringComparison.Ordinal) < loop.IndexOf("end\n", StringComparison.Ordinal), "the inner subgraph opens inside the loop's");
+        Assert.Contains("patient_draft[\"patient_draft<br/>Patient draft<br/>(1/1) items<br/>prose · attested<br/>prompts/patient.md\"]", diagram);
+        Assert.Contains("table_draft[\"table_draft<br/>Table draft<br/>(1/1) items<br/>prose · attested<br/>prompts/table.md\"]", diagram);
+        Assert.Contains("triage{\"triage<br/>Triage<br/>if: item.id == \"hpi\"<br/>then 1 · none 1 · else 1\"}", diagram);
+        Assert.Contains("triage --> |\"ret\"| sections", diagram);
+        Assert.DoesNotContain("pruned", diagram);
+        Assert.DoesNotContain("branch: none", diagram);
+        Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(diagram, @"\ntriage\{").Count);
+    }
 }
