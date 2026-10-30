@@ -5910,6 +5910,8 @@
             PF.TemplatePreviewGateKind.Instance => gate.Owner == readerNodeId && refs.MacroPrompts.Contains(gate.Key),
             PF.TemplatePreviewGateKind.Macro => ReadsMacro(gate.Key),
             PF.TemplatePreviewGateKind.Snippet => refs.Snippets.Contains(gate.Key),
+            // v27 (#1236; decided 2026-10-29): a flow node's gate is its branch nodes' — a top-level if/case over the picks, one inside a loop over the picked item.
+            PF.TemplatePreviewGateKind.Flow => readerNodeId is not null && gate.Bodies?.Any(body => body.Nodes.Contains(readerNodeId, StringComparer.Ordinal)) == true,
             _ => refs.SnippetFolders.Contains(gate.Owner) || refs.Snippets.Contains(gate.Key),
         }).ToList();
     }
@@ -6018,7 +6020,7 @@
     }
 
     /// <summary>v26 (#1205): a rendered preview — the text, whether it is the renderer's sentence, and the gates judged over the pick (applied: they did not hold; waiting: on picks).</summary>
-    private sealed record RenderedPreviewResult(string Text, bool IsError, IReadOnlyList<PF.TemplatePreviewGate> Applied, IReadOnlyList<PF.TemplatePreviewWaitingGate> Waiting);
+    private sealed record RenderedPreviewResult(string Text, bool IsError, IReadOnlyList<PF.TemplatePreviewGate> Applied, IReadOnlyList<PF.TemplatePreviewWaitingGate> Waiting, IReadOnlyList<PF.TemplatePreviewFlowOutcome>? Flows = null);
 
     private static readonly RenderedPreviewResult NoPreviewScope = new("The package does not read yet — fix the publish refusals to preview.", true, Array.Empty<PF.TemplatePreviewGate>(), Array.Empty<PF.TemplatePreviewWaitingGate>());
 
@@ -6045,7 +6047,7 @@
                 item is not null,
                 readerNodeId,
                 item?.Id);
-            return new(PF.TemplateRenderer.Render(subject, text, judged.Scope, PF.TemplatePreviewScope.Pipes), false, judged.Applied, judged.Waiting);
+            return new(PF.TemplateRenderer.Render(subject, text, judged.Scope, PF.TemplatePreviewScope.Pipes), false, judged.Applied, judged.Waiting, judged.Flows);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -6054,8 +6056,22 @@
     }
 
     /// <summary>v26 (#1205): what an applied gate did for this pick, in the pane's words.</summary>
+    /// <summary>v27 (#1236): what a flow node decides for this pick, and what that means for the node previewed.</summary>
+    private static string FlowSentence(PF.TemplatePreviewFlowOutcome outcome)
+    {
+        var gate = outcome.Gate;
+        var what = gate.IsCase ? $"case over {gate.If}" : $"if ({gate.If})";
+        var scope = gate.Loop is { } loop ? $" for this item of loop '{loop}'" : string.Empty;
+        return outcome.Branch == "none"
+            ? $"node '{gate.Owner}' takes no branch for this pick{scope}: its {what} — this node does not run (its text renders all the same)"
+            : outcome.RunsReader
+                ? $"node '{gate.Owner}' takes {outcome.Branch} for this pick{scope}: its {what} — this node runs"
+                : $"node '{gate.Owner}' takes {outcome.Branch} for this pick{scope}: its {what} — this node does not run (its text renders all the same)";
+    }
+
     private static string GateSentence(PF.TemplatePreviewGate gate) => gate.Kind switch
     {
+        PF.TemplatePreviewGateKind.Flow => $"node '{gate.Owner}' takes another branch for this pick: its {(gate.IsCase ? $"case over {gate.If}" : $"if ({gate.If})")} — this node does not run",
         PF.TemplatePreviewGateKind.Instance => $"the read of macro.{gate.Key}.prompt is suppressed for this pick: node '{gate.Owner}''s instance if ({gate.If}) does not hold",
         PF.TemplatePreviewGateKind.Macro => $"macro '{gate.Key}' is inert for this pick: its if ({gate.If}) does not hold — .prompt and .content render empty",
         PF.TemplatePreviewGateKind.Snippet => $"snippet '{gate.Key}' renders empty for this pick: its if ({gate.If}) does not hold",
@@ -6072,6 +6088,7 @@
             PF.TemplatePreviewGateKind.Instance => $"node '{gate.Owner}''s instance if of macro '{gate.Key}'",
             PF.TemplatePreviewGateKind.Macro => $"macro '{gate.Key}''s if",
             PF.TemplatePreviewGateKind.Snippet => $"snippet '{gate.Key}''s if",
+            PF.TemplatePreviewGateKind.Flow => $"node '{gate.Owner}''s {(gate.IsCase ? "case subject" : "if")}{(gate.Loop is { } loop ? $" (per item of loop '{loop}')" : string.Empty)}",
             _ => $"item '{gate.Key[(gate.Owner.Length + 1)..]}' of folder '{gate.Owner}''s if",
         };
         return $"pick {picks} to judge {whose} ({gate.If})";
@@ -7138,11 +7155,16 @@
                 <p class="muted-text rendered-preview__note">An unchosen value renders as its token — an equality against it is false, a bare <code>if</code> or an ordering sees a non-empty text — choose a value to see the branch you mean.</p>
             }
         }
-        @if (preview.Applied.Count > 0 || preview.Waiting.Count > 0)
+        @if (preview.Applied.Count > 0 || preview.Waiting.Count > 0 || preview.Flows is { Count: > 0 })
         {
-            @* v26 (#1205): the gates judged over this pick — each applied one named, each waiting one with what to pick. *@
+            @* v26 (#1205): the gates judged over this pick — each applied one named, each waiting one with what to pick.
+               v27 (#1236): a flow gate names the branch its node takes for this pick, and whether this node runs. *@
             <ul class="muted-text rendered-preview__gates" aria-label="@($"Gates judged for {subject}")">
-                @foreach (var applied in preview.Applied)
+                @foreach (var flow in preview.Flows ?? Array.Empty<PF.TemplatePreviewFlowOutcome>())
+                {
+                    <li class="rendered-preview__gate rendered-preview__gate--flow @(flow.RunsReader ? "" : "rendered-preview__gate--applied")" data-gate-kind="flow" data-gate-key="@flow.Gate.Key" data-branch="@flow.Branch">@FlowSentence(flow)</li>
+                }
+                @foreach (var applied in preview.Applied.Where(gate => gate.Kind != PF.TemplatePreviewGateKind.Flow))
                 {
                     <li class="rendered-preview__gate" data-gate-kind="@applied.Kind.ToString().ToLowerInvariant()" data-gate-key="@applied.Key">@GateSentence(applied)</li>
                 }
