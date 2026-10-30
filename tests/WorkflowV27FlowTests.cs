@@ -9,7 +9,7 @@ namespace Consultologist.Api.Tests;
 /// condition may read (the item, inputs, earlier body nodes; never the loop,
 /// never its own branch nodes), a case over the item's enum field, what the
 /// outside reads of a loop returning a flow node, and the sentences of § 3 —
-/// each at the seam (<see cref="V27Package.Accepting27"/>) until the bump.
+/// each at the seam (<see cref="V27Package.Accepting27"/>; the public set since the bump, #1237).
 /// </summary>
 public class WorkflowV27FlowTests
 {

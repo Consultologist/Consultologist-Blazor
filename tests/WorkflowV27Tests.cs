@@ -3,8 +3,9 @@ using Consultologist.PackageFormat;
 namespace Consultologist.Api.Tests;
 
 /// <summary>
-/// #1234 (package-format-v27-design.md): the 27 packages and the seam that lets
-/// them through while 27 is wired but not yet accepted (the bump is #1237), as
+/// #1234 (package-format-v27-design.md): the 27 packages and the seam that let
+/// them through while 27 was wired but not yet accepted (the bump, #1237, lists
+/// 27; <see cref="Accepting27"/> is a harmless duplicate since), as
 /// <see cref="V26Package.Accepting26"/> did for 26. <see cref="Minimal"/> is the
 /// 26 minimal with its version raised — valid at 27 unchanged (§ 7: no
 /// migration). The builders add what 27 opens: an if or case node inside the
@@ -109,16 +110,20 @@ public static class V27Package
 public class WorkflowV27Tests
 {
     [Fact]
-    public void ThePublicEntry_StillRefuses27_UntilTheBump()
+    public void ThePublicEntry_Accepts27_SinceTheBump_AndRefuses28()
     {
-        // #1237 lifts this; until then the seam carries the 27 facts.
-        Assert.DoesNotContain(27, WorkflowPackageValidator.AcceptedSpecVersions);
+        // #1237: the accepted set carries 27 (with the store's set and both of the
+        // editor's ceilings). The seam and the public door agree; the version
+        // after is what the set refuses now.
+        Assert.Contains(27, WorkflowPackageValidator.AcceptedSpecVersions);
 
         var (manifest, files) = V27Package.Minimal();
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-
-        Assert.Contains(result.Errors, e => e.StartsWith("specVersion 27 is not supported", StringComparison.Ordinal));
+        Assert.Empty(result.Errors);
         Assert.Empty(V27Package.Errors(V27Package.Minimal()));
+
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 28 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 28 is not supported", StringComparison.Ordinal));
     }
 
     [Fact]
