@@ -1346,7 +1346,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     if (!_context.ItemDeferred
                         && _context.Bodies is { } bodies
                         && bodies.TryGetValue(id, out var scope)
-                        && !string.Equals(scope.Owner, _context.Scope, StringComparison.Ordinal))
+                        && !InScope(scope.Owner, bodies))
                     {
                         Errors.Add($"{_subject} reads node '{id}', which runs inside {scope.Inside}; read node.{scope.Owner}.");
                         return Refused;
@@ -1572,6 +1572,18 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             }
         }
 
+        /// <summary>
+        /// #1234 (v27 design § 4): a body node is in scope when it runs in the
+        /// reader's own body, or — one level up — in the body the reader's flow
+        /// node runs in: a branch node, and an inner if/case's condition (walked
+        /// under the flow node's own id), read the loop's body nodes by bare id.
+        /// Never down: the outside of a branch reads its flow node.
+        /// </summary>
+        private bool InScope(string targetOwner, IReadOnlyDictionary<string, TemplateBodyScope> bodies) =>
+            _context.Scope is { } mine
+            && (string.Equals(targetOwner, mine, StringComparison.Ordinal)
+                || (bodies.TryGetValue(mine, out var parent) && string.Equals(targetOwner, parent.Owner, StringComparison.Ordinal)));
+
         private Target StepNode(NodeTarget node, string name, string before)
         {
             if (name == TemplateMembers.Content)
@@ -1594,6 +1606,13 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         {
                             _refs.ReadNode(node.ReadId, content: false, value: true);
                             return new NodeValueTarget(before, new TemplateValueShape(WorkflowInputTypes.Array, null, ValueShapeOf(ret), null));
+                        }
+
+                        // #1234 (v27 design § 1.5): a loop returning an if/case whose branches disagree — the list has no one format.
+                        if (flow.Ret?.Flow is { Kind: not TemplateFlowKind.For, Ret: null } branches)
+                        {
+                            Errors.Add($"{_subject} reads {before}.value, but loop '{node.Id}' returns '{flow.RetId}', whose branches return {branches.DescribeDisagreement()}; {before}.value needs one format — read {before}.content.");
+                            return Refused;
                         }
 
                         Errors.Add($"{_subject} reads {before}.value, but loop '{node.Id}' returns '{flow.RetId}' of format '{flow.Ret?.Format}', which is text and has no value; read {before}.content or iterate {before}.");
@@ -1658,6 +1677,13 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     {
                         _refs.ReadNode(element.LoopId, content: false, value: true);
                         return new NodeValueTarget(before, ValueShapeOf(ret));
+                    }
+
+                    // #1234 (v27 design § 1.5): the element of a loop returning an if/case whose branches disagree.
+                    if (flow.Ret?.Flow is { Kind: not TemplateFlowKind.For, Ret: null } branches)
+                    {
+                        Errors.Add($"{_subject} reads {walked}, but loop '{element.LoopId}' returns '{flow.RetId}', whose branches return {branches.DescribeDisagreement()}; {walked} needs one format — read {before}.content.");
+                        return Refused;
                     }
 
                     Errors.Add($"{_subject} reads {walked}, but loop '{element.LoopId}' returns '{flow.RetId}' of format '{flow.Ret?.Format}', which is text and has no value; read {before}.content.");
