@@ -77,7 +77,7 @@ public static class WorkflowManifestReader
         /// <summary>v26 (#1159): a flow node of kind case.</summary>
         public bool IsCase => Case is not null;
 
-        /// <summary>v26: any flow node — structural, never prompted, never placed in a body.</summary>
+        /// <summary>v26: any flow node — structural, never prompted; at 26 never placed in a body, at 27 (#1236) an if/case may sit in a loop's body.</summary>
         public bool IsFlow => IsLoop || IsIf || IsCase;
 
         /// <summary>
@@ -135,9 +135,32 @@ public static class WorkflowManifestReader
         public string? RetNodeId =>
             Ret is { } ret && ret.StartsWith("node.", StringComparison.Ordinal) && ret.Length > 5 ? ret[5..] : null;
 
-        /// <summary>v26 (#1160): the loop whose body holds the node, or null — a node runs in one body.</summary>
-        public static NodeView? LoopOf(IEnumerable<NodeView> nodes, string nodeId) =>
-            nodes.FirstOrDefault(candidate => candidate.IsLoop && candidate.Nodes is { } body && body.Contains(nodeId, StringComparer.Ordinal));
+        /// <summary>v27 (#1236): the flow node whose body holds the node — a loop, or an if/case — or null.</summary>
+        public static NodeView? FlowOf(IEnumerable<NodeView> nodes, string nodeId) =>
+            nodes.FirstOrDefault(candidate => candidate.IsFlow && candidate.Bodies().Any(body => body.Nodes.Contains(nodeId, StringComparer.Ordinal)));
+
+        /// <summary>v27 (#1236, design § 1.1): an if/case listed in a loop's body — decided once per item; its branch nodes run under the loop.</summary>
+        public static bool IsInner(IEnumerable<NodeView> nodes, string flowId) =>
+            nodes.Any(candidate => candidate.IsLoop && candidate.Nodes is { } body && body.Contains(flowId, StringComparer.Ordinal));
+
+        /// <summary>
+        /// v26 (#1160): the loop whose body holds the node, or null — a node runs in one body.
+        /// v27 (#1236, design § 4): two levels — a branch node of an if/case inside a loop
+        /// runs under that loop, so it types item.* and previews per item as a body node does.
+        /// </summary>
+        public static NodeView? LoopOf(IEnumerable<NodeView> nodes, string nodeId)
+        {
+            var all = nodes as IReadOnlyCollection<NodeView> ?? nodes.ToList();
+            var direct = all.FirstOrDefault(candidate => candidate.IsLoop && candidate.Nodes is { } body && body.Contains(nodeId, StringComparer.Ordinal));
+            if (direct is not null)
+            {
+                return direct;
+            }
+
+            return FlowOf(all, nodeId) is { IsLoop: false } flow
+                ? all.FirstOrDefault(candidate => candidate.IsLoop && candidate.Nodes is { } body && body.Contains(flow.Id, StringComparer.Ordinal))
+                : null;
+        }
 
         /// <summary>
         /// v26 (#1160): what the node fans over, in the 25 spelling — its own forEach below 26,
