@@ -5,12 +5,13 @@
 // manifest model has no source-generated context.
 #:property JsonSerializerIsReflectionEnabledByDefault=true
 
-// Migrates a workflow package directory on disk to specVersion 25 (the default) or 26, offline.
+// Migrates a workflow package directory on disk to specVersion 25 (the default), 26 or 27, offline.
 //
 // Usage:
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir>                   # dry run: notices, refusals, the file plan, the 25 validation
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --write           # apply: files, manifest.json, dag.mmd
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 26 [--write] # #1152: the 25 → 26 stage (WorkflowPackageMigration25To26)
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 27 [--write] # #1237: the 26 → 27 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
 //
 // WHY THIS EXISTS. The editor upgrades a package in the browser: below 23 it
 // turns preludes into node macros and bumps the number (formats up to 24 are
@@ -163,6 +164,60 @@ if (to == 26)
     Console.Out.WriteLine(
         $"{name}@{version}: specVersion 25 → 26, {added26.Count} added, {rewritten26.Count} rewritten, {removed26.Count} deleted"
             + (write ? ", written" : " (dry run; pass --write to apply)"));
+    return 0;
+}
+
+// #1237: the 27 stage — a version raise (design v27 § 7): 27 permits what 26
+// refused, so nothing is rewritten; the manifest's specVersion moves, every
+// file stays, and the raised package is validated at 27 in memory as the
+// registry would before any write. The write touches manifest.json and dag.mmd.
+if (to == 27)
+{
+    if (from != 26)
+    {
+        Console.Error.WriteLine($"error: {name}@{version} is at specVersion {from}; the 27 stage takes a 26 package (migrate to 26 first).");
+        return 1;
+    }
+
+    var result27 = WorkflowPackageVersionRaise.To(staged.ToJsonString(), before, 27);
+
+    foreach (var notice in result27.Notices)
+    {
+        Console.Out.WriteLine($"notice: {notice}");
+    }
+
+    if (!result27.Succeeded)
+    {
+        foreach (var refusal in result27.Refusals)
+        {
+            Console.Error.WriteLine($"error: {refusal}");
+        }
+
+        Console.Error.WriteLine($"{name}@{version}: specVersion 26 → 27 refused; nothing written.");
+        return 1;
+    }
+
+    var manifest27 = JsonSerializer.Deserialize<WorkflowPackageManifest>(result27.ManifestJson, WorkflowPackageManifestJson.ReadOptions)
+        ?? throw new InvalidOperationException("The raised manifest deserialized to null.");
+    var validation27 = WorkflowPackageValidator.Validate(manifest27, result27.Files, catalogSchemas, formats: formats);
+    foreach (var warning in validation27.Warnings) Console.Out.WriteLine($"warning: {warning}");
+    foreach (var error in validation27.Errors) Console.Error.WriteLine($"error: {error}");
+    if (validation27.Errors.Count > 0)
+    {
+        Console.Error.WriteLine($"{name}@{version}: the 27 package does not validate; nothing written.");
+        return 1;
+    }
+
+    Console.Out.WriteLine($"{name}@{version}: specVersion 26 → 27 validates ({validation27.Errors.Count} errors, {validation27.Warnings.Count} warnings).");
+
+    if (write)
+    {
+        MigrationRunner.Write(root, result27.ManifestJson, before, before, WorkflowDagDiagram.Generate(manifest27));
+    }
+
+    Console.Out.WriteLine(
+        $"{name}@{version}: specVersion 26 → 27, nothing added, rewritten or deleted"
+            + (write ? "; manifest.json and dag.mmd written" : " (dry run; pass --write to apply)"));
     return 0;
 }
 
