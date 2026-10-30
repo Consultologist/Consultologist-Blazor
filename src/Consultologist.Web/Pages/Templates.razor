@@ -2430,7 +2430,7 @@
                                     <span>over — what the case switches on</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-case-subject" @bind-Value="newNodeCase" aria-label="New case subject">
                                         <FluentOption TOption="string" Value="">choose…</FluentOption>
-                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptions)
+                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptionsFor(newNodeLoop.Length > 0 ? newNodeLoop : null))
                                         {
                                             <FluentOption TOption="string" Value="@subject">@subjectLabel</FluentOption>
                                         }
@@ -2778,11 +2778,11 @@
                                                   Value="@(selectedCase.Case ?? string.Empty)"
                                                   ValueChanged="@(v => OnCaseSubjectChangedAsync(selectedCase, v))"
                                                   aria-label="Case subject">
-                                        @if (selectedCase.Case is not { Length: > 0 } authoredSubject || CaseSubjectOptions.All(o => o.Subject != authoredSubject))
+                                        @if (selectedCase.Case is not { Length: > 0 } authoredSubject || CaseSubjectOptionsFor(LoopIdOf(selectedCase.Id), selectedCase).All(o => o.Subject != authoredSubject))
                                         {
                                             <FluentOption TOption="string" Value="@(selectedCase.Case ?? string.Empty)">@(string.IsNullOrEmpty(selectedCase.Case) ? "choose…" : selectedCase.Case)</FluentOption>
                                         }
-                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptions)
+                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptionsFor(LoopIdOf(selectedCase.Id), selectedCase))
                                         {
                                             <FluentOption TOption="string" Value="@subject">@subjectLabel</FluentOption>
                                         }
@@ -4034,7 +4034,8 @@
   /// folder item's when reads inputs only, so the builder offers no node: operand and no
   /// Extra — the registry's rule ("so the folder's size is known at job start").
   /// </summary>
-  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null, bool InputsOnly = false);
+  // v27 (#1236): NodeFilter narrows the node operands a target may read (an if inside a loop reads the loop's earlier body nodes, never the loop or its own branches).
+  private sealed record ConditionTarget(string Key, string Subject, string? When, Action<string?> Write, IReadOnlyList<ConditionOperand>? Extra = null, bool InputsOnly = false, Func<string, bool>? NodeFilter = null);
 
   // #1125: EmptyWord is the field's resting label, lower-cased — what the sole clause's empty choice says, so the
   // open builder and the collapsed button agree ("always produced", "always run", "always", "every run").
@@ -12494,9 +12495,19 @@
     private sealed record ConditionOperand(string Key, string Type, IReadOnlyList<string>? Values, IReadOnlyList<string>? Labels = null);
 
     /// <summary>The operands a target's clauses may read: its own (v24 item:id on a fan node's macro) before the package-wide list.</summary>
-    private IReadOnlyList<ConditionOperand> OperandsFor(ConditionTarget target) =>
-        target.InputsOnly ? ConditionOperands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)).ToList()
-        : target.Extra is { Count: > 0 } extra ? extra.Concat(ConditionOperands).ToList() : ConditionOperands;
+    private IReadOnlyList<ConditionOperand> OperandsFor(ConditionTarget target)
+    {
+        var operands = target.InputsOnly
+            ? ConditionOperands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)).ToList()
+            : ConditionOperands.ToList();
+        // v27 (#1236, design § 1.2): a target's own view of the nodes it may read.
+        if (target.NodeFilter is { } filter)
+        {
+            operands = operands.Where(operand => !operand.Key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal) || filter(operand.Key[NodeKeyPrefix.Length..])).ToList();
+        }
+
+        return target.Extra is { Count: > 0 } extra ? extra.Concat(operands).ToList() : operands;
+    }
 
     /// <summary>v24 (#957): the one item operand a condition reads, and its pseudo-type (a closed set, like a classifier's values).</summary>
     private const string ItemIdKey = "item:id";
@@ -12843,16 +12854,36 @@
             .ToList();
 
     /// <summary>v26 (#1159): what a case may switch on — enum inputs as input.&lt;id&gt;, enum-format nodes as node.&lt;id&gt;.value.</summary>
-    private IReadOnlyList<(string Subject, string Label)> CaseSubjectOptions =>
-        EffectiveInputs.Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum)
+    private IReadOnlyList<(string Subject, string Label)> CaseSubjectOptions => CaseSubjectOptionsFor(null);
+
+    /// <summary>
+    /// v27 (#1236, design § 1.2): the subjects a case in a loop may switch on — the enum
+    /// inputs, the classifier-like nodes it may read (top-level ones and the same loop's
+    /// body nodes, never another loop's and never its own branches) and the item's enum
+    /// fields (item.value.&lt;field&gt;) of the loop's array input.
+    /// </summary>
+    private IReadOnlyList<(string Subject, string Label)> CaseSubjectOptionsFor(string? loopId, WorkflowManifestReader.NodeView? node = null)
+    {
+        var own = node?.Bodies().SelectMany(body => body.Nodes).ToHashSet(StringComparer.Ordinal) ?? new HashSet<string>(StringComparer.Ordinal);
+        return EffectiveInputs.Where(input => WorkflowInputTypes.Of(input) == WorkflowInputTypes.Enum)
             .Select(input => ($"input.{input.Id}", $"input.{input.Id} — {input.Label}"))
-            .Concat(EffectiveNodes.Where(n => !n.IsFlow && ClassifierLike(n)).Select(n => ($"node.{n.Id}.value", $"node.{n.Id}.value — {n.Label}")))
+            .Concat(EffectiveNodes
+                .Where(n => !n.IsFlow && ClassifierLike(n) && !own.Contains(n.Id) && (BodyKeyOf(n.Id) == null || (loopId is not null && LoopIdOf(n.Id) == loopId)))
+                .Select(n => ($"node.{n.Id}.value", $"node.{n.Id}.value — {n.Label}")))
+            .Concat(LoopItemEnumFields(loopId).Select(field => ($"item.value.{field.Id}", $"item.value.{field.Id} — {field.Label}")))
             .ToList();
+    }
 
     /// <summary>v26 (#1159): the values a case subject declares — the input's, or the enum-format node's; empty when unknown.</summary>
-    private IReadOnlyList<string> CaseValuesOf(string? subject)
+    private IReadOnlyList<string> CaseValuesOf(string? subject, string? loopId = null)
     {
         if (string.IsNullOrEmpty(subject)) { return Array.Empty<string>(); }
+        // v27 (#1236): an item's enum field — the loop's array input declares its values.
+        if (subject.StartsWith("item.value.", StringComparison.Ordinal))
+        {
+            return LoopItemEnumFields(loopId).FirstOrDefault(field => field.Id == subject["item.value.".Length..])?.Values ?? Array.Empty<string>();
+        }
+
         if (subject.StartsWith("input.", StringComparison.Ordinal))
         {
             return EffectiveInputs.FirstOrDefault(i => i.Id == subject["input.".Length..])?.Values ?? Array.Empty<string>();
@@ -13040,9 +13071,56 @@
     }
 
     /// <summary>v26 (#1159): the if node's condition — the 25 node-when builder, writing the node's if.</summary>
-    private ConditionTarget IfConditionTarget(WorkflowManifestReader.NodeView node) =>
-        new($"node-if:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.If) ? null : node.If,
-            text => SetFlow(node.Id, FlowChangeOf(node) with { If = text ?? string.Empty }));
+    private ConditionTarget IfConditionTarget(WorkflowManifestReader.NodeView node)
+    {
+        // v27 (#1236, design § 1.2): inside a loop the condition reads the item (a
+        // folder's item.id; an array input's item.value.<field>), the inputs and the
+        // loop's earlier body nodes — never the loop itself, never its own branch nodes.
+        var loop = At26 ? WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, node.Id) : null;
+        var own = node.Bodies().SelectMany(body => body.Nodes).ToHashSet(StringComparer.Ordinal);
+        return new($"node-if:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.If) ? null : node.If,
+            text => SetFlow(node.Id, FlowChangeOf(node) with { If = text ?? string.Empty }),
+            Extra: loop is null ? null : LoopItemOperands(loop),
+            NodeFilter: loop is null ? null : id => id != loop.Id && !own.Contains(id) && (BodyKeyOf(id) == null || LoopIdOf(id) == loop.Id));
+    }
+
+    /// <summary>
+    /// v27 (#1236, design § 1.2): the item operands a condition inside a loop reads — a
+    /// folder's item ids (item:id, labelled by name), or an array input's element fields
+    /// (item:value.&lt;field&gt;, typed as the declaration types them; an enum's values).
+    /// </summary>
+    private IReadOnlyList<ConditionOperand> LoopItemOperands(WorkflowManifestReader.NodeView loop)
+    {
+        var operands = new List<ConditionOperand>();
+        var fan = loop.Collection;
+
+        if (FanFolderOf(fan) is { } folderId)
+        {
+            var items = EffectiveCollections.FirstOrDefault(c => c.Id == folderId)?.Items ?? Array.Empty<WorkflowManifestReader.DataItemView>();
+            if (items.Count > 0)
+            {
+                operands.Add(new ConditionOperand(ItemIdKey, ItemValueType, items.Select(item => item.Id).ToList(), items.Select(StandardName).ToList()));
+            }
+        }
+        else if (LoopInputOf(loop) is { } input)
+        {
+            AddFieldOperands(operands, "item:value", input.Items?.Fields ?? input.Fields);
+        }
+
+        return operands;
+    }
+
+    /// <summary>v27 (#1236): the array input a loop iterates (its elements the items), or null for a folder loop.</summary>
+    private WorkflowManifestReader.InputView? LoopInputOf(WorkflowManifestReader.NodeView loop) =>
+        loop.Collection is { } fan && PF.WorkflowInputFans.IsInputFan(fan)
+            ? EffectiveInputs.FirstOrDefault(input => input.Id == PF.WorkflowInputFans.InputIdOf(fan))
+            : null;
+
+    /// <summary>v27 (#1236): the enum fields of the element a loop's array input declares — what a case inside the loop may switch on.</summary>
+    private IReadOnlyList<WorkflowManifestReader.FieldView> LoopItemEnumFields(string? loopId) =>
+        loopId is not null && EffectiveNodes.FirstOrDefault(n => n.Id == loopId) is { IsLoop: true } loop && LoopInputOf(loop) is { } input
+            ? (input.Items?.Fields ?? input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()).Where(field => WorkflowInputTypes.Of(field) == WorkflowInputTypes.Enum).ToList()
+            : Array.Empty<WorkflowManifestReader.FieldView>();
 
     private async Task OnBodyRetChangedAsync(string bodyKey, string? bodyNodeId)
     {
@@ -13116,7 +13194,7 @@
     private IReadOnlyList<string> UnroutedCaseValues(WorkflowManifestReader.NodeView node)
     {
         var listed = (node.Branches ?? Array.Empty<WorkflowManifestReader.BranchView>()).SelectMany(b => b.When).ToHashSet(StringComparer.Ordinal);
-        return CaseValuesOf(node.Case).Where(v => !listed.Contains(v)).ToList();
+        return CaseValuesOf(node.Case, LoopIdOf(node.Id)).Where(v => !listed.Contains(v)).ToList();
     }
 
     /// <summary>
