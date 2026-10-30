@@ -14,6 +14,10 @@ namespace Consultologist.Web.Tests;
 /// session's content (the 26 panes render over it, one notice names every rewrite, publish is
 /// open as "upgraded 25 → 26"), a refusal is said in the toolbar and applies nothing; and a
 /// 26 package opens live — the #1209 interim gate, banner and seam are gone.
+/// v27 (#1237): the newest is 27 — the one button reads "Upgrade to specVersion 27", the
+/// chain runs the 26 rewrite (said under "Through 26:") and then the raise; the refusal at
+/// the 26 rung keeps its rung's name; a 26 package is offered the one button to 27
+/// (<see cref="TemplatesV27UpgradeTests"/> has the raise alone).
 /// </summary>
 public class TemplatesV26UpgradeTests : ClientRenderTestContext
 {
@@ -77,17 +81,17 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void A25Package_IsOfferedTheOneButtonTo26()
+    public void A25Package_IsOfferedTheOneButtonToTheNewest()
     {
         var page = RenderEditor();
 
-        Assert.Equal(new[] { "Upgrade to specVersion 26" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(page));
         Assert.Contains("Prompts", Groups(page));
-        Assert.Equal(26, Templates.NewestSpecVersion);
+        Assert.Equal(27, Templates.NewestSpecVersion);
     }
 
     [Fact]
-    public async Task TheUpgrade_ReplacesThePackageAt26_SaysTheRewrites_AndPublishesValid()
+    public async Task TheUpgrade_ReplacesThePackageAtTheNewest_SaysThe26RewritesUnderThrough26_AndPublishesValid()
     {
         CapturePublish();
         var page = RenderEditor();
@@ -100,19 +104,21 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
         Assert.Empty(UpgradeButtons(page));
 
         var notice = page.Find(".migration-notice").TextContent;
-        Assert.Contains("Migrated to specVersion 26.", notice);
-        Assert.Contains("Loop 'sections' over sections returns 'section_notes' with body [section_notes].", notice);
+        Assert.Contains("Migrated to specVersion 27.", notice);
+        // #1237: the 26 rewrite's notices are the chain's "Through 26:" part; the raise closes it.
+        Assert.Contains("Through 26: Loop 'sections' over sections returns 'section_notes' with body [section_notes].", notice);
         Assert.DoesNotContain("Through 25:", notice);
         Assert.Contains("macros is the map of id to file", notice);
+        Assert.EndsWith("Raised to specVersion 27; nothing rewritten — 27 permits what 26 refused.", notice.Trim());
 
         var publish = PublishButton(page);
-        Assert.Contains("upgraded 25 → 26", publish.TextContent);
+        Assert.Contains("upgraded 25 → 27", publish.TextContent);
         Assert.Null(publish.GetAttribute("disabled"));
 
         publish.Click();
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         var manifest = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
-        Assert.Equal(26, manifest.GetProperty("specVersion").GetInt32());
+        Assert.Equal(27, manifest.GetProperty("specVersion").GetInt32());
         Assert.False(manifest.TryGetProperty("prompts", out _));
         Assert.StartsWith("{\n  \"label\": \"Closing\"", sent.Files["macros/closing.md"]);
         Assert.Empty(Validated().Errors);
@@ -128,13 +134,13 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
         Assert.Contains("At specVersion 26: Node 'section_notes' fans 'sections' but no aggregator sources it or a node that reads it; aggregate it or remove it, then upgrade.", page.Find(".upgrade-refusal").TextContent);
         Assert.Empty(page.FindAll(".migration-notice"));
         Assert.Contains("Prompts", Groups(page));
-        Assert.Equal(new[] { "Upgrade to specVersion 26" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(page));
         Assert.DoesNotContain("●", page.Markup);
         Assert.NotNull(PublishButton(page).GetAttribute("disabled"));
     }
 
     [Fact]
-    public async Task AReload_RestoresTheUpgradeTo26()
+    public async Task AReload_RestoresTheUpgradeToTheNewest()
     {
         var page = RenderEditor();
         await UpgradeAsync(page);
@@ -143,26 +149,27 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
             .Where(i => i.Arguments[0] is string key && key.StartsWith("workflow-editor-upgrade:", StringComparison.Ordinal))
             .Select(i => (Key: (string)i.Arguments[0]!, Json: (string)i.Arguments[1]!))
             .Last();
-        Assert.Contains("\"Version\":2", saved.Json);
+        Assert.Contains("\"Version\":3", saved.Json);
         JSInterop.Setup<string?>("localStorage.getItem", saved.Key).SetResult(saved.Json);
 
         var again = Render<Templates>();
 
         Assert.DoesNotContain("Prompts", Groups(again));
-        Assert.Contains("Migrated to specVersion 26.", again.Find(".migration-notice").TextContent);
-        Assert.Contains("upgraded 25 → 26", PublishButton(again).TextContent);
+        Assert.Contains("Migrated to specVersion 27.", again.Find(".migration-notice").TextContent);
+        Assert.Contains("upgraded 25 → 27", PublishButton(again).TextContent);
     }
 
     // ---- a 26 package opens live (the #1209 interim retired) ----------------------------
 
     [Fact]
-    public void A26Package_OpensLive_NoBanner_NoInert_NoUpgrade_AndPublishOpensOnAnEdit()
+    public void A26Package_OpensLive_NoBanner_NoInert_OfferedTheRaise_AndPublishOpensOnAnEdit()
     {
         var page = RenderEditor(EditorFixtures.V26());
 
         Assert.Empty(page.FindAll(".read-only-notice"));
         Assert.False(page.Find("section.editor-pane").HasAttribute("inert"));
-        Assert.Empty(UpgradeButtons(page));
+        // #1237: 27 is the newest — the raise is offered; nothing else about a 26 package moves.
+        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(page));
         Assert.NotNull(PublishButton(page).GetAttribute("disabled"));
         Assert.Null(page.Find("#editor-import-trigger").GetAttribute("disabled"));
 

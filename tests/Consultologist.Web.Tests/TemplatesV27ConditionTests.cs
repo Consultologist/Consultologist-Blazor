@@ -17,7 +17,7 @@ public class TemplatesV27ConditionTests : ClientRenderTestContext
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
-        var page = Render<Templates>(parameters => parameters.Add(p => p.AuthorsAboveCeiling, true));
+        var page = Render<Templates>();
         Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = $"node:{nodeId}";
         page.Render();
         return page;

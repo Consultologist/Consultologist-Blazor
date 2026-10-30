@@ -9,19 +9,19 @@ namespace Consultologist.Web.Tests;
 /// <summary>
 /// v27 (#1236; decided 2026-10-29): the preview's flow gate — a branch node's pane names the
 /// branch its if/case takes for the pick and whether this node runs: a top-level if over the
-/// input pick (a 26 package, no seam — the 26 gap closed in passing), an if inside a loop over
-/// the picked item.
+/// input pick (a 26 package — the 26 gap closed in passing), an if inside a loop over the
+/// picked item (a 27 package; the public set carries 27 since the bump, #1237).
 /// </summary>
 public class TemplatesV27PreviewGatesTests : ClientRenderTestContext
 {
     private const string KindSelect = "fluent-select[aria-label='Preview with input.kind']";
     private const string ItemSelect = "fluent-select.rendered-preview__item-pick";
 
-    private IRenderedComponent<Templates> Show(string key, WorkflowPackageContentResponse fixture, bool seam)
+    private IRenderedComponent<Templates> Show(string key, WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
-        var page = Render<Templates>(parameters => parameters.Add(p => p.AuthorsAboveCeiling, seam));
+        var page = Render<Templates>();
         Services.GetRequiredService<WorkflowEditorSession>().SelectedKey = key;
         page.Render();
         return page;
@@ -35,7 +35,7 @@ public class TemplatesV27PreviewGatesTests : ClientRenderTestContext
     [Fact]
     public void ATopLevelIf_IsJudgedOnItsBranchNodesPane_OverTheInputPick_At26()
     {
-        var page = Show("node:assessment", EditorFixtures.V26Flow(), seam: false);
+        var page = Show("node:assessment", EditorFixtures.V26Flow());
 
         var waiting = Assert.Single(Gates(page), g => g.Kind == "flow");
         Assert.True(waiting.Waiting);
@@ -54,7 +54,7 @@ public class TemplatesV27PreviewGatesTests : ClientRenderTestContext
     [Fact]
     public void AnInnerIf_WaitsOnTheItemPick_ThenNamesTheBranchForThatItem()
     {
-        var page = Show("node:patient_draft", EditorFixtures.V27Flow(), seam: true);
+        var page = Show("node:patient_draft", EditorFixtures.V27Flow());
 
         var waiting = Assert.Single(Gates(page), g => g.Kind == "flow");
         Assert.Equal("pick an item to judge node 'triage''s if (per item of loop 'sections') (item.id == \"hpi\")", waiting.Text);
@@ -72,7 +72,7 @@ public class TemplatesV27PreviewGatesTests : ClientRenderTestContext
     [Fact]
     public void ALoopsOwnBodyNode_MeetsNoFlowGate()
     {
-        var page = Show("node:section_notes", EditorFixtures.V27Flow(), seam: true);
+        var page = Show("node:section_notes", EditorFixtures.V27Flow());
 
         Assert.DoesNotContain(Gates(page), g => g.Kind == "flow");
     }

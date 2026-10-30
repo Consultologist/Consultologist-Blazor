@@ -493,7 +493,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Input 'prior_notes' declares a type that requires specVersion 9. Use \"Upgrade to specVersion 26\" and publish.",
+            "Input 'prior_notes' declares a type that requires specVersion 9. Use \"Upgrade to specVersion 27\" and publish.",
             Refusals(page));
     }
 
@@ -524,7 +524,7 @@ public class TemplatesV9AuthoringTests : ClientRenderTestContext
 
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains(
-            "Deliverable 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 26\" and publish.",
+            "Deliverable 'consult_note' declares a condition form that requires specVersion 9. Use \"Upgrade to specVersion 27\" and publish.",
             Refusals(page));
     }
 
