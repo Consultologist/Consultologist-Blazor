@@ -349,6 +349,42 @@ public class RunDagDiagramTests
     }
 
     [Fact]
+    public void AnInnerFlowsSkippedItems_AreOneDashedBox_InsideItsSubgraph_NamedByItem_WithTheReason()
+    {
+        // The rail's ⊘ rows and History's struck-through rows, drawn: without this the diagram
+        // showed a skipped item only as a number in the diamond's tally.
+        var rosters = new[] { new ConsultCollectionRoster("sections", new[] { new ConsultCollectionItem("hpi", "HPI"), new ConsultCollectionItem("plan", "Plan"), new ConsultCollectionItem("exam", "Exam") }) };
+
+        var diagram = RunDagDiagram.Build(Job(nodes: Storage9Nodes(), outputs: Storage9Outputs(), collections: rosters));
+
+        var inner = diagram[diagram.IndexOf("subgraph if_triage", StringComparison.Ordinal)..];
+        Assert.Contains("triage_skipped[\"skipped (1)<br/>Plan<br/>needs `item.id == #quot;hpi#quot;`; it does not hold\"]", inner);
+        Assert.True(inner.IndexOf("triage_skipped[", StringComparison.Ordinal) < inner.IndexOf("end\n", StringComparison.Ordinal), "the box sits inside the inner flow's subgraph");
+        Assert.Contains("triage -.->|\"none\"| triage_skipped", diagram);
+        Assert.Matches(@"\nclass [^\n]*\btriage_skipped\b[^\n]* skipped", diagram);
+        // A flow that skipped nothing draws no box.
+        var outputs = Storage9Outputs();
+        outputs.Remove("triage:plan");
+        Assert.DoesNotContain("triage_skipped", RunDagDiagram.Build(Job(nodes: Storage9Nodes(), outputs: outputs, collections: rosters)));
+    }
+
+    [Fact]
+    public void ADocumentsSources_DrawTheirEdges_FromTheBareIdsTheRecordServes()
+    {
+        // The served row names a source by its bare id; resolving it only through node.<id>
+        // left every deliverable hexagon floating (seen on the 27 smoke).
+        var documents = new[]
+        {
+            new ConsultGenerationResultDocumentResponse("consult", "Consult note", "The note.", Sources: new[] { "sections", "node.section_notes" }),
+        };
+
+        var diagram = RunDagDiagram.Build(Job(nodes: Storage9Nodes(), outputs: Storage9Outputs(), documents: documents));
+
+        Assert.Contains("sections -->|\"source\"| result_consult", diagram);
+        Assert.Contains("section_notes -->|\"source\"| result_consult", diagram);
+    }
+
+    [Fact]
     public void PackageAuthoredText_InALabel_EscapesItsQuotes_SoTheDiagramParses()
     {
         // #1247: an if/case expression carries quotes (`item.value.kind == "narrative"`); raw inside

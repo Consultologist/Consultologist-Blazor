@@ -215,6 +215,20 @@ public static class RunDagDiagram
                     body.Append(($"{Sanitize(prunedId)}[\"{prunedId}<br/>pruned\"]\n"));
                 }
 
+                // v27 (storage 9): the items the inner flow skipped by condition — the rail's ⊘
+                // rows and History's struck-through rows — as one dashed box inside the flow's
+                // subgraph, named by item, with the condition's reason when it is one; the
+                // diamond's dashed "none" edge leads to it.
+                var skippedItems = inner ? RecordFlow.SkippedItemsOf(flow, outputs) : null;
+                var skippedId = $"{id}_skipped";
+                if (skippedItems is { Count: > 0 })
+                {
+                    var names = skippedItems.Keys.Select(itemId => ItemNameOf(flow, itemId, detail.Collections, nodes)).ToList();
+                    var reasons = skippedItems.Values.Distinct(StringComparer.Ordinal).ToList();
+                    byClass["skipped"].Add(skippedId);
+                    body.Append(($"{skippedId}[\"{Label($"skipped ({names.Count})<br/>{string.Join("<br/>", names)}{(reasons.Count == 1 ? $"<br/>{reasons[0]}" : string.Empty)}")}\"]\n"));
+                }
+
                 body.Append("end\n");
                 byClass[status].Add(id);
                 body.Append(($"{id}{{\"{Label($"{flow.Id}<br/>{flow.Label}<br/>{kind}: {flow.Expression}<br/>{(inner ? branch : $"branch: {branch}")}")}\"}}\n"));
@@ -222,6 +236,11 @@ public static class RunDagDiagram
                 if (kind == "case" && SubjectNodeOf(flow.Expression) is { } subjectId)
                 {
                     body.Append(($"{Sanitize(subjectId)} -.->|\"case\"| {id}\n"));
+                }
+
+                if (skippedItems is { Count: > 0 })
+                {
+                    body.Append(($"{id} -.->|\"none\"| {skippedId}\n"));
                 }
             }
 
@@ -268,11 +287,11 @@ public static class RunDagDiagram
             {
                 foreach (var source in sources)
                 {
-                    if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(source) is { } sourceId)
-                    {
-                        var dashed = cls == "skipped" || statusById.GetValueOrDefault(sourceId) == "skipped";
-                        body.Append(($"{Sanitize(sourceId)} {(dashed ? "-.->" : "-->")}|\"source\"| {id}\n"));
-                    }
+                    // The served row names a source by its bare id (the storage-8 projection); a
+                    // node.<id> spelling is accepted too — as the loop's ret is (#1236).
+                    var sourceId = Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(source) ?? source;
+                    var dashed = cls == "skipped" || statusById.GetValueOrDefault(sourceId) == "skipped";
+                    body.Append(($"{Sanitize(sourceId)} {(dashed ? "-.->" : "-->")}|\"source\"| {id}\n"));
                 }
             }
             else if (aggregators.Count == 1)
@@ -376,6 +395,15 @@ public static class RunDagDiagram
         "Skipped" => "skipped",
         _ => "ranNot"
     };
+
+    /// <summary>An item's roster name under the fan the flow runs in, else its id.</summary>
+    private static string ItemNameOf(ConsultGenerationNodeDescriptor flow, string itemId, IReadOnlyList<ConsultCollectionRoster>? rosters, IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
+    {
+        var collection = RecordFlow.FanOf(flow, nodes);
+        var collectionId = collection is null ? null : Consultologist.PackageFormat.WorkflowFanSources.CollectionIdOf(collection);
+        var roster = rosters?.FirstOrDefault(r => string.Equals(r.CollectionId, collectionId, StringComparison.Ordinal));
+        return roster?.Items.FirstOrDefault(item => string.Equals(item.Id, itemId, StringComparison.Ordinal))?.Name ?? itemId;
+    }
 
     private static (int Done, int Total) ItemTally(
         ConsultGenerationNodeDescriptor node,
