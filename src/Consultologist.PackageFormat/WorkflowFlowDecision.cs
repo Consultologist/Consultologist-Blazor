@@ -29,30 +29,32 @@ internal static class WorkflowFlowDecision
 
     public static Outcome Decide(WorkflowFlowNodes.Flow flow, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
     {
-        var subject = $"Node '{flow.Node.Id}' {(flow.Kind == WorkflowFlowNodes.Kind.If ? "if" : "case")}";
-
-        switch (flow.Kind)
+        if (flow.Kind == WorkflowFlowNodes.Kind.For)
         {
-            case WorkflowFlowNodes.Kind.For:
-                throw new InvalidOperationException($"Loop '{flow.Node.Id}' is not decided; a loop runs over its collection.");
-
-            case WorkflowFlowNodes.Kind.If:
-            {
-                var holds = WorkflowConditionAt25.Holds(subject, flow.Expression ?? string.Empty, scope, pipes);
-                var taken = holds
-                    ? flow.Bodies.FirstOrDefault(b => b.Label == "then")
-                    : flow.Bodies.FirstOrDefault(b => b.Label == Else);
-                return new Outcome(taken, taken is null ? None : BranchLabel(taken));
-            }
-
-            default:
-            {
-                var value = Subject(subject, flow.Expression ?? string.Empty, scope, pipes);
-                var taken = flow.Bodies.FirstOrDefault(b => b.When is { } when && when.Contains(value, StringComparer.Ordinal))
-                    ?? flow.Bodies.FirstOrDefault(b => b.When is null);
-                return new Outcome(taken, taken is null ? None : BranchLabel(taken));
-            }
+            throw new InvalidOperationException($"Loop '{flow.Node.Id}' is not decided; a loop runs over its collection.");
         }
+
+        return Decide(flow.Node.Id, flow.Kind, flow.Expression ?? string.Empty, flow.Bodies, scope, pipes);
+    }
+
+    /// <summary>#1236: the decision over the bodies alone — the editor's preview judges a flow gate it carries without the resolved flow.</summary>
+    public static Outcome Decide(string flowId, WorkflowFlowNodes.Kind kind, string expression, IReadOnlyList<WorkflowFlowNodes.Body> bodies, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
+    {
+        var subject = $"Node '{flowId}' {(kind == WorkflowFlowNodes.Kind.If ? "if" : "case")}";
+
+        if (kind == WorkflowFlowNodes.Kind.If)
+        {
+            var holds = WorkflowConditionAt25.Holds(subject, expression, scope, pipes);
+            var taken = holds
+                ? bodies.FirstOrDefault(b => b.Label == "then")
+                : bodies.FirstOrDefault(b => b.Label == Else);
+            return new Outcome(taken, taken is null ? None : BranchLabel(taken));
+        }
+
+        var value = Subject(subject, expression, scope, pipes);
+        var chosen = bodies.FirstOrDefault(b => b.When is { } when && when.Contains(value, StringComparer.Ordinal))
+            ?? bodies.FirstOrDefault(b => b.When is null);
+        return new Outcome(chosen, chosen is null ? None : BranchLabel(chosen));
     }
 
     /// <summary>"then" / "else" for an if's bodies; the values listed, comma-joined, for a case branch; "else" for its else.</summary>

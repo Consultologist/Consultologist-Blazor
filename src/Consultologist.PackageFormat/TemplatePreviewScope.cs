@@ -193,6 +193,53 @@ public static class TemplatePreviewScope
             }
         }
 
+        // #1236 (v27 design § 6; decided 2026-10-29): a flow node's gate — an if's
+        // expression (its walked Flow condition) or a case's subject — judged for
+        // a branch node's preview: a top-level flow over the picks, one inside a
+        // loop over the picked item too. The gate carries the loop it runs in and
+        // its bodies, so the judge names the branch taken and whether the reader runs.
+        var inputsById = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .Where(input => WorkflowDeclaredIds.IsValid(input.Id))
+            .GroupBy(input => input.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var flows = WorkflowFlowNodes.Resolve(
+            manifest,
+            new WorkflowPackageData(new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, WorkflowDataCollection>(StringComparer.Ordinal)),
+            inputsById,
+            new List<string>());
+
+        foreach (var flow in flows.Flows.Values.Where(f => f.Kind != WorkflowFlowNodes.Kind.For))
+        {
+            var bodies = flow.Bodies.Select(b => new TemplatePreviewBranch(b.Label, b.Nodes, b.RetNodeId, b.When)).ToList();
+            var loop = flows.LoopOf(flow.Node.Id);
+
+            if (flow.Kind == WorkflowFlowNodes.Kind.If)
+            {
+                if (walked.FirstOrDefault(c => c.Site == WorkflowDerivedEdges.ConditionSite.Flow && c.OwnerId == flow.Node.Id) is { } condition)
+                {
+                    gates.Add(Of(TemplatePreviewGateKind.Flow, flow.Node.Id, flow.Node.Id, condition) with { Loop = loop, Bodies = bodies, IsCase = false });
+                }
+
+                continue;
+            }
+
+            // A case subject is read structurally: an input, a node's value, or the item's field.
+            var subject = (flow.Expression ?? string.Empty).Trim();
+            var inputs = new HashSet<string>(StringComparer.Ordinal);
+            var nodes = new HashSet<string>(StringComparer.Ordinal);
+            if (TemplateObjectReference.IsBare(subject, TemplateObjects.Input, out var inputId))
+            {
+                inputs.Add(inputId);
+            }
+            else if (WorkflowFlowNodes.CaseNodeSubjectOf(subject) is { } nodeId)
+            {
+                nodes.Add(nodeId);
+            }
+
+            gates.Add(new TemplatePreviewGate(TemplatePreviewGateKind.Flow, flow.Node.Id, flow.Node.Id, subject, inputs, nodes,
+                WorkflowFlowNodes.CaseItemSubjectOf(subject) is not null, loop, bodies, IsCase: true));
+        }
+
         // The instances from the manifest: a gated one takes its walked reads, an ungated one holds.
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
         {
@@ -241,6 +288,12 @@ public static class TemplatePreviewScope
         foreach (var gate in gates)
         {
             if (gate.Kind == TemplatePreviewGateKind.Instance && gate.Owner != readerNodeId)
+            {
+                continue;
+            }
+
+            // #1236: a flow gate is the branch nodes' — judged on a reader its bodies hold.
+            if (gate.Kind == TemplatePreviewGateKind.Flow && (readerNodeId is null || gate.Bodies?.Any(b => b.Nodes.Contains(readerNodeId, StringComparer.Ordinal)) != true))
             {
                 continue;
             }
@@ -316,10 +369,41 @@ public static class TemplatePreviewScope
         }
 
         inertSnippets = inert;
+
+        // #1236: a flow gate decided over the picked scope (the item bound when the
+        // reader's loop has a pick): the branch taken, and whether the reader runs.
+        var flowOutcomes = new List<TemplatePreviewFlowOutcome>();
+        foreach (var gate in ready.Where(g => g.Kind == TemplatePreviewGateKind.Flow && g.Bodies is not null))
+        {
+            var bodies = gate.Bodies!.Select(b => new WorkflowFlowNodes.Body(b.Label, b.Nodes, b.Ret is { } ret ? TemplateObjectReference.Node(ret) : null, b.Values)).ToList();
+            WorkflowFlowDecision.Outcome? outcome;
+            try
+            {
+                outcome = WorkflowFlowDecision.Decide(gate.Key, gate.IsCase ? WorkflowFlowNodes.Kind.Case : WorkflowFlowNodes.Kind.If, gate.If, bodies, picked, Pipes);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or Scriban.Syntax.ScriptRuntimeException)
+            {
+                outcome = null;
+            }
+
+            if (outcome is null)
+            {
+                continue;
+            }
+
+            var runs = outcome.Taken?.Nodes.Contains(readerNodeId!, StringComparer.Ordinal) == true;
+            flowOutcomes.Add(new TemplatePreviewFlowOutcome(gate, outcome.Branch, runs));
+            if (!runs)
+            {
+                applied.Add(gate);
+            }
+        }
+
         return new TemplatePreviewJudgement(
             picked with { SuppressedPrompts = suppressed, InertMacros = inertMacros, InertSnippets = inertSnippets },
             applied,
-            waiting);
+            waiting,
+            flowOutcomes);
     }
 
     /// <summary>What the model is told where <c>macro.&lt;id&gt;.prompt</c> is read — the instruction rendered over the scope, then the mechanics sentence; the renderer's own sentence when the instruction does not render.</summary>
@@ -349,19 +433,29 @@ public static class TemplatePreviewScope
                 : JsonValue.Create(Token(path));
 }
 
-/// <summary>#1205: the kind of gate a preview judges — a node instance's `if`, a macro's own, a standalone snippet's, a folder item's.</summary>
-public enum TemplatePreviewGateKind { Instance, Macro, Snippet, Item }
+/// <summary>#1205: the kind of gate a preview judges — a node instance's `if`, a macro's own, a standalone snippet's, a folder item's; #1236: a flow node's (an if's expression, a case's subject), judged for its branch nodes.</summary>
+public enum TemplatePreviewGateKind { Instance, Macro, Snippet, Item, Flow }
 
 /// <summary>
 /// #1205: one gate a preview may judge — its kind, its owner (the node of an instance, the folder of
 /// an item, else the key), its key (a macro id, a snippet id, &lt;folder&gt;/&lt;item&gt;), its text (empty for
 /// an ungated instance, which holds), and what it reads: the inputs, the nodes, whether it reads the
-/// fan item. A gate is judged only once every read has a pick.
+/// fan item. A gate is judged only once every read has a pick. #1236: a flow gate (owner and key the
+/// flow node) carries the loop it runs inside (null at the top level) and its bodies, so the judge
+/// names the branch taken and whether the reader runs; <c>IsCase</c> says the text is a case subject.
 /// </summary>
-public sealed record TemplatePreviewGate(TemplatePreviewGateKind Kind, string Owner, string Key, string If, IReadOnlySet<string> Inputs, IReadOnlySet<string> Nodes, bool ReadsItem);
+public sealed record TemplatePreviewGate(
+    TemplatePreviewGateKind Kind, string Owner, string Key, string If, IReadOnlySet<string> Inputs, IReadOnlySet<string> Nodes, bool ReadsItem,
+    string? Loop = null, IReadOnlyList<TemplatePreviewBranch>? Bodies = null, bool IsCase = false);
+
+/// <summary>#1236: one body of a flow gate — its label (then, else, branch n), its nodes, its returned node and (a case branch) the values it lists.</summary>
+public sealed record TemplatePreviewBranch(string Label, IReadOnlyList<string> Nodes, string? Ret, IReadOnlyList<string>? Values);
+
+/// <summary>#1236: a flow gate decided for the reader's pick — the branch taken (the record's word, "none" when none) and whether the reader node runs in it.</summary>
+public sealed record TemplatePreviewFlowOutcome(TemplatePreviewGate Gate, string Branch, bool RunsReader);
 
 /// <summary>#1205: a gate waiting on picks — the reads it needs, spelled `input.&lt;id&gt;`, `node.&lt;id&gt;`, `item`.</summary>
 public sealed record TemplatePreviewWaitingGate(TemplatePreviewGate Gate, IReadOnlyList<string> Missing);
 
-/// <summary>#1205: the picked scope with the judged sets, the gates applied (they did not hold) and the gates waiting on picks.</summary>
-public sealed record TemplatePreviewJudgement(TemplateRenderScope Scope, IReadOnlyList<TemplatePreviewGate> Applied, IReadOnlyList<TemplatePreviewWaitingGate> Waiting);
+/// <summary>#1205: the picked scope with the judged sets, the gates applied (they did not hold) and the gates waiting on picks; #1236: the flow gates decided, branch by branch.</summary>
+public sealed record TemplatePreviewJudgement(TemplateRenderScope Scope, IReadOnlyList<TemplatePreviewGate> Applied, IReadOnlyList<TemplatePreviewWaitingGate> Waiting, IReadOnlyList<TemplatePreviewFlowOutcome>? Flows = null);

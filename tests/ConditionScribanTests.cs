@@ -58,4 +58,18 @@ public class ConditionScribanTests
         Assert.Equal(sources["create-typical-trajectory"], sources["create_typical_trajectory"]);
         Assert.Equal(sources["create-patient-trajectory"], sources["create_patient_trajectory"]);
     }
+
+    [Fact]
+    public void AnArrayElementsField_IsItemValueField_InBothSpellings()
+    {
+        // #1236 (v27 design § 1.2): the builder's item:value.<field> is the template's item.value.<field>.
+        Assert.Equal("item.value.kind == \"table\"", Spell("item:value.kind == table"));
+
+        Assert.True(ConditionScriban.TryUnspell("item.value.kind == \"table\"", out var expression, out var error), error);
+        var clause = expression!.SingleClause!;
+        Assert.Equal(("value.kind", "table", true), (clause.ItemField, clause.Literal, clause.IsItemValue));
+
+        Assert.False(ConditionScriban.TryUnspell("item.value.kind.deeper == \"x\"", out _, out var deeper));
+        Assert.Contains("item.value.<field>", deeper);
+    }
 }
