@@ -955,6 +955,34 @@ header.header.app-header {
 	font-size: 0.92rem;
 }
 
+/* #1254: a table a prose node drafted (pipe tables are on in MarkdownPreview) —
+   the rerun-comparison table's look, cells wrapping (a note's indication column
+   is prose), the alignment row's inline text-align honoured. Both preview
+   surfaces: the editor's template preview and the assembled note. */
+.markdown-preview table,
+.note-preview table {
+	width: 100%;
+	margin: 0 0 0.75rem;
+	border-collapse: collapse;
+	font-size: 0.92rem;
+}
+
+.markdown-preview th,
+.markdown-preview td,
+.note-preview th,
+.note-preview td {
+	padding: 0.3rem 0.75rem 0.3rem 0.25rem;
+	border-bottom: 1px solid var(--consultologist-border);
+	text-align: left;
+	vertical-align: top;
+}
+
+.markdown-preview th,
+.note-preview th {
+	color: var(--consultologist-text-muted);
+	font-weight: 600;
+}
+
 .markdown-preview > :first-child {
 	margin-top: 0;
 }
