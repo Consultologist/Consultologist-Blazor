@@ -311,6 +311,31 @@ reads the array's declaration by input id.
 - The desk: the § 3 sentences in the validator's words; "Upgrade to specVersion 27" is a **version
   raise**, no rewrite (§ 7).
 
+**As built (#1236, 2026-10-29).** The editor cannot open a 27 package before the bump (its manifest
+reads use the library's public accepted set), so the 27 panes are built and tested behind a
+test-only seam — `Templates.AuthorsAboveCeiling` widens the accepted set at the three manifest reads
+and the desk's validate (`InternalsVisibleTo` the Web); no banner, since the API refuses 27 until
+the bump; #1237 retires it as #1164 retired #1209's. The flow-in-loop controls (the loop pane's
+if/case choices, the if/case panes' "in loop" picker, the + Node form's loop for an if/case) are
+offered at 27 only, so the 26 panes stay byte-identical. The editor's reader resolves a branch
+node's loop two levels up (`NodeView.LoopOf` through `FlowOf`); the Nodes nav nests two levels. The
+inner if's builder offers the item (a folder's `item:id`; an array input's `item:value.<field>`,
+typed — the builder's spelling gained the element field) and narrows its node operands to top-level
+nodes and the loop's body nodes, never the loop or its own branches; a case inside a loop offers
+`item.value.<enum field>` and reads its values from the input's element. **The preview judges flow
+gates** (decided 2026-10-29): a new `TemplatePreviewGateKind.Flow` — a top-level if/case over the
+picks (the 26 gap closed in passing), one inside a loop over the picked item — and a branch node's
+pane says which branch its flow node takes for this pick and whether the node runs. The upgrade's
+newest rung from 26 is `WorkflowPackageVersionRaise` (specVersion stamped, nothing rewritten);
+the button offers 27 at the bump. **History** (decided 2026-10-29) shows an inner if/case as a
+per-item group from the `branches` map — a taken item as the branch node that returned for it, a
+skipped one dashed with its reason — and the flow tag `per item`; `RecordFlow` walks `in` to the
+`for`; the DAG nests the inner subgraph inside the loop's with the branches tallied on the diamond;
+nothing is pruned for an inner flow. **The consult page** shows a skipped block as a named line in
+the section's place, the rail's section row and an item row read Skipped, the counts count it, and
+`block-skipped` is a live event. Not done: the preview renders no loop element (`{{ for e in
+node.<loop> }}` and `e.skipped` have no preview value — a 26 gap, an issue on the word).
+
 ## 7. Migration 26 → 27
 
 None: 27 only permits what 26 refused. The editor's upgrade and `scripts/migrate-workflow-package.cs
