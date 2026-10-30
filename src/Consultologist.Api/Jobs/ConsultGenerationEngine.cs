@@ -559,6 +559,19 @@ public sealed class ConsultGenerationOrchestrator
                 var allSettled = FanItems(node).All(item =>
                     inner.Settled(node, item["id"], outputs, failedItems.Contains(FailedKey(node, item["id"]))));
 
+                // #1246 (diagnostic, ids and flags only — no text): why an inner flow is not yet node-level complete.
+                if (!allSettled && ConsultInnerFlows.IsInner(node) && !context.IsReplaying)
+                {
+                    var facts = string.Join(" ", FanItems(node).Select(item =>
+                    {
+                        var itemId = item["id"];
+                        var key = ConsultNodeScheduler.InstanceKey(node.Id, itemId);
+                        var ret = inner.RetOf(node.Id, itemId);
+                        return $"{itemId}[decided={inner.Decided(node.Id, itemId)} ret={ret ?? "-"} alias={outputs.ContainsKey(key)} retOut={(ret is null ? "-" : outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(ret, itemId)).ToString())} skipped={inner.SkippedInstances.Contains(key)}]";
+                    }));
+                    logger.LogInformation("Inner flow not settled at the summary pass. JobId={JobId}, Flow={Flow}, ForEach={ForEach}, Items={Items}", context.InstanceId, node.Id, node.ForEach, facts);
+                }
+
                 if (!allSettled)
                 {
                     continue;
