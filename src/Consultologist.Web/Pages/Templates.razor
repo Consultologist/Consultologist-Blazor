@@ -379,10 +379,10 @@
                         <EmptyState Compact Class="editor-nav__empty" Description="No nodes yet." />
                     }
                     @* v26 (#1160): a loop's body nests beneath it in body order; a ≤25 list is flat. *@
-                    @foreach (var (navNode, nested, bodyTag) in NavNodeRows())
+                    @foreach (var (navNode, depth, bodyTag) in NavNodeRows())
                     {
                         <button type="button"
-                                class="editor-nav__item @(nested ? "editor-nav__item--nested" : "") @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
+                                class="editor-nav__item @(depth > 0 ? "editor-nav__item--nested" : "") @(depth > 1 ? "editor-nav__item--nested-2" : "") @(selectedKey == NodeKeyFor(navNode.Id) ? "editor-nav__item--selected" : "")"
                                 @onclick="() => Select(NodeKeyFor(navNode.Id))">
                             <span class="editor-nav__dot">@(NodeHasPending(navNode) ? "●" : "")</span>
                             <span>@navNode.Label</span>
@@ -2437,16 +2437,28 @@
                                     </FluentSelect>
                                 </label>
                             }
-                            else if (At26 && newNodeFormat != IfChoice)
+                            @if (At26 && newNodeFormat != LoopChoice)
                             {
-                                @* v26: a plain node is placed in a body, not given a fan key (#1159: any body). *@
+                                @* v26: a plain node is placed in a body, not given a fan key (#1159: any body).
+                                   v27 (#1236, design § 1.1): an if/case may be born in a loop's body — loops only. *@
+                                var flowBorn = newNodeFormat == IfChoice || newNodeFormat == CaseChoice;
                                 <label class="input-field">
                                     <span>in</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-node-loop" @bind-Value="newNodeLoop" aria-label="New node loop">
-                                        <FluentOption TOption="string" Value="">— not in a body —</FluentOption>
-                                        @foreach (var body in EffectiveBodies)
+                                        <FluentOption TOption="string" Value="">@(flowBorn ? "— not in a loop —" : "— not in a body —")</FluentOption>
+                                        @if (flowBorn)
                                         {
-                                            <FluentOption TOption="string" Value="@body.Key">@body.Label</FluentOption>
+                                            @foreach (var loopChoice in EffectiveLoops)
+                                            {
+                                                <FluentOption TOption="string" Value="@loopChoice.Id">@loopChoice.Label (@loopChoice.Id)</FluentOption>
+                                            }
+                                        }
+                                        else
+                                        {
+                                            @foreach (var body in EffectiveBodies)
+                                            {
+                                                <FluentOption TOption="string" Value="@body.Key">@body.Label</FluentOption>
+                                            }
                                         }
                                     </FluentSelect>
                                 </label>
@@ -2608,6 +2620,11 @@
                                     var bodyNode = EffectiveNodes.FirstOrDefault(n => n.Id == bodyId);
                                     <li class="loop-body__row">
                                         <button type="button" class="snippet-readers__row" title="@($"node '{bodyId}' — open its pane")" @onclick="() => Select(NodeKeyFor(bodyId))">@(bodyNode?.Label ?? bodyId)</button>
+                                        @if (bodyNode is { IsFlow: true } innerFlow)
+                                        {
+                                            @* v27 (#1236, design § 1.1): an if/case in the body — decided once per item; its branches' nodes run under this loop. *@
+                                            <span class="muted-text loop-body__flow">· @(innerFlow.IsIf ? "if" : "case") @(innerFlow.If ?? innerFlow.Case) — per item</span>
+                                        }
                                         @if (selectedLoop.RetNodeId == bodyId)
                                         {
                                             <span class="muted-text loop-body__ret">· returned</span>
@@ -2673,6 +2690,20 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedIf.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedIf, v))" aria-label="If label" />
                                 </label>
+                                <label class="node-field">
+                                    <span>in</span>
+                                    @* v27 (#1236, design § 1.1): an if/case may sit in a loop's body — decided once per item, its branches' nodes running under the loop. *@
+                                    <FluentSelect TOption="string" class="binding-row__select flow-in-loop"
+                                                  Value="@(LoopIdOf(selectedIf.Id) ?? string.Empty)"
+                                                  ValueChanged="@(v => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(selectedIf.Id, string.IsNullOrEmpty(v) ? null : v)))"
+                                                  aria-label="If loop">
+                                        <FluentOption TOption="string" Value="">— not in a loop —</FluentOption>
+                                        @foreach (var loopChoice in EffectiveLoops)
+                                        {
+                                            <FluentOption TOption="string" Value="@loopChoice.Id">@loopChoice.Label (@loopChoice.Id)</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
                             </div>
                         </div>
                         <div class="node-section">
@@ -2726,6 +2757,20 @@
                                 <label class="node-field">
                                     <span>label</span>
                                     <FluentTextField Value="@selectedCase.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedCase, v))" aria-label="Case label" />
+                                </label>
+                                <label class="node-field">
+                                    <span>in</span>
+                                    @* v27 (#1236, design § 1.1): an if/case may sit in a loop's body — decided once per item, its branches' nodes running under the loop. *@
+                                    <FluentSelect TOption="string" class="binding-row__select flow-in-loop"
+                                                  Value="@(LoopIdOf(selectedCase.Id) ?? string.Empty)"
+                                                  ValueChanged="@(v => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(selectedCase.Id, string.IsNullOrEmpty(v) ? null : v)))"
+                                                  aria-label="Case loop">
+                                        <FluentOption TOption="string" Value="">— not in a loop —</FluentOption>
+                                        @foreach (var loopChoice in EffectiveLoops)
+                                        {
+                                            <FluentOption TOption="string" Value="@loopChoice.Id">@loopChoice.Label (@loopChoice.Id)</FluentOption>
+                                        }
+                                    </FluentSelect>
                                 </label>
                                 <label class="node-field">
                                     <span>over</span>
@@ -12660,33 +12705,54 @@
     private IReadOnlyList<string> LoopCollectionOptions => WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, at25: true);
 
     /// <summary>v26: the plain nodes a loop's body may take — the same set any body takes (#1159).</summary>
-    private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) => BodyChoices();
+    /// <summary>v27 (#1236, design § 1.1): a loop's body takes the plain nodes any body takes, and an unplaced if/case — decided once per item (a flow holding a flow the desk refuses by sentence).</summary>
+    private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) =>
+        BodyChoices()
+            .Concat(EffectiveNodes
+                .Where(n => n.IsFlow && !n.IsLoop && BodyKeyOf(n.Id) == null)
+                .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id}, {(n.IsIf ? "if" : "case")})")))
+            .ToList();
 
     /// <summary>
     /// v26: the nav's Nodes rows — every flow node with its bodies nested beneath in body
     /// order (#1159: an if's then and else, a case's branches and else carry a tag so two
     /// bodies read apart), nodes in no body at the top level.
     /// </summary>
-    private IEnumerable<(WorkflowManifestReader.NodeView Node, bool Nested, string? Tag)> NavNodeRows()
+    private IEnumerable<(WorkflowManifestReader.NodeView Node, int Depth, string? Tag)> NavNodeRows()
     {
         if (!At26)
         {
-            foreach (var node in EffectiveNodes) { yield return (node, false, null); }
+            foreach (var node in EffectiveNodes) { yield return (node, 0, null); }
             yield break;
         }
 
-        foreach (var node in EffectiveNodes.Where(n => n.IsFlow || BodyKeyOf(n.Id) == null))
+        // The top level: every node in no body (a flow node is in none at 26; at 27 an
+        // if/case may sit in a loop's body and nests beneath it, its branches a level deeper).
+        foreach (var node in EffectiveNodes.Where(n => BodyKeyOf(n.Id) == null))
         {
-            yield return (node, false, null);
-            if (!node.IsFlow) { continue; }
-            foreach (var body in node.Bodies())
+            yield return (node, 0, null);
+            foreach (var row in NavBodyRows(node, 1))
             {
-                var tag = body.Ref.IsLoop ? null : body.Ref.IsThen ? "then" : body.Ref.IsElse ? "else" : body.Label[(node.Label.Length + 3)..];
-                foreach (var bodyId in body.Nodes)
+                yield return row;
+            }
+        }
+    }
+
+    /// <summary>v26 (#1160): a flow node's bodies nest beneath it with their tags; v27 (#1236, design § 6): one level deeper for an if/case inside a loop.</summary>
+    private IEnumerable<(WorkflowManifestReader.NodeView Node, int Depth, string? Tag)> NavBodyRows(WorkflowManifestReader.NodeView node, int depth)
+    {
+        if (!node.IsFlow) { yield break; }
+        foreach (var body in node.Bodies())
+        {
+            var tag = body.Ref.IsLoop ? null : body.Ref.IsThen ? "then" : body.Ref.IsElse ? "else" : body.Label[(node.Label.Length + 3)..];
+            foreach (var bodyId in body.Nodes)
+            {
+                if (EffectiveNodes.FirstOrDefault(n => n.Id == bodyId) is { } bodyNode)
                 {
-                    if (EffectiveNodes.FirstOrDefault(n => n.Id == bodyId) is { } bodyNode)
+                    yield return (bodyNode, depth, tag ?? (bodyNode.IsIf ? "if" : bodyNode.IsCase ? "case" : null));
+                    foreach (var inner in NavBodyRows(bodyNode, depth + 1))
                     {
-                        yield return (bodyNode, true, tag);
+                        yield return inner;
                     }
                 }
             }
@@ -13935,7 +14001,8 @@
     /// <summary>v26: the nodes that can compose prose — the candidate set behind the picker and "+ Deliverable".</summary>
     private IReadOnlyList<WorkflowManifestReader.NodeView> DeliverableSourceNodes =>
         EffectiveNodes
-            .Where(n => n.IsFlow
+            // v27 (#1236, design § 1.5): an if/case inside a loop has no job-level value — the loop is the source.
+            .Where(n => (n.IsFlow && BodyKeyOf(n.Id) == null)
                 || (n.Aggregate == null && BodyKeyOf(n.Id) == null && n.Format != null
                     && FormatOptions.FirstOrDefault(f => f.Id == n.Format)?.Type == WorkflowInputTypes.Text))
             .ToList();
@@ -14557,8 +14624,8 @@
             Case = caseNode ? newNodeCase : null,
             Branches = caseNode ? new List<FlowBranch>() : null
         });
-        // v26: a plain node born "in" a body joins it (#1159: any body).
-        if (At26 && !flow && newNodeLoop.Length > 0)
+        // v26: a plain node born "in" a body joins it (#1159: any body); v27 (#1236): an if/case born in a loop too.
+        if (At26 && !loop && newNodeLoop.Length > 0)
         {
             PlaceInBody(id, newNodeLoop);
         }
