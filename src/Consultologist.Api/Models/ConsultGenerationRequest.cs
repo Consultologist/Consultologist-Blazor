@@ -647,13 +647,21 @@ public sealed record ConsultNodeDescriptor(
     // copy, the same path at 26) is projected away; a loop row's Count is the
     // settled fan's item count. Null below 26. Appended last, same rule.
     string? Prompt = null,
-    int? Count = null)
+    int? Count = null,
+    // v27 (#1235, design § 2, record storage 9): an if/case INSIDE a loop is
+    // decided once per item — its row carries In (the loop), a ForEach (the
+    // loop's collection, the engine's working field) and this map, item id →
+    // the branch taken ("then" | "else" | "<v1, v2>" | "none"), written as the
+    // items decide; Branch stays null on it (a row never carries both). Null
+    // below 27 and on a top-level flow row. Appended last, same rule.
+    IReadOnlyDictionary<string, string>? Branches = null)
 {
     /// <summary>
     /// v26 (#1156, record storage 8): the row as the served record carries it —
     /// prompt by path, no promptId / forEach / aggregate (a body node's In and
     /// a loop row's Collection say what they said). The entity keeps the working
-    /// fields; the contract is the served record.
+    /// fields; the contract is the served record. v27 (#1235, storage 9): the
+    /// same projection — the 9 row is the 8 row plus an inner flow's Branches.
     /// </summary>
     public ConsultNodeDescriptor AsRecordRowAt8() => this with { PromptId = null, ForEach = null, Aggregate = null };
 }
