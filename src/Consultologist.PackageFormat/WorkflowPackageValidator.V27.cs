@@ -73,7 +73,7 @@ public static partial class WorkflowPackageValidator
             snippets.Scalars.Keys.ToHashSet(StringComparer.Ordinal),
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
             macroIds, macroFolderIds, fan,
-            Bodies: bodies, Deliverables: deliverableIds, Labelled: true,
+            Bodies: bodies, Deliverables: deliverableIds, Labelled: true, SkippedElements: true,
             SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems);
 
         var walk = WorkflowDerivedEdges.WalkAll(

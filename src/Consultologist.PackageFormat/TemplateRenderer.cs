@@ -79,7 +79,11 @@ public sealed record TemplateLoopOutput(
     string RetId,
     IReadOnlyList<TemplateFanItem> Items,
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>> Body,
-    TemplateNodeOutput Output);
+    TemplateNodeOutput Output,
+    // #1235 (v27 design § 1.4): the items an inner if/case skipped by condition —
+    // still elements (the loop is the collection), with `skipped` true, content
+    // and value null, and only the body nodes that ran; absent from the values.
+    IReadOnlySet<string>? Skipped = null);
 
 /// <summary>
 /// The fan item an instance runs for: a snippet fan carries <c>Text</c> (a
@@ -276,22 +280,29 @@ public static class TemplateRenderer
         foreach (var (id, loop) in scope.Loops ?? new Dictionary<string, TemplateLoopOutput>())
         {
             var path = $"{TemplateObjects.Node}.{id}";
+            // #1235 (v27 design § 1.4): a skipped item is an element with `skipped`
+            // true, no content and no value, and only the body nodes that ran for it.
+            var present = loop.Items.Where(item => loop.Skipped?.Contains(item.Id) != true).ToList();
             var elements = loop.Items.Select(item =>
             {
                 var elementPath = $"{path}[{item.Id}]";
-                var ret = loop.Body[loop.RetId][item.Id];
-                var body = loop.Body.ToDictionary(
-                    pair => pair.Key,
-                    pair => (object?)NodeObjectOf(pair.Key, pair.Value[item.Id], $"{elementPath}.{pair.Key}"),
-                    StringComparer.Ordinal);
+                var skipped = loop.Skipped?.Contains(item.Id) == true;
+                var ret = skipped ? null : loop.Body[loop.RetId][item.Id];
+                var body = loop.Body
+                    .Where(pair => pair.Value.ContainsKey(item.Id))
+                    .ToDictionary(
+                        pair => pair.Key,
+                        pair => (object?)NodeObjectOf(pair.Key, pair.Value[item.Id], $"{elementPath}.{pair.Key}"),
+                        StringComparer.Ordinal);
                 return new LoopElement(
                     ItemObject(subject, $"{elementPath}.{TemplateMembers.Item}", item, globals, trace, scope.Labelled),
-                    ret.Text,
+                    ret?.Text,
                     true,
-                    NodeValue(subject, loop.RetId, ret),
-                    body);
+                    ret is null ? null : NodeValue(subject, loop.RetId, ret),
+                    body,
+                    skipped);
             });
-            var values = new ScriptArray(loop.Items.Select(item => NodeValue(subject, loop.RetId, loop.Body[loop.RetId][item.Id])));
+            var values = new ScriptArray(present.Select(item => NodeValue(subject, loop.RetId, loop.Body[loop.RetId][item.Id])));
 
             node[id] = LoopList(() => new ClosedObject(subject, $"{path}[]"), elements, loop.Output.Text, true, values);
         }
@@ -553,7 +564,7 @@ public static class TemplateRenderer
     }
 
     /// <summary>#1154: one element of a loop's list — the fan item, the returned node's content and (when it has one) value, and the body nodes by id.</summary>
-    internal sealed record LoopElement(object Item, object? Content, bool HasValue, object? Value, IReadOnlyDictionary<string, object?> Body);
+    internal sealed record LoopElement(object Item, object? Content, bool HasValue, object? Value, IReadOnlyDictionary<string, object?> Body, bool Skipped = false);
 
     /// <summary>
     /// #1154 (v26 design § 1.3): the loop's list, ONE shape for the validator's
@@ -576,6 +587,10 @@ public static class TemplateRenderer
             {
                 element[TemplateMembers.Value] = e.Value;
             }
+
+            // #1235 (v27 design § 1.4): every element says whether its item was
+            // skipped by condition; the walker admits the member at 27 only.
+            element[TemplateMembers.Skipped] = e.Skipped;
 
             foreach (var (id, member) in e.Body)
             {

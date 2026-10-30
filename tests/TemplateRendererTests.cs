@@ -391,4 +391,26 @@ public class TemplateRendererTests
         // Below 26 the member does not exist.
         Assert.Throws<InvalidOperationException>(() => TemplateRenderer.Render("Prompt 'p'", "{{ macro.closing.instruction }}", Scope(macros: macros)));
     }
+
+    [Fact]
+    public void ALoopWithASkippedItem_RendersEveryElement_WithSkipped_AndContentOverThePresent()
+    {
+        // #1235 (v27 design § 1.4): a skipped element has skipped true, no content and no value, and only the body nodes that ran; the list's value is one per present item.
+        static TemplateNodeOutput Out(string text, string type = "prose") => new(text, type, "x");
+        var loop = new TemplateLoopOutput(
+            "triage",
+            new List<TemplateFanItem> { new("hpi", "HPI", Text: "h"), new("plan", "Plan", Text: "p"), new("exam", "Exam", Text: "e") },
+            new Dictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>>
+            {
+                ["section_notes"] = new Dictionary<string, TemplateNodeOutput> { ["hpi"] = Out("notes h"), ["plan"] = Out("notes p"), ["exam"] = Out("notes e") },
+                ["triage"] = new Dictionary<string, TemplateNodeOutput> { ["hpi"] = Out("drafted h"), ["exam"] = Out("drafted e") },
+            },
+            Out("drafted h\n\ndrafted e"),
+            Skipped: new HashSet<string> { "plan" });
+        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["sections"] = loop.Output }) with { Loops = new Dictionary<string, TemplateLoopOutput> { ["sections"] = loop }, Labelled = true };
+
+        var rendered = Render("{{ for e in node.sections }}{{ e.item.id }}:{{ if e.skipped }}skipped/{{ e.section_notes.content }}{{ else }}{{ e.content }}{{ end }};{{ end }} {{ node.sections | array.size }} {{ node.sections.content }}", scope);
+
+        Assert.Equal("hpi:drafted h;plan:skipped/notes p;exam:drafted e; 3 drafted h\n\ndrafted e", rendered);
+    }
 }

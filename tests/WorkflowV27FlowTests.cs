@@ -191,6 +191,17 @@ public class WorkflowV27FlowTests
     }
 
     [Fact]
+    public void ALoopElement_CarriesSkipped_At27_AndNotAt26()
+    {
+        // #1235 (v27 design § 1.4): e.skipped says whether an inner if/case skipped the item; below 27 the element's set has no such member.
+        const string read = "Assess.\n{{ for e in node.sections }}{{ if e.skipped }}(skipped){{ else }}{{ e.content }}{{ end }}{{ end }}";
+
+        Assert.Empty(Errors(V27Package.With(Triaged, files: files => files["prompts/assessment.md"] = read)));
+        Assert.Contains("Node 'assessment' prompt reads e.skipped, which is not a member (a loop element has item, content, value and the body nodes: section_notes).",
+            V26Package.FlowErrors(m => m, files => files["prompts/assessment.md"] = read));
+    }
+
+    [Fact]
     public void TheOutside_ReadingTheInnerFlow_ReadsTheLoop()
     {
         var errors = Errors(V27Package.With(Triaged, files: files => files["prompts/assessment.md"] = "Assess. {{ node.triage.content }}"));

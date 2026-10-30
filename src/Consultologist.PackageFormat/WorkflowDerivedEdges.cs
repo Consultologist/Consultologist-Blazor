@@ -1321,7 +1321,9 @@ public static class WorkflowDerivedEdges
         var macroFolderItems = labelled ? (macroFolders?.Collections ?? new Dictionary<string, WorkflowDataCollection>()).ToDictionary(e => e.Key, e => (IReadOnlyList<string>)e.Value.Items.Select(i => i.Id).ToList(), StringComparer.Ordinal) : null;
 
         contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, macroFolderIds, fan, Bodies: bodies, Deliverables: deliverableIds, Labelled: labelled,
-            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems);
+            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems,
+            // #1235: at 27 a loop element carries `skipped`.
+            SkippedElements: manifest.SpecVersion >= 27);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {
