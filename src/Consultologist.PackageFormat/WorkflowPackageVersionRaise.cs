@@ -1,16 +1,15 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using Consultologist.PackageFormat;
-
-namespace Consultologist.Web.Services.Workflow;
+namespace Consultologist.PackageFormat;
 
 /// <summary>
 /// v27 (#1236, package-format-v27-design.md § 7): the upgrade from 26 to 27 is a
 /// version raise — 27 only permits what 26 refused, so nothing is rewritten: the
 /// manifest's specVersion moves and every file stays. The editor's upgrade runs
-/// it as the newest rung from 26 on; the library's migrations carry a package
-/// up to 26 before it. The result is the 26 migration's shape so the editor
-/// treats every rung alike.
+/// it as the newest rung from 26 on, and <c>scripts/migrate-workflow-package.cs
+/// --to 27</c> runs it on disk (#1237: one raise, shared, as the 25 → 26 rewrite
+/// is); the library's migrations carry a package up to 26 before it. The result
+/// is the 26 migration's shape so every caller treats every rung alike.
 /// </summary>
 public static class WorkflowPackageVersionRaise
 {

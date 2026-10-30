@@ -4980,21 +4980,10 @@
     /// internal so SpecVersionMirrorTests can prove the mirror still matches
     /// the library's set. Not necessarily runnable: see RunnableSpecVersion.
     /// v26 (#1164): the editor's chain to 26 landed — the ceilings meet again.
+    /// v27 (#1237): the bump — both ceilings move together (the editor's 27 panes
+    /// landed first, #1236, behind a test-only seam the bump retired).
     /// </summary>
-    internal const int NewestSpecVersion = 26;
-
-    /// <summary>
-    /// v27 (#1236; decided 2026-10-29): a test-only seam — the editor authors the
-    /// version above the accepted ceiling (27, built by #1234/#1235) before the
-    /// bump (#1237) lifts the ceiling: the manifest reads and the desk's validate
-    /// accept it. No banner: the API refuses 27 until the bump, so no user opens
-    /// one. Retired at the bump, as #1164 retired #1209's.
-    /// </summary>
-    [Parameter]
-    public bool AuthorsAboveCeiling { get; set; }
-
-    private IReadOnlyList<int> AcceptedSet =>
-        AuthorsAboveCeiling ? PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(NewestSpecVersion + 1).ToList() : PF.WorkflowPackageValidator.AcceptedSpecVersions;
+    internal const int NewestSpecVersion = 27;
 
     /// <summary>
     /// The newest version a bump can STAGE as pending state (specVersionBump).
@@ -5017,8 +5006,9 @@
     /// (#1018) included. The mechanism stays for the next format.
     /// </summary>
     // #1149 ran 26 ahead of the editor (the opposite gap, pinned by name in
-    // SpecVersionMirrorTests until #1164 brought the editor's chain to 26).
-    internal const int RunnableSpecVersion = 26;
+    // SpecVersionMirrorTests until #1164 brought the editor's chain to 26);
+    // #1237 moved both to 27 at once.
+    internal const int RunnableSpecVersion = 27;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -5246,10 +5236,25 @@
         }
 
         // v26 (#1164, design § 13): the 26 rung — the library's rewrite to 26 over the 25 package.
-        // v27 (#1236, design § 7): from 26 on, the newest rung is a version raise — nothing rewritten.
-        var result = EffectiveSpecVersion >= 26
-            ? WorkflowPackageVersionRaise.To(manifestJson, files, NewestSpecVersion)
-            : PF.WorkflowPackageMigration25To26.Migrate(manifestJson, files);
+        string? through26 = null;
+        if (EffectiveSpecVersion < 26)
+        {
+            var result26 = PF.WorkflowPackageMigration25To26.Migrate(manifestJson, files);
+            if (!result26.Succeeded)
+            {
+                Refuse(26, result26.Refusals);
+                return;
+            }
+
+            manifestJson = result26.ManifestJson;
+            files = result26.Files;
+            through26 = string.Join(" ", result26.Notices);
+        }
+
+        // v27 (#1236, design § 7; chained at the bump #1237): from 26 on, the newest
+        // rung is a version raise — nothing rewritten. A package below 26 arrives
+        // here through the rewrite above, so the stamp below is always the raise's.
+        var result = PF.WorkflowPackageVersionRaise.To(manifestJson, files, NewestSpecVersion);
 
         if (!result.Succeeded)
         {
@@ -5277,6 +5282,7 @@
         migrationNotice = $"Migrated to specVersion {NewestSpecVersion}. "
             + (through24 is null ? string.Empty : $"Through 24: {through24} ")
             + (through25 is null ? string.Empty : $"Through 25: {through25} ")
+            + (through26 is null ? string.Empty : $"Through 26: {through26} ")
             + string.Join(" ", result.Notices);
         upgradeRefusal = null;
         selectedKey = GraphKey;
@@ -5357,7 +5363,8 @@
     private int? upgradedFrom;
 
     // v26 (#1164): 2 — a stored upgrade to 25 from before the chain reached 26 is not restored as a 26 one.
-    private const int UpgradeDraftVersion = 2;
+    // v27 (#1237): 3 — likewise a stored upgrade to 26 is not restored as a 27 one.
+    private const int UpgradeDraftVersion = 3;
     private const string UpgradeKeyPrefix = "workflow-editor-upgrade:";
 
     private sealed record UpgradeDraft(int Version, int FromSpecVersion, string Name, string PackageVersion, string ManifestJson, Dictionary<string, string> Files, string? Notice);
@@ -5475,7 +5482,7 @@
     // #1149: the rung this editor's one button reaches — the newest format it
     // can author AND the engine runs. Equal to both ceilings when they meet;
     // the authoring ceiling while the engine runs ahead (26 since #1149, the
-    // editor's chain to it #1164's); the runnable ceiling while the registry
+    // editor's chain to it #1164's; 27 moved both at once, #1237); the runnable ceiling while the registry
     // accepts ahead of the engine (#492's gap, the second button below).
     private static int UpgradeTarget => Math.Min(RunnableSpecVersion, NewestSpecVersion);
 
@@ -5776,7 +5783,7 @@
                 IReadOnlyList<PF.TemplatePreviewGate> gates = Array.Empty<PF.TemplatePreviewGate>();
                 try
                 {
-                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
+                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
                     scope = PF.TemplatePreviewScope.Tokens(manifest, AssembleFiles(), EditorPackageWalk.CatalogFrom(formatsCatalog));
                     // v26 (#1205): the gates ride the same tick as the scope.
                     gates = PackageWalk is { } walk ? PF.TemplatePreviewScope.Gates(manifest, walk) : Array.Empty<PF.TemplatePreviewGate>();
@@ -10851,7 +10858,7 @@
         PF.WorkflowPackageManifest manifest;
         try
         {
-            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
+            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -10863,9 +10870,7 @@
             AssembleFiles(),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorPackageWalk.CatalogFrom(formatsCatalog),
-            // #1236: the seam's set — the public entry's until the bump.
-            AcceptedSet);
+            EditorPackageWalk.CatalogFrom(formatsCatalog));
 
         var errors = formatsCatalog is null
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
@@ -17874,7 +17879,7 @@
             ImportedPackage built;
             try
             {
-                built = BuildImportedContent(bytes, AcceptedSet);
+                built = BuildImportedContent(bytes);
             }
             catch (JsonException ex)
             {
@@ -17940,7 +17945,7 @@
     // JsonException (bad manifest JSON), or the manifest reader's own exception.
     private sealed record ImportedPackage(WorkflowPackageContentResponse Content, PF.WorkflowPackageManifest Manifest, Dictionary<string, string> Files);
 
-    private static ImportedPackage BuildImportedContent(byte[] zipBytes, IReadOnlyList<int> accepted)
+    private static ImportedPackage BuildImportedContent(byte[] zipBytes)
     {
         var files = new Dictionary<string, string>(PF.WorkflowPackageArchive.Unzip(zipBytes), StringComparer.Ordinal);
 
@@ -17951,7 +17956,7 @@
 
         files.Remove("manifest.json");
 
-        var manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", accepted);
+        var manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
         var manifestElement = JsonDocument.Parse(manifestText).RootElement.Clone();
         var content = new WorkflowPackageContentResponse(manifest.Name, manifest.Version, manifest.SpecVersion, manifestElement, files);
         return new ImportedPackage(content, manifest, files);
@@ -17962,7 +17967,7 @@
     // corrupt stored import falls back to the registry rather than wedging.
     private void ApplyStoredImport(ImportDraft draft)
     {
-        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64), AcceptedSet);
+        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64));
         content = built.Content;
         importZipBase64 = draft.ZipBase64;
         editingRef = null;
