@@ -44,6 +44,12 @@ internal static class ConsultRenderPayload
             var read = nodesById.GetValueOrDefault(readId)
                 ?? throw new InvalidOperationException($"Node '{node.Id}' reads node '{readId}', which the job does not carry.");
             var key = ConsultNodeScheduler.InstanceKey(readId, read.ForEach is null ? null : item?["id"]);
+            // v27 (#1235, design § 1.4): an inner if/case skipped for this item — the read is omitted, the render reads null.
+            if (skipped?.Contains(key) == true)
+            {
+                continue;
+            }
+
             var output = outputs.GetValueOrDefault(key)
                 ?? throw new InvalidOperationException($"Node '{node.Id}' reads node '{readId}' ('{key}'), whose output the orchestrator does not hold.");
 
@@ -138,7 +144,10 @@ internal static class ConsultRenderPayload
         ConsultNodeDescriptor node,
         IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
         IReadOnlyDictionary<string, NodeRunResult> outputs,
-        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collections)
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collections,
+        // v27 (#1235, design § 1.4): the instance keys (flow:item) an inner if/case
+        // skipped by condition — those items are elements with no returned text.
+        IReadOnlySet<string>? skipped = null)
     {
         Dictionary<string, ConsultLoopPayload>? loops = null;
 
@@ -151,30 +160,75 @@ internal static class ConsultRenderPayload
 
             var items = collections?.GetValueOrDefault(WorkflowFanSources.CollectionIdOf(collection))
                 ?? throw new InvalidOperationException($"Node '{node.Id}' reads loop '{loop.Id}' over '{collection}', which the job snapshot does not carry.");
+            var skippedItems = items.Select(item => item["id"]).Where(itemId => skipped?.Contains(ConsultNodeScheduler.InstanceKey(ret, itemId)) == true).ToList();
             var texts = (loop.Body ?? Array.Empty<string>()).ToDictionary(
                 bodyId => bodyId,
-                bodyId => (IReadOnlyDictionary<string, string>)items.ToDictionary(
-                    item => item["id"],
-                    item => outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(bodyId, item["id"])) is { } output
-                        ? output.Classification ?? output.RawOutput
-                        : throw new InvalidOperationException($"Node '{node.Id}' reads loop '{loop.Id}', whose body node '{bodyId}' has no output for item '{item["id"]}'."),
-                    StringComparer.Ordinal),
+                bodyId =>
+                {
+                    // v27 (#1235): an inner flow node and its branch nodes have outputs for
+                    // the items they ran only (the alias for a taken item); a skipped item
+                    // has none for the returned node. Every other absence is an engine fault.
+                    var body = nodesById.GetValueOrDefault(bodyId);
+                    var sparse = body is null || body.Kind is not null || !string.Equals(body.In, loop.Id, StringComparison.Ordinal);
+                    var perItem = new Dictionary<string, string>(StringComparer.Ordinal);
+
+                    foreach (var item in items)
+                    {
+                        if (outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(bodyId, item["id"])) is { } output)
+                        {
+                            perItem[item["id"]] = output.Classification ?? output.RawOutput;
+                        }
+                        else if (!sparse && !skippedItems.Contains(item["id"]))
+                        {
+                            throw new InvalidOperationException($"Node '{node.Id}' reads loop '{loop.Id}', whose body node '{bodyId}' has no output for item '{item["id"]}'.");
+                        }
+                    }
+
+                    return (IReadOnlyDictionary<string, string>)perItem;
+                },
                 StringComparer.Ordinal);
 
             loops ??= new Dictionary<string, ConsultLoopPayload>(StringComparer.Ordinal);
-            loops[readId] = new ConsultLoopPayload(collection, ret, items, texts);
+            loops[readId] = new ConsultLoopPayload(collection, ret, items, texts, skippedItems.Count > 0 ? skippedItems : null);
         }
 
         return loops;
     }
 
-    /// <summary>v26 (#1154): the returned node of every flow node this node reads — the alias types as it. Null when it reads none.</summary>
-    public static IReadOnlyDictionary<string, string>? FlowRetsFor(ConsultNodeDescriptor node, IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById)
+    /// <summary>
+    /// v26 (#1154): the returned node of every flow node this node reads — the
+    /// alias types as it. v27 (#1235): an inner if/case has a returned node PER
+    /// ITEM (the taken branch's) — keyed <c>flow:item</c>, for the flows this node
+    /// reads directly and for those in the body of a loop it reads, so a body
+    /// node's read of the flow and a loop element's member type by the item's
+    /// branch. Null when it reads none.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string>? FlowRetsFor(
+        ConsultNodeDescriptor node,
+        IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
+        IReadOnlyDictionary<string, IReadOnlyDictionary<string, string>>? itemRets = null)
     {
         var rets = (node.Reads ?? Array.Empty<string>())
             .Select(readId => (readId, nodesById.GetValueOrDefault(readId)))
             .Where(pair => pair.Item2 is { Kind: not null, Ret: not null })
             .ToDictionary(pair => pair.readId, pair => pair.Item2!.Ret!, StringComparer.Ordinal);
+
+        if (itemRets is { Count: > 0 })
+        {
+            var flows = (node.Reads ?? Array.Empty<string>())
+                .SelectMany(readId => nodesById.GetValueOrDefault(readId) is { Kind: ConsultNodeFlows.For, Body: { } body } ? body.Append(readId) : new[] { readId })
+                .Where(itemRets.ContainsKey)
+                .Distinct(StringComparer.Ordinal);
+
+            foreach (var flowId in flows)
+            {
+                foreach (var (itemId, ret) in itemRets[flowId])
+                {
+                    rets[ConsultNodeScheduler.InstanceKey(flowId, itemId)] = ret;
+                }
+            }
+        }
+
         return rets.Count > 0 ? rets : null;
     }
 
@@ -208,14 +262,18 @@ internal static class ConsultRenderPayload
             .DistinctBy(input => input.Id, StringComparer.Ordinal)
             .ToDictionary(input => input.Id, StringComparer.Ordinal);
 
-        // v26 (#1154): a flow node's output types as its returned node's.
-        TemplateNodeOutput OutputOf(string id, string text) =>
+        // v26 (#1154): a flow node's output types as its returned node's. v27
+        // (#1235): an inner if/case's as the branch it took for the item.
+        TemplateNodeOutput OutputOf(string id, string text, string? itemId = null) =>
             new(
                 text,
-                FormatTypeOf(package, nodesById.GetValueOrDefault(flowRets?.GetValueOrDefault(id) ?? id)),
+                FormatTypeOf(package, nodesById.GetValueOrDefault(
+                    (itemId is null ? null : flowRets?.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(id, itemId)))
+                    ?? flowRets?.GetValueOrDefault(id)
+                    ?? id)),
                 WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(id, id));
 
-        var nodes = nodeTexts.ToDictionary(pair => pair.Key, pair => OutputOf(pair.Key, pair.Value), StringComparer.Ordinal);
+        var nodes = nodeTexts.ToDictionary(pair => pair.Key, pair => OutputOf(pair.Key, pair.Value, item?.GetValueOrDefault("id")), StringComparer.Ordinal);
 
         var folderItems = (folders ?? new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>())
             .ToDictionary(
@@ -257,12 +315,14 @@ internal static class ConsultRenderPayload
                     body => body.Key,
                     body => (IReadOnlyDictionary<string, TemplateNodeOutput>)body.Value.ToDictionary(
                         perItem => perItem.Key,
-                        perItem => OutputOf(body.Key, perItem.Value),
+                        perItem => OutputOf(body.Key, perItem.Value, perItem.Key),
                         StringComparer.Ordinal),
                     StringComparer.Ordinal),
                 nodes.TryGetValue(pair.Key, out var composed)
                     ? composed
-                    : throw new InvalidOperationException($"The payload carries loop '{pair.Key}' but not its composed text.")),
+                    : throw new InvalidOperationException($"The payload carries loop '{pair.Key}' but not its composed text."),
+                // v27 (#1235): the items skipped by condition.
+                pair.Value.Skipped is { Count: > 0 } skippedItems ? skippedItems.ToHashSet(StringComparer.Ordinal) : null),
             StringComparer.Ordinal);
 
         // v26 (#1157, design § 5): a macro's label and instruction are its

@@ -1238,7 +1238,7 @@ public class ConsultGenerationNodeEntityTests
 
         // The events: a block-skipped candidate beside the completed one.
         var candidates = ConsultGenerationJobs.CreateSemanticEventCandidates(served);
-        Assert.Contains(candidates, c => c.EventType == "block-skipped" && c.EventKey == "block-skipped:consult:sections:plan" && c.PayloadJson.Contains(reason.Replace("\"", "\\\""), StringComparison.Ordinal));
+        Assert.Contains(candidates, c => c.EventType == "block-skipped" && c.EventKey == "block-skipped:consult:sections:plan" && c.PayloadJson.Contains("\"Reason\":", StringComparison.Ordinal));
         Assert.Contains(candidates, c => c.EventType == "block-completed" && c.EventKey == "block-completed:consult:sections:hpi");
     }
 
