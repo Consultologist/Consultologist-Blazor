@@ -2437,7 +2437,7 @@
                                     </FluentSelect>
                                 </label>
                             }
-                            @if (At26 && newNodeFormat != LoopChoice)
+                            @if (At26 && newNodeFormat != LoopChoice && (At27 || (newNodeFormat != IfChoice && newNodeFormat != CaseChoice)))
                             {
                                 @* v26: a plain node is placed in a body, not given a fan key (#1159: any body).
                                    v27 (#1236, design § 1.1): an if/case may be born in a loop's body — loops only. *@
@@ -2690,6 +2690,8 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedIf.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedIf, v))" aria-label="If label" />
                                 </label>
+                                @if (At27)
+                                {
                                 <label class="node-field">
                                     <span>in</span>
                                     @* v27 (#1236, design § 1.1): an if/case may sit in a loop's body — decided once per item, its branches' nodes running under the loop. *@
@@ -2704,6 +2706,7 @@
                                         }
                                     </FluentSelect>
                                 </label>
+                                }
                             </div>
                         </div>
                         <div class="node-section">
@@ -2758,6 +2761,8 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedCase.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedCase, v))" aria-label="Case label" />
                                 </label>
+                                @if (At27)
+                                {
                                 <label class="node-field">
                                     <span>in</span>
                                     @* v27 (#1236, design § 1.1): an if/case may sit in a loop's body — decided once per item, its branches' nodes running under the loop. *@
@@ -2772,6 +2777,7 @@
                                         }
                                     </FluentSelect>
                                 </label>
+                                }
                                 <label class="node-field">
                                     <span>over</span>
                                     <FluentSelect TOption="string" class="binding-row__select case-subject"
@@ -12727,6 +12733,9 @@
 
     private bool At26 => EffectiveSpecVersion >= 26;
 
+    /// <summary>v27 (#1236): the panes a flow node inside a loop needs — offered at 27 only, so the 26 panes stay byte-identical below it.</summary>
+    private bool At27 => EffectiveSpecVersion >= 27;
+
     /// <summary>v26: the loops among the effective nodes.</summary>
     private IReadOnlyList<WorkflowManifestReader.NodeView> EffectiveLoops =>
         At26 ? EffectiveNodes.Where(n => n.IsLoop).ToList() : Array.Empty<WorkflowManifestReader.NodeView>();
@@ -12742,7 +12751,7 @@
     private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) =>
         BodyChoices()
             .Concat(EffectiveNodes
-                .Where(n => n.IsFlow && !n.IsLoop && BodyKeyOf(n.Id) == null)
+                .Where(n => At27 && n.IsFlow && !n.IsLoop && BodyKeyOf(n.Id) == null)
                 .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id}, {(n.IsIf ? "if" : "case")})")))
             .ToList();
 

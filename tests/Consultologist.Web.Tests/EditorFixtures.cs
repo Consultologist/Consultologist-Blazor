@@ -1066,4 +1066,93 @@ public static class EditorFixtures
             .Replace("{{ for m in node.meds.value.medications }}- {{ m.name }}\n{{ end }}", "{{ node.route.content }}");
         return new(at26.Name, at26.Version, 26, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
     }
+
+    /// <summary>
+    /// v27 (#1236): the V26 fixture at specVersion 27 (a version raise, § 7) with an if `triage`
+    /// — then [patient_draft], else [table_draft] over the item's id. In the loop (the default)
+    /// the loop `sections` lists it and returns it, and patient_draft reads the loop's
+    /// section_notes one level up; at the top level (inLoop: false) the deliverable sources it
+    /// and the branches read the inputs, so the loop pane's add may offer it.
+    /// </summary>
+    public static WorkflowPackageContentResponse V27Flow(bool inLoop = true)
+    {
+        var at26 = V26();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(at26.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 27;
+        var nodes = root["nodes"]!.AsArray();
+        var loop = nodes.First(n => n!["id"]!.GetValue<string>() == "sections")!.AsObject();
+        var format = nodes.First(n => n!["id"]!.GetValue<string>() == "section_notes")!["format"]!.GetValue<string>();
+        var at = nodes.IndexOf(loop);
+        nodes.Insert(at, new System.Text.Json.Nodes.JsonObject { ["id"] = "patient_draft", ["label"] = "Patient draft", ["prompt"] = "prompts/patient.md", ["format"] = format });
+        nodes.Insert(at + 1, new System.Text.Json.Nodes.JsonObject { ["id"] = "table_draft", ["label"] = "Table draft", ["prompt"] = "prompts/table.md", ["format"] = format });
+        nodes.Insert(at + 2, new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "triage",
+            ["label"] = "Triage",
+            ["if"] = inLoop ? "item.id == \"hpi\"" : "input.kind == \"new\"",
+            ["then"] = new System.Text.Json.Nodes.JsonObject { ["nodes"] = new System.Text.Json.Nodes.JsonArray("patient_draft"), ["ret"] = "node.patient_draft" },
+            ["else"] = new System.Text.Json.Nodes.JsonObject { ["nodes"] = new System.Text.Json.Nodes.JsonArray("table_draft"), ["ret"] = "node.table_draft" },
+        });
+        var files = new Dictionary<string, string>(at26.Files, StringComparer.Ordinal);
+        if (inLoop)
+        {
+            loop["nodes"]!.AsArray().Add("triage");
+            loop["ret"] = "node.triage";
+            files["prompts/patient.md"] = "Patient {{ item.label }}: {{ node.section_notes.content }}";
+            files["prompts/table.md"] = "Table of {{ item.content }}.";
+        }
+        else
+        {
+            root["deliverables"]![0]!["sources"]!.AsArray().Add("node.triage");
+            files["prompts/patient.md"] = "Patient view of {{ input.notes }}.";
+            files["prompts/table.md"] = "Table of {{ input.notes }}.";
+        }
+
+        return new(at26.Name, at26.Version, 27, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
+    }
+
+    /// <summary>
+    /// v27 (#1236): the V26 fixture at 27 with a second loop `topic_sections` over an array
+    /// input `topics` of objects (a `title` text, a `kind` enum) whose body is a case `route`
+    /// switching on item.value.kind — narrative → plan_section, table → letter_section — returned
+    /// by the loop and sourced by the deliverable.
+    /// </summary>
+    public static WorkflowPackageContentResponse V27Route()
+    {
+        var at26 = V26();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(at26.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 27;
+        root["inputs"]!.AsArray().Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "topics",
+            ["label"] = "Topics",
+            ["required"] = false,
+            ["type"] = "array",
+            ["items"] = "object",
+            ["fields"] = new System.Text.Json.Nodes.JsonArray(
+                new System.Text.Json.Nodes.JsonObject { ["id"] = "title", ["label"] = "Title", ["required"] = true },
+                new System.Text.Json.Nodes.JsonObject { ["id"] = "kind", ["label"] = "Kind", ["required"] = true, ["type"] = "enum", ["values"] = new System.Text.Json.Nodes.JsonArray("narrative", "table") }),
+        });
+        var nodes = root["nodes"]!.AsArray();
+        var format = nodes.First(n => n!["id"]!.GetValue<string>() == "section_notes")!["format"]!.GetValue<string>();
+        nodes.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = "plan_section", ["label"] = "Plan section", ["prompt"] = "prompts/plan_section.md", ["format"] = format });
+        nodes.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = "letter_section", ["label"] = "Letter section", ["prompt"] = "prompts/letter_section.md", ["format"] = format });
+        nodes.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "route",
+            ["label"] = "Route",
+            ["case"] = "item.value.kind",
+            ["branches"] = new System.Text.Json.Nodes.JsonArray(
+                new System.Text.Json.Nodes.JsonObject { ["when"] = new System.Text.Json.Nodes.JsonArray("narrative"), ["nodes"] = new System.Text.Json.Nodes.JsonArray("plan_section"), ["ret"] = "node.plan_section" },
+                new System.Text.Json.Nodes.JsonObject { ["when"] = new System.Text.Json.Nodes.JsonArray("table"), ["nodes"] = new System.Text.Json.Nodes.JsonArray("letter_section"), ["ret"] = "node.letter_section" }),
+        });
+        nodes.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = "topic_sections", ["label"] = "Topic sections", ["for"] = "item in input.topics", ["nodes"] = new System.Text.Json.Nodes.JsonArray("route"), ["ret"] = "node.route" });
+        root["deliverables"]![0]!["sources"]!.AsArray().Add("node.topic_sections");
+        var files = new Dictionary<string, string>(at26.Files, StringComparer.Ordinal)
+        {
+            ["prompts/plan_section.md"] = "Plan for {{ item.value.title }}.",
+            ["prompts/letter_section.md"] = "Letter about {{ item.value.title }}.",
+        };
+        return new(at26.Name, at26.Version, 27, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
+    }
 }
