@@ -59,6 +59,16 @@ internal sealed record ConsultConditionScope(
             _inert = null,
         };
 
+    /// <summary>
+    /// v27 (#1235, design § 1.2): the scope with a loop's fan item in hand — the
+    /// engine's item dictionary (a folder item's id, label and content; an input
+    /// fan's id, name and value) under the loop's collection, for an inner
+    /// if/case decided once per item (item.*, inputs, the earlier body nodes in
+    /// NodeTexts, the facts).
+    /// </summary>
+    public ConsultConditionScope WithFanItem(string collection, IReadOnlyDictionary<string, string> item) =>
+        this with { Item = item, ItemFan = collection, _scope = null, _inert = null };
+
     public static string Reason(string when) => WorkflowConditionAt25.Reason(when);
 
     /// <summary>The scope with the folders settled — folder items are judged over a folder-less scope first (their whens read inputs only), then the fans and the gating whens see the settled set.</summary>

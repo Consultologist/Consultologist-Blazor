@@ -199,6 +199,14 @@ internal static class ConsultRenderPayload
         var manifest = package.Manifest;
         var nodesById = (package.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
         var inputsById = WorkflowVariableDeclarations.For(manifest);
+        // v27 (#1235): an input fan's element is typed by the ARRAY's declaration,
+        // by input id — the typed-variables map above is keyed by ≤24 binding
+        // variables and holds nothing at 25+, so item.value of an array of
+        // objects rendered as its carrier JSON where the validator typed its
+        // fields (a 26 loop over input.<array> read item.value.<field> as null).
+        var inputDeclarations = (manifest.Inputs ?? new List<WorkflowInputSpec>())
+            .DistinctBy(input => input.Id, StringComparer.Ordinal)
+            .ToDictionary(input => input.Id, StringComparer.Ordinal);
 
         // v26 (#1154): a flow node's output types as its returned node's.
         TemplateNodeOutput OutputOf(string id, string text) =>
@@ -229,7 +237,7 @@ internal static class ConsultRenderPayload
 
             return WorkflowInputFans.IsInputFan(fan)
                 ? new TemplateFanItem(id, name, Value: fanned.GetValueOrDefault("value", string.Empty),
-                    Element: inputsById.TryGetValue(WorkflowInputFans.InputIdOf(fan), out var declaration)
+                    Element: inputDeclarations.TryGetValue(WorkflowInputFans.InputIdOf(fan), out var declaration)
                         ? WorkflowDeclarationNode.Of(declaration).Items
                         : null)
                 : new TemplateFanItem(id, name, Text: fanned.GetValueOrDefault("content", string.Empty));

@@ -2120,6 +2120,10 @@ public static class ConsultGenerationActivityNames
     // v25 (B8 #1027, design § 5.1): a deliverable's prepend/append macros
     // rendered over the job's scope, in an activity like every 25 template.
     public const string RenderDeliverableMacros = "render-deliverable-macros";
+    // v27 (#1235, design § 1.3, § 5): an if/case inside a loop decided once per
+    // item, in an activity over the item's scope — the orchestrator stays
+    // deterministic and reads the branch back on replay.
+    public const string DecideFlowItem = "decide-flow-item";
 }
 
 public static class ConsultGenerationItemSteps
