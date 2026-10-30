@@ -4932,6 +4932,19 @@
     internal const int NewestSpecVersion = 26;
 
     /// <summary>
+    /// v27 (#1236; decided 2026-10-29): a test-only seam — the editor authors the
+    /// version above the accepted ceiling (27, built by #1234/#1235) before the
+    /// bump (#1237) lifts the ceiling: the manifest reads and the desk's validate
+    /// accept it. No banner: the API refuses 27 until the bump, so no user opens
+    /// one. Retired at the bump, as #1164 retired #1209's.
+    /// </summary>
+    [Parameter]
+    public bool AuthorsAboveCeiling { get; set; }
+
+    private IReadOnlyList<int> AcceptedSet =>
+        AuthorsAboveCeiling ? PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(NewestSpecVersion + 1).ToList() : PF.WorkflowPackageValidator.AcceptedSpecVersions;
+
+    /// <summary>
     /// The newest version a bump can STAGE as pending state (specVersionBump).
     /// From 25 the upgrade is the § 14 rewrite — the whole package replaced,
     /// never a staged bump (C6 #1012) — so the toolbar's one button chains: a
@@ -5181,7 +5194,10 @@
         }
 
         // v26 (#1164, design § 13): the 26 rung — the library's rewrite to 26 over the 25 package.
-        var result = PF.WorkflowPackageMigration25To26.Migrate(manifestJson, files);
+        // v27 (#1236, design § 7): from 26 on, the newest rung is a version raise — nothing rewritten.
+        var result = EffectiveSpecVersion >= 26
+            ? WorkflowPackageVersionRaise.To(manifestJson, files, NewestSpecVersion)
+            : PF.WorkflowPackageMigration25To26.Migrate(manifestJson, files);
 
         if (!result.Succeeded)
         {
@@ -5708,7 +5724,7 @@
                 IReadOnlyList<PF.TemplatePreviewGate> gates = Array.Empty<PF.TemplatePreviewGate>();
                 try
                 {
-                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
                     scope = PF.TemplatePreviewScope.Tokens(manifest, AssembleFiles(), EditorPackageWalk.CatalogFrom(formatsCatalog));
                     // v26 (#1205): the gates ride the same tick as the scope.
                     gates = PackageWalk is { } walk ? PF.TemplatePreviewScope.Gates(manifest, walk) : Array.Empty<PF.TemplatePreviewGate>();
@@ -10761,7 +10777,7 @@
         PF.WorkflowPackageManifest manifest;
         try
         {
-            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -10773,7 +10789,9 @@
             AssembleFiles(),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorPackageWalk.CatalogFrom(formatsCatalog));
+            EditorPackageWalk.CatalogFrom(formatsCatalog),
+            // #1236: the seam's set — the public entry's until the bump.
+            AcceptedSet);
 
         var errors = formatsCatalog is null
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
@@ -17680,7 +17698,7 @@
             ImportedPackage built;
             try
             {
-                built = BuildImportedContent(bytes);
+                built = BuildImportedContent(bytes, AcceptedSet);
             }
             catch (JsonException ex)
             {
@@ -17746,7 +17764,7 @@
     // JsonException (bad manifest JSON), or the manifest reader's own exception.
     private sealed record ImportedPackage(WorkflowPackageContentResponse Content, PF.WorkflowPackageManifest Manifest, Dictionary<string, string> Files);
 
-    private static ImportedPackage BuildImportedContent(byte[] zipBytes)
+    private static ImportedPackage BuildImportedContent(byte[] zipBytes, IReadOnlyList<int> accepted)
     {
         var files = new Dictionary<string, string>(PF.WorkflowPackageArchive.Unzip(zipBytes), StringComparer.Ordinal);
 
@@ -17757,7 +17775,7 @@
 
         files.Remove("manifest.json");
 
-        var manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+        var manifest = PF.WorkflowPackageManifestJson.Read(manifestText, "the imported package", accepted);
         var manifestElement = JsonDocument.Parse(manifestText).RootElement.Clone();
         var content = new WorkflowPackageContentResponse(manifest.Name, manifest.Version, manifest.SpecVersion, manifestElement, files);
         return new ImportedPackage(content, manifest, files);
@@ -17768,7 +17786,7 @@
     // corrupt stored import falls back to the registry rather than wedging.
     private void ApplyStoredImport(ImportDraft draft)
     {
-        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64));
+        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64), AcceptedSet);
         content = built.Content;
         importZipBase64 = draft.ZipBase64;
         editingRef = null;
