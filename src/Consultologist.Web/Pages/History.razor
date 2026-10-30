@@ -848,10 +848,15 @@
                                                                 </summary>
                                                                 @foreach (var (itemId, entry) in group.Items)
                                                                 {
-                                                                    <div class="node-row node-row--item">
+                                                                    <div class="node-row node-row--item @(entry.Status == "Skipped" ? "node-row--skipped" : "")">
                                                                         <span class="node-row__chevron" aria-hidden="true"></span>
                                                                         <span class="node-row__status @StatusCss(entry.Status)">@StatusGlyph(entry.Status)</span>
                                                                         <span class="node-row__label">@itemId</span>
+                                                                        @* v27 (#1236, storage 9): the branch an inner if/case took for the item, or why it skipped it. *@
+                                                                        @if (group.ItemTags?.GetValueOrDefault(itemId) is { } itemTag)
+                                                                        {
+                                                                            <span class="node-row__flow muted-text" data-item-branch="@itemTag">· @itemTag</span>
+                                                                        }
                                                                         @* #980: an item stamped by the engine names its own hash + agent;
                                                                            an unstamped one (a record from before) reads the summary row's. *@
                                                                         @UnattestedBadge(group.Descriptor, entry.CustomSchemaHash != null || entry.CustomAgent != null ? entry : (group.NodeLevel ?? entry))
@@ -1927,6 +1932,8 @@
     {
         "Completed" => "node-status--success",
         "Failed" => "node-status--failure",
+        // v27 (#1236, record storage 9): skipped by condition — a named state.
+        "Skipped" => "node-status--skipped",
         _ => "node-status--muted"
     };
 
@@ -2041,7 +2048,10 @@
         descriptor.Kind == Consultologist.Web.Services.Provenance.RecordFlow.Loop
             ? $"for item in {descriptor.Collection}{(descriptor.Count is { } count ? $" ({count})" : string.Empty)}"
             : Consultologist.Web.Services.Provenance.RecordFlow.IsBranching(descriptor)
-                ? $"{descriptor.Kind} {descriptor.Expression} · branch: {Consultologist.Web.Services.Provenance.RecordFlow.BranchText(descriptor)}"
+                // v27 (#1236, storage 9): an if/case inside a loop decides per item — the item rows carry the branches.
+                ? Consultologist.Web.Services.Provenance.RecordFlow.IsInner(descriptor, detail.Nodes)
+                    ? $"{descriptor.Kind} {descriptor.Expression} · per item"
+                    : $"{descriptor.Kind} {descriptor.Expression} · branch: {Consultologist.Web.Services.Provenance.RecordFlow.BranchText(descriptor)}"
                 : descriptor.In is { } loopId ? $"in {loopId}" : null;
 
     private static RenderFragment FlowTagSpan(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) => builder =>
@@ -2078,7 +2088,10 @@
         ConsultGenerationNodeDescriptor Descriptor,
         ConsultGenerationNodeStatus? NodeLevel,
         IReadOnlyList<(string ItemId, ConsultGenerationNodeStatus Entry)> Items,
-        IReadOnlySet<string> ConvergedOutputs);
+        IReadOnlySet<string> ConvergedOutputs,
+        // v27 (#1236, storage 9): an inner if/case's item rows carry a tag — the branch taken
+        // and the node that returned, or "skipped — <reason>".
+        IReadOnlyDictionary<string, string>? ItemTags = null);
 
     // The chain map keys are "nodeId" (node level) and "nodeId:itemId" (per item);
     // groups follow the Nodes descriptor order — manifest order. Identical
@@ -2095,6 +2108,35 @@
         foreach (var descriptor in detail.Nodes)
         {
             detail.NodeOutputs.TryGetValue(descriptor.Id, out var nodeLevel);
+
+            // v27 (#1236, storage 9; decided 2026-10-29): an if/case inside a loop is a group
+            // of its items from its branches map — a taken item reads as the branch node
+            // that returned for it (its row), a skipped one as the flow's own Skipped row.
+            if (Consultologist.Web.Services.Provenance.RecordFlow.IsInner(descriptor, detail.Nodes) && descriptor.Branches is { Count: > 0 } branches)
+            {
+                var tags = new Dictionary<string, string>(StringComparer.Ordinal);
+                var perItem = new List<(string ItemId, ConsultGenerationNodeStatus Entry)>();
+                foreach (var (itemId, branch) in branches)
+                {
+                    if (branch == "none")
+                    {
+                        var skipped = detail.NodeOutputs.GetValueOrDefault($"{descriptor.Id}:{itemId}")
+                            ?? new ConsultGenerationNodeStatus(descriptor.Id, descriptor.Label, "Skipped", null, null, null, null);
+                        tags[itemId] = $"skipped — {skipped.Reason ?? "took no branch"}";
+                        perItem.Add((itemId, skipped));
+                        continue;
+                    }
+
+                    var returned = (descriptor.Body ?? Array.Empty<string>())
+                        .Select(bodyId => (bodyId, Entry: detail.NodeOutputs.GetValueOrDefault($"{bodyId}:{itemId}")))
+                        .FirstOrDefault(pair => pair.Entry is not null);
+                    tags[itemId] = returned.Entry is null ? branch : $"{branch} → {returned.bodyId}";
+                    perItem.Add((itemId, returned.Entry ?? new ConsultGenerationNodeStatus(descriptor.Id, descriptor.Label, "Running", null, null, null, null)));
+                }
+
+                groups.Add(new NodeGroup(descriptor, nodeLevel, perItem, new HashSet<string>(StringComparer.Ordinal), tags));
+                continue;
+            }
 
             var items = detail.NodeOutputs
                 .Where(pair => pair.Key.StartsWith(descriptor.Id + ":", StringComparison.Ordinal))

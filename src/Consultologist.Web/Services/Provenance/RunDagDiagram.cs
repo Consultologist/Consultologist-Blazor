@@ -171,12 +171,20 @@ public static class RunDagDiagram
             if (RecordFlow.IsLoop(flow))
             {
                 var collection = flow.Collection ?? string.Empty;
-                var retNode = Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(flow.Ret ?? string.Empty) is { } retId && nodesById.TryGetValue(retId, out var ret) ? ret : bodies.FirstOrDefault();
+                var retNode = RetIdOf(flow) is { } retId && nodesById.TryGetValue(retId, out var ret) ? ret : bodies.FirstOrDefault();
                 var (doneItems, totalItems) = retNode is null ? (0, flow.Count ?? 0) : ItemTally(retNode, outputs, detail.Collections, nodes);
                 body.Append(($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({doneItems}/{totalItems})\"]\n"));
                 foreach (var bodyNode in bodies)
                 {
-                    EmitNode(bodyNode);
+                    // v27 (#1236, record storage 9): an if/case inside the loop is a subgraph of its own, one level deeper.
+                    if (RecordFlow.IsBranching(bodyNode))
+                    {
+                        EmitFlow(bodyNode);
+                    }
+                    else
+                    {
+                        EmitNode(bodyNode);
+                    }
                 }
 
                 body.Append("end\n");
@@ -191,8 +199,10 @@ public static class RunDagDiagram
             }
             else
             {
-                var branch = RecordFlow.BranchText(flow);
-                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: {kind} {flow.Expression} — branch: {branch}\"]\n"));
+                // v27 (#1236): an if/case inside a loop decides per item — the branches tallied, no pruned rows.
+                var inner = RecordFlow.IsInner(flow, nodes);
+                var branch = inner ? BranchesTally(flow) : RecordFlow.BranchText(flow);
+                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: {kind} {flow.Expression} — {(inner ? "per item" : $"branch: {branch}")}\"]\n"));
                 foreach (var bodyNode in bodies)
                 {
                     EmitNode(bodyNode);
@@ -206,7 +216,7 @@ public static class RunDagDiagram
 
                 body.Append("end\n");
                 byClass[status].Add(id);
-                body.Append(($"{id}{{\"{flow.Id}<br/>{flow.Label}<br/>{kind}: {flow.Expression}<br/>branch: {branch}\"}}\n"));
+                body.Append(($"{id}{{\"{flow.Id}<br/>{flow.Label}<br/>{kind}: {flow.Expression}<br/>{(inner ? branch : $"branch: {branch}")}\"}}\n"));
                 // A case over a node's value (node.<id>.value) draws the dotted edge from that node.
                 if (kind == "case" && SubjectNodeOf(flow.Expression) is { } subjectId)
                 {
@@ -214,7 +224,7 @@ public static class RunDagDiagram
                 }
             }
 
-            if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(flow.Ret ?? string.Empty) is { } retEdgeId)
+            if (RetIdOf(flow) is { } retEdgeId)
             {
                 AppendEdge(body, statusById, retEdgeId, flow.Id, "ret");
             }
@@ -311,6 +321,20 @@ public static class RunDagDiagram
     /// every roster item completed → done; else running while some are in
     /// flight is already covered, so a partial set stays ranNot only before
     /// anything of it ran.</summary>
+    /// <summary>The returned node a flow row names — spelled node.&lt;id&gt; or, as the engine serves it, the bare id.</summary>
+    private static string? RetIdOf(ConsultGenerationNodeDescriptor flow) =>
+        flow.Ret is { Length: > 0 } ret ? Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(ret) ?? ret : null;
+
+    /// <summary>v27 (#1236): an inner if/case's per-item branches tallied — "then 2 · none 1", in first-seen order; "per item" before any item decided.</summary>
+    private static string BranchesTally(ConsultGenerationNodeDescriptor flow)
+    {
+        var tally = RecordFlow.BranchesOf(flow)
+            .GroupBy(pair => pair.Value, StringComparer.Ordinal)
+            .Select(group => $"{group.Key} {group.Count()}")
+            .ToList();
+        return tally.Count == 0 ? "per item" : string.Join(" · ", tally);
+    }
+
     private static string StatusOf(
         ConsultGenerationNodeDescriptor node,
         IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs,
@@ -359,6 +383,18 @@ public static class RunDagDiagram
         IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
     {
         var items = outputs.Where(pair => pair.Key.StartsWith($"{node.Id}:", StringComparison.Ordinal)).ToList();
+        // v27 (#1236): an if/case inside a loop is done per item decided (its branches map); a branch node over the items it ran.
+        if (RecordFlow.IsInner(node, nodes))
+        {
+            var decided = node.Branches?.Count ?? 0;
+            return (decided, Math.Max(RecordFlow.LoopOf(node, nodes)?.Count ?? 0, Math.Max(decided, items.Count)));
+        }
+
+        if (RecordFlow.FlowOf(node, nodes) is not null)
+        {
+            return (items.Count(pair => pair.Value.Status == "Completed"), items.Count);
+        }
+
         // v26 (#1208): a body node's total is its loop row's settled count; a forEach node's the roster's, as ever.
         if (RecordFlow.LoopOf(node, nodes) is { Count: { } count })
         {
