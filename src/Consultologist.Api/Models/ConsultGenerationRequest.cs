@@ -435,7 +435,12 @@ public record ConsultGenerationJobResponse(
     // job ran under (formats@vYYYY.MM.N) — the registry artifact a 25 node's
     // `format` resolves through, and the one whose generic agent a 22–24
     // custom-schema node ran on (#1003). Null on records from before. Appended last.
-    string? FormatsRef = null);
+    string? FormatsRef = null,
+    // v27 (#1235, design § 1.4, record storage 9): the blocks an inner
+    // if/case skipped by condition — block id → the reason (the condition's
+    // text); counted among the completed blocks (progress), produced no text.
+    // Null when none.
+    IReadOnlyDictionary<string, string>? SkippedBlocks = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -859,7 +864,12 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // (excluded, by name). Null below 25 and on records from before. Appended last.
     string? AgentOutputHash = null,
     IReadOnlyList<ConsultAppendedEntry>? Appended = null,
-    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null,
+    // v27 (#1235, design § 1.4, § 2, record storage 9): why a row is Skipped —
+    // an if/case inside a loop that took no branch for the item: the
+    // condition's TEXT in the fixed form (never the value it read, #369). Null
+    // on every other row. Appended last.
+    string? Reason = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);

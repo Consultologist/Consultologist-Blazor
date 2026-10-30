@@ -118,6 +118,7 @@ The `/events` endpoint emits these server-sent event names:
   events).
 - `block-completed`: one completed block with `JobId`, `BlockId`, and generated `Text`.
 - `block-failed`: one failed block with `JobId`, `BlockId`, and `Error`.
+- `block-skipped` (v27, #1235): one block skipped by condition — an `if`/`case` inside a loop took no branch for the item — with `JobId`, `BlockId`, and `Reason` (the condition's text, never a value); counted among the completed blocks, no text.
 - `heartbeat`: stream keepalive with `JobId` and current `Status`.
 - `done`: final public `ConsultGenerationJobResponse`, the same way (nulls omitted, `HeldInputs` emptied).
 - `error`: stream-level failure with `JobId` and `Error`.

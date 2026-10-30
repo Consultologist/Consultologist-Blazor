@@ -34,8 +34,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// provenance v2026.10.9) — a document's sources and composedHash), else the
     /// value the path wrote before (6 for a node, 7 for a deliverable).
     /// </summary>
+    /// v27 (#1235, record storage 9): 9 for a job whose package is at specVersion
+    /// 27 — an inner flow row's per-item branches, the flow node's per-item row
+    /// skipped by condition with its reason, the skipped block.
     internal static void Stamp(ConsultGenerationJobState state, int at25) =>
-        state.SchemaVersion = state.PackageSpecVersion >= 26 ? 8 : at25;
+        state.SchemaVersion = state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
 
     public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore)
     {
@@ -214,7 +217,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // creation — never 2, 6 or 7 — so a reader trusts the 26 rows at once.
         if (State.PackageSpecVersion >= 26)
         {
-            State.SchemaVersion = 8;
+            State.SchemaVersion = State.PackageSpecVersion >= 27 ? 9 : 8;
         }
         State.PackageTitle ??= input.PackageTitle;
         State.PackageTags ??= input.PackageTags?.ToList();
@@ -530,6 +533,77 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         state.TotalStageCount = input.TotalNodeCount;
         state.History.Add(new JobHistoryEvent("skipped", input.Label, input.Reason, DateTimeOffset.UtcNow));
         State = state;
+    }
+
+    /// <summary>
+    /// v27 (#1235, design § 1.4, § 2, record storage 9): an if/case inside a loop
+    /// took no branch for one item — its per-item row (nodeId:itemId) Skipped
+    /// with the reason, the condition's text; the counts do not move (the row
+    /// is one item of a fanned node, as an item's completion is). No hash, no
+    /// failure; the item's block is skipped beside it (SkipBlock).
+    /// </summary>
+    public void MarkNodeItemSkipped(ConsultGenerationNodeItemSkip input)
+    {
+        var state = EnsureState();
+        Stamp(state, 6);
+
+        var output = state.GetOrAddNodeOutput($"{input.NodeId}:{input.ItemId}", input.Label);
+        output.NodeId = input.NodeId;
+        output.ItemId = input.ItemId;
+        output.Status = ConsultGenerationNodeStatuses.Skipped;
+        output.Reason = input.Reason;
+        output.CompletedAtUtc = DateTimeOffset.UtcNow;
+        state.History.Add(new JobHistoryEvent("skipped", $"{input.Label} ({input.ItemId})", input.Reason, DateTimeOffset.UtcNow));
+        State = state;
+    }
+
+    /// <summary>
+    /// v27 (#1235, design § 2, record storage 9): the branch an inner if/case took
+    /// for one item — written onto its flow row's branches map as the items
+    /// decide (the row is complete when the loop completes); a row never
+    /// carries both branch and branches.
+    /// </summary>
+    public void RecordFlowBranch(ConsultGenerationFlowBranch input)
+    {
+        var state = EnsureState();
+        Stamp(state, 6);
+
+        if (state.Nodes is { } nodes)
+        {
+            state.Nodes = nodes
+                .Select(node => node.Id == input.FlowId
+                    ? node with
+                    {
+                        Branches = new Dictionary<string, string>(node.Branches ?? new Dictionary<string, string>(StringComparer.Ordinal), StringComparer.Ordinal)
+                        {
+                            [input.ItemId] = input.Branch,
+                        },
+                    }
+                    : node)
+                .ToList();
+        }
+
+        State = state;
+    }
+
+    /// <summary>
+    /// v27 (#1235, design § 1.4; decided 2026-10-29): the item's block when an
+    /// inner if/case skipped the item — a named state, Skipped, with the reason;
+    /// no text, no error; progress counts it as done.
+    /// </summary>
+    public async Task SkipBlock(ConsultGenerationBlockSkip input)
+    {
+        var state = EnsureState();
+        var block = state.GetOrAddBlock(input.BlockId, input.BlockName);
+        block.Status = ConsultGenerationBlockStatuses.Skipped;
+        block.GeneratedText = null;
+        block.Error = null;
+        block.Reason = input.Reason;
+        block.CompletedAtUtc = DateTimeOffset.UtcNow;
+        state.History.Add(new JobHistoryEvent("skipped", $"Section skipped: {input.BlockName}", input.Reason, DateTimeOffset.UtcNow));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
     public async Task MarkNodeFailed(ConsultGenerationNodeFailure input)
@@ -1255,6 +1329,25 @@ public sealed record ConsultGenerationNodeSkip(
     int CompletedNodeCount,
     int TotalNodeCount);
 
+/// <summary>v27 (#1235): an if/case inside a loop skipped one item by condition — the per-item row and its reason (the condition's text).</summary>
+public sealed record ConsultGenerationNodeItemSkip(
+    string NodeId,
+    string ItemId,
+    string Label,
+    string Reason);
+
+/// <summary>v27 (#1235): the branch an inner if/case took for one item, for its flow row's branches map.</summary>
+public sealed record ConsultGenerationFlowBranch(
+    string FlowId,
+    string ItemId,
+    string Branch);
+
+/// <summary>v27 (#1235): a block skipped by condition — the loop's block for the item, with the reason.</summary>
+public sealed record ConsultGenerationBlockSkip(
+    string BlockId,
+    string BlockName,
+    string Reason);
+
 public sealed record ConsultGenerationNodeFailure(
     string NodeId,
     string Label,
@@ -1436,7 +1529,7 @@ public sealed class ConsultGenerationJobState
     /// fact in provenance-versions.json (#400), pinned against this list by
     /// test. A new storage shape is added here and there in the same change.
     /// </summary>
-    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8 };
+    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8, 9 };
 
     /// <summary>#373: the specVersion of the package this job ran.</summary>
     public int? PackageSpecVersion { get; set; }
@@ -1676,7 +1769,7 @@ public sealed class ConsultGenerationJobState
             StartedAtUtc,
             CompletedAtUtc,
             TotalBlockCount,
-            Blocks.Values.Count(b => b.Status == ConsultGenerationBlockStatuses.Completed),
+            Blocks.Values.Count(b => b.Status is ConsultGenerationBlockStatuses.Completed or ConsultGenerationBlockStatuses.Skipped),
             Blocks.Values.Count(b => b.Status == ConsultGenerationBlockStatuses.Failed),
             Source,
             ScheduledAtUtc,
@@ -1825,6 +1918,12 @@ public sealed class ConsultGenerationJobState
             .Where(block => block.Status == ConsultGenerationBlockStatuses.Failed)
             .ToDictionary(block => block.Id, block => block.Error ?? "Section generation failed.");
 
+        // v27 (#1235, design § 1.4): the blocks skipped by condition — done, with
+        // no text; the reason is the condition's text.
+        var skippedSections = Blocks.Values
+            .Where(block => block.Status == ConsultGenerationBlockStatuses.Skipped)
+            .ToDictionary(block => block.Id, block => block.Reason ?? "took no branch");
+
         var itemProgress = ItemProgress.Values
             .ToDictionary(
                 progress => progress.Id,
@@ -1842,7 +1941,7 @@ public sealed class ConsultGenerationJobState
             // The stored scalar (the phase-7 decision), with the block count as
             // the seed-time fallback.
             TotalBlockCount > 0 ? TotalBlockCount : Blocks.Count,
-            completedSections.Count,
+            completedSections.Count + skippedSections.Count,
             failedSections.Count,
             completedSections,
             failedSections,
@@ -1901,7 +2000,8 @@ public sealed class ConsultGenerationJobState
                     pair.Value.Validation,
                     pair.Value.AgentOutputHash,
                     pair.Value.Appended,
-                    pair.Value.Excluded)),
+                    pair.Value.Excluded,
+                    pair.Value.Reason)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -1972,7 +2072,8 @@ public sealed class ConsultGenerationJobState
             Deciding: Deciding,
             DecidedAtUtc: DecidedAtUtc,
             Classifications: Classifications,
-            DecisionFailureKind: DecisionFailureKind);
+            DecisionFailureKind: DecisionFailureKind,
+            SkippedBlocks: skippedSections.Count > 0 ? skippedSections : null);
     }
 }
 
@@ -1988,6 +2089,8 @@ public sealed class ConsultGenerationBlockState
     public string? GeneratedText { get; set; }
     public string? Error { get; set; }
     public DateTimeOffset? CompletedAtUtc { get; set; }
+    // v27 (#1235): why the block is Skipped — the condition's text, never a value.
+    public string? Reason { get; set; }
 }
 
 /// <summary>One completed v7 deliverable: authored identity plus the rendered text.</summary>
@@ -2085,6 +2188,10 @@ public sealed class ConsultNodeOutputState
     public string? AgentOutputHash { get; set; }
     public List<ConsultAppendedEntry>? Appended { get; set; }
     public List<ConsultNodeExclusion>? Excluded { get; set; }
+
+    // v27 (#1235, record storage 9): why a per-item row is Skipped — an inner
+    // if/case took no branch for the item; the condition's text, never a value.
+    public string? Reason { get; set; }
 }
 
 public static class ConsultGenerationNodeStatuses
@@ -2141,4 +2248,7 @@ public static class ConsultGenerationBlockStatuses
     public const string Running = "Running";
     public const string Completed = "Completed";
     public const string Failed = "Failed";
+    // v27 (#1235, design § 1.4): skipped by condition — an inner if/case took no
+    // branch for the item; a named state with its reason, counted as done.
+    public const string Skipped = "Skipped";
 }
