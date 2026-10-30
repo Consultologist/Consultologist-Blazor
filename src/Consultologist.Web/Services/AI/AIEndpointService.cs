@@ -858,7 +858,11 @@ public record ConsultGenerationNodeStatus(
     // History shows them since B7.
     string? AgentOutputHash = null,
     IReadOnlyList<ConsultAppendedEntry>? Appended = null,
-    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null,
+    // v27 (#1235, record storage 9): why a per-item row is Skipped — an if/case
+    // inside a loop took no branch for the item; the condition's text, never a
+    // value. History reads it at #1236.
+    string? Reason = null);
 
 /// <summary>v25 (B4 #1003): a reply validated against its format — valid, or every way it missed.</summary>
 public record ConsultValidationOutcome(bool Valid, IReadOnlyList<string> Errors);
