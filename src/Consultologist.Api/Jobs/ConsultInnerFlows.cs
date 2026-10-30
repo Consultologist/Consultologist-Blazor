@@ -70,6 +70,41 @@ internal sealed class ConsultInnerFlows
     public ConsultNodeDescriptor? LoopReturning(string flowId) =>
         _nodesById.Values.FirstOrDefault(node => node.Kind == ConsultNodeFlows.For && string.Equals(node.Ret, flowId, StringComparison.Ordinal));
 
+    /// <summary>
+    /// #1246: the alias <c>flow:item</c> — an inner if/case's per-item output is its
+    /// taken branch's returned node's, once that node has its output for the item
+    /// (a skipped item has no alias). Written here, in one place, so that every
+    /// reader of the aliases (the fan summary pass that marks the flow's node-level
+    /// row, the loop's composition, the deliverables) sees them current: the
+    /// smoke's <c>applies</c> row went missing because the summary pass ran
+    /// before the aliases landed and only a scalar node followed. Returns whether
+    /// an alias was written.
+    /// </summary>
+    public bool AliasTakenRets(IDictionary<string, NodeRunResult> outputs, Func<ConsultNodeDescriptor, IReadOnlyList<IReadOnlyDictionary<string, string>>> fanItems)
+    {
+        var progressed = false;
+
+        foreach (var flow in _nodesById.Values.Where(IsInner))
+        {
+            foreach (var item in fanItems(flow))
+            {
+                var key = ConsultNodeScheduler.InstanceKey(flow.Id, item["id"]);
+                if (outputs.ContainsKey(key) || RetOf(flow.Id, item["id"]) is not { } ret)
+                {
+                    continue;
+                }
+
+                if (outputs.TryGetValue(ConsultNodeScheduler.InstanceKey(ret, item["id"]), out var branchResult))
+                {
+                    outputs[key] = branchResult;
+                    progressed = true;
+                }
+            }
+        }
+
+        return progressed;
+    }
+
     /// <summary>The instances of a branch node that never run — one per item its flow node decided against it.</summary>
     public int UntakenInstances(ConsultNodeDescriptor node, IEnumerable<IReadOnlyDictionary<string, string>> items) =>
         FlowOf(node) is null ? 0 : items.Count(item => Untaken(node, item["id"]));
