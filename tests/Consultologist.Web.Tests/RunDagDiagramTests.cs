@@ -241,10 +241,10 @@ public class RunDagDiagramTests
     {
         var diagram = RunDagDiagram.Build(Job(nodes: Storage8Nodes(), outputs: Storage8Outputs()));
 
-        Assert.Contains("subgraph if_triage[\"triage: if input.kind == \"new\" — branch: else\"]", diagram);
+        Assert.Contains("subgraph if_triage[\"triage: if input.kind == #quot;new#quot; — branch: else\"]", diagram);
         Assert.Contains("full_workup[\"full_workup<br/>pruned\"]", diagram);
         Assert.Matches(@"class [^\n]*\bfull_workup\b[^\n]* skipped", diagram);
-        Assert.Contains("triage{\"triage<br/>Triage<br/>if: input.kind == \"new\"<br/>branch: else\"}", diagram);
+        Assert.Contains("triage{\"triage<br/>Triage<br/>if: input.kind == #quot;new#quot;<br/>branch: else\"}", diagram);
         Assert.Contains("brief_update --> |\"ret\"| triage", diagram);
         Assert.Contains("extract --> brief_update", diagram);
     }
@@ -337,14 +337,47 @@ public class RunDagDiagramTests
         // The loop's tally is its ret's — the inner if, three items decided.
         Assert.Contains("subgraph for_sections[\"sections: per snippet.sections item (3/3)\"]", diagram);
         var loop = diagram[diagram.IndexOf("subgraph for_sections", StringComparison.Ordinal)..];
-        Assert.Contains("subgraph if_triage[\"triage: if item.id == \"hpi\" — per item\"]", loop);
+        Assert.Contains("subgraph if_triage[\"triage: if item.id == #quot;hpi#quot; — per item\"]", loop);
         Assert.True(loop.IndexOf("subgraph if_triage", StringComparison.Ordinal) < loop.IndexOf("end\n", StringComparison.Ordinal), "the inner subgraph opens inside the loop's");
         Assert.Contains("patient_draft[\"patient_draft<br/>Patient draft<br/>(1/1) items<br/>prose · attested<br/>prompts/patient.md\"]", diagram);
         Assert.Contains("table_draft[\"table_draft<br/>Table draft<br/>(1/1) items<br/>prose · attested<br/>prompts/table.md\"]", diagram);
-        Assert.Contains("triage{\"triage<br/>Triage<br/>if: item.id == \"hpi\"<br/>then 1 · none 1 · else 1\"}", diagram);
+        Assert.Contains("triage{\"triage<br/>Triage<br/>if: item.id == #quot;hpi#quot;<br/>then 1 · none 1 · else 1\"}", diagram);
         Assert.Contains("triage --> |\"ret\"| sections", diagram);
         Assert.DoesNotContain("pruned", diagram);
         Assert.DoesNotContain("branch: none", diagram);
         Assert.Equal(1, System.Text.RegularExpressions.Regex.Matches(diagram, @"\ntriage\{").Count);
+    }
+
+    [Fact]
+    public void PackageAuthoredText_InALabel_EscapesItsQuotes_SoTheDiagramParses()
+    {
+        // #1247: an if/case expression carries quotes (`item.value.kind == "narrative"`); raw inside
+        // a Mermaid quoted label they closed it early and the whole diagram failed to render
+        // ("Parse error on line 14") — first seen live on the 27 smoke. Mermaid's entity is #quot;.
+        var nodes = new ConsultGenerationNodeDescriptor[]
+        {
+            new("sections", "Sections", Kind: "for", Collection: "input.sections", Body: new[] { "route" }, Ret: "route", Count: 2),
+            new("route", "Routing a \"section\"", Kind: "case", Expression: "item.value.kind", Body: new[] { "narrative_draft" }, In: "sections",
+                Branches: new Dictionary<string, string> { ["0"] = "narrative", ["1"] = "none" }),
+            new("narrative_draft", "Drafting the \"narrative\"", In: "route", Prompt: "prompts/narrative-section.md"),
+        };
+        var outputs = new Dictionary<string, ConsultGenerationNodeStatus>
+        {
+            ["sections"] = new("sections", "Sections", "Completed", null, null, null, null),
+            ["route"] = new("route", "Routing", "Completed", null, null, null, null),
+            ["route:1"] = new("route", "Routing", "Skipped", null, null, null, null, Reason: "switches on `item.value.kind`; no branch lists its value"),
+            ["narrative_draft"] = new("narrative_draft", "Drafting", "Completed", null, null, null, null),
+            ["narrative_draft:0"] = new("narrative_draft", "Drafting", "Completed", "i", "o", null, null),
+        };
+
+        var diagram = RunDagDiagram.Build(Job(nodes: nodes, outputs: outputs, collections: new[] { new ConsultCollectionRoster("input.sections", new[] { new ConsultCollectionItem("0", "Sections to produce 1"), new ConsultCollectionItem("1", "Sections to produce 2") }) }));
+
+        Assert.Contains("route{\"route<br/>Routing a #quot;section#quot;<br/>case: item.value.kind<br/>narrative 1 · none 1\"}", diagram);
+        Assert.Contains("narrative_draft[\"narrative_draft<br/>Drafting the #quot;narrative#quot;<br/>", diagram);
+        // No label holds a raw quote: every `"` in the diagram opens or closes a label or an edge text.
+        foreach (var line in diagram.Split('\n').Where(l => l.Contains('[', StringComparison.Ordinal) || l.Contains('{', StringComparison.Ordinal)))
+        {
+            Assert.True(line.Count(c => c == '"') % 2 == 0 && !line.Contains("\"\"", StringComparison.Ordinal) || line.Contains("-->", StringComparison.Ordinal), line);
+        }
     }
 }
