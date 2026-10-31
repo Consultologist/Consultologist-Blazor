@@ -66,7 +66,8 @@ public class WorkflowDagDiagramTests
         Assert.Contains("subgraph if_triage_then[\"triage: then\"]", diagram);
         Assert.Contains("subgraph if_triage_else[\"triage: else\"]", diagram);
         Assert.Contains("        full_workup[\"full_workup<br/>", diagram);
-        Assert.Contains("triage[\"triage<br/>Triage<br/>if input.kind == \\\"new\\\"\"]".Replace("\\\"", "\""), diagram);
+        // #1259: the condition's quotes are Mermaid entities — raw they closed the label and failed the graph.
+        Assert.Contains("triage[\"triage<br/>Triage<br/>if input.kind == #quot;new#quot;\"]", diagram);
         Assert.Contains("full_workup -->|\"ret (then)\"| triage", diagram);
         Assert.Contains("brief_update -->|\"ret (else)\"| triage", diagram);
         Assert.Contains("subgraph case_route_branch_1[\"route: in_scope\"]", diagram);
@@ -335,5 +336,46 @@ public class WorkflowDagDiagramTests
         var noNodes = V5Fixtures.Manifest() with { Nodes = null };
 
         Assert.Throws<InvalidOperationException>(() => WorkflowDagDiagram.Generate(noNodes));
+    }
+
+    // ----- #1259: package-authored text in labels is escaped (the run diagram's #1247, here) -----
+
+    private static IEnumerable<string> LabelLines(string diagram) =>
+        diagram.Split('\n').Where(line => line.Contains("[\"", StringComparison.Ordinal) || line.Contains("{{\"", StringComparison.Ordinal) || line.Contains("|\"", StringComparison.Ordinal));
+
+    [Fact]
+    public void Diagram_At27_AQuotedCondition_AndAQuotedLabel_DrawAsEntities_NoLabelHoldsARawQuote()
+    {
+        // The Editor's Graph pane on the first 27 package: the inner if's condition carried
+        // quotes and the whole graph failed to parse ("Parse error on line 54").
+        var (manifest, _) = V27Package.WithTriageInLoop(V27Package.Minimal(), condition: "item.id != \"billing\" || input.include_billing == true");
+        manifest = V26Package.WithNode(manifest, "patient_draft", n => n with { Label = "Holding the \"billing\" back" });
+
+        var diagram = WorkflowDagDiagram.Generate(manifest);
+
+        Assert.Contains("triage[\"triage<br/>Triage<br/>if item.id != #quot;billing#quot; || input.include_billing == true\"]", diagram);
+        Assert.Contains("patient_draft[\"patient_draft<br/>Holding the #quot;billing#quot; back", diagram);
+        Assert.DoesNotContain("\"billing\"", diagram);
+        foreach (var line in LabelLines(diagram))
+        {
+            Assert.True(line.Count(c => c == '"') % 2 == 0 && !line.Contains("\"\"", StringComparison.Ordinal), line);
+        }
+    }
+
+    [Fact]
+    public void Diagram_Below25_AnUnparseableWhenWithAQuote_DrawsItsRawTextEscaped()
+    {
+        // Drafts reach the diagram before the validator does; a when the grammar refuses is drawn raw — escaped.
+        var manifest = V8Fixtures.Conditional();
+        // The v8 fixture carries its deliverables as the ≤24 `results` list.
+        manifest = manifest with
+        {
+            Results = manifest.Results!.Select((d, i) => i == 0 ? d with { When = "input.kind ~ \"new\"" } : d).ToList(),
+        };
+
+        var diagram = WorkflowDagDiagram.Generate(manifest);
+
+        Assert.Contains("-.->|\"when input.kind ~ #quot;new#quot;\"|", diagram);
+        Assert.DoesNotContain("~ \"new\"", diagram);
     }
 }
