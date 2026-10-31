@@ -39,7 +39,7 @@ public static class WorkflowDagDiagram
         // data entries, and forEach collections all render as stadiums.
         foreach (var source in CollectExternalSources(manifest, reads))
         {
-            sb.Append($"    {Sanitize(source)}([\"{source}\"])\n");
+            sb.Append($"    {Sanitize(source)}([\"{Label(source)}\"])\n");
         }
 
         sb.Append('\n');
@@ -64,7 +64,7 @@ public static class WorkflowDagDiagram
             {
                 // Aggregators are graph-visible by construction: their own box, one
                 // labeled edge per source in declared order (v6, aggregator nodes).
-                sb.Append($"    {Sanitize(node.Id)}[\"{node.Id}<br/>{node.Label}<br/>aggregate\"]\n");
+                sb.Append($"    {Sanitize(node.Id)}[\"{Label($"{node.Id}<br/>{node.Label}<br/>aggregate")}\"]\n");
 
                 foreach (var sourceRef in node.Aggregate)
                 {
@@ -81,7 +81,7 @@ public static class WorkflowDagDiagram
                 label += $"<br/>output: {node.Output.Schema}";
             }
 
-            sb.Append($"    {Sanitize(node.Id)}[\"{label}\"]\n");
+            sb.Append($"    {Sanitize(node.Id)}[\"{Label(label)}\"]\n");
 
             foreach (var (variable, binding) in node.Bindings ?? new Dictionary<string, WorkflowBindingValue>())
             {
@@ -123,7 +123,7 @@ public static class WorkflowDagDiagram
                     label += $"<br/>item: {string.Join(", ", itemFields)}";
                 }
 
-                sb.Append($"        {Sanitize(node.Id)}[\"{label}\"]\n");
+                sb.Append($"        {Sanitize(node.Id)}[\"{Label(label)}\"]\n");
             }
 
             // Item-aligned edges (same-collection node: bindings) live inside the box.
@@ -176,7 +176,7 @@ public static class WorkflowDagDiagram
             foreach (var bodyId in body)
             {
                 var label = nodesById.TryGetValue(bodyId, out var bodyNode) ? $"{bodyId}<br/>{bodyNode.Label}" : bodyId;
-                sb.Append($"        {Sanitize(bodyId)}[\"{label}\"]\n");
+                sb.Append($"        {Sanitize(bodyId)}[\"{Label(label)}\"]\n");
             }
 
             // #1227: a body node's reads of its siblings live inside the box.
@@ -186,7 +186,7 @@ public static class WorkflowDagDiagram
             }
 
             sb.Append("    end\n");
-            sb.Append($"    {Sanitize(loop.Id)}[\"{loop.Id}<br/>{loop.Label}<br/>{loop.For}\"]\n");
+            sb.Append($"    {Sanitize(loop.Id)}[\"{Label($"{loop.Id}<br/>{loop.Label}<br/>{loop.For}")}\"]\n");
 
             if (TemplateObjectReference.NodeIdOf(loop.Ret ?? string.Empty) is { } retId)
             {
@@ -213,11 +213,11 @@ public static class WorkflowDagDiagram
             foreach (var body in FlowBodies(flow))
             {
                 var subgraphId = $"{kind}_{Sanitize(flow.Id)}_{Sanitize(body.Key)}";
-                sb.Append($"    subgraph {subgraphId}[\"{flow.Id}: {body.Title}\"]\n");
+                sb.Append($"    subgraph {subgraphId}[\"{Label($"{flow.Id}: {body.Title}")}\"]\n");
                 foreach (var bodyId in body.Nodes)
                 {
                     var label = nodesById.TryGetValue(bodyId, out var bodyNode) ? $"{bodyId}<br/>{bodyNode.Label}" : bodyId;
-                    sb.Append($"        {Sanitize(bodyId)}[\"{label}\"]\n");
+                    sb.Append($"        {Sanitize(bodyId)}[\"{Label(label)}\"]\n");
                 }
 
                 // #1227: a body node's reads of the same body live inside the box.
@@ -230,13 +230,14 @@ public static class WorkflowDagDiagram
             }
 
             var head = flow.If != null ? $"if {flow.If}" : $"case {flow.Case}";
-            sb.Append($"    {Sanitize(flow.Id)}[\"{flow.Id}<br/>{flow.Label}<br/>{head}\"]\n");
+            // #1259: the condition and the label are package-authored — their quotes would close the label (the run diagram's #1247).
+            sb.Append($"    {Sanitize(flow.Id)}[\"{Label($"{flow.Id}<br/>{flow.Label}<br/>{head}")}\"]\n");
 
             foreach (var body in FlowBodies(flow))
             {
                 if (TemplateObjectReference.NodeIdOf(body.Ret ?? string.Empty) is { } retId)
                 {
-                    sb.Append($"    {Sanitize(retId)} -->|\"ret ({body.Title})\"| {Sanitize(flow.Id)}\n");
+                    sb.Append($"    {Sanitize(retId)} -->|\"{Label($"ret ({body.Title})")}\"| {Sanitize(flow.Id)}\n");
                 }
             }
 
@@ -328,7 +329,7 @@ public static class WorkflowDagDiagram
 
             // Hexagon: distinct from a node's rectangle and a source's stadium,
             // so a deliverable never reads as one more aggregator.
-            sb.Append($"    {boxId}{{{{\"{caption}\"}}}}\n");
+            sb.Append($"    {boxId}{{{{\"{Label(caption)}\"}}}}\n");
 
             // v26 (#1160): a deliverable's sources each draw an edge; below 26 its node does.
             foreach (var sourceRef in nodeRef.Length > 0 ? new[] { nodeRef } : (Sources(manifest, id) ?? Array.Empty<string>()))
@@ -347,7 +348,7 @@ public static class WorkflowDagDiagram
             // for drafts too, so the raw text is drawn rather than dropped.
             if (!WorkflowResultConditions.TryParseExpression(when, out var expression, out _) || expression is null)
             {
-                sb.Append($"    {boxId} -.->|\"when {when}\"| {boxId}\n");
+                sb.Append($"    {boxId} -.->|\"{Label($"when {when}")}\"| {boxId}\n");
                 continue;
             }
 
@@ -373,7 +374,7 @@ public static class WorkflowDagDiagram
                     test = first ? $"when {expression.Text}" : "when …";
                 }
 
-                sb.Append($"    {source} -.->|\"{test}\"| {boxId}\n");
+                sb.Append($"    {source} -.->|\"{Label(test)}\"| {boxId}\n");
                 first = false;
             }
         }
@@ -483,7 +484,7 @@ public static class WorkflowDagDiagram
         }
 
         var label = binding.As is null ? variable : $"{variable} (as {binding.As})";
-        sb.Append($"{indent}{sourceId} -->|\"{label}\"| {targetId}\n");
+        sb.Append($"{indent}{sourceId} -->|\"{Label(label)}\"| {targetId}\n");
     }
 
     private static IReadOnlyList<string> CollectExternalSources(
@@ -556,4 +557,13 @@ public static class WorkflowDagDiagram
 
     private static string Sanitize(string raw)
         => new(raw.Select(c => char.IsLetterOrDigit(c) ? c : '_').ToArray());
+
+    /// <summary>
+    /// #1259: package-authored text inside a Mermaid quoted label or edge text — an if/case
+    /// condition (<c>item.id != "billing" || …</c>), a node's label, a branch's values, a
+    /// deliverable's when. A double quote would close the label and fail the whole diagram
+    /// (the Editor's Graph pane: "Parse error on line 54"); Mermaid's entity is <c>#quot;</c>.
+    /// The run diagram escapes the same way since #1247. The <c>&lt;br/&gt;</c> breaks are ours.
+    /// </summary>
+    private static string Label(string text) => text.Replace("\"", "#quot;", StringComparison.Ordinal);
 }
