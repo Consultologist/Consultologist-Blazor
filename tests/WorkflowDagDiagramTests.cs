@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Consultologist.Api.Workflow;
 
 using Consultologist.PackageFormat;
@@ -377,5 +378,43 @@ public class WorkflowDagDiagramTests
 
         Assert.Contains("-.->|\"when input.kind ~ #quot;new#quot;\"|", diagram);
         Assert.DoesNotContain("~ \"new\"", diagram);
+    }
+
+    // ----- #1244: the migration script writes the diagram --dag draws — with the walk -----
+
+    [Fact]
+    public void Diagram_OfARaisedPackage_WithTheWalk_IsTheOriginalsDiagram_AndCarriesTheReads()
+    {
+        // consultologist-workflows#49: --to 27 --write over the seven 26 packages dropped every
+        // read edge because the script drew the declarations alone. With the walk, a raise
+        // leaves dag.mmd byte for byte as it was — 27 permits what 26 refused and draws nothing new.
+        var (manifest, files) = V26Package.Minimal();
+        var raised = WorkflowPackageVersionRaise.To(JsonSerializer.Serialize(manifest, WorkflowPackageManifestJson.WriteOptions), files, 27);
+        var at27 = WorkflowPackageManifestJson.Read(raised.ManifestJson, "raised", V27Package.Accepting27.ToList());
+        Assert.Equal(27, at27.SpecVersion);
+
+        var before = WorkflowDagDiagram.Generate(manifest, WalkOf(manifest, files));
+        var after = WorkflowDagDiagram.Generate(at27, WalkOf(at27, raised.Files));
+
+        Assert.Equal(before, after);
+        // The walk is what the declarations alone lack: the input stadium and a read edge.
+        Assert.Contains("input_notes([\"input.notes\"])", after);
+        Assert.Contains("-->|\"", after);
+        Assert.NotEqual(WorkflowDagDiagram.Generate(at27), after);
+    }
+
+    [Fact]
+    public void Diagram_OfA25To26Migration_WithTheWalk_DrawsTheReads()
+    {
+        var (manifest, files) = V25Package.Minimal();
+        var migrated = WorkflowPackageMigration25To26.Migrate(JsonSerializer.Serialize(manifest, WorkflowPackageManifestJson.WriteOptions), files);
+        var at26 = WorkflowPackageManifestJson.Read(migrated.ManifestJson, "migrated", V26Package.Accepting26.ToList());
+
+        var withWalk = WorkflowDagDiagram.Generate(at26, WalkOf(at26, migrated.Files));
+        var declarationsAlone = WorkflowDagDiagram.Generate(at26);
+
+        Assert.Contains("input_notes([\"input.notes\"])", withWalk);
+        Assert.Contains("-->|\"", withWalk);
+        Assert.DoesNotContain("input_notes([", declarationsAlone);
     }
 }
