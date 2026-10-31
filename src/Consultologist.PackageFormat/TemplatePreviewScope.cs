@@ -78,19 +78,23 @@ public static class TemplatePreviewScope
             : formats is not null && formats.TryGet(formatId, out var catalogue) ? catalogue!.Spec
             : null;
 
-        var nodes = new Dictionary<string, TemplateNodeOutput>(StringComparer.Ordinal);
-        foreach (var node in (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal))
+        // .content is its token; .value, on an object or array format, a carrier
+        // with token leaves; an enum node's content IS its value, one token for both.
+        TemplateNodeOutput NodeToken(string path, WorkflowNodeSpec node)
         {
-            var path = $"{TemplateObjects.Node}.{node.Id}";
             var spec = node.Aggregate is { Count: > 0 } ? null : SpecOf(node.Format);
             var type = spec?.Type ?? WorkflowInputTypes.Text;
-            // .content is its token; .value, on an object or array format, a carrier
-            // with token leaves; an enum node's content IS its value, one token for both.
             var valueJson = type is WorkflowInputTypes.Object or WorkflowInputTypes.Array
                 ? ShapeCarrier($"{path}.{TemplateMembers.Value}", TemplateValueShape.FromSchema(spec!.Schema)).ToJsonString(CarrierJson)
                 : null;
             var text = Token($"{path}.{(type == WorkflowInputTypes.Enum ? TemplateMembers.Value : TemplateMembers.Content)}");
-            nodes[node.Id] = new TemplateNodeOutput(text, type, node.Id, valueJson);
+            return new TemplateNodeOutput(text, type, node.Id, valueJson);
+        }
+
+        var nodes = new Dictionary<string, TemplateNodeOutput>(StringComparer.Ordinal);
+        foreach (var node in (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal))
+        {
+            nodes[node.Id] = NodeToken($"{TemplateObjects.Node}.{node.Id}", node);
         }
 
         // #1105: at 26 the texts carry headers — the scope reads bodies and the
@@ -113,6 +117,14 @@ public static class TemplatePreviewScope
                     item.Fields.GetValueOrDefault(TemplateMembers.Content, string.Empty)))
                 .ToList(),
             StringComparer.Ordinal);
+
+        // #1243 (decided 2026-10-30): a loop's elements — one per folder item (the folder's
+        // real items, their real labels), one placeholder for an array input (its items exist
+        // only at run time); each element's body nodes as tokens on the element's path, the
+        // renderer's own spelling (node.<loop>[<item>].<body>); the loop's own token kept as
+        // its composed text. An inner if/case's per-item output starts as its own token —
+        // Judged replaces it with the taken branch's, or marks the item skipped.
+        var loops = LoopsOf(manifest, declared, nodes, folders, NodeToken);
 
         // #1099: a macro folder's items at 26, each with its header's label and instruction.
         var macroFolders = texts is null ? null : WorkflowTextHeaders.ResolveMacroFolders(manifest, texts, discard)?.Collections.ToDictionary(
@@ -144,6 +156,7 @@ public static class TemplatePreviewScope
             new TemplateRunFacts(Token("run.date"), Token("run.job"), Token("run.package"), Token("run.host")),
             new TemplateProfileFacts(Token("profile.name"), Token("profile.signature")),
             MacroFolders: macroFolders,
+            Loops: loops,
             // #1207 (v26 design § 5): the preview renders the 26 members — item.label, a folder
             // item's .label, a macro's .label/.instruction — as the engine's render does, and a
             // standalone snippet's label is its header's (the #1179 slice the preview lacked).
@@ -285,6 +298,7 @@ public static class TemplatePreviewScope
 
         var ready = new List<TemplatePreviewGate>();
         var waiting = new List<TemplatePreviewWaitingGate>();
+        var perElement = new List<TemplatePreviewGate>();
         foreach (var gate in gates)
         {
             if (gate.Kind == TemplatePreviewGateKind.Instance && gate.Owner != readerNodeId)
@@ -293,8 +307,50 @@ public static class TemplatePreviewScope
             }
 
             // #1236: a flow gate is the branch nodes' — judged on a reader its bodies hold.
-            if (gate.Kind == TemplatePreviewGateKind.Flow && (readerNodeId is null || gate.Bodies?.Any(b => b.Nodes.Contains(readerNodeId, StringComparer.Ordinal)) != true))
+            // #1243: and, inside a loop whose elements the scope carries, judged once per
+            // element for any reader that iterates the loop — the item is each element's, so
+            // no item pick is waited on for that half.
+            if (gate.Kind == TemplatePreviewGateKind.Flow)
             {
+                var inBodies = readerNodeId is not null && gate.Bodies?.Any(b => b.Nodes.Contains(readerNodeId, StringComparer.Ordinal)) == true;
+                var hasElements = gate.Loop is { } loopOf && picked.Loops?.ContainsKey(loopOf) == true;
+                if (!inBodies && !hasElements)
+                {
+                    continue;
+                }
+
+                var flowMissing = new List<string>();
+                flowMissing.AddRange(gate.Inputs.Where(id => !pickedInputs.Contains(id)).Order(StringComparer.Ordinal).Select(id => $"{TemplateObjects.Input}.{id}"));
+                flowMissing.AddRange(gate.Nodes.Where(id => !pickedNodes.Contains(id)).Order(StringComparer.Ordinal).Select(id => $"{TemplateObjects.Node}.{id}"));
+                if (flowMissing.Count == 0 && hasElements)
+                {
+                    perElement.Add(gate);
+                }
+
+                if (inBodies && gate.ReadsItem && !itemPicked)
+                {
+                    flowMissing.Add(TemplateObjects.Item);
+                }
+
+                if (!inBodies)
+                {
+                    if (flowMissing.Count > 0)
+                    {
+                        waiting.Add(new TemplatePreviewWaitingGate(gate, flowMissing));
+                    }
+
+                    continue;
+                }
+
+                if (flowMissing.Count > 0)
+                {
+                    waiting.Add(new TemplatePreviewWaitingGate(gate, flowMissing));
+                }
+                else
+                {
+                    ready.Add(gate);
+                }
+
                 continue;
             }
 
@@ -399,11 +455,186 @@ public static class TemplatePreviewScope
             }
         }
 
+        // #1243: the loops' elements judged — an inert folder item leaves the loop's elements
+        // as it leaves the run's collection; an inner if/case decided once per element with
+        // that element's item bound: a skipped item joins the loop's skipped set (its content
+        // and value null in the element), a taken branch's returned node becomes the flow's
+        // per-item output (e.content, e.<flow>.content). A placeholder element (an array
+        // input's) cannot decide a condition that reads the item — its tokens would compare
+        // false and skip everything — so the element stays taken and the pane says undecided.
+        var elementOutcomes = new List<TemplatePreviewElementOutcome>();
+        if (picked.Loops is { Count: > 0 } loops)
+        {
+            var judgedLoops = new Dictionary<string, TemplateLoopOutput>(loops, StringComparer.Ordinal);
+            foreach (var (loopId, loop) in loops)
+            {
+                if (loop.Collection is { } collection && collection.StartsWith(TemplateObjectReference.SnippetPrefix, StringComparison.Ordinal))
+                {
+                    var folderId = collection[TemplateObjectReference.SnippetPrefix.Length..];
+                    var present = loop.Items.Where(item => !inertSnippets.Contains($"{folderId}/{item.Id}")).ToList();
+                    if (present.Count != loop.Items.Count)
+                    {
+                        judgedLoops[loopId] = loop with { Items = present };
+                    }
+                }
+            }
+
+            foreach (var gate in perElement)
+            {
+                var loopId = gate.Loop!;
+                var loop = judgedLoops[loopId];
+                var inBodies = readerNodeId is not null && gate.Bodies!.Any(b => b.Nodes.Contains(readerNodeId, StringComparer.Ordinal));
+                var branches = new List<KeyValuePair<string, string>>();
+                var placeholder = loop.Items.All(item => item.Text is null);
+                if (!(gate.ReadsItem && placeholder))
+                {
+                    var bodies = gate.Bodies!.Select(b => new WorkflowFlowNodes.Body(b.Label, b.Nodes, b.Ret is { } ret ? TemplateObjectReference.Node(ret) : null, b.Values)).ToList();
+                    var kind = gate.IsCase ? WorkflowFlowNodes.Kind.Case : WorkflowFlowNodes.Kind.If;
+                    var skipped = new HashSet<string>(loop.Skipped ?? new HashSet<string>(StringComparer.Ordinal), StringComparer.Ordinal);
+                    var body = loop.Body.ToDictionary(
+                        pair => pair.Key,
+                        pair => (IReadOnlyDictionary<string, TemplateNodeOutput>)new Dictionary<string, TemplateNodeOutput>(pair.Value, StringComparer.Ordinal),
+                        StringComparer.Ordinal);
+                    foreach (var item in loop.Items)
+                    {
+                        WorkflowFlowDecision.Outcome? outcome;
+                        try
+                        {
+                            outcome = WorkflowFlowDecision.Decide(gate.Key, kind, gate.If, bodies, picked with { Item = item }, Pipes);
+                        }
+                        catch (Exception ex) when (ex is InvalidOperationException or Scriban.Syntax.ScriptRuntimeException)
+                        {
+                            outcome = null;
+                        }
+
+                        if (outcome is null)
+                        {
+                            continue;
+                        }
+
+                        branches.Add(new KeyValuePair<string, string>(item.Id, outcome.Branch));
+                        if (outcome.Taken is null)
+                        {
+                            skipped.Add(item.Id);
+                            continue;
+                        }
+
+                        if (outcome.Taken.RetNodeId is { } taken
+                            && body.TryGetValue(taken, out var takenRow) && takenRow.TryGetValue(item.Id, out var takenOutput)
+                            && body.TryGetValue(gate.Key, out var flowRow))
+                        {
+                            ((Dictionary<string, TemplateNodeOutput>)flowRow)[item.Id] = takenOutput;
+                        }
+                    }
+
+                    judgedLoops[loopId] = loop with { Body = body, Skipped = skipped.Count > 0 ? skipped : null };
+                }
+
+                if (!inBodies)
+                {
+                    elementOutcomes.Add(new TemplatePreviewElementOutcome(gate, loopId, branches));
+                }
+            }
+
+            picked = picked with { Loops = judgedLoops };
+        }
+
         return new TemplatePreviewJudgement(
             picked with { SuppressedPrompts = suppressed, InertMacros = inertMacros, InertSnippets = inertSnippets },
             applied,
             waiting,
-            flowOutcomes);
+            flowOutcomes,
+            elementOutcomes);
+    }
+
+    /// <summary>#1243: the loops' elements (see <see cref="Tokens"/>); null below 26 or with no loop.</summary>
+    private static IReadOnlyDictionary<string, TemplateLoopOutput>? LoopsOf(
+        WorkflowPackageManifest manifest,
+        IReadOnlyList<WorkflowInputSpec> declared,
+        IReadOnlyDictionary<string, TemplateNodeOutput> nodes,
+        IReadOnlyDictionary<string, IReadOnlyList<TemplateFolderItem>> folders,
+        Func<string, WorkflowNodeSpec, TemplateNodeOutput> nodeToken)
+    {
+        if (manifest.SpecVersion < 26 || manifest.Nodes is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var inputsById = declared
+            .Where(input => WorkflowDeclaredIds.IsValid(input.Id))
+            .GroupBy(input => input.Id, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        var nodesById = manifest.Nodes.DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
+        var flows = WorkflowFlowNodes.Resolve(
+            manifest,
+            new WorkflowPackageData(new Dictionary<string, string>(StringComparer.Ordinal), new Dictionary<string, WorkflowDataCollection>(StringComparer.Ordinal)),
+            inputsById,
+            new List<string>());
+
+        var loops = new Dictionary<string, TemplateLoopOutput>(StringComparer.Ordinal);
+        foreach (var flow in flows.Flows.Values.Where(f => f.Kind == WorkflowFlowNodes.Kind.For))
+        {
+            var loopId = flow.Node.Id;
+            var body = flow.Bodies.FirstOrDefault();
+            var collection = flow.Collection;
+            if (body?.RetNodeId is not { } retId || collection is null || !nodes.TryGetValue(loopId, out var output))
+            {
+                continue;
+            }
+
+            IReadOnlyList<TemplateFanItem> items;
+            if (collection.StartsWith(TemplateObjectReference.SnippetPrefix, StringComparison.Ordinal))
+            {
+                var folderId = collection[TemplateObjectReference.SnippetPrefix.Length..];
+                items = (folders.GetValueOrDefault(folderId) ?? Array.Empty<TemplateFolderItem>())
+                    .Select(item => new TemplateFanItem(item.Id, item.Name, Text: item.Text))
+                    .ToList();
+            }
+            else if (collection.StartsWith(TemplateObjectReference.InputPrefix, StringComparison.Ordinal))
+            {
+                // The one placeholder: positional id "0" (the run's own), its label a token, its
+                // value a carrier with token leaves typed by the input's element declaration.
+                var inputId = collection[TemplateObjectReference.InputPrefix.Length..];
+                var element = inputsById.TryGetValue(inputId, out var input) ? WorkflowDeclarationNode.Of(input).Items : null;
+                var valuePath = $"{TemplateObjects.Item}.{TemplateMembers.Value}";
+                items = new[]
+                {
+                    new TemplateFanItem(
+                        "0",
+                        Token($"{TemplateObjects.Item}.{TemplateMembers.Label}"),
+                        Value: element is null ? Token(valuePath) : DeclarationCarrier(valuePath, element).ToJsonString(CarrierJson),
+                        Element: element),
+                };
+            }
+            else
+            {
+                continue;
+            }
+
+            // The element's body nodes: the loop's body, and at 27 each inner if/case's branch
+            // nodes (the inner flow itself is in the loop's body list already).
+            var bodyIds = new List<string>(body.Nodes);
+            foreach (var inner in flows.Flows.Values.Where(f => f.Kind != WorkflowFlowNodes.Kind.For && string.Equals(flows.LoopOf(f.Node.Id), loopId, StringComparison.Ordinal)))
+            {
+                bodyIds.AddRange(inner.BodyNodeIds);
+            }
+
+            var path = $"{TemplateObjects.Node}.{loopId}";
+            var bodyOutputs = new Dictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>>(StringComparer.Ordinal);
+            foreach (var bodyId in bodyIds.Distinct(StringComparer.Ordinal))
+            {
+                if (!nodesById.TryGetValue(bodyId, out var spec))
+                {
+                    continue;
+                }
+
+                bodyOutputs[bodyId] = items.ToDictionary(item => item.Id, item => nodeToken($"{path}[{item.Id}].{bodyId}", spec), StringComparer.Ordinal);
+            }
+
+            loops[loopId] = new TemplateLoopOutput(retId, items, bodyOutputs, output, Collection: collection);
+        }
+
+        return loops.Count == 0 ? null : loops;
     }
 
     /// <summary>What the model is told where <c>macro.&lt;id&gt;.prompt</c> is read — the instruction rendered over the scope, then the mechanics sentence; the renderer's own sentence when the instruction does not render.</summary>
@@ -454,8 +685,11 @@ public sealed record TemplatePreviewBranch(string Label, IReadOnlyList<string> N
 /// <summary>#1236: a flow gate decided for the reader's pick — the branch taken (the record's word, "none" when none) and whether the reader node runs in it.</summary>
 public sealed record TemplatePreviewFlowOutcome(TemplatePreviewGate Gate, string Branch, bool RunsReader);
 
+/// <summary>#1243: a flow gate inside a loop decided once per element for a reader that iterates the loop — the branch each item takes ("none" when skipped); empty when the picks cannot decide it (a placeholder element), the elements then taken.</summary>
+public sealed record TemplatePreviewElementOutcome(TemplatePreviewGate Gate, string Loop, IReadOnlyList<KeyValuePair<string, string>> Branches);
+
 /// <summary>#1205: a gate waiting on picks — the reads it needs, spelled `input.&lt;id&gt;`, `node.&lt;id&gt;`, `item`.</summary>
 public sealed record TemplatePreviewWaitingGate(TemplatePreviewGate Gate, IReadOnlyList<string> Missing);
 
 /// <summary>#1205: the picked scope with the judged sets, the gates applied (they did not hold) and the gates waiting on picks; #1236: the flow gates decided, branch by branch.</summary>
-public sealed record TemplatePreviewJudgement(TemplateRenderScope Scope, IReadOnlyList<TemplatePreviewGate> Applied, IReadOnlyList<TemplatePreviewWaitingGate> Waiting, IReadOnlyList<TemplatePreviewFlowOutcome>? Flows = null);
+public sealed record TemplatePreviewJudgement(TemplateRenderScope Scope, IReadOnlyList<TemplatePreviewGate> Applied, IReadOnlyList<TemplatePreviewWaitingGate> Waiting, IReadOnlyList<TemplatePreviewFlowOutcome>? Flows = null, IReadOnlyList<TemplatePreviewElementOutcome>? Elements = null);

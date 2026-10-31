@@ -333,8 +333,9 @@ skipped one dashed with its reason — and the flow tag `per item`; `RecordFlow`
 `for`; the DAG nests the inner subgraph inside the loop's with the branches tallied on the diamond;
 nothing is pruned for an inner flow. **The consult page** shows a skipped block as a named line in
 the section's place, the rail's section row and an item row read Skipped, the counts count it, and
-`block-skipped` is a live event. Not done: the preview renders no loop element (`{{ for e in
-node.<loop> }}` and `e.skipped` have no preview value — a 26 gap, an issue on the word).
+`block-skipped` is a live event. The preview's loop elements landed as #1243 (2026-10-30): a reader that iterates a loop
+previews one element per folder item (a placeholder for an array input), the inner if/case judged
+per element from the picks, `e.skipped` per item.
 
 ## 7. Migration 26 → 27
 

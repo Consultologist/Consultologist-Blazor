@@ -232,4 +232,118 @@ public class TemplatePreviewGatesTests
             gates, None, None, itemPicked: true, "letter", "1");
         Assert.Equal(("table", true), (asTable.Flows![0].Branch, asTable.Flows[0].RunsReader));
     }
+
+    // ----- #1243 (decided 2026-10-30): a loop's elements — every item, judged per element at 27 -----
+
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Reading(
+        (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle, string assessment)
+    {
+        var files = new Dictionary<string, string>(bundle.Files, StringComparer.Ordinal) { ["prompts/assessment.md"] = assessment };
+        return (bundle.Manifest, files);
+    }
+
+    private static readonly IReadOnlySet<string> NoPicks = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>The triage if with no else — and table_draft, its else's node, gone with it (unattached it would not validate).</summary>
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) WithoutElse((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
+    {
+        var manifest = V26Package.WithNode(bundle.Manifest, "triage", n => n with { Else = null });
+        manifest = manifest with { Nodes = manifest.Nodes!.Where(n => n.Id != "table_draft").ToList() };
+        var files = new Dictionary<string, string>(bundle.Files, StringComparer.Ordinal);
+        files.Remove("prompts/table.md");
+        return (manifest, files);
+    }
+
+    [Fact]
+    public void ALoop_PreviewsOneElementPerFolderItem_WithTheBodyNodesTokensOnTheElementsPath()
+    {
+        // The loop iterated from outside: one element per folder item, real labels; e.content is
+        // the returned node's token on the element's path, as is the body node read by id; the
+        // loop's own .content stays its token.
+        var bundle = Reading(V26Package.Minimal(), "{{ for e in node.sections }}{{ e.item.label }}: {{ e.content }} / {{ e.section_notes.content }}; {{ end }}{{ node.sections.content }}");
+        var (scope, _) = Prepared(bundle);
+
+        Assert.Equal(
+            "HPI: ⟨node.sections[hpi].section_notes.content⟩ / ⟨node.sections[hpi].section_notes.content⟩; Plan: ⟨node.sections[plan].section_notes.content⟩ / ⟨node.sections[plan].section_notes.content⟩; ⟨node.sections.content⟩",
+            Rendered(scope, bundle.Files));
+    }
+
+    [Fact]
+    public void AnArrayInputLoop_PreviewsOnePlaceholderElement_ItsItemMembersTokens()
+    {
+        var bundle = Reading(V27Package.WithRouteInLoop(V27Package.Minimal()),
+            "{{ for e in node.topic_sections }}{{ e.item.id }}/{{ e.item.label }}/{{ e.item.value.kind }}/{{ e.item.value.title }}:{{ e.content }};{{ end }}");
+        var (scope, _) = Prepared27(bundle);
+
+        // The placeholder's id is the run's positional "0"; the flow's per-item output is its own token until judged.
+        Assert.Equal("0/⟨item.label⟩/⟨item.value.kind⟩/⟨item.value.title⟩:⟨node.topic_sections[0].route.content⟩;", Rendered(scope, bundle.Files));
+    }
+
+    [Fact]
+    public void AnInnerIf_IsJudgedPerElement_ForAReaderThatIteratesTheLoop_ASkippedElementNull()
+    {
+        // triage: if item.id == "hpi" with no else — hpi takes then (patient_draft), plan is skipped.
+        var bundle = V27Package.WithTriageInLoop(V27Package.Minimal());
+        bundle = WithoutElse(bundle);
+        bundle = Reading(bundle, "{{ for e in node.sections }}{{ e.item.id }}:{{ if e.skipped }}skipped{{ else }}{{ e.content }}/{{ e.triage.content }}{{ end }};{{ end }}");
+        var (scope, gates) = Prepared27(bundle);
+
+        var judged = TemplatePreviewScope.Judged(scope, gates, NoPicks, NoPicks, itemPicked: false, "assessment", null);
+
+        Assert.Equal("hpi:⟨node.sections[hpi].patient_draft.content⟩/⟨node.sections[hpi].patient_draft.content⟩;plan:skipped;", Rendered(judged.Scope, bundle.Files));
+        var elements = Assert.Single(judged.Elements!);
+        Assert.Equal(("triage", "sections"), (elements.Gate.Key, elements.Loop));
+        Assert.Equal(new[] { ("hpi", "then"), ("plan", "none") }, elements.Branches.Select(b => (b.Key, b.Value)));
+        // Not a reader-level outcome (assessment is no branch node), and nothing waits.
+        Assert.Empty(judged.Flows!);
+        Assert.Empty(judged.Waiting);
+    }
+
+    [Fact]
+    public void AnInnerCase_OnAPlaceholderElement_IsUndecided_TheElementStaysTaken()
+    {
+        var bundle = Reading(V27Package.WithRouteInLoop(V27Package.Minimal()),
+            "{{ for e in node.topic_sections }}{{ e.item.id }}:{{ if e.skipped }}skipped{{ else }}{{ e.content }}{{ end }};{{ end }}");
+        var (scope, gates) = Prepared27(bundle);
+
+        var judged = TemplatePreviewScope.Judged(scope, gates, NoPicks, NoPicks, itemPicked: false, "assessment", null);
+
+        // A token item cannot decide a case on item.value.kind — the element is not skipped.
+        Assert.Equal("0:⟨node.topic_sections[0].route.content⟩;", Rendered(judged.Scope, bundle.Files));
+        var elements = Assert.Single(judged.Elements!);
+        Assert.Empty(elements.Branches);
+    }
+
+    [Fact]
+    public void AnInnerIf_ReadingAnInput_DecidesPerElement_OnceTheInputIsPicked_AndWaitsBefore()
+    {
+        var bundle = V27Package.WithTriageInLoop(V27Package.Minimal(), condition: "input.kind == \"new\"");
+        bundle = WithoutElse(bundle);
+        bundle = Reading(bundle, "{{ for e in node.sections }}{{ e.item.id }}:{{ if e.skipped }}skipped{{ else }}taken{{ end }};{{ end }}");
+        var (scope, gates) = Prepared27(bundle);
+
+        var waiting = TemplatePreviewScope.Judged(scope, gates, NoPicks, NoPicks, itemPicked: false, "assessment", null);
+        Assert.Contains(waiting.Waiting, w => w.Gate.Key == "triage" && w.Missing.SequenceEqual(new[] { "input.kind" }));
+        Assert.Equal("hpi:taken;plan:taken;", Rendered(waiting.Scope, bundle.Files));
+
+        var decided = TemplatePreviewScope.Judged(Picked(scope, "follow_up"), gates, Kind, NoPicks, itemPicked: false, "assessment", null);
+        Assert.Equal("hpi:skipped;plan:skipped;", Rendered(decided.Scope, bundle.Files));
+        Assert.Equal(new[] { "none", "none" }, Assert.Single(decided.Elements!).Branches.Select(b => b.Value));
+    }
+
+    [Fact]
+    public void ABranchNodesOwnPane_KeepsItsReaderLevelOutcome_AndNoElementLine()
+    {
+        // #1236's contract stands: a branch node's pane names the branch for its item pick; the
+        // per-element line is for a reader outside the flow.
+        var bundle = V27Package.WithTriageInLoop(V27Package.Minimal());
+        var (scope, gates) = Prepared27(bundle);
+        var bound = scope with { Item = new TemplateFanItem("plan", "Plan", Text: "Plan.") };
+
+        var judged = TemplatePreviewScope.Judged(bound, gates, NoPicks, NoPicks, itemPicked: true, "patient_draft", "plan");
+
+        var flow = Assert.Single(judged.Flows!);
+        Assert.Equal(("else", false), (flow.Branch, flow.RunsReader));
+        Assert.Empty(judged.Elements!);
+    }
 }

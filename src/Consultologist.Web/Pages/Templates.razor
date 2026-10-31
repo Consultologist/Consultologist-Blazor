@@ -5924,7 +5924,10 @@
             PF.TemplatePreviewGateKind.Macro => ReadsMacro(gate.Key),
             PF.TemplatePreviewGateKind.Snippet => refs.Snippets.Contains(gate.Key),
             // v27 (#1236; decided 2026-10-29): a flow node's gate is its branch nodes' — a top-level if/case over the picks, one inside a loop over the picked item.
-            PF.TemplatePreviewGateKind.Flow => readerNodeId is not null && gate.Bodies?.Any(body => body.Nodes.Contains(readerNodeId, StringComparer.Ordinal)) == true,
+            // #1243: and a reader that iterates the loop takes the loop's inner flow gates, judged once per element.
+            PF.TemplatePreviewGateKind.Flow => readerNodeId is not null
+                && (gate.Bodies?.Any(body => body.Nodes.Contains(readerNodeId, StringComparer.Ordinal)) == true
+                    || (gate.Loop is { } loop && refs.Nodes.ContainsKey(loop))),
             _ => refs.SnippetFolders.Contains(gate.Owner) || refs.Snippets.Contains(gate.Key),
         }).ToList();
     }
@@ -6033,7 +6036,7 @@
     }
 
     /// <summary>v26 (#1205): a rendered preview — the text, whether it is the renderer's sentence, and the gates judged over the pick (applied: they did not hold; waiting: on picks).</summary>
-    private sealed record RenderedPreviewResult(string Text, bool IsError, IReadOnlyList<PF.TemplatePreviewGate> Applied, IReadOnlyList<PF.TemplatePreviewWaitingGate> Waiting, IReadOnlyList<PF.TemplatePreviewFlowOutcome>? Flows = null);
+    private sealed record RenderedPreviewResult(string Text, bool IsError, IReadOnlyList<PF.TemplatePreviewGate> Applied, IReadOnlyList<PF.TemplatePreviewWaitingGate> Waiting, IReadOnlyList<PF.TemplatePreviewFlowOutcome>? Flows = null, IReadOnlyList<PF.TemplatePreviewElementOutcome>? Elements = null);
 
     private static readonly RenderedPreviewResult NoPreviewScope = new("The package does not read yet — fix the publish refusals to preview.", true, Array.Empty<PF.TemplatePreviewGate>(), Array.Empty<PF.TemplatePreviewWaitingGate>());
 
@@ -6060,7 +6063,7 @@
                 item is not null,
                 readerNodeId,
                 item?.Id);
-            return new(PF.TemplateRenderer.Render(subject, text, judged.Scope, PF.TemplatePreviewScope.Pipes), false, judged.Applied, judged.Waiting, judged.Flows);
+            return new(PF.TemplateRenderer.Render(subject, text, judged.Scope, PF.TemplatePreviewScope.Pipes), false, judged.Applied, judged.Waiting, judged.Flows, judged.Elements);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -6070,6 +6073,20 @@
 
     /// <summary>v26 (#1205): what an applied gate did for this pick, in the pane's words.</summary>
     /// <summary>v27 (#1236): what a flow node decides for this pick, and what that means for the node previewed.</summary>
+    /// <summary>#1243: what an inner flow decided for each element of a loop this pane iterates — the branches tallied in first-seen order; undecided when the picks cannot tell.</summary>
+    private static string ElementSentence(PF.TemplatePreviewElementOutcome outcome)
+    {
+        var gate = outcome.Gate;
+        var what = gate.IsCase ? $"case over {gate.If}" : $"if ({gate.If})";
+        if (outcome.Branches.Count == 0)
+        {
+            return $"node '{gate.Owner}' is undecided for the elements of loop '{outcome.Loop}' from these picks: its {what} — each element renders as taken";
+        }
+
+        var tally = string.Join(" · ", outcome.Branches.GroupBy(b => b.Value).Select(g => $"{g.Key} {g.Count()}"));
+        return $"node '{gate.Owner}' decided per element of loop '{outcome.Loop}': {tally} — its {what}; a skipped element reads e.skipped";
+    }
+
     private static string FlowSentence(PF.TemplatePreviewFlowOutcome outcome)
     {
         var gate = outcome.Gate;
@@ -7168,7 +7185,7 @@
                 <p class="muted-text rendered-preview__note">An unchosen value renders as its token — an equality against it is false, a bare <code>if</code> or an ordering sees a non-empty text — choose a value to see the branch you mean.</p>
             }
         }
-        @if (preview.Applied.Count > 0 || preview.Waiting.Count > 0 || preview.Flows is { Count: > 0 })
+        @if (preview.Applied.Count > 0 || preview.Waiting.Count > 0 || preview.Flows is { Count: > 0 } || preview.Elements is { Count: > 0 })
         {
             @* v26 (#1205): the gates judged over this pick — each applied one named, each waiting one with what to pick.
                v27 (#1236): a flow gate names the branch its node takes for this pick, and whether this node runs. *@
@@ -7176,6 +7193,11 @@
                 @foreach (var flow in preview.Flows ?? Array.Empty<PF.TemplatePreviewFlowOutcome>())
                 {
                     <li class="rendered-preview__gate rendered-preview__gate--flow @(flow.RunsReader ? "" : "rendered-preview__gate--applied")" data-gate-kind="flow" data-gate-key="@flow.Gate.Key" data-branch="@flow.Branch">@FlowSentence(flow)</li>
+                }
+                @* #1243: an inner flow decided per element of a loop this pane iterates. *@
+                @foreach (var elements in preview.Elements ?? Array.Empty<PF.TemplatePreviewElementOutcome>())
+                {
+                    <li class="rendered-preview__gate rendered-preview__gate--flow" data-gate-kind="flow" data-gate-key="@elements.Gate.Key" data-branch="per element" data-loop="@elements.Loop">@ElementSentence(elements)</li>
                 }
                 @foreach (var applied in preview.Applied.Where(gate => gate.Kind != PF.TemplatePreviewGateKind.Flow))
                 {

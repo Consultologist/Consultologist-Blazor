@@ -479,7 +479,7 @@ the declaration added an id for the node to point at and nothing else.
   `RunPromptNodeActivity` loads by path.
 - The editor's Prompts nav goes at 26 (it stays for ≤25 packages); the node pane holds the
   prompt editor and its preview, and `TemplatePreviewScope` has one owner per prompt — the
-  "preview through the first node using it" seam (#1095) has nothing left to choose.
+  "preview through the first node using it" seam (#1095) has nothing left to choose. #1243 (2026-10-30): the preview renders a loop's elements too — one per folder item, a placeholder for an array input, the inner if/case judged per element at 27.
 
 ## 5. A file says what it is — the JSON header
 
