@@ -1074,6 +1074,14 @@ public static class EditorFixtures
     /// section_notes one level up; at the top level (inLoop: false) the deliverable sources it
     /// and the branches read the inputs, so the loop pane's add may offer it.
     /// </summary>
+    /// <summary>#1243: a fixture whose assessment prompt iterates the loop `sections` — the reader a loop's elements preview for.</summary>
+    public static WorkflowPackageContentResponse ReadingTheLoop(WorkflowPackageContentResponse fixture, string read)
+    {
+        var files = new Dictionary<string, string>(fixture.Files, StringComparer.Ordinal);
+        files["prompts/assessment.md"] = files["prompts/assessment.md"] + "\n" + read;
+        return fixture with { Files = files };
+    }
+
     public static WorkflowPackageContentResponse V27Flow(bool inLoop = true)
     {
         var at26 = V26();
