@@ -80,10 +80,13 @@ public sealed record TemplateLoopOutput(
     IReadOnlyList<TemplateFanItem> Items,
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>> Body,
     TemplateNodeOutput Output,
+    // (the two trailing optionals: #1235's skipped set; #1243's collection — the editor's preview names
+    // the loop's collection so an inert folder item can leave the preview's elements as it leaves the run's)
     // #1235 (v27 design § 1.4): the items an inner if/case skipped by condition —
     // still elements (the loop is the collection), with `skipped` true, content
     // and value null, and only the body nodes that ran; absent from the values.
-    IReadOnlySet<string>? Skipped = null);
+    IReadOnlySet<string>? Skipped = null,
+    string? Collection = null);
 
 /// <summary>
 /// The fan item an instance runs for: a snippet fan carries <c>Text</c> (a
