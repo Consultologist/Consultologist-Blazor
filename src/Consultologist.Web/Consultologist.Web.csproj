@@ -17,9 +17,10 @@
     <!-- v10 (#498): the editor reads the condition grammar, the node kinds
          and the version-keyed type lists from the format itself rather than
          from a mirror — a second grammar would be a second thing to keep in
-         step. The library depends on Scriban alone (about 185 KB more over
-         the wire, compressed). Referenced where needed under the PF alias;
-         the Web's own mirrors of the wire value stay. -->
+         step. The library depends on Scriban and Markdig — both of which
+         the Web shipped already (#1256: the one Markdown pipeline lives
+         there). Referenced where needed under the PF alias; the Web's own
+         mirrors of the wire value stay. -->
     <ProjectReference Include="../Consultologist.PackageFormat/Consultologist.PackageFormat.csproj" />
     <!-- #733: the shared UI (usage chart, loading indicator) both this app and
          the admin app render — see Consultologist.UI. -->
@@ -27,7 +28,6 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" />
     <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Authentication.WebAssembly.Msal" />
