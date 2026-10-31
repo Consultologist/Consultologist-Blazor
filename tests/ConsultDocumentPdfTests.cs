@@ -248,4 +248,61 @@ public class ConsultDocumentPdfTests
         Assert.Equal("Consult", reopened.Info.Title);
         Assert.Equal("en-CA", reopened.Internals.Catalog.Elements.GetString("/Lang"));
     }
+
+    // ---- #1256: a table a prose node drafted ------------------------------------------
+
+    private const string Medications = "## Current medications\n\n| Name | Dose | Frequency | Indication |\n|---|---:|---|---|\n| Ramipril | 10 mg | Once daily | |\n| Metformin | 1 g | Twice daily | |\n| Atorvastatin | 20 mg | At night | |\n| Amlodipine | 5 mg | Once daily | |\n| Furosemide | 40 mg | Each morning | Probable heart failure |";
+
+    private static IReadOnlyList<string> PageTexts(byte[] pdf)
+    {
+        using var document = UglyToad.PdfPig.PdfDocument.Open(
+            new MemoryStream(pdf),
+            new UglyToad.PdfPig.ParsingOptions { Password = Password });
+
+        // page.Text runs the glyphs together; the words, space-joined, read as the page does.
+        return document.GetPages().Select(page => string.Join(" ", page.GetWords().Select(word => word.Text))).ToList();
+    }
+
+    [Fact]
+    public void Render_ATable_LaysOutItsCells_NoneAsAPipe()
+    {
+        // The first 27 smoke's medications section printed as a paragraph of pipes:
+        // the PDF's own pipeline lacked pipe tables and its walker had no Table case.
+        var bytes = ConsultDocumentPdf.Render(Medications, Password);
+
+        var pages = PageTexts(bytes);
+        var text = string.Join("\n", pages);
+        Assert.Single(pages);
+        foreach (var expected in new[] { "Current medications", "Name", "Dose", "Frequency", "Indication", "Ramipril", "10 mg", "Metformin", "Twice daily", "Furosemide", "Each morning", "Probable heart failure" })
+        {
+            Assert.Contains(expected, text);
+        }
+
+        Assert.DoesNotContain("|", text);
+        Assert.DoesNotContain("---", text);
+    }
+
+    [Fact]
+    public void Render_ATablesHeaderRow_RepeatsAcrossAPageBreak()
+    {
+        var rows = string.Join("\n", Enumerable.Range(1, 70).Select(i => $"| Medication {i} | {i} mg | Once daily | Indication {i} |"));
+        var long_ = "## Current medications\n\n| Name | Dose | Frequency | Indication |\n|---|---:|---|---|\n" + rows;
+
+        var pages = PageTexts(ConsultDocumentPdf.Render(long_, Password));
+
+        Assert.True(pages.Count >= 2, $"expected a page break, got {pages.Count} page(s)");
+        Assert.All(pages, page => Assert.Contains("Frequency", page));
+        Assert.Contains("Medication 70", pages[^1]);
+        Assert.DoesNotContain("|", string.Join("\n", pages));
+    }
+
+    [Fact]
+    public void Render_APipeLineWithoutASeparatorRow_IsNotATable_AndItsTextSurvives()
+    {
+        var text = string.Join("\n", PageTexts(ConsultDocumentPdf.Render("## Plan\n\n| not | a | table |\n\nFollow up in three weeks.", Password)));
+
+        Assert.Contains("not", text);
+        Assert.Contains("table", text);
+        Assert.Contains("Follow up in three weeks.", text);
+    }
 }
