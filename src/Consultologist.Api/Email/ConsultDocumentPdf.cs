@@ -1,5 +1,7 @@
 using System.Reflection;
+using Consultologist.PackageFormat;
 using Markdig;
+using Markdig.Extensions.Tables;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using MigraDoc.DocumentObjectModel;
@@ -7,19 +9,10 @@ using MigraDoc.Rendering;
 using PdfSharp.Fonts;
 using PdfSharp.Pdf.Security;
 using Microsoft.Extensions.Logging;
+using MdTable = Markdig.Extensions.Tables.Table;
 
 namespace Consultologist.Api.Email;
 
-/// <summary>
-/// #159: renders the assembled consult document (the normative v6 markdown —
-/// "## " section headings, blank-line separators, free-form agent prose
-/// inside) to a password-protected PDF (AES-256, PDF 2.0 encryption V5).
-/// The markdown pipeline mirrors the client's MarkdownPreview: HTML disabled,
-/// soft line breaks hard — so the PDF reads like the in-app preview. The
-/// password protects the document in the mailbox; it is not end-to-end
-/// secrecy from the server, which produced the plaintext
-/// (docs/ASYNC_DELIVERY.md §3).
-/// </summary>
 /// <summary>
 /// Which delivery a render belongs to (#302). Both values are already judged
 /// safe to log on this path — the attachment filename is built from the same
@@ -28,12 +21,24 @@ namespace Consultologist.Api.Email;
 /// </summary>
 internal sealed record PdfRenderContext(string JobId, string ResultId);
 
+/// <summary>
+/// #159: renders the assembled consult document (the normative v6 markdown —
+/// "## " section headings, blank-line separators, free-form agent prose
+/// inside) to a password-protected PDF (AES-256, PDF 2.0 encryption V5).
+/// The markdown pipeline is the one the client's MarkdownPreview renders from
+/// (<see cref="ConsultMarkdown.Pipeline"/>, #1256: HTML disabled, pipe tables,
+/// soft line breaks hard) — so the PDF reads like the in-app preview, a table
+/// laid out as a table. The password protects the document in the mailbox; it
+/// is not end-to-end secrecy from the server, which produced the plaintext
+/// (docs/ASYNC_DELIVERY.md §3).
+/// </summary>
 internal static class ConsultDocumentPdf
 {
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .DisableHtml()
-        .UseSoftlineBreakAsHardlineBreak()
-        .Build();
+    private static readonly MarkdownPipeline Pipeline = ConsultMarkdown.Pipeline;
+
+    // A4 less the 2.2 cm side margins set in Render — what a table may span.
+    private const double UsableWidthCm = 21.0 - 2 * 2.2;
+    private const double MinColumnWidthCm = 2.0;
 
     private static readonly object FontResolverLock = new();
     private static FontGlyphCoverage? _coverage;
@@ -207,9 +212,28 @@ internal static class ConsultDocumentPdf
                 ruleParagraph.AddText(new string('—', 12));
                 break;
 
+            // #1256: a pipe table a prose node drafted — laid out as a table, the
+            // way the in-app preview shows it. MigraDoc needs explicit column
+            // widths: the usable width is shared in proportion to each column's
+            // longest cell (the dose column stays narrow, the indication column
+            // takes the rest), none below a floor; the header row repeats across
+            // a page break; a row never splits. Cell text was folded with the
+            // rest of the markdown before parsing (#252), so nothing more here.
+            case MdTable table:
+                if (!table.IsValid())
+                {
+                    // The source's pipes, kept rather than dropped.
+                    AppendTableAsText(section, table, indentLevel);
+                    break;
+                }
+
+                AppendTable(section, table, indentLevel);
+                break;
+
             default:
-                // Conservative fallback: unhandled markdown renders as its raw
-                // source text rather than being dropped.
+                // Conservative fallback for a block the walker does not know. Markdig's
+                // LinkReferenceDefinitionGroup lands here and must stay silent (its text
+                // is a definition, not prose); anything else is reported by the tests.
                 var span = block.Span;
                 if (span.Length > 0)
                 {
@@ -219,6 +243,140 @@ internal static class ConsultDocumentPdf
                 break;
         }
     }
+
+    private static void AppendTable(Section section, MdTable table, int indentLevel)
+    {
+        var rows = table.OfType<TableRow>().ToList();
+        var columnCount = rows.Max(row => row.Count);
+        if (columnCount == 0)
+        {
+            return;
+        }
+
+        // Each column's weight: its longest cell's text, the header included; a
+        // declared width (a percentage, rarely set) wins when present.
+        var weights = new double[columnCount];
+        foreach (var row in rows)
+        {
+            for (var i = 0; i < row.Count && i < columnCount; i++)
+            {
+                weights[i] = Math.Max(weights[i], Math.Max(1, CellTextLength(row[i])));
+            }
+        }
+
+        var available = UsableWidthCm - 0.5 * indentLevel;
+        var widths = new double[columnCount];
+        for (var i = 0; i < columnCount; i++)
+        {
+            var declared = i < table.ColumnDefinitions.Count ? table.ColumnDefinitions[i].Width : 0;
+            widths[i] = declared > 0 ? available * declared / 100.0 : 0;
+        }
+
+        var undeclared = Enumerable.Range(0, columnCount).Where(i => widths[i] <= 0).ToList();
+        if (undeclared.Count > 0)
+        {
+            var remaining = Math.Max(available - widths.Sum(), MinColumnWidthCm * undeclared.Count);
+            var totalWeight = undeclared.Sum(i => weights[i]);
+            foreach (var i in undeclared)
+            {
+                widths[i] = Math.Max(MinColumnWidthCm, remaining * weights[i] / totalWeight);
+            }
+
+            // The floors may overshoot the page; scale the undeclared columns back to it.
+            var overshoot = widths.Sum() - available;
+            if (overshoot > 0)
+            {
+                var scalable = undeclared.Sum(i => widths[i]);
+                foreach (var i in undeclared)
+                {
+                    widths[i] -= overshoot * widths[i] / scalable;
+                }
+            }
+        }
+
+        var migra = section.AddTable();
+        migra.Borders.Width = 0;
+        migra.Format.SpaceAfter = Unit.FromPoint(6);
+        migra.TopPadding = Unit.FromPoint(2);
+        migra.BottomPadding = Unit.FromPoint(2);
+        if (indentLevel > 0)
+        {
+            migra.Rows.LeftIndent = Unit.FromCentimeter(0.5 * indentLevel);
+        }
+
+        for (var i = 0; i < columnCount; i++)
+        {
+            var column = migra.AddColumn(Unit.FromCentimeter(widths[i]));
+            var alignment = i < table.ColumnDefinitions.Count ? table.ColumnDefinitions[i].Alignment : null;
+            column.Format.Alignment = alignment switch
+            {
+                TableColumnAlign.Right => ParagraphAlignment.Right,
+                TableColumnAlign.Center => ParagraphAlignment.Center,
+                _ => ParagraphAlignment.Left
+            };
+        }
+
+        foreach (var row in rows)
+        {
+            var migraRow = migra.AddRow();
+            migraRow.Borders.Bottom.Width = row.IsHeader ? 0.5 : 0.25;
+            if (row.IsHeader)
+            {
+                migraRow.HeadingFormat = true;
+                migraRow.Format.Font.Bold = true;
+                migraRow.Format.Font.Size = 9.5;
+            }
+
+            for (var i = 0; i < columnCount; i++)
+            {
+                var cellParagraph = migraRow.Cells[i].AddParagraph();
+                cellParagraph.Format.SpaceAfter = 0;
+                if (i < row.Count && row[i] is TableCell cell)
+                {
+                    foreach (var child in cell)
+                    {
+                        if (child is ParagraphBlock cellBlock)
+                        {
+                            AppendInlines(cellParagraph, cellBlock.Inline);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// <summary>A malformed table's rows as text, pipes between the cells — kept, never dropped.</summary>
+    private static void AppendTableAsText(Section section, MdTable table, int indentLevel)
+    {
+        foreach (var row in table.OfType<TableRow>())
+        {
+            var paragraph = section.AddParagraph();
+            if (indentLevel > 0)
+            {
+                paragraph.Format.LeftIndent = Unit.FromCentimeter(0.5 * indentLevel);
+            }
+
+            var first = true;
+            foreach (var cell in row.OfType<TableCell>())
+            {
+                paragraph.AddText(first ? "| " : " | ");
+                first = false;
+                foreach (var child in cell)
+                {
+                    if (child is ParagraphBlock cellBlock)
+                    {
+                        AppendInlines(paragraph, cellBlock.Inline);
+                    }
+                }
+            }
+
+            paragraph.AddText(" |");
+        }
+    }
+
+    private static int CellTextLength(Block cell) =>
+        cell.Descendants<LiteralInline>().Sum(literal => literal.Content.Length)
+        + cell.Descendants<CodeInline>().Sum(code => code.Content.Length);
 
     private static void AppendInlines(Paragraph paragraph, ContainerInline? inlines)
     {
