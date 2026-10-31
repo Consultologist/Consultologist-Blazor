@@ -9,7 +9,7 @@
 //
 // Usage:
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir>                   # dry run: notices, refusals, the file plan, the 25 validation
-//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --write           # apply: files, manifest.json, dag.mmd
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --write           # apply: files, manifest.json, dag.mmd (drawn as --dag draws it: with the reads, #1244)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 26 [--write] # #1152: the 25 → 26 stage (WorkflowPackageMigration25To26)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 27 [--write] # #1237: the 26 → 27 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
 //
@@ -87,6 +87,27 @@ var catalogSchemas = catalog.Entries.Values
     .Where(entry => entry.SchemaJson != null)
     .ToDictionary(entry => entry.ContractId, entry => entry.SchemaJson!, StringComparer.Ordinal);
 
+// #1244: the diagram --dag draws — the declarations and, from 25 (#1227), the reads the
+// package's templates make, walked over its files and the formats catalogue. A walk
+// that cannot be made leaves the declarations alone and says so (the GET endpoint's idiom).
+string DiagramOf(WorkflowPackageManifest m, IReadOnlyDictionary<string, string> f)
+{
+    WorkflowDerivedEdges.Walk? walk = null;
+    if (m.SpecVersion >= 25)
+    {
+        try
+        {
+            walk = WorkflowDerivedEdges.WalkOf(m, f, formats);
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException or JsonException)
+        {
+            Console.Out.WriteLine($"notice: the diagram's walk failed ({ex.Message}); dag.mmd is drawn from the declarations alone.");
+        }
+    }
+
+    return WorkflowDagDiagram.Generate(m, walk);
+}
+
 var (manifestJson, before) = MigrationRunner.ReadPackage(root);
 
 JsonObject staged;
@@ -158,7 +179,7 @@ if (to == 26)
 
     if (write)
     {
-        MigrationRunner.Write(root, result26.ManifestJson, before, result26.Files, WorkflowDagDiagram.Generate(manifest26));
+        MigrationRunner.Write(root, result26.ManifestJson, before, result26.Files, DiagramOf(manifest26, result26.Files));
     }
 
     Console.Out.WriteLine(
@@ -212,7 +233,7 @@ if (to == 27)
 
     if (write)
     {
-        MigrationRunner.Write(root, result27.ManifestJson, before, before, WorkflowDagDiagram.Generate(manifest27));
+        MigrationRunner.Write(root, result27.ManifestJson, before, before, DiagramOf(manifest27, before));
     }
 
     Console.Out.WriteLine(
@@ -286,7 +307,7 @@ if (!result.Succeeded)
 var manifest25 = JsonSerializer.Deserialize<WorkflowPackageManifest>(result.ManifestJson, WorkflowPackageManifestJson.ReadOptions)
     ?? throw new InvalidOperationException("The migrated manifest deserialized to null.");
 var validation = WorkflowPackageValidator.Validate(manifest25, result.Files, catalogSchemas, formats: formats);
-var dag = WorkflowDagDiagram.Generate(manifest25);
+var dag = DiagramOf(manifest25, result.Files);
 
 foreach (var warning in validation.Warnings)
 {
