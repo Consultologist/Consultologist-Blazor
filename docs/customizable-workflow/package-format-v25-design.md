@@ -947,7 +947,7 @@ cleared on load. Out of scope: date inputs (a pick needs a format the row would 
 `pre` — the bytes, tokens and whitespace visible — because a prompt's markers matter; a long standard is prose and read
 as a wall of monospace. A **bytes | as Markdown** toggle beside "What a reader gets" (the usage chart's segmented
 idiom: two buttons, `aria-pressed`, bound as strings — Blazor renders a boolean attribute bare or absent) shows the
-SAME rendered string through the pane's `MarkdownPreview.Render` (Markdig, HTML disabled, soft breaks hard), every
+SAME rendered string through the pane's `MarkdownPreview.Render` (Markdig — since #1256 the library's `ConsultMarkdown.Pipeline`: HTML disabled, pipe tables, soft breaks hard), every
 `⟨token⟩` a code span by a post-pass over the HTML — not backticks in the source, which a token inside a fenced block or
 a code span would show; Markdig leaves `⟨…⟩` alone, and an intraword underscore opens no emphasis. Bytes is the default
 and the #1095 contract. The toggle is page state like the picks — one for every pane, not pending, bytes again on a

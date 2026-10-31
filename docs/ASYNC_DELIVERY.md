@@ -204,8 +204,11 @@ activity, `Account/DeliveryPassword` endpoints):
   directions, and existence surfaces only as Account/Me's
   `DocumentPasswordSet`.
 - **AES-256 via PDFsharp 6.2** (PDF 2.0 encryption V5,
-  `SetEncryptionToV5`); MigraDoc composes from the Markdig AST with the
-  client preview's pipeline semantics (HTML disabled, soft breaks hard),
+  `SetEncryptionToV5`); MigraDoc composes from the Markdig AST parsed with
+  the one pipeline the client preview shares (`ConsultMarkdown.Pipeline` in
+  the format library, #1256: HTML disabled, pipe tables, soft breaks hard) —
+  a table a prose node drafted lays out as a table, its columns sized to
+  their content and its header repeating across a page break (#1256);
   Liberation Sans embedded (PDFsharp Core resolves no Linux system
   fonts). Attachment filename `consult-{jobId8}.pdf` — no PHI.
 - **Attaches on any completion reply** (email intake and scheduled runs)
