@@ -1431,7 +1431,11 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   26 and 27 rewrites every read by token (`WorkflowNodeRename` — `node.<id>`, `node["<id>"]`,
   `node.<loop>[i].<id>`, a loop element's `e.<id>`), every gate, header and structural site, and
   every pending edit; the prompt file always follows the id to `prompts/<new>.md` (#1267), unless
-  another node shares it; undo and the pane's Discard take it back.)*
+  another node shares it; undo and the pane's Discard take it back. **#1267 (2026-11-01):** at 26+
+  a pane header names a file only when it is not the path its id implies (`prompts/`, `macros/`,
+  `snippets/` or the folder, plus `<id>.md`), with "rename the file to match" beside it (node
+  prompts, macros, snippets, folder items — `WorkflowFileMove`); the Package pane lists every
+  mismatch and brings them in step at once. v28 (#1268) is to require it.)*
 - **Label, instruction, optional, default and `if`** of a snippet, folder item or macro are
   edited where they are today (the macro pane's top fields, the folder item's row, the snippet
   pane's header); their **write target is the file's header**, not the manifest — the editor
