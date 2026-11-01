@@ -2574,6 +2574,7 @@
                                     <span class="pane-identity__sep"> · </span>
                                     <span class="pane-identity__item">@NodeKindLabel(selectedLoop)</span>
                                 </p>
+                                @NodeRenameRow(selectedLoop)
                             </div>
                             <div class="pane-header__actions">
                                 <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
@@ -2675,6 +2676,7 @@
                                     <span class="pane-identity__sep"> · </span>
                                     <span class="pane-identity__item">@NodeKindLabel(selectedIf)</span>
                                 </p>
+                                @NodeRenameRow(selectedIf)
                             </div>
                             <div class="pane-header__actions">
                                 <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
@@ -2746,6 +2748,7 @@
                                     <span class="pane-identity__sep"> · </span>
                                     <span class="pane-identity__item">@NodeKindLabel(selectedCase)</span>
                                 </p>
+                                @NodeRenameRow(selectedCase)
                             </div>
                             <div class="pane-header__actions">
                                 <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
@@ -2875,6 +2878,7 @@
                                     <span class="pane-identity__sep"> · </span>
                                     <span class="pane-identity__item">@NodeKindLabel(selectedNode)</span>
                                 </p>
+                                @NodeRenameRow(selectedNode)
                             </div>
                             <div class="pane-header__actions">
                                 @if (!selectedNode.IsResult)
@@ -5519,6 +5523,9 @@
         {
             new("edits", () => edits.Count, edits.Clear,
                 () => $"{edits.Count} edited", () => false),
+            // #1225: renamed nodes — applied to the loaded package; clearing restores the package as loaded.
+            new("nodeRenames", () => nodeRenames.Count, ClearNodeRenames,
+                () => $"{nodeRenames.Count} renamed", () => nodeRenames.Count > 0),
             new("addedCollections", () => addedCollections.Count, addedCollections.Clear,
                 () => $"+{addedCollections.Count} {Plural(addedCollections.Count, "folder")}", () => addedCollections.Count > 0),
             // v26 (#1163): pending macro folders (the macros map) and pending file headers (the files, not the manifest).
@@ -14769,6 +14776,7 @@
 
     private bool NodeHasPending(WorkflowManifestReader.NodeView node) =>
         nodeEdits.ContainsKey(node.Id)
+        || NodeRenamedFrom(node.Id) is not null
         || nodeWhenEdits.ContainsKey(node.Id)
         || nodeMacroEdits.ContainsKey(node.Id)
         || aggregateEdits.ContainsKey(node.Id)
@@ -16190,7 +16198,9 @@
         List<DraftFlowEdit>? FlowEdits = null,
         // v26 (#1163): pending file headers and pending macro folders. Trailing optional.
         List<DraftHeader>? Headers = null,
-        List<string>? AddedMacroCollections = null);
+        List<string>? AddedMacroCollections = null,
+        // #1225: renamed nodes, in order — applied to the loaded package before every other edit.
+        List<DraftNodeRename>? NodeRenames = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -16287,6 +16297,12 @@
         if (payload is null)
         {
             return;
+        }
+
+        // #1225: renames first, so every edit below finds its node under the id it was made under.
+        if (payload.NodeRenames is { Count: > 0 } draftRenames && At26)
+        {
+            ApplyRenamesToContent(draftRenames.Select(r => new NodeRename(r.From, r.To, r.PromptFrom, r.PromptTo)));
         }
 
         var textEdits = payload.Edits;
@@ -16964,7 +16980,8 @@
             loopEdits.Select(pair => new DraftLoopEdit(pair.Key, pair.Value.Label, pair.Value.For, pair.Value.Nodes.ToList(), pair.Value.Ret)).ToList(),
             flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList(),
             headerEdits.Select(pair => new DraftHeader(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Instruction, pair.Value.Optional, pair.Value.Default)).ToList(),
-            addedMacroCollections.ToList());
+            addedMacroCollections.ToList(),
+            nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -17563,6 +17580,14 @@
     // and specVersionBump has no pane, so a scoped discard never touches it.
     private void RevertNodeEdits(string nodeId, string? promptId)
     {
+        // #1225: a renamed node's discard renames it back first (the rewrite is symmetric), so
+        // every edit below is found under the id it was made under.
+        if (NodeRenamedFrom(nodeId) is { } original && RenameNodeCore(nodeId, original) is null)
+        {
+            nodeId = original;
+            promptId = EffectiveNodes.FirstOrDefault(n => n.Id == original)?.Prompt ?? promptId;
+        }
+
         nodeEdits.Remove(nodeId);
         // v26 (#1162): the pane is the prompt's only home — a node discard reverts its text too.
         if (At26 && promptId != null)
@@ -17661,6 +17686,368 @@
     // duplicate removal.
     private bool NodeCanDiscard(WorkflowManifestReader.NodeView node) =>
         !addedNodes.Any(a => a.Id == node.Id) && NodeHasPending(node);
+
+    // ---------------- #1225: rename a node ----------------
+
+    /// <summary>A rename of a node the loaded package declares: the ids, and the prompt file it moved (null when it stayed).</summary>
+    private sealed record NodeRename(string From, string To, string? PromptFrom, string? PromptTo);
+
+    private sealed record DraftNodeRename(string From, string To, string? PromptFrom, string? PromptTo);
+
+    // #1225: renames of loaded nodes are applied to the loaded package itself, in order; the package
+    // as loaded is kept so a discard, an undo or a draft restore can start from it again. Every pending
+    // edit keyed by or naming the old id is re-keyed when the rename is made.
+    private readonly List<NodeRename> nodeRenames = new();
+    private WorkflowPackageContentResponse? contentBeforeRenames;
+    private WorkflowPackageContentResponse? contentAfterRenames;
+
+    private string? renamingNodeId;
+    private string renameNodeDraft = string.Empty;
+    private string? renameNodeError;
+
+    /// <summary>The id a renamed node was loaded under, following a chain of renames; null when it was not renamed.</summary>
+    private string? NodeRenamedFrom(string nodeId)
+    {
+        string? original = null;
+        var current = nodeId;
+        for (var i = nodeRenames.Count - 1; i >= 0; i--)
+        {
+            if (nodeRenames[i].To == current)
+            {
+                current = nodeRenames[i].From;
+                original = current;
+            }
+        }
+
+        return original is not null && original != nodeId ? original : null;
+    }
+
+    private void ClearNodeRenames()
+    {
+        nodeRenames.Clear();
+        if (contentBeforeRenames is { } before && ReferenceEquals(content, contentAfterRenames))
+        {
+            content = before;
+            ProjectLoadedContent();
+        }
+
+        contentBeforeRenames = null;
+        contentAfterRenames = null;
+    }
+
+    /// <summary>The package with one rename applied: the manifest's sites, every file's reads and headers, the prompt moved.</summary>
+    private static WorkflowPackageContentResponse ApplyRename(WorkflowPackageContentResponse package, NodeRename rename)
+    {
+        var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        var loops = PF.WorkflowNodeRename.LoopsHolding(root, rename.From);
+        PF.WorkflowNodeRename.RenameInManifest(root, rename.From, rename.To, rename.PromptTo);
+        var files = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (path, text) in package.Files)
+        {
+            var target = path == rename.PromptFrom && rename.PromptTo is { } moved ? moved : path;
+            files[target] = path.EndsWith(".md", StringComparison.Ordinal)
+                ? PF.WorkflowNodeRename.RenameInFile(text, rename.From, rename.To, loops).Text
+                : text;
+        }
+
+        return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), Files = files };
+    }
+
+    private void ApplyRenamesToContent(IEnumerable<NodeRename> renames)
+    {
+        var list = renames.ToList();
+        if (list.Count == 0 || content is null)
+        {
+            return;
+        }
+
+        contentBeforeRenames ??= content;
+        var renamed = content;
+        foreach (var rename in list)
+        {
+            renamed = ApplyRename(renamed, rename);
+        }
+
+        nodeRenames.AddRange(list);
+        content = renamed;
+        contentAfterRenames = renamed;
+        ProjectLoadedContent();
+    }
+
+    private void StartRenameNode(string nodeId)
+    {
+        renamingNodeId = nodeId;
+        renameNodeDraft = nodeId;
+        renameNodeError = null;
+    }
+
+    private void CancelRenameNode()
+    {
+        renamingNodeId = null;
+        renameNodeError = null;
+    }
+
+    private async Task CommitRenameNodeAsync()
+    {
+        if (renamingNodeId is not { } from)
+        {
+            return;
+        }
+
+        var to = renameNodeDraft.Trim();
+        if (to == from)
+        {
+            CancelRenameNode();
+            return;
+        }
+
+        if (RenameNodeCore(from, to) is { } error)
+        {
+            renameNodeError = error;
+            return;
+        }
+
+        renamingNodeId = null;
+        renameNodeError = null;
+        selectedKey = NodeKeyFor(to);
+        await PendingChangedAsync();
+    }
+
+    /// <summary>
+    /// #1225: renames a node at 26+ — every template read, gate, structural site and pending edit
+    /// follows, and its prompt moves to prompts/&lt;new&gt;.md unless another node shares it. Returns the
+    /// refusal sentence, or null when renamed.
+    /// </summary>
+    private string? RenameNodeCore(string from, string to)
+    {
+        if (!At26 || content is null)
+        {
+            return "Renaming a node needs specVersion 26 or later.";
+        }
+
+        if (!PF.WorkflowDeclaredIds.IsValid(to))
+        {
+            return $"Node id '{to}' must be snake_case ({to.Replace('-', '_')}): a template reads it as a Scriban member.";
+        }
+
+        if (EffectiveNodes.Any(n => n.Id == to) || nodes.Any(n => n.Id == to) || addedNodes.Any(a => a.Id == to))
+        {
+            return $"A node named '{to}' already exists.";
+        }
+
+        if (EffectiveNodes.FirstOrDefault(n => n.Id == from) is not { } node)
+        {
+            return $"There is no node '{from}'.";
+        }
+
+        var added = addedNodes.FirstOrDefault(a => a.Id == from);
+        string? promptFrom = null;
+        string? promptTo = null;
+        if (added is null && node.Prompt is { } path)
+        {
+            var target = AddedPromptFile(to);
+            if (EffectiveNodes.Count(n => n.Prompt == path) == 1 && target != path)
+            {
+                if (content.Files.ContainsKey(target) || addedNodes.Any(a => a.HasPrompt && a.PromptRef == null && AddedPromptFile(a.Id) == target))
+                {
+                    return $"A prompt file '{target}' already exists — pick another node id.";
+                }
+
+                promptFrom = path;
+                promptTo = target;
+            }
+        }
+        else if (added is not null && added.HasPrompt && added.PromptRef == null && content.Files.ContainsKey(AddedPromptFile(to)))
+        {
+            return $"A prompt file '{AddedPromptFile(to)}' already exists — pick another node id.";
+        }
+
+        var loops = WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, from) is { } loop
+            ? new HashSet<string>(StringComparer.Ordinal) { loop.Id }
+            : new HashSet<string>(StringComparer.Ordinal);
+
+        RekeyPendingForRename(from, to, loops, promptFrom, promptTo);
+
+        if (added is not null)
+        {
+            added.Id = to;
+        }
+        else
+        {
+            ApplyRenamesToContent(new[] { new NodeRename(from, to, promptFrom, promptTo) });
+        }
+
+        return null;
+    }
+
+    /// <summary>#1225: every pending edit that is keyed by the old id, or names it, follows the rename.</summary>
+    private void RekeyPendingForRename(string from, string to, IReadOnlySet<string> loops, string? promptFrom, string? promptTo)
+    {
+        string Text(string text) => PF.WorkflowNodeRename.RenameInTemplate(text, from, to, loops).Text;
+        string File(string text) => PF.WorkflowNodeRename.RenameInFile(text, from, to, loops).Text;
+        string? Gate(string? gate) => gate is null ? null : PF.WorkflowNodeRename.RenameInCondition(gate, from, to, loops).Text;
+        string? Bare(string? reference) => reference == $"node.{from}" ? $"node.{to}" : reference;
+        string Id(string id) => id == from ? to : id;
+        var Ids = (IEnumerable<string> ids) => ids.Select(Id).ToList();
+        FlowBody? Body(FlowBody? body) => body is null ? null : new FlowBody(Ids(body.Nodes), Bare(body.Ret));
+        var With = (IReadOnlyDictionary<string, JsonElement>? with) => (IReadOnlyDictionary<string, JsonElement>?)with?.ToDictionary(p => p.Key,
+                p => p.Value.ValueKind == JsonValueKind.String && p.Value.GetString() == $"node.{from}" ? JsonSerializer.SerializeToElement($"node.{to}") : p.Value,
+                StringComparer.Ordinal);
+
+        // Texts: loaded files' pending edits (the moved prompt's edit moves with it), headers, added owners.
+        foreach (var key in edits.Keys.ToList())
+        {
+            var text = File(edits[key]);
+            edits.Remove(key);
+            edits[key == promptFrom && promptTo is not null ? promptTo : key] = text;
+        }
+
+        foreach (var key in headerEdits.Keys.ToList())
+        {
+            headerEdits[key] = headerEdits[key] with { If = Gate(headerEdits[key].If) };
+        }
+
+        foreach (var addedNode in addedNodes)
+        {
+            addedNode.PromptText = Text(addedNode.PromptText);
+            addedNode.Nodes = addedNode.Nodes is null ? null : Ids(addedNode.Nodes);
+            addedNode.Ret = Bare(addedNode.Ret);
+            addedNode.If = Gate(addedNode.If);
+            addedNode.Case = Gate(addedNode.Case);
+            addedNode.Then = Body(addedNode.Then);
+            addedNode.Else = Body(addedNode.Else);
+            addedNode.Branches = addedNode.Branches?.Select(b => new FlowBranch(b.When, Ids(b.Nodes), Bare(b.Ret))).ToList();
+            if (addedNode.With is not null)
+            {
+                addedNode.With = With(addedNode.With)!.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal);
+            }
+        }
+
+        foreach (var macro in addedMacros)
+        {
+            macro.Text = Text(macro.Text);
+            macro.Instruction = Text(macro.Instruction);
+            macro.If = Gate(macro.If);
+        }
+
+        foreach (var key in addedScalars.Keys.ToList())
+        {
+            addedScalars[key] = Text(addedScalars[key]);
+        }
+
+        foreach (var item in addedItems)
+        {
+            item.Content = Text(item.Content);
+            item.When = Gate(item.When);
+            item.Instruction = item.Instruction is null ? null : Text(item.Instruction);
+        }
+
+        // Structures keyed by node id, and the ids and gates inside them.
+        PendingMaps.Rekey(nodeEdits, from, to, change => change with { NodeId = Id(change.NodeId), With = With(change.With) });
+        PendingMaps.Rekey(nodeWhenEdits, from, to, Gate);
+        PendingMaps.Rekey(nodeMacroEdits, from, to, list => list.Select(m => m with { If = Gate(m.If), When = Gate(m.When) }).ToList());
+        PendingMaps.Rekey(aggregateEdits, from, to, list => Ids(list));
+        PendingMaps.Rekey(loopEdits, from, to, loop => loop with { Nodes = Ids(loop.Nodes), Ret = Bare(loop.Ret) });
+        PendingMaps.Rekey(flowEdits, from, to, flow => flow with
+        {
+            If = Gate(flow.If),
+            Case = Gate(flow.Case),
+            Then = Body(flow.Then),
+            Else = Body(flow.Else),
+            Branches = flow.Branches?.Select(b => new FlowBranch(b.When, Ids(b.Nodes), Bare(b.Ret))).ToList(),
+        });
+        if (resultsEdit is not null)
+        {
+            resultsEdit = resultsEdit.Select(r => r with
+            {
+                Sources = r.Sources?.Select(src => Bare(src)!).ToList(),
+                Check = Bare(r.Check),
+                If = Gate(r.If),
+                Macros = r.Macros?.Select(m => m with { If = Gate(m.If), When = Gate(m.When) }).ToList(),
+            }).ToList();
+        }
+
+        PendingMaps.Rekey(previewNodePicks, from, to, pick => pick);
+
+        // Keys that carry the id in a prefix: bindings (the id, a line break, the variable) and condition drafts.
+        foreach (var key in bindingEdits.Keys.Where(k => k.StartsWith(from + "\n", StringComparison.Ordinal)).ToList())
+        {
+            var value = bindingEdits[key];
+            bindingEdits.Remove(key);
+            bindingEdits[to + key[from.Length..]] = value;
+        }
+
+        var operand = $"{NodeKeyPrefix}{from}";
+        ConditionNode Operand(ConditionNode node) => node switch
+        {
+            ConditionClause clause when clause.Operand == operand => clause with { Operand = $"{NodeKeyPrefix}{to}" },
+            ConditionGroup group => group with { Items = group.Items.Select(Operand).ToList() },
+            _ => node,
+        };
+        foreach (var key in conditionDrafts.Keys.ToList())
+        {
+            var value = (ConditionGroup)Operand(conditionDrafts[key]);
+            var newKey = key == $"node-when:{from}" ? $"node-when:{to}"
+                : key == $"node-if:{from}" ? $"node-if:{to}"
+                : key.StartsWith($"node-macro:{from}\n", StringComparison.Ordinal) ? $"node-macro:{to}" + key[$"node-macro:{from}".Length..]
+                : key;
+            conditionDrafts.Remove(key);
+            conditionDrafts[newKey] = value;
+        }
+
+        if (promptFrom is not null && promptTo is not null && promptRawEdits.Remove(promptFrom, out var raw))
+        {
+            promptRawEdits[promptTo] = raw;
+        }
+    }
+
+    /// <summary>#1225: what a pending rename did to this node — null when it was not renamed.</summary>
+    private string? NodeRenameNote(WorkflowManifestReader.NodeView node)
+    {
+        if (NodeRenamedFrom(node.Id) is not { } original)
+        {
+            return null;
+        }
+
+        var moved = nodeRenames.LastOrDefault(r => r.To == node.Id)?.PromptTo;
+        var shared = node.Prompt is { } prompt
+            ? EffectiveNodes.FirstOrDefault(n => n.Prompt == prompt && n.Id != node.Id)?.Id
+            : null;
+        var file = moved is not null ? $"; the prompt file moves to {moved}"
+            : shared is not null ? $"; the prompt is shared with {shared} and keeps its name"
+            : string.Empty;
+        return $"renamed from {original} — a rerun compares it as a different node{file}.";
+    }
+
+    /// <summary>#1225: the rename control under a node's identity strip, and what a pending rename did.</summary>
+    private RenderFragment<WorkflowManifestReader.NodeView> NodeRenameRow => node => @<text>
+        @if (At26)
+        {
+            if (renamingNodeId == node.Id)
+            {
+                <div class="node-rename" data-node-rename="@node.Id">
+                    <FluentTextField @bind-Value="renameNodeDraft" aria-label="@($"New id for node {node.Id}")" />
+                    <FluentButton Appearance="Appearance.Accent" Class="node-rename__ok" OnClick="CommitRenameNodeAsync">Rename</FluentButton>
+                    <FluentButton Appearance="Appearance.Stealth" Class="node-rename__cancel" OnClick="CancelRenameNode">Cancel</FluentButton>
+                    @if (renameNodeError is not null)
+                    {
+                        <p class="field-error" role="alert">@renameNodeError</p>
+                    }
+                </div>
+            }
+            else
+            {
+                <FluentButton Appearance="Appearance.Lightweight" Class="node-rename__start"
+                              aria-label="@($"Rename node {node.Id}")" OnClick="@(() => StartRenameNode(node.Id))">rename</FluentButton>
+            }
+
+            var note = NodeRenameNote(node);
+            if (note is not null)
+            {
+                <p class="muted-text instance-note node-rename__note" data-node-renamed="@NodeRenamedFrom(node.Id)">@note</p>
+            }
+        }
+    </text>;
 
     private bool PromptCanDiscard(WorkflowManifestReader.PromptView prompt) =>
         AddedPromptForFile(prompt.File) == null
