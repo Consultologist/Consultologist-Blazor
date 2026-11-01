@@ -30,6 +30,7 @@
                     {
                         <span class="pane-identity__item">file <code>@IdentityFile</code></span>
                     }
+                    @IdentityAction
                 </p>
             }
             @if (!string.IsNullOrEmpty(Subtitle) || Modified)
@@ -107,6 +108,9 @@
     // the title) and the file path, so every pane surfaces its metadata uniformly.
     [Parameter] public string? IdentityId { get; set; }
     [Parameter] public string? IdentityFile { get; set; }
+
+    /// <summary>#1267: an action beside the identity line — "rename the file to match" when the file is not named after its id.</summary>
+    [Parameter] public RenderFragment? IdentityAction { get; set; }
     [Parameter] public string EditLabel { get; set; } = "Content";
     [Parameter] public string Text { get; set; } = string.Empty;
     [Parameter] public bool Modified { get; set; }

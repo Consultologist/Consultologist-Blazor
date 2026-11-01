@@ -863,7 +863,8 @@
                                             Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(scalar.Path, $"Snippet '{scalar.Id}'", GetText(scalar.Path))) : null)"
                                             Subtitle="@(addedScalars.ContainsKey(scalar.Id) ? "— new, unpublished" : string.Empty)"
                                             IdentityId="@scalar.Id"
-                                            IdentityFile="@scalar.Path"
+                                            IdentityFile="@FileShown(scalar.Path, PF.WorkflowFileMove.ImpliedPath("snippet", scalar.Id))"
+                                            IdentityAction="@FileMatchAction((scalar.Path, PF.WorkflowFileMove.ImpliedPath("snippet", scalar.Id)))"
                                             EditLabel="@(HeaderRefused(scalar.Path) ? "File (header refused)" : At25 ? "Snippet" : "Value")"
                                             Text="@GetText(scalar.Path)"
                                             Modified="@ScalarHasPending(scalar)"
@@ -939,7 +940,7 @@
                                             Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(AddedPath(addedItem), $"{(IsMacroCollection(addedItem.Collection) ? "Macro" : "Snippet")} '{addedItem.Collection}/{addedItem.Id}'", addedItem.Content)) : null)"
                                             Subtitle="— new, unpublished"
                                             IdentityId="@addedItem.Id"
-                                            IdentityFile="@AddedPath(addedItem)"
+                                            IdentityFile="@(At26 ? null : AddedPath(addedItem))"
                                             EditLabel="@ItemNounOf(addedItem.Collection)"
                                             Text="@addedItem.Content"
                                             Modified="true"
@@ -997,6 +998,28 @@
                             </div>
                             @PaneDiscardButton(PackageKey, PackageCanDiscard, RevertPackageEdits)
                         </div>
+                        @if (At26)
+                        {
+                            var mismatches = FileNameMismatches;
+                            <div class="package-file-names" data-file-names="@mismatches.Count">
+                                @if (mismatches.Count == 0)
+                                {
+                                    <p class="muted-text">Every file is named after its id.</p>
+                                }
+                                else
+                                {
+                                    <p class="muted-text">@mismatches.Count @(mismatches.Count == 1 ? "file is" : "files are") named differently from @(mismatches.Count == 1 ? "its id" : "their ids"):</p>
+                                    <ul class="package-file-names__list">
+                                        @foreach (var mismatch in mismatches)
+                                        {
+                                            var refusal = FileMoveRefusal(mismatch.Path, mismatch.Implied);
+                                            <li data-file-mismatch="@mismatch.Path"><code>@mismatch.Path</code> → <code>@mismatch.Implied</code>@(refusal is null ? string.Empty : $" · {refusal}")</li>
+                                        }
+                                    </ul>
+                                    <FluentButton Appearance="Appearance.Outline" Class="package-file-names__apply" OnClick="BringFileNamesInStepAsync">Bring them in step</FluentButton>
+                                }
+                            </div>
+                        }
                         <label class="package-field">
                             <span>Title</span>
                             <input class="node-field__input"
@@ -3272,7 +3295,8 @@
                                             EditorExtra="@(At25 ? InsertReferencePalette((standard.File, null, IsMacroCollection(FolderOfItem(standard.File)))) : null)"
                                             Preview="@(At25 ? RenderedPreview(new RenderedPreviewTarget(standard.File, $"{(IsMacroCollection(FolderOfItem(standard.File)) ? "Macro" : "Snippet")} '{FolderOfItem(standard.File)}/{standard.Id}'", GetText(standard.File))) : null)"
                                             IdentityId="@standard.Id"
-                                            IdentityFile="@standard.File"
+                                            IdentityFile="@FileShown(standard.File, ImpliedItemPath(standard.File, standard.Id))"
+                                            IdentityAction="@FileMatchAction((standard.File, ImpliedItemPath(standard.File, standard.Id)))"
                                             EditLabel="@(HeaderRefused(standard.File) ? "File (header refused)" : ItemNounOf(FolderOfItem(standard.File)))"
                                             Text="@GetText(standard.File)"
                                             Modified="@(edits.ContainsKey(standard.File) || headerEdits.ContainsKey(standard.File))"
@@ -3556,7 +3580,8 @@
                                             EditorExtra="@(At25 ? MacroTextExtra(macro) : null)"
                                             Footer="@(At25 ? MacroHelp : null)"
                                             IdentityId="@macro.Id"
-                                            IdentityFile="@macro.File"
+                                            IdentityFile="@FileShown(macro.File, PF.WorkflowFileMove.ImpliedPath("macro", macro.Id))"
+                                            IdentityAction="@FileMatchAction((macro.File, PF.WorkflowFileMove.ImpliedPath("macro", macro.Id)))"
                                             EditLabel="@(HeaderRefused(macro.File) ? "File (header refused)" : "Macro text")"
                                             Text="@GetText(macro.File)"
                                             Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null || headerEdits.ContainsKey(macro.File))"
@@ -16302,7 +16327,7 @@
         // #1225: renames first, so every edit below finds its node under the id it was made under.
         if (payload.NodeRenames is { Count: > 0 } draftRenames && At26)
         {
-            ApplyRenamesToContent(draftRenames.Select(r => new NodeRename(r.From, r.To, r.PromptFrom, r.PromptTo)));
+            ApplyRenamesToContent(draftRenames.Select(r => new NodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove)));
         }
 
         var textEdits = payload.Edits;
@@ -16981,7 +17006,7 @@
             flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList(),
             headerEdits.Select(pair => new DraftHeader(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Instruction, pair.Value.Optional, pair.Value.Default)).ToList(),
             addedMacroCollections.ToList(),
-            nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo)).ToList());
+            nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -17690,9 +17715,9 @@
     // ---------------- #1225: rename a node ----------------
 
     /// <summary>A rename of a node the loaded package declares: the ids, and the prompt file it moved (null when it stayed).</summary>
-    private sealed record NodeRename(string From, string To, string? PromptFrom, string? PromptTo);
+    private sealed record NodeRename(string From, string To, string? PromptFrom, string? PromptTo, bool FileMove = false);
 
-    private sealed record DraftNodeRename(string From, string To, string? PromptFrom, string? PromptTo);
+    private sealed record DraftNodeRename(string From, string To, string? PromptFrom, string? PromptTo, bool FileMove = false);
 
     // #1225: renames of loaded nodes are applied to the loaded package itself, in order; the package
     // as loaded is kept so a discard, an undo or a draft restore can start from it again. Every pending
@@ -17712,7 +17737,7 @@
         var current = nodeId;
         for (var i = nodeRenames.Count - 1; i >= 0; i--)
         {
-            if (nodeRenames[i].To == current)
+            if (!nodeRenames[i].FileMove && nodeRenames[i].To == current)
             {
                 current = nodeRenames[i].From;
                 original = current;
@@ -17739,6 +17764,14 @@
     private static WorkflowPackageContentResponse ApplyRename(WorkflowPackageContentResponse package, NodeRename rename)
     {
         var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        if (rename.FileMove)
+        {
+            // #1267: a file renamed to match its id — the file and the one site that names it.
+            var movedFiles = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+            PF.WorkflowFileMove.Apply(root, movedFiles, rename.From, rename.To);
+            return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), Files = movedFiles };
+        }
+
         var loops = PF.WorkflowNodeRename.LoopsHolding(root, rename.From);
         PF.WorkflowNodeRename.RenameInManifest(root, rename.From, rename.To, rename.PromptTo);
         var files = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -18001,6 +18034,130 @@
         }
     }
 
+    /// <summary>#1267: the file a pane header names — none at 26+ when it is the path its id implies.</summary>
+    private string? FileShown(string path, string implied) => At26 && path == implied ? null : path;
+
+    /// <summary>#1267: a folder item's implied path — its folder plus &lt;id&gt;.md.</summary>
+    private static string ImpliedItemPath(string path, string id) =>
+        PF.WorkflowFileMove.ImpliedPath("item", id, path[..(path.LastIndexOf('/') + 1)]);
+
+    /// <summary>#1267: why a loaded file cannot be renamed to match, or null when it can.</summary>
+    private string? FileMoveRefusal(string from, string to)
+    {
+        if (content is null)
+        {
+            return "Nothing is loaded.";
+        }
+
+        var root = System.Text.Json.Nodes.JsonNode.Parse(content.Manifest.GetRawText())!.AsObject();
+        return PF.WorkflowFileMove.Refusal(root, content.Files, from, to)
+            ?? (AssembleFiles().ContainsKey(to) ? $"A file '{to}' already exists." : null);
+    }
+
+    /// <summary>#1267: "rename the file to match" beside a file not named after its id, or why it cannot.</summary>
+    private RenderFragment<(string Path, string Implied)> FileMatchAction => spec => @<text>
+        @if (At26 && spec.Path != spec.Implied && content?.Files.ContainsKey(spec.Path) == true)
+        {
+            var refusal = FileMoveRefusal(spec.Path, spec.Implied);
+            if (refusal is null)
+            {
+                <FluentButton Appearance="Appearance.Lightweight" Class="file-match__button"
+                              aria-label="@($"Rename {spec.Path} to {spec.Implied}")"
+                              OnClick="@(() => MoveFileAsync(spec.Path, spec.Implied))">rename the file to match</FluentButton>
+            }
+            else
+            {
+                <span class="muted-text file-match__refusal" data-file-refusal>· @refusal</span>
+            }
+        }
+    </text>;
+
+    private async Task MoveFileAsync(string from, string to)
+    {
+        if (MoveFileCore(from, to) is null)
+        {
+            await PendingChangedAsync();
+        }
+    }
+
+    /// <summary>#1267: a loaded file renamed to match its id — every path-keyed pending edit follows; null when moved.</summary>
+    private string? MoveFileCore(string from, string to)
+    {
+        if (!At26 || FileMoveRefusal(from, to) is { } refusal)
+        {
+            return At26 ? FileMoveRefusal(from, to) : "Renaming a file needs specVersion 26 or later.";
+        }
+
+        void Move(Dictionary<string, string> map)
+        {
+            if (map.Remove(from, out var value))
+            {
+                map[to] = value;
+            }
+        }
+
+        Move(edits);
+        Move(standardNameEdits);
+        if (headerEdits.Remove(from, out var header))
+        {
+            headerEdits[to] = header;
+        }
+
+        if (itemWhenEdits.Remove(from, out var itemWhen))
+        {
+            itemWhenEdits[to] = itemWhen;
+        }
+
+        if (promptRawEdits.Remove(from, out var raw))
+        {
+            promptRawEdits[to] = raw;
+        }
+
+        if (variableAdds.Remove(from, out var adds))
+        {
+            variableAdds[to] = adds;
+        }
+
+        if (variableRemovals.Remove(from, out var removals))
+        {
+            variableRemovals[to] = removals;
+        }
+
+        if (removedFiles.Remove(from))
+        {
+            removedFiles.Add(to);
+        }
+
+        ApplyRenamesToContent(new[] { new NodeRename(from, to, null, null, FileMove: true) });
+        if (selectedKey == from)
+        {
+            selectedKey = to;
+        }
+
+        return null;
+    }
+
+    /// <summary>#1267: the loaded package's files not named after their ids.</summary>
+    private IReadOnlyList<PF.WorkflowFileMove.Mismatch> FileNameMismatches =>
+        content is null || !At26
+            ? Array.Empty<PF.WorkflowFileMove.Mismatch>()
+            : PF.WorkflowFileMove.Mismatches(System.Text.Json.Nodes.JsonNode.Parse(content.Manifest.GetRawText())!.AsObject(), content.Files);
+
+    /// <summary>#1267: every allowed rename at once — one pending change, one undo step.</summary>
+    private async Task BringFileNamesInStepAsync()
+    {
+        var moved = false;
+        foreach (var mismatch in FileNameMismatches)
+        {
+            moved |= MoveFileCore(mismatch.Path, mismatch.Implied) is null;
+        }
+
+        if (moved)
+        {
+            await PendingChangedAsync();
+        }
+    }
+
     /// <summary>#1225: what a pending rename did to this node — null when it was not renamed.</summary>
     private string? NodeRenameNote(WorkflowManifestReader.NodeView node)
     {
@@ -18009,7 +18166,7 @@
             return null;
         }
 
-        var moved = nodeRenames.LastOrDefault(r => r.To == node.Id)?.PromptTo;
+        var moved = nodeRenames.LastOrDefault(r => !r.FileMove && r.To == node.Id)?.PromptTo;
         var shared = node.Prompt is { } prompt
             ? EffectiveNodes.FirstOrDefault(n => n.Prompt == prompt && n.Id != node.Id)?.Id
             : null;
@@ -18023,6 +18180,14 @@
     private RenderFragment<WorkflowManifestReader.NodeView> NodeRenameRow => node => @<text>
         @if (At26)
         {
+            if (node.Prompt is { } nodePrompt && !addedNodes.Any(a => a.Id == node.Id) && nodePrompt != PF.WorkflowFileMove.ImpliedPath("node", node.Id))
+            {
+                <p class="pane-identity muted-text node-file" data-node-file="@nodePrompt">
+                    <span class="pane-identity__item">file <code>@nodePrompt</code></span>
+                    @FileMatchAction((nodePrompt, PF.WorkflowFileMove.ImpliedPath("node", node.Id)))
+                </p>
+            }
+
             if (renamingNodeId == node.Id)
             {
                 <div class="node-rename" data-node-rename="@node.Id">
