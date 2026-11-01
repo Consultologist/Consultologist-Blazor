@@ -9702,7 +9702,7 @@
                 var neverFires = macroIf is not null && blocks.Count == 0 && sites.Count == 1 && sites[0].GuardCanonical && NeverFires(macroIf, sites[0].Guard)
                     ? $"never fires: the macro's if ({macroIf}) and this read's guard ({sites[0].Guard!.Trim()}) cannot both hold"
                     : null;
-                row = row with { Items = FolderItemReached(template), MacroIf = macroIf, NeverFires = neverFires };
+                row = row with { Items = ItemsReached(template), MacroIf = macroIf, NeverFires = neverFires };
 
                 if (seen.Add((row.Label, row.Key)))
                 {
@@ -9715,14 +9715,31 @@
     }
 
     /// <summary>
-    /// #1263 (§ 2.6 "· items:"): a read inside one snippet-folder item reaches only that item of a loop
-    /// over the folder — said when such a loop has more than one item (a read in the loop's own prompt
-    /// reaches every item and says nothing). The item's label; null otherwise.
+    /// #1263 (§ 2.6 "· items:"): which of a loop's items a read reaches. A read inside one snippet-folder
+    /// item reaches that item of a loop over the folder (its label); a read in a loop body's own prompt
+    /// runs for every item ("every item (3)", the count when the loop iterates a folder; an array input's
+    /// items are known only at run time). A read outside every loop runs once and says nothing.
     /// </summary>
-    private string? FolderItemReached(PF.WorkflowDerivedEdges.WalkedTemplate template)
+    private string? ItemsReached(PF.WorkflowDerivedEdges.WalkedTemplate template)
     {
+        if (!At26)
+        {
+            return null;
+        }
+
+        if (template.Kind == PF.TemplateKind.Prompt)
+        {
+            if (EffectiveNodes.FirstOrDefault(n => n.Id == template.Id) is not { } reader
+                || WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, reader.Id) is null)
+            {
+                return null;
+            }
+
+            return NodeFanItems(reader) is { Count: > 0 } every ? $"every item ({every.Count})" : "every item";
+        }
+
         var slash = template.Id.IndexOf('/');
-        if (!At26 || template.Kind != PF.TemplateKind.Snippet || slash <= 0)
+        if (template.Kind != PF.TemplateKind.Snippet || slash <= 0)
         {
             return null;
         }
@@ -9732,8 +9749,7 @@
         foreach (var node in EffectiveNodes)
         {
             if (FanFolderOf(WorkflowManifestReader.NodeView.EffectiveFan(node, EffectiveNodes)) == folder
-                && NodeFanItems(node) is { Count: > 1 } items
-                && items.FirstOrDefault(i => i.Id == itemId) is { } item)
+                && NodeFanItems(node).FirstOrDefault(i => i.Id == itemId) is { } item)
             {
                 return StandardName(item);
             }
