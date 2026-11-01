@@ -150,7 +150,7 @@ public class TemplatesV26MacroPaneRowsTests : ClientRenderTestContext
     // ---- rows 5, 6, 7 -------------------------------------------------------------------
 
     [Fact]
-    public void AReadInsideOneFolderItem_NamesTheItemItReaches_AndAReadInTheLoopsPromptNamesNone()
+    public void AReadInsideOneFolderItem_NamesTheItem_AndAReadInTheLoopsPrompt_SaysEveryItem()
     {
         var page = RenderEditor(Gated(files => files["snippets/sections/hpi.md"] += "\n{{ macro.tool_note.prompt }}"));
         Select(page, "macros/tool_note.md");
@@ -159,7 +159,18 @@ public class TemplatesV26MacroPaneRowsTests : ClientRenderTestContext
         Assert.Equal("· items: HPI", itemRow.QuerySelector("[data-read-items]")!.TextContent.Trim());
 
         var promptRow = page.Find("[data-read-reader=\"Node 'section_notes' prompt\"]");
-        Assert.Null(promptRow.QuerySelector("[data-read-items]"));
+        Assert.Equal("· items: every item (2)", promptRow.QuerySelector("[data-read-items]")!.TextContent.Trim());
+    }
+
+    [Fact]
+    public void AReadOutsideEveryLoop_RunsOnce_AndNamesNoItems()
+    {
+        // assessment is in no loop; its prompt reads macro.closing.content (V26Gated).
+        var page = RenderEditor(EditorFixtures.V26Gated());
+        Select(page, "macros/closing.md");
+
+        var row = page.Find("[data-read-reader=\"Node 'assessment' prompt\"]");
+        Assert.Null(row.QuerySelector("[data-read-items]"));
     }
 
     [Fact]
