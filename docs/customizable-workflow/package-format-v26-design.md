@@ -1427,7 +1427,11 @@ keeps its sense (the guard is text) and the row shows *"· and the macro's if"* 
   leftover closed on the way: the preview's "preview as item" picks on a body node now resolve
   the folder through its loop (`EffectiveFan`), so one owner also means one item scope. **Not built:**
   a node-id rename — none exists at any version, so "renaming a node offers to rename the file"
-  waits on a rename feature of its own.)*
+  waits on a rename feature of its own. **Built in #1225 (2026-11-01):** the node pane's "rename" at
+  26 and 27 rewrites every read by token (`WorkflowNodeRename` — `node.<id>`, `node["<id>"]`,
+  `node.<loop>[i].<id>`, a loop element's `e.<id>`), every gate, header and structural site, and
+  every pending edit; the prompt file always follows the id to `prompts/<new>.md` (#1267), unless
+  another node shares it; undo and the pane's Discard take it back.)*
 - **Label, instruction, optional, default and `if`** of a snippet, folder item or macro are
   edited where they are today (the macro pane's top fields, the folder item's row, the snippet
   pane's header); their **write target is the file's header**, not the manifest — the editor
