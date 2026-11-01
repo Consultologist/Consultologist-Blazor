@@ -371,6 +371,8 @@ spelling:
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
+**Built (#1263, 2026-11-01).** Every row of the picture is on the pane: "(preview)" on the prompt block; "· and the macro's if" under every instance row, on the macro pane, the node pane and the Deliverables card; the loop an instance sits in spelled as `for item in …` where the 25 forItem select stood (retired at 26 — its pick was lost on publish); on Read-by rows "· items:", "the macro's if:" and never fires against the read's guard. Two departures, chosen: the instance's case spelling is a read-only sentence above the builder (`case item.id — when HPI, Plan — else skipped`) rather than a second editor, and "· items:" shows only when a read reaches some of a loop's items, not all.
+
 Two things the picture fixes that the text above states: the "Prompt 'patient_letter'" row
 becomes "Node 'patient_letter''s prompt" at 26 (§ 4), and the `label`, `instruction` and `if`
 fields at the top edit the macro file's header (§ 5), not manifest keys — the pane does not

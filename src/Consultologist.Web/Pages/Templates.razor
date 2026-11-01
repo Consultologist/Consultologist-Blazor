@@ -2013,6 +2013,7 @@
                                                     <span class="result-macro-when">
                                                         @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(deliverable, macroIndex), At26 ? "Always" : "Always produced"))
                                                         @InstanceNote(NeverFiresNote(macroId, MacroWhenTarget(deliverable, macroIndex).When))
+                                                        @MacroIfLine(macroId)
                                                     </span>
                                                 }
                                                 </div>
@@ -3061,7 +3062,7 @@
                                         @* v24 (#957): on a node that fans a data: collection, compose this
                                            macro for one of its items only (the Deliverables pane's forItem,
                                            on the prompt side). Label = the item's name, value = its id. *@
-                                        @if (EffectiveSpecVersion >= 24 && NodeFanItems(selectedNode) is { Count: > 0 } nodeFanItems)
+                                        @if (EffectiveSpecVersion >= 24 && !At26 && NodeFanItems(selectedNode) is { Count: > 0 } nodeFanItems)
                                         {
                                             <FluentSelect TOption="string" class="binding-row__select node-macro-foritem"
                                                           Value="@(entry.ForItem ?? "")"
@@ -3078,8 +3079,11 @@
                                                       IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                       @onclick="() => RemoveNodeMacroAsync(selectedNode.Id, index)"
                                                       aria-label="@($"Remove macro {entry.Id} from {selectedNode.Id}")" />
+                                        @InstanceLoopLine(selectedNode)
+                                        @InstanceCaseLine((selectedNode, NodeMacroWhenTarget(selectedNode, index).When))
                                         @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(selectedNode, index), "Always"))
                                         @InstanceNote(NeverFiresNote(entry.Id, NodeMacroWhenTarget(selectedNode, index).When))
+                                        @MacroIfLine(entry.Id)
                                     </div>
                                 }
                                 @if (nodeMacros.Count == 0)
@@ -3603,7 +3607,7 @@
                                 var readInline = MacroInlineReadRows(macro.Id).Count > 0;
                                 var selfRead = PackageWalk?.Templates.Any(t => t.Kind == PF.TemplateKind.Instruction && t.Id == macro.Id && t.References.MacroContents.Contains(macro.Id)) ?? false;
                                 <div class="macro-prompt-preview" aria-label="@($"What the model is told for macro {macro.Id}")">
-                                    <span class="muted-text">What the model is told</span>
+                                    <span class="muted-text">What the model is told (preview)</span>
                                     @if (string.IsNullOrWhiteSpace(MacroInstruction(macro)))
                                     {
                                         <p class="muted-text macro-prompt-preview__text">No instruction yet.</p>
@@ -3841,7 +3845,7 @@
                                                         <FluentOption TOption="string" Value="before">before the node's output</FluentOption>
                                                         <FluentOption TOption="string" Value="after">after the node's output</FluentOption>
                                                     </FluentSelect>
-                                                    @if (NodeFanItems(instanceNode) is { Count: > 0 } instanceFanItems)
+                                                    @if (!At26 && NodeFanItems(instanceNode) is { Count: > 0 } instanceFanItems)
                                                     {
                                                         <FluentSelect TOption="string" class="binding-row__select node-macro-foritem"
                                                                 Value="@(instance.ForItem ?? "")"
@@ -3860,9 +3864,12 @@
                                                                   IconStart="@(new Icons.Regular.Size20.Dismiss())"
                                                                   @onclick="() => RemoveNodeMacroAsync(instanceNode.Id, instanceIndex)" />
                                                 </span>
+                                                @InstanceLoopLine(instanceNode)
                                                 <span class="result-macro-when">
+                                                    @InstanceCaseLine((instanceNode, NodeMacroWhenTarget(instanceNode, instanceIndex).When))
                                                     @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(instanceNode, instanceIndex), "Always"))
                                                     @InstanceNote(NeverFiresNote(macro.Id, NodeMacroWhenTarget(instanceNode, instanceIndex).When))
+                                                    @MacroIfLine(macro.Id)
                                                 </span>
                                             </div>
                                         }
@@ -3909,6 +3916,7 @@
                                                 <span class="result-macro-when">
                                                     @ConditionField((At26 ? "if" : "Gated when", MacroWhenTarget(instanceResult, instanceIndex), At26 ? "Always" : "Always produced"))
                                                     @InstanceNote(NeverFiresNote(macro.Id, MacroWhenTarget(instanceResult, instanceIndex).When))
+                                                    @MacroIfLine(macro.Id)
                                                 </span>
                                             </div>
                                         }
@@ -7628,7 +7636,8 @@
     /// </summary>
     private sealed record TemplateReadRow(
         string Label, string? Key, string Member, string? Qualifier, string? Note,
-        IReadOnlyList<(string Label, string? Key)>? Via = null, string? Warning = null, RenderFragment? Below = null);
+        IReadOnlyList<(string Label, string? Key)>? Via = null, string? Warning = null, RenderFragment? Below = null,
+        string? Items = null, string? MacroIf = null, string? NeverFires = null);
 
     /// <summary>
     /// #1085: the shared descriptive read rows — "reader · reads member (qualifier) · note" —
@@ -7667,6 +7676,10 @@
                         {
                             <span class="muted-text">· @note</span>
                         }
+                        @if (readRow.Items is { } readItems)
+                        {
+                            <span class="muted-text template-read-row__items" data-read-items>· items: @readItems</span>
+                        }
                         @if (readRow.Via is { Count: > 0 } via)
                         {
                             <span class="muted-text">· via</span>
@@ -7693,6 +7706,14 @@
                     @if (readRow.Warning is { } warning)
                     {
                         <p class="muted-text template-read-row__warning node-inline-macros__warning">@warning</p>
+                    }
+                    @if (readRow.MacroIf is { } readMacroIf)
+                    {
+                        <p class="muted-text instance-note instance-note--macro-if" data-read-note="macro-if">· the macro's if: <code>@readMacroIf</code></p>
+                    }
+                    @if (readRow.NeverFires is { } readNever)
+                    {
+                        <p class="muted-text instance-note instance-note--never-fires" data-read-note="never-fires">@readNever</p>
                     }
                     @if (readRow.Below is { } below)
                     {
@@ -9514,6 +9535,67 @@
         }
     </text>;
 
+    /// <summary>v26 (#1263): the macro's own if, at 26 — the gate every instance and every read ANDs with; null when it has none.</summary>
+    private string? MacroIfOf(string macroId) =>
+        At26 && EffectiveMacros.FirstOrDefault(m => m.Id == macroId) is { If: { } macroIf } && !string.IsNullOrWhiteSpace(macroIf) ? macroIf.Trim() : null;
+
+    /// <summary>#1263 (§ 2.6 mock-up): "· and the macro's if: …" under an instance's gate — the AND the row does not otherwise show.</summary>
+    private RenderFragment<string> MacroIfLine => macroId => @<text>
+        @if (MacroIfOf(macroId) is { } macroIf)
+        {
+            <p class="muted-text instance-note instance-note--macro-if" data-instance-note="macro-if">· and the macro's if: <code>@macroIf</code></p>
+        }
+    </text>;
+
+    /// <summary>
+    /// #1263 (§ 2.6): at 26 an instance on a loop's body node spells the loop it sits in — "for item in
+    /// snippet.sections" — where the 25 rows offered a forItem select (retired at 26: the item lives in
+    /// the instance's if, whose builder offers item.id). A v27 branch body resolves through its flow.
+    /// </summary>
+    private RenderFragment<WorkflowManifestReader.NodeView> InstanceLoopLine => node => @<text>
+        @if (At26 && WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, node.Id) is { For: { } loopFor } loop)
+        {
+            <p class="muted-text instance-note instance-note--loop" data-instance-loop="@loop.Id">for <code>@loopFor</code></p>
+        }
+    </text>;
+
+    /// <summary>
+    /// #1263 (§ 2.6): an instance gated on several items — item.id == a or item.id == b, nothing else —
+    /// read as the case it is: "case item.id — when HPI, Plan — else skipped". Read-only; the builder
+    /// below stays the editor. Any other shape: nothing.
+    /// </summary>
+    private string? InstanceCaseSentence(WorkflowManifestReader.NodeView node, string? gate)
+    {
+        if (!At26 || string.IsNullOrWhiteSpace(gate) || !ConditionBuilderModel.TryFromText(gate, out var tree, out _)
+            || tree is not ConditionGroup { Not: false, Join: ConditionGroup.Or, Items.Count: >= 2 } group)
+        {
+            return null;
+        }
+
+        var ids = new List<string>();
+        foreach (var item in group.Items)
+        {
+            if (item is not ConditionClause { Not: false, Operator: "==", Arithmetic: null } clause
+                || clause.Operand is not (ItemIdKey or "item.id"))
+            {
+                return null;
+            }
+
+            ids.Add(clause.Literal);
+        }
+
+        var items = NodeFanItems(node);
+        var labels = ids.Select(id => items.FirstOrDefault(i => i.Id == id) is { } known ? StandardName(known) : id);
+        return $"case item.id — when {string.Join(", ", labels)} — else skipped";
+    }
+
+    private RenderFragment<(WorkflowManifestReader.NodeView Node, string? Gate)> InstanceCaseLine => spec => @<text>
+        @if (InstanceCaseSentence(spec.Node, spec.Gate) is { } sentence)
+        {
+            <p class="muted-text instance-note instance-note--case" data-instance-case>@sentence</p>
+        }
+    </text>;
+
     /// <summary>
     /// v26 (#1206, the #1096 renderer rule): whether macro.&lt;id&gt;.prompt is an empty read — the
     /// instruction blank, or rendering to whitespace over the token scope while its walk reads
@@ -9614,6 +9696,14 @@
                     row = row with { Below = ReadGuardBelow((TemplateFileOf(template), template.Subject, member, sites, template.References.Branches)) };
                 }
 
+                // #1263 (§ 2.6): the macro's own if on the read, never-fires when the read's one
+                // canonical guard contradicts it, and the item a folder-item read reaches.
+                var macroIf = MacroIfOf(macroId);
+                var neverFires = macroIf is not null && blocks.Count == 0 && sites.Count == 1 && sites[0].GuardCanonical && NeverFires(macroIf, sites[0].Guard)
+                    ? $"never fires: the macro's if ({macroIf}) and this read's guard ({sites[0].Guard!.Trim()}) cannot both hold"
+                    : null;
+                row = row with { Items = FolderItemReached(template), MacroIf = macroIf, NeverFires = neverFires };
+
                 if (seen.Add((row.Label, row.Key)))
                 {
                     rows.Add(row);
@@ -9622,6 +9712,34 @@
         }
 
         return rows;
+    }
+
+    /// <summary>
+    /// #1263 (§ 2.6 "· items:"): a read inside one snippet-folder item reaches only that item of a loop
+    /// over the folder — said when such a loop has more than one item (a read in the loop's own prompt
+    /// reaches every item and says nothing). The item's label; null otherwise.
+    /// </summary>
+    private string? FolderItemReached(PF.WorkflowDerivedEdges.WalkedTemplate template)
+    {
+        var slash = template.Id.IndexOf('/');
+        if (!At26 || template.Kind != PF.TemplateKind.Snippet || slash <= 0)
+        {
+            return null;
+        }
+
+        var folder = template.Id[..slash];
+        var itemId = template.Id[(slash + 1)..];
+        foreach (var node in EffectiveNodes)
+        {
+            if (FanFolderOf(WorkflowManifestReader.NodeView.EffectiveFan(node, EffectiveNodes)) == folder
+                && NodeFanItems(node) is { Count: > 1 } items
+                && items.FirstOrDefault(i => i.Id == itemId) is { } item)
+            {
+                return StandardName(item);
+            }
+        }
+
+        return null;
     }
 
     /// <summary>
