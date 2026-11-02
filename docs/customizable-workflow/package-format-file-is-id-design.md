@@ -1,8 +1,10 @@
 # specVersion N — a file name is its id; the manifest stops spelling paths
 
-> **Status:** design, **revision 1** (2026-11-02). Milestone 32 (#1268). Decided with the package
-> author; not implemented. **The version number is not assigned.** It is either **28**, shipped
-> ahead of the dynamic half (which then moves to 29), or the dynamic half's 28 carries it too.
+> **Status:** design, **revision 2** (2026-11-02; revision 1 the same day made `index.json` a
+> bare list of ids, revision 2 makes it an object with an optional folder `label`, § 3).
+> Milestone 32 (#1268). Decided with the package author; not implemented. **The version number
+> is not assigned.** It is either **28**, shipped ahead of the dynamic half (which then moves to
+> 29), or the dynamic half's 28 carries it too.
 > Until that is decided this text says **N**. Design-level, not a step-by-step plan; the
 > normative text follows in the package-format registry as `package-format-vN.md` once layer A
 > lands (§ 11).
@@ -39,12 +41,13 @@ only by case.
 |---|---|---|
 | a node's prompt is the file it names: `"prompt": "prompts/identify-problem.md"` | a non-computed node's prompt is **`prompts/<id>.md`**; `prompt` is retired and refused by name | § 1, § 2 |
 | `macros` and `snippets` are maps, id → path; a path ending `/` is a folder | **lists of ids**: `"macros": ["closing", "notes/"]`; a trailing `/` marks a folder at `<kind>/<id>/` | § 2 |
-| `index.json` is an ordered list of `{ id, file }` | an **ordered list of ids**, `["hpi", "plan"]`; each item is `<id>.md` beside it | § 3 |
+| `index.json` is an ordered list of `{ id, file }`; a folder has no label | an **object**, `{ "label"?, "items": ["hpi", "plan"] }`: the ordered ids (each item `<id>.md` beside it) and an optional display label for the folder | § 3 |
 | two nodes may name one prompt file | one file per node, by construction; the migration copies a shared file | § 4 |
 | no file-naming rule | the stem is the id, everywhere (§ 1); a file under `prompts/`, `macros/` or `snippets/` that names nothing is a **warning** | § 1, § 2 |
 | snippet folder item ids are never checked for snake_case (a 26 gap) | every id is snake_case, item ids included | § 3 |
 | the record's node row names its `prompt` by path | unchanged: the path is always `prompts/<id>.md` now | § 5 |
 | the Editor offers "rename the file to match" and lists mismatches (#1267) | nothing to offer, since a mismatch cannot be spelled; an id rename is a file move | § 7 |
+| a folder is a row in the Editor's nav, holding its order arrows | a folder has a **pane**: its label and its item order | § 7 |
 | `package-format v2026.10.15`, `provenance v2026.10.10` | the bump's package-format version; **provenance unchanged** | § 10 |
 
 **Unchanged from 27, by decision:** everything else. That covers the template objects and what
@@ -118,18 +121,46 @@ like the 25-list/26-map switch it already makes.
 ## 3. index.json
 
 ```json
-["hpi", "medications", "assessment_plan"]
+{
+  "label": "Sections",
+  "items": ["hpi", "medications", "assessment_plan"]
+}
 ```
 
-At N, `index.json` is an ordered list of ids. The order is the run order, as at 26. Each item's
-file is `<id>.md` beside the index, and its header (`label`, `if`) stays in that file, as at 26.
+At N, `index.json` is an object with two keys, the same for a macro folder and a snippet folder.
+
+- **`items`** is required and lists at least one id. The order is the run order, as at 26. Each
+  item's file is `<id>.md` beside the index, and its header (`label`, `if`) stays in that file,
+  as at 26.
+- **`label`** is optional: the folder's display name. The Editor shows the folder id when it is
+  absent, as it does today. It is **optional, unlike an item's label**, because no folder has a
+  label at 27: requiring one would make the migration invent ten of them.
+- **The label is for display only at N.** The nav and the folder pane show it; a template cannot
+  read it (there is no `snippet.sections.label`), so it never reaches rendered text, the preview
+  or a hash. Making it readable later adds a read and breaks nothing.
+- **The key set is closed.** Any other key is refused by name, which keeps room for a later
+  folder `if` or `description` without guessing at them now.
+
+**Why an object in a JSON file, not a Markdown file with a header** (a `_.md`, weighed
+2026-11-02): the order is data, and scripts and `jq` read it from plain JSON without splitting a
+header out of Markdown. A Markdown body would also need a rule that it is notes only, never
+rendered or sent, or authors would expect a template to read it. The object gives the folder its
+label and keeps both of those away.
 
 Refused at N, each naming the folder:
+- a bare list, *"snippets/sections/index.json at specVersion N is an object:
+  { "label"?, "items": ["hpi", "plan"] }."*
 - an object item, *"snippets/sections/index.json item { id, file } — at specVersion N an
-  item is its id: ["hpi", "plan"]."*
+  item is its id: "items": ["hpi", "plan"]."*
+- a missing or empty `items`;
+- an unknown key, by name;
+- a `label` that is not a non-empty string;
 - a duplicate id;
 - a non-snake_case item id. This closes the 26 gap: the v26 text says item ids are
-  snake_case, but only macro-folder items were checked.
+  snake_case, but only macro-folder items were checked;
+- an item whose `<id>.md` is missing.
+
+A `.md` in the folder that `items` does not list gets the § 2 stray-file warning.
 
 ## 4. Shared prompts
 
@@ -168,7 +199,9 @@ registry does not move.
 - `prompts/<id>.md` for every non-computed, non-flow node;
 - `macros/<id>.md`, or `macros/<id>/` for a folder entry;
 - `snippets/<id>.md`, or `snippets/<id>/`;
-- for an id-list index, `(id, id + ".md")` (`ReadIndexAt26`'s successor).
+- for an N index, `(id, id + ".md")` for each of its `items` (`ReadIndexAt26`'s successor),
+  with the folder's `label` carried beside the collection for the Editor; the run path never
+  reads it.
 
 After that everything downstream works unchanged on the paths it already uses:
 `WorkflowPackageStore`'s `RootFilesOf`, `GatherDataFilesAsync` and `Materialise` (one prompt
@@ -177,7 +210,8 @@ walk, the content-validation closure, and the job starter's recorded `prompt`. T
 point is deliberate: the run path gains no "is this N?" branches.
 
 The validator runs the same normalisation before its 27 pipeline. It adds the § 2–§ 3 sentences
-for what the normalisation cannot read (a retired key, a map, an object item), and the stray-file
+for what the normalisation cannot read (a retired key, a map, a bare-list index, an object item,
+an unknown index key), and the stray-file
 warning.
 
 ## 7. The Editor at N
@@ -185,8 +219,12 @@ warning.
 - **Reading.** `WorkflowManifestReader` reads the lists and implies paths at N. Its views
   (`NodeView.Prompt`, macro and snippet paths, collection item paths) carry the implied path, so
   the panes keep their keys.
-- **Writing.** Composing at N writes no `prompt`, lists for `macros` and `snippets`, and id
-  lists for every `index.json`.
+- **Writing.** Composing at N writes no `prompt`, lists for `macros` and `snippets`, and the
+  `{ "label"?, "items" }` object for every `index.json` (no `label` key until one is set).
+- **A folder pane.** At N a folder is selectable and gets a pane, for macro and snippet folders
+  alike: the label field (empty when unset, the id shown as its placeholder) and the item order,
+  whose move arrows and reset move there from the nav. Adding and removing items stay where they
+  are. At ≤ 27 a folder stays a nav row, since its index has nowhere to keep a label.
 - **New files** are already `<id>.md` (#1267).
 - **Renames move files.** Renaming a node already moves its prompt (#1225). At N, renaming a
   macro, a snippet, a folder or a folder item also moves its file, folder or item file, and
@@ -213,7 +251,8 @@ beside `WorkflowPackageMigration25To26` (`WorkflowPackageMigration27ToN`, return
    and folder items. A target that already exists with different text refuses the migration and
    names both paths.
 3. **Respell.** Drop every `prompt`. Turn `macros` and `snippets` into lists (folders keep their
-   `/`), and every `index.json` into its id list.
+   `/`), and every `index.json` into `{ "items": [...] }`, its ids in their 27 order. No label
+   is written: the migration does not invent one.
 4. **Validate at N** in memory. The notices list each rename as `from → to`.
 
 ## 9. The ten public packages
@@ -246,7 +285,7 @@ push**. `test/general` is the prod pin and moves on the word, after a smoke at N
 
 ## 10. The registry
 
-- `package-format-vN.md`: the § 1 rule, the § 2 grammar, the § 3 index, and the migration
+- `package-format-vN.md`: the § 1 rule, the § 2 grammar, the § 3 index object, and the migration
   note. `spec-versions.json` lists N. `schemas/package-format-vN.schema.json` is generated: no
   `prompt` on a node; `macros` and `snippets` arrays of strings matching
   `^[a-z][a-z0-9_]*/?$`. The schema does not cover `index.json` (a support file).
@@ -258,10 +297,14 @@ push**. `test/general` is the prod pin and moves on the word, after a smoke at N
   - invalid, `SHAPE_BLIND` (a file set, which the schema cannot see):
     - a missing implied prompt;
     - a missing folder index;
+    - a bare-list index (`invalid-index-bare-list-at-N`);
+    - an unknown index key (`invalid-index-unknown-key`);
+    - an empty `items`;
     - an object item in an index;
     - a duplicate item;
     - a non-snake_case item id.
-  - warning: a stray `prompts/` file.
+  - valid: a folder with a `label`.
+  - warning: a stray `prompts/` file; an unlisted `.md` in a folder.
   - the gate under `v27/`: a list-spelled `macros` *"requires specVersion N"*.
 
   Run the registry's step-4 schema check locally before pushing; the 25 and 26 lessons both
@@ -277,7 +320,7 @@ One layer per PR, each green on its own. The bump is last, as at 25, 26 and 27.
 - **B — engine:** nothing beyond reading through A's normalisation. A smoke-level test runs an
   N package through `WorkflowPackageStore` and the job starter. `SupportedSpecVersions` += N is
   the bump's.
-- **C — Editor:** § 7 reading and writing, id renames that move files, the upgrade rung,
+- **C — Editor:** § 7 reading and writing, the folder pane, id renames that move files, the upgrade rung,
   retiring #1267's affordances at N.
 - **The bump:** both version sets += N; the registry lists N; the Editor's ceilings;
   `scripts/migrate-workflow-package.cs --to N`; an engine release on the word.
@@ -293,5 +336,8 @@ One layer per PR, each green on its own. The bump is last, as at 25, 26 and 27.
   declares a local format yet and the catalogue's own naming is the agents repo's.
 - **Package names.** Hyphenated package names (`example-macros`) are names, not ids a template
   reads, and are unaffected.
+- **A folder's label in templates, and a folder `if`.** Both left out at N (§ 3): the label is
+  display only, and gating a whole folder is new behaviour on top of the item gates. The closed
+  key set leaves room for either.
 - **Stray files as errors.** Proposed as a warning, so a package carrying notes or drafts still
   publishes. A later version may refuse them once authors have seen the warning.
