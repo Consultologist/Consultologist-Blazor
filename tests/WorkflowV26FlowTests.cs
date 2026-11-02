@@ -483,6 +483,8 @@ public class WorkflowV26FlowTests
     {
         // Reuse is a snippet by the design's word; two nodes naming one file are
         // still two prompts, each walked as its node's.
+        // 26 and 27 only: at 28 (#1283) each node owns prompts/<id>.md, so sharing
+        // cannot be spelled; the 27 → 28 migration copies a shared file per node.
         var errors = V26Package.FlowErrors(m => Sourcing(V26Package.WithNodes(m,
             new WorkflowNodeSpec("second_opinion", "Second opinion", Prompt: "prompts/assessment.md", Format: "prose")), "node.second_opinion"));
 
