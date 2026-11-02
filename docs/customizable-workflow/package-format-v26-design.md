@@ -186,7 +186,7 @@ A `for`'s collection is `snippet.<folder>` or `input.<id>`; a folder item's `if`
 inputs only; and **at 26 a body holds plain nodes** (decided 2026-10-26) — an `if` or `case`
 inside a `for` body, skipping the item's body nodes and keeping the count (the item a row that
 says "skipped by condition"), is a follow-up issue of its own — **specVersion 27**, #1173,
-`package-format-v27-design.md` (decided 2026-10-29; the dynamic half below is 28); a `for` inside
+`package-format-v27-design.md` (decided 2026-10-29; the dynamic half below is 29 since 2026-11-02); a `for` inside
 anything waits for the scheduler redesign (§ 6). So every loop's length is known when the job starts, `TotalBlockCount` stays the stored scalar it has been since #176, and the
 engine's skeleton (`ResolveSkeleton`, `SettledFolders`) resolves the 26 program as it resolves
 the 25 fans — the scheduler does not change shape in this bump. The sentence a 26 package
@@ -580,9 +580,9 @@ A gated-off snippet or item that is a prompt's *only* content leaves an empty pr
 says so (the 25 "empty prompt" case). A gated snippet is still **used** — the gate is a run-time
 fact, reachability is a publish-time one.
 
-## 6. The dynamic half, by name — dynamic fan sizes and the scheduler redesign (specVersion 28)
+## 6. The dynamic half, by name — dynamic fan sizes and the scheduler redesign (specVersion 29)
 
-*(#1062; and the four flow shapes § 1.4 refuses. Numbered 28 on 2026-10-29: 27 is the static
+*(#1062; and the four flow shapes § 1.4 refuses. Numbered 28 on 2026-10-29 and 29 on 2026-11-02 (28 is #1268, `package-format-v28-design.md`): 27 is the static
 shape § 1.4 names as a follow-up — a flow node inside a `for`, `package-format-v27-design.md`.)* The invariant 25 and 26 share: **a loop's
 length is known when the job starts.** A folder's items are filtered by `if`s over inputs, an
 array input's elements are counted, `WorkflowPackageBlocks.Resolve` lays out the rows, and
@@ -1621,7 +1621,7 @@ the port list — it does; each Milestone 30 issue links its section; the bump i
 ## 15. Deferred, by name
 
 - **A flow node inside a `for`** — specVersion 27, #1173, `package-format-v27-design.md` (§ 1.4).
-- **Dynamic fan sizes — the scheduler redesign** (#1062; § 6; specVersion 28): a count that
+- **Dynamic fan sizes — the scheduler redesign** (#1062; § 6; specVersion 29): a count that
   changes during a run; the precondition for everything below it.
 - **`while`** — a body repeated until a computed check holds, bounded; its per-pass reads and
   record shape open on #1100 (§ 6).

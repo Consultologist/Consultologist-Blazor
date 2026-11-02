@@ -11,14 +11,15 @@
 > which branch's nodes run, the loop may return the flow node, and **every item stays a row**: an
 > item whose branch holds no nodes is a row that says *skipped by condition*. Nothing a run
 > discovers changes a count; `TotalBlockCount` stays the stored scalar (#176) and the scheduler
-> keeps its shape. The dynamic half — a count the run discovers — is **28** (Milestone 32;
+> keeps its shape. The dynamic half — a count the run discovers — is **29** (renumbered from 28 on 2026-11-02, when 28 went to #1268; Milestone 32;
 > v26 design § 6).
 
 This is one bump, and a small one by design: one new permission in the grammar (a flow node in a
 loop's `nodes[]`), one new decision moment in the engine (per item), one new row state in the
 record (*skipped by condition*), and the surfaces that follow. It was named as a follow-up when
 26 was decided (v26 design § 1.4, 2026-10-26) and filed as #1173; the number 27 was given to it on
-2026-10-29, the dynamic half moving to 28, so that the static shape ships first and alone.
+2026-10-29, the dynamic half moving to 28, so that the static shape ships first and alone (and to
+29 on 2026-11-02, 28 going to `package-format-v28-design.md`).
 
 ## Why
 
@@ -31,7 +32,7 @@ level has the same need one level down: *per section*, decide, then draft.
 
 The decision that keeps this small: **the loop's length does not change.** An item whose
 condition takes no branch is not dropped from the count; it is a row that says why nothing ran.
-That is the line between 27 and 28 — 28 is where a count moves during a run.
+That is the line between 27 and 29 — 29 is where a count moves during a run.
 
 ## The port list
 
@@ -79,7 +80,7 @@ the template objects, the hash ladders, the editor's model of a body (one level 
 - **One level.** A loop's body may hold flow nodes; a flow node's body holds **plain nodes** — an
   `if` inside an `if` inside a `for`, or a `case` in a branch, is refused naming the version that
   takes it (*"node 'detail' runs inside node 'triage', which runs inside loop 'sections'; at
-  specVersion 27 a branch holds plain nodes"*). A `for` inside anything stays 28 (nesting takes
+  specVersion 27 a branch holds plain nodes"*). A `for` inside anything stays 29 (nesting takes
   paths — v26 design § 6). An `if`/`case` inside an `if`/`case` **at the top level** stays refused
   as at 26 (the same sentence, "a flow node inside a body"), unchanged by this bump: nobody asked,
   and the decision moment is the same as the outer's — a later permission, not a 27 one.
@@ -135,7 +136,7 @@ An inner `if` with no `else` and no branch taken, or a `case` whose value no bra
 `else`, **skips the item for that flow node**. The item is still a row of the loop (the count is
 kept): the flow node's row for the item is *skipped by condition*, recorded with the **condition's
 text** — never the value it read (#369's rule stands: a record never prints a patient value; the
-v26 design § 6 wording "and the value it read" is **superseded** here for 27, and 28 inherits this
+v26 design § 6 wording "and the value it read" is **superseded** here for 27, and 29 inherits this
 decision). The branch nodes of that item run nothing and have no rows for it, as a pruned body has
 no row (#1223 — named by the flow row's per-item branch, § 5).
 
@@ -349,11 +350,11 @@ content's proof and the smoke's subject.
 
 - An `if`/`case` inside an `if`/`case` (any level) — nobody asked; the top-level case keeps its 26
   sentence, the inner case takes the one-level sentence (§ 1.1).
-- A `for` inside anything; a count that changes; `while`, `for … until`, `let` — **28** (Milestone
+- A `for` inside anything; a count that changes; `while`, `for … until`, `let` — **29** (Milestone
   32; v26 design § 6).
 - A folder item's text field as a `case` subject (needs a closed-set declaration on the folder
   index) — with enum value labels (#1061).
-- Recording the value a condition read — refused by #369's rule, here and at 28.
+- Recording the value a condition read — refused by #369's rule, here and at 29.
 
 ## 9. Phasing (Milestone 35)
 
