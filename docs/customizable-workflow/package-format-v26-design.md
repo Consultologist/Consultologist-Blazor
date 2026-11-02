@@ -373,6 +373,8 @@ spelling:
 
 **Built (#1263, 2026-11-01).** Every row of the picture is on the pane: "(preview)" on the prompt block; "· and the macro's if" under every instance row, on the macro pane, the node pane and the Deliverables card; the loop an instance sits in spelled as `for item in …` where the 25 forItem select stood (retired at 26 — its pick was lost on publish); on Read-by rows "· items:", "the macro's if:" and never fires against the read's guard. One departure, chosen: the instance's case spelling is a read-only sentence above the builder (`case item.id — when HPI, Plan — else skipped`) rather than a second editor. "· items:" names a folder item's read by its item and a loop body prompt's read as "every item (N)"; a read outside every loop runs once and says nothing.
 
+**Built (#1266, 2026-11-02).** The departure is retired: the case is the editor. A loop instance whose gate is `item.id` equalities only (one, or several joined by `||`, each a current item) shows item chips with ✕ and an "add an item…" pick in place of the builder; the chips write the bare chain `item.id == "hpi" || item.id == "plan"`. The last ✕ and every item chosen both fall back to no gate (Always), with a note saying so. "edit as a condition" opens the builder on the same gate and "gate by item" comes back while it is still item-only; any other gate is the builder's alone. An ungated loop instance offers "only for an item…" beside Always.
+
 Two things the picture fixes that the text above states: the "Prompt 'patient_letter'" row
 becomes "Node 'patient_letter''s prompt" at 26 (§ 4), and the `label`, `instruction` and `if`
 fields at the top edit the macro file's header (§ 5), not manifest keys — the pane does not

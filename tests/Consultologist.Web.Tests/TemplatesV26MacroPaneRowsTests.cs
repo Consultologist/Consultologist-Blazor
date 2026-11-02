@@ -12,7 +12,7 @@ namespace Consultologist.Web.Tests;
 /// #1263: the v26 design's § 2.6 mock-up rows the macro pane never built — "(preview)" on the prompt
 /// block, "· and the macro's if" under every instance row (macro pane, node pane, Deliverables card),
 /// the loop an instance sits in spelled where the 25 forItem select was (the pick was lost on publish
-/// at 26), the case sentence for an item.id-only gate, and on Read-by rows "· items:" for a read that
+/// at 26), the case for an item.id-only gate (an editor since #1266), and on Read-by rows "· items:" for a read that
 /// reaches one item, "the macro's if:" and never-fires against the read's guard.
 /// </summary>
 public class TemplatesV26MacroPaneRowsTests : ClientRenderTestContext
@@ -122,23 +122,23 @@ public class TemplatesV26MacroPaneRowsTests : ClientRenderTestContext
 
     // ---- row 4 --------------------------------------------------------------------------
 
+    // #1266: the case is no longer a sentence above the builder — it is the editor (TemplatesV26InstanceCaseTests).
     [Fact]
     public void AnInstanceGatedOnSeveralItems_ReadsAsTheCase_OnTheMacroPane_AndTheNodePane()
     {
         var page = RenderEditor(Gated(toolNoteIf: "item.id == \"hpi\" || item.id == \"plan\""));
-        const string sentence = "case item.id — when HPI, Plan — else skipped";
 
         Select(page, "macros/tool_note.md");
-        Assert.Equal(new[] { sentence }, Texts(page, "[data-instance-case]"));
+        Assert.Equal(new[] { "HPI", "Plan" }, page.FindAll(".instance-case__chip").Select(c => c.TextContent.Replace("✕", "").Trim()));
 
         Select(page, "node:section_notes");
-        Assert.Equal(new[] { sentence }, Texts(page, "[data-instance-case]"));
+        Assert.Equal(new[] { "HPI", "Plan" }, page.FindAll(".instance-case__chip").Select(c => c.TextContent.Replace("✕", "").Trim()));
     }
 
     [Theory]
-    [InlineData("item.id == \"hpi\"")]
     [InlineData("item.id == \"hpi\" || input.kind == \"new\"")]
     [InlineData("item.id == \"hpi\" && item.id == \"plan\"")]
+    [InlineData("item.id != \"hpi\"")]
     public void AnyOtherGateShape_ReadsAsNoCase(string gate)
     {
         var page = RenderEditor(Gated(toolNoteIf: gate));

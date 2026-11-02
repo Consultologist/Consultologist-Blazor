@@ -175,6 +175,9 @@ public class TemplatesV26PreviewGatesTests : ClientRenderTestContext
         var page = RenderEditor();
         Select(page, "node:section_notes");
 
+        // #1266: an item-only gate opens as chips under "if"; the builder holds the same gate.
+        Assert.Equal("if", page.Find("[data-instance-case]").Closest(".condition-field")!.QuerySelector(".condition-field__label")!.TextContent.Trim());
+        page.Find("fluent-button.instance-case__as-condition").Click();
         var value = page.Find("[aria-label='Condition value for section_notes macro tool_note']");
         Assert.Equal("hpi", value.GetAttribute("current-value"));
         Assert.Equal("if", value.Closest(".condition-field")!.QuerySelector(".condition-field__label")!.TextContent.Trim());
