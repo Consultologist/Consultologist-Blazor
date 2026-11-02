@@ -210,7 +210,7 @@ public static partial class WorkflowPackageValidator
     /// <summary>The snippets at 26: the headers' bodies and labels through the resolver; the snake_case rule as 25.</summary>
     private static WorkflowPackageData ResolveSnippetsAt26(WorkflowPackageManifest manifest, WorkflowResolvedTexts texts, List<string> errors)
     {
-        var snippets = WorkflowDataResolver.Resolve(manifest.Snippets, SnippetNoun, texts.Files, errors, texts.Headers);
+        var snippets = WorkflowDataResolver.Resolve(manifest.Snippets, SnippetNoun, texts.Files, errors, texts.Headers, manifest.SpecVersion);
 
         foreach (var (id, _) in manifest.Snippets ?? new Dictionary<string, string>())
         {
