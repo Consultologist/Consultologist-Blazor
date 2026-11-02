@@ -164,6 +164,20 @@ internal static class PackageFormatSchema
             Object(properties, "snippets")["propertyNames"] = new JsonObject { ["pattern"] = DeclaredId };
         }
 
+        // v28 (#1283, package-format-v28-design.md § 2): macros and snippets are
+        // lists of ids, a trailing '/' a folder; the paths are the ids'.
+        if (specVersion >= 28)
+        {
+            foreach (var table in new[] { "macros", "snippets" })
+            {
+                properties[table] = new JsonObject
+                {
+                    ["type"] = "array",
+                    ["items"] = new JsonObject { ["type"] = "string", ["pattern"] = "^[a-z][a-z0-9_]*/?$" },
+                };
+            }
+        }
+
         if (specVersion < 9)
         {
             Remove(properties, "title");
@@ -401,6 +415,22 @@ internal static class PackageFormatSchema
         // 26. Below it none of the members exists, and the published v5–v25
         // bytes must not move. (The 26 file itself is exported at the bump,
         // #1149; the shape is closed here so the render is its siblings'.)
+        // v28 (#1270, package-format-v28-design.md § 6a): a flow node's display-only
+        // description arrives at 28; below it the member does not exist, and the
+        // published v5–v27 bytes must not move. (#1283, § 2) At 28 a node names
+        // no prompt — the file is prompts/<id>.md.
+        if (specVersion < 28)
+        {
+            Remove(properties, "description");
+        }
+        else
+        {
+            var description = Object(properties, "description");
+            description["minLength"] = 1;
+            description["maxLength"] = WorkflowPackageMetadata.MaxDescriptionLength;
+            Remove(properties, "prompt");
+        }
+
         if (specVersion < 26)
         {
             foreach (var flow in new[] { "for", "if", "case", "then", "else", "branches", "nodes", "ret" })

@@ -554,7 +554,8 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     {
         if (specVersion >= 26)
         {
-            return WorkflowTextHeaders.ReadIndexAt26(indexJson, folderId, noun, new List<string>())?
+            // v28 (#1283): the index read for the version — the 28 object's ids imply their files.
+            return WorkflowTextHeaders.ReadIndex(indexJson, folderId, noun, specVersion, new List<string>())?.Items
                 .Select(item => item.File)
                 .Where(file => !string.IsNullOrWhiteSpace(file))
                 .ToList()

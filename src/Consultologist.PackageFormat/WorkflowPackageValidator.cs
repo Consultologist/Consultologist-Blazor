@@ -118,6 +118,7 @@ public static partial class WorkflowPackageValidator
         var at25 = manifest.SpecVersion >= 25;
         var at26 = manifest.SpecVersion >= 26;
         var at27 = manifest.SpecVersion >= 27;
+        var at28 = manifest.SpecVersion >= 28;
 
         if (manifest.Templating is null
             || !string.Equals(manifest.Templating.Engine, "scriban", StringComparison.OrdinalIgnoreCase))
@@ -200,6 +201,10 @@ public static partial class WorkflowPackageValidator
         {
             errors.Add($"specVersion {manifest.SpecVersion} is not supported: this engine accepts specVersion {DescribeAcceptedSpecVersions()} (pre-v5 packages are archived; see registry-operations.md).");
         }
+        else if (at28)
+        {
+            ValidateAt28(manifest, files, formats, errors, warnings);
+        }
         else if (at27)
         {
             ValidateAt27(manifest, files, formats, errors, warnings);
@@ -223,6 +228,12 @@ public static partial class WorkflowPackageValidator
             ValidateNodes(manifest, files, catalogSchemas, stampedContracts, errors, warnings);
             WarnUnreachableByEmail(manifest, warnings);
             WarnFannedOptionalInputs(manifest, warnings);
+        }
+
+        // v28 (#1283): what only 28 spells is refused below it, on every path.
+        if (!at28 && accepted.Contains(manifest.SpecVersion))
+        {
+            ValidateV28Members(manifest, errors);
         }
 
         return new ValidationResult(errors, warnings);

@@ -76,6 +76,11 @@ public sealed record WorkflowPackageManifest(
     // never attached — replace data at 25. Same shape as data: id → file, or
     // folder → "dir/" with an index.json (id, name, file, when). Trailing
     // optional; below 25 refused by name by the validator.
+    // v28 (#1283, design § 2, § 6): on the wire a list of ids may stand for the
+    // map — "style" is snippets/style.md, "sections/" the folder snippets/sections/;
+    // in memory the same id → path dictionary (WorkflowSnippetTableConverter; the
+    // shape read is marked on WorkflowSnippetTable for the validator's version rule).
+    [property: JsonConverter(typeof(WorkflowSnippetTableConverter))]
     Dictionary<string, string>? Snippets = null,
     // v25 (§ 3.6): the package-local formats — { id, file }, every file a
     // custom format (WorkflowFormatSpec); catalogue ids are referenced from a
@@ -123,20 +128,184 @@ public sealed record WorkflowFormatReference(
     string File);
 
 /// <summary>
+/// The shape a macro or snippet table took on the wire: the 25 list of macro
+/// objects, the 26 map of id → path, or (v28, #1283) the list of ids whose
+/// paths the ids imply. The converters record it; the validator judges it
+/// against the version.
+/// </summary>
+public enum WorkflowTableShape
+{
+    List,
+    Map,
+    IdList,
+}
+
+/// <summary>
+/// v28 (#1283, design § 1, § 6): the paths a table entry's id implies — a
+/// file <c>&lt;kind&gt;/&lt;id&gt;.md</c>, or for an entry ending '/' the folder
+/// <c>&lt;kind&gt;/&lt;id&gt;/</c>. The converters read a list of ids through it.
+/// </summary>
+public static class WorkflowTableIds
+{
+    /// <summary>The id and path an id-list entry names (<c>"notes/"</c> → <c>("notes", "macros/notes/")</c>).</summary>
+    public static (string Id, string Path) Entry(string directory, string entry) =>
+        entry.EndsWith('/')
+            ? (entry[..^1], $"{directory}/{entry}")
+            : (entry, $"{directory}/{entry}.md");
+
+    /// <summary>The id-list entry a path stands for: the id, with '/' for a folder.</summary>
+    public static string EntryOf(string id, string path) => path.EndsWith('/') ? id + "/" : id;
+
+    /// <summary>Reads a JSON array of id strings, keeping the order and naming duplicates once each.</summary>
+    internal static (List<(string Id, string Path)> Entries, List<string> Duplicates) ReadIds(ref Utf8JsonReader reader, string directory, string name)
+    {
+        var entries = new List<(string Id, string Path)>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var duplicates = new List<string>();
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        {
+            if (reader.TokenType != JsonTokenType.String)
+            {
+                throw new JsonException($"{name} is a list of ids at specVersion 28; every entry must be an id (a folder ending with '/').");
+            }
+
+            var (id, path) = Entry(directory, reader.GetString()!);
+            if (!seen.Add(id))
+            {
+                if (!duplicates.Contains(id, StringComparer.Ordinal))
+                {
+                    duplicates.Add(id);
+                }
+
+                continue;
+            }
+
+            entries.Add((id, path));
+        }
+
+        return (entries, duplicates);
+    }
+
+    /// <summary>True when the array at the reader holds strings — the 28 list of ids, not the 25 list of objects.</summary>
+    internal static bool IsIdList(Utf8JsonReader reader)
+    {
+        // A copy: peeking moves only the copy.
+        return reader.Read() && reader.TokenType == JsonTokenType.String;
+    }
+}
+
+/// <summary>
 /// #1099 (v26 design § 5.3): the macro list as READ from a manifest, marked
-/// with the shape the wire carried — the 25 list of objects or the 26 map
-/// { "<id>": "<file>" | "<dir>/" }. A list built in code carries no mark and
-/// passes either version's shape rule (as a code-built instance is bare).
+/// with the shape the wire carried — the 25 list of objects, the 26 map
+/// { "<id>": "<file>" | "<dir>/" }, or (v28, #1283) the list of ids. A list
+/// built in code carries no mark and passes either version's shape rule (as a
+/// code-built instance is bare).
 /// </summary>
 public sealed class WorkflowMacroTable : List<WorkflowMacroSpec>
 {
-    public WorkflowMacroTable(IEnumerable<WorkflowMacroSpec> entries, bool isMap) : base(entries)
+    public WorkflowMacroTable(IEnumerable<WorkflowMacroSpec> entries, bool isMap)
+        : this(entries, isMap ? WorkflowTableShape.Map : WorkflowTableShape.List)
     {
-        IsMap = isMap;
     }
 
-    /// <summary>True when the wire carried the 26 map; false for the 25 list.</summary>
-    public bool IsMap { get; }
+    public WorkflowMacroTable(IEnumerable<WorkflowMacroSpec> entries, WorkflowTableShape shape, IReadOnlyList<string>? duplicates = null) : base(entries)
+    {
+        Shape = shape;
+        Duplicates = duplicates ?? Array.Empty<string>();
+    }
+
+    /// <summary>The shape the wire carried.</summary>
+    public WorkflowTableShape Shape { get; }
+
+    /// <summary>True when the wire carried the 26 map; false for the 25 list (and the 28 list of ids).</summary>
+    public bool IsMap => Shape == WorkflowTableShape.Map;
+
+    /// <summary>v28: ids a list of ids named more than once (kept once in the table); empty otherwise.</summary>
+    public IReadOnlyList<string> Duplicates { get; }
+}
+
+/// <summary>
+/// v28 (#1283, design § 2): the snippet table as READ — the id → path map
+/// every reader holds, marked with the shape the wire carried (the 25/26 map
+/// or the 28 list of ids) and any id the list named twice.
+/// </summary>
+public sealed class WorkflowSnippetTable : Dictionary<string, string>
+{
+    public WorkflowSnippetTable(WorkflowTableShape shape, IReadOnlyList<string>? duplicates = null) : base(StringComparer.Ordinal)
+    {
+        Shape = shape;
+        Duplicates = duplicates ?? Array.Empty<string>();
+    }
+
+    /// <summary>The shape the wire carried: <see cref="WorkflowTableShape.Map"/> or <see cref="WorkflowTableShape.IdList"/>.</summary>
+    public WorkflowTableShape Shape { get; }
+
+    /// <summary>Ids the list named more than once (kept once); empty for a map.</summary>
+    public IReadOnlyList<string> Duplicates { get; }
+}
+
+/// <summary>
+/// v28 (#1283): snippets on the wire — the map of id → path, or the 28 list of
+/// ids. Written back in the shape read (a dictionary built in code writes the map).
+/// </summary>
+public sealed class WorkflowSnippetTableConverter : JsonConverter<Dictionary<string, string>>
+{
+    public override Dictionary<string, string>? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.StartArray)
+        {
+            var (entries, duplicates) = WorkflowTableIds.ReadIds(ref reader, "snippets", "snippets");
+            var list = new WorkflowSnippetTable(WorkflowTableShape.IdList, duplicates);
+            foreach (var (id, path) in entries)
+            {
+                list[id] = path;
+            }
+
+            return list;
+        }
+
+        if (reader.TokenType != JsonTokenType.StartObject)
+        {
+            throw new JsonException("snippets must be a map of id to file (or, at specVersion 28, a list of ids).");
+        }
+
+        var map = new WorkflowSnippetTable(WorkflowTableShape.Map);
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            var id = reader.GetString() ?? throw new JsonException("A snippets map key must be an id.");
+            if (!reader.Read() || reader.TokenType != JsonTokenType.String)
+            {
+                throw new JsonException($"snippets '{id}' must be a file path (or a folder path ending with '/').");
+            }
+
+            map[id] = reader.GetString()!;
+        }
+
+        return map;
+    }
+
+    public override void Write(Utf8JsonWriter writer, Dictionary<string, string> value, JsonSerializerOptions options)
+    {
+        if (value is WorkflowSnippetTable { Shape: WorkflowTableShape.IdList })
+        {
+            writer.WriteStartArray();
+            foreach (var (id, path) in value)
+            {
+                writer.WriteStringValue(WorkflowTableIds.EntryOf(id, path));
+            }
+
+            writer.WriteEndArray();
+            return;
+        }
+
+        writer.WriteStartObject();
+        foreach (var (id, path) in value)
+        {
+            writer.WriteString(id, path);
+        }
+
+        writer.WriteEndObject();
+    }
 }
 
 /// <summary>
@@ -151,6 +320,13 @@ public sealed class WorkflowMacroTableConverter : JsonConverter<List<WorkflowMac
     {
         if (reader.TokenType == JsonTokenType.StartArray)
         {
+            // v28 (#1283): a list of id strings is the 28 spelling; a list of objects the 25 one.
+            if (WorkflowTableIds.IsIdList(reader))
+            {
+                var (ids, duplicates) = WorkflowTableIds.ReadIds(ref reader, "macros", "macros");
+                return new WorkflowMacroTable(ids.Select(e => new WorkflowMacroSpec(e.Id, null, e.Path)), WorkflowTableShape.IdList, duplicates);
+            }
+
             var list = JsonSerializer.Deserialize<List<WorkflowMacroSpec>>(ref reader, options) ?? new List<WorkflowMacroSpec>();
             return new WorkflowMacroTable(list, isMap: false);
         }
@@ -177,6 +353,18 @@ public sealed class WorkflowMacroTableConverter : JsonConverter<List<WorkflowMac
 
     public override void Write(Utf8JsonWriter writer, List<WorkflowMacroSpec> value, JsonSerializerOptions options)
     {
+        if (value is WorkflowMacroTable { Shape: WorkflowTableShape.IdList })
+        {
+            writer.WriteStartArray();
+            foreach (var macro in value)
+            {
+                writer.WriteStringValue(WorkflowTableIds.EntryOf(macro.Id, macro.File));
+            }
+
+            writer.WriteEndArray();
+            return;
+        }
+
         var bare = value.Count > 0 && value.All(m => m.Label is null && m.Instruction is null && m.Optional is null && m.Default is null);
         if (bare)
         {
@@ -930,7 +1118,12 @@ public sealed record WorkflowNodeSpec(
     WorkflowFlowBodySpec? Else = null,
     List<WorkflowCaseBranchSpec>? Branches = null,
     List<string>? Nodes = null,
-    string? Ret = null);
+    string? Ret = null,
+    // v28 (#1270, design § 6a): what a for, if or case node is for, beyond its
+    // one-line label — display only: never rendered, sent or hashed. Trailing
+    // optional, omitted when null; refused on a plain node and below 28 by the
+    // validator.
+    string? Description = null);
 
 /// <summary>
 /// v26 (package-format-v26-design.md § 1.2, #1165): a flow node's body — the

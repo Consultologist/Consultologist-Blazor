@@ -50,7 +50,7 @@ public static class WorkflowDataResolver
         List<string> errors) =>
         manifest.Data is not null || manifest.Snippets is null
             ? Resolve(manifest.Data, "Data", texts.Files, errors)
-            : Resolve(manifest.Snippets, "Snippet", texts.Files, errors, texts.Headers);
+            : Resolve(manifest.Snippets, "Snippet", texts.Files, errors, texts.Headers, manifest.SpecVersion);
 
     /// <summary>
     /// v25 (#999): the same resolution over <c>manifest.snippets</c> — the
@@ -65,7 +65,10 @@ public static class WorkflowDataResolver
         List<string> errors,
         // #1105: non-null at 26 — the headers by path; a folder's index is then
         // the ordered [{ id, file }] list and an item's label and if are its file's.
-        IReadOnlyDictionary<string, WorkflowTextHeader>? headers = null)
+        IReadOnlyDictionary<string, WorkflowTextHeader>? headers = null,
+        // v28 (#1283): the version a folder's index is read for (WorkflowTextHeaders.ReadIndex);
+        // 26 for every caller from before 28.
+        int specVersion = 26)
     {
         var scalars = new Dictionary<string, string>(StringComparer.Ordinal);
         var collections = new Dictionary<string, WorkflowDataCollection>(StringComparer.Ordinal);
@@ -76,7 +79,7 @@ public static class WorkflowDataResolver
             {
                 var collection = headers is null
                     ? ResolveCollection(id, path, files, errors, noun)
-                    : ResolveCollectionAt26(id, path, files, headers, errors, noun);
+                    : ResolveCollectionAt26(id, path, files, headers, errors, noun, specVersion);
                 if (collection != null)
                 {
                     collections[id] = collection;
@@ -102,7 +105,8 @@ public static class WorkflowDataResolver
         IReadOnlyDictionary<string, string> files,
         IReadOnlyDictionary<string, WorkflowTextHeader> headers,
         List<string> errors,
-        string noun)
+        string noun,
+        int specVersion = 26)
     {
         var indexPath = directory + IndexFileName;
 
@@ -112,7 +116,7 @@ public static class WorkflowDataResolver
             return null;
         }
 
-        var index = WorkflowTextHeaders.ReadIndexAt26(indexJson, id, noun, errors);
+        var index = WorkflowTextHeaders.ReadIndex(indexJson, id, noun, specVersion, errors)?.Items;
         if (index is null)
         {
             return null;

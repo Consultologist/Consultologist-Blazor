@@ -128,7 +128,7 @@ internal static class WorkflowPackageContentValidation
 
                 if (files.TryGetValue(macroIndex, out var macroIndexJson))
                 {
-                    foreach (var (_, file) in WorkflowTextHeaders.ReadIndexAt26(macroIndexJson, macro.Id, "Macro", new List<string>()) ?? new List<(string, string)>())
+                    foreach (var (_, file) in WorkflowTextHeaders.ReadIndex(macroIndexJson, macro.Id, "Macro", manifest.SpecVersion, new List<string>())?.Items ?? new List<(string, string)>())
                     {
                         referenced.Add(dir + file);
                     }
@@ -184,7 +184,7 @@ internal static class WorkflowPackageContentValidation
             // list (the validator says what is wrong with it; here it only names files).
             if (manifest.SpecVersion >= 26)
             {
-                foreach (var (_, file) in WorkflowTextHeaders.ReadIndexAt26(indexJson, path, "Snippet", new List<string>()) ?? new List<(string, string)>())
+                foreach (var (_, file) in WorkflowTextHeaders.ReadIndex(indexJson, path, "Snippet", manifest.SpecVersion, new List<string>())?.Items ?? new List<(string, string)>())
                 {
                     referenced.Add(path + file);
                 }

@@ -1,10 +1,12 @@
 # specVersion 28 — a file name is its id; the manifest stops spelling paths
 
-> **Status:** design, **revision 3** (2026-11-02). Decided with the package author; not
-> implemented (#1268). Revision 1 made `index.json` a bare list of ids; revision 2 made it an
-> object with an optional folder `label` (§ 3); revision 3 numbers it: **28**, shipped alone,
-> ahead of the dynamic half, which moves to **29** (#1062; v26 design § 6), as 27 shipped the
-> static shape alone. Revisions 1–2 said "N" while the number was open. Design-level, not a
+> **Status:** design, **revision 4** (2026-11-02). Decided with the package author; being
+> implemented (#1268; layer A #1283). Revision 1 made `index.json` a bare list of ids; revision 2
+> made it an object with an optional folder `label` (§ 3); revision 3 numbered it: **28**, shipped
+> alone, ahead of the dynamic half, which moves to **29** (#1062; v26 design § 6), as 27 shipped
+> the static shape alone. Revision 4 (planning layer A): the paths are implied in **two parts**,
+> not one step after the read (§ 6), and a flow node gains a display-only `description`
+> (§ 6a, #1270). Revisions 1–2 said "N" while the number was open. Design-level, not a
 > step-by-step plan; the normative text follows in the package-format registry as
 > `package-format-v28.md` once layer A lands (§ 11).
 >
@@ -47,6 +49,7 @@ only by case.
 | the record's node row names its `prompt` by path | unchanged: the path is always `prompts/<id>.md` now | § 5 |
 | the Editor offers "rename the file to match" and lists mismatches (#1267) | nothing to offer, since a mismatch cannot be spelled; an id rename is a file move | § 7 |
 | a folder is a row in the Editor's nav, holding its order arrows | a folder has a **pane**: its label and its item order | § 7 |
+| a flow node says what it is for in its one-line `label` only | an optional, display-only **`description`** on `for`, `if` and `case` nodes (#1270) | § 6a |
 | `package-format v2026.10.15`, `provenance v2026.10.10` | the bump's package-format version; **provenance unchanged** | § 10 |
 
 **Unchanged from 27, by decision:** everything else. That covers the template objects and what
@@ -103,6 +106,9 @@ a reader never has to probe the file set to tell a folder from a file.
   prompt is prompts/identify_problem.md."* (the 25 retired-key pattern, with its replacement)
 - *"Node 'identify_problem' has no prompt: prompts/identify_problem.md is missing from the
   package."*
+- *"Node 'coverage' is computed (format terms-subset) and reads no prompt; remove
+  prompts/coverage.md."* (a computed node's implied file present: the 26 "declares prompt, but
+  format … is computed" rule, spelled for a file)
 - *"macros is a map; at specVersion 28 it is a list of ids — ["closing", "notes/"]."* (with the
   package's own ids, in its order; the same for `snippets`)
 - *"Macro 'closing' is missing from the package: macros/closing.md."* /
@@ -114,8 +120,10 @@ a reader never has to probe the file set to tell a folder from a file.
   what it would have to be called)
 
 **Two writers, one spelling.** The library's writer emits lists and no `prompt` at 28. The macro
-table converter (`WorkflowMacroTableConverter`) gains the list shape, keyed off `specVersion`
-like the 25-list/26-map switch it already makes.
+table converter (`WorkflowMacroTableConverter`) gains the list-of-ids shape beside the 25 list
+and the 26 map. It switches on the JSON token, not on `specVersion` (a property converter cannot
+see the manifest's version); the table records the shape it read, and the validator judges the
+shape against the version (§ 6). `snippets` gains the same converter and table.
 
 ## 3. index.json
 
@@ -192,26 +200,64 @@ registry does not move.
 
 ## 6. The engine
 
-**One normalisation, right after the read.** The engine's model keeps its path fields:
-`WorkflowNodeSpec.Prompt`, `WorkflowMacroSpec.File`, the snippet table and the index's
-`(id, file)` pairs. At 28 the reader fills them from the ids:
-- `prompts/<id>.md` for every non-computed, non-flow node;
-- `macros/<id>.md`, or `macros/<id>/` for a folder entry;
-- `snippets/<id>.md`, or `snippets/<id>/`;
-- for a 28 index, `(id, id + ".md")` for each of its `items` (`ReadIndexAt26`'s successor),
-  with the folder's `label` carried beside the collection for the Editor; the run path never
-  reads it.
+*(Revised in revision 4. Revision 1–3 said "one normalisation, right after the read". Planning
+layer A found two reasons it cannot work as one step: about eight readers deserialize a manifest
+without `WorkflowPackageManifestJson.Read` — publish, the diagram endpoint, lineage, catalog
+strands, the Editor's walk, the migrations and the scripts — and whether a node has a prompt
+depends on its format being computed, which needs the format catalogue the read does not have.)*
+
+The engine's model keeps its path fields: `WorkflowNodeSpec.Prompt`, `WorkflowMacroSpec.File`,
+the snippet table and the index's `(id, file)` pairs. At 28 they are filled **in two parts**:
+
+1. **The tables, in the converters.** `macros` and `snippets` read a list of ids into the same
+   entries the 26 map gives: `macros/<id>.md`, or `macros/<id>/` for a folder entry, and the
+   same under `snippets/`. A converter runs on every deserialize, whatever the reader, so every
+   reader sees paths. The table records the shape it read (list, map, list of ids) and any
+   duplicate, for the validator.
+2. **The node prompts, from the files.** A non-flow node's prompt is `prompts/<id>.md` **when
+   that file is in the package** (`WorkflowImpliedPaths.WithImpliedPrompts(manifest, files)`).
+   This needs no catalogue. The validator, which has the catalogue, judges what is left: a
+   non-computed node whose file is missing is refused, and so is a computed node whose file is
+   present (§ 2). The store has no file list before it downloads, so at 28 it fetches each
+   candidate prompt — a non-flow node with a format — optionally, and a miss is the validator's
+   to name (layer B).
+
+**The folder index** is read by one reader for every caller, given the version:
+`WorkflowTextHeaders.ReadIndex(indexJson, folder, noun, specVersion, errors)`. Below 28 it is
+`ReadIndexAt26` exactly; at 28 it reads the object and yields `(id, id + ".md")` for each of its
+`items`, with the folder's `label` carried beside the collection for the Editor. The run path
+never reads the label.
 
 After that everything downstream works unchanged on the paths it already uses:
 `WorkflowPackageStore`'s `RootFilesOf`, `GatherDataFilesAsync` and `Materialise` (one prompt
 template per path, now one per node), `WorkflowTextHeaders.Resolve`, `WorkflowDerivedEdges`'
-walk, the content-validation closure, and the job starter's recorded `prompt`. The single choke
-point is deliberate: the run path gains no "is this 28?" branches.
+walk, the content-validation closure, and the job starter's recorded `prompt`.
 
-The validator runs the same normalisation before its 27 pipeline. It adds the § 2–§ 3 sentences
-for what the normalisation cannot read (a retired key, a map, a bare-list index, an object item,
-an unknown index key), and the stray-file
-warning.
+The validator checks the retired `prompt` key and the table shapes on the manifest **as
+received**, so an explicit `prompt` is never mistaken for an implied one. It then implies the
+prompts and runs its 27 pipeline, adding the § 2–§ 3 sentences and the stray-file warnings.
+
+## 6a. A flow node's description (#1270)
+
+*(Added in revision 4, decided with the package author 2026-11-02.)* A `for`, `if` or `case`
+node may say what it is for, beyond its one-line `label`:
+
+```json
+{ "id": "standards", "label": "Standards",
+  "description": "Drafts one section per standard, each tailored to this patient.",
+  "for": "item in snippet.standards", "nodes": ["section_instructions"], "ret": "node.section_instructions" }
+```
+
+- **Optional;** when present, a non-empty string of at most 500 characters (the package
+  description's limit, `WorkflowPackageMetadata.MaxDescriptionLength`).
+- **Flow nodes only.** On a plain node it is refused: *"Node 'draft' declares description; only a
+  for, if or case node carries one — a node's prompt file says what it does."*
+- **Display only.** It is never rendered, sent to a model or hashed; templates cannot read it.
+  The Editor shows it in the flow node's pane and the Graph pane's box (layer C).
+- **28 only.** Below 28: *"Node 'standards' declares description, which requires specVersion
+  28."*
+- Not a file and not a header: it is one line of authoring metadata, like `label`, and lives
+  beside it (the `_.md` alternative was weighed for folders and set aside, § 3).
 
 ## 7. The Editor at 28
 
@@ -225,6 +271,8 @@ warning.
   whose move arrows and reset move there from the nav. Adding and removing items stay where they
   are. At ≤ 27 a folder stays a nav row, since its index has nowhere to keep a label.
 - **New files** are already `<id>.md` (#1267).
+- **A flow node's description** (§ 6a): a text area in the flow node's pane, beside its label,
+  and the text under the box's label in the Graph pane. At 27 and below the field is not offered.
 - **Renames move files.** Renaming a node already moves its prompt (#1225). At 28, renaming a
   macro, a snippet, a folder or a folder item also moves its file, folder or item file, and
   rewrites every read (`macro.<id>`, `snippet.<id>`), because an id rename *is* a file move.
@@ -234,7 +282,7 @@ warning.
   header rule (a pane names a file only when it is not the implied path) shows no file at all
   at 28.
 - **The upgrade** gains a rung after the 27 raise in the chain (Templates.razor's
-  `MigrateTo28ewestAsync`): the § 8 migration, its notices under "Through 28:", refusing by its
+  `MigrateToNewestAsync`): the § 8 migration, its notices under "Through 28:", refusing by its
   own name.
 
 ## 8. Migration 27 → 28
@@ -287,7 +335,7 @@ push**. `test/general` is the prod pin and moves on the word, after a smoke at 2
 - `package-format-v28.md`: the § 1 rule, the § 2 grammar, the § 3 index object, and the migration
   note. `spec-versions.json` lists 28. `schemas/package-format-v28.schema.json` is generated: no
   `prompt` on a node; `macros` and `snippets` arrays of strings matching
-  `^[a-z][a-z0-9_]*/?$`. The schema does not cover `index.json` (a support file).
+  `^[a-z][a-z0-9_]*/?$`; an optional `description` (≤ 500) on a node. The schema does not cover `index.json` (a support file).
 - **Vectors under `conformance/v28/`:**
   - valid: the minimal package at 28, migrated from the 27 minimal, as the 25 lesson did;
     a package with a macro folder and a snippet folder.
@@ -301,8 +349,10 @@ push**. `test/general` is the prod pin and moves on the word, after a smoke at 2
     - an empty `items`;
     - an object item in an index;
     - a duplicate item;
-    - a non-snake_case item id.
-  - valid: a folder with a `label`.
+    - a non-snake_case item id;
+    - a computed node with a `prompts/<id>.md`.
+  - valid: a folder with a `label`; a flow node with a `description`.
+  - invalid: a `description` on a plain node; an empty `description`.
   - warning: a stray `prompts/` file; an unlisted `.md` in a folder.
   - the gate under `v27/`: a list-spelled `macros` *"requires specVersion 28"*.
 
@@ -313,16 +363,19 @@ push**. `test/general` is the prod pin and moves on the word, after a smoke at 2
 
 One layer per PR, each green on its own. The bump is last, as at 25, 26 and 27.
 
-- **A — format, inert:** the § 6 normalisation, the § 2–§ 3 sentences, the writer and macro
-  converter at 28, `WorkflowPackageMigration27To28`, tests; the registry document unlisted; the
-  vectors held back in the export.
-- **B — engine:** nothing beyond reading through A's normalisation. A smoke-level test runs an
-  28 package through `WorkflowPackageStore` and the job starter. `SupportedSpecVersions` += 28 is
-  the bump's.
-- **C — Editor:** § 7 reading and writing, the folder pane, id renames that move files, the upgrade rung,
-  retiring #1267's affordances at 28.
-- **The bump:** both version sets += 28; the registry lists 28; the Editor's ceilings;
-  `scripts/migrate-workflow-package.cs --to 28`; an engine release on the word.
+- **A — format, inert** (#1283): the § 6 converters, index reader and implied prompts, the § 2–§ 3
+  and § 6a sentences, `WorkflowPackageMigration27To28`, tests; the vectors written and held back
+  in the export. (The ten public packages are run through the migration and validated at the seam
+  as the PR's evidence: § 9's moves exactly, no refusals.)
+- **B — engine** (#1284): the store's optional fetch of each candidate prompt (§ 6), and a
+  smoke-level test running a 28 package through `WorkflowPackageStore` and the job starter.
+  `SupportedSpecVersions` += 28 is the bump's.
+- **C — Editor** (#1285): § 7 reading and writing, the folder pane, the flow node's description
+  (§ 6a), id renames that move files, the upgrade rung, retiring #1267's affordances at 28.
+- **The bump** (#1286): both version sets += 28; the registry's `package-format-v28.md`, schema
+  and vectors, listed; the Editor's ceilings; `scripts/migrate-workflow-package.cs --to 28` (a
+  script validates through the public entry, which accepts 28 only from here — as `--to 27` came
+  with 27's bump); an engine release on the word.
 - **E — content:** the packages repo's `validate.yml`, then the ten packages through
   `--to 28 --write` (one PR, one tag per push), a smoke at 28, and the pin on the word.
 
