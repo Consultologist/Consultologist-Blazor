@@ -89,12 +89,18 @@ internal static class WorkflowPackageContentValidation
     /// collection's index.json and its item files). The forward half — every
     /// referenced file present — is the validator's, with its own messages.
     /// </summary>
+    private static readonly string[] StrayWarnedAt28 = { "prompts/", "macros/", "snippets/" };
+
     public static void ValidateFileClosure(
         WorkflowPackageManifest manifest,
         IReadOnlyDictionary<string, string> files,
         List<string> errors)
     {
         var referenced = new HashSet<string>(StringComparer.Ordinal);
+
+        // v28 (#1284, design § 2, § 6): a node's prompt is implied by its id when the
+        // file is there — referenced like a named one.
+        manifest = WorkflowImpliedPaths.WithImpliedPrompts(manifest, files);
 
         foreach (var prompt in manifest.Prompts ?? new List<WorkflowPromptSpec>())
         {
@@ -164,7 +170,7 @@ internal static class WorkflowPackageContentValidation
         var tables = (manifest.Data ?? new Dictionary<string, string>())
             .Concat(manifest.Snippets ?? new Dictionary<string, string>());
 
-        foreach (var (_, path) in tables)
+        foreach (var (id, path) in tables)
         {
             if (!path.EndsWith('/'))
             {
@@ -184,7 +190,7 @@ internal static class WorkflowPackageContentValidation
             // list (the validator says what is wrong with it; here it only names files).
             if (manifest.SpecVersion >= 26)
             {
-                foreach (var (_, file) in WorkflowTextHeaders.ReadIndex(indexJson, path, "Snippet", manifest.SpecVersion, new List<string>())?.Items ?? new List<(string, string)>())
+                foreach (var (_, file) in WorkflowTextHeaders.ReadIndex(indexJson, id, "Snippet", manifest.SpecVersion, new List<string>())?.Items ?? new List<(string, string)>())
                 {
                     referenced.Add(path + file);
                 }
@@ -213,6 +219,14 @@ internal static class WorkflowPackageContentValidation
 
         foreach (var stray in files.Keys.Where(path => !referenced.Contains(path)).Order(StringComparer.Ordinal))
         {
+            // v28 (#1284, design § 2): a file under prompts/, macros/ or snippets/ that
+            // names nothing is the validator's warning, not a refusal — the package may
+            // carry notes and drafts. Anywhere else a stray is refused as before.
+            if (manifest.SpecVersion >= 28 && StrayWarnedAt28.Any(directory => stray.StartsWith(directory, StringComparison.Ordinal)))
+            {
+                continue;
+            }
+
             errors.Add($"File '{stray}' is not referenced by the manifest.");
         }
     }
