@@ -114,6 +114,11 @@ would otherwise have carried it (#397).
   inside a `for` (Milestone 35, specVersion 27, revision 1): an `if`/`case` in a loop's body decided
   once per item, the loop returning it, every item still a row — *skipped by condition* recorded with
   the condition's text, never a value — record storage 9; the dynamic half is 28,
+  [a file name is its id](customizable-workflow/package-format-file-is-id-design.md) — specVersion N,
+  number not yet assigned (Milestone 32, #1268, revision 2): every prompt, macro, snippet and folder
+  item is `<id>.md`; a node's `prompt` is retired, `macros`/`snippets` become lists of ids and
+  `index.json` an object `{ "label"?, "items" }`, giving each folder a pane; no hash moves and the record keeps storage 9; the migration renames 58 prompts and 2 items
+  across the ten public packages,
 
 ## Research
 
