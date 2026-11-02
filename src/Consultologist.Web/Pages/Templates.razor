@@ -9711,6 +9711,21 @@
                 </div>
             </div>
         }
+        else if (gateItems.Count > 0 && string.IsNullOrWhiteSpace(spec.Target.When) && !_expandedConditions.Contains(spec.Target.Key))
+        {
+            @* Ungated on a loop over items: "Always", and the item pick on the same line. *@
+            <div class="condition-field">
+                <span class="condition-field__label">@spec.Label</span>
+                <FluentButton Appearance="Appearance.Stealth" Class="condition-field__resting"
+                              aria-label="@($"Add a condition for {spec.Target.Subject}")"
+                              @onclick="() => { _expandedConditions.Add(spec.Target.Key); _itemGateNotes.Remove(spec.Target.Key); }">Always</FluentButton>
+                <OneShotSelect Class="binding-row__select instance-case__start"
+                               AriaLabel="@($"Gate {spec.Target.Subject} on an item")"
+                               Resting="only for an item…"
+                               Choices="@(gateItems.Select(item => new OneShotChoice(item.Id, StandardName(item))).ToList())"
+                               OnPick="@(v => AddItemGateAsync(spec.Node, spec.Target, v))" />
+            </div>
+        }
         else
         {
             @ConditionField((spec.Label, spec.Target, "Always"))
@@ -9720,16 +9735,9 @@
                               aria-label="@($"Edit the gate of {spec.Target.Subject} by item")"
                               @onclick="() => { _itemGateAsCondition.Remove(spec.Target.Key); }">gate by item</FluentButton>
             }
-            else if (gateItems.Count > 0 && string.IsNullOrWhiteSpace(spec.Target.When) && !_expandedConditions.Contains(spec.Target.Key))
-            {
-                <OneShotSelect Class="binding-row__select instance-case__start"
-                               AriaLabel="@($"Gate {spec.Target.Subject} on an item")"
-                               Resting="only for an item…"
-                               Choices="@(gateItems.Select(item => new OneShotChoice(item.Id, StandardName(item))).ToList())"
-                               OnPick="@(v => AddItemGateAsync(spec.Node, spec.Target, v))" />
-            }
         }
-        @if (_itemGateNotes.TryGetValue(spec.Target.Key, out var gateNote))
+        @* The fallback note holds only while the gate is still Always: undo, a pick or the builder retire it. *@
+        @if (string.IsNullOrWhiteSpace(spec.Target.When) && _itemGateNotes.TryGetValue(spec.Target.Key, out var gateNote))
         {
             <p class="muted-text instance-note instance-note--case" data-instance-case-note>@gateNote</p>
         }

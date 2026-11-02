@@ -277,6 +277,40 @@ public class TemplatesV26InstanceCaseTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void TheFallbackNote_IsGone_OnceUndoBringsTheChipBack_OnBothPanes()
+    {
+        var page = RenderEditor(EditorFixtures.V26Gated());
+        Select(page, Macro);
+        Drop(page, "HPI");
+        Assert.Single(page.FindAll("[data-instance-case-note]"));
+
+        page.Find(".undo-button").Click();
+        Select(page, Macro);
+        Assert.Equal(new[] { "HPI" }, Chips(page));
+        Assert.Empty(page.FindAll("[data-instance-case-note]"));
+
+        Select(page, Node);
+        Assert.Equal(new[] { "HPI" }, Chips(page));
+        Assert.Empty(page.FindAll("[data-instance-case-note]"));
+    }
+
+    [Fact]
+    public void TheItemPick_SitsOnAlwayssLine()
+    {
+        var page = RenderEditor(Gated(null));
+        Select(page, Macro);
+
+        var field = page.Find("fluent-select.instance-case__start").ParentElement!;
+        Assert.Contains("condition-field", field.ClassList);
+        Assert.NotNull(field.QuerySelector(".condition-field__resting"));
+
+        // "Always" still opens the builder, and the pick steps aside.
+        page.Find(".macro-instance .condition-field__resting").Click();
+        Assert.NotEmpty(page.FindAll(".macro-instance .condition-group"));
+        Assert.Empty(page.FindAll("fluent-select.instance-case__start"));
+    }
+
+    [Fact]
     public void At25_NoChips()
     {
         var page = RenderEditor(EditorFixtures.V25());
