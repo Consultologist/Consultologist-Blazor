@@ -51,6 +51,46 @@ public class WorkflowPackageClosureV25Tests
     }
 
     [Fact]
+    public void At28_TheImpliedPrompts_AreReferenced_AndAStrayUnderTheTextDirectories_IsTheValidatorsWarning()
+    {
+        // #1284 (v28 design § 2, § 6): no node names its prompt; the file its id implies is referenced.
+        var (manifest, files) = V28Package.Minimal();
+        files["prompts/old-draft.md"] = "An old draft.";
+        files["macros/spare.md"] = "Spare.";
+        files["snippets/sections/extra.md"] = "Extra.";
+        var errors = new List<string>();
+
+        WorkflowPackageContentValidation.ValidateFileClosure(manifest, files, errors);
+
+        Assert.Empty(errors);
+        Assert.Contains("prompts/old-draft.md names no node; at specVersion 28 a prompt file is prompts/<node id>.md.", V28Package.Warnings((manifest, files)));
+    }
+
+    [Fact]
+    public void At28_AStrayElsewhere_IsStillRefused()
+    {
+        var (manifest, files) = V28Package.Minimal();
+        files["formats/unused.json"] = FormatFixtures.LocalCustom;
+        var errors = new List<string>();
+
+        WorkflowPackageContentValidation.ValidateFileClosure(manifest, files, errors);
+
+        Assert.Equal(new[] { "File 'formats/unused.json' is not referenced by the manifest." }, errors);
+    }
+
+    [Fact]
+    public void At27_AStrayPrompt_IsStillRefused()
+    {
+        var (manifest, files) = V27Package.Minimal();
+        files["prompts/old-draft.md"] = "An old draft.";
+        var errors = new List<string>();
+
+        WorkflowPackageContentValidation.ValidateFileClosure(manifest, files, errors);
+
+        Assert.Equal(new[] { "File 'prompts/old-draft.md' is not referenced by the manifest." }, errors);
+    }
+
+    [Fact]
     public void AStrayFile_IsStillNamed()
     {
         var (manifest, files) = V25Package.Minimal();
