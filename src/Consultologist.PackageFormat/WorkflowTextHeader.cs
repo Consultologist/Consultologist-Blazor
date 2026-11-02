@@ -15,6 +15,13 @@ public sealed record WorkflowTextHeader(
     bool? Optional = null,
     bool? Default = null);
 
+/// <summary>
+/// v28 (#1283, design § 3): a folder's index as read — the items in run order,
+/// each (id, file relative to the folder), and the folder's display label
+/// (28 only; never read by a template).
+/// </summary>
+public sealed record WorkflowFolderIndex(IReadOnlyList<(string Id, string File)> Items, string? Label);
+
 /// <summary>The kind of file a header is read for — the key set differs.</summary>
 public enum WorkflowTextKind
 {
@@ -224,6 +231,106 @@ public static class WorkflowTextHeaders
     }
 
     /// <summary>
+    /// v28 (#1283, design § 3, § 6): a folder's index read for the version —
+    /// below 28 the ordered list <c>[{ id, file }]</c> of <see cref="ReadIndexAt26"/>,
+    /// at 28 the object <c>{ "label"?, "items": [ids] }</c>, each item's file
+    /// <c>&lt;id&gt;.md</c> beside the index. Null when the index cannot be read.
+    /// The sentences name the folder; duplicates and an empty list are the
+    /// resolver's, as at 26.
+    /// </summary>
+    public static WorkflowFolderIndex? ReadIndex(string indexJson, string folder, string noun, int specVersion, List<string> errors)
+    {
+        if (specVersion < 28)
+        {
+            return ReadIndexAt26(indexJson, folder, noun, errors) is { } listed ? new WorkflowFolderIndex(listed, null) : null;
+        }
+
+        JsonDocument document;
+        try
+        {
+            document = JsonDocument.Parse(indexJson);
+        }
+        catch (JsonException ex)
+        {
+            errors.Add($"{noun} collection '{folder}' index.json is not valid JSON: {ex.Message}");
+            return null;
+        }
+
+        using (document)
+        {
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object)
+            {
+                var ids = root.ValueKind == JsonValueKind.Array
+                    ? root.EnumerateArray().Select(e => e.ValueKind == JsonValueKind.String ? e.GetString() : e.ValueKind == JsonValueKind.Object && e.TryGetProperty("id", out var id) && id.ValueKind == JsonValueKind.String ? id.GetString() : null).OfType<string>().ToList()
+                    : new List<string>();
+                errors.Add($"{noun} folder '{folder}' index.json at specVersion 28 is an object {{ \"label\"?, \"items\": [ids] }} — {{ \"items\": [{string.Join(", ", ids.Select(i => $"\"{i}\""))}] }}; each item's file is <id>.md beside the index.");
+                return null;
+            }
+
+            string? label = null;
+            JsonElement? itemsElement = null;
+            var refused = false;
+            foreach (var property in root.EnumerateObject())
+            {
+                switch (property.Name)
+                {
+                    case "label":
+                        if (property.Value.ValueKind != JsonValueKind.String || string.IsNullOrWhiteSpace(property.Value.GetString()))
+                        {
+                            errors.Add($"{noun} folder '{folder}' index.json label must be a non-empty string.");
+                            refused = true;
+                        }
+                        else
+                        {
+                            label = property.Value.GetString();
+                        }
+
+                        break;
+                    case "items":
+                        itemsElement = property.Value.Clone();
+                        break;
+                    default:
+                        errors.Add($"{noun} folder '{folder}' index.json declares '{property.Name}', which is not an index key at specVersion 28 (the keys are label and items).");
+                        refused = true;
+                        break;
+                }
+            }
+
+            if (itemsElement is not { ValueKind: JsonValueKind.Array } array)
+            {
+                errors.Add($"{noun} folder '{folder}' index.json has no items; at specVersion 28 items lists the folder's item ids in order.");
+                return null;
+            }
+
+            var items = new List<(string Id, string File)>();
+            foreach (var element in array.EnumerateArray())
+            {
+                if (element.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(element.GetString()))
+                {
+                    var id = element.GetString()!;
+                    items.Add((id, id + ".md"));
+                    continue;
+                }
+
+                if (element.ValueKind == JsonValueKind.Object)
+                {
+                    var id = element.TryGetProperty("id", out var idElement) && idElement.ValueKind == JsonValueKind.String ? idElement.GetString() : null;
+                    errors.Add($"{noun} folder '{folder}' index.json item {{ id, file }}{(id is null ? "" : $" '{id}'")} — at specVersion 28 an item is its id: \"items\": [\"{id ?? "hpi"}\"].");
+                }
+                else
+                {
+                    errors.Add($"{noun} folder '{folder}' index.json items must be ids (non-empty strings).");
+                }
+
+                refused = true;
+            }
+
+            return refused ? null : new WorkflowFolderIndex(items, label);
+        }
+    }
+
+    /// <summary>
     /// A folder's index at 26 (§ 5.3): the ordered list <c>[{ id, file }]</c>.
     /// The 25 object shape, an item's <c>name</c> or <c>when</c>, and any other
     /// key are refused naming the header; null when the index is not a list.
@@ -344,9 +451,9 @@ public static class WorkflowTextHeaders
             if (path.EndsWith('/'))
             {
                 if (files.TryGetValue(path + WorkflowDataResolver.IndexFileName, out var indexJson)
-                    && ReadIndexAt26(indexJson, id, "Snippet", new List<string>()) is { } items)
+                    && ReadIndex(indexJson, id, "Snippet", manifest.SpecVersion, new List<string>()) is { } index)
                 {
-                    foreach (var (_, file) in items)
+                    foreach (var (_, file) in index.Items)
                     {
                         Take(WorkflowTextKind.Snippet, path + file);
                     }
@@ -366,9 +473,9 @@ public static class WorkflowTextHeaders
             if (macro.File is { } dir && dir.EndsWith('/'))
             {
                 if (files.TryGetValue(dir + WorkflowDataResolver.IndexFileName, out var indexJson)
-                    && ReadIndexAt26(indexJson, macro.Id, "Macro", new List<string>()) is { } items)
+                    && ReadIndex(indexJson, macro.Id, "Macro", manifest.SpecVersion, new List<string>()) is { } index)
                 {
-                    foreach (var (_, file) in items)
+                    foreach (var (_, file) in index.Items)
                     {
                         Take(WorkflowTextKind.Macro, dir + file);
                     }
@@ -413,6 +520,6 @@ public static class WorkflowTextHeaders
             .GroupBy(m => m.Id, StringComparer.Ordinal)
             .ToDictionary(g => g.Key, g => g.First().File, StringComparer.Ordinal);
 
-        return folders.Count == 0 ? null : WorkflowDataResolver.Resolve(folders, "Macro", texts.Files, errors, texts.Headers);
+        return folders.Count == 0 ? null : WorkflowDataResolver.Resolve(folders, "Macro", texts.Files, errors, texts.Headers, manifest.SpecVersion);
     }
 }
