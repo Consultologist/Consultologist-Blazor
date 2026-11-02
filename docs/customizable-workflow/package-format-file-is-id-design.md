@@ -336,8 +336,12 @@ One layer per PR, each green on its own. The bump is last, as at 25, 26 and 27.
   declares a local format yet and the catalogue's own naming is the agents repo's.
 - **Package names.** Hyphenated package names (`example-macros`) are names, not ids a template
   reads, and are unaffected.
-- **A folder's label in templates, and a folder `if`.** Both left out at N (§ 3): the label is
-  display only, and gating a whole folder is new behaviour on top of the item gates. The closed
-  key set leaves room for either.
+- **A folder's label in templates, and a folder `if`: decided out at N** (with the package
+  author, 2026-11-02). The label is display only (§ 3). A folder `if` would equal the same `if`
+  on every item, and no folder in the ten public packages gates an item at all; the one gated
+  folder read (`billing`, `example-conditional-sections`) is an `if` flow node around the loop.
+  Either is a new key later, not a breaking change, since the key set is closed. A folder `if`
+  would read only what is known at job start (a loop's count is fixed then); one reading a
+  node's output belongs to the dynamic half.
 - **Stray files as errors.** Proposed as a warning, so a package carrying notes or drafts still
   publishes. A later version may refuse them once authors have seen the warning.
