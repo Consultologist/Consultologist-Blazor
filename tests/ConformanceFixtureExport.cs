@@ -1212,6 +1212,8 @@ public partial class ConformanceFixtureExport
         AddV26Cases(cases);
         // ----- v27 (#1234): a flow node inside a for — ConformanceFixtureExport.V27.cs -----
         AddV27Cases(cases);
+        // ----- v28 (#1283): a file's name is its id — ConformanceFixtureExport.V28.cs -----
+        AddV28Cases(cases);
         // ----- #1149: the below-26 gates, filed under v25/ -----
         AddV25GateCases(cases);
 
@@ -1234,6 +1236,7 @@ public partial class ConformanceFixtureExport
     [Theory]
     [InlineData(26)]
     [InlineData(27)]
+    [InlineData(28)]
     public void TheCasesAboveTheCeiling_AreHeldBack_UntilTheBump(int version)
     {
         var cases = Cases();
@@ -1249,12 +1252,13 @@ public partial class ConformanceFixtureExport
     [Theory]
     [InlineData(26)]
     [InlineData(27)]
+    [InlineData(28)]
     public void TheCases_SayWhatTheValidatorSays_AtTheSeam(int version)
     {
         // What the export will capture at the bump is what the seam says today:
         // a valid case validates, an invalid one meets at least one sentence —
         // the suites pin the sentences themselves.
-        var accepting = version == 26 ? V26Package.Accepting26 : V27Package.Accepting27;
+        var accepting = version switch { 26 => V26Package.Accepting26, 27 => V27Package.Accepting27, _ => V28Package.Accepting28 };
 
         foreach (var testCase in Cases().Where(c => c.SpecVersion == version))
         {
