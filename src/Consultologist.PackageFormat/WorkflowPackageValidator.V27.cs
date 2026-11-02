@@ -19,7 +19,9 @@ public static partial class WorkflowPackageValidator
         IReadOnlyDictionary<string, string> files,
         WorkflowFormatCatalog? catalog,
         List<string> errors,
-        List<string> warnings)
+        List<string> warnings,
+        // v28 (#1283): run for a 28 package by ValidateAt28, its prompts implied.
+        bool at28 = false)
     {
         ValidateMetadata(manifest, errors);
         ValidateDerivedFrom(manifest, errors);
@@ -45,7 +47,12 @@ public static partial class WorkflowPackageValidator
         // #1099 (§ 5.3): the macro folders through the shared resolver.
         var macroFolders = WorkflowTextHeaders.ResolveMacroFolders(manifest, texts, errors);
         var flows = WorkflowFlowNodes.Resolve(manifest, snippets, inputsById, errors);
-        var nodes = ValidateNodesAt26(manifest, files, localFormats, catalog, inputsById, flows, errors);
+        var nodes = ValidateNodesAt26(manifest, files, localFormats, catalog, inputsById, flows, errors, impliedPrompts: at28);
+        if (at28)
+        {
+            ValidateSnippetFolderItemsAt28(snippets, errors);
+        }
+
         ValidateMacroLibraryAt26(manifest, files, macroFolders, errors);
         ValidateMacroPlacementsAt26(manifest, macroFolders, errors);
         ValidateCaseSubjectsAt27(flows, nodes, inputsById, errors);

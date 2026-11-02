@@ -127,7 +127,8 @@ public static partial class WorkflowPackageValidator
     {
         // #1099 (§ 5.3): on the wire macros is the map at 26 — the 25 list of
         // objects is refused whole (a code-built list carries no shape mark).
-        if (manifest.Macros is WorkflowMacroTable { IsMap: false, Count: > 0 })
+        // v28 (#1283): the 28 list of ids is not the 25 list; its own rule is the version's (ValidateAt28, ValidateV28Members).
+        if (manifest.SpecVersion < 28 && manifest.Macros is WorkflowMacroTable { Shape: WorkflowTableShape.List, Count: > 0 })
         {
             errors.Add("macros is a list; at specVersion 26 macros is a map { \"<id>\": \"<file>\" | \"<dir>/\" } — the file's header carries label, instruction, optional, default and if.");
         }
@@ -400,7 +401,10 @@ public static partial class WorkflowPackageValidator
         WorkflowFormatCatalog? catalog,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         WorkflowFlowNodes.Resolved flows,
-        List<string> errors)
+        List<string> errors,
+        // v28 (#1283, design § 2): the prompts are implied from the files — the
+        // sentences name the file a node's id implies, never a prompt key.
+        bool impliedPrompts = false)
     {
         var nodes = new Dictionary<string, NodeAt25>(StringComparer.Ordinal);
         var unresolvedCatalogueIds = new SortedSet<string>(StringComparer.Ordinal);
@@ -471,11 +475,15 @@ public static partial class WorkflowPackageValidator
 
             if (computed && node.Prompt != null)
             {
-                errors.Add($"Node '{node.Id}' declares prompt, but format '{format.Id}' is computed and takes none.");
+                errors.Add(impliedPrompts
+                    ? $"Node '{node.Id}' is computed (format '{format.Id}') and reads no prompt; remove {node.Prompt}."
+                    : $"Node '{node.Id}' declares prompt, but format '{format.Id}' is computed and takes none.");
             }
             else if (!computed && string.IsNullOrWhiteSpace(node.Prompt))
             {
-                errors.Add($"Node '{node.Id}' must declare a prompt; format '{format.Id}' is {spec.Producer}.");
+                errors.Add(impliedPrompts
+                    ? $"Node '{node.Id}' has no prompt: {WorkflowImpliedPaths.PromptOf(node.Id)} is missing from the package."
+                    : $"Node '{node.Id}' must declare a prompt; format '{format.Id}' is {spec.Producer}.");
             }
             else if (node.Prompt != null && !files.ContainsKey(node.Prompt))
             {
