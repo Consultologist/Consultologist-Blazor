@@ -3107,8 +3107,7 @@
                                                       @onclick="() => RemoveNodeMacroAsync(selectedNode.Id, index)"
                                                       aria-label="@($"Remove macro {entry.Id} from {selectedNode.Id}")" />
                                         @InstanceLoopLine(selectedNode)
-                                        @InstanceCaseLine((selectedNode, NodeMacroWhenTarget(selectedNode, index).When))
-                                        @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(selectedNode, index), "Always"))
+                                        @InstanceGateField((selectedNode, NodeMacroWhenTarget(selectedNode, index), At26 ? "if" : "Applies when"))
                                         @InstanceNote(NeverFiresNote(entry.Id, NodeMacroWhenTarget(selectedNode, index).When))
                                         @MacroIfLine(entry.Id)
                                     </div>
@@ -3895,8 +3894,7 @@
                                                 </span>
                                                 @InstanceLoopLine(instanceNode)
                                                 <span class="result-macro-when">
-                                                    @InstanceCaseLine((instanceNode, NodeMacroWhenTarget(instanceNode, instanceIndex).When))
-                                                    @ConditionField((At26 ? "if" : "Applies when", NodeMacroWhenTarget(instanceNode, instanceIndex), "Always"))
+                                                    @InstanceGateField((instanceNode, NodeMacroWhenTarget(instanceNode, instanceIndex), At26 ? "if" : "Applies when"))
                                                     @InstanceNote(NeverFiresNote(macro.Id, NodeMacroWhenTarget(instanceNode, instanceIndex).When))
                                                     @MacroIfLine(macro.Id)
                                                 </span>
@@ -9592,39 +9590,148 @@
     </text>;
 
     /// <summary>
-    /// #1263 (§ 2.6): an instance gated on several items — item.id == a or item.id == b, nothing else —
-    /// read as the case it is: "case item.id — when HPI, Plan — else skipped". Read-only; the builder
-    /// below stays the editor. Any other shape: nothing.
+    /// #1266 (§ 2.6, after #1263 row 4): an instance gated on items only — item.id == a, or a chain of
+    /// them joined by or — as its item ids in gate order; null for any other shape, or an id that is not
+    /// one of the loop's current items (that gate stays with the builder, never silently dropped).
     /// </summary>
-    private string? InstanceCaseSentence(WorkflowManifestReader.NodeView node, string? gate)
+    private IReadOnlyList<string>? ItemGateIds(WorkflowManifestReader.NodeView node, string? gate)
     {
         if (!At26 || string.IsNullOrWhiteSpace(gate) || !ConditionBuilderModel.TryFromText(gate, out var tree, out _)
-            || tree is not ConditionGroup { Not: false, Join: ConditionGroup.Or, Items.Count: >= 2 } group)
+            || tree.Not || (tree.Join != ConditionGroup.Or && tree.Items.Count != 1))
         {
             return null;
         }
 
+        var known = NodeFanItems(node).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
         var ids = new List<string>();
-        foreach (var item in group.Items)
+        foreach (var item in tree.Items)
         {
             if (item is not ConditionClause { Not: false, Operator: "==", Arithmetic: null } clause
-                || clause.Operand is not (ItemIdKey or "item.id"))
+                || clause.Operand is not (ItemIdKey or "item.id") || !known.Contains(clause.Literal))
             {
                 return null;
             }
 
-            ids.Add(clause.Literal);
+            if (!ids.Contains(clause.Literal))
+            {
+                ids.Add(clause.Literal);
+            }
         }
 
-        var items = NodeFanItems(node);
-        var labels = ids.Select(id => items.FirstOrDefault(i => i.Id == id) is { } known ? StandardName(known) : id);
-        return $"case item.id — when {string.Join(", ", labels)} — else skipped";
+        return ids;
     }
 
-    private RenderFragment<(WorkflowManifestReader.NodeView Node, string? Gate)> InstanceCaseLine => spec => @<text>
-        @if (InstanceCaseSentence(spec.Node, spec.Gate) is { } sentence)
+    /// <summary>#1266: the or-chain the chips write — null (Always) when no item is left or every item is chosen.</summary>
+    private string? ItemGateText(WorkflowManifestReader.NodeView node, IReadOnlyList<string> ids)
+    {
+        var every = NodeFanItems(node).Select(item => item.Id).ToHashSet(StringComparer.Ordinal);
+        return ids.Count == 0 || every.SetEquals(ids)
+            ? null
+            : string.Join(" || ", ids.Select(id => $"item.id == \"{id}\""));
+    }
+
+    // #1266: an item-only gate the author chose to edit in the builder; UI state only.
+    private readonly HashSet<string> _itemGateAsCondition = new(StringComparer.Ordinal);
+
+    // #1266: the one-time note when the chips' edit collapsed the gate to Always, keyed by target.
+    private readonly Dictionary<string, string> _itemGateNotes = new(StringComparer.Ordinal);
+
+    private Task AddItemGateAsync(WorkflowManifestReader.NodeView node, ConditionTarget target, string id)
+    {
+        var chosen = (ItemGateIds(node, target.When) ?? Array.Empty<string>()).Append(id).ToHashSet(StringComparer.Ordinal);
+        var ordered = NodeFanItems(node).Select(item => item.Id).Where(chosen.Contains).ToList();
+        return WriteItemGateAsync(node, target, ordered, "Every item chosen — the macro runs for every item (Always).");
+    }
+
+    private Task RemoveItemGateAsync(WorkflowManifestReader.NodeView node, ConditionTarget target, string id)
+    {
+        var left = (ItemGateIds(node, target.When) ?? Array.Empty<string>()).Where(i => i != id).ToList();
+        return WriteItemGateAsync(node, target, left, "No item left — the macro runs for every item (Always).");
+    }
+
+    private async Task WriteItemGateAsync(WorkflowManifestReader.NodeView node, ConditionTarget target, IReadOnlyList<string> ids, string collapsed)
+    {
+        var text = ItemGateText(node, ids);
+        if (text is null)
         {
-            <p class="muted-text instance-note instance-note--case" data-instance-case>@sentence</p>
+            _itemGateNotes[target.Key] = collapsed;
+            _expandedConditions.Remove(target.Key);
+        }
+        else
+        {
+            _itemGateNotes.Remove(target.Key);
+        }
+
+        _itemGateAsCondition.Remove(target.Key);
+        await SetConditionTextAsync(target, text);
+    }
+
+    /// <summary>
+    /// #1266: a node macro instance's gate. Inside a loop over items at 26+, an item-only gate is edited as the
+    /// case it is — item chips with ✕ and an "add an item" pick — with "edit as a condition" to the builder and
+    /// "gate by item" back; an ungated instance offers "only for an item…". Anything else: the builder.
+    /// </summary>
+    private RenderFragment<(WorkflowManifestReader.NodeView Node, ConditionTarget Target, string Label)> InstanceGateField => spec => @<text>
+        @{
+            var gateItems = At26 ? NodeFanItems(spec.Node) : Array.Empty<WorkflowManifestReader.DataItemView>();
+            var gateIds = gateItems.Count > 0 ? ItemGateIds(spec.Node, spec.Target.When) : null;
+            var asCondition = _itemGateAsCondition.Contains(spec.Target.Key);
+        }
+        @if (gateIds is not null && !asCondition)
+        {
+            var chosenItems = gateIds.Select(id => gateItems.First(item => item.Id == id)).ToList();
+            var otherItems = gateItems.Where(item => !gateIds.Contains(item.Id)).ToList();
+            <div class="condition-field">
+                <span class="condition-field__label">@spec.Label</span>
+                <div class="case-branch__values instance-case" data-instance-case>
+                    <span class="muted-text">case <code>item.id</code> — when</span>
+                    @foreach (var chosen in chosenItems)
+                    {
+                        var chipItem = chosen;
+                        <span class="chip case-branch__chip instance-case__chip" data-item="@chipItem.Id">
+                            @StandardName(chipItem)
+                            <FluentButton Appearance="Appearance.Stealth" Class="case-branch__chip-remove instance-case__chip-remove"
+                                          Title="@($"Drop {StandardName(chipItem)} from {spec.Target.Subject}")"
+                                          aria-label="@($"Drop {StandardName(chipItem)} from {spec.Target.Subject}")"
+                                          @onclick="() => RemoveItemGateAsync(spec.Node, spec.Target, chipItem.Id)">✕</FluentButton>
+                        </span>
+                    }
+                    @if (otherItems.Count > 0)
+                    {
+                        <OneShotSelect Class="binding-row__select instance-case__add"
+                                       AriaLabel="@($"Add an item to {spec.Target.Subject}")"
+                                       Resting="add an item…"
+                                       Choices="@(otherItems.Select(item => new OneShotChoice(item.Id, StandardName(item))).ToList())"
+                                       OnPick="@(v => AddItemGateAsync(spec.Node, spec.Target, v))" />
+                    }
+                    <span class="muted-text">— else skipped</span>
+                    <FluentButton Appearance="Appearance.Lightweight" Class="instance-case__as-condition"
+                                  aria-label="@($"Edit the gate of {spec.Target.Subject} as a condition")"
+                                  @onclick="() => { _itemGateAsCondition.Add(spec.Target.Key); _itemGateNotes.Remove(spec.Target.Key); }">edit as a condition</FluentButton>
+                </div>
+            </div>
+        }
+        else
+        {
+            @ConditionField((spec.Label, spec.Target, "Always"))
+            @if (gateIds is not null)
+            {
+                <FluentButton Appearance="Appearance.Lightweight" Class="instance-case__as-chips"
+                              aria-label="@($"Edit the gate of {spec.Target.Subject} by item")"
+                              @onclick="() => { _itemGateAsCondition.Remove(spec.Target.Key); }">gate by item</FluentButton>
+            }
+            else if (gateItems.Count > 0 && string.IsNullOrWhiteSpace(spec.Target.When) && !_expandedConditions.Contains(spec.Target.Key))
+            {
+                <OneShotSelect Class="binding-row__select instance-case__start"
+                               AriaLabel="@($"Gate {spec.Target.Subject} on an item")"
+                               Resting="only for an item…"
+                               Choices="@(gateItems.Select(item => new OneShotChoice(item.Id, StandardName(item))).ToList())"
+                               OnPick="@(v => AddItemGateAsync(spec.Node, spec.Target, v))" />
+            }
+        }
+        @if (_itemGateNotes.TryGetValue(spec.Target.Key, out var gateNote))
+        {
+            <p class="muted-text instance-note instance-note--case" data-instance-case-note>@gateNote</p>
         }
     </text>;
 
