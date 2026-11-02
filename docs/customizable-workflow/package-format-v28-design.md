@@ -364,15 +364,18 @@ push**. `test/general` is the prod pin and moves on the word, after a smoke at 2
 One layer per PR, each green on its own. The bump is last, as at 25, 26 and 27.
 
 - **A — format, inert** (#1283): the § 6 converters, index reader and implied prompts, the § 2–§ 3
-  and § 6a sentences, `WorkflowPackageMigration27To28` and the script's `--to 28` stage, tests;
-  the vectors written and held back in the export.
+  and § 6a sentences, `WorkflowPackageMigration27To28`, tests; the vectors written and held back
+  in the export. (The ten public packages are run through the migration and validated at the seam
+  as the PR's evidence: § 9's moves exactly, no refusals.)
 - **B — engine** (#1284): the store's optional fetch of each candidate prompt (§ 6), and a
   smoke-level test running a 28 package through `WorkflowPackageStore` and the job starter.
   `SupportedSpecVersions` += 28 is the bump's.
 - **C — Editor** (#1285): § 7 reading and writing, the folder pane, the flow node's description
   (§ 6a), id renames that move files, the upgrade rung, retiring #1267's affordances at 28.
 - **The bump** (#1286): both version sets += 28; the registry's `package-format-v28.md`, schema
-  and vectors, listed; the Editor's ceilings; an engine release on the word.
+  and vectors, listed; the Editor's ceilings; `scripts/migrate-workflow-package.cs --to 28` (a
+  script validates through the public entry, which accepts 28 only from here — as `--to 27` came
+  with 27's bump); an engine release on the word.
 - **E — content:** the packages repo's `validate.yml`, then the ten packages through
   `--to 28 --write` (one PR, one tag per push), a smoke at 28, and the pin on the word.
 
