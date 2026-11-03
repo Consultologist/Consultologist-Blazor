@@ -1082,6 +1082,24 @@ public static class EditorFixtures
         return fixture with { Files = files };
     }
 
+    /// <summary>
+    /// v28 (#1285): the V26Gated package raised to 27 and run through the library's real
+    /// 27 → 28 migration — every file renamed to its id, no prompt keys, the tables as id
+    /// lists, each folder index { items } — as the content response sends a 28 package.
+    /// </summary>
+    public static WorkflowPackageContentResponse V28()
+    {
+        var at26 = V26Gated();
+        var raised = Consultologist.PackageFormat.WorkflowPackageVersionRaise.To(at26.Manifest.GetRawText(), at26.Files, 27);
+        var migrated = Consultologist.PackageFormat.WorkflowPackageMigration27To28.Migrate(raised.ManifestJson, raised.Files);
+        if (!migrated.Succeeded)
+        {
+            throw new InvalidOperationException(string.Join(" | ", migrated.Refusals));
+        }
+
+        return new(at26.Name, at26.Version, 28, JsonDocument.Parse(migrated.ManifestJson).RootElement.Clone(), new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal));
+    }
+
     public static WorkflowPackageContentResponse V27Flow(bool inLoop = true)
     {
         var at26 = V26();
