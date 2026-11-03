@@ -89,7 +89,8 @@ public sealed record WorkflowPackage(
     // its header, every file with the snippet and macro headers stripped (a
     // prompt file carries none), and the headers by path (a macro's and an
     // item's `if` live there). Null below 26. Manifest and SourceFiles above
-    // stay AS PUBLISHED: the walk (WorkflowDerivedEdges, TemplatePreviewScope)
+    // stay AS PUBLISHED (v28, #1284: but for each node's prompt, implied from its
+    // id at 28 — the run path reads it; the content response drops it again): the walk (WorkflowDerivedEdges, TemplatePreviewScope)
     // resolves the headers itself from the raw files and the resolver is not
     // idempotent (run over bodies it finds no header and drops every gate); the
     // content endpoint round-trips the files whole; publish compares raw. A
@@ -217,14 +218,24 @@ public sealed record WorkflowPackageContentResponse(
     JsonElement Manifest,
     IReadOnlyDictionary<string, string> Files)
 {
-    /// <summary>The response for a resolved manifest and its files; the manifest serialized once, canonically.</summary>
-    public static WorkflowPackageContentResponse For(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files) =>
-        new(
+    /// <summary>
+    /// The response for a resolved manifest and its files; the manifest serialized once, canonically.
+    /// v28 (#1284, design § 6): a loaded 28 manifest carries each node's IMPLIED prompt for the run
+    /// path; on the wire a 28 node names none (the key is retired), so it is dropped here — lossless,
+    /// a valid 28 manifest has none of its own — and the editor's republish meets no refusal.
+    /// </summary>
+    public static WorkflowPackageContentResponse For(WorkflowPackageManifest manifest, IReadOnlyDictionary<string, string> files)
+    {
+        var wire = manifest.SpecVersion >= 28 && manifest.Nodes is { } nodes
+            ? manifest with { Nodes = nodes.Select(node => node with { Prompt = null }).ToList() }
+            : manifest;
+        return new(
             manifest.Name,
             manifest.Version,
             manifest.SpecVersion,
-            JsonSerializer.SerializeToElement(manifest, WorkflowPackageManifestJson.WriteOptions),
+            JsonSerializer.SerializeToElement(wire, WorkflowPackageManifestJson.WriteOptions),
             files);
+    }
 }
 
 /// <summary>

@@ -34,6 +34,21 @@ public static class WorkflowImpliedPaths
         return manifest with { Nodes = nodes };
     }
 
+    /// <summary>
+    /// v28 (#1284, design § 6): the prompt files a loader may fetch before it holds
+    /// the package's files — <c>prompts/&lt;id&gt;.md</c> of every non-flow node that names
+    /// none. Fetched optionally: a computed node has no file, and a missing one is
+    /// the validator's to name. Empty below 28.
+    /// </summary>
+    public static IReadOnlyList<string> CandidatePrompts(WorkflowPackageManifest manifest) =>
+        manifest.SpecVersion < 28
+            ? Array.Empty<string>()
+            : (manifest.Nodes ?? new List<WorkflowNodeSpec>())
+                .Where(node => node.Prompt is null && !IsFlow(node))
+                .Select(node => PromptOf(node.Id))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
     /// <summary>The prompt file a node's id implies (§ 1).</summary>
     public static string PromptOf(string nodeId) => WorkflowFileMove.ImpliedPath("node", nodeId);
 

@@ -99,20 +99,28 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         var manifest = WorkflowPackageManifestJson.Read(manifestJson, cacheKey, SupportedSpecVersions);
 
         var loaded = await LoadPromptsAsync(packageRef.Name, version, manifest, cancellationToken);
-        var prompts = loaded.Prompts;
+        var package = PackageOf(loaded);
 
-        var nodes = manifest.Nodes;
+        _packageCache.TryAdd(cacheKey, package);
+        _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, package.Prompts?.Count ?? 0);
+        return package;
+    }
+
+    /// <summary>
+    /// The package a load hands the run path, built from what <see cref="Materialise"/>
+    /// returned — one construction, shared by tests. v28 (#1284, design § 6): its
+    /// manifest is the materialised one, each node's prompt implied at 28 (the
+    /// content response strips it again, <see cref="WorkflowPackageContentResponse.For"/>).
+    /// </summary>
+    internal static WorkflowPackage PackageOf(LoadedPackage loaded)
+    {
+        var manifest = loaded.Manifest;
         var results = ResolveResultSet(manifest);
         var resultNodeId = results is null
             ? manifest.Result![WorkflowNodeBindingSources.NodePrefix.Length..]
             : results.Count == 1 ? results[0].NodeId : null;
-        var schemaContracts = loaded.SchemaContracts;
 
-        var package = new WorkflowPackage(manifest, prompts, nodes, schemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef, Texts: loaded.Texts, MacroFolders: loaded.MacroFolders);
-
-        _packageCache.TryAdd(cacheKey, package);
-        _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, prompts?.Count ?? 0);
-        return package;
+        return new WorkflowPackage(manifest, loaded.Prompts, manifest.Nodes, loaded.SchemaContracts, loaded.Data, resultNodeId, loaded.Files, results, loaded.Stamp, loaded.ContractAgents, loaded.CatalogRef, loaded.Formats, loaded.FormatsRef, Texts: loaded.Texts, MacroFolders: loaded.MacroFolders);
     }
 
     /// <summary>
@@ -243,7 +251,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         // v26 (#1157): the header split, once; null below 26.
         WorkflowResolvedTexts? Texts,
         // v26 (#1182): the macro folders resolved through the headers; null below 26 and when none.
-        WorkflowPackageData? MacroFolders);
+        WorkflowPackageData? MacroFolders,
+        // v28 (#1284, design § 6): the manifest the run path reads — the one given,
+        // with each node's prompt implied from the files at 28 (the same object below).
+        WorkflowPackageManifest Manifest);
 
     /// <summary>v26 (#1182): the macro entries that are folders (a path ending in '/'), as a snippet-shaped table — id → directory.</summary>
     internal static IReadOnlyDictionary<string, string>? MacroFolderTableOf(WorkflowPackageManifest manifest)
@@ -295,6 +306,14 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         foreach (var path in RootFilesOf(manifest))
         {
             files[path] = await DownloadTextAsync(name, $"{name}/{version}/{path}", cancellationToken);
+        }
+
+        // v28 (#1284, design § 6): a node's prompt is implied by its id when the file
+        // exists — fetched optionally (a computed node has none; a missing one is the
+        // validator's sentence in Materialise).
+        foreach (var path in WorkflowImpliedPaths.CandidatePrompts(manifest))
+        {
+            await TryAddBlobAsync(files, name, version, path, cancellationToken);
         }
 
         await GatherDataFilesAsync(name, version, manifest.Data, files, manifest.SpecVersion, cancellationToken);
@@ -362,6 +381,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             throw new WorkflowPackageContentException(
                 $"Workflow package {packageRef} failed specVersion-{manifest.SpecVersion} validation: {string.Join(" | ", result.Errors)}");
         }
+
+        // v28 (#1284, design § 6): validated as received (an explicit prompt key is
+        // refused at 28); from here the run path reads each node's implied prompt.
+        manifest = WorkflowImpliedPaths.WithImpliedPrompts(manifest, files);
 
         // v26 (#1157): the one split. The validator ran the same resolution and
         // accepted the package, so a sentence here is an engine fault, said loud.
@@ -431,7 +454,7 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
             ? WorkflowDataResolver.ResolveContent(manifest, files, new List<string>())
             : WorkflowDataResolver.ResolveContent(texts.Manifest, texts, new List<string>());
 
-        return new LoadedPackage(prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef, formats, formats.ResolvedRef, texts, macroFolders);
+        return new LoadedPackage(prompts, schemaContracts, data, files, stamp, catalog.Entries, catalog.ResolvedRef, formats, formats.ResolvedRef, texts, macroFolders, manifest);
     }
 
     /// <summary>
