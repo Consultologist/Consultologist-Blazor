@@ -92,7 +92,8 @@ public static class EditorPackageWalk
             // folder's items are walked as macro texts keyed <folder>/<item> in the editor too —
             // the item pane's reads, its readers and the direct read's target. #1227: the one
             // entry the engine's diagram and job starter share.
-            return PF.WorkflowDerivedEdges.WalkOf(manifest, files, catalogue);
+            // v28 (#1285, design § 6): a 28 node names no prompt — the file its id implies is walked.
+            return PF.WorkflowDerivedEdges.WalkOf(PF.WorkflowImpliedPaths.WithImpliedPrompts(manifest, files), files, catalogue);
         }
         catch (Exception exception) when (exception is JsonException or InvalidOperationException or ArgumentException or NotSupportedException)
         {

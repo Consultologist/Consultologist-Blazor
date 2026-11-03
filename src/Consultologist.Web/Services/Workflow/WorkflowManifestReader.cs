@@ -376,7 +376,9 @@ public static class WorkflowManifestReader
     public sealed record DataItemView(string Id, string Name, string File, string? When = null, string? Instruction = null, bool? Optional = null, bool? Default = null);
 
     /// <summary>A folder; <paramref name="Kind"/> (v26 #1163) follows the declaration — the snippets map or the macros map.</summary>
-    public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items, Consultologist.PackageFormat.WorkflowTextKind Kind = Consultologist.PackageFormat.WorkflowTextKind.Snippet);
+    public sealed record CollectionView(string Id, string Directory, IReadOnlyList<DataItemView> Items, Consultologist.PackageFormat.WorkflowTextKind Kind = Consultologist.PackageFormat.WorkflowTextKind.Snippet,
+        // v28 (#1285, design § 3): the folder's display label from its index object; null below 28 and when unset.
+        string? Label = null);
 
     /// <summary>
     /// v26 (#1163): one snippet or macro file's header as loaded — the parsed header (null when the
@@ -416,6 +418,66 @@ public static class WorkflowManifestReader
 
         return prompts;
     }
+
+    /// <summary>
+    /// v28 (#1285, design § 1, § 6): the nodes with each prompt implied — a 28 node names
+    /// none (the content response drops it), and its prompt is <c>prompts/&lt;id&gt;.md</c>
+    /// when that file is in the package (a flow node and a computed node read none).
+    /// Below 28 the nodes as <see cref="ReadNodes(JsonElement)"/> reads them.
+    /// </summary>
+    public static IReadOnlyList<NodeView> ReadNodes(JsonElement manifest, IReadOnlyDictionary<string, string> files)
+    {
+        var nodes = ReadNodes(manifest);
+        if (ReadSpecVersion(manifest) < 28)
+        {
+            return nodes;
+        }
+
+        return nodes
+            .Select(node => node.Prompt is null && !node.IsFlow && files.ContainsKey(Consultologist.PackageFormat.WorkflowImpliedPaths.PromptOf(node.Id))
+                ? node with { Prompt = Consultologist.PackageFormat.WorkflowImpliedPaths.PromptOf(node.Id) }
+                : node)
+            .ToList();
+    }
+
+    /// <summary>The manifest's declared specVersion; 0 when absent.</summary>
+    public static int ReadSpecVersion(JsonElement manifest) =>
+        TryGetProperty(manifest, "specVersion", out var version) && version.ValueKind == JsonValueKind.Number && version.TryGetInt32(out var n) ? n : 0;
+
+    /// <summary>
+    /// The entries of a snippets/data or macros table, whichever shape the wire carried —
+    /// the ≤27 map id → path, or (v28, #1285, design § 2) the list of ids whose paths the
+    /// ids imply (<c>"notes/"</c> is the folder <c>&lt;key&gt;/notes/</c>). Null when the key is
+    /// absent or neither shape; a 25 macro list of objects is neither.
+    /// </summary>
+    public static IReadOnlyList<(string Id, string Path)>? ReadTableEntries(JsonElement manifest, string key)
+    {
+        if (!TryGetProperty(manifest, key, out var table))
+        {
+            return null;
+        }
+
+        if (table.ValueKind == JsonValueKind.Object)
+        {
+            return table.EnumerateObject()
+                .Where(entry => entry.Value.ValueKind == JsonValueKind.String && entry.Value.GetString() is not null)
+                .Select(entry => (entry.Name, entry.Value.GetString()!))
+                .ToList();
+        }
+
+        if (IsIdList(table))
+        {
+            return table.EnumerateArray()
+                .Select(entry => Consultologist.PackageFormat.WorkflowTableIds.Entry(key, entry.GetString()!))
+                .ToList();
+        }
+
+        return null;
+    }
+
+    /// <summary>v28: a non-empty array of id strings — the 28 table, not the 25 macro list of objects.</summary>
+    private static bool IsIdList(JsonElement table) =>
+        table.ValueKind == JsonValueKind.Array && table.GetArrayLength() > 0 && table.EnumerateArray().All(entry => entry.ValueKind == JsonValueKind.String);
 
     public static IReadOnlyList<NodeView> ReadNodes(JsonElement manifest)
     {
@@ -624,22 +686,11 @@ public static class WorkflowManifestReader
     /// </summary>
     public static IReadOnlyList<ScalarView> ReadScalarEntries(JsonElement manifest, string key = DataKey)
     {
-        var scalars = new List<ScalarView>();
-
-        if (!TryGetProperty(manifest, key, out var data) || data.ValueKind != JsonValueKind.Object)
-        {
-            return scalars;
-        }
-
-        foreach (var entry in data.EnumerateObject())
-        {
-            if (entry.Value.ValueKind == JsonValueKind.String && entry.Value.GetString() is { } value && !value.EndsWith('/'))
-            {
-                scalars.Add(new ScalarView(entry.Name, value));
-            }
-        }
-
-        return scalars;
+        // v28 (#1285): the map or the 28 list of ids, through one reader.
+        return (ReadTableEntries(manifest, key) ?? Array.Empty<(string Id, string Path)>())
+            .Where(entry => !entry.Path.EndsWith('/'))
+            .Select(entry => new ScalarView(entry.Id, entry.Path))
+            .ToList();
     }
 
     /// <summary>
@@ -707,7 +758,7 @@ public static class WorkflowManifestReader
             }
         }
 
-        if (TryGetProperty(manifest, "macros", out var macros) && macros.ValueKind == JsonValueKind.Object)
+        if (TryGetProperty(manifest, "macros", out var macros) && (macros.ValueKind == JsonValueKind.Object || IsIdList(macros)))
         {
             foreach (var macro in ReadMacros(manifest))
             {
@@ -734,22 +785,38 @@ public static class WorkflowManifestReader
         Consultologist.PackageFormat.WorkflowTextKind kind = Consultologist.PackageFormat.WorkflowTextKind.Snippet)
     {
         var collections = new List<CollectionView>();
+        var specVersion = ReadSpecVersion(manifest);
 
-        if (!TryGetProperty(manifest, key, out var data) || data.ValueKind != JsonValueKind.Object)
+        foreach (var (entryId, directory) in ReadTableEntries(manifest, key) ?? Array.Empty<(string Id, string Path)>())
         {
-            return collections;
-        }
-
-        foreach (var entry in data.EnumerateObject())
-        {
-            var directory = entry.Value.GetString();
-
             if (string.IsNullOrWhiteSpace(directory) || !directory.EndsWith('/'))
             {
                 continue;
             }
 
             var items = new List<DataItemView>();
+            string? label = null;
+
+            // v28 (#1285, design § 3): from 26 the library reads the index for the version —
+            // the 26 list [{ id, file }], the 28 object { label?, items: [ids] } (each item
+            // <id>.md); the header (label, gate, macro facts) is the item file's.
+            if (specVersion >= 26)
+            {
+                if (files.TryGetValue(directory + "index.json", out var listedJson)
+                    && Consultologist.PackageFormat.WorkflowTextHeaders.ReadIndex(listedJson, entryId, kind == Consultologist.PackageFormat.WorkflowTextKind.Macro ? "Macro" : "Snippet", specVersion, new List<string>()) is { } index)
+                {
+                    label = index.Label;
+                    foreach (var (id, file) in index.Items)
+                    {
+                        var header = ReadHeader(kind, directory + file, files) is { Refused: false } view ? view.Header : null;
+                        items.Add(new DataItemView(id, header?.Label ?? id, directory + file, string.IsNullOrWhiteSpace(header?.If) ? null : header!.If,
+                            header?.Instruction, header?.Optional, header?.Default));
+                    }
+                }
+
+                collections.Add(new CollectionView(entryId, directory, items, kind, label));
+                continue;
+            }
 
             if (files.TryGetValue(directory + "index.json", out var indexJson))
             {
@@ -803,7 +870,7 @@ public static class WorkflowManifestReader
                 }
             }
 
-            collections.Add(new CollectionView(entry.Name, directory, items, kind));
+            collections.Add(new CollectionView(entryId, directory, items, kind));
         }
 
         return collections;
@@ -981,7 +1048,7 @@ public static class WorkflowManifestReader
     /// </summary>
     public static IReadOnlyList<MacroView> ReadMacros(JsonElement manifest, IReadOnlyDictionary<string, string> files)
     {
-        if (!TryGetProperty(manifest, "macros", out var table) || table.ValueKind != JsonValueKind.Object)
+        if (!TryGetProperty(manifest, "macros", out var table) || (table.ValueKind != JsonValueKind.Object && !IsIdList(table)))
         {
             return ReadMacros(manifest);
         }
@@ -1020,14 +1087,12 @@ public static class WorkflowManifestReader
 
         // #1099 (v26 design § 5.3): at 26 macros is a map id → file (a trailing '/' a
         // folder); the header carries the rest — the view holds the id and the path.
-        if (array.ValueKind == JsonValueKind.Object)
+        // v28 (#1285): the list of ids reads the same, each path implied by its id.
+        if (array.ValueKind == JsonValueKind.Object || IsIdList(array))
         {
-            foreach (var entry in array.EnumerateObject())
+            foreach (var (id, file) in ReadTableEntries(manifest, "macros")!)
             {
-                if (entry.Value.ValueKind == JsonValueKind.String && entry.Value.GetString() is { } file)
-                {
-                    macros.Add(new MacroView(entry.Name, entry.Name, file, null, null, null));
-                }
+                macros.Add(new MacroView(id, id, file, null, null, null));
             }
 
             return macros;

@@ -1770,7 +1770,7 @@
     try
     {
       var content = await WorkflowService.GetCurrentPackageContentAsync();
-      workflowNodes = WorkflowManifestReader.ReadNodes(content.Manifest);
+      workflowNodes = WorkflowManifestReader.ReadNodes(content.Manifest, content.Files);
       workflowCollections = WorkflowManifestReader.ReadCollections(content.Manifest, content.Files);
 
       // A 25 package fans snippet folders, which live under the snippets table
