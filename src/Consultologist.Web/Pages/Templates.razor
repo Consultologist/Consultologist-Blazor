@@ -692,7 +692,60 @@
                 </nav>
 
                 <section class="content-card editor-pane">
-                    @if (selectedKey != null && selectedKey.StartsWith(NewKeyPrefix, StringComparison.Ordinal))
+                    @if (selectedKey != null && selectedKey.StartsWith(FolderKeyPrefix, StringComparison.Ordinal) && At28
+                         && EffectiveCollections.FirstOrDefault(c => FolderKeyFor(c) == selectedKey) is { } paneFolder)
+                    {
+                        @* v28 (#1285, design § 3, § 7): the folder's pane — its display label and its item order. *@
+                        var paneRows = OrderedItems(paneFolder);
+                        <div class="pane-header folder-pane" data-folder-pane="@paneFolder.Directory">
+                            <div>
+                                <h3 class="panel-title">@(FolderLabel(paneFolder) ?? paneFolder.Id)</h3>
+                                <p class="muted-text">
+                                    @(paneFolder.Kind == PF.WorkflowTextKind.Macro ? "A macro folder" : "A snippet folder"), <code>@paneFolder.Directory</code>.
+                                    The label names the folder in the editor; no template reads it. The order is the order its items run in.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="node-fields">
+                            <label class="node-field">
+                                <span>label</span>
+                                <FluentTextField Value="@(FolderLabel(paneFolder) ?? string.Empty)" Placeholder="@paneFolder.Id"
+                                                 ValueChanged="@(v => SetFolderLabelAsync(paneFolder, v))"
+                                                 aria-label="@($"Label of folder {paneFolder.Id}")" />
+                            </label>
+                        </div>
+                        <div class="node-section">
+                            <div class="node-section__head">Items, in order</div>
+                            <ol class="folder-pane__items">
+                                @for (var rowIndex = 0; rowIndex < paneRows.Count; rowIndex++)
+                                {
+                                    var (paneItem, paneAdded) = paneRows[rowIndex];
+                                    var paneRowId = paneItem?.Id ?? paneAdded!.Id;
+                                    var paneRowName = paneItem is not null ? StandardName(paneItem) : paneAdded!.Name;
+                                    <li class="folder-pane__item" data-folder-item="@paneRowId">
+                                        <span>@paneRowName</span>
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move up"
+                                                      aria-label="@($"Move item {paneRowName} up")"
+                                                      Disabled="@(rowIndex == 0)"
+                                                      IconStart="@(new Icons.Regular.Size16.ArrowUp())"
+                                                      @onclick="() => MoveItemAsync(paneFolder, paneRowId, -1)" />
+                                        <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button" Title="Move down"
+                                                      aria-label="@($"Move item {paneRowName} down")"
+                                                      Disabled="@(rowIndex == paneRows.Count - 1)"
+                                                      IconStart="@(new Icons.Regular.Size16.ArrowDown())"
+                                                      @onclick="() => MoveItemAsync(paneFolder, paneRowId, 1)" />
+                                    </li>
+                                }
+                            </ol>
+                            @if (CollectionHasOrderEdits(paneFolder))
+                            {
+                                <button type="button" class="editor-nav__restore editor-nav__reset-order"
+                                        aria-label="@($"Reset order of {paneFolder.Id}")"
+                                        @onclick="() => ResetItemOrderAsync(paneFolder.Id)">(reset order)</button>
+                            }
+                        </div>
+                    }
+                    else if (selectedKey != null && selectedKey.StartsWith(NewKeyPrefix, StringComparison.Ordinal))
                     {
                         var newCollection = selectedKey[NewKeyPrefix.Length..];
                         <div class="pane-header">
@@ -4169,7 +4222,21 @@
                     <summary class="editor-nav__item editor-nav__folder-summary">
                         <span class="editor-nav__chevron" aria-hidden="true">&#x203A;</span>
                         <span class="editor-nav__dot">@(CollectionHasPending(collection) ? "●" : "")</span>
-                        <span>@collection.Id (@CollectionCount(collection))</span>
+                        @if (At28)
+                        {
+                            @* v28 (#1285): the folder opens its own pane; the click does not fold the row. *@
+                            var folderKey = FolderKeyFor(collection);
+                            <button type="button"
+                                    class="editor-nav__folder-select @(selectedKey == folderKey ? "editor-nav__item--selected" : "")"
+                                    aria-label="@($"Open folder {collection.Id}")"
+                                    @onclick="() => Select(folderKey)" @onclick:preventDefault="true" @onclick:stopPropagation="true">
+                                @(FolderLabel(collection) ?? collection.Id) (@CollectionCount(collection))
+                            </button>
+                        }
+                        else
+                        {
+                            <span>@collection.Id (@CollectionCount(collection))</span>
+                        }
                     </summary>
                     @* #1103: the live items in the folder's shown order — index.json's array is the
                        fan's run order — each row a label button with move arrows; removed items after. *@
@@ -4195,16 +4262,20 @@
                                 <span class="editor-nav__dot">@rowDot</span>
                                 <span>@rowName</span>
                             </button>
-                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move up"
-                                          aria-label="@($"Move item {rowName} up")"
-                                          Disabled="@isFirst"
-                                          IconStart="@(new Icons.Regular.Size16.ArrowUp())"
-                                          @onclick="() => MoveItemAsync(orderedCollection, rowId, -1)" />
-                            <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move down"
-                                          aria-label="@($"Move item {rowName} down")"
-                                          Disabled="@isLast"
-                                          IconStart="@(new Icons.Regular.Size16.ArrowDown())"
-                                          @onclick="() => MoveItemAsync(orderedCollection, rowId, 1)" />
+                            @* v28 (#1285): at 28 the order is the folder pane's. *@
+                            @if (!At28)
+                            {
+                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move up"
+                                              aria-label="@($"Move item {rowName} up")"
+                                              Disabled="@isFirst"
+                                              IconStart="@(new Icons.Regular.Size16.ArrowUp())"
+                                              @onclick="() => MoveItemAsync(orderedCollection, rowId, -1)" />
+                                <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button editor-nav__move" Title="Move down"
+                                              aria-label="@($"Move item {rowName} down")"
+                                              Disabled="@isLast"
+                                              IconStart="@(new Icons.Regular.Size16.ArrowDown())"
+                                              @onclick="() => MoveItemAsync(orderedCollection, rowId, 1)" />
+                            }
                         </div>
                     }
                     @foreach (var item in collection.Items.Where(i => removedFiles.Contains(i.File)))
@@ -4221,7 +4292,7 @@
                         <span class="editor-nav__dot"></span>
                         <span>+ Add item</span>
                     </button>
-                    @if (CollectionHasOrderEdits(collection))
+                    @if (CollectionHasOrderEdits(collection) && !At28)
                     {
                         <div class="editor-nav__item editor-nav__item--nested">
                             <span class="editor-nav__dot"></span>
@@ -4810,6 +4881,9 @@
     private const string AddCollectionKey = "add-collection";
     private const string AddScalarKey = "add-scalar";
     private const string NodeKeyPrefix = "node:";
+    // v28 (#1285, design § 7): a folder's own pane, keyed by its directory (a macro and a snippet folder may share an id).
+    private const string FolderKeyPrefix = "folder:";
+    private static string FolderKeyFor(WorkflowManifestReader.CollectionView collection) => FolderKeyPrefix + collection.Directory;
     private const string AddNodeKey = "add-node";
     private const string AddPromptKey = "add-prompt";
 
@@ -5663,6 +5737,9 @@
             // #1103: a folder's item order — index.json's array, the fan's run order; not the manifest.
             new("itemOrderEdits", () => itemOrderEdits.Count, itemOrderEdits.Clear,
                 () => $"{itemOrderEdits.Count} folder {Plural(itemOrderEdits.Count, "order")}", () => false),
+            // v28 (#1285): pending folder labels — written to each folder's index.json, not the manifest.
+            new("folderLabelEdits", () => folderLabelEdits.Count, folderLabelEdits.Clear,
+                () => $"{folderLabelEdits.Count} folder {Plural(folderLabelEdits.Count, "label")}", () => false),
             // v15 (#731): pending raw toggles on declared prompts.
             new("promptRawEdits", () => promptRawEdits.Count, promptRawEdits.Clear,
                 () => $"{promptRawEdits.Count} raw {Plural(promptRawEdits.Count, "prompt")}", () => promptRawEdits.Count > 0),
@@ -5770,6 +5847,10 @@
             && (formatsCatalog?.Formats?.Any(e => CatalogueKeyFor(e.Id) == key) ?? false))
         || (key.StartsWith(NewKeyPrefix, StringComparison.Ordinal)
             && EffectiveCollections.Any(c => NewKeyFor(c.Id) == key))
+        // v28 (#1285): a folder's pane, at 28 alone, while the folder exists.
+        || (key.StartsWith(FolderKeyPrefix, StringComparison.Ordinal)
+            && At28
+            && EffectiveCollections.Any(c => FolderKeyFor(c) == key))
         || (key.StartsWith(NodeKeyPrefix, StringComparison.Ordinal)
             && EffectiveNodes.Any(n => NodeKeyFor(n.Id) == key))
         // #1081: a deliverable's focus key, while the deliverable exists.
@@ -8108,7 +8189,9 @@
         || CollectionHasOrderEdits(collection)
         || CollectionHasNameEdits(collection)
         || CollectionHasWhenEdits(collection)
-        || CollectionHasHeaderEdits(collection);
+        || CollectionHasHeaderEdits(collection)
+        // v28 (#1285): a pending folder label is written to its index.json.
+        || CollectionHasLabelEdit(collection);
 
     // The loaded collections plus one synthetic view per pending folder, so
     // the sidebar and index composition treat both alike.
@@ -8509,6 +8592,34 @@
     /// self-reverting: dropped when it equals the natural order, as tagsEdit is.
     /// </summary>
     private readonly Dictionary<string, List<string>> itemOrderEdits = new(StringComparer.Ordinal);
+
+    // ----- v28 (#1285, design § 3, § 7): a folder's display label — its index.json's label -----
+
+    /// <summary>Pending folder labels by directory; an empty string clears the label.</summary>
+    private readonly Dictionary<string, string> folderLabelEdits = new(StringComparer.Ordinal);
+
+    /// <summary>The folder's label as it will publish: the pending edit, else the loaded one; null when unset.</summary>
+    private string? FolderLabel(WorkflowManifestReader.CollectionView collection) =>
+        folderLabelEdits.TryGetValue(collection.Directory, out var edited)
+            ? (string.IsNullOrWhiteSpace(edited) ? null : edited)
+            : collection.Label;
+
+    private bool CollectionHasLabelEdit(WorkflowManifestReader.CollectionView collection) => folderLabelEdits.ContainsKey(collection.Directory);
+
+    private async Task SetFolderLabelAsync(WorkflowManifestReader.CollectionView collection, string? label)
+    {
+        var trimmed = label?.Trim() ?? string.Empty;
+        if (trimmed == (collection.Label ?? string.Empty))
+        {
+            folderLabelEdits.Remove(collection.Directory);
+        }
+        else
+        {
+            folderLabelEdits[collection.Directory] = trimmed;
+        }
+
+        await PendingChangedAsync();
+    }
 
     /// <summary>The order a folder's items have without an overlay: the index's published items not removed, then the pending ones.</summary>
     private List<string> NaturalItemIds(WorkflowManifestReader.CollectionView collection) =>
@@ -16393,7 +16504,9 @@
         List<DraftHeader>? Headers = null,
         List<string>? AddedMacroCollections = null,
         // #1225: renamed nodes, in order — applied to the loaded package before every other edit.
-        List<DraftNodeRename>? NodeRenames = null);
+        List<DraftNodeRename>? NodeRenames = null,
+        // v28 (#1285): pending folder labels (directory → label; empty clears). Trailing optional.
+        Dictionary<string, string>? FolderLabels = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -16711,6 +16824,15 @@
                 {
                     itemWhenEdits[draftItemWhen.File] = draftItemWhen.When;
                 }
+            }
+        }
+
+        // v28 (#1285): a drafted folder label is kept for a folder that still exists.
+        foreach (var (directory, label) in payload.FolderLabels ?? new Dictionary<string, string>())
+        {
+            if (EffectiveCollections.Any(c => c.Directory == directory))
+            {
+                folderLabelEdits[directory] = label;
             }
         }
 
@@ -17174,7 +17296,8 @@
             flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList(),
             headerEdits.Select(pair => new DraftHeader(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Instruction, pair.Value.Optional, pair.Value.Default)).ToList(),
             addedMacroCollections.ToList(),
-            nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove)).ToList());
+            nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove)).ToList(),
+            folderLabelEdits.Count == 0 ? null : new Dictionary<string, string>(folderLabelEdits, StringComparer.Ordinal));
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -17379,7 +17502,7 @@
         // and its item ids in order (each item <id>.md beside the index).
         if (At28)
         {
-            return Composer28.Index(OrderedItems(collection).Select(pair => pair.Item?.Id ?? pair.Added!.Id), collection.Label);
+            return Composer28.Index(OrderedItems(collection).Select(pair => pair.Item?.Id ?? pair.Added!.Id), FolderLabel(collection));
         }
 
         // v26 (#1163): the index is the ordered list [{ id, file }] — label and if live in each
@@ -18680,7 +18803,8 @@
         {
             // v26 (#1163): a name or gate edit is a header edit — the index carries id and file alone.
             if (CollectionHasMembershipChanges(collection) || addedCollections.Contains(collection.Id) || addedMacroCollections.Contains(collection.Id)
-                || (!At26 && (CollectionHasNameEdits(collection) || CollectionHasWhenEdits(collection))) || CollectionHasOrderEdits(collection))
+                || (!At26 && (CollectionHasNameEdits(collection) || CollectionHasWhenEdits(collection))) || CollectionHasOrderEdits(collection)
+                || (At28 && CollectionHasLabelEdit(collection)))
             {
                 files[collection.Directory + "index.json"] = ComposeIndexJson(collection);
             }

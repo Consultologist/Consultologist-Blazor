@@ -94,6 +94,8 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
         Select(page, "node:assessment");
         var area = page.FindAll(".node-section").Single(s => s.QuerySelector(".node-section__head")?.TextContent.Trim() == "Prompt text").QuerySelector("fluent-text-area")!;
         area.Change(area.GetAttribute("current-value") + "\nOne more line.");
+        // #1285 (C2): at 28 the order is the folder pane's.
+        Select(page, "folder:snippets/sections/");
         page.Find("fluent-button[aria-label='Move item Plan up']").Click();
         Publish(page);
 
