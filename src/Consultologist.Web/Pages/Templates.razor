@@ -998,7 +998,8 @@
                             </div>
                             @PaneDiscardButton(PackageKey, PackageCanDiscard, RevertPackageEdits)
                         </div>
-                        @if (At26)
+                        @* v28 (#1285): at 28 a file's name is its id — a mismatch cannot be spelled, so the line retires. *@
+                        @if (At26 && !At28)
                         {
                             var mismatches = FileNameMismatches;
                             <div class="package-file-names" data-file-names="@mismatches.Count">
@@ -17374,6 +17375,13 @@
 
     private string ComposeIndexJson(WorkflowManifestReader.CollectionView collection)
     {
+        // v28 (#1285, design § 3): the index object — the folder's label when it has one,
+        // and its item ids in order (each item <id>.md beside the index).
+        if (At28)
+        {
+            return Composer28.Index(OrderedItems(collection).Select(pair => pair.Item?.Id ?? pair.Added!.Id), collection.Label);
+        }
+
         // v26 (#1163): the index is the ordered list [{ id, file }] — label and if live in each
         // item file's header; the migrator's bytes (indented, a trailing newline).
         if (At26)
@@ -18223,7 +18231,8 @@
 
     /// <summary>#1267: "rename the file to match" beside a file not named after its id, or why it cannot.</summary>
     private RenderFragment<(string Path, string Implied)> FileMatchAction => spec => @<text>
-        @if (At26 && spec.Path != spec.Implied && content?.Files.ContainsKey(spec.Path) == true)
+        @* v28 (#1285): retired at 28, where every file is the one its id implies. *@
+        @if (At26 && !At28 && spec.Path != spec.Implied && content?.Files.ContainsKey(spec.Path) == true)
         {
             var refusal = FileMoveRefusal(spec.Path, spec.Implied);
             if (refusal is null)
@@ -18647,6 +18656,14 @@
 
         foreach (var removedNodeId in removedNodeIds)
         {
+            // v28 (#1285): a removed node's own prompts/<id>.md leaves with it — no other
+            // node can read it (each owns its file), and left behind it is a stray.
+            if (At28)
+            {
+                files.Remove(PF.WorkflowImpliedPaths.PromptOf(removedNodeId));
+                continue;
+            }
+
             var promptId = nodes.FirstOrDefault(n => n.Id == removedNodeId)?.Prompt;
             var promptFile = promptId != null ? prompts.FirstOrDefault(p => p.Id == promptId)?.File : null;
 
@@ -18879,6 +18896,14 @@
         }
 
         var root = System.Text.Json.Nodes.JsonNode.Parse(content!.Manifest.GetRawText())!;
+
+        // v28 (#1285, design § 2): the composer edits the tables as the ≤27 map — a 28
+        // id list is opened into it here (each path the id's) and closed back below,
+        // so every table write keeps one shape and the list's order is kept.
+        if (At28)
+        {
+            Composer28.OpenTables(root.AsObject());
+        }
 
         // #347: the editor's first write to specVersion. Before this it never
         // wrote the field at all, so a fork inherited its version from whatever
@@ -20003,6 +20028,13 @@
                     bindingsObject.Remove(variable);
                 }
             }
+        }
+
+        // v28 (#1285, design § 1, § 2): a 28 manifest spells no path — the tables close
+        // into id lists, and no node names its prompt (each is prompts/<id>.md).
+        if (At28)
+        {
+            Composer28.CloseTables(root.AsObject());
         }
 
         return JsonSerializer.SerializeToElement(root);
