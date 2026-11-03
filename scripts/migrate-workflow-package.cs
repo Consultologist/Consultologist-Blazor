@@ -5,13 +5,14 @@
 // manifest model has no source-generated context.
 #:property JsonSerializerIsReflectionEnabledByDefault=true
 
-// Migrates a workflow package directory on disk to specVersion 25 (the default), 26 or 27, offline.
+// Migrates a workflow package directory on disk to specVersion 25 (the default), 26, 27 or 28, offline.
 //
 // Usage:
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir>                   # dry run: notices, refusals, the file plan, the 25 validation
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --write           # apply: files, manifest.json, dag.mmd (drawn as --dag draws it: with the reads, #1244)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 26 [--write] # #1152: the 25 → 26 stage (WorkflowPackageMigration25To26)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 27 [--write] # #1237: the 26 → 27 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 28 [--write] # #1286: the 27 → 28 rewrite (WorkflowPackageMigration27To28; every file renamed to its id)
 //
 // WHY THIS EXISTS. The editor upgrades a package in the browser: below 23 it
 // turns preludes into node macros and bumps the number (formats up to 24 are
@@ -239,6 +240,70 @@ if (to == 27)
     Console.Out.WriteLine(
         $"{name}@{version}: specVersion 26 → 27, nothing added, rewritten or deleted"
             + (write ? "; manifest.json and dag.mmd written" : " (dry run; pass --write to apply)"));
+    return 0;
+}
+
+// #1286: the 28 stage — a 27 package through the library's 27 → 28 rewrite
+// (design § 8): every prompt, macro, snippet and folder item renamed to its id
+// (a shared prompt copied per node), the manifest's paths dropped, each folder
+// index { items }; validated at 28 in memory before any write. The write
+// deletes the renamed files, adds their new names and rewrites manifest.json,
+// the indexes and dag.mmd.
+if (to == 28)
+{
+    if (from != 27)
+    {
+        Console.Error.WriteLine($"error: {name}@{version} is at specVersion {from}; the 28 stage takes a 27 package (migrate to 27 first).");
+        return 1;
+    }
+
+    var result28 = WorkflowPackageMigration27To28.Migrate(staged.ToJsonString(), before);
+
+    foreach (var notice in result28.Notices)
+    {
+        Console.Out.WriteLine($"notice: {notice}");
+    }
+
+    if (!result28.Succeeded)
+    {
+        foreach (var refusal in result28.Refusals)
+        {
+            Console.Error.WriteLine($"error: {refusal}");
+        }
+
+        Console.Error.WriteLine($"{name}@{version}: specVersion 27 → 28 refused; nothing written.");
+        return 1;
+    }
+
+    var removed28 = before.Keys.Where(path => !result28.Files.ContainsKey(path)).Order(StringComparer.Ordinal).ToList();
+    var added28 = result28.Files.Keys.Where(path => !before.ContainsKey(path)).Order(StringComparer.Ordinal).ToList();
+    var rewritten28 = result28.Files.Where(pair => before.TryGetValue(pair.Key, out var was) && was != pair.Value).Select(pair => pair.Key).Order(StringComparer.Ordinal).ToList();
+    foreach (var path in removed28) Console.Out.WriteLine($"delete: {path}");
+    foreach (var path in added28) Console.Out.WriteLine($"add: {path}");
+    foreach (var path in rewritten28) Console.Out.WriteLine($"rewrite: {path}");
+
+    var manifest28 = WorkflowPackageManifestJson.Read(result28.ManifestJson, $"{name}@{version}", WorkflowPackageValidator.AcceptedSpecVersions);
+    var validation28 = WorkflowPackageValidator.Validate(manifest28, result28.Files, catalogSchemas, formats: formats);
+    foreach (var warning in validation28.Warnings) Console.Out.WriteLine($"warning: {warning}");
+    foreach (var error in validation28.Errors) Console.Error.WriteLine($"error: {error}");
+    if (validation28.Errors.Count > 0)
+    {
+        Console.Error.WriteLine($"{name}@{version}: the 28 package does not validate; nothing written.");
+        return 1;
+    }
+
+    Console.Out.WriteLine($"{name}@{version}: specVersion 27 → 28 validates ({validation28.Errors.Count} errors, {validation28.Warnings.Count} warnings).");
+
+    if (write)
+    {
+        // The diagram walks the implied prompts, as the engine reads them.
+        MigrationRunner.Write(root, result28.ManifestJson, before, result28.Files,
+            DiagramOf(WorkflowImpliedPaths.WithImpliedPrompts(manifest28, result28.Files), result28.Files));
+    }
+
+    Console.Out.WriteLine(
+        $"{name}@{version}: specVersion 27 → 28, {added28.Count} added, {rewritten28.Count} rewritten, {removed28.Count} deleted"
+            + (write ? "; written" : " (dry run; pass --write to apply)"));
     return 0;
 }
 

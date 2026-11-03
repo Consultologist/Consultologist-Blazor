@@ -43,7 +43,11 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
     // v27 (#1237): a flow node inside a for — an if or case in a loop's body,
     // decided per item at item readiness, a skipped item a named block state;
     // record storage 9. A version raise from 26, nothing rewritten.
-    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 };
+    // v28 (#1286, package-format-v28-design.md): a file's name is its id — no
+    // prompt key (each node's prompt implied from its file), the tables as id
+    // lists, the folder index { label?, items }; record storage 9 unchanged.
+    // The 27 → 28 migration renames every file to its id.
+    public static readonly IReadOnlyList<int> SupportedSpecVersions = new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 };
     private static readonly TimeSpan LatestPointerCacheDuration = TimeSpan.FromSeconds(60);
 
     private static readonly JsonSerializerOptions JsonOptions = new()

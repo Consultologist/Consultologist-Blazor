@@ -604,7 +604,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);
         Assert.Contains("requires specVersion 8", page.Markup, StringComparison.Ordinal);
         // #430: the hint names the one rung on offer — 12 since #623.
-        Assert.Contains("Upgrade to specVersion 27", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 28", page.Markup, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -627,7 +627,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var root = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
         // #430: the one offered rung was 9; #500 made it 10; #566, 11; #623, 12; #1018, 25.
-        Assert.Equal(27, root.GetProperty("specVersion").GetInt32());
+        Assert.Equal(28, root.GetProperty("specVersion").GetInt32());
         Assert.Equal("enum", root.GetProperty("inputs")[1].GetProperty("type").GetString());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
     }
@@ -659,7 +659,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         var page = Render<Templates>();
 
-        Assert.Contains("Upgrade to specVersion 27", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("Upgrade to specVersion 28", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 11", page.Markup, StringComparison.Ordinal);
         Assert.DoesNotContain("Upgrade to specVersion 10", page.Markup, StringComparison.Ordinal);
     }
@@ -676,13 +676,13 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         // ceilings to 25 together, so there is still one button — naming 25,
         // the rewrite — whatever version is loaded.
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V7());
-        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 28" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V9Structured());
-        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 28" }, UpgradeButtons(Render<Templates>()));
 
         WorkflowService.GetCurrentPackageContentAsync().Returns(EditorFixtures.V11());
-        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(Render<Templates>()));
+        Assert.Equal(new[] { "Upgrade to specVersion 28" }, UpgradeButtons(Render<Templates>()));
     }
 
     [Fact]
@@ -697,7 +697,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
 
         Assert.DoesNotContain("not yet runnable", page.Markup, StringComparison.Ordinal);
         Assert.Empty(UpgradeButtons(page));
-        Assert.Contains("upgraded 10 → 27", page.Markup, StringComparison.Ordinal);
+        Assert.Contains("upgraded 10 → 28", page.Markup, StringComparison.Ordinal);
         // #1164: the ceilings meet at 26 again — no second button and no notice.
         Assert.Equal(Templates.NewestSpecVersion, Templates.RunnableSpecVersion);
     }
@@ -749,7 +749,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         var after = JsonDocument.Parse(sent.Manifest.GetRawText()).RootElement;
 
         Assert.Equal(from, before.GetProperty("specVersion").GetInt32());
-        Assert.Equal(27, after.GetProperty("specVersion").GetInt32());
+        Assert.Equal(28, after.GetProperty("specVersion").GetInt32());
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
         Assert.True(after.TryGetProperty("deliverables", out _));
@@ -768,7 +768,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
             }
         }
 
-        Assert.Contains("Migrated to specVersion 27.", notice);
+        Assert.Contains("Migrated to specVersion 28.", notice);
         Assert.Contains("results is now deliverables", notice);
     }
 
@@ -789,13 +789,14 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
 
         Assert.False(after.TryGetProperty("preludes", out _));
-        // #1164: the chain lands at 26 — prompts[] retired, the node names its file; the snippet opens with its header.
+        // #1164: the chain lands at 26 — prompts[] retired; #1286: at 28 the node names no file —
+        // its prompt is prompts/<id>.md — and the snippet is an id in the list; the snippet opens with its header.
         Assert.False(after.TryGetProperty("prompts", out _));
-        Assert.Equal("prompts/draft-section.md", after.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "draft_section").GetProperty("prompt").GetString());
+        Assert.False(after.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "draft_section").TryGetProperty("prompt", out _));
         Assert.False(after.TryGetProperty("macros", out _));
-        Assert.Equal("snippets/guidance.md", after.GetProperty("snippets").GetProperty("guidance").GetString());
+        Assert.Contains(after.GetProperty("snippets").EnumerateArray(), e => e.GetString() == "guidance");
         Assert.EndsWith("}\nUse short SNOMED search terms.", sent.Files["snippets/guidance.md"]);
-        Assert.StartsWith("{{ snippet.guidance.content }}", sent.Files["prompts/draft-section.md"]);
+        Assert.StartsWith("{{ snippet.guidance.content }}", sent.Files["prompts/draft_section.md"]);
         Assert.DoesNotContain(sent.Files.Keys, path => path.StartsWith("preludes/", StringComparison.Ordinal));
 
         Assert.Contains("Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
@@ -860,7 +861,7 @@ public class EditorPublishRoundTripTests : ClientRenderTestContext
         // #430: the one offered rung was 9 (and the migration adds tags);
         // #500 made it 10; #566, 11; #623, 12; #1018, 25 — the string-form
         // result of a v6 package becomes the one-entry deliverables.
-        Assert.Equal(27, root.GetProperty("specVersion").GetInt32());
+        Assert.Equal(28, root.GetProperty("specVersion").GetInt32());
         Assert.Equal(0, root.GetProperty("tags").GetArrayLength());
         Assert.Equal("consult_draft", root.GetProperty("inputs")[0].GetProperty("id").GetString());
         // #1164: at 26 the aggregator dissolves into the deliverable's sources (design § 13).

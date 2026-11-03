@@ -95,7 +95,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
         Navigate(page, "+ Prelude");
 
         Assert.Contains("A prelude publishes only as a node macro from specVersion 23.", page.Find(".prelude-retired").TextContent);
-        Assert.Contains("Upgrade to specVersion 27", page.Find(".prelude-retired").TextContent);
+        Assert.Contains("Upgrade to specVersion 28", page.Find(".prelude-retired").TextContent);
         Assert.Empty(page.FindAll("fluent-text-field[placeholder='snomed_tool_guidance']"));
         Assert.DoesNotContain(page.FindAll("fluent-button"), button => button.TextContent.Contains("Create prelude"));
         // Nothing pending: Publish has nothing to send.
@@ -243,15 +243,16 @@ public class TemplatesPreludesTests : ClientRenderTestContext
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         var manifest = Manifest(sent!);
-        Assert.Equal(27, manifest.GetProperty("specVersion").GetInt32());
+        Assert.Equal(28, manifest.GetProperty("specVersion").GetInt32());
         Assert.False(manifest.TryGetProperty("preludes", out _));
         Assert.False(manifest.TryGetProperty("macros", out _));
-        // #1164: the chain lands at 26 — prompts[] retired, the node names its file; the snippet opens with its header.
+        // #1164: the chain lands at 26 — prompts[] retired; #1286: at 28 the node names no file —
+        // its prompt is prompts/<id>.md — and the snippet is an id in the list; the snippet opens with its header.
         Assert.False(manifest.TryGetProperty("prompts", out _));
-        Assert.Equal("prompts/draft-section.md", manifest.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "draft_section").GetProperty("prompt").GetString());
-        Assert.Equal("snippets/guidance.md", manifest.GetProperty("snippets").GetProperty("guidance").GetString());
+        Assert.False(manifest.GetProperty("nodes").EnumerateArray().Single(n => n.GetProperty("id").GetString() == "draft_section").TryGetProperty("prompt", out _));
+        Assert.Contains(manifest.GetProperty("snippets").EnumerateArray(), e => e.GetString() == "guidance");
         Assert.EndsWith("}\nUse short SNOMED search terms.", sent!.Files["snippets/guidance.md"]);
-        Assert.StartsWith("{{ snippet.guidance.content }}", sent.Files["prompts/draft-section.md"]);
+        Assert.StartsWith("{{ snippet.guidance.content }}", sent.Files["prompts/draft_section.md"]);
         Assert.DoesNotContain(sent.Files.Keys, path => path.StartsWith("preludes/", StringComparison.Ordinal));
         var result = Validated();
         Assert.True(result.IsValid, string.Join(" | ", result.Errors));
@@ -289,7 +290,7 @@ public class TemplatesPreludesTests : ClientRenderTestContext
 
         Assert.Contains("Prelude 'guidance' has the id of a declared macro; rename one, then upgrade.", page.Find(".upgrade-refusal").TextContent);
         // Nothing staged: the rung is still on offer, the preludes untouched.
-        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Upgrade to specVersion 27"));
+        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Contains("Upgrade to specVersion 28"));
         Assert.Contains("Preludes", NavGroups(page));
         Publish(page);
         await WorkflowService.DidNotReceiveWithAnyArgs().PublishPackageAsync(default!);

@@ -376,10 +376,24 @@ One layer per PR, each green on its own. The bump is last, as at 25, 26 and 27.
   and vectors, listed; the Editor's ceilings; `scripts/migrate-workflow-package.cs --to 28` (a
   script validates through the public entry, which accepts 28 only from here — as `--to 27` came
   with 27's bump); an engine release on the word.
+
+  *As landed (2026-11-02):* `AcceptedSpecVersions` and `SupportedSpecVersions` list 28; the
+  editor's `NewestSpecVersion` and `RunnableSpecVersion` are 28 together, the #1285 seam
+  (`AuthorsAboveCeiling`) and its `InternalsVisibleTo` retired, the stored upgrade at version 4;
+  the upgrade chains a 26 package through the 27 raise ("Through 27:") into the 28 rewrite;
+  `--to 28` validates at 28 in memory before writing (the ten public packages validate, 58 prompts
+  and 2 items renamed); next-is-refused moved to 29. Registry package-format **v2026.11.1**
+  (consultologist-package-format#43): 28 listed with `package-format-v28.md` and the generated
+  schema, `conformance/v28/` (20 vectors: 5 valid, 15 invalid, 11 `SHAPE_BLIND`), the below-28
+  gate under `v27/`; 628 cases in all. The release and the content (#1287) follow on the word.
 - **E — content:** the packages repo's `validate.yml`, then the ten packages through
   `--to 28 --write` (one PR, one tag per push), a smoke at 28, and the pin on the word.
 
 ## 12. Deferred and open
+
+- **#1252, array items named by a field: moved to v29** (2026-11-02, with the package author).
+  28 ships without it; a declared `labelField` or a `title` convention is decided with the v29
+  design (#1277).
 
 - **The number: decided 28** (2026-11-02). Bundling with the dynamic half was weighed and set
   aside: it saves one bump's mechanical work but holds a finished, self-contained design behind
