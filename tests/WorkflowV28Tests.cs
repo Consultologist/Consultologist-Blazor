@@ -319,6 +319,16 @@ public class WorkflowV28Tests
         Assert.DoesNotContain(errors, e => e.StartsWith("macros is a list;", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void TheDiagram_DrawsAFlowNodesDescription_UnderItsLabel_Escaped()
+    {
+        var bundle = V28Package.WithJson(root => V28Package.Node(root, "sections")["description"] = "Drafts one note\nper <section> \"here\".");
+        var diagram = WorkflowDagDiagram.Generate(bundle.Manifest);
+
+        Assert.Contains("sections<br/>Sections<br/><i>Drafts one note per &lt;section&gt; #quot;here#quot;.</i><br/>item in snippet.sections", diagram);
+        Assert.DoesNotContain("<i>", WorkflowDagDiagram.Generate(V28Package.Minimal().Manifest));
+    }
+
     // ---- the implied prompts ------------------------------------------------------------------
 
     [Fact]

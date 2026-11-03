@@ -2668,6 +2668,7 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedLoop.Label" ValueChanged="@(v => OnLoopLabelChangedAsync(selectedLoop, v))" aria-label="Loop label" />
                                 </label>
+                                @FlowDescriptionField(selectedLoop)
                                 <label class="node-field">
                                     <span>over</span>
                                     <FluentSelect TOption="string" class="binding-row__select loop-collection"
@@ -2770,6 +2771,7 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedIf.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedIf, v))" aria-label="If label" />
                                 </label>
+                                @FlowDescriptionField(selectedIf)
                                 @if (At27)
                                 {
                                 <label class="node-field">
@@ -2842,6 +2844,7 @@
                                     <span>label</span>
                                     <FluentTextField Value="@selectedCase.Label" ValueChanged="@(v => OnFlowLabelChangedAsync(selectedCase, v))" aria-label="Case label" />
                                 </label>
+                                @FlowDescriptionField(selectedCase)
                                 @if (At27)
                                 {
                                 <label class="node-field">
@@ -5737,6 +5740,9 @@
             // #1103: a folder's item order — index.json's array, the fan's run order; not the manifest.
             new("itemOrderEdits", () => itemOrderEdits.Count, itemOrderEdits.Clear,
                 () => $"{itemOrderEdits.Count} folder {Plural(itemOrderEdits.Count, "order")}", () => false),
+            // v28 (#1270): pending flow-node descriptions — manifest members.
+            new("descriptionEdits", () => descriptionEdits.Count, descriptionEdits.Clear,
+                () => $"{descriptionEdits.Count} {Plural(descriptionEdits.Count, "description")}", () => descriptionEdits.Count > 0),
             // v28 (#1285): pending folder labels — written to each folder's index.json, not the manifest.
             new("folderLabelEdits", () => folderLabelEdits.Count, folderLabelEdits.Clear,
                 () => $"{folderLabelEdits.Count} folder {Plural(folderLabelEdits.Count, "label")}", () => false),
@@ -8592,6 +8598,46 @@
     /// self-reverting: dropped when it equals the natural order, as tagsEdit is.
     /// </summary>
     private readonly Dictionary<string, List<string>> itemOrderEdits = new(StringComparer.Ordinal);
+
+    // ----- v28 (#1270, design § 6a): a flow node's display-only description -----
+
+    /// <summary>Pending flow-node descriptions by node id; an empty string clears the description.</summary>
+    private readonly Dictionary<string, string> descriptionEdits = new(StringComparer.Ordinal);
+
+    private async Task SetDescriptionAsync(WorkflowManifestReader.NodeView node, string? description)
+    {
+        var text = description?.Trim() ?? string.Empty;
+        var loaded = nodes.FirstOrDefault(n => n.Id == node.Id)?.Description ?? string.Empty;
+        if (text == loaded)
+        {
+            descriptionEdits.Remove(node.Id);
+        }
+        else
+        {
+            descriptionEdits[node.Id] = text;
+        }
+
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v28 (#1270): the description field a flow node's pane shows at 28, beside its label.</summary>
+    private RenderFragment<WorkflowManifestReader.NodeView> FlowDescriptionField => flowNode => __builder =>
+    {
+        if (!At28)
+        {
+            return;
+        }
+
+        var text = flowNode.Description ?? string.Empty;
+        var over = text.Length > PF.WorkflowPackageMetadata.MaxDescriptionLength;
+        <label class="node-field node-field--wide">
+            <span>description</span>
+            <FluentTextArea Value="@text" Rows="2" Placeholder="What this block is for (shown in the editor and the graph; never sent to a model)"
+                            ValueChanged="@(v => SetDescriptionAsync(flowNode, v))"
+                            aria-label="@($"Description of {flowNode.Id}")" />
+            <span class="@(over ? "field-error" : "muted-text")" data-description-count="@text.Length">@text.Length / @PF.WorkflowPackageMetadata.MaxDescriptionLength</span>
+        </label>
+    };
 
     // ----- v28 (#1285, design § 3, § 7): a folder's display label — its index.json's label -----
 
@@ -14863,6 +14909,10 @@
                 return n with { IsResult = DeliverableRootIds.Contains(n.Id) };
             })
             .Concat(addedNodes.Select(AddedNodeView))
+            // v28 (#1270): a flow node's pending description rides too (loaded or added).
+            .Select(n => descriptionEdits.TryGetValue(n.Id, out var described)
+                ? n with { Description = string.IsNullOrWhiteSpace(described) ? null : described }
+                : n)
             .ToList();
 
     private IReadOnlyList<WorkflowManifestReader.NodeView> RemovedNodes =>
@@ -16506,7 +16556,9 @@
         // #1225: renamed nodes, in order — applied to the loaded package before every other edit.
         List<DraftNodeRename>? NodeRenames = null,
         // v28 (#1285): pending folder labels (directory → label; empty clears). Trailing optional.
-        Dictionary<string, string>? FolderLabels = null);
+        Dictionary<string, string>? FolderLabels = null,
+        // v28 (#1270): pending flow-node descriptions (node id → text; empty clears). Trailing optional.
+        Dictionary<string, string>? Descriptions = null);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -16824,6 +16876,15 @@
                 {
                     itemWhenEdits[draftItemWhen.File] = draftItemWhen.When;
                 }
+            }
+        }
+
+        // v28 (#1270): a drafted description is kept for a node that still exists.
+        foreach (var (nodeId, description) in payload.Descriptions ?? new Dictionary<string, string>())
+        {
+            if (EffectiveNodes.Any(n => n.Id == nodeId))
+            {
+                descriptionEdits[nodeId] = description;
             }
         }
 
@@ -17297,7 +17358,8 @@
             headerEdits.Select(pair => new DraftHeader(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Instruction, pair.Value.Optional, pair.Value.Default)).ToList(),
             addedMacroCollections.ToList(),
             nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove)).ToList(),
-            folderLabelEdits.Count == 0 ? null : new Dictionary<string, string>(folderLabelEdits, StringComparer.Ordinal));
+            folderLabelEdits.Count == 0 ? null : new Dictionary<string, string>(folderLabelEdits, StringComparer.Ordinal),
+            descriptionEdits.Count == 0 ? null : new Dictionary<string, string>(descriptionEdits, StringComparer.Ordinal));
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -18276,6 +18338,7 @@
         // Structures keyed by node id, and the ids and gates inside them.
         PendingMaps.Rekey(nodeEdits, from, to, change => change with { NodeId = Id(change.NodeId), With = With(change.With) });
         PendingMaps.Rekey(nodeWhenEdits, from, to, Gate);
+        PendingMaps.Rekey(descriptionEdits, from, to, text => text);
         PendingMaps.Rekey(nodeMacroEdits, from, to, list => list.Select(m => m with { If = Gate(m.If), When = Gate(m.When) }).ToList());
         PendingMaps.Rekey(aggregateEdits, from, to, list => Ids(list));
         PendingMaps.Rekey(loopEdits, from, to, loop => loop with { Nodes = Ids(loop.Nodes), Ret = Bare(loop.Ret) });
@@ -20158,6 +20221,25 @@
         // into id lists, and no node names its prompt (each is prompts/<id>.md).
         if (At28)
         {
+            // v28 (#1270): each pending description written beside the node's label, or removed when cleared.
+            if (descriptionEdits.Count > 0 && root["nodes"] is System.Text.Json.Nodes.JsonArray describedNodes)
+            {
+                foreach (var node in describedNodes.OfType<System.Text.Json.Nodes.JsonObject>())
+                {
+                    if (node["id"]?.GetValue<string>() is { } nodeId && descriptionEdits.TryGetValue(nodeId, out var description))
+                    {
+                        if (string.IsNullOrWhiteSpace(description))
+                        {
+                            node.Remove("description");
+                        }
+                        else
+                        {
+                            node["description"] = description;
+                        }
+                    }
+                }
+            }
+
             Composer28.CloseTables(root.AsObject());
         }
 

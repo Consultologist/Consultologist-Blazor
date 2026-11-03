@@ -64,7 +64,9 @@ public static class WorkflowManifestReader
         string? Case = null,
         BodyView? Then = null,
         BodyView? Else = null,
-        IReadOnlyList<BranchView>? Branches = null)
+        IReadOnlyList<BranchView>? Branches = null,
+        // v28 (#1270, design § 6a): a flow node's display-only description; null when unset and below 28.
+        string? Description = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
 
@@ -548,7 +550,8 @@ public static class WorkflowManifestReader
                 ReadString(node, "case"),
                 ReadBody(node, "then"),
                 ReadBody(node, "else"),
-                ReadBranches(node)));
+                ReadBranches(node),
+                ReadString(node, "description")));
         }
 
         return nodes;
