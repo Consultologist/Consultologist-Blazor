@@ -16,7 +16,6 @@ namespace Consultologist.Web.Tests;
 /// </summary>
 public class TemplatesV28FlowDescriptionTests : ClientRenderTestContext
 {
-    private static readonly IReadOnlyCollection<int> Accepting28 = PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(28).ToList();
     private const string Field = "fluent-text-area[aria-label='Description of sections']";
 
     private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse? fixture = null)
@@ -24,7 +23,7 @@ public class TemplatesV28FlowDescriptionTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V28());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
         WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
-        return Render<Templates>(p => p.Add(x => x.AuthorsAboveCeiling, true));
+        return Render<Templates>();
     }
 
     private void Select(IRenderedComponent<Templates> page, string key)
@@ -52,12 +51,11 @@ public class TemplatesV28FlowDescriptionTests : ClientRenderTestContext
 
     private PF.WorkflowPackageValidator.ValidationResult Validated() =>
         PF.WorkflowPackageValidator.Validate(
-            PF.WorkflowPackageManifestJson.Read(sent!.Manifest.GetRawText(), "sent", Accepting28.ToList()),
+            PF.WorkflowPackageManifestJson.Read(sent!.Manifest.GetRawText(), "sent", PF.WorkflowPackageValidator.AcceptedSpecVersions),
             sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorFormatsCatalog.Catalog,
-            Accepting28);
+            EditorFormatsCatalog.Catalog);
 
     [Fact]
     public void ALoopsDescription_PublishesBesideItsLabel_AndValidates()

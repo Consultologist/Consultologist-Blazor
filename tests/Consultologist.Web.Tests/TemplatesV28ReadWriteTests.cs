@@ -9,22 +9,21 @@ using PF = Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// v28 (#1285, design § 7): the editor reads, writes and upgrades to 28 behind the
-/// test-only seam (AuthorsAboveCeiling, as #1236's for 27) — the id lists and the index
+/// v28 (#1285, design § 7): the editor reads, writes and upgrades to 28 — built behind
+/// a test-only seam, live since the bump (#1286), which retired it — the id lists and the index
 /// object read, each node's prompt implied from its file, an edit published with no
 /// path in the manifest, a 27 package upgraded through the library's migration, and
 /// #1267's rename-to-match retired at 28.
 /// </summary>
 public class TemplatesV28ReadWriteTests : ClientRenderTestContext
 {
-    private static readonly IReadOnlyCollection<int> Accepting28 = PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(28).ToList();
 
-    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse? fixture = null, bool seam = true)
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse? fixture = null)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V28());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
         WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
-        return Render<Templates>(p => p.Add(x => x.AuthorsAboveCeiling, seam));
+        return Render<Templates>();
     }
 
     private void Select(IRenderedComponent<Templates> page, string key)
@@ -52,14 +51,13 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
 
     private PF.WorkflowPackageValidator.ValidationResult Validated()
     {
-        var manifest = PF.WorkflowPackageManifestJson.Read(sent!.Manifest.GetRawText(), "sent", Accepting28.ToList());
+        var manifest = PF.WorkflowPackageManifestJson.Read(sent!.Manifest.GetRawText(), "sent", PF.WorkflowPackageValidator.AcceptedSpecVersions);
         return PF.WorkflowPackageValidator.Validate(
             manifest,
             sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorFormatsCatalog.Catalog,
-            Accepting28);
+            EditorFormatsCatalog.Catalog);
     }
 
     private static string PromptText(IRenderedComponent<Templates> page) =>
@@ -192,18 +190,20 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void WithoutTheSeam_A28Package_IsRefusedAsToday()
+    public void TheVersionAfter_29_IsRefusedAtPublish()
     {
         CapturePublish();
-        var page = RenderEditor(seam: false);
-        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Trim() == "Upgrade to specVersion 28");
+        var fixture = EditorFixtures.V28();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(fixture.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 29;
+        var page = RenderEditor(fixture with { SpecVersion = 29, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() });
+        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Trim().StartsWith("Upgrade to specVersion", StringComparison.Ordinal));
 
-        // An edit, then publish: the manifest read refuses the version above the accepted set.
         Select(page, "node:assessment");
         var area = page.FindAll(".node-section").Single(s => s.QuerySelector(".node-section__head")?.TextContent.Trim() == "Prompt text").QuerySelector("fluent-text-area")!;
         area.Change(area.GetAttribute("current-value") + "\nOne more line.");
         Publish(page);
         Assert.Null(sent);
-        Assert.Contains(Refusals(page), r => r.Contains("is specVersion 28; this engine runs specVersion", StringComparison.Ordinal));
+        Assert.Contains(Refusals(page), r => r.Contains("is specVersion 29; this engine runs specVersion", StringComparison.Ordinal));
     }
 }

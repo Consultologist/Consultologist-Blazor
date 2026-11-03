@@ -16,7 +16,6 @@ namespace Consultologist.Web.Tests;
 /// </summary>
 public class TemplatesV28FolderPaneTests : ClientRenderTestContext
 {
-    private static readonly IReadOnlyCollection<int> Accepting28 = PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(28).ToList();
     private const string Sections = "folder:snippets/sections/";
     private const string SectionsIndex = "snippets/sections/index.json";
 
@@ -25,7 +24,7 @@ public class TemplatesV28FolderPaneTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture ?? EditorFixtures.V28());
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
         WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
-        return Render<Templates>(p => p.Add(x => x.AuthorsAboveCeiling, true));
+        return Render<Templates>();
     }
 
     private string? SelectedKey => Services.GetRequiredService<WorkflowEditorSession>().SelectedKey;
@@ -49,12 +48,11 @@ public class TemplatesV28FolderPaneTests : ClientRenderTestContext
 
     private PF.WorkflowPackageValidator.ValidationResult Validated() =>
         PF.WorkflowPackageValidator.Validate(
-            PF.WorkflowPackageManifestJson.Read(sent!.Manifest.GetRawText(), "sent", Accepting28.ToList()),
+            PF.WorkflowPackageManifestJson.Read(sent!.Manifest.GetRawText(), "sent", PF.WorkflowPackageValidator.AcceptedSpecVersions),
             sent.Files.ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorFormatsCatalog.Catalog,
-            Accepting28);
+            EditorFormatsCatalog.Catalog);
 
     private static IRenderedComponent<Templates> Open(IRenderedComponent<Templates> page)
     {
@@ -142,7 +140,7 @@ public class TemplatesV28FolderPaneTests : ClientRenderTestContext
             .Select(i => (Key: (string)i.Arguments[0]!, Json: (string)i.Arguments[1]!))
             .Last();
         JSInterop.Setup<string?>("localStorage.getItem", saved.Key).SetResult(saved.Json);
-        var reloaded = Open(Render<Templates>(p => p.Add(x => x.AuthorsAboveCeiling, true)));
+        var reloaded = Open(Render<Templates>());
 
         Assert.Equal("Sections of the note", reloaded.Find("fluent-text-field[aria-label='Label of folder sections']").GetAttribute("value"));
         Assert.Contains("1 folder label", reloaded.Markup);

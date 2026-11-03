@@ -78,7 +78,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
     {
         var page = RenderEditor();
 
-        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 28" }, UpgradeButtons(page));
         Assert.Contains("Data", Groups(page));
         Assert.DoesNotContain("Snippets", Groups(page));
     }
@@ -94,8 +94,8 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         await UpgradeTo25Async(page);
 
         var notice = page.Find(".migration-notice").TextContent;
-        Assert.Contains("Migrated to specVersion 27. Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
-        Assert.Contains("upgraded 7 → 27", page.Markup);
+        Assert.Contains("Migrated to specVersion 28. Through 24: Preludes migrated to node macros. 'guidance' → macro 'guidance' before 'draft-section'.", notice);
+        Assert.Contains("upgraded 7 → 28", page.Markup);
         Assert.Contains("Snippets", Groups(page));
         Assert.DoesNotContain("Preludes", Groups(page));
         Assert.Empty(UpgradeButtons(page));
@@ -124,7 +124,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".migration-notice"));
         Assert.Contains("Preludes", Groups(page));
         Assert.DoesNotContain("Snippets", Groups(page));
-        Assert.Equal(new[] { "Upgrade to specVersion 27" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 28" }, UpgradeButtons(page));
         Assert.DoesNotContain("●", page.Markup);
     }
 
@@ -143,7 +143,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         Assert.DoesNotContain("Schemas", groups);
 
         var notice = page.Find(".migration-notice").TextContent;
-        Assert.Contains("Migrated to specVersion 27.", notice);
+        Assert.Contains("Migrated to specVersion 28.", notice);
         Assert.Contains("Node 'identify-problem' renamed 'identify_problem'", notice);
         Assert.Contains("results is now deliverables", notice);
         Assert.Contains("data is now snippets", notice);
@@ -151,7 +151,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
 
         // Said in the publish button, and publish is open.
         var publish = page.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish new version"));
-        Assert.Contains("upgraded 24 → 27", publish.TextContent);
+        Assert.Contains("upgraded 24 → 28", publish.TextContent);
         Assert.Null(publish.GetAttribute("disabled"));
         // Still the same package, not an import.
         Assert.DoesNotContain("Imported", page.Markup);
@@ -179,7 +179,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
 
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         var manifest = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
-        Assert.Equal(27, manifest.GetProperty("specVersion").GetInt32());
+        Assert.Equal(28, manifest.GetProperty("specVersion").GetInt32());
         foreach (var key in new[] { "data", "results", "schemas", "schemaRefs", "customSchemas", "prompts" })
         {
             Assert.False(manifest.TryGetProperty(key, out _), key);
@@ -187,7 +187,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
 
         Assert.Contains("snippets/house_standards.md", sent.Files.Keys);
         Assert.Contains("formats/plan_shape.json", sent.Files.Keys);
-        Assert.Equal("Extract the concepts from:\n{{ input.notes }}", sent.Files["prompts/extract.md"]);
+        Assert.Equal("Extract the concepts from:\n{{ input.notes }}", sent.Files["prompts/extract_patient_concepts.md"]);
         Assert.False(sent.FromUpload);
         var validated = Validated();
         Assert.True(validated.IsValid, string.Join("\n", validated.Errors));
@@ -258,7 +258,7 @@ public class TemplatesV25MigrationTests : ClientRenderTestContext
         var again = Render<Templates>();
 
         Assert.Contains("Snippets", Groups(again));
-        Assert.Contains("Migrated to specVersion 27.", again.Find(".migration-notice").TextContent);
-        Assert.Contains("upgraded 24 → 27", again.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish new version")).TextContent);
+        Assert.Contains("Migrated to specVersion 28.", again.Find(".migration-notice").TextContent);
+        Assert.Contains("upgraded 24 → 28", again.FindAll("fluent-button").First(b => b.TextContent.Contains("Publish new version")).TextContent);
     }
 }
