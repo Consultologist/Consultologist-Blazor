@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 
 namespace Consultologist.Api.Tests;
@@ -83,12 +84,16 @@ public class WorkflowV28Tests
     }
 
     [Fact]
-    public void ThePublicEntry_StillRefuses28_UntilTheBump()
+    public void ThePublicEntry_Accepts28_SinceTheBump_AndRefuses29()
     {
-        Assert.DoesNotContain(28, WorkflowPackageValidator.AcceptedSpecVersions);
+        // #1286: both sets carry 28; the seam is a harmless duplicate since.
+        Assert.Contains(28, WorkflowPackageValidator.AcceptedSpecVersions);
+        Assert.Contains(28, WorkflowPackageStore.SupportedSpecVersions);
         var (manifest, files) = V28Package.Minimal();
-        var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-        Assert.Contains(result.Errors, e => e.StartsWith("specVersion 28 is not supported", StringComparison.Ordinal));
+        Assert.Empty(WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog()).Errors);
+
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 29 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 29 is not supported", StringComparison.Ordinal));
     }
 
     // ---- the wire shapes ---------------------------------------------------------------
