@@ -186,7 +186,7 @@ public static class WorkflowDagDiagram
             }
 
             sb.Append("    end\n");
-            sb.Append($"    {Sanitize(loop.Id)}[\"{Label($"{loop.Id}<br/>{loop.Label}<br/>{loop.For}")}\"]\n");
+            sb.Append($"    {Sanitize(loop.Id)}[\"{Label($"{loop.Id}<br/>{loop.Label}{DescriptionLine(loop)}<br/>{loop.For}")}\"]\n");
 
             if (TemplateObjectReference.NodeIdOf(loop.Ret ?? string.Empty) is { } retId)
             {
@@ -231,7 +231,7 @@ public static class WorkflowDagDiagram
 
             var head = flow.If != null ? $"if {flow.If}" : $"case {flow.Case}";
             // #1259: the condition and the label are package-authored — their quotes would close the label (the run diagram's #1247).
-            sb.Append($"    {Sanitize(flow.Id)}[\"{Label($"{flow.Id}<br/>{flow.Label}<br/>{head}")}\"]\n");
+            sb.Append($"    {Sanitize(flow.Id)}[\"{Label($"{flow.Id}<br/>{flow.Label}{DescriptionLine(flow)}<br/>{head}")}\"]\n");
 
             foreach (var body in FlowBodies(flow))
             {
@@ -566,4 +566,15 @@ public static class WorkflowDagDiagram
     /// The run diagram escapes the same way since #1247. The <c>&lt;br/&gt;</c> breaks are ours.
     /// </summary>
     private static string Label(string text) => text.Replace("\"", "#quot;", StringComparison.Ordinal);
+
+    /// <summary>
+    /// v28 (#1270, design § 6a): a flow node's display-only description, one line under its
+    /// label in the box — its line breaks folded to spaces and its angle brackets escaped, so
+    /// authored text cannot open a tag in the label. Empty when the node has none.
+    /// </summary>
+    private static string DescriptionLine(WorkflowNodeSpec node) =>
+        string.IsNullOrWhiteSpace(node.Description)
+            ? string.Empty
+            : "<br/><i>" + string.Join(' ', node.Description.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Select(line => line.Trim()))
+                .Replace("<", "&lt;", StringComparison.Ordinal).Replace(">", "&gt;", StringComparison.Ordinal) + "</i>";
 }
