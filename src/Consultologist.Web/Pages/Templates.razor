@@ -278,6 +278,12 @@
                 <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">@selectionNotice</FluentMessageBar>
             }
 
+            @* #1298: what the armed toolbar Discard or Revert is about to do — its own bar, not the publish one. *@
+            @if (!string.IsNullOrWhiteSpace(toolbarArmNotice))
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="toolbar-arm-notice">@toolbarArmNotice</FluentMessageBar>
+            }
+
             @* #847: an import refusal (bad zip / invalid package) — the editor is unchanged. *@
             @if (!string.IsNullOrWhiteSpace(importError))
             {
@@ -305,12 +311,12 @@
                 <FluentMessageBar Intent="MessageIntent.Success" AllowDismiss="false">@publishSuccess</FluentMessageBar>
             }
 
-            @* The publish succeeded and the version is immutable, so a warning
-               here is about what to do next, not about what to fix now. *@
+            @* After a successful publish the version is immutable, so a warning here is about what
+               to do next; beside a rejected publish (#1298) it rides with the errors to fix. *@
             @if (publishWarnings.Count > 0)
             {
-                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false">
-                    <strong>Published, with something worth checking.</strong>
+                <FluentMessageBar Intent="MessageIntent.Warning" AllowDismiss="false" Class="publish-warnings">
+                    <strong>@(string.IsNullOrWhiteSpace(publishSuccess) ? "Worth checking before you publish again." : "Published, with something worth checking.")</strong>
                     <ul>
                         @foreach (var warning in publishWarnings)
                         {
@@ -15780,9 +15786,12 @@
     // one pane at a time, and it disarms when a pane is left or anything changes.
     private string? paneDiscardArmedKey;
 
-    // Advisory, and only readable at the moment of a successful
-    // publish — the version it describes is already immutable (#310).
+    // Advisory: after a successful publish, about the version just made (already
+    // immutable, #310); after a rejected one, beside its errors (#1298).
     private List<string> publishWarnings = new();
+
+    // #1298: the armed toolbar Discard's or Revert's warning; set and cleared with its flag (DisarmToolbar).
+    private string? toolbarArmNotice;
 
     // Master–detail selection: a file path or GraphKey (#110).
     // Held in the tab session rather than the component (#207's shape), so
@@ -17301,6 +17310,7 @@
         // #812: any change (an edit, or a scoped discard) disarms a pending
         // per-pane discard — a stale "Confirm" never carries across an edit.
         paneDiscardArmedKey = null;
+        DisarmToolbar(); // #1298: and the toolbar's, with its notice.
 
         // #815: the pending state after this change, serialized (null when
         // nothing is pending — the clean baseline). Serialized rather than the
@@ -17899,11 +17909,11 @@
             discardArmed = true;
             revertArmed = false;
             paneDiscardArmedKey = null;
-            publishWarnings = new List<string> { "Discarding clears every unpublished change and can't be undone. Click Confirm discard to proceed." };
+            toolbarArmNotice = "Discarding clears every unpublished change and can't be undone. Click Confirm discard to proceed.";
             return;
         }
 
-        discardArmed = false;
+        DisarmToolbar();
 
         // C6 (#1012): an upgrade with nothing else pending — discarding it drops the
         // held migrated package and reloads the registry's version.
@@ -17963,11 +17973,14 @@
 
     // #817: disarm the toolbar Discard/Revert without acting, clearing the arm
     // warning. (Per-pane discard disarms inline via paneDiscardArmedKey = null.)
-    private void CancelToolbarArm()
+    private void CancelToolbarArm() => DisarmToolbar();
+
+    /// <summary>#1298: the toolbar's Discard and Revert disarmed with their notice — the button and its warning always agree.</summary>
+    private void DisarmToolbar()
     {
         discardArmed = false;
         revertArmed = false;
-        publishWarnings.Clear();
+        toolbarArmNotice = null;
     }
 
     // #812: per-pane "Discard changes in this pane" — arm on the first click,
@@ -17979,8 +17992,7 @@
         if (paneDiscardArmedKey != paneKey)
         {
             paneDiscardArmedKey = paneKey;
-            discardArmed = false;
-            revertArmed = false;
+            DisarmToolbar();
             return;
         }
 
@@ -20700,11 +20712,12 @@
         {
             revertArmed = true;
             discardArmed = false;
-            publishWarnings = new List<string> { "Reverting removes your package pin and discards unpublished changes. Your published versions are kept. Click Confirm revert to proceed." };
+            paneDiscardArmedKey = null;
+            toolbarArmNotice = "Reverting removes your package pin and discards unpublished changes. Your published versions are kept. Click Confirm revert to proceed.";
             return;
         }
 
-        revertArmed = false;
+        DisarmToolbar();
         ResetPublishFeedback();
 
         try

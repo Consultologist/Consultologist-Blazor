@@ -97,6 +97,109 @@ public class TemplatesPendingStateTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".cancel-armed-button"));
     }
 
+    // ---- #1298: the arm's own notice ---------------------------------------
+
+    private const string PublishHeading = "Published, with something worth checking.";
+
+    private static IReadOnlyList<string> ButtonLabels(IRenderedComponent<Templates> page) =>
+        page.FindAll("fluent-button").Select(b => b.TextContent.Trim()).ToList();
+
+    private static string? ArmNotice(IRenderedComponent<Templates> page) =>
+        page.FindAll(".toolbar-arm-notice").SingleOrDefault()?.TextContent.Trim();
+
+    private async Task<IRenderedComponent<Templates>> RenderWithAnEdit()
+    {
+        var page = RenderEditor();
+        await page.InvokeAsync(() => typeof(Templates).GetField("titleEdit", Members)!.SetValue(page.Instance, "Edited"));
+        await Invoke(page, "PendingChangedAsync");
+        return page;
+    }
+
+    [Fact]
+    public async Task ArmingDiscard_ShowsItsOwnNotice_NotThePublishHeading()
+    {
+        var page = await RenderWithAnEdit();
+
+        await Invoke(page, "DiscardAsync");
+        page.Render();
+
+        Assert.Contains("Click Confirm discard", ArmNotice(page));
+        Assert.DoesNotContain(PublishHeading, page.Markup);
+    }
+
+    [Fact]
+    public async Task ArmingRevert_ShowsItsOwnNotice_NotThePublishHeading()
+    {
+        var page = RenderEditor();
+
+        await Invoke(page, "RevertToDefaultAsync");
+        page.Render();
+
+        Assert.Contains("Click Confirm revert", ArmNotice(page));
+        Assert.DoesNotContain(PublishHeading, page.Markup);
+    }
+
+    [Fact]
+    public async Task Cancel_ClearsTheArmNotice()
+    {
+        var page = await RenderWithAnEdit();
+        await Invoke(page, "DiscardAsync");
+        page.Render();
+
+        await page.Find(".cancel-armed-button").ClickAsync(new());
+
+        Assert.Null(ArmNotice(page));
+        Assert.Contains("Discard", ButtonLabels(page));
+        Assert.DoesNotContain("Click Confirm discard", page.Markup);
+    }
+
+    [Fact]
+    public async Task AnEditAfterArming_DisarmsTheButtonAndItsNotice()
+    {
+        // Before #1298 an edit cleared the warning but left the button reading "Confirm discard".
+        var page = await RenderWithAnEdit();
+        await Invoke(page, "DiscardAsync");
+
+        await page.InvokeAsync(() => typeof(Templates).GetField("titleEdit", Members)!.SetValue(page.Instance, "Edited again"));
+        await Invoke(page, "PendingChangedAsync");
+        page.Render();
+
+        Assert.DoesNotContain("Confirm discard", ButtonLabels(page));
+        Assert.Null(ArmNotice(page));
+        Assert.Equal(1, PendingCount(page.Instance)); // nothing was discarded
+    }
+
+    [Fact]
+    public async Task ArmingAPaneDiscard_DisarmsTheToolbarAndItsNotice()
+    {
+        var page = await RenderWithAnEdit();
+        await Invoke(page, "DiscardAsync");
+
+        var arm = typeof(Templates).GetMethod("ArmOrDiscardPaneAsync", Members)!;
+        await page.InvokeAsync(() => (Task)arm.Invoke(page.Instance, new object[] { "package", (Action)(() => { }) })!);
+        page.Render();
+
+        Assert.Null(ArmNotice(page));
+        Assert.DoesNotContain("Click Confirm discard", page.Markup); // before #1298 the toolbar's warning outlived its arm
+        Assert.Equal(1, PendingCount(page.Instance));
+    }
+
+    [Fact]
+    public async Task ARejectedPublish_ShowsItsWarnings_UnderANeutralHeading()
+    {
+        var page = RenderEditor();
+        await page.InvokeAsync(() =>
+        {
+            typeof(Templates).GetField("publishErrors", Members)!.SetValue(page.Instance, new List<string> { "Something to fix." });
+            typeof(Templates).GetField("publishWarnings", Members)!.SetValue(page.Instance, new List<string> { "The format catalogue could not be loaded." });
+        });
+        page.Render();
+
+        Assert.Contains("Publish rejected", page.Markup);
+        Assert.Contains("Worth checking before you publish again.", page.Find(".publish-warnings").TextContent);
+        Assert.DoesNotContain(PublishHeading, page.Markup);
+    }
+
     // ---- discovery -------------------------------------------------------
 
     /// <summary>
