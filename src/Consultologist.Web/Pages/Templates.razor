@@ -918,12 +918,13 @@
                                             IdentityId="@scalar.Id"
                                             IdentityFile="@FileShown(scalar.Path, PF.WorkflowFileMove.ImpliedPath("snippet", scalar.Id))"
                                             IdentityAction="@FileMatchAction((scalar.Path, PF.WorkflowFileMove.ImpliedPath("snippet", scalar.Id)))"
+                                            IdentityExtra="@(addedScalars.ContainsKey(scalar.Id) ? null : TextRenameRow(PF.WorkflowRenameKind.Snippet, scalar.Id))"
                                             EditLabel="@(HeaderRefused(scalar.Path) ? "File (header refused)" : At25 ? "Snippet" : "Value")"
                                             Text="@GetText(scalar.Path)"
                                             Modified="@ScalarHasPending(scalar)"
                                             TextChanged="@(value => OnTextChangedAsync(scalar.Path, value))">
                             <HeaderActions>
-                                @PaneDiscardButton(scalar.Path, ScalarCanDiscard(scalar), () => RevertScalarEdits(scalar.Path))
+                                @PaneDiscardButton(scalar.Path, ScalarCanDiscard(scalar), () => RevertScalarEdits(scalar.Path, scalar.Id))
                                 <FluentButton Appearance="Appearance.Outline"
                                               Disabled="@(!ScalarIsUnused(scalar.Id))"
                                               @onclick="() => RemoveScalarAsync(scalar.Id)">
@@ -3638,6 +3639,7 @@
                                             IdentityId="@macro.Id"
                                             IdentityFile="@FileShown(macro.File, PF.WorkflowFileMove.ImpliedPath("macro", macro.Id))"
                                             IdentityAction="@FileMatchAction((macro.File, PF.WorkflowFileMove.ImpliedPath("macro", macro.Id)))"
+                                            IdentityExtra="@(AddedMacroForFile(macro.File) != null ? null : TextRenameRow(PF.WorkflowRenameKind.Macro, macro.Id))"
                                             EditLabel="@(HeaderRefused(macro.File) ? "File (header refused)" : "Macro text")"
                                             Text="@GetText(macro.File)"
                                             Modified="@(edits.ContainsKey(macro.File) || AddedMacroForFile(macro.File) != null || headerEdits.ContainsKey(macro.File))"
@@ -8255,8 +8257,15 @@
         new($"{ScalarIfKeyPrefix}{scalar.Path}", $"snippet {scalar.Id}", ScalarIfValue(scalar), text => SetScalarIf(scalar, text), InputsOnly: true);
 
     /// <summary>The snippet pane's discard at 26: the text edit, the header edit and any in-progress condition draft.</summary>
-    private void RevertScalarEdits(string path)
+    private void RevertScalarEdits(string path, string? scalarId = null)
     {
+        // #1290: a renamed snippet's Discard renames it back first; a second Discard clears its edits.
+        if (scalarId is not null && TextRenamedFrom(PF.WorkflowRenameKind.Snippet, scalarId) is { } original)
+        {
+            RenameTextCore(PF.WorkflowRenameKind.Snippet, scalarId, original);
+            return;
+        }
+
         RevertFileEdits(path);
         headerEdits.Remove(path);
         conditionDrafts.Remove($"{ScalarIfKeyPrefix}{path}");
@@ -16647,7 +16656,7 @@
         // #1225: renames first, so every edit below finds its node under the id it was made under.
         if (payload.NodeRenames is { Count: > 0 } draftRenames && At26)
         {
-            ApplyRenamesToContent(draftRenames.Select(r => new NodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove)));
+            ApplyRenamesToContent(draftRenames.Select(r => new NodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove, r.TextKind, r.Folder)));
         }
 
         var textEdits = payload.Edits;
@@ -17344,7 +17353,7 @@
             flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList(),
             headerEdits.Select(pair => new DraftHeader(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Instruction, pair.Value.Optional, pair.Value.Default)).ToList(),
             addedMacroCollections.ToList(),
-            nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove)).ToList(),
+            nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove, r.TextKind, r.Folder)).ToList(),
             folderLabelEdits.Count == 0 ? null : new Dictionary<string, string>(folderLabelEdits, StringComparer.Ordinal),
             descriptionEdits.Count == 0 ? null : new Dictionary<string, string>(descriptionEdits, StringComparer.Ordinal));
 
@@ -18006,6 +18015,13 @@
 
     private void RevertMacroEdits(string file, string macroId)
     {
+        // #1290: a renamed macro's Discard renames it back first (the rewrite is symmetric); a second Discard clears its edits.
+        if (TextRenamedFrom(PF.WorkflowRenameKind.Macro, macroId) is { } original)
+        {
+            RenameTextCore(PF.WorkflowRenameKind.Macro, macroId, original);
+            return;
+        }
+
         edits.Remove(file);
         macroEdits.Remove(macroId);
         macroLabelEdits.Remove(macroId);
@@ -18062,9 +18078,12 @@
     // ---------------- #1225: rename a node ----------------
 
     /// <summary>A rename of a node the loaded package declares: the ids, and the prompt file it moved (null when it stayed).</summary>
-    private sealed record NodeRename(string From, string To, string? PromptFrom, string? PromptTo, bool FileMove = false);
+    /// <remarks>#1290: <paramref name="TextKind"/> set — a macro, snippet, folder or item rename (the library's
+    /// WorkflowTextRename; <paramref name="Folder"/> names an item's folder). Trailing, so a draft saved before
+    /// reads as the node rename it was.</remarks>
+    private sealed record NodeRename(string From, string To, string? PromptFrom, string? PromptTo, bool FileMove = false, PF.WorkflowRenameKind? TextKind = null, string? Folder = null);
 
-    private sealed record DraftNodeRename(string From, string To, string? PromptFrom, string? PromptTo, bool FileMove = false);
+    private sealed record DraftNodeRename(string From, string To, string? PromptFrom, string? PromptTo, bool FileMove = false, PF.WorkflowRenameKind? TextKind = null, string? Folder = null);
 
     // #1225: renames of loaded nodes are applied to the loaded package itself, in order; the package
     // as loaded is kept so a discard, an undo or a draft restore can start from it again. Every pending
@@ -18084,7 +18103,7 @@
         var current = nodeId;
         for (var i = nodeRenames.Count - 1; i >= 0; i--)
         {
-            if (!nodeRenames[i].FileMove && nodeRenames[i].To == current)
+            if (!nodeRenames[i].FileMove && nodeRenames[i].TextKind is null && nodeRenames[i].To == current)
             {
                 current = nodeRenames[i].From;
                 original = current;
@@ -18111,6 +18130,14 @@
     private static WorkflowPackageContentResponse ApplyRename(WorkflowPackageContentResponse package, NodeRename rename)
     {
         var root = System.Text.Json.Nodes.JsonNode.Parse(package.Manifest.GetRawText())!.AsObject();
+        if (rename.TextKind is { } textKind)
+        {
+            // #1290: a macro, snippet, folder or item — every read, the manifest's sites, the file moved.
+            var renamedFiles = new Dictionary<string, string>(package.Files, StringComparer.Ordinal);
+            PF.WorkflowTextRename.Apply(root, renamedFiles, textKind, rename.From, rename.To, rename.Folder);
+            return package with { Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), Files = renamedFiles };
+        }
+
         if (rename.FileMove)
         {
             // #1267: a file renamed to match its id — the file and the one site that names it.
@@ -18437,46 +18464,7 @@
             return At26 ? FileMoveRefusal(from, to) : "Renaming a file needs specVersion 26 or later.";
         }
 
-        void Move(Dictionary<string, string> map)
-        {
-            if (map.Remove(from, out var value))
-            {
-                map[to] = value;
-            }
-        }
-
-        Move(edits);
-        Move(standardNameEdits);
-        if (headerEdits.Remove(from, out var header))
-        {
-            headerEdits[to] = header;
-        }
-
-        if (itemWhenEdits.Remove(from, out var itemWhen))
-        {
-            itemWhenEdits[to] = itemWhen;
-        }
-
-        if (promptRawEdits.Remove(from, out var raw))
-        {
-            promptRawEdits[to] = raw;
-        }
-
-        if (variableAdds.Remove(from, out var adds))
-        {
-            variableAdds[to] = adds;
-        }
-
-        if (variableRemovals.Remove(from, out var removals))
-        {
-            variableRemovals[to] = removals;
-        }
-
-        if (removedFiles.Remove(from))
-        {
-            removedFiles.Add(to);
-        }
-
+        RekeyPath(from, to);
         ApplyRenamesToContent(new[] { new NodeRename(from, to, null, null, FileMove: true) });
         if (selectedKey == from)
         {
@@ -18485,6 +18473,260 @@
 
         return null;
     }
+
+    /// <summary>
+    /// #1267, #1290: every pending edit keyed by a file's path follows the file to its new path — its
+    /// text, item name, header, item gate, raw toggle, variables, removal and condition draft.
+    /// </summary>
+    private void RekeyPath(string from, string to)
+    {
+        PendingMaps.Move(edits, from, to);
+        PendingMaps.Move(standardNameEdits, from, to);
+        PendingMaps.Move(headerEdits, from, to);
+        PendingMaps.Move(itemWhenEdits, from, to);
+        PendingMaps.Move(promptRawEdits, from, to);
+        PendingMaps.Move(variableAdds, from, to);
+        PendingMaps.Move(variableRemovals, from, to);
+        if (removedFiles.Remove(from))
+        {
+            removedFiles.Add(to);
+        }
+
+        if (conditionDrafts.Remove($"{ScalarIfKeyPrefix}{from}", out var draft))
+        {
+            conditionDrafts[$"{ScalarIfKeyPrefix}{to}"] = draft;
+        }
+    }
+
+    // ---------------- #1290: rename a macro or a snippet ----------------
+
+    private (PF.WorkflowRenameKind Kind, string Id)? renamingText;
+    private string renameTextDraft = string.Empty;
+    private string? renameTextError;
+
+    private static string TextNoun(PF.WorkflowRenameKind kind) => kind switch
+    {
+        PF.WorkflowRenameKind.Macro => "macro",
+        PF.WorkflowRenameKind.Snippet => "snippet",
+        PF.WorkflowRenameKind.MacroFolder => "macro folder",
+        PF.WorkflowRenameKind.SnippetFolder => "snippet folder",
+        _ => "item",
+    };
+
+    /// <summary>The id a renamed macro, snippet, folder or item was loaded under, following a chain of renames; null when it was not renamed.</summary>
+    private string? TextRenamedFrom(PF.WorkflowRenameKind kind, string id, string? folder = null)
+    {
+        string? original = null;
+        var current = id;
+        for (var i = nodeRenames.Count - 1; i >= 0; i--)
+        {
+            if (nodeRenames[i].TextKind == kind && nodeRenames[i].Folder == folder && nodeRenames[i].To == current)
+            {
+                current = nodeRenames[i].From;
+                original = current;
+            }
+        }
+
+        return original is not null && original != id ? original : null;
+    }
+
+    /// <summary>The path a loaded macro or snippet's id implies — where its file sits after a rename.</summary>
+    private static string TextPathOf(PF.WorkflowRenameKind kind, string id) =>
+        kind == PF.WorkflowRenameKind.Macro ? PF.WorkflowFileMove.ImpliedPath("macro", id) : PF.WorkflowFileMove.ImpliedPath("snippet", id);
+
+    private void StartRenameText(PF.WorkflowRenameKind kind, string id)
+    {
+        renamingText = (kind, id);
+        renameTextDraft = id;
+        renameTextError = null;
+    }
+
+    private void CancelRenameText()
+    {
+        renamingText = null;
+        renameTextError = null;
+    }
+
+    private async Task CommitRenameTextAsync()
+    {
+        if (renamingText is not { } target)
+        {
+            return;
+        }
+
+        var to = renameTextDraft.Trim();
+        if (to == target.Id)
+        {
+            CancelRenameText();
+            return;
+        }
+
+        renameTextError = RenameTextCore(target.Kind, target.Id, to);
+        if (renameTextError is null)
+        {
+            renamingText = null;
+            await PendingChangedAsync();
+        }
+    }
+
+    /// <summary>
+    /// #1290: a loaded macro or snippet renamed — every pending edit that reads or is keyed by it
+    /// follows, then the loaded package is rewritten (WorkflowTextRename: its reads, the manifest's
+    /// sites, the file moved to the new id's path) and re-projected. Returns the refusal, or null.
+    /// </summary>
+    private string? RenameTextCore(PF.WorkflowRenameKind kind, string from, string to)
+    {
+        if (!At26)
+        {
+            return "Renaming needs specVersion 26 or later.";
+        }
+
+        if (content is null)
+        {
+            return "Nothing is loaded.";
+        }
+
+        // The library's refusals, judged on a copy of the package as it stands.
+        var probeRoot = System.Text.Json.Nodes.JsonNode.Parse(content.Manifest.GetRawText())!.AsObject();
+        var probeFiles = new Dictionary<string, string>(content.Files, StringComparer.Ordinal);
+        if (PF.WorkflowTextRename.Apply(probeRoot, probeFiles, kind, from, to).Refusals is { Count: > 0 } refusals)
+        {
+            return refusals[0];
+        }
+
+        var macroKind = kind == PF.WorkflowRenameKind.Macro;
+        if ((macroKind ? addedMacros.Any(m => m.Id == to) : addedScalars.ContainsKey(to)))
+        {
+            return $"A {TextNoun(kind)} '{to}' is already pending; publish or remove it first.";
+        }
+
+        var oldPath = macroKind
+            ? (EffectiveMacros.FirstOrDefault(m => m.Id == from)?.File ?? TextPathOf(kind, from))
+            : (EffectiveScalars.FirstOrDefault(sc => sc.Id == from)?.Path ?? TextPathOf(kind, from));
+        RekeyPendingForTextRename(kind, from, to, oldPath, TextPathOf(kind, to));
+        var wasSelected = selectedKey == oldPath;
+        ApplyRenamesToContent(new[] { new NodeRename(from, to, null, null, TextKind: kind) });
+        if (wasSelected)
+        {
+            selectedKey = TextPathOf(kind, to);
+        }
+
+        return null;
+    }
+
+    /// <summary>#1290: the pending state a macro or snippet rename moves — the path keys, the macro's own maps, and every pending text, gate and instance that names it.</summary>
+    private void RekeyPendingForTextRename(PF.WorkflowRenameKind kind, string from, string to, string oldPath, string newPath)
+    {
+        string Text(string text) => PF.WorkflowTextRename.RenameInTemplate(text, kind, from, to).Text;
+        string File(string text) => PF.WorkflowTextRename.RenameInFile(text, kind, from, to).Text;
+        string? Gate(string? gate) => gate is null ? null : PF.WorkflowTextRename.RenameInCondition(gate, kind, from, to).Text;
+        string Id(string id) => id == from ? to : id;
+
+        RekeyPath(oldPath, newPath);
+        foreach (var key in edits.Keys.ToList())
+        {
+            edits[key] = File(edits[key]);
+        }
+
+        foreach (var key in headerEdits.Keys.ToList())
+        {
+            headerEdits[key] = headerEdits[key] with { If = Gate(headerEdits[key].If) };
+        }
+
+        foreach (var addedNode in addedNodes)
+        {
+            addedNode.PromptText = Text(addedNode.PromptText);
+        }
+
+        foreach (var macro in addedMacros)
+        {
+            macro.Text = Text(macro.Text);
+            macro.Instruction = Text(macro.Instruction);
+            macro.If = Gate(macro.If);
+        }
+
+        foreach (var key in addedScalars.Keys.ToList())
+        {
+            addedScalars[key] = Text(addedScalars[key]);
+        }
+
+        foreach (var item in addedItems)
+        {
+            item.Content = Text(item.Content);
+            item.When = Gate(item.When);
+            item.Instruction = item.Instruction is null ? null : Text(item.Instruction);
+        }
+
+        if (kind != PF.WorkflowRenameKind.Macro)
+        {
+            return;
+        }
+
+        // The macro's own maps, and every instance that places it.
+        PendingMaps.Rekey(macroEdits, from, to, edit => edit);
+        PendingMaps.Rekey(macroLabelEdits, from, to, label => label);
+        PendingMaps.Rekey(macroInstructionEdits, from, to, instruction => instruction);
+        if (removedMacroIds.Remove(from))
+        {
+            removedMacroIds.Add(to);
+        }
+
+        if (conditionDrafts.Remove($"{MacroIfKeyPrefix}{from}", out var macroIf))
+        {
+            conditionDrafts[$"{MacroIfKeyPrefix}{to}"] = macroIf;
+        }
+
+        foreach (var key in nodeMacroEdits.Keys.ToList())
+        {
+            nodeMacroEdits[key] = nodeMacroEdits[key].Select(m => m with { Id = Id(m.Id) }).ToList();
+        }
+
+        if (resultsEdit is not null)
+        {
+            resultsEdit = resultsEdit.Select(r => r with { Macros = r.Macros?.Select(m => m with { Id = Id(m.Id) }).ToList() }).ToList();
+        }
+    }
+
+    /// <summary>
+    /// #1290: the rename row of a loaded macro's or snippet's pane — "Rename", the new id with OK and
+    /// Cancel, the refusal, and "renamed from" once it is. A pending (added) one is renamed by removing
+    /// it and adding it again, so it has none.
+    /// </summary>
+    private RenderFragment TextRenameRow(PF.WorkflowRenameKind kind, string id) => __builder =>
+    {
+        if (!At26)
+        {
+            return;
+        }
+
+        var noun = TextNoun(kind);
+        var original = TextRenamedFrom(kind, id);
+        <div class="node-rename text-rename" data-text-rename="@id">
+            @if (renamingText is { } open && open.Kind == kind && open.Id == id)
+            {
+                <FluentTextField Value="@renameTextDraft" ValueChanged="@((string v) => renameTextDraft = v ?? string.Empty)"
+                                 aria-label="@($"New id for {noun} {id}")" />
+                <FluentButton Appearance="Appearance.Accent" Class="text-rename__ok" OnClick="CommitRenameTextAsync">Rename</FluentButton>
+                <FluentButton Appearance="Appearance.Stealth" Class="text-rename__cancel" OnClick="CancelRenameText">Cancel</FluentButton>
+                @if (renameTextError is not null)
+                {
+                    <p class="field-error">@renameTextError</p>
+                }
+            }
+            else
+            {
+                <FluentButton Appearance="Appearance.Stealth" Class="text-rename__start" aria-label="@($"Rename {noun} {id}")"
+                              OnClick="@(() => StartRenameText(kind, id))">Rename</FluentButton>
+            }
+
+            @if (original is not null)
+            {
+                <p class="muted-text text-rename__note" data-text-renamed="@original">
+                    Renamed from <code>@original</code> — every read now names <code>@id</code>; its file is <code>@TextPathOf(kind, id)</code>.
+                </p>
+            }
+        </div>
+    };
 
     /// <summary>#1267: the loaded package's files not named after their ids.</summary>
     private IReadOnlyList<PF.WorkflowFileMove.Mismatch> FileNameMismatches =>
@@ -18573,14 +18815,14 @@
 
     private bool MacroCanDiscard(WorkflowManifestReader.MacroView macro) =>
         AddedMacroForFile(macro.File) == null
-        && (edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id) || macroInstructionEdits.ContainsKey(macro.Id)
+        && (TextRenamedFrom(PF.WorkflowRenameKind.Macro, macro.Id) is not null || edits.ContainsKey(macro.File) || macroEdits.ContainsKey(macro.Id) || macroInstructionEdits.ContainsKey(macro.Id)
             || macroLabelEdits.ContainsKey(macro.Id) || headerEdits.ContainsKey(macro.File) || conditionDrafts.ContainsKey($"{MacroIfKeyPrefix}{macro.Id}"));
 
     private bool PreludeCanDiscard(WorkflowManifestReader.PreludeView prelude) =>
         edits.ContainsKey(prelude.File);
 
     private bool ScalarCanDiscard(WorkflowManifestReader.ScalarView scalar) =>
-        !addedScalars.ContainsKey(scalar.Id) && (edits.ContainsKey(scalar.Path) || headerEdits.ContainsKey(scalar.Path));
+        !addedScalars.ContainsKey(scalar.Id) && (TextRenamedFrom(PF.WorkflowRenameKind.Snippet, scalar.Id) is not null || edits.ContainsKey(scalar.Path) || headerEdits.ContainsKey(scalar.Path));
 
     private bool PackageCanDiscard => titleEdit != null || descriptionEdit != null || tagsEdit != null;
     private bool InputsCanDiscard => inputsEdit != null;

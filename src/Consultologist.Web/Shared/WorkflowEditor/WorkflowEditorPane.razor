@@ -33,6 +33,11 @@
                     @IdentityAction
                 </p>
             }
+            @* #1290: a block under the identity strip (a rename row) — outside the strip's <p>, shown whether or not the strip is. *@
+            @if (IdentityExtra != null)
+            {
+                <div class="pane-identity-extra">@IdentityExtra</div>
+            }
             @if (!string.IsNullOrEmpty(Subtitle) || Modified)
             {
                 <p class="muted-text">
@@ -111,6 +116,9 @@
 
     /// <summary>#1267: an action beside the identity line — "rename the file to match" when the file is not named after its id.</summary>
     [Parameter] public RenderFragment? IdentityAction { get; set; }
+
+    /// <summary>#1290: a block under the identity strip — the rename row of a macro, snippet or item pane.</summary>
+    [Parameter] public RenderFragment? IdentityExtra { get; set; }
     [Parameter] public string EditLabel { get; set; } = "Content";
     [Parameter] public string Text { get; set; } = string.Empty;
     [Parameter] public bool Modified { get; set; }
