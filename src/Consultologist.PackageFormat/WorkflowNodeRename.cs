@@ -1,5 +1,4 @@
 using System.Text.Json.Nodes;
-using Scriban;
 using Scriban.Syntax;
 
 namespace Consultologist.PackageFormat;
@@ -23,62 +22,17 @@ public static class WorkflowNodeRename
             return (text, false, true);
         }
 
-        // An unclosed {{ lexes without an error; the walker names it, the rename leaves it alone.
-        if (TemplateReferenceWalker.TryFindUnclosedCode(text, out _))
-        {
-            return (text, false, false);
-        }
-
-        var template = Template.Parse(text);
-        if (template.HasErrors)
-        {
-            return (text, false, false);
-        }
-
-        var visitor = new Renamer(text, oldId, loopsOver);
-        visitor.Visit(template.Page);
-        if (visitor.Edits.Count == 0)
-        {
-            return (text, false, true);
-        }
-
-        var result = new System.Text.StringBuilder(text);
-        foreach (var (start, end, quoted) in visitor.Edits.Values.OrderByDescending(e => e.Start))
-        {
-            var replacement = quoted is { } quote ? $"{quote}{newId}{quote}" : newId;
-            result.Remove(start, end - start).Insert(start, replacement);
-        }
-
-        return (result.ToString(), true, true);
+        // An unclosed {{ or a parse error leaves the text alone (WorkflowTemplateTokens.Rewrite).
+        return WorkflowTemplateTokens.Rewrite(text, newId, source => new Renamer(source, oldId, loopsOver));
     }
 
     /// <summary>A bare gate expression (an <c>if</c>, a case subject) with the node renamed.</summary>
-    public static (string Text, bool Changed) RenameInCondition(string condition, string oldId, string newId, IReadOnlySet<string> loopsOver)
-    {
-        const string open = "{{ ";
-        const string close = " }}";
-        var (text, changed, _) = RenameInTemplate(open + condition + close, oldId, newId, loopsOver);
-        return changed ? (text[open.Length..^close.Length], true) : (condition, false);
-    }
+    public static (string Text, bool Changed) RenameInCondition(string condition, string oldId, string newId, IReadOnlySet<string> loopsOver) =>
+        WorkflowTemplateTokens.RewriteCondition(condition, text => RenameInTemplate(text, oldId, newId, loopsOver));
 
     /// <summary>A snippet or macro file — its body and its header's <c>if</c> — with the node renamed.</summary>
-    public static (string Text, bool Changed) RenameInFile(string fileText, string oldId, string newId, IReadOnlySet<string> loopsOver)
-    {
-        var (headerJson, body) = WorkflowTextHeaders.Split(fileText);
-        var (newBody, bodyChanged, _) = RenameInTemplate(body, oldId, newId, loopsOver);
-        if (headerJson is null)
-        {
-            return bodyChanged ? (newBody, true) : (fileText, false);
-        }
-
-        var header = WorkflowTextHeaders.Parse(WorkflowTextKind.Macro, "rename", headerJson, new List<string>());
-        if (header?.If is { } gate && RenameInCondition(gate, oldId, newId, loopsOver) is (var newIf, true))
-        {
-            return (WorkflowTextHeaders.Compose(header with { If = newIf }) + newBody, true);
-        }
-
-        return bodyChanged ? (headerJson + "\n" + newBody, true) : (fileText, false);
-    }
+    public static (string Text, bool Changed) RenameInFile(string fileText, string oldId, string newId, IReadOnlySet<string> loopsOver) =>
+        WorkflowTemplateTokens.RewriteFile(fileText, text => RenameInTemplate(text, oldId, newId, loopsOver));
 
     /// <summary>The loops a node's element reads go through: the loop whose body holds it, or (27) holds the flow it is a branch of.</summary>
     public static IReadOnlySet<string> LoopsHolding(JsonObject manifest, string nodeId)
@@ -265,22 +219,15 @@ public static class WorkflowNodeRename
         return ids;
     }
 
-    private sealed class Renamer : ScriptVisitor
+    private sealed class Renamer : WorkflowTemplateTokens.EditingVisitor
     {
-        private readonly string _text;
-        private readonly string _oldId;
         private readonly IReadOnlySet<string> _loopsOver;
         private readonly List<HashSet<string>> _loopVariables = new();
 
-        public Renamer(string text, string oldId, IReadOnlySet<string> loopsOver)
+        public Renamer(string text, string oldId, IReadOnlySet<string> loopsOver) : base(text, oldId)
         {
-            _text = text;
-            _oldId = oldId;
             _loopsOver = loopsOver;
         }
-
-        /// <summary>Edits keyed by token start, so a chain visited from its outer and inner members is renamed once.</summary>
-        public Dictionary<int, (int Start, int End, char? Quote)> Edits { get; } = new();
 
         public override void Visit(ScriptMemberExpression node)
         {
@@ -310,13 +257,13 @@ public static class WorkflowNodeRename
         }
 
         private bool IteratesALoopOver(ScriptExpression? iterator) =>
-            Flatten(iterator) is { Root: "node", Segments: { Count: 1 } segments } && segments[0].Name is { } loop && _loopsOver.Contains(loop);
+            WorkflowTemplateTokens.Flatten(iterator) is { Root: "node", Segments: { Count: 1 } segments } && segments[0].Name is { } loop && _loopsOver.Contains(loop);
 
         private bool IsLoopVariable(string name) => _loopVariables.Any(scope => scope.Contains(name));
 
         private void Consider(ScriptExpression expression)
         {
-            if (Flatten(expression) is not { } chain || chain.Segments.Count == 0)
+            if (WorkflowTemplateTokens.Flatten(expression) is not { } chain || chain.Segments.Count == 0)
             {
                 return;
             }
@@ -325,77 +272,18 @@ public static class WorkflowNodeRename
             if (chain.Root == "node")
             {
                 // node.<old>… and node["<old>"]…
-                Rename(segments[0]);
+                Take(segments[0]);
 
                 // node.<loop>[i].<old>
                 if (segments.Count >= 3 && segments[0].Name is { } loop && _loopsOver.Contains(loop) && segments[1].Name is null)
                 {
-                    Rename(segments[2]);
+                    Take(segments[2]);
                 }
             }
             else if (IsLoopVariable(chain.Root))
             {
                 // e.<old> inside for e in node.<loop>
-                Rename(segments[0]);
-            }
-        }
-
-        private void Rename(Segment segment)
-        {
-            if (segment.Name != _oldId || segment.Token is not { } token)
-            {
-                return;
-            }
-
-            var start = token.Span.Start.Offset;
-            var end = token.Span.End.Offset + 1;
-            if (start < 0 || end > _text.Length || end <= start)
-            {
-                return;
-            }
-
-            if (segment.Quoted)
-            {
-                var quote = _text[start];
-                Edits[start] = (start, end, quote is '"' or '\'' ? quote : '"');
-            }
-            else if (_text[start..end] == _oldId)
-            {
-                Edits[start] = (start, end, null);
-            }
-        }
-
-        private sealed record Segment(string? Name, ScriptNode? Token, bool Quoted);
-
-        private sealed record Chain(string Root, List<Segment> Segments);
-
-        private static Chain? Flatten(ScriptExpression? expression)
-        {
-            var segments = new List<Segment>();
-            var current = expression;
-            while (true)
-            {
-                switch (current)
-                {
-                    case ScriptMemberExpression { Member: { } member } m:
-                        segments.Insert(0, new Segment(member.Name, member, false));
-                        current = m.Target;
-                        continue;
-                    case ScriptIndexerExpression indexer:
-                        segments.Insert(0, indexer.Index is ScriptLiteral { Value: string name } literal
-                            ? new Segment(name, literal, true)
-                            : new Segment(null, null, false));
-                        current = indexer.Target;
-                        continue;
-                    case ScriptVariableGlobal global:
-                        return new Chain(global.Name, segments);
-                    case ScriptVariableLocal local:
-                        return new Chain(local.Name, segments);
-                    case ScriptVariable variable:
-                        return new Chain(variable.Name, segments);
-                    default:
-                        return null;
-                }
+                Take(segments[0]);
             }
         }
     }
