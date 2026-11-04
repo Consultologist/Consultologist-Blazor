@@ -704,6 +704,10 @@
                                     @(paneFolder.Kind == PF.WorkflowTextKind.Macro ? "A macro folder" : "A snippet folder"), <code>@paneFolder.Directory</code>.
                                     The label names the folder in the editor; no template reads it. The order is the order its items run in.
                                 </p>
+                                @if (!addedCollections.Contains(paneFolder.Id) && !addedMacroCollections.Contains(paneFolder.Id))
+                                {
+                                    @TextRenameRow(paneFolder.Kind == PF.WorkflowTextKind.Macro ? PF.WorkflowRenameKind.MacroFolder : PF.WorkflowRenameKind.SnippetFolder, paneFolder.Id)
+                                }
                             </div>
                         </div>
                         <div class="node-fields">
@@ -3354,12 +3358,13 @@
                                             IdentityId="@standard.Id"
                                             IdentityFile="@FileShown(standard.File, ImpliedItemPath(standard.File, standard.Id))"
                                             IdentityAction="@FileMatchAction((standard.File, ImpliedItemPath(standard.File, standard.Id)))"
+                                            IdentityExtra="@TextRenameRow(IsMacroCollection(FolderOfItem(standard.File)) ? PF.WorkflowRenameKind.MacroFolderItem : PF.WorkflowRenameKind.SnippetFolderItem, standard.Id, FolderOfItem(standard.File))"
                                             EditLabel="@(HeaderRefused(standard.File) ? "File (header refused)" : ItemNounOf(FolderOfItem(standard.File)))"
                                             Text="@GetText(standard.File)"
                                             Modified="@(edits.ContainsKey(standard.File) || headerEdits.ContainsKey(standard.File))"
                                             TextChanged="@(value => OnTextChangedAsync(standard.File, value))">
                             <HeaderActions>
-                                @PaneDiscardButton(standard.File, edits.ContainsKey(standard.File) || itemWhenEdits.ContainsKey(standard.File) || headerEdits.ContainsKey(standard.File), () => RevertItemEdits(standard.File))
+                                @PaneDiscardButton(standard.File, ItemRenamedFrom(standard.File, standard.Id) is not null || edits.ContainsKey(standard.File) || itemWhenEdits.ContainsKey(standard.File) || headerEdits.ContainsKey(standard.File), () => RevertItemEdits(standard.File, standard.Id))
                                 <FluentButton Appearance="Appearance.Outline" @onclick="() => RemoveItemAsync(standard.File)">
                                     Remove
                                 </FluentButton>
@@ -4243,6 +4248,24 @@
                             <span>@collection.Id (@CollectionCount(collection))</span>
                         }
                     </summary>
+                    @* #1290: below 28 a folder has no pane; its rename sits on the nav, under the folder's row. *@
+                    @if (At26 && !At28 && !addedCollections.Contains(collection.Id) && !addedMacroCollections.Contains(collection.Id))
+                    {
+                        var folderKind = collection.Kind == PF.WorkflowTextKind.Macro ? PF.WorkflowRenameKind.MacroFolder : PF.WorkflowRenameKind.SnippetFolder;
+                        @if (renamingText is { } openFolder && openFolder.Kind == folderKind && openFolder.Id == collection.Id || TextRenamedFrom(folderKind, collection.Id) is not null)
+                        {
+                            <div class="editor-nav__item editor-nav__item--nested editor-nav__folder-rename">@TextRenameRow(folderKind, collection.Id)</div>
+                        }
+                        else
+                        {
+                            <div class="editor-nav__item editor-nav__item--nested">
+                                <span class="editor-nav__dot"></span>
+                                <button type="button" class="editor-nav__restore editor-nav__rename-folder"
+                                        aria-label="@($"Rename folder {collection.Id}")"
+                                        @onclick="() => StartRenameText(folderKind, collection.Id)">(rename folder)</button>
+                            </div>
+                        }
+                    }
                     @* #1103: the live items in the folder's shown order — index.json's array is the
                        fan's run order — each row a label button with move arrows; removed items after. *@
                     @{
@@ -8827,8 +8850,19 @@
         itemWhenEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
 
     /// <summary>The standard pane's discard: the text edit, the when edit and any in-progress condition draft.</summary>
-    private void RevertItemEdits(string file)
+    /// <summary>#1290: the id a loaded folder item was renamed from, or null.</summary>
+    private string? ItemRenamedFrom(string file, string itemId) =>
+        TextRenamedFrom(IsMacroCollection(FolderOfItem(file)) ? PF.WorkflowRenameKind.MacroFolderItem : PF.WorkflowRenameKind.SnippetFolderItem, itemId, FolderOfItem(file));
+
+    private void RevertItemEdits(string file, string? itemId = null)
     {
+        // #1290: a renamed item's Discard renames it back first; a second Discard clears its edits.
+        if (itemId is not null && ItemRenamedFrom(file, itemId) is { } original)
+        {
+            RenameTextCore(IsMacroCollection(FolderOfItem(file)) ? PF.WorkflowRenameKind.MacroFolderItem : PF.WorkflowRenameKind.SnippetFolderItem, itemId, original, FolderOfItem(file));
+            return;
+        }
+
         RevertFileEdits(file);
         itemWhenEdits.Remove(file);
         headerEdits.Remove(file); // v26 (#1163): the header edit is the pane's too.
@@ -18496,11 +18530,31 @@
         {
             conditionDrafts[$"{ScalarIfKeyPrefix}{to}"] = draft;
         }
+
+        if (conditionDrafts.Remove($"{ItemWhenKeyPrefix}{from}", out var itemDraft))
+        {
+            conditionDrafts[$"{ItemWhenKeyPrefix}{to}"] = itemDraft;
+        }
+    }
+
+    /// <summary>#1290: every pending edit keyed by a path under a folder's directory follows the folder to its new directory.</summary>
+    private void RekeyDirectory(string from, string to)
+    {
+        var keys = edits.Keys.Concat(standardNameEdits.Keys).Concat(headerEdits.Keys).Concat(itemWhenEdits.Keys).Concat(removedFiles)
+            .Concat(conditionDrafts.Keys.Where(k => k.StartsWith(ScalarIfKeyPrefix, StringComparison.Ordinal)).Select(k => k[ScalarIfKeyPrefix.Length..]))
+            .Concat(conditionDrafts.Keys.Where(k => k.StartsWith(ItemWhenKeyPrefix, StringComparison.Ordinal)).Select(k => k[ItemWhenKeyPrefix.Length..]))
+            .Where(k => k.StartsWith(from, StringComparison.Ordinal))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+        foreach (var key in keys)
+        {
+            RekeyPath(key, to + key[from.Length..]);
+        }
     }
 
     // ---------------- #1290: rename a macro or a snippet ----------------
 
-    private (PF.WorkflowRenameKind Kind, string Id)? renamingText;
+    private (PF.WorkflowRenameKind Kind, string Id, string? Folder)? renamingText;
     private string renameTextDraft = string.Empty;
     private string? renameTextError;
 
@@ -18530,13 +18584,27 @@
         return original is not null && original != id ? original : null;
     }
 
-    /// <summary>The path a loaded macro or snippet's id implies — where its file sits after a rename.</summary>
-    private static string TextPathOf(PF.WorkflowRenameKind kind, string id) =>
-        kind == PF.WorkflowRenameKind.Macro ? PF.WorkflowFileMove.ImpliedPath("macro", id) : PF.WorkflowFileMove.ImpliedPath("snippet", id);
-
-    private void StartRenameText(PF.WorkflowRenameKind kind, string id)
+    /// <summary>The path a loaded macro, snippet, folder or item's id implies — where it sits after a rename.</summary>
+    private string TextPathOf(PF.WorkflowRenameKind kind, string id, string? folder = null) => kind switch
     {
-        renamingText = (kind, id);
+        PF.WorkflowRenameKind.Macro => PF.WorkflowFileMove.ImpliedPath("macro", id),
+        PF.WorkflowRenameKind.Snippet => PF.WorkflowFileMove.ImpliedPath("snippet", id),
+        PF.WorkflowRenameKind.MacroFolder => $"macros/{id}/",
+        PF.WorkflowRenameKind.SnippetFolder => $"snippets/{id}/",
+        _ => (EffectiveCollections.FirstOrDefault(c => c.Id == folder && (c.Kind == PF.WorkflowTextKind.Macro) == (kind == PF.WorkflowRenameKind.MacroFolderItem))?.Directory ?? string.Empty) + id + ".md",
+    };
+
+    private static bool IsFolderKind(PF.WorkflowRenameKind kind) => kind is PF.WorkflowRenameKind.MacroFolder or PF.WorkflowRenameKind.SnippetFolder;
+
+    private static bool IsItemKind(PF.WorkflowRenameKind kind) => kind is PF.WorkflowRenameKind.MacroFolderItem or PF.WorkflowRenameKind.SnippetFolderItem;
+
+    /// <summary>A folder's collection by its kind (a macro and a snippet folder may share an id).</summary>
+    private WorkflowManifestReader.CollectionView? CollectionOfKind(string id, bool macro) =>
+        EffectiveCollections.FirstOrDefault(c => c.Id == id && (c.Kind == PF.WorkflowTextKind.Macro) == macro);
+
+    private void StartRenameText(PF.WorkflowRenameKind kind, string id, string? folder = null)
+    {
+        renamingText = (kind, id, folder);
         renameTextDraft = id;
         renameTextError = null;
     }
@@ -18561,7 +18629,7 @@
             return;
         }
 
-        renameTextError = RenameTextCore(target.Kind, target.Id, to);
+        renameTextError = RenameTextCore(target.Kind, target.Id, to, target.Folder);
         if (renameTextError is null)
         {
             renamingText = null;
@@ -18574,7 +18642,7 @@
     /// follows, then the loaded package is rewritten (WorkflowTextRename: its reads, the manifest's
     /// sites, the file moved to the new id's path) and re-projected. Returns the refusal, or null.
     /// </summary>
-    private string? RenameTextCore(PF.WorkflowRenameKind kind, string from, string to)
+    private string? RenameTextCore(PF.WorkflowRenameKind kind, string from, string to, string? folder = null)
     {
         if (!At26)
         {
@@ -18589,48 +18657,170 @@
         // The library's refusals, judged on a copy of the package as it stands.
         var probeRoot = System.Text.Json.Nodes.JsonNode.Parse(content.Manifest.GetRawText())!.AsObject();
         var probeFiles = new Dictionary<string, string>(content.Files, StringComparer.Ordinal);
-        if (PF.WorkflowTextRename.Apply(probeRoot, probeFiles, kind, from, to).Refusals is { Count: > 0 } refusals)
+        if (PF.WorkflowTextRename.Apply(probeRoot, probeFiles, kind, from, to, folder).Refusals is { Count: > 0 } refusals)
         {
             return refusals[0];
         }
 
-        var macroKind = kind == PF.WorkflowRenameKind.Macro;
-        if ((macroKind ? addedMacros.Any(m => m.Id == to) : addedScalars.ContainsKey(to)))
+        var macroKind = kind is PF.WorkflowRenameKind.Macro or PF.WorkflowRenameKind.MacroFolder or PF.WorkflowRenameKind.MacroFolderItem;
+        var pendingClash = kind switch
+        {
+            PF.WorkflowRenameKind.Macro => addedMacros.Any(m => m.Id == to),
+            PF.WorkflowRenameKind.Snippet => addedScalars.ContainsKey(to),
+            PF.WorkflowRenameKind.MacroFolder => addedMacroCollections.Contains(to),
+            PF.WorkflowRenameKind.SnippetFolder => addedCollections.Contains(to),
+            _ => addedItems.Any(a => a.Collection == folder && a.Id == to),
+        };
+        if (pendingClash)
         {
             return $"A {TextNoun(kind)} '{to}' is already pending; publish or remove it first.";
         }
 
-        var oldPath = macroKind
-            ? (EffectiveMacros.FirstOrDefault(m => m.Id == from)?.File ?? TextPathOf(kind, from))
-            : (EffectiveScalars.FirstOrDefault(sc => sc.Id == from)?.Path ?? TextPathOf(kind, from));
-        RekeyPendingForTextRename(kind, from, to, oldPath, TextPathOf(kind, to));
-        var wasSelected = selectedKey == oldPath;
-        ApplyRenamesToContent(new[] { new NodeRename(from, to, null, null, TextKind: kind) });
-        if (wasSelected)
+        string oldPath;
+        if (IsFolderKind(kind))
         {
-            selectedKey = TextPathOf(kind, to);
+            oldPath = CollectionOfKind(from, macroKind)?.Directory ?? TextPathOf(kind, from);
+        }
+        else if (IsItemKind(kind))
+        {
+            oldPath = CollectionOfKind(folder ?? string.Empty, macroKind)?.Items.FirstOrDefault(i => i.Id == from)?.File ?? TextPathOf(kind, from, folder);
+        }
+        else
+        {
+            oldPath = macroKind
+                ? (EffectiveMacros.FirstOrDefault(m => m.Id == from)?.File ?? TextPathOf(kind, from))
+                : (EffectiveScalars.FirstOrDefault(sc => sc.Id == from)?.Path ?? TextPathOf(kind, from));
+        }
+
+        var newPath = TextPathOf(kind, to, folder);
+        var oldFolderKey = IsFolderKind(kind) ? FolderKeyPrefix + oldPath : null;
+        var selectedBefore = selectedKey;
+        RekeyPendingForTextRename(kind, from, to, oldPath, newPath, folder);
+        ApplyRenamesToContent(new[] { new NodeRename(from, to, null, null, TextKind: kind, Folder: folder) });
+        if (selectedBefore == oldPath)
+        {
+            selectedKey = newPath;
+        }
+        else if (oldFolderKey is not null && selectedBefore == oldFolderKey)
+        {
+            selectedKey = FolderKeyPrefix + newPath;
+        }
+        else if (IsFolderKind(kind) && selectedBefore is { } key && key.StartsWith(oldPath, StringComparison.Ordinal))
+        {
+            selectedKey = newPath + key[oldPath.Length..];
         }
 
         return null;
     }
 
-    /// <summary>#1290: the pending state a macro or snippet rename moves — the path keys, the macro's own maps, and every pending text, gate and instance that names it.</summary>
-    private void RekeyPendingForTextRename(PF.WorkflowRenameKind kind, string from, string to, string oldPath, string newPath)
+    /// <summary>The loop nodes over a snippet folder, and the ids of the nodes their bodies run (a flow node's branches included).</summary>
+    private (HashSet<string> Loops, HashSet<string> Body) LoopsOverFolder(string folder)
     {
-        string Text(string text) => PF.WorkflowTextRename.RenameInTemplate(text, kind, from, to).Text;
-        string File(string text) => PF.WorkflowTextRename.RenameInFile(text, kind, from, to).Text;
-        string? Gate(string? gate) => gate is null ? null : PF.WorkflowTextRename.RenameInCondition(gate, kind, from, to).Text;
+        var loops = new HashSet<string>(StringComparer.Ordinal);
+        var body = new HashSet<string>(StringComparer.Ordinal);
+        var byId = EffectiveNodes.GroupBy(n => n.Id, StringComparer.Ordinal).ToDictionary(g => g.Key, g => g.First(), StringComparer.Ordinal);
+        foreach (var loop in EffectiveNodes.Where(n => n.For is { } f && System.Text.RegularExpressions.Regex.IsMatch(f, $@"^\s*item\s+in\s+snippet\.{System.Text.RegularExpressions.Regex.Escape(folder)}\s*$")))
+        {
+            loops.Add(loop.Id);
+            foreach (var id in loop.Nodes ?? Array.Empty<string>())
+            {
+                body.Add(id);
+                if (byId.TryGetValue(id, out var flow))
+                {
+                    foreach (var branchId in (flow.Then?.Nodes ?? Array.Empty<string>()).Concat(flow.Else?.Nodes ?? Array.Empty<string>())
+                        .Concat((flow.Branches ?? Array.Empty<WorkflowManifestReader.BranchView>()).SelectMany(b => b.Nodes)))
+                    {
+                        body.Add(branchId);
+                    }
+                }
+            }
+        }
+
+        return (loops, body);
+    }
+
+    /// <summary>#1290: the pending state a macro or snippet rename moves — the path keys, the macro's own maps, and every pending text, gate and instance that names it.</summary>
+    private void RekeyPendingForTextRename(PF.WorkflowRenameKind kind, string from, string to, string oldPath, string newPath, string? folder = null)
+    {
+        // An item's id compared as a string is renamed only where the item ranges over its folder:
+        // the folder's own item files, a loop body node's prompt and its gates (#1266's chips).
+        var itemScope = IsItemKind(kind) && kind == PF.WorkflowRenameKind.SnippetFolderItem && folder is not null ? LoopsOverFolder(folder) : (new HashSet<string>(), new HashSet<string>());
+        var itemRoots = new HashSet<string>(StringComparer.Ordinal) { "item" };
+        var folderDirectory = IsItemKind(kind) ? CollectionOfKind(folder ?? string.Empty, kind == PF.WorkflowRenameKind.MacroFolderItem)?.Directory : null;
+        var scopedFiles = new HashSet<string>(StringComparer.Ordinal);
+        if (IsItemKind(kind))
+        {
+            foreach (var node in EffectiveNodes.Where(n => itemScope.Item2.Contains(n.Id) && n.Prompt is not null))
+            {
+                scopedFiles.Add(node.Prompt!);
+            }
+        }
+
+        bool InScope(string path) => scopedFiles.Contains(path) || (folderDirectory is not null && path.StartsWith(folderDirectory, StringComparison.Ordinal));
+        string Text(string text) => PF.WorkflowTextRename.RenameInTemplate(text, kind, from, to, folder, null, itemScope.Item1).Text;
+        string File(string text) => PF.WorkflowTextRename.RenameInFile(text, kind, from, to, folder, null, itemScope.Item1).Text;
+        string ScopedFile(string path, string text) => PF.WorkflowTextRename.RenameInFile(text, kind, from, to, folder, InScope(path) ? itemRoots : null, itemScope.Item1).Text;
+        string? Gate(string? gate) => gate is null ? null : PF.WorkflowTextRename.RenameInCondition(gate, kind, from, to, folder, null, itemScope.Item1).Text;
+        string? ScopedGate(string path, string? gate) => gate is null ? null : PF.WorkflowTextRename.RenameInCondition(gate, kind, from, to, folder, InScope(path) ? itemRoots : null, itemScope.Item1).Text;
+        string? ItemGate(string? gate) => gate is null ? null : PF.WorkflowTextRename.RenameInCondition(gate, kind, from, to, folder, itemRoots, itemScope.Item1).Text;
         string Id(string id) => id == from ? to : id;
 
-        RekeyPath(oldPath, newPath);
+        if (IsFolderKind(kind))
+        {
+            RekeyDirectory(oldPath, newPath);
+            PendingMaps.Move(folderLabelEdits, oldPath, newPath);
+            PendingMaps.Move(itemOrderEdits, from, to);
+            foreach (var item in addedItems.Where(a => a.Collection == from))
+            {
+                item.Collection = to;
+            }
+
+            if (kind == PF.WorkflowRenameKind.SnippetFolder)
+            {
+                string? For(string? forText) => forText is not null && System.Text.RegularExpressions.Regex.IsMatch(forText, $@"^\s*item\s+in\s+snippet\.{System.Text.RegularExpressions.Regex.Escape(from)}\s*$") ? $"item in snippet.{to}" : forText;
+                foreach (var key in loopEdits.Keys.ToList())
+                {
+                    loopEdits[key] = loopEdits[key] with { For = For(loopEdits[key].For)! };
+                }
+
+                foreach (var addedNode in addedNodes)
+                {
+                    addedNode.For = For(addedNode.For);
+                }
+            }
+        }
+        else
+        {
+            RekeyPath(oldPath, newPath);
+        }
+
+        if (IsItemKind(kind) && folder is not null && itemOrderEdits.TryGetValue(folder, out var order))
+        {
+            itemOrderEdits[folder] = order.Select(Id).ToList();
+        }
+
         foreach (var key in edits.Keys.ToList())
         {
-            edits[key] = File(edits[key]);
+            edits[key] = ScopedFile(key, edits[key]);
         }
 
         foreach (var key in headerEdits.Keys.ToList())
         {
-            headerEdits[key] = headerEdits[key] with { If = Gate(headerEdits[key].If) };
+            headerEdits[key] = headerEdits[key] with { If = ScopedGate(key, headerEdits[key].If) };
+        }
+
+        if (IsItemKind(kind))
+        {
+            // A gate placed on a loop body node, or a flow node's if inside the loop, reads the item.
+            foreach (var key in nodeMacroEdits.Keys.Where(itemScope.Item2.Contains).ToList())
+            {
+                nodeMacroEdits[key] = nodeMacroEdits[key].Select(m => m with { If = ItemGate(m.If) }).ToList();
+            }
+
+            foreach (var key in flowEdits.Keys.Where(itemScope.Item2.Contains).ToList())
+            {
+                flowEdits[key] = flowEdits[key] with { If = ItemGate(flowEdits[key].If) };
+            }
         }
 
         foreach (var addedNode in addedNodes)
@@ -18692,7 +18882,7 @@
     /// Cancel, the refusal, and "renamed from" once it is. A pending (added) one is renamed by removing
     /// it and adding it again, so it has none.
     /// </summary>
-    private RenderFragment TextRenameRow(PF.WorkflowRenameKind kind, string id) => __builder =>
+    private RenderFragment TextRenameRow(PF.WorkflowRenameKind kind, string id, string? folder = null) => __builder =>
     {
         if (!At26)
         {
@@ -18700,9 +18890,9 @@
         }
 
         var noun = TextNoun(kind);
-        var original = TextRenamedFrom(kind, id);
+        var original = TextRenamedFrom(kind, id, folder);
         <div class="node-rename text-rename" data-text-rename="@id">
-            @if (renamingText is { } open && open.Kind == kind && open.Id == id)
+            @if (renamingText is { } open && open.Kind == kind && open.Id == id && open.Folder == folder)
             {
                 <FluentTextField Value="@renameTextDraft" ValueChanged="@((string v) => renameTextDraft = v ?? string.Empty)"
                                  aria-label="@($"New id for {noun} {id}")" />
@@ -18716,13 +18906,13 @@
             else
             {
                 <FluentButton Appearance="Appearance.Stealth" Class="text-rename__start" aria-label="@($"Rename {noun} {id}")"
-                              OnClick="@(() => StartRenameText(kind, id))">Rename</FluentButton>
+                              OnClick="@(() => StartRenameText(kind, id, folder))">Rename</FluentButton>
             }
 
             @if (original is not null)
             {
                 <p class="muted-text text-rename__note" data-text-renamed="@original">
-                    Renamed from <code>@original</code> — every read now names <code>@id</code>; its file is <code>@TextPathOf(kind, id)</code>.
+                    Renamed from <code>@original</code> — every read now names <code>@id</code>; @(IsFolderKind(kind) ? "its folder" : "its file") is <code>@TextPathOf(kind, id, folder)</code>.
                 </p>
             }
         </div>
