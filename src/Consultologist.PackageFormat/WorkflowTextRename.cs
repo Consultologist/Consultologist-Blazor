@@ -286,7 +286,17 @@ public static class WorkflowTextRename
         return WorkflowTemplateTokens.Rewrite(text, to, source => new Renamer(source, kind, from, folder, itemRoots ?? NoRoots, loops ?? NoRoots));
     }
 
-    private sealed class Renamer : WorkflowTemplateTokens.EditingVisitor
+    /// <summary>A bare gate expression (a header's or an instance's <c>if</c>) with the macro, snippet, folder or item renamed.</summary>
+    public static (string Text, bool Changed) RenameInCondition(string condition, WorkflowRenameKind kind, string from, string to, string? folder = null,
+        IReadOnlySet<string>? itemRoots = null, IReadOnlySet<string>? loops = null) =>
+        WorkflowTemplateTokens.RewriteCondition(condition, text => RenameInTemplate(text, kind, from, to, folder, itemRoots, loops));
+
+    /// <summary>A template file — its body and its header's <c>if</c> — with the macro, snippet, folder or item renamed.</summary>
+    public static (string Text, bool Changed) RenameInFile(string fileText, WorkflowRenameKind kind, string from, string to, string? folder = null,
+        IReadOnlySet<string>? itemRoots = null, IReadOnlySet<string>? loops = null) =>
+        WorkflowTemplateTokens.RewriteFile(fileText, text => RenameInTemplate(text, kind, from, to, folder, itemRoots, loops));
+
+        private sealed class Renamer : WorkflowTemplateTokens.EditingVisitor
     {
         private readonly WorkflowRenameKind _kind;
         private readonly string _root;
