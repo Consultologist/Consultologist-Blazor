@@ -248,6 +248,40 @@ SSE tradeoffs:
 
 SSE should be prototyped in the deployed Azure Functions hosting environment before making it the only progress path. A polling endpoint should remain available as a fallback.
 
+## Draining before a release (#1302)
+
+A release replaces the code that running orchestrations replay through. Most
+releases are safe across that line, because Durable payloads only ever gain
+trailing optional fields that bind null on replay. A release that changes the
+scheduler's shape (v29 design § 7) is cut **after a drain**, and any release
+may be.
+
+1. **Hold new jobs.** `Jobs__HoldNewJobs=true` (`docs/CONFIGURATION.md`,
+   "Holding new jobs for a release"). Every door then refuses a new consult by
+   name; email is queued and starts by itself once the hold clears.
+2. **Wait for the engine to empty.** Run `scripts/show-active-jobs.sh` until it
+   ends `Safe to release`: no orchestration running, and no `Scheduled` job
+   due to wake within the window (`--window`, default 30 minutes). What counts
+   is the task hub's own instance table (`consultologistjobsInstances` on the
+   host account), not the job index: the index holds rows left at `Queued` by
+   starts whose orchestration was never scheduled (seven from August and
+   September 2026), which would hold a drain forever. The script lists those
+   separately and doesn't count them.
+3. **Cut the release** (`gh release create vYYYY.MM.N --target main …`), and
+   wait at least five minutes after the deploy finishes before verifying, since
+   a job can land on an instance that hasn't been replaced yet.
+4. **Verify** (`Public/Engine` reports the new release; `HttpProbe` 204).
+5. **Clear the hold.** Delete the setting; queued email starts on the next poll.
+
+**A scheduled job further out is not waited for.** It is an orchestration that
+has already started, asleep on a durable timer for up to seven days
+(`ConsultGenerationEngine`, `context.CreateTimer`), so the hold cannot stop it
+and a drain cannot wait for it. It wakes on the new code, having recorded
+nothing but its timer. That is safe only while payload changes stay
+append-only, so a release that drains still keeps them that way, as the
+second line of defence. `show-active-jobs.sh` lists those jobs with their wake
+times, so the release notes can name any that will wake on the new code.
+
 ## Architecture Choices
 
 Worker model tradeoffs:
