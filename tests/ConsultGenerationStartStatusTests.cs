@@ -1,4 +1,6 @@
 using System.Net;
+using Microsoft.Extensions.Configuration;
+using NSubstitute;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
@@ -23,12 +25,60 @@ public class ConsultGenerationStartStatusTests
     [InlineData(ConsultGenerationJobStartError.MalformedPackageRef, HttpStatusCode.BadRequest)]
     [InlineData(ConsultGenerationJobStartError.ForeignPackageRef, HttpStatusCode.Forbidden)]
     [InlineData(ConsultGenerationJobStartError.RateLimited, HttpStatusCode.TooManyRequests)]
+    // #1302: the release hold — nothing wrong with the request or the account.
+    [InlineData(ConsultGenerationJobStartError.Held, HttpStatusCode.ServiceUnavailable)]
     [InlineData(ConsultGenerationJobStartError.InputsMismatch, HttpStatusCode.UnprocessableEntity)]
     [InlineData(ConsultGenerationJobStartError.NoApplicableDeliverable, HttpStatusCode.UnprocessableEntity)]
     [InlineData(ConsultGenerationJobStartError.MacroChoiceMismatch, HttpStatusCode.UnprocessableEntity)]
     public void EachRefusal_AnswersItsOwnStatus(ConsultGenerationJobStartError error, HttpStatusCode expected)
     {
         Assert.Equal(expected, ConsultGenerationJobs.StatusFor(error));
+    }
+
+    [Fact]
+    public void Reschedule_RefusesOnTheHold_BeforeItCancelsAnything()
+    {
+        // #1302: Reschedule cancels the old job before it starts the new one,
+        // so it asks the hold itself, first; the starter's refusal would come
+        // after the cancel and leave the consult destroyed.
+        var held = Substitute.For<IJobIntakeHold>();
+        held.IsHeld.Returns(true);
+        var open = Substitute.For<IJobIntakeHold>();
+
+        Assert.Equal(JobIntakeHold.Sentence, ConsultGenerationJobs.RefusalForHold(held));
+        Assert.Null(ConsultGenerationJobs.RefusalForHold(open));
+    }
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("false", false)]
+    [InlineData("true", true)]
+    [InlineData("True", true)]
+    public void TheHold_ReadsJobsHoldNewJobs(string? value, bool expected)
+    {
+        var settings = new Dictionary<string, string?>();
+        if (value != null)
+        {
+            settings["Jobs:HoldNewJobs"] = value;
+        }
+
+        var hold = new JobIntakeHold(new ConfigurationBuilder().AddInMemoryCollection(settings).Build());
+
+        Assert.Equal(expected, hold.IsHeld);
+    }
+
+    [Fact]
+    public void TheHold_IsReadOnEveryCall_NotCachedAtStart()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>()).Build();
+        var hold = new JobIntakeHold(configuration);
+        Assert.False(hold.IsHeld);
+
+        configuration["Jobs:HoldNewJobs"] = "true";
+        Assert.True(hold.IsHeld);
+
+        configuration["Jobs:HoldNewJobs"] = "false";
+        Assert.False(hold.IsHeld);
     }
 
     [Fact]

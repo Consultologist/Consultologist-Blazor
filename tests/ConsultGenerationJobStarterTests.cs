@@ -47,6 +47,9 @@ public class ConsultGenerationJobStarterTests
     // #1063: speech-to-text for recordings; a test sets it to a fake before starting.
     private ISpeechToText? _speechToText;
 
+    // #1302: the release hold; null (most tests) is never held.
+    private IJobIntakeHold? _hold;
+
     private ConsultGenerationJobStarter CreateStarter(ILogger<ConsultGenerationJobStarter>? logger = null, string? apiHost = null)
     {
         _client.Entities.Returns(_entities);
@@ -75,7 +78,8 @@ public class ConsultGenerationJobStarterTests
             _formResponseBlobs,
             _ocr,
             TestFormats.Catalog,
-            _speechToText);
+            _speechToText,
+            _hold);
     }
 
     private readonly FakeTerminologySource _terminology = new();
@@ -4552,6 +4556,79 @@ public class ConsultGenerationJobStarterTests
             new ConsultGenerationJobOrigin(ConsultGenerationJobSources.Email, "user@example.com"),
             CancellationToken.None);
 
+        Assert.Equal(ConsultGenerationJobStartError.RateLimited, outcome.Error);
+    }
+
+    // #1302 — the release hold. Every door reaches this one starter, so the
+    // hold is checked here, first, and costs nothing.
+
+    private IJobIntakeHold Held(bool held)
+    {
+        var hold = Substitute.For<IJobIntakeHold>();
+        hold.IsHeld.Returns(held);
+        return hold;
+    }
+
+    [Theory]
+    [InlineData(ConsultGenerationJobSources.App)]
+    [InlineData(ConsultGenerationJobSources.Email)]
+    public async Task WhileHeld_ANewJobIsRefusedByName_OnEveryDoor(string source)
+    {
+        _hold = Held(true);
+        var starter = CreateStarter();
+
+        var outcome = await starter.StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(source),
+            CancellationToken.None);
+
+        Assert.Equal(ConsultGenerationJobStartError.Held, outcome.Error);
+        Assert.Null(outcome.JobId);
+        Assert.Equal(JobIntakeHold.Sentence, outcome.ErrorDetail);
+        // No PHI in it, so the email door may say it to the sender.
+        Assert.Equal(JobIntakeHold.Sentence, outcome.SenderSafeDetail);
+        Assert.Equal(JobIntakeHold.RetryAfter, outcome.RetryAfter);
+    }
+
+    [Fact]
+    public async Task WhileHeld_NothingIsSpentWrittenOrScheduled()
+    {
+        _hold = Held(true);
+        var starter = CreateStarter();
+
+        await starter.StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        // Before the rate limit: a held start must not cost the account a unit.
+        await _rateLimiter.DidNotReceive().TryAcquireAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _pinResolver.DidNotReceive().ResolvePinAsync(Arg.Any<string>(), Arg.Any<CancellationToken>());
+        await _entities.DidNotReceive().SignalEntityAsync(
+            Arg.Any<EntityInstanceId>(), Arg.Any<string>(), Arg.Any<object>());
+        await _client.DidNotReceive().ScheduleNewOrchestrationInstanceAsync(
+            Arg.Any<TaskName>(), Arg.Any<object?>(), Arg.Any<StartOrchestrationOptions?>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task WithTheHoldOff_TheStartGoesOnToTheRateLimit()
+    {
+        _hold = Held(false);
+        var starter = CreateStarter();
+        Refuse();
+
+        var outcome = await starter.StartAsync(
+            _client,
+            new ConsultGenerationRequest(Referral),
+            "user-1",
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App),
+            CancellationToken.None);
+
+        // Past the hold: the next check answers, as it always did.
         Assert.Equal(ConsultGenerationJobStartError.RateLimited, outcome.Error);
     }
 
