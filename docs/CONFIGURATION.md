@@ -738,6 +738,38 @@ az storage entity delete --account-name consultjobrecscaeast --auth-mode login \
     --table-name AccountRateLimits --partition-key <APP_USER_ID> --row-key <WINDOW>
 ```
 
+## Holding new jobs for a release (`Jobs/JobIntakeHold.cs`, #1302)
+
+| Variable | Accepted values | Default | Required |
+|---|---|---|---|
+| `Jobs__HoldNewJobs` | `true` refuses every **new** consult; `false` or unset runs as normal. Jobs already running finish, and a scheduled job already asleep on its timer wakes as planned | `false` | no |
+
+The switch that drains the engine before a release (v29 design § 7; the
+runbook is `docs/DURABLE_JOBS.md`, "Draining before a release"). It is read on
+every start, before the rate limit, so a held submission spends nothing.
+Every door says the one sentence *"New consults are paused for an update; try
+again in a few minutes."*:
+
+| door | answers |
+|---|---|
+| app start, rerun (and the satellites, which use the same door) | **503** with `Retry-After: 300` and `{ "error": "<the sentence>" }`; the Create page shows the sentence as it shows any refusal |
+| reschedule | the same 503, **before** the old job is cancelled — a held reschedule leaves the scheduled consult as it was |
+| email | queued, as a rate-limited message is: parked in `Queued`, retried every poll, one reply *"Consults are paused for a short update, so this one is waiting."* (no clinical content); `RateLimits__MaxEmailDeferralHours` still gives up on it if the hold outlasts that |
+| Power Automate (forms run-at-once) | the run's `error` is the sentence |
+
+```azurecli
+# set the hold (an app setting write restarts the app; running jobs replay and carry on)
+az functionapp config appsettings set --name canada-east-ai-function \
+    --resource-group consultologist_group --settings Jobs__HoldNewJobs=true
+
+# clear it
+az functionapp config appsettings delete --name canada-east-ai-function \
+    --resource-group consultologist_group --setting-names Jobs__HoldNewJobs
+
+# is it safe to release yet? (read-only; the task hub decides, not the index)
+HOST_ACCOUNT=consulthostcaeast INDEX_ACCOUNT=consultjobrecscaeast ./scripts/show-active-jobs.sh
+```
+
 ## Storage stores
 
 Entra ID first (#10, mirroring the workflow-package registry): when a

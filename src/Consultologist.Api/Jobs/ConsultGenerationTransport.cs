@@ -442,6 +442,15 @@ public sealed class ConsultGenerationJobs
             return await CreateJsonResponseAsync(req, HttpStatusCode.UnprocessableEntity, new { error = timeRefusal }, cancellationToken);
         }
 
+        // #1302: a reschedule cancels the old job before it starts the new one,
+        // so the hold must refuse here — the starter's refusal would come after
+        // the cancel and destroy a scheduled job it cannot replace.
+        if (RefusalForHold(new JobIntakeHold(_configuration)) is { } holdRefusal)
+        {
+            return await CreateJsonResponseAsync(
+                req, HttpStatusCode.ServiceUnavailable, new { error = holdRefusal }, cancellationToken, JobIntakeHold.RetryAfter);
+        }
+
         // Entity-backed only, for the reason CancelAsync gives.
         var response = await GetEntityBackedJobResponseAsync(client, jobId, cancellationToken);
 
@@ -761,6 +770,9 @@ public sealed class ConsultGenerationJobs
     /// and stopping one that has is a different decision about work already paid
     /// for. Extracted so it can be asserted directly.
     /// </summary>
+    /// <summary>#1302: the release hold's sentence when new jobs are on hold, else null.</summary>
+    internal static string? RefusalForHold(IJobIntakeHold hold) => hold.IsHeld ? JobIntakeHold.Sentence : null;
+
     internal static string? RefusalForCancel(string status) => status switch
     {
         ConsultGenerationJobStatuses.Scheduled => null,
@@ -2493,6 +2505,9 @@ public sealed class ConsultGenerationJobs
             // account has spent its window. 429 is the one status
             // that says "the same request will work later".
             ConsultGenerationJobStartError.RateLimited => HttpStatusCode.TooManyRequests,
+            // #1302: nothing is wrong with the request or the account — the
+            // engine is draining for a release. 503 with Retry-After.
+            ConsultGenerationJobStartError.Held => HttpStatusCode.ServiceUnavailable,
             _ => HttpStatusCode.InternalServerError
         };
 

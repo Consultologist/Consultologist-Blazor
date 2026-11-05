@@ -964,6 +964,62 @@ public class EmailIntakeProcessorTests
             Mailbox, Arg.Any<string>(), "folder-Rejected", Arg.Any<CancellationToken>());
     }
 
+    // #1302 — the release hold queues a message as the rate limit does, with
+    // its own reason in the one reply.
+
+    private void HoldNewJobs() =>
+        _starter.StartAsync(_client, Arg.Any<ConsultGenerationRequest>(), "user-1",
+                Arg.Any<ConsultGenerationJobOrigin>(), Arg.Any<CancellationToken>())
+            .Returns(new ConsultGenerationJobStartOutcome(
+                null,
+                ConsultGenerationJobStartError.Held,
+                JobIntakeHold.Sentence,
+                SenderSafeDetail: JobIntakeHold.Sentence,
+                RetryAfter: JobIntakeHold.RetryAfter));
+
+    [Fact]
+    public async Task Held_ParksTheMessageInQueued_AndSaysItIsPausedOnce()
+    {
+        SetupAcceptedSender(Message());
+        HoldNewJobs();
+        string? body = null;
+        _mail.SendMailAsync(Mailbox, "doc@example.com", "Your consult email is queued",
+                Arg.Do<string>(b => body = b), Arg.Any<CancellationToken>(), Arg.Any<IReadOnlyList<GraphMailAttachment>?>())
+            .Returns(Task.CompletedTask);
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Queued);
+        Assert.Equal(0, summary.Rejected);
+        await _mail.Received(1).MoveMessageAsync(Mailbox, "g-1", QueuedFolderId, Arg.Any<CancellationToken>());
+        Assert.NotNull(body);
+        Assert.Contains("Consults are paused for a short update, so this one is waiting.", body);
+        Assert.DoesNotContain("submitted a lot", body);
+        Assert.Contains("you do not need to re-send it", body);
+        await _mail.DidNotReceive().SendMailAsync(
+            Mailbox, Arg.Any<string>(), "Your consult email could not be processed",
+            Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<IReadOnlyList<GraphMailAttachment>?>());
+    }
+
+    [Fact]
+    public async Task Held_AMessageRetriedFromQueued_IsNotRepliedToAgain()
+    {
+        SetupQueued(Ref());
+        _mail.ListUnreadInboxMessagesAsync(Mailbox, Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Array.Empty<GraphMessageRef>());
+        _claims.TryClaimAsync(Arg.Any<EmailIntakeClaim>(), Arg.Any<CancellationToken>()).Returns(true);
+        _mail.GetMessageAsync(Mailbox, "g-1", Arg.Any<CancellationToken>()).Returns(Message());
+        _senderResolver.ResolveAsync("doc@example.com", Arg.Any<CancellationToken>())
+            .Returns(new EmailSenderMatch(EmailSenderMatchOutcome.Matched, "user-1"));
+        HoldNewJobs();
+
+        var summary = await CreateProcessor().RunOnceAsync(_client, CancellationToken.None);
+
+        Assert.Equal(1, summary.Queued);
+        await _mail.DidNotReceiveWithAnyArgs().SendMailAsync(
+            default!, default!, default!, default!, default, default);
+    }
+
     [Fact]
     public async Task AMessageRequeuedFromTheQueuedFolder_IsNotRepliedToAgain()
     {

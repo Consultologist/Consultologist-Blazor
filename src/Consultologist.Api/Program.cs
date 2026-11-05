@@ -203,6 +203,8 @@ builder.Services.AddSingleton<Consultologist.Api.Stripe.IStripeClient, Consultol
 builder.Services.AddSingleton<Consultologist.Api.Stripe.IStripeSignatureValidator, Consultologist.Api.Stripe.StripeSignatureValidator>();
 builder.Services.AddScoped<Diagnostics>();
 builder.Services.AddSingleton<IAccountRateLimiter, TableAccountRateLimiter>();
+// #1302: the release hold (Jobs__HoldNewJobs), read on every start.
+builder.Services.AddSingleton<IJobIntakeHold, JobIntakeHold>();
 builder.Services.AddSingleton<IConsultGenerationJobStarter, ConsultGenerationJobStarter>();
 builder.Services.AddSingleton<IGraphMailClient, GraphMailClient>();
 // #615: the On-Behalf-Of exchange — the engine reaching outward as the user.

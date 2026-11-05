@@ -344,9 +344,13 @@ public sealed class EmailIntakeProcessor
         // path below moves the message to Rejected and tells the sender their
         // consult could not be processed, which here would be false — the
         // message is fine and the account is merely ahead of its budget.
-        if (start.Error == ConsultGenerationJobStartError.RateLimited)
+        // #1302: nor is the release hold — the engine is draining for a
+        // deploy, and the queued message starts by itself once the hold clears.
+        if (start.Error is ConsultGenerationJobStartError.RateLimited or ConsultGenerationJobStartError.Held)
         {
-            return await QueueAsync(mailbox, message, claimKey, now, match.AppUserId, source, cancellationToken);
+            return await QueueAsync(
+                mailbox, message, claimKey, now, match.AppUserId, source, cancellationToken,
+                held: start.Error == ConsultGenerationJobStartError.Held);
         }
 
         if (start.Error != null)
@@ -602,10 +606,12 @@ public sealed class EmailIntakeProcessor
         DateTimeOffset now,
         string? appUserId,
         MessageSource source,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool held = false)
     {
         _logger.LogWarning(
-            "Email intake queued: the account is over its submission limit. From={From}, InternetMessageId={InternetMessageId}, FirstTime={FirstTime}",
+            "Email intake queued: {Cause}. From={From}, InternetMessageId={InternetMessageId}, FirstTime={FirstTime}",
+            held ? "new jobs are on hold (#1302)" : "the account is over its submission limit",
             message.FromAddress,
             claimKey,
             source == MessageSource.Inbox);
@@ -621,7 +627,7 @@ public sealed class EmailIntakeProcessor
         // hours is indistinguishable from a black hole — so it is neither.
         if (source == MessageSource.Inbox && message.FromAddress != null)
         {
-            await SendQueuedReplyAsync(mailbox, message.FromAddress, cancellationToken);
+            await SendQueuedReplyAsync(mailbox, message.FromAddress, cancellationToken, held);
         }
 
         var folderId = await _mail.EnsureInboxChildFolderAsync(mailbox, QueuedFolder, cancellationToken);
@@ -753,13 +759,16 @@ public sealed class EmailIntakeProcessor
     /// Same constraints as every reply on this path: no subject or body
     /// echoed, no filenames, no clinical content of any kind.
     /// </summary>
-    private async Task SendQueuedReplyAsync(string mailbox, string toAddress, CancellationToken cancellationToken)
+    private async Task SendQueuedReplyAsync(string mailbox, string toAddress, CancellationToken cancellationToken, bool held = false)
     {
         try
         {
             var appBaseUrl = _configuration["EmailIntake:AppBaseUrl"]?.TrimEnd('/');
             var body = "Your consult submitted by email has been received and is queued.\n\n"
-                + "This account has submitted a lot in a short time, so this one is waiting its turn. "
+                // #1302: the release hold says why in its own words; the rest is shared.
+                + (held
+                    ? "Consults are paused for a short update, so this one is waiting. "
+                    : "This account has submitted a lot in a short time, so this one is waiting its turn. ")
                 + "It will be processed automatically and you do not need to re-send it.\n\n"
                 // Promise a follow-up rather than an outcome. Queued mail can
                 // still be given up on (see ExpireAsync), and the first

@@ -107,7 +107,12 @@ public enum ConsultGenerationJobStartError
     // file's coerced object. Distinct from InputFormRef* so the start log's
     // Kind says which door refused. Well-formed, unsatisfiable: 422. Appended last.
     InputFormFileInvalid,
-    InputFormFileMismatch
+    InputFormFileMismatch,
+
+    // #1302: new jobs are on hold for a release (Jobs__HoldNewJobs). Not the
+    // request's fault and not the account's: 503, and the email door queues
+    // the message as it does a rate limit. Appended last.
+    Held
 }
 
 /// <summary>
@@ -149,7 +154,7 @@ public sealed record ConsultGenerationJobStartOutcome(
     // downstream from an error code that cannot express it.
     string? SenderSafeDetail = null,
     // #266: how long until the caller's window resets. Only set on
-    // RateLimited, and only the HTTP door renders it — as Retry-After.
+    // RateLimited and Held (#1302), and only the HTTP door renders it — as Retry-After.
     TimeSpan? RetryAfter = null);
 
 public interface IConsultGenerationJobStarter
@@ -187,6 +192,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly Forms.IFormResponseBlobStore _formResponseBlobs;
     private readonly IDocumentOcr _ocr;
     private readonly ISpeechToText? _speechToText;
+    private readonly IJobIntakeHold? _hold;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -207,9 +213,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IDocumentOcr ocr,
         WorkflowFormatCatalog formats,
         // #1063: speech-to-text for recordings; null (a test) reads as unconfigured.
-        ISpeechToText? speechToText = null)
+        ISpeechToText? speechToText = null,
+        // #1302: the release hold; null (a test) reads as never held.
+        IJobIntakeHold? hold = null)
     {
         _speechToText = speechToText;
+        _hold = hold;
         _logger = logger;
         _packageStore = packageStore;
         _pinResolver = pinResolver;
@@ -236,6 +245,23 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         ConsultGenerationJobOrigin origin,
         CancellationToken cancellationToken)
     {
+        // #1302: the release hold comes before everything, the rate limit
+        // included — a held start spends no unit, writes no row and signals no
+        // entity. Every door reaches this one starter, so this is the hold.
+        if (_hold?.IsHeld == true)
+        {
+            _logger.LogWarning(
+                "Rejected job start: new jobs are on hold. AppUserId={AppUserId}, Source={Source}",
+                appUserId,
+                origin.Source);
+            return new ConsultGenerationJobStartOutcome(
+                null,
+                ConsultGenerationJobStartError.Held,
+                JobIntakeHold.Sentence,
+                SenderSafeDetail: JobIntakeHold.Sentence,
+                RetryAfter: JobIntakeHold.RetryAfter);
+        }
+
         // #266: first, before any registry read. This door and the preview
         // endpoint are the only two enforcement points, and between them they
         // cover all three ways in — email reaches the parser through here.
