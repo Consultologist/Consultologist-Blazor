@@ -109,8 +109,21 @@ another (#400); what stays here is why each was chosen. Public by design, like t
   Scriban — flow nodes `if`/`case`/`for` with a required `ret`, gates keyed
   `if`, the aggregator folded into `deliverables[].sources`, the prompt on the
   node, a JSON header on every text file; the static half (26) with the
-  dynamic half named for 27; § 11 carries the as-built notes. The normative
-  text follows in the registry at the bump
+  dynamic half named for 29 (§ 6); § 11 carries the as-built notes. The
+  normative text follows in the registry at the bump
+- [package-format-v27-design.md](package-format-v27-design.md) — design record
+  (2026-10-29, Milestone 35, #1173): an `if`/`case` inside a `for`, decided
+  once per item; every item stays a row — *skipped by condition* with the
+  condition's text, never a value; record storage 9
+- [package-format-v28-design.md](package-format-v28-design.md) — design record
+  (2026-11-02, revision 4, #1268): a file name is its id — `<id>.md`
+  everywhere, the manifest's paths implied, `index.json` an object with a
+  folder label; no hash moves, storage 9
+- [package-format-v29-design.md](package-format-v29-design.md) — design record
+  (2026-11-05, Milestone 32, #1277): the dynamic half — a `for` over a node's
+  value, per-loop totals and a `count-resolved` event, a node-gated folder
+  item kept as a skipped row, the deliverable row at composition, record
+  storage 10, a drain before the release; nesting, `while` and `let` for 30
 - [forms-intake-spike.md](forms-intake-spike.md) — spike record (#511, 2026-08-28):
   a Microsoft Forms response as an intake source — no supported API, so the
   clinician's Power Automate flow pushes responses with the clinician's own

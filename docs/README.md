@@ -109,16 +109,22 @@ would otherwise have carried it (#397).
   every object is a node, every gate is Scriban — flow nodes `if`/`case`/`for` with a required
   `ret`; gates keyed `if`; the aggregator folded into `deliverables[].sources` with
   `deliverable.<id>.content`; a node names its prompt file; a JSON header on snippet and macro
-  files; 26 is the static half — dynamic fan sizes, `while` and nested loops are the next bump's)
+  files; 26 is the static half — dynamic fan sizes, `while` and nested loops are the next bump's),
   [package format v27 design](customizable-workflow/package-format-v27-design.md) — a flow node
   inside a `for` (Milestone 35, specVersion 27, revision 1): an `if`/`case` in a loop's body decided
   once per item, the loop returning it, every item still a row — *skipped by condition* recorded with
   the condition's text, never a value — record storage 9; the dynamic half is 29,
   [a file name is its id](customizable-workflow/package-format-v28-design.md) — specVersion 28
-  (#1268, revision 3; shipped alone, the dynamic half moving to 29): every prompt, macro, snippet and folder
+  (#1268, revision 4; shipped alone, the dynamic half moving to 29): every prompt, macro, snippet and folder
   item is `<id>.md`; a node's `prompt` is retired, `macros`/`snippets` become lists of ids and
   `index.json` an object `{ "label"?, "items" }`, giving each folder a pane; no hash moves and the record keeps storage 9; the migration renames 58 prompts and 2 items
   across the ten public packages,
+  [the dynamic half](customizable-workflow/package-format-v29-design.md) — specVersion 29
+  (Milestone 32, #1277, revision 1): a `for` may iterate a node's value, so its count settles
+  when the node completes — per-loop totals, a `count-resolved` event, *not yet known* never zero;
+  a folder item's `if` may read a node, its item kept as a *skipped by condition* row; a
+  deliverable's row written at composition, "produced" meaning released; record storage 10; a
+  hold switch drains jobs before the release; nesting, `while` and `let` named for 30
 
 ## Research
 
