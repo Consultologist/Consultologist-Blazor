@@ -2139,6 +2139,17 @@
     {
       aiRequestError = refusal.Message;
       refusedJobId = refusal.JobId;
+
+      // #1310: refused before any job existed (the hold, the rate limit, a 422
+      // that left no row) — nothing ran, so this is not a failed run. Back to
+      // the form with the inputs and the sentence, as a failed re-attach does;
+      // pressing Create again is the retry. A refusal that left a row (#434)
+      // is a run that failed, and keeps the run view and its History link.
+      if (refusal.JobId is null)
+      {
+        totalBlockCount = 0;
+        runTerminalStatus = null;
+      }
     }
     catch (Exception ex)
     {

@@ -568,6 +568,63 @@ public class ConsultsSetupTests : ClientRenderTestContext
         Assert.Contains("Error calling agent", page.Markup, StringComparison.Ordinal);
     }
 
+    // #1310: a refusal that left no job is not a failed run — nothing ran. The
+    // page goes back to the form with the inputs and the sentence, as a failed
+    // re-attach does; it never says "Run failed." or draws the ✗ Failed row.
+
+    private const string Paused = "New consults are paused for an update; try again in a few minutes.";
+
+    private static bool ShowsAFailedRun(IRenderedComponent<Consults> page) =>
+        page.Markup.Contains("Run failed.", StringComparison.Ordinal)
+        || page.FindAll(".node-row__label").Any(label => label.TextContent.Trim() == "Failed");
+
+    [Theory]
+    [InlineData(HttpStatusCode.ServiceUnavailable, Paused)]
+    [InlineData(HttpStatusCode.TooManyRequests, "This account has submitted 60 consults in the past hour, which is its limit. Please try again shortly.")]
+    [InlineData(HttpStatusCode.UnprocessableEntity, Refusal)]
+    public void ARefusalThatLeftNoJob_GoesBackToTheForm_WithTheSentence_AndNoFailedRun(HttpStatusCode status, string sentence)
+    {
+        WhenSubmitThrows(new ConsultGenerationRefusedException(status, sentence));
+
+        var page = SubmitOneDraft();
+
+        Assert.Contains(sentence, page.Markup, StringComparison.Ordinal);
+        Assert.False(ShowsAFailedRun(page));
+        // The form is back, the draft still in it, so pressing Create again is the retry.
+        Assert.Contains(page.FindAll("fluent-button"), button => button.TextContent.Trim() == "Create consult");
+        Assert.Contains(
+            page.FindAll("fluent-text-area"),
+            area => (area.GetAttribute("value") ?? string.Empty).Contains("Chest pain, rule out ACS", StringComparison.Ordinal));
+        // There is no run to go back to.
+        Assert.DoesNotContain(page.FindAll("fluent-button"), button => button.TextContent.Trim() == "Back to consult");
+    }
+
+    [Fact]
+    public void ARefusalThatLeftARow_StaysAFailedRun()
+    {
+        // #434's refusal recorded a job: that run failed, and says so.
+        WhenSubmitThrows(new ConsultGenerationRefusedException(
+            HttpStatusCode.UnprocessableEntity, Refusal, "bb4df62f2bea4dd193a92ae0e6798370"));
+
+        var page = SubmitOneDraft();
+
+        Assert.True(ShowsAFailedRun(page));
+        Assert.NotEmpty(page.FindAll("a.refusal-history-link"));
+    }
+
+    [Fact]
+    public void ATransportFault_StaysAFailedRun()
+    {
+        // A fault may have started a job the page never heard about; it is not
+        // "not started", so it keeps the failed run and its prefix.
+        WhenSubmitThrows(new HttpRequestException("Azure Function call failed: BadGateway"));
+
+        var page = SubmitOneDraft();
+
+        Assert.True(ShowsAFailedRun(page));
+        Assert.Contains("Error calling agent", page.Markup, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void ATranscriptChannelInput_AsksForATranscript()
     {
