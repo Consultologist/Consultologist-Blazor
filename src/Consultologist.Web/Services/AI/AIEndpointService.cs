@@ -698,7 +698,9 @@ public record ConsultGenerationJobResponse(
     IReadOnlyDictionary<string, string>? SkippedBlocks = null,
     // v29 (#1303): the loops over a node's value whose count is not yet known —
     // the total is a floor while any is listed. Null when none. Trailing.
-    IReadOnlyList<string>? UnresolvedLoops = null);
+    IReadOnlyList<string>? UnresolvedLoops = null,
+    // v29 (#1305): the deliverables composed but not released — on a failed job too. Trailing.
+    IReadOnlyList<ConsultHeldDocumentResponse>? HeldDocuments = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -719,6 +721,16 @@ public record ConsultMacroChoiceResponse(bool Value, string Origin);
 public record ConsultExcludedMacroResponse(string ResultId, string MacroId, string Reason);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultFailedDocument (v12 #624).</summary>
+/// <summary>Mirrors Consultologist.Api.Models.ConsultHeldDocument (v29, #1305): composed, not released — and, once the job ended, why.</summary>
+public record ConsultHeldDocumentResponse(
+    string ResultId,
+    string Label,
+    int Ordinal,
+    string? ComposedHash,
+    IReadOnlyList<string>? Sources,
+    DateTimeOffset ComposedAtUtc,
+    string? Reason = null);
+
 public record ConsultFailedDocumentResponse(
     string ResultId,
     string Label,
