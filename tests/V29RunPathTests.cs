@@ -92,9 +92,10 @@ public class V29RunPathTests
 
     // ----- the start: § 1.1 -----------------------------------------------------------------
 
-    private static WorkflowPackage Load()
+    private static WorkflowPackage Load() => Load(V29Package.Minimal());
+
+    private static WorkflowPackage Load((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
     {
-        var bundle = V29Package.Minimal();
         var loaded = WorkflowPackageStore.Materialise("test@v29", bundle.Manifest,
             new Dictionary<string, string>(bundle.Files, StringComparer.Ordinal), null, V29Catalog.Catalog, V25Package.Catalog(), V29Package.Accepting29);
         return WorkflowPackageStore.PackageOf(loaded);
@@ -225,6 +226,62 @@ public class V29RunPathTests
         var rendered = ConsultRenderPayload.RenderAt25(input, package, package.Prompts![prompt].TemplateText);
 
         Assert.Equal("Problem 1: Asthma (low).", rendered.Trim());
+    }
+
+    // ----- #1304: a folder item gated on a node (design § 3.2) -----------------------------
+
+    private static WorkflowPackage Gated(string @if = "node.scope.value == \"in_scope\"") =>
+        Load(V29Package.With(_ => { }, files => files["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: @if) + "Plan."));
+
+    [Fact]
+    public void AtStart_ANodeGatedItem_IsKept_AndCounted_NotJudged()
+    {
+        var package = Gated();
+
+        var skeleton = ConsultGenerationJobStarter.ResolveSkeleton(package, V26JobStartTests.NewPatient, V26JobStartTests.Scope(package, V26JobStartTests.NewPatient));
+
+        Assert.Contains("consult:sections:plan", skeleton.Items.Select(item => item["id"]));
+        Assert.Equal(new[] { "hpi", "plan" }, skeleton.CollectionSets["sections"].Select(item => item["id"]));
+        var gates = ConsultGenerationJobStarter.NodeGatedItems(package);
+        Assert.Equal(new[] { "scope" }, gates["sections"]["plan"]);
+    }
+
+    [Fact]
+    public void AtStart_AnInputGatedItem_IsStillJudgedThere()
+    {
+        var package = Gated("input.kind == \"follow_up\"");
+
+        var skeleton = ConsultGenerationJobStarter.ResolveSkeleton(package, V26JobStartTests.NewPatient, V26JobStartTests.Scope(package, V26JobStartTests.NewPatient));
+
+        Assert.Equal(new[] { "hpi" }, skeleton.CollectionSets["sections"].Select(item => item["id"]));
+        Assert.Empty(ConsultGenerationJobStarter.NodeGatedItems(package));
+    }
+
+    private static ConsultFlowItemDecision DecideGate(WorkflowPackage package, string scope) =>
+        DecideFlowItemActivity.Decide(package, new ConsultDecideFlowItemInput(
+            "test@v29", "sections", "snippet.sections",
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["id"] = "plan", ["label"] = "Plan", ["content"] = "Plan." },
+            V26JobStartTests.Effective(V26JobStartTests.NewPatient),
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["scope"] = scope },
+            null,
+            new TemplateRunFacts("2026-11-07", "job00000000", "test@v29", "api.example.test"),
+            new TemplateProfileFacts("Dr Example", "Dr Example"),
+            GateFolder: "sections"));
+
+    [Fact]
+    public void TheGate_IsDecidedOverTheNodesValue_HeldOrSkippedWithItsText()
+    {
+        var package = Gated();
+
+        var held = DecideGate(package, "in_scope");
+        Assert.False(held.Skipped);
+        Assert.Equal(("sections", "plan", "then"), (held.FlowId, held.ItemId, held.Branch));
+
+        var skipped = DecideGate(package, "out_of_scope");
+        Assert.True(skipped.Skipped);
+        Assert.Equal("none", skipped.Branch);
+        // #369: the condition's text, never the value it read.
+        Assert.Equal("needs `node.scope.value == \"in_scope\"`; it does not hold", skipped.Reason);
     }
 }
 
