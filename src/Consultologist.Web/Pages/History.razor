@@ -2043,10 +2043,20 @@
     private static string? FanOf(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) =>
         Consultologist.Web.Services.Provenance.RecordFlow.FanOf(descriptor, detail.Nodes);
 
+    /// <summary>
+    /// A loop row's count: its settled count; v29 (#1303) a node's list that settled
+    /// empty, with why; one not yet known, counting… (or count never known once the
+    /// job ended) — never "0" for a count nobody knows.
+    /// </summary>
+    private static string LoopCountTag(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) =>
+        descriptor.Count is { } count
+            ? descriptor.Reason is { } reason ? $" ({count} — {reason})" : $" ({count})"
+            : LoopCount.IsUnknown(descriptor) ? $" ({LoopCount.Describe(IsTerminal(detail.Status))})" : string.Empty;
+
     /// <summary>What a storage-8 row says of its flow: a loop's collection and count, an if/case's expression and branch, a body node's loop; null below 8.</summary>
     private static string? FlowTag(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail) =>
         descriptor.Kind == Consultologist.Web.Services.Provenance.RecordFlow.Loop
-            ? $"for item in {descriptor.Collection}{(descriptor.Count is { } count ? $" ({count})" : string.Empty)}"
+            ? $"for item in {descriptor.Collection}{LoopCountTag(descriptor, detail)}"
             : Consultologist.Web.Services.Provenance.RecordFlow.IsBranching(descriptor)
                 // v27 (#1236, storage 9): an if/case inside a loop decides per item — the item rows carry the branches.
                 ? Consultologist.Web.Services.Provenance.RecordFlow.IsInner(descriptor, detail.Nodes)

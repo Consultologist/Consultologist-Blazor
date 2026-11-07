@@ -173,7 +173,11 @@ public static class RunDagDiagram
                 var collection = flow.Collection ?? string.Empty;
                 var retNode = RetIdOf(flow) is { } retId && nodesById.TryGetValue(retId, out var ret) ? ret : bodies.FirstOrDefault();
                 var (doneItems, totalItems) = retNode is null ? (0, flow.Count ?? 0) : ItemTally(retNode, outputs, detail.Collections, nodes);
-                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({doneItems}/{totalItems})\"]\n"));
+                // v29 (#1303): a node's list not yet known is said so, never "(0/0)".
+                var tally = LoopCount.IsUnknown(flow)
+                    ? LoopCount.Describe(detail.Status is "Completed" or "Failed" or "Cancelled")
+                    : $"{doneItems}/{totalItems}";
+                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({tally})\"]\n"));
                 foreach (var bodyNode in bodies)
                 {
                     // v27 (#1236, record storage 9): an if/case inside the loop is a subgraph of its own, one level deeper.
