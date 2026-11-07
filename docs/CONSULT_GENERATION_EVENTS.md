@@ -119,6 +119,7 @@ The `/events` endpoint emits these server-sent event names:
 - `block-completed`: one completed block with `JobId`, `BlockId`, and generated `Text`.
 - `block-failed`: one failed block with `JobId`, `BlockId`, and `Error`.
 - `block-skipped` (v27, #1235): one block skipped by condition — an `if`/`case` inside a loop took no branch for the item — with `JobId`, `BlockId`, and `Reason` (the condition's text, never a value); counted among the completed blocks, no text.
+- `count-resolved` (v29, #1303): a loop over a node's value settled — `JobId`, `LoopId`, its `Count`, the job's `Total` now, and `Pending` (loops still counting; the total is a floor while it is above zero). Keyed `count-resolved:{loopId}`, one per loop; emitted for a failed job's settled loops too.
 - `heartbeat`: stream keepalive with `JobId` and current `Status`.
 - `done`: final public `ConsultGenerationJobResponse`, the same way (nulls omitted, `HeldInputs` emptied).
 - `error`: stream-level failure with `JobId` and `Error`.
@@ -129,4 +130,4 @@ the event store for jobs that ran before milestones 3–4; the client ignores th
 
 Semantic events include persisted `id:` values in the form `{jobId}:{sequence:D12}`. Heartbeat events are not persisted and do not advance the semantic event sequence. #1051: when the store refuses a response's events (a payload past what a row holds, storage down) the stream still sends them, **without `id:`** — they cannot be resumed by `Last-Event-ID` — and always sends `done`; the client treats such a stream exactly as a live one.
 
-The Blazor page treats `snapshot`, `node-completed`, `item-step`, `block-completed`, `block-failed`, `block-skipped` (v27, #1236), and `done` as live UI update events. It falls back to polling `GET /api/ConsultGenerationJobs/{jobId}` when stream setup fails, the stream times out, the stream ends before `done`, event handling fails, or the server emits `error`.
+The Blazor page treats `snapshot`, `node-completed`, `item-step`, `block-completed`, `block-failed`, `block-skipped` (v27, #1236), `count-resolved` (v29, #1303), and `done` as live UI update events. It falls back to polling `GET /api/ConsultGenerationJobs/{jobId}` when stream setup fails, the stream times out, the stream ends before `done`, event handling fails, or the server emits `error`.

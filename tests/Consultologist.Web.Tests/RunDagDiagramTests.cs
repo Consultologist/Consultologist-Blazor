@@ -416,4 +416,21 @@ public class RunDagDiagramTests
             Assert.True(line.Count(c => c == '"') % 2 == 0 && !line.Contains("\"\"", StringComparison.Ordinal) || line.Contains("-->", StringComparison.Ordinal), line);
         }
     }
+
+    [Fact]
+    public void ALoopOverANodesValue_NotYetSettled_SaysCounting_NotZeroOfZero()
+    {
+        // v29 (#1303): the count is not yet known — never "(0/0)".
+        var diagram = RunDagDiagram.Build(Job(
+            nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("find_problems", "Find problems", Format: "problem_list", Producer: "custom", Prompt: "prompts/find_problems.md"),
+                new("problems", "Problems", Kind: "for", Collection: "node.find_problems.value.problems", Body: new[] { "draft_problem" }, Ret: "node.draft_problem"),
+                new("draft_problem", "Draft problem", Format: "prose", Producer: "attested", Prompt: "prompts/draft_problem.md", In: "problems"),
+            },
+            outputs: new Dictionary<string, ConsultGenerationNodeStatus> { ["find_problems"] = Row("find_problems", "Running") }));
+
+        Assert.Contains("problems: per node.find_problems.value.problems item (counting…)", diagram);
+        Assert.DoesNotContain("item (0/0)", diagram);
+    }
 }

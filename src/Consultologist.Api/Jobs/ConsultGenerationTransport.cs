@@ -2178,6 +2178,21 @@ public sealed class ConsultGenerationJobs
                 new ConsultGenerationJobBlockSkippedEvent(response.JobId, skippedSection.Key, skippedSection.Value));
         }
 
+        // v29 (#1303, design § 1.3): a loop over a node's value settled — its count,
+        // the job's new total and the loops still counting. One per loop: the store
+        // keeps the first candidate for a key, so a resumed stream replays it once.
+        // Before the terminal branch, so a failed job's settled loops still say so.
+        foreach (var loop in (response.Nodes ?? new List<ConsultNodeDescriptor>())
+            .Where(node => node.ResolvedAtUtc is not null && node.Count is not null)
+            .OrderBy(node => node.Id, StringComparer.Ordinal))
+        {
+            AddEventCandidate(
+                candidates,
+                ConsultGenerationCountResolvedEvent.EventName,
+                $"{ConsultGenerationCountResolvedEvent.EventName}:{loop.Id}",
+                new ConsultGenerationCountResolvedEvent(response.JobId, loop.Id, loop.Count!.Value, response.TotalBlockCount, response.UnresolvedLoops?.Count ?? 0));
+        }
+
         if (IsTerminalJobStatus(response.Status))
         {
             if (response.Status == ConsultGenerationJobStatuses.Failed)
@@ -2524,6 +2539,21 @@ public sealed record ConsultGenerationJobBlockFailedEvent(
     string Error);
 
 /// <summary>v27 (#1235): a block skipped by condition — no text; the reason is the condition's text.</summary>
+/// <summary>
+/// v29 (#1303, design § 1.3): a loop over a node's value settled — its count, the
+/// job's total now, and how many loops are still counting (the total is a floor
+/// while that is above zero).
+/// </summary>
+public sealed record ConsultGenerationCountResolvedEvent(
+    string JobId,
+    string LoopId,
+    int Count,
+    int Total,
+    int Pending)
+{
+    public const string EventName = "count-resolved";
+}
+
 public sealed record ConsultGenerationJobBlockSkippedEvent(
     string JobId,
     string BlockId,

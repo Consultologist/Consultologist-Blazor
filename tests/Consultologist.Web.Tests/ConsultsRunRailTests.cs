@@ -446,4 +446,70 @@ public class ConsultsRunRailTests : ClientRenderTestContext
         var route = Assert.Single(groups, g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Route");
         Assert.Equal(new[] { "One", "Two", "Three" }, route.QuerySelectorAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()));
     }
+
+    // ----- v29 (#1303): a loop over a node's value whose count is not yet known -----
+
+    private void WithJobCounting(string status, IReadOnlyList<string>? unresolved)
+    {
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId,
+            "user-1",
+            status,
+            TotalBlockCount: 1,
+            CompletedBlockCount: 0,
+            FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(),
+            FailedBlocks: new Dictionary<string, string>(),
+            Success: status != "Failed",
+            Nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("problems", "Problems", Kind: "for", Collection: "node.find_problems.value.problems", Body: new[] { "draft_problem" }, Ret: "node.draft_problem"),
+                new("draft_problem", "Drafting", In: "problems", Prompt: "prompts/draft_problem.md"),
+            },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>(StringComparer.Ordinal),
+            UnresolvedLoops: unresolved));
+    }
+
+    [Fact]
+    public void ALoopStillCounting_SaysSo_NeverThePackagesBlocks()
+    {
+        WithTwoNodePackage();
+        WithJobCounting("Failed", new[] { "problems" });
+
+        var page = RenderRail();
+        var items = page.FindAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        // The job ended with the count unknown: never known, never the pin's "History of Present Illness".
+        Assert.Contains("count never known", items);
+        Assert.DoesNotContain("History of Present Illness", items);
+        // The Done row's total is a floor, not a final number.
+        Assert.Contains(page.FindAll(".node-row__count"), count => count.TextContent.Contains("1+ sections", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ASettledLoop_DrawsItsItems_AndAPlainTotal()
+    {
+        WithTwoNodePackage();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed",
+            TotalBlockCount: 2, CompletedBlockCount: 2, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(), FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            Nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("problems", "Problems", Kind: "for", Collection: "node.find_problems.value.problems", Body: new[] { "draft_problem" }, Ret: "node.draft_problem", Count: 2),
+                new("draft_problem", "Drafting", In: "problems", Prompt: "prompts/draft_problem.md"),
+            },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>(StringComparer.Ordinal),
+            Collections: new[]
+            {
+                new ConsultCollectionRoster("node.find_problems.value.problems", new[] { new ConsultCollectionItem("1", "Problems 1"), new ConsultCollectionItem("2", "Problems 2") })
+            }));
+
+        var page = RenderRail();
+        var items = page.FindAll(".node-row--item .node-row__label").Select(row => row.TextContent.Trim()).ToList();
+
+        Assert.Equal(new[] { "Problems 1", "Problems 2" }, items);
+        Assert.DoesNotContain(page.FindAll(".node-row__count"), count => count.TextContent.Contains('+'));
+    }
 }
