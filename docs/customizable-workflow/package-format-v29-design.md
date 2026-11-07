@@ -1,7 +1,10 @@
 # specVersion 29 — the dynamic half: a count the run discovers
 
-> **Status:** design, **revision 1** (2026-11-05). Milestone 32 (#1277). Decided with the package
-> author; not yet implemented. Design-level, not a step-by-step plan — the Milestone 32 issues are
+> **Status:** design, **revision 2** (2026-11-07). Milestone 32 (#1277). Decided with the package
+> author; being implemented (layer A #1301). Revision 2 (planning layer A): a loop's source is a
+> field path, because a format's value is an object (§ 2.1); a `concept_list`'s field iterates as
+> any array field does (§ 12); the below-29 gate sentences are said at the bump (§ 6); § 6 lists
+> the sentences as built. Design-level, not a step-by-step plan — the Milestone 32 issues are
 > its sections and take their decisions from it; where a comment on one of them disagrees with this
 > text, this text is the decision and names what it supersedes. The normative text follows in the
 > package-format registry as `package-format-v29.md` once layer A lands (§ 11).
@@ -136,15 +139,18 @@ package is below 29.
 ### 2.1 The shape
 
 ```json
-{ "id": "problems", "for": "item in node.find_problems.value", "nodes": ["draft_problem"], "ret": "draft_problem" }
+{ "id": "problems", "for": "item in node.find_problems.value.problems", "nodes": ["draft_problem"], "ret": "node.draft_problem" }
 ```
 
-- The source is **`node.<id>.value`**, or a field path under it (`node.extract.value.problems`).
+- The source is a **field path under `node.<id>.value`** (`node.find_problems.value.problems`).
+  *(Revised in revision 2: a format's value is always an object at the top —
+  `WorkflowFormatValidator` requires it — so the bare `node.<id>.value` is refused as "an object,
+  not an array" and the path is how a loop reaches its list.)*
 - The node is a **plain node outside any loop**, upstream of the loop (the reference is the edge;
   `WorkflowDerivedEdges` draws it as it draws any read).
 - Its format types the value at that path as an **array** (`type: "array"`, `items` an object or
-  a string schema — the format catalogue's JSON schema subset). A `concept_list` is not iterable at
-  29 (§ 12).
+  a string schema — the format catalogue's JSON schema subset). A `concept_list`'s `concepts` field
+  is iterable like any other array field *(revision 2, decided 2026-11-07; § 12)*.
 - The loop is one level deep, as every loop is at 29.
 
 ### 2.2 The items
@@ -254,29 +260,48 @@ lesson).
 
 ## 6. The validator's sentences (new at 29)
 
-Proposed; the subjects follow the 26 idiom.
+As built in layer A (#1301, 2026-11-07); the subjects follow the 26 idiom (a folder item's is
+*"Snippet folder 'sections' item 'plan' if"*).
 
-**Narrowed.** *"Loop 'x' iterates node.y.value; a loop over a node's value waits for the scheduler
-redesign — iterate an input or a snippet folder."* is said **below 29** only, as the gate:
-*"Loop 'problems' iterates node.find_problems.value, which requires specVersion 29."* The nesting
-sentence (`WorkflowFlowNodes.cs:294`) stays at 29.
+**Below 29, at the bump.** Today 26–28 say *"Loop 'x' iterates node.y.value; a loop over a node's
+value waits for the scheduler redesign — iterate an input or a snippet folder."* and a folder
+item's node read gets *"…a folder item's if reads inputs and item.id only, so the folder's size is
+known at job start…"*. The published conformance vectors pin both (`ConformanceSuiteTests`
+replays them), so layer A leaves them; **the bump (#1307)** narrows them to the gates —
+*"Loop 'problems' iterates node.find_problems.value.problems, which requires specVersion 29."* and
+*"Snippet folder 'sections' item 'plan' if reads node.scope.value, which requires specVersion 29."*
+— and re-exports the two vectors. The nesting sentence (`WorkflowFlowNodes.cs:294`) stays at 29.
 
-**New at 29:**
-- *"Loop 'problems' iterates node.find_problems.value; find_problems returns prose — a loop
-  iterates a value its format types as an array."*
-- *"Loop 'problems' iterates node.find_problems.value.summary, which find_problems's format
-  types as a string, not an array."*
-- *"Loop 'problems' iterates node.draft_problem.value; draft_problem runs inside loop 'problems'
-  — a loop iterates a node outside every loop."* (and the same for any loop's body)
-- *"Loop 'problems' iterates node.find_problems.value, and find_problems reads node.problems — a
-  loop's source runs before the loop."* (the cycle, said by name before the generic cycle sentence)
-- *"Folder 'sections' item 'billing' if reads node.scope.content; a folder item's if reads a
+**New at 29** (`WorkflowFlowNodes`, `WorkflowPackageValidator.V29.cs`):
+- *"Loop 'problems' iterates node.find_problems.value, which find_problems's format types as an
+  object, not an array."* — and the same for a field typed as a text, a number, a boolean.
+- *"Loop 'problems' iterates node.find_problems.value.issues; find_problems's format does not
+  declare 'issues' under node.find_problems.value (fields: problems, summary)."*
+- *"Loop 'problems' iterates node.find_problems.value.summary.x; node.find_problems.value.summary
+  is a text, not an object."*
+- *"Loop 'problems' iterates node.assessment.value.x; assessment returns prose — a loop iterates a
+  value its format types as an array."*
+- *"Loop 'problems' iterates node.find_problems.content; a loop iterates a node's value —
+  node.find_problems.value.<field>."*
+- *"Loop 'problems' iterates node.nowhere.value.x; the package declares no node 'nowhere'."*
+- *"Loop 'problems' iterates node.sections.value; 'sections' is a flow node — a loop iterates a
+  plain node's value."*
+- *"Loop 'problems' iterates node.section_notes.value.x; section_notes runs inside loop
+  'sections' — a loop iterates a node outside every loop."* (and *"…runs inside node 'x' — a loop
+  iterates a node outside every flow node."* for a branch node)
+- *"Loop 'problems' iterates node.find_problems.value.problems, and find_problems reads
+  node.problems — a loop's source runs before the loop."* (said by name before the generic cycle
+  sentence; the loop and every body node wait on the source)
+- A body reading a field the element does not carry gets the walker's sentence (*"…reads field
+  'stage' of 'item.value', which it does not declare (fields: name, severity)."*); a `case` on a
+  non-enum field of the element, *"…switches on item.value.name, which is a text; …"*.
+- *"Snippet folder 'sections' item 'plan' if reads node.scope.content; a folder item's if reads a
   node's .value (a scalar), inputs and item.id."*
-- *"Folder 'sections' item 'billing' if reads node.sections; a condition decides before the loop
-  runs — read a scalar node."*
-- Below 29: *"Folder 'sections' item 'billing' if reads node.scope.value, which requires
-  specVersion 29."* (the 28 sentence at `WorkflowPackageValidator.V26.cs:797` is kept for the
-  other reads).
+- *"Snippet folder 'sections' item 'plan' if reads node.sections, which loops; a condition decides
+  before the loop runs — read a scalar node."* (a node inside a loop likewise)
+- *"Snippet folder 'sections' item 'plan' if reads run.date; a folder item's if reads inputs,
+  item.id and a scalar node's .value."* (snippet, macro, item members other than id, run and
+  profile facts)
 
 **No warnings are added at 29.** That a loop's count is known only when its source completes is
 a run fact the Create page says (§ 1.4), not something wrong with the package.
@@ -363,8 +388,9 @@ One layer per PR, each green on its own; each gets its own issue when it starts.
   hashed like any node's output; its set of reductions is open.
 
 **Not at 29:**
-- **Iterating a `concept_list`** — one item per concept; with the format catalogue's concept
-  shape settled, a later bump.
+- ~~**Iterating a `concept_list`**~~ — *lifted in revision 2 (2026-11-07)*: with the source a
+  field path (§ 2.1), `node.<id>.value.concepts` is an array field like any other and iterates at
+  29, one item per concept, `item.value.<field>` typed from the concept schema.
 - **Naming an item by its field (#1252)** — a declared `labelField` or a `title` convention;
   decided later, for array inputs and node lists together. Until then both are named label plus
   position.
