@@ -176,4 +176,41 @@ public class ConsultGenerationTransportTests
         Assert.Equal(1, second.EventCount);
         Assert.Equal(4, second.HighestEmittedSequence);
     }
+
+    // ----- v29 (#1303): count-resolved --------------------------------------------------
+
+    private static ConsultGenerationJobResponse WithLoops(string status, params ConsultNodeDescriptor[] loops) =>
+        Response(status) with
+        {
+            TotalBlockCount = 3,
+            Nodes = loops,
+            UnresolvedLoops = loops.Where(loop => loop.Count is null).Select(loop => loop.Id).ToList() is { Count: > 0 } pending ? pending : null,
+        };
+
+    private static ConsultNodeDescriptor Loop(string id, int? count) =>
+        new(id, id, null, Kind: "for", Collection: $"node.find_{id}.value.{id}", Count: count,
+            ResolvedAtUtc: count is null ? null : new DateTimeOffset(2026, 11, 7, 12, 0, 0, TimeSpan.Zero));
+
+    [Fact]
+    public void ASettledLoop_IsOneCountResolvedEvent_WithItsCountTheTotalAndThePending()
+    {
+        var response = WithLoops(ConsultGenerationJobStatuses.Running, Loop("problems", 2), Loop("concepts", null));
+
+        var candidate = Candidate(response, "count-resolved:problems");
+
+        Assert.Equal("count-resolved", candidate.EventType);
+        Assert.Contains("\"LoopId\":\"problems\"", candidate.PayloadJson);
+        Assert.Contains("\"Count\":2", candidate.PayloadJson);
+        Assert.Contains("\"Total\":3", candidate.PayloadJson);
+        Assert.Contains("\"Pending\":1", candidate.PayloadJson);
+        Assert.DoesNotContain(ConsultGenerationJobs.CreateSemanticEventCandidates(response), c => c.EventKey == "count-resolved:concepts");
+    }
+
+    [Fact]
+    public void AFailedJob_StillSaysWhichLoopsSettled()
+    {
+        var response = WithLoops(ConsultGenerationJobStatuses.Failed, Loop("problems", 0));
+
+        Assert.Contains(ConsultGenerationJobs.CreateSemanticEventCandidates(response), c => c.EventKey == "count-resolved:problems");
+    }
 }

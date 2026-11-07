@@ -1753,6 +1753,34 @@ public class HistoryDetailTests : ClientRenderTestContext
         Assert.Contains("per data:standards item (1)", page.Find(".node-group summary .node-row__contract").TextContent);
     }
 
+
+    [Theory]
+    [InlineData("Failed", null, null, "· for item in node.find_problems.value.problems (count never known)")]
+    [InlineData("Completed", 0, "no items: node.find_problems.value.problems was empty", "· for item in node.find_problems.value.problems (0 — no items: node.find_problems.value.problems was empty)")]
+    [InlineData("Completed", 2, null, "· for item in node.find_problems.value.problems (2)")]
+    public void ALoopOverANodesValue_SaysItsCount_OrWhyThereIsNone(string status, int? count, string? reason, string expected)
+    {
+        // v29 (#1303): a count nobody knows is said so, never "0"; an empty list says why.
+        WithEngine();
+        WithJob(6,
+            packageSpecVersion: 29,
+            schemaVersion: 9,
+            status: status,
+            nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("find_problems", "Find problems", Format: "problem_list", Producer: "custom", Prompt: "prompts/find_problems.md"),
+                new("problems", "Problems", Kind: "for", Collection: "node.find_problems.value.problems", Body: new[] { "draft_problem" }, Ret: "node.draft_problem", Count: count, Reason: reason),
+                new("draft_problem", "Draft problem", Format: "prose", Producer: "attested", Prompt: "prompts/draft_problem.md", In: "problems"),
+            },
+            nodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["find_problems"] = new("find_problems", "Find problems", status == "Failed" ? "Failed" : "Completed", "i", "o", DateTimeOffset.UtcNow, null),
+                ["problems"] = new("problems", "Problems", status == "Failed" ? "Pending" : "Completed", null, null, null, null),
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        Assert.Contains(expected, page.FindAll(".node-row__flow").Select(f => f.TextContent.Trim()));
+    }
 }
 
 /// <summary>
