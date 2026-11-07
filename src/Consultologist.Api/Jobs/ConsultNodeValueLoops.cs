@@ -78,6 +78,14 @@ internal static class ConsultNodeValueLoops
             return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loopLabel} could not read its list: {walked} is not a list.");
         }
 
+        // The same ceiling as an array input's elements: each item runs the body's
+        // model calls, so a reply listing thousands would fan without bound. Too
+        // many fails the job closed, by name — never a silent truncation.
+        if (list.Count > ConsultGenerationJobs.MaxArrayElements)
+        {
+            return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loopLabel} could not run: {walked} has {list.Count} items, more than {ConsultGenerationJobs.MaxArrayElements}.");
+        }
+
         if (list.Count == 0)
         {
             return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), $"no items: {walked} was empty", null);

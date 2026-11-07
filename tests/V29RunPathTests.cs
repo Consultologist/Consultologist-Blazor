@@ -71,6 +71,16 @@ public class V29RunPathTests
     }
 
     [Fact]
+    public void AListLongerThanAnArrayInputMayBe_FailsByName_NotTruncated()
+    {
+        var many = string.Join(", ", Enumerable.Range(1, ConsultGenerationJobs.MaxArrayElements + 1).Select(i => $"\"p{i}\""));
+        var resolution = ConsultNodeValueLoops.ItemsOf(Output($$"""{ "problems": [ {{many}} ] }"""), Collection, "Problems");
+
+        Assert.Empty(resolution.Items);
+        Assert.Equal($"Problems could not run: node.find_problems.value.problems has {ConsultGenerationJobs.MaxArrayElements + 1} items, more than {ConsultGenerationJobs.MaxArrayElements}.", resolution.Failure);
+    }
+
+    [Fact]
     public void TheSource_IsReadFromTheCollection()
     {
         var source = ConsultNodeValueLoops.SourceOf(Collection)!.Value;
