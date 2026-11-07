@@ -115,4 +115,63 @@ public class TemplatesV29LoopTests : ClientRenderTestContext
         Select(page, "node:sections");
         Assert.DoesNotContain(Options(page, "fluent-select.loop-collection"), o => o.StartsWith("node.", StringComparison.Ordinal));
     }
+
+    // ---- C2: a folder item's if reading a node (design § 3.1) -----------------------------
+
+    private static IReadOnlyList<string> ItemOperands(IRenderedComponent<Templates> page)
+    {
+        page.Find(".condition-field__resting").Click();
+        return page.Find("fluent-select[aria-label='Condition operand for sections item hpi']")
+            .QuerySelectorAll("fluent-option").Select(o => o.GetAttribute("value") ?? string.Empty).ToList();
+    }
+
+    [Fact]
+    public void At29_AFolderItemsIf_OffersAScalarNode_AndWritesItsValueRead()
+    {
+        CapturePublish();
+        var page = RenderEditor(EditorFixtures.V29());
+        Select(page, "snippets/sections/hpi.md");
+
+        Assert.Contains("node:scope", ItemOperands(page));
+        page.Find("fluent-select[aria-label='Condition operand for sections item hpi']").Change("node:scope");
+        page.Find("fluent-select[aria-label='Condition value for sections item hpi']").Change("in_scope");
+        page.FindAll("fluent-button").First(button => button.TextContent.Contains("Publish")).Click();
+
+        Assert.True(sent is not null, string.Join(" | ", page.FindAll(".fluent-messagebar-message li").Select(e => e.TextContent.Trim())));
+        Assert.Contains("\"if\": \"node.scope.value == \\\"in_scope\\\"\"", sent!.Files["snippets/sections/hpi.md"]);
+        var manifest = PF.WorkflowPackageManifestJson.Read(sent.Manifest.GetRawText(), "sent", Accepting29);
+        Assert.Empty(PF.WorkflowPackageValidator.Validate(manifest, sent.Files.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
+            new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog, Accepting29).Errors);
+    }
+
+    [Fact]
+    public void At28_AFolderItemsIf_StillReadsInputsOnly()
+    {
+        var page = RenderEditor(EditorFixtures.V28());
+        Select(page, "snippets/sections/hpi.md");
+
+        Assert.DoesNotContain(ItemOperands(page), o => o.StartsWith("node:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void TheGatesNode_EarnsAPreviewPick_AndJudgesTheItem()
+    {
+        var fixture = EditorFixtures.V29();
+        var files = new Dictionary<string, string>(fixture.Files, StringComparer.Ordinal)
+        {
+            ["snippets/sections/hpi.md"] = "{\n  \"label\": \"HPI\",\n  \"if\": \"node.scope.value == \\\"in_scope\\\"\"\n}\nHistory: {{ input.notes }}",
+        };
+        var page = RenderEditor(fixture with { Files = files });
+        Select(page, "node:assessment");
+
+        // The gate reads node.scope, which the text itself never reads: it still earns a pick.
+        var pick = page.Find("fluent-select[aria-label='Preview with node.scope.value']");
+        var hpiGate = () => page.FindAll(".rendered-preview__gate").Single(g => g.GetAttribute("data-gate-key") == "sections/hpi");
+        Assert.Contains("rendered-preview__gate--waiting", hpiGate().ClassList);
+
+        pick.Change("out_of_scope");
+
+        Assert.DoesNotContain("rendered-preview__gate--waiting", hpiGate().ClassList);
+        Assert.Contains("node.scope.value == \"in_scope\"", hpiGate().TextContent);
+    }
 }
