@@ -5437,8 +5437,10 @@
         // paths dropped (WorkflowPackageMigration27To28); the 27 raise's notices, if
         // it ran, are said under "Through 27:".
         string? through27 = null;
+        string? through28 = null;
         PF.Migration26Result result;
-        if (target >= 28)
+        // #1306: a 28 package is not rewritten again — the 28 rung runs only below it.
+        if (target >= 28 && EffectiveSpecVersion < 28)
         {
             through27 = raised is null ? null : string.Join(" ", raised.Notices);
             result = PF.WorkflowPackageMigration27To28.Migrate(manifestJson, files);
@@ -5450,7 +5452,23 @@
         }
         else
         {
-            result = raised!;
+            result = raised ?? new PF.Migration26Result(manifestJson, new Dictionary<string, string>(files, StringComparer.Ordinal), Array.Empty<string>(), Array.Empty<string>());
+        }
+
+        // v29 (#1306, design § 8, § 9): the 29 rung — a raise; 29 permits what 28
+        // refused and rewrites nothing. The 28 rewrite's notices, if it ran, are
+        // said under "Through 28:".
+        if (target >= 29)
+        {
+            through28 = EffectiveSpecVersion < 28 ? string.Join(" ", result.Notices) : null;
+            var raised29 = PF.WorkflowPackageVersionRaise.To(result.ManifestJson, result.Files, 29);
+            if (!raised29.Succeeded)
+            {
+                Refuse(29, raised29.Refusals);
+                return;
+            }
+
+            result = raised29 with { Notices = new[] { "Through 29: nothing changes in this package; loops may now iterate a node's value." } };
         }
 
         var migrated = new WorkflowPackageContentResponse(
@@ -5475,6 +5493,7 @@
             + (through25 is null ? string.Empty : $"Through 25: {through25} ")
             + (through26 is null ? string.Empty : $"Through 26: {through26} ")
             + (through27 is null ? string.Empty : $"Through 27: {through27} ")
+            + (through28 is null ? string.Empty : $"Through 28: {through28} ")
             + string.Join(" ", result.Notices);
         upgradeRefusal = null;
         selectedKey = GraphKey;
