@@ -116,6 +116,22 @@ public static class WorkflowDerivedEdges
         /// <summary>#1037: every <c>when</c> walked — the node's own, each instance's, each deliverable's and its instances', each folder item's.</summary>
         public IReadOnlyList<WalkedCondition> Conditions { get; }
 
+        /// <summary>
+        /// v29 (#1304, design § 3.2): the folder items whose <c>if</c> reads a node —
+        /// folder → item id → the nodes it reads. Such an item is kept at start and
+        /// decided once those nodes complete; every other item's gate reads inputs
+        /// and item.id only and is judged at start, as at 28. Empty below 29.
+        /// </summary>
+        public IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> NodeGatedItems() =>
+            Conditions
+                .Where(c => c.Site == ConditionSite.FolderItem && c.Walk.References.Nodes.Count > 0)
+                .Select(c => (Folder: c.OwnerId[..c.OwnerId.IndexOf('/')], Item: c.OwnerId[(c.OwnerId.IndexOf('/') + 1)..], Nodes: (IReadOnlyList<string>)c.Walk.References.Nodes.Keys.Order(StringComparer.Ordinal).ToList()))
+                .GroupBy(gate => gate.Folder, StringComparer.Ordinal)
+                .ToDictionary(
+                    group => group.Key,
+                    group => (IReadOnlyDictionary<string, IReadOnlyList<string>>)group.ToDictionary(gate => gate.Item, gate => gate.Nodes, StringComparer.Ordinal),
+                    StringComparer.Ordinal);
+
         /// <summary>The conditions gating one thing: the node's own and its instances', or the deliverable's and its instances'.</summary>
         public IEnumerable<WalkedCondition> ConditionsOf(string ownerId, params ConditionSite[] sites) =>
             Conditions.Where(c => c.OwnerId == ownerId && sites.Contains(c.Site));

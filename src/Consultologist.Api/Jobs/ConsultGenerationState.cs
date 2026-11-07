@@ -1210,7 +1210,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // v29 (#1303, design § 1.1): the loops over a node's value, each resolved
     // when its source completes. Null below 29 and on a job with none — a 28
     // job in flight binds null and runs as it did. Appended last, same rule.
-    IReadOnlyList<string>? UnresolvedLoops = null);
+    IReadOnlyList<string>? UnresolvedLoops = null,
+    // v29 (#1304, design § 3.2): the folder items whose if reads a node — folder
+    // → item → those nodes; each is decided once they complete (decide-flow-item,
+    // GateFolder). Null below 29 and when none. Appended last, same rule.
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>? ItemGates = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
