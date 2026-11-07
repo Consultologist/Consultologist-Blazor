@@ -55,7 +55,8 @@ public class HistoryDetailTests : ClientRenderTestContext
         string? rerunOf = null,
         string? rerunVerdict = null,
         string? rerunDivergence = null,
-        ConsultTokenUsage? tokens = null)
+        ConsultTokenUsage? tokens = null,
+        IReadOnlyList<ConsultHeldDocumentResponse>? held = null)
     {
         // Terminal status only: a non-terminal row would start the page's real
         // 5-second polling loop.
@@ -114,7 +115,8 @@ public class HistoryDetailTests : ClientRenderTestContext
             RerunOf: rerunOf,
             RerunVerdict: rerunVerdict,
             RerunDivergence: rerunDivergence,
-            Tokens: tokens));
+            Tokens: tokens,
+            HeldDocuments: held));
     }
 
     // ----- #514: where the job ran, what ran it, how it was initiated -----
@@ -1780,6 +1782,24 @@ public class HistoryDetailTests : ClientRenderTestContext
         var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
 
         Assert.Contains(expected, page.FindAll(".node-row__flow").Select(f => f.TextContent.Trim()));
+    }
+
+    [Fact]
+    public void AHeldDeliverable_IsNamed_WithWhyItWasHeld()
+    {
+        // v29 (#1305): composed, never released — a named state with its reason, never an absence.
+        WithEngine();
+        WithJob(6, packageSpecVersion: 29, status: "Failed",
+            held: new[]
+            {
+                new ConsultHeldDocumentResponse("consult", "Consultation note", 0, "abc123", new[] { "node.assessment" },
+                    DateTimeOffset.UtcNow, "its check 'coverage' never settled")
+            });
+        var page = Render<History>(parameters => parameters.Add(p => p.JobId, JobId));
+
+        var row = page.Find(".document-held").TextContent;
+        Assert.Contains("not produced — composed, held: its check 'coverage' never settled", row);
+        Assert.Contains("abc123", row);
     }
 }
 
