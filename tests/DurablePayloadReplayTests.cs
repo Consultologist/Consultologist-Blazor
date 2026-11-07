@@ -108,7 +108,7 @@ public class DurablePayloadReplayTests
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null,\"InputFormFiles\":null}", StringComparison.Ordinal)
             // #1154: and Sources, appended last at 26.
             .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null,\"Reads\":null,\"Sources\":null,\"DeliverableReads\":null}", StringComparison.Ordinal);
-        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null,\"UnresolvedLoops\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null,\"UnresolvedLoops\":null,\"ItemGates\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
         Assert.Null(input.MacroTexts);
@@ -159,7 +159,7 @@ public class DurablePayloadReplayTests
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null,\"InputFormFiles\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal);
-        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null,\"UnresolvedLoops\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null,\"UnresolvedLoops\":null,\"ItemGates\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);
@@ -222,12 +222,31 @@ public class DurablePayloadReplayTests
     {
         var current = JsonSerializer.Serialize(
             new ConsultGenerationOrchestrationInput(new ConsultGenerationRequest("x"), "user-1"), Durable);
-        var stored = current.Replace(",\"UnresolvedLoops\":null}", "}", StringComparison.Ordinal);
+        // v29 (#1303, #1304): a 28 job's stored input has neither trailing slot.
+        var stored = current.Replace(",\"UnresolvedLoops\":null,\"ItemGates\":null}", "}", StringComparison.Ordinal);
         Assert.NotEqual(current, stored);
 
         var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
 
         Assert.Null(input.UnresolvedLoops);
+        Assert.Null(input.ItemGates);
+        Assert.Equal(current, JsonSerializer.Serialize(input, Durable));
+    }
+
+    [Fact]
+    public void A28DecisionInput_WithoutGateFolder_BindsNull()
+    {
+        // v29 (#1304): a 27/28 job's stored per-item decision input, read by the 29 code.
+        var current = JsonSerializer.Serialize(new ConsultDecideFlowItemInput(
+            "general@v1", "triage", "snippet.sections",
+            new Dictionary<string, string> { ["id"] = "hpi" }, null, new Dictionary<string, string>(), null,
+            new TemplateRunFacts("2026-11-07", "abc", "general@v1", "api.example.test"), new TemplateProfileFacts("Dr", "Dr")), Durable);
+        var stored = current.Replace(",\"GateFolder\":null}", "}", StringComparison.Ordinal);
+        Assert.NotEqual(current, stored);
+
+        var input = JsonSerializer.Deserialize<ConsultDecideFlowItemInput>(stored, Durable)!;
+
+        Assert.Null(input.GateFolder);
         Assert.Equal(current, JsonSerializer.Serialize(input, Durable));
     }
 

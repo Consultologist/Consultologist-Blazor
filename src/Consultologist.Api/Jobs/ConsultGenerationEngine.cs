@@ -17,6 +17,9 @@ public sealed class ConsultGenerationOrchestrator
     // search) rarely repeats. Configuration errors (InvalidOperationException from
     // AgentSectionGenerator) are excluded so they fail fast instead of burning retries.
     // See docs/SNOMED_TOOL_FAILURES.md.
+    // v29 (#1304): the decision key a folder item's gate rides under (gate:<folder>), never a node id.
+    private const string ItemGatePrefix = "gate:";
+
     private static readonly TaskOptions AgentActivityRetryOptions = TaskOptions.FromRetryPolicy(
         new RetryPolicy(
             maxNumberOfAttempts: 3,
@@ -183,6 +186,12 @@ public sealed class ConsultGenerationOrchestrator
         // tasks in flight, and the skipped set widened by instance key.
         var inner = new ConsultInnerFlows(nodesById);
         var pendingDecisions = new Dictionary<Task<ConsultFlowItemDecision>, (string FlowId, string ItemId)>();
+        // v29 (#1304, design § 3.2): the folder items whose if reads a node — kept at
+        // start, each decided once the nodes it reads complete (a decision keyed
+        // gate:<folder>); held → it runs as any item, not held → skipped by condition.
+        var itemGates = input.ItemGates ?? new Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>(StringComparer.Ordinal);
+        var gateDecisions = new Dictionary<string, bool>(StringComparer.Ordinal); // "<folder>/<item>" → held
+        var gatesStarted = new HashSet<string>(StringComparer.Ordinal);
         IReadOnlySet<string> SkippedKeys() => inner.SkippedInstances.Count == 0
             ? skippedNodes
             : skippedNodes.Concat(inner.SkippedInstances).ToHashSet(StringComparer.Ordinal);
@@ -382,7 +391,7 @@ public sealed class ConsultGenerationOrchestrator
                         FormatHash: node.FormatHash,
                         Op: node.Op,
                         NodeTexts: ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs, SkippedKeys()),
-                        Folders: ConsultRenderPayload.FoldersFor(collections),
+                        Folders: RenderFolders(),
                         Item: item,
                         ForEach: node.ForEach,
                         Run: ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
@@ -446,6 +455,114 @@ public sealed class ConsultGenerationOrchestrator
         // v27 (#1235): one decision per (flow, item) — the item's scope: the
         // outputs its condition reads for the item, the effective inputs, the
         // settled folders, the facts; recorded once, read back on replay.
+        string GateKey(string folder, string itemId) => $"{folder}/{itemId}";
+
+        // v29 (#1304): an item gate whose nodes are known — decided or in flight —
+        // that this node reads; a reader of the folder (its body, or a template that
+        // reads it whole) carries the gate's nodes in its reads, so it waits here.
+        bool WaitsOnItemGate(ConsultNodeDescriptor node) =>
+            itemGates.Count > 0
+            && itemGates.Any(folder => folder.Value.Any(gate =>
+                !gateDecisions.ContainsKey(GateKey(folder.Key, gate.Key))
+                && gate.Value.Intersect(node.Reads ?? Array.Empty<string>(), StringComparer.Ordinal).Any()));
+
+        // v29 (#1304): the settled folders with every item a gate excluded taken out — what
+        // a render reads (an absent item is inert in a direct read, ConsultGatedScope).
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? RenderFolders()
+        {
+            var folders = ConsultRenderPayload.FoldersFor(collections);
+            if (folders is null || !gateDecisions.ContainsValue(false))
+            {
+                return folders;
+            }
+
+            return folders.ToDictionary(
+                pair => pair.Key,
+                pair => (IReadOnlyList<IReadOnlyDictionary<string, string>>)pair.Value
+                    .Where(item => gateDecisions.GetValueOrDefault(GateKey(pair.Key, item.GetValueOrDefault("id", string.Empty)), true))
+                    .ToList(),
+                StringComparer.Ordinal);
+        }
+
+        void StartItemGates()
+        {
+            foreach (var (folder, gates) in itemGates)
+            {
+                foreach (var (itemId, reads) in gates)
+                {
+                    var key = GateKey(folder, itemId);
+                    if (gatesStarted.Contains(key)
+                        || !reads.All(read => outputs.ContainsKey(read) || skippedNodes.Contains(read))
+                        || collections?.GetValueOrDefault(folder)?.FirstOrDefault(candidate => candidate.GetValueOrDefault("id") == itemId) is not { } item)
+                    {
+                        continue;
+                    }
+
+                    gatesStarted.Add(key);
+                    pendingDecisions[context.CallActivityAsync<ConsultFlowItemDecision>(
+                        ConsultGenerationActivityNames.DecideFlowItem,
+                        new ConsultDecideFlowItemInput(
+                            input.WorkflowPackage!,
+                            folder,
+                            WorkflowFanSources.SnippetPrefix + folder,
+                            item,
+                            new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
+                            reads.Where(outputs.ContainsKey).ToDictionary(read => read, read => outputs[read].Classification ?? outputs[read].RawOutput, StringComparer.Ordinal),
+                            ConsultRenderPayload.FoldersFor(collections),
+                            ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
+                            ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
+                            GateFolder: folder),
+                        AgentActivityRetryOptions)] = (ItemGatePrefix + folder, itemId);
+                }
+            }
+        }
+
+        // v29 (#1304, design § 3.2): what an item gate's decision settles. Held: the
+        // item runs as any item. Not held: in every loop over the folder the item is
+        // skipped by condition — each fanned node's instance settled with nothing
+        // (so the loop and the deliverable compose the present items, as 27's
+        // skipped item), the loop's row for the item with the reason, the block of
+        // every deliverable sourcing the loop — and later renders drop it.
+        async Task SettleItemGateAsync(string folder, string itemId, ConsultFlowItemDecision decision)
+        {
+            gateDecisions[GateKey(folder, itemId)] = !decision.Skipped;
+
+            if (!decision.Skipped)
+            {
+                return;
+            }
+
+            var reason = decision.Reason ?? "its if does not hold";
+            var name = collections?.GetValueOrDefault(folder)?.FirstOrDefault(candidate => candidate.GetValueOrDefault("id") == itemId) is { } item
+                ? WorkflowPackageBlocks.ItemName(item)
+                : itemId;
+
+            foreach (var fanned in nodes.Where(n => n.ForEach is not null && string.Equals(CollectionIdOf(n), folder, StringComparison.Ordinal)))
+            {
+                inner.SkippedInstances.Add(ConsultNodeScheduler.InstanceKey(fanned.Id, itemId));
+            }
+
+            foreach (var loop in nodes.Where(n => n.Kind == ConsultNodeFlows.For && n.Collection is { } c && string.Equals(WorkflowFanSources.CollectionIdOf(c), folder, StringComparison.Ordinal)))
+            {
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.MarkNodeItemSkipped),
+                    new ConsultGenerationNodeItemSkip(loop.Id, itemId, loop.Label, reason));
+
+                foreach (var deliverable in deliverables.Where(d => d.Sources?.Contains(loop.Id, StringComparer.Ordinal) == true))
+                {
+                    completedBlockCount++;
+
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.SkipBlock),
+                        new ConsultGenerationBlockSkip($"{deliverable.BlockPrefix}{loop.Id}:{itemId}", name, reason));
+                }
+            }
+
+            await MarkFullyCompletedChainNodesAsync();
+        }
+
         void StartDecision(ConsultNodeDescriptor flow, IReadOnlyDictionary<string, string> item)
         {
             started.Add(ConsultNodeScheduler.InstanceKey(flow.Id, item["id"]));
@@ -458,7 +575,7 @@ public sealed class ConsultGenerationOrchestrator
                     item,
                     new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
                     ConsultRenderPayload.NodeTextsFor(flow, item, nodesById, outputs, SkippedKeys()),
-                    ConsultRenderPayload.FoldersFor(collections),
+                    RenderFolders(),
                     ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
                     ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
                     ConsultRenderPayload.FlowRetsFor(flow, nodesById, ItemRets())),
@@ -467,6 +584,8 @@ public sealed class ConsultGenerationOrchestrator
 
         void StartReadyInstances()
         {
+            StartItemGates();
+
             foreach (var node in nodes)
             {
                 if (node.Aggregate != null)
@@ -491,7 +610,9 @@ public sealed class ConsultGenerationOrchestrator
                             var itemId = item["id"];
 
                             if (failedItems.Contains(FailedKey(node, itemId))
-                                || started.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId)))
+                                || started.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
+                                || inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
+                                || WaitsOnItemGate(node))
                             {
                                 continue;
                             }
@@ -509,6 +630,7 @@ public sealed class ConsultGenerationOrchestrator
                 if (node.ForEach is null)
                 {
                     if (!started.Contains(node.Id)
+                        && !WaitsOnItemGate(node)
                         && ConsultNodeScheduler.InstanceReady(node, null, nodesById, outputs, SkippedKeys()))
                     {
                         StartInstance(node, null);
@@ -525,7 +647,10 @@ public sealed class ConsultGenerationOrchestrator
                     // took the branch holding it for this item.
                     if (failedItems.Contains(FailedKey(node, itemId))
                         || started.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
-                        || !inner.Taken(node, itemId))
+                        || !inner.Taken(node, itemId)
+                        // v29 (#1304): an item its gate excluded never runs; one not yet decided waits.
+                        || inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
+                        || WaitsOnItemGate(node))
                     {
                         continue;
                     }
@@ -773,7 +898,7 @@ public sealed class ConsultGenerationOrchestrator
                                 .Where(outputs.ContainsKey)
                                 .Distinct(StringComparer.Ordinal)
                                 .ToDictionary(id => id, id => outputs[id].Classification ?? outputs[id].RawOutput, StringComparer.Ordinal),
-                            ConsultRenderPayload.FoldersFor(collections),
+                            RenderFolders(),
                             ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
                             ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
                             // v26 (#1155, design § 3.1): the deliverables its macros read, composed.
@@ -1234,7 +1359,14 @@ public sealed class ConsultGenerationOrchestrator
             {
                 var (flowId, decidedItemId) = pendingDecisions[decided];
                 pendingDecisions.Remove(decided);
-                await SettleDecisionAsync(flowId, decidedItemId, await decided);
+                if (flowId.StartsWith(ItemGatePrefix, StringComparison.Ordinal))
+                {
+                    await SettleItemGateAsync(flowId[ItemGatePrefix.Length..], decidedItemId, await decided);
+                }
+                else
+                {
+                    await SettleDecisionAsync(flowId, decidedItemId, await decided);
+                }
                 await TryCompleteAggregatorsAsync();
                 PublishStatus(ConsultGenerationJobStatuses.Running);
                 StartReadyInstances();
@@ -1602,7 +1734,9 @@ public sealed class ConsultGenerationOrchestrator
         // v27 (#1235): a branch node's instance its flow node decided against never starts.
         var expectedInstances = nodes.Where(node => node.Aggregate is null && node.Check is null && node.Kind is null).Sum(node => node.ForEach is null
             ? 1
-            : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, item["id"])) && !inner.Untaken(node, item["id"])));
+            : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, item["id"])) && !inner.Untaken(node, item["id"])
+                // v29 (#1304): an item its folder gate excluded never starts.
+                && !inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, item["id"]))));
         if (started.Count(key => outputs.ContainsKey(key)) < expectedInstances && failedItems.Count == 0)
         {
             // Unreachable for validated packages (the graph is acyclic and complete);
