@@ -7177,6 +7177,15 @@
             {
                 choices.Add(new ReferenceChoice($"{{{{ item.{member} }}}}", $"item.{member}", "the fan item"));
             }
+
+            // v29 (#1306): an item of a node's list — the element's fields, typed by the node's format.
+            if (NodeLoopElement(LoopIdOf(fanNode.Id) is { } loopId ? EffectiveNodes.FirstOrDefault(n => n.Id == loopId) : null) is { Fields: { } elementFields })
+            {
+                foreach (var field in elementFields.Keys.Order(StringComparer.Ordinal))
+                {
+                    choices.Add(new ReferenceChoice($"{{{{ item.value.{field} }}}}", $"item.value.{field}", "the fan item"));
+                }
+            }
         }
 
         foreach (var macro in EffectiveMacros.Where(m => m.File != file))
@@ -13335,7 +13344,63 @@
     private string? LoopIdOf(string nodeId) => WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, nodeId)?.Id;
 
     /// <summary>v26: what a loop may iterate — every folder and array input in the 25 fan spelling.</summary>
-    private IReadOnlyList<string> LoopCollectionOptions => WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, at25: true);
+    private IReadOnlyList<string> LoopCollectionOptions =>
+        WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, at25: true).Concat(NodeValueLoopSources()).ToList();
+
+    private bool At29 => EffectiveSpecVersion >= 29;
+
+    /// <summary>
+    /// v29 (#1306, design § 2.1, § 8): what a loop may iterate besides folders and
+    /// inputs — node.&lt;id&gt;.value.&lt;field&gt; for each array field of a node outside every
+    /// loop and flow node, typed by its format (a format's value is an object, so the
+    /// list is a field of it). Nothing below 29.
+    /// </summary>
+    private IReadOnlyList<string> NodeValueLoopSources()
+    {
+        if (!At29)
+        {
+            return Array.Empty<string>();
+        }
+
+        var sources = new List<string>();
+        foreach (var node in EffectiveNodes.Where(n => !n.IsFlow && BodyKeyOf(n.Id) == null && n.Format is not null))
+        {
+            if (FormatSchemaOf(node.Format!) is not { } schema || PF.TemplateValueShape.FromSchema(schema) is not { IsObject: true, Fields: { } fields })
+            {
+                continue;
+            }
+
+            sources.AddRange(fields.Where(field => field.Value.IsArray).OrderBy(field => field.Key, StringComparer.Ordinal).Select(field => $"node.{node.Id}.value.{field.Key}"));
+        }
+
+        return sources;
+    }
+
+    /// <summary>v29 (#1306): the element a loop over a node's value yields — the array's items, typed by the node's format; null for any other loop.</summary>
+    private PF.TemplateValueShape? NodeLoopElement(WorkflowManifestReader.NodeView? loop)
+    {
+        if (loop?.Collection is not { } collection
+            || !PF.TemplateObjectReference.TryParse(collection, out var obj, out var nodeId, out var rest)
+            || obj != PF.TemplateObjects.Node
+            || EffectiveNodes.FirstOrDefault(n => n.Id == nodeId)?.Format is not { } format
+            || FormatSchemaOf(format) is not { } schema)
+        {
+            return null;
+        }
+
+        var shape = PF.TemplateValueShape.FromSchema(schema);
+        foreach (var segment in rest.Split('.', StringSplitOptions.RemoveEmptyEntries).Skip(1))
+        {
+            if (shape.Fields?.GetValueOrDefault(segment) is not { } next)
+            {
+                return null;
+            }
+
+            shape = next;
+        }
+
+        return shape.IsArray ? shape.Items : null;
+    }
 
     /// <summary>v26: the plain nodes a loop's body may take — the same set any body takes (#1159).</summary>
     /// <summary>v27 (#1236, design § 1.1): a loop's body takes the plain nodes any body takes, and an unplaced if/case — decided once per item (a flow holding a flow the desk refuses by sentence).</summary>
@@ -13728,6 +13793,11 @@
         {
             AddFieldOperands(operands, "item:value", input.Items?.Fields ?? input.Fields);
         }
+        else if (NodeLoopElement(loop) is { Fields: { } elementFields })
+        {
+            // v29 (#1306): an item of a node's list — its enum, boolean and number fields.
+            AddFieldOperands(operands, "item:value", ElementFieldViews(elementFields));
+        }
 
         return operands;
     }
@@ -13740,9 +13810,19 @@
 
     /// <summary>v27 (#1236): the enum fields of the element a loop's array input declares — what a case inside the loop may switch on.</summary>
     private IReadOnlyList<WorkflowManifestReader.FieldView> LoopItemEnumFields(string? loopId) =>
-        loopId is not null && EffectiveNodes.FirstOrDefault(n => n.Id == loopId) is { IsLoop: true } loop && LoopInputOf(loop) is { } input
-            ? (input.Items?.Fields ?? input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()).Where(field => WorkflowInputTypes.Of(field) == WorkflowInputTypes.Enum).ToList()
+        loopId is not null && EffectiveNodes.FirstOrDefault(n => n.Id == loopId) is { IsLoop: true } loop
+            ? (LoopInputOf(loop) is { } input
+                    ? input.Items?.Fields ?? input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>()
+                    // v29 (#1306): an item of a node's list — the element's fields, by its format.
+                    : NodeLoopElement(loop) is { Fields: { } elementFields } ? ElementFieldViews(elementFields) : Array.Empty<WorkflowManifestReader.FieldView>())
+                .Where(field => WorkflowInputTypes.Of(field) == WorkflowInputTypes.Enum).ToList()
             : Array.Empty<WorkflowManifestReader.FieldView>();
+
+    /// <summary>v29 (#1306): a node list element's fields as the editor's field views — id, kind and an enum's values.</summary>
+    private static IReadOnlyList<WorkflowManifestReader.FieldView> ElementFieldViews(IReadOnlyDictionary<string, PF.TemplateValueShape> fields) =>
+        fields.OrderBy(field => field.Key, StringComparer.Ordinal)
+            .Select(field => new WorkflowManifestReader.FieldView(field.Key, field.Key, false, field.Value.Kind, field.Value.Values))
+            .ToList();
 
     private async Task OnBodyRetChangedAsync(string bodyKey, string? bodyNodeId)
     {
