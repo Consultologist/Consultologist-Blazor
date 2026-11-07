@@ -719,6 +719,24 @@ public static partial class WorkflowPackageValidator
             {
                 targets.Add(nodeId);
             }
+
+            // v29 (#1301, design § 2.1): a loop over a node's value waits on that
+            // node, and so does every node of its body (each runs per element).
+            if (flow.Fan is NodeValueFan fan && nodes.ContainsKey(fan.NodeId))
+            {
+                targets.Add(fan.NodeId);
+
+                foreach (var bodyId in flow.BodyNodeIds.Where(nodes.ContainsKey))
+                {
+                    if (!edges.TryGetValue(bodyId, out var bodyTargets))
+                    {
+                        bodyTargets = new HashSet<string>(StringComparer.Ordinal);
+                        edges[bodyId] = bodyTargets;
+                    }
+
+                    bodyTargets.Add(fan.NodeId);
+                }
+            }
         }
 
         return edges;

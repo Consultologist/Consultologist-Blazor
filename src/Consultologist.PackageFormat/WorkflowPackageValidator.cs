@@ -203,7 +203,9 @@ public static partial class WorkflowPackageValidator
         }
         else if (at28)
         {
-            ValidateAt28(manifest, files, formats, errors, warnings);
+            // v29 (#1301): 29 is the 28 path with a loop over a node's value and a
+            // folder item gated on a node; nothing else in the manifest changes.
+            ValidateAt28(manifest, files, formats, errors, warnings, at29: manifest.SpecVersion >= 29);
         }
         else if (at27)
         {
