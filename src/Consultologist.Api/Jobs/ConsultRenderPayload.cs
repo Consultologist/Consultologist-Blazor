@@ -293,6 +293,13 @@ internal static class ConsultRenderPayload
             var id = fanned.GetValueOrDefault("id", string.Empty);
             var name = fanned.ContainsKey("id") ? WorkflowPackageBlocks.ItemName(fanned) : id;
 
+            // v29 (#1303, design § 2.2): an item of a node's list — its value the
+            // element, structured when the element is an object or array.
+            if (WorkflowFlowNodes.IsNodeValueCollection(fan))
+            {
+                return new TemplateFanItem(id, name, Value: fanned.GetValueOrDefault("value", string.Empty), Element: ConsultNodeValueLoops.ElementOf(fanned));
+            }
+
             return WorkflowInputFans.IsInputFan(fan)
                 ? new TemplateFanItem(id, name, Value: fanned.GetValueOrDefault("value", string.Empty),
                     Element: inputDeclarations.TryGetValue(WorkflowInputFans.InputIdOf(fan), out var declaration)

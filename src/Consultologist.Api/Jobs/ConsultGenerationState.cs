@@ -98,6 +98,53 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     }
 
     /// <summary>
+    /// v29 (#1303, design § 1.2): a loop over a node's value settles — its
+    /// blocks added, its roster appended, the total re-written, the loop row's
+    /// count and moment stamped. Once per loop: a replayed call, or one after
+    /// the job failed or ended, finds nothing to do. #176's rule holds — the
+    /// total is the stored scalar, re-written here, never derived.
+    /// </summary>
+    public async Task ResolveLoop(ConsultGenerationLoopResolution input)
+    {
+        var state = EnsureState();
+
+        if (state.UnresolvedLoops is null
+            || !state.UnresolvedLoops.Contains(input.LoopId, StringComparer.Ordinal)
+            || state.StartFailure != null
+            || state.Status is ConsultGenerationJobStatuses.Completed or ConsultGenerationJobStatuses.Failed or ConsultGenerationJobStatuses.Cancelled)
+        {
+            return;
+        }
+
+        foreach (var block in input.Blocks)
+        {
+            state.GetOrAddBlock(block.Id, block.Name);
+        }
+
+        state.TotalBlockCount = input.Total;
+        state.Collections ??= new List<ConsultCollectionRoster>();
+        state.Collections.Add(new ConsultCollectionRoster(input.Collection, input.Items));
+        state.UnresolvedLoops.Remove(input.LoopId);
+
+        if (state.Nodes?.FindIndex(node => string.Equals(node.Id, input.LoopId, StringComparison.Ordinal)) is { } at and >= 0)
+        {
+            state.Nodes[at] = state.Nodes[at] with { Count = input.Items.Count, ResolvedAtUtc = input.ResolvedAtUtc, Reason = input.Reason };
+        }
+
+        var label = state.Nodes?.FirstOrDefault(node => string.Equals(node.Id, input.LoopId, StringComparison.Ordinal))?.Label ?? input.LoopId;
+        state.History.Add(new JobHistoryEvent(
+            "loop-resolved",
+            input.Reason is { } reason
+                ? $"{label}: {reason}"
+                : $"{label}: {input.Items.Count} {(input.Items.Count == 1 ? "item" : "items")}",
+            null,
+            input.ResolvedAtUtc));
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
     /// v10 (#496): a job that ends in the deciding stage — a classifier that
     /// failed, or a fire set that came back empty after classification. Born
     /// Failed the way #434's record is (StartFailure set, FailureError null,
@@ -197,6 +244,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State.ItemSteps ??= input.ItemSteps?.ToList();
         State.Nodes ??= input.Nodes?.ToList();
         State.Collections ??= input.Collections?.ToList();
+        // v29 (#1303): written once; ResolveLoop removes each loop as it settles.
+        State.UnresolvedLoops ??= input.UnresolvedLoops?.ToList();
         State.EffectiveInputHashVersion ??= input.EffectiveInputHashVersion;
         State.CatalogRef ??= input.CatalogRef;
         State.FormatsRef ??= input.FormatsRef;
@@ -1157,7 +1206,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // v25 (#1038, design § 16): the node ids the gating whens read — the
     // deciding stage's frontier at 25 (where ≤24 ran the classifier closure).
     // Null below 25 and when the job does not decide. Appended last, same rule.
-    IReadOnlyList<string>? DecidingNodes = null);
+    IReadOnlyList<string>? DecidingNodes = null,
+    // v29 (#1303, design § 1.1): the loops over a node's value, each resolved
+    // when its source completes. Null below 29 and on a job with none — a 28
+    // job in flight binds null and runs as it did. Appended last, same rule.
+    IReadOnlyList<string>? UnresolvedLoops = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -1248,7 +1301,26 @@ public sealed record ConsultGenerationJobInitialize(
     IReadOnlyList<string>? AcknowledgedShortInputs = null,
     // v25 (B2 #1001): the formats catalogue ref (see ConsultGenerationOrchestrationInput);
     // written into the record since B7 #1006 (provenance@v2026.10.1). Appended last.
-    string? FormatsRef = null);
+    string? FormatsRef = null,
+    // v29 (#1303, design § 1.1): the loops whose count is not yet known —
+    // written once; ResolveLoop removes each as it settles. Appended last.
+    IReadOnlyList<string>? UnresolvedLoops = null);
+
+/// <summary>
+/// v29 (#1303, design § 1.2): a loop over a node's value, settled — the loop,
+/// the collection its body fans (its literal <c>node.…</c> text, as a roster's
+/// id), its items (id is the 1-based position), the blocks they add (one per
+/// item per deliverable sourcing the loop), the job's new total, the moment,
+/// and why it has none when the list was empty.
+/// </summary>
+public sealed record ConsultGenerationLoopResolution(
+    string LoopId,
+    string Collection,
+    IReadOnlyList<ConsultCollectionItem> Items,
+    IReadOnlyList<ConsultCollectionItem> Blocks,
+    int Total,
+    DateTimeOffset ResolvedAtUtc,
+    string? Reason = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1659,6 +1731,14 @@ public sealed class ConsultGenerationJobState
     // #361: the job's own fan rosters, stamped once beside Nodes. Null on every
     // job recorded before the field existed, which the client falls back from.
     public List<ConsultCollectionRoster>? Collections { get; set; }
+
+    /// <summary>
+    /// v29 (#1303, design § 1.1): the loops over a node's value whose count is
+    /// not yet known. While any is listed TotalBlockCount is a floor, not the
+    /// job's size; ResolveLoop removes each once, when its source completes.
+    /// Null below 29 and when the job has none.
+    /// </summary>
+    public List<string>? UnresolvedLoops { get; set; }
     public Dictionary<string, ConsultNodeOutputState>? NodeOutputs { get; set; }
 
     // v6: the result aggregator's rendered output — the deliverable itself
@@ -2073,7 +2153,8 @@ public sealed class ConsultGenerationJobState
             DecidedAtUtc: DecidedAtUtc,
             Classifications: Classifications,
             DecisionFailureKind: DecisionFailureKind,
-            SkippedBlocks: skippedSections.Count > 0 ? skippedSections : null);
+            SkippedBlocks: skippedSections.Count > 0 ? skippedSections : null,
+            UnresolvedLoops: UnresolvedLoops is { Count: > 0 } ? UnresolvedLoops : null);
     }
 }
 

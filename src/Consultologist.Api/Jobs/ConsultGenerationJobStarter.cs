@@ -792,6 +792,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyList<IReadOnlyDictionary<string, string>> items;
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collectionSets = null;
         IReadOnlyList<ConsultCollectionRoster>? collectionRosters = null;
+        IReadOnlyList<string>? unresolvedLoops = null;
 
         if (deciding)
         {
@@ -803,6 +804,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             var skeleton = ResolveSkeleton(package, inputs.Supplied, startScope);
             collectionSets = skeleton.CollectionSets;
             collectionRosters = skeleton.CollectionRosters;
+            unresolvedLoops = skeleton.UnresolvedLoops;
         }
         else if (package.Manifest.SpecVersion >= 6)
         {
@@ -831,6 +833,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             items = skeleton.Items;
             collectionSets = skeleton.CollectionSets;
             collectionRosters = skeleton.CollectionRosters;
+            unresolvedLoops = skeleton.UnresolvedLoops;
         }
         else
         {
@@ -1036,6 +1039,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 AcknowledgedShortInputs: acknowledgedShort.Count > 0 ? acknowledgedShort : null,
                 SkippedDocuments: skipped.Count > 0 ? skipped : null,
                 Collections: collectionRosters,
+                // v29 (#1303): the loops whose count is not yet known.
+                UnresolvedLoops: unresolvedLoops,
                 // #373: what the manifest was written against, recorded rather
                 // than resolved later — a fork lives in the private registry
                 // that nothing outside can read, and a pin can be re-pointed.
@@ -1081,6 +1086,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 FormatsRef: package.FormatsRef ?? _formats.ResolvedRef,
                 // v25 (#1038): the deciding stage's frontier — what the gating whens read.
                 DecidingNodes: deciding && gatingReads is { Count: > 0 } ? gatingReads.Order(StringComparer.Ordinal).ToList() : null,
+                // v29 (#1303): the loops over a node's value, resolved as their sources complete.
+                UnresolvedLoops: unresolvedLoops,
                 Source: origin.Source,
                 ReplyToAddress: origin.ReplyToAddress,
                 Results: resultDescriptors,
@@ -1417,7 +1424,10 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         IReadOnlyList<IReadOnlyDictionary<string, string>> Items,
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> CollectionSets,
         IReadOnlyList<ConsultCollectionRoster> CollectionRosters,
-        IReadOnlyList<string> EmptyFanLabels);
+        IReadOnlyList<string> EmptyFanLabels,
+        // v29 (#1303, design § 1.1): the loops over a node's value — no blocks
+        // and no roster yet; each settles once, when its source completes.
+        IReadOnlyList<string>? UnresolvedLoops = null);
 
     internal static SkeletonResolution ResolveSkeleton(WorkflowPackage package, IReadOnlyDictionary<string, ConsultInputValue>? supplied, ConsultConditionScope? scope = null)
     {
@@ -1509,7 +1519,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     .ToList()))
             .ToList();
 
-        return new SkeletonResolution(items, collectionSets, collectionRosters, emptyFanLabels);
+        var unresolvedLoops = package.Nodes
+            .Where(node => WorkflowFlowNodes.IsNodeValueCollection(WorkflowFlowNodes.CollectionOf(node.For)))
+            .Select(node => node.Id)
+            .ToList();
+
+        return new SkeletonResolution(items, collectionSets, collectionRosters, emptyFanLabels, unresolvedLoops.Count > 0 ? unresolvedLoops : null);
     }
 
     /// <summary>Every declared deliverable as not produced by an empty fan, keeping a condition's own reason where one skipped it first.</summary>

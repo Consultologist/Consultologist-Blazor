@@ -55,13 +55,18 @@ public sealed class ConsultGenerationOrchestrator
         // items yet; the boundary supplies them. Every other job carries its
         // skeleton from the start, as it always did.
         var deciding = input.Deciding == true;
+        // v29 (#1303, design § 1.1): the loops over a node's value — no blocks
+        // and no items until their source completes (ResolveLoopsFedByAsync); a
+        // job whose only loop is one starts with none, and is still a v6 job.
+        var unresolvedLoops = new HashSet<string>(input.UnresolvedLoops ?? Array.Empty<string>(), StringComparer.Ordinal);
+        var resolvedItems = new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>(StringComparer.Ordinal);
         var items = input.Items is { Count: > 0 }
             ? input.Items
-            : deciding
+            : deciding || unresolvedLoops.Count > 0
                 ? Array.Empty<IReadOnlyDictionary<string, string>>()
                 : throw new InvalidOperationException("Consult generation input carries no work items; the job start snapshots them from the workflow package.");
         var collections = input.Collections;
-        var v6 = collections is { Count: > 0 };
+        var v6 = collections is { Count: > 0 } || unresolvedLoops.Count > 0;
 
         // The input map: v7 jobs carry the effective map from the starter;
         // v5/v6 jobs fold the single draft into the conventional input — a pure
@@ -208,9 +213,49 @@ public sealed class ConsultGenerationOrchestrator
         // ids are unique per collection, not globally).
         IReadOnlyList<IReadOnlyDictionary<string, string>> FanItems(ConsultNodeDescriptor node) =>
             v6
-                ? collections!.GetValueOrDefault(CollectionIdOf(node))
+                ? resolvedItems.GetValueOrDefault(CollectionIdOf(node))
+                    ?? collections?.GetValueOrDefault(CollectionIdOf(node))
+                    // v29 (#1303): a node's list not yet known fans nothing — yet.
+                    ?? (WorkflowFlowNodes.IsNodeValueCollection(CollectionIdOf(node)) ? Array.Empty<IReadOnlyDictionary<string, string>>() : null)
                     ?? throw new InvalidOperationException($"Node '{node.Id}' fans collection '{CollectionIdOf(node)}', which the job snapshot does not carry.")
                 : items;
+
+        // v29 (#1303): the snapshot's collections with every settled node list beside them — what a reader of a loop renders over.
+        IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? CollectionsWithResolved() =>
+            resolvedItems.Count == 0
+                ? collections
+                : (collections ?? new Dictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>())
+                    .Concat(resolvedItems)
+                    .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+
+        // v29 (#1303, design § 1.2): a node in a loop whose count is not yet known —
+        // the loop itself, its body, or an if/case in its body. None of it settles
+        // until the loop resolves: an empty list is not yet a finished loop.
+        bool AwaitsCount(ConsultNodeDescriptor node)
+        {
+            if (unresolvedLoops.Count == 0)
+            {
+                return false;
+            }
+
+            var id = node.Id;
+            for (var depth = 0; depth < 3; depth++)
+            {
+                if (unresolvedLoops.Contains(id))
+                {
+                    return true;
+                }
+
+                if (nodesById.GetValueOrDefault(id)?.In is not { } owner)
+                {
+                    return false;
+                }
+
+                id = owner;
+            }
+
+            return false;
+        }
 
         string FailedKey(ConsultNodeDescriptor node, string itemId) =>
             v6 ? $"{CollectionIdOf(node)}:{itemId}" : itemId;
@@ -352,7 +397,7 @@ public sealed class ConsultGenerationOrchestrator
                         Instances: node.Macros,
                         // v26 (#1154, design § 1.3): the loops read whole, the flow
                         // nodes' returned nodes, the flows that took no branch.
-                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, collections, SkippedKeys()),
+                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys()),
                         FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
                         SkippedNodes: skippedNodes.Count > 0 ? skippedNodes.Order(StringComparer.Ordinal).ToList() : null,
                         // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
@@ -537,6 +582,66 @@ public sealed class ConsultGenerationOrchestrator
             await MarkFullyCompletedChainNodesAsync();
         }
 
+        // v29 (#1303, design § 1.2, § 2.3): the loops over this node's value settle
+        // — their items read from the recorded output (so a replay reads the same
+        // list), their blocks laid out (one per item per deliverable sourcing the
+        // loop), the total re-written, the entity told once per loop. The body then
+        // fans as any loop's does. A list that cannot be read fails the job (the
+        // source is a top-level node, whose failure is the job's — decided
+        // 2026-11-07); an empty one is a loop with no items and a reason.
+        async Task<bool> ResolveLoopsFedByAsync(ConsultNodeDescriptor source, NodeRunResult result)
+        {
+            foreach (var loop in nodes.Where(n => n.Kind == ConsultNodeFlows.For && unresolvedLoops.Contains(n.Id)).ToList())
+            {
+                if (loop.Collection is not { } collection
+                    || ConsultNodeValueLoops.SourceOf(collection) is not { } fed
+                    || !string.Equals(fed.NodeId, source.Id, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var resolution = ConsultNodeValueLoops.ItemsOf(result, collection, loop.Label);
+
+                if (resolution.Failure is { } failure)
+                {
+                    logger.LogWarning("A loop over a node's value could not read its list. JobId={JobId}, LoopId={LoopId}", context.InstanceId, loop.Id);
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.MarkNodeFailed),
+                        new ConsultGenerationNodeFailure(
+                            loop.Id, loop.Label, $"{loop.Id}-failed", failure,
+                            nodes.Where(other => other.Id != loop.Id && !outputs.ContainsKey(other.Id)).Select(other => new ConsultItemStepDescriptor(other.Id, other.Label)).ToList(),
+                            null, null));
+                    PublishStatus(ConsultGenerationJobStatuses.Failed);
+                    return false;
+                }
+
+                resolvedItems[WorkflowFanSources.CollectionIdOf(collection)] = resolution.Items;
+                unresolvedLoops.Remove(loop.Id);
+
+                var blocks = deliverables
+                    .Where(deliverable => deliverable.Sources?.Contains(loop.Id, StringComparer.Ordinal) == true)
+                    .SelectMany(deliverable => resolution.Items.Select(item => new ConsultCollectionItem(
+                        $"{deliverable.BlockPrefix}{loop.Id}:{item["id"]}", WorkflowPackageBlocks.ItemName(item))))
+                    .ToList();
+                totalBlockCount += blocks.Count;
+
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.ResolveLoop),
+                    new ConsultGenerationLoopResolution(
+                        loop.Id,
+                        collection,
+                        resolution.Items.Select(item => new ConsultCollectionItem(item["id"], WorkflowPackageBlocks.ItemName(item))).ToList(),
+                        blocks,
+                        totalBlockCount,
+                        context.CurrentUtcDateTime,
+                        resolution.Reason));
+            }
+
+            return true;
+        }
+
         async Task MarkFullyCompletedChainNodesAsync()
         {
             // A forEach node completes at the node level once every item is either
@@ -550,7 +655,7 @@ public sealed class ConsultGenerationOrchestrator
 
             foreach (var node in chainNodes)
             {
-                if (nodeLevelCompleted.Contains(node.Id))
+                if (nodeLevelCompleted.Contains(node.Id) || AwaitsCount(node))
                 {
                     continue;
                 }
@@ -999,7 +1104,7 @@ public sealed class ConsultGenerationOrchestrator
 
                 foreach (var flow in flowNodes)
                 {
-                    if (outputs.ContainsKey(flow.Id) || failedAggregators.ContainsKey(flow.Id) || skippedNodes.Contains(flow.Id))
+                    if (outputs.ContainsKey(flow.Id) || failedAggregators.ContainsKey(flow.Id) || skippedNodes.Contains(flow.Id) || AwaitsCount(flow))
                     {
                         continue;
                     }
@@ -1218,6 +1323,12 @@ public sealed class ConsultGenerationOrchestrator
                             new BlockGenerationResult($"{deliverable.BlockPrefix}{nodeId}", node.Label, true, result.RawOutput.Trim(), null));
                     }
                 }
+
+                // v29 (#1303, design § 1.2): the loops this node's value feeds settle now.
+                if (!await ResolveLoopsFedByAsync(node, result))
+                {
+                    return false;
+                }
             }
             else
             {
@@ -1417,7 +1528,7 @@ public sealed class ConsultGenerationOrchestrator
             results = decidedResults;
             items = decision.Items;
             collections = decision.CollectionSets;
-            v6 = collections is { Count: > 0 };
+            v6 = collections is { Count: > 0 } || unresolvedLoops.Count > 0;
             deliverables = ConsultDeliverables.Resolve(results, v6 ? resultNodeId : null, nodesById);
             deliverablesFinal = true;
             totalBlockCount = items.Count;

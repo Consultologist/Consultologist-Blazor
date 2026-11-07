@@ -108,7 +108,7 @@ public class DurablePayloadReplayTests
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null,\"InputFormFiles\":null}", StringComparison.Ordinal)
             // #1154: and Sources, appended last at 26.
             .Replace("\"Label\":\"Consultation note\"}", "\"Label\":\"Consultation note\",\"Macros\":null,\"Signature\":null,\"MacroPlacements\":null,\"Check\":null,\"Reads\":null,\"Sources\":null,\"DeliverableReads\":null}", StringComparison.Ordinal);
-        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(withRefs[..^1] + ",\"InputDocumentOrigins\":null,\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null,\"UnresolvedLoops\":null}", JsonSerializer.Serialize(input, Durable));
         // v11 #513/#516: the macro and signature slots and the descriptor's
         // trailing fields bind null.
         Assert.Null(input.MacroTexts);
@@ -159,7 +159,7 @@ public class DurablePayloadReplayTests
             .Replace("\"InputFiles\":null}", "\"InputFiles\":null,\"InputRefs\":null,\"InputFormRefs\":null,\"MacroChoices\":null,\"TranscriptInputs\":null,\"AmbientNoteInputs\":null,\"AcknowledgedShortInputs\":null,\"InputFormFiles\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":false}", "\"TrackedChangesResolved\":false,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal)
             .Replace("\"TrackedChangesResolved\":true}", "\"TrackedChangesResolved\":true,\"FileSha256\":null,\"TextSha256\":null,\"SourceJobId\":null,\"SourceResultId\":null,\"SourceFormId\":null,\"SourceResponseId\":null}", StringComparison.Ordinal);
-        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null}", JsonSerializer.Serialize(input, Durable));
+        Assert.Equal(expected[..^1] + ",\"PackageFormatRef\":null,\"ProvenanceRef\":null,\"Terminology\":null,\"TerminologyServerRef\":null,\"Deciding\":null,\"SuppliedInputs\":null,\"ApiHost\":null,\"EngineCommit\":null,\"EmailRequested\":null,\"MacroTexts\":null,\"ProfileName\":null,\"Signature\":null,\"AccountKind\":null,\"MacroChoices\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"FormatsRef\":null,\"DecidingNodes\":null,\"UnresolvedLoops\":null}", JsonSerializer.Serialize(input, Durable));
         var origins = Assert.Contains("prior_notes", input.InputDocumentOrigins!);
         Assert.Equal(2, origins.Count);
         Assert.Equal("pdfpig/0.1.15", origins[1].Extractor);
@@ -202,6 +202,53 @@ public class DurablePayloadReplayTests
     }
 
     [Fact]
+    public void A28Initialize_WithoutUnresolvedLoops_BindsNull()
+    {
+        // v29 (#1303): the one new trailing slot, stripped from a fresh
+        // serialization — a 28 job's stored Initialize, read by the 29 code.
+        var current = JsonSerializer.Serialize(
+            new ConsultGenerationJobInitialize("job-1", "user-1", new List<IReadOnlyDictionary<string, string>>()), Durable);
+        var stored = current.Replace(",\"UnresolvedLoops\":null}", "}", StringComparison.Ordinal);
+        Assert.NotEqual(current, stored);
+
+        var initialize = JsonSerializer.Deserialize<ConsultGenerationJobInitialize>(stored, Durable)!;
+
+        Assert.Null(initialize.UnresolvedLoops);
+        Assert.Equal(current, JsonSerializer.Serialize(initialize, Durable));
+    }
+
+    [Fact]
+    public void A28OrchestrationInput_WithoutUnresolvedLoops_BindsNull()
+    {
+        var current = JsonSerializer.Serialize(
+            new ConsultGenerationOrchestrationInput(new ConsultGenerationRequest("x"), "user-1"), Durable);
+        var stored = current.Replace(",\"UnresolvedLoops\":null}", "}", StringComparison.Ordinal);
+        Assert.NotEqual(current, stored);
+
+        var input = JsonSerializer.Deserialize<ConsultGenerationOrchestrationInput>(stored, Durable)!;
+
+        Assert.Null(input.UnresolvedLoops);
+        Assert.Equal(current, JsonSerializer.Serialize(input, Durable));
+    }
+
+    [Fact]
+    public void ALoopResolution_RoundTrips()
+    {
+        var resolution = new ConsultGenerationLoopResolution(
+            "problems", "node.find_problems.value.problems",
+            new List<ConsultCollectionItem> { new("1", "Problems 1"), new("2", "Problems 2") },
+            new List<ConsultCollectionItem> { new("consult:problems:1", "Problems 1"), new("consult:problems:2", "Problems 2") },
+            5, new DateTimeOffset(2026, 11, 7, 12, 0, 0, TimeSpan.Zero));
+
+        var json = JsonSerializer.Serialize(resolution, Durable);
+        var read = JsonSerializer.Deserialize<ConsultGenerationLoopResolution>(json, Durable)!;
+
+        Assert.Equal(json, JsonSerializer.Serialize(read, Durable));
+        Assert.Equal(2, read.Items.Count);
+        Assert.Null(read.Reason);
+    }
+
+    [Fact]
     public void AStoredInitialize_WithoutMacroChoices_BindsNull()
     {
         // v12 #618: Initialize's slot count is large, so the pre-v12 bytes
@@ -210,8 +257,8 @@ public class DurablePayloadReplayTests
         // mid-list insertion would leave the strip target unmatched.
         var current = JsonSerializer.Serialize(
             new ConsultGenerationJobInitialize("job-1", "user-1", new List<IReadOnlyDictionary<string, string>>()), Durable);
-        Assert.EndsWith(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"ResolvedInputTypes\":null,\"AcknowledgedShortInputs\":null,\"FormatsRef\":null}", current);
-        var stored = current.Replace(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"ResolvedInputTypes\":null,\"AcknowledgedShortInputs\":null,\"FormatsRef\":null}", "}", StringComparison.Ordinal);
+        Assert.EndsWith(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"ResolvedInputTypes\":null,\"AcknowledgedShortInputs\":null,\"FormatsRef\":null,\"UnresolvedLoops\":null}", current);
+        var stored = current.Replace(",\"MacroChoices\":null,\"ExcludedMacros\":null,\"EngineRelease\":null,\"TerminologyServerRelease\":null,\"ResolvedInputTypes\":null,\"AcknowledgedShortInputs\":null,\"FormatsRef\":null,\"UnresolvedLoops\":null}", "}", StringComparison.Ordinal);
 
         var initialize = JsonSerializer.Deserialize<ConsultGenerationJobInitialize>(stored, Durable)!;
 
@@ -452,7 +499,7 @@ public class DurablePayloadReplayTests
         Assert.Null(node.Reproducible);
         Assert.Equal(new[] { "in_scope", "out_of_scope" }, node.Values);
         // #923 phase 2 appended AgentName/AgentVersion; #760 appended CustomSchemaHash; #955 appended Macros; #1001 the format identity; #1002 Reads; #1154 the flow row (Kind … Branch); #1156 Prompt and Count (and Flow renamed Kind — no 26 record exists; below 26 the field was always null); #1235 Branches (an inner flow's per-item map, storage 9).
-        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"Reads\":null,\"With\":null,\"OnInvalid\":null,\"Kind\":null,\"Collection\":null,\"Expression\":null,\"Body\":null,\"Ret\":null,\"In\":null,\"Branch\":null,\"DeliverableReads\":null,\"Prompt\":null,\"Count\":null,\"Branches\":null}", JsonSerializer.Serialize(node, Durable));
+        Assert.Equal(stored[..^1] + ",\"Reproducible\":null,\"Check\":null,\"Template\":null,\"AgentName\":null,\"AgentVersion\":null,\"CustomSchemaHash\":null,\"Macros\":null,\"Format\":null,\"Producer\":null,\"FormatHash\":null,\"Op\":null,\"Reads\":null,\"With\":null,\"OnInvalid\":null,\"Kind\":null,\"Collection\":null,\"Expression\":null,\"Body\":null,\"Ret\":null,\"In\":null,\"Branch\":null,\"DeliverableReads\":null,\"Prompt\":null,\"Count\":null,\"Branches\":null,\"ResolvedAtUtc\":null,\"Reason\":null}", JsonSerializer.Serialize(node, Durable));
     }
 
     [Fact]

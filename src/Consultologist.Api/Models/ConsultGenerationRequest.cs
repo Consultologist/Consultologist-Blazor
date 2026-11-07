@@ -440,7 +440,10 @@ public record ConsultGenerationJobResponse(
     // if/case skipped by condition — block id → the reason (the condition's
     // text); counted among the completed blocks (progress), produced no text.
     // Null when none.
-    IReadOnlyDictionary<string, string>? SkippedBlocks = null);
+    IReadOnlyDictionary<string, string>? SkippedBlocks = null,
+    // v29 (#1303, design § 1.1): the loops whose count is not yet known —
+    // TotalBlockCount is a floor while any is listed. Null when none.
+    IReadOnlyList<string>? UnresolvedLoops = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -659,7 +662,13 @@ public sealed record ConsultNodeDescriptor(
     // the branch taken ("then" | "else" | "<v1, v2>" | "none"), written as the
     // items decide; Branch stays null on it (a row never carries both). Null
     // below 27 and on a top-level flow row. Appended last, same rule.
-    IReadOnlyDictionary<string, string>? Branches = null)
+    IReadOnlyDictionary<string, string>? Branches = null,
+    // v29 (#1303, design § 5): a loop over a node's value — when its count
+    // settled (Count is null until then: not yet known, never zero), and why
+    // it has no items when the list was empty. Null on every other row and
+    // below 29. Appended last, same rule.
+    DateTimeOffset? ResolvedAtUtc = null,
+    string? Reason = null)
 {
     /// <summary>
     /// v26 (#1156, record storage 8): the row as the served record carries it —

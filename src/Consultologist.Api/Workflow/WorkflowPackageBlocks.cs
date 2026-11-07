@@ -136,7 +136,14 @@ public static class WorkflowPackageBlocks
                 }
 
                 IEnumerable<IReadOnlyDictionary<string, string>> items;
-                if (inputFans?.GetValueOrDefault(collection) is { } settled)
+                if (WorkflowFlowNodes.IsNodeValueCollection(collection))
+                {
+                    // v29 (#1303, design § 1.1): a loop over a node's value has no
+                    // items until that node completes — its blocks are the
+                    // engine's to add (ResolveLoop), none at start.
+                    continue;
+                }
+                else if (inputFans?.GetValueOrDefault(collection) is { } settled)
                 {
                     items = settled;
                 }

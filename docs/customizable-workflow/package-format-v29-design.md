@@ -1,10 +1,12 @@
 # specVersion 29 — the dynamic half: a count the run discovers
 
-> **Status:** design, **revision 2** (2026-11-07). Milestone 32 (#1277). Decided with the package
-> author; being implemented (layer A #1301). Revision 2 (planning layer A): a loop's source is a
-> field path, because a format's value is an object (§ 2.1); a `concept_list`'s field iterates as
-> any array field does (§ 12); the below-29 gate sentences are said at the bump (§ 6); § 6 lists
-> the sentences as built. Design-level, not a step-by-step plan — the Milestone 32 issues are
+> **Status:** design, **revision 3** (2026-11-07). Milestone 32 (#1277). Decided with the package
+> author; being implemented (layer A #1301 merged; layer B2 #1303). Revision 2 (planning layer A):
+> a loop's source is a field path, because a format's value is an object (§ 2.1); a
+> `concept_list`'s field iterates as any array field does (§ 12); the below-29 gate sentences are
+> said at the bump (§ 6); § 6 lists the sentences as built. Revision 3 (planning B2): a loop
+> source's failure is the job's, as any top-level node's (§ 2.3); B2 ships in two parts — the
+> engine, then the stream and the pages (§ 11); record storage 10 is stamped at the bump (§ 5). Design-level, not a step-by-step plan — the Milestone 32 issues are
 > its sections and take their decisions from it; where a comment on one of them disagrees with this
 > text, this text is the decision and names what it supersedes. The normative text follows in the
 > package-format registry as `package-format-v29.md` once layer A lands (§ 11).
@@ -171,9 +173,13 @@ loop sees what 27 gives a loop whose every item was skipped (v27 design § 1.4):
 empty, `.value` is `[]`, and a deliverable sourcing it composes **a document with no section**, not
 a skipped document (the loop ran; it returned nothing).
 
-A source node that **failed** or was **skipped** leaves the loop *count never known*: its body does
-not run, and a deliverable sourcing it fails with a sentence naming the source node, as a
-deliverable whose source failed does today.
+A source node that **failed** leaves the loop *count never known* (its row's `count` stays null —
+not zero): its body does not run. *(Revised in revision 3, decided 2026-11-07: the source is a
+top-level node, and a top-level node's failure fails the **job**, naming that node — as at 28. The
+earlier text, a deliverable failing alone with a sentence naming the source, would have needed a
+partial-failure path no other top-level node has.)* A list that is not a list (the reply's value
+lacks the field, or it is not an array, or not JSON) fails the job the same way, with the sentence
+*"Problems could not read its list: node.find_problems.value.problems is not a list."*
 
 ### 2.4 What is recorded
 
@@ -367,6 +373,13 @@ One layer per PR, each green on its own; each gets its own issue when it starts.
 - **B — engine.** The scheduler core (§ 1), the folder-item decision (§ 3), the deliverable at 29
   (§ 4), storage 10 (§ 5), the hold switch and the runbook (§ 7), the Create page and History
   (§ 1.4).
+  *As filed (2026-11-05), revised (revision 3):* B1 the hold switch (#1302, released v2026.11.2);
+  B2 the scheduler core (#1303) in two PRs — **B2a** the engine (start, entity `ResolveLoop`, the
+  orchestrator settling the list, the record's fields) and **B2b** the `count-resolved` event and
+  the pages (§ 1.3–§ 1.4); B3 the folder-item decision (#1304); B4 the deliverable at 29 (#1305).
+  The record's fields are written by B2a, but storage **10** is stamped, and the provenance
+  registry bumped, by the bump — `StorageVersions` must equal the registry's list, and no 29 job
+  can run before it.
 - **C — Editor.** § 8.
 - **The bump.** The registry PR (`package-format-v29.md`, vectors, provenance storage 10) and the
   engine PR moving every ceiling to 29; a release, cut **after a drain** (§ 7).
