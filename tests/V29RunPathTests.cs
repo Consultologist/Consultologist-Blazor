@@ -283,6 +283,98 @@ public class V29RunPathTests
         // #369: the condition's text, never the value it read.
         Assert.Equal("needs `node.scope.value == \"in_scope\"`; it does not hold", skipped.Reason);
     }
+
+    // ----- #1305: the deliverable at 29 (design § 4; #1194) --------------------------------
+
+    private static ConsultDeliverables.Deliverable Deliverable(string? check = null, IReadOnlyList<string>? reads = null, IReadOnlyList<string>? deliverableReads = null) =>
+        new("consult", "Consultation note", "consult:", "", new[] { "assessment" }, 0,
+            CheckNodeId: check, Reads: reads, Sources: new[] { "node.assessment" }, DeliverableReads: deliverableReads);
+
+    private static readonly Dictionary<string, NodeRunResult> NoOutputs = new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, ConsultCheckOutcome> NoChecks = new(StringComparer.Ordinal);
+
+    [Fact]
+    public void AHeldDeliverable_SaysWhichWaitNeverEnded()
+    {
+        Assert.Equal("node 'scope', which its macros read, did not complete",
+            ConsultCheckSettlement.HeldReason(Deliverable(reads: new[] { "scope" }), NoOutputs, NoChecks));
+        Assert.Equal("deliverable 'letter', which it reads, was never composed",
+            ConsultCheckSettlement.HeldReason(Deliverable(deliverableReads: new[] { "letter" }), NoOutputs, NoChecks,
+                runDeliverables: new HashSet<string>(StringComparer.Ordinal) { "consult", "letter" }));
+        Assert.Equal("its check 'coverage' never settled",
+            ConsultCheckSettlement.HeldReason(Deliverable(check: "coverage"), NoOutputs, NoChecks));
+    }
+
+    [Fact]
+    public void At29_ProducedMeansReleased_AndAHeldDeliverableIsNamed()
+    {
+        var deliverables = new[] { Deliverable(check: "coverage") };
+        var composed = new HashSet<string>(StringComparer.Ordinal) { "consult" };
+
+        // At 26 composing was producing — the reply leg then threw on the missing text.
+        var at26 = ConsultDeliverables.FinalOutcome(deliverables, NoOutputs, new Dictionary<string, string>(), null, composed, null);
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, at26.Status);
+
+        // At 29 it was held: the job fails, saying so.
+        var at29 = ConsultDeliverables.FinalOutcome(deliverables, NoOutputs, new Dictionary<string, string>(), null, composed, null,
+            releasedDeliverables: new HashSet<string>(StringComparer.Ordinal),
+            heldDeliverables: new Dictionary<string, string> { ["consult"] = "Consultation note was composed but held: its check 'coverage' never settled." });
+        Assert.Equal((ConsultGenerationJobStatuses.Failed, "Consultation note was composed but held: its check 'coverage' never settled."), at29);
+
+        // Released — recorded, or refused by its check — is produced.
+        var released = ConsultDeliverables.FinalOutcome(deliverables, NoOutputs, new Dictionary<string, string>(), null, composed, null,
+            releasedDeliverables: new HashSet<string>(StringComparer.Ordinal) { "consult" });
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, released.Status);
+    }
+
+    private static readonly DateTimeOffset Composed = new(2026, 11, 7, 12, 0, 0, TimeSpan.Zero);
+
+    private static ConsultHeldDocument Held(string? reason = null) =>
+        new("consult", "Consultation note", 0, "abc123", new[] { "node.assessment" }, Composed, reason);
+
+    [Fact]
+    public void MarkDeliverableComposed_WritesTheRow_AndTheReleaseMovesIt()
+    {
+        var (entity, state) = Job();
+
+        entity.MarkDeliverableComposed(Held());
+        var row = Assert.Single(state().HeldDocuments!);
+        Assert.Equal(("abc123", (string?)null), (row.ComposedHash, row.Reason));
+        Assert.Contains(state().History, e => e.Kind == "composed");
+
+        entity.CompleteResultDocument(new ConsultGenerationResultDocument("consult", "Consultation note", "The note.", 0, ComposedHash: "abc123", Sources: new[] { "node.assessment" })).GetAwaiter().GetResult();
+        Assert.Empty(state().HeldDocuments!);
+    }
+
+    [Fact]
+    public void ACheckRefusal_AlsoMovesTheRowOut()
+    {
+        var (entity, state) = Job();
+        entity.MarkDeliverableComposed(Held());
+
+        entity.RecordFailedDocument(new ConsultFailedDocument("consult", "Consultation note", "The note names problems the source does not."));
+
+        Assert.Empty(state().HeldDocuments!);
+    }
+
+    [Fact]
+    public void AHeldRow_IsServedOnAFailedJob_WithItsReason()
+    {
+        var (entity, state) = Job();
+        entity.MarkDeliverableComposed(Held());
+        entity.MarkDeliverableComposed(Held("its check 'coverage' never settled"));
+        state().Status = ConsultGenerationJobStatuses.Failed;
+
+        var response = state().ToResponse();
+
+        var held = Assert.Single(response.HeldDocuments!);
+        Assert.Equal("its check 'coverage' never settled", held.Reason);
+        Assert.Contains(state().History, e => e.Kind == "held" && e.Label == "Consultation note was composed but held: its check 'coverage' never settled");
+
+        // An ended job takes no more.
+        entity.MarkDeliverableComposed(Held("again"));
+        Assert.Equal("its check 'coverage' never settled", Assert.Single(state().HeldDocuments!).Reason);
+    }
 }
 
 /// <summary>The agents catalogue the run-path tests load packages against.</summary>

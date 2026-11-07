@@ -1090,6 +1090,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 UnresolvedLoops: unresolvedLoops,
                 // v29 (#1304): the folder items decided once the nodes their if reads complete.
                 ItemGates: NodeGatedItems(package) is { Count: > 0 } itemGates ? itemGates : null,
+                // v29 (#1305): the engine's at-29 rules read it.
+                PackageSpecVersion: package.Manifest.SpecVersion,
                 Source: origin.Source,
                 ReplyToAddress: origin.ReplyToAddress,
                 Results: resultDescriptors,

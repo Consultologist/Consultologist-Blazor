@@ -206,6 +206,8 @@ public sealed class ConsultGenerationOrchestrator
         // definition 6, and its deliverables fill no slot: an inline macro
         // rendered in the reply of the node that read it (#1044).
         var at25 = nodes.Any(node => node.Format is not null);
+        // v29 (#1305): the deliverable's row at composition, "produced" meaning released.
+        var at29 = input.PackageSpecVersion >= 29;
         var outputs = new Dictionary<string, NodeRunResult>(StringComparer.Ordinal);
         var pendingTasks = new Dictionary<Task<NodeRunResult>, (string NodeId, string? ItemId)>();
         var started = new HashSet<string>(StringComparer.Ordinal);
@@ -1314,6 +1316,18 @@ public sealed class ConsultGenerationOrchestrator
 
                         composedDeliverables[deliverable.ResultId] = composedDeliverable;
                         pendingDeliverables[deliverable.ResultId] = (deliverable, deliverable.Sources, composedDeliverable.Parts!);
+
+                        // v29 (#1305, design § 4): the row is written now — composed, held on
+                        // its reads and check until the release moves it to the documents.
+                        if (at29)
+                        {
+                            await context.Entities.CallEntityAsync(
+                                entityId,
+                                nameof(ConsultGenerationJobEntity.MarkDeliverableComposed),
+                                new ConsultHeldDocument(
+                                    deliverable.ResultId, deliverable.Label ?? deliverable.ResultId, deliverable.Ordinal,
+                                    composedDeliverable.ComposedHash, deliverable.Sources, context.CurrentUtcDateTime));
+                        }
                     }
                 }
             }
@@ -1755,8 +1769,37 @@ public sealed class ConsultGenerationOrchestrator
             // Completed requires every declared deliverable produced; the error
             // is the first missing deliverable's, by result-set order
             // (package-format-v7.md).
+            // v29 (#1305, design § 4): a deliverable composed and never released was
+            // held — named, with why, on the record and in the outcome (26–28 reach
+            // the reply leg with it and throw there).
+            Dictionary<string, string>? held = null;
+            if (at29)
+            {
+                held = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var (resultId, pending) in pendingDeliverables.OrderBy(pair => pair.Value.Deliverable.Ordinal))
+                {
+                    var reason = ConsultCheckSettlement.HeldReason(
+                        pending.Deliverable, outputs, settledChecks, SkippedKeys(),
+                        composedDeliverables.Keys.ToHashSet(StringComparer.Ordinal), RunDeliverableIds());
+                    var label = pending.Deliverable.Label ?? resultId;
+                    held[resultId] = $"{label} was composed but held: {reason}.";
+
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.MarkDeliverableComposed),
+                        new ConsultHeldDocument(
+                            resultId, label, pending.Deliverable.Ordinal,
+                            composedDeliverables.GetValueOrDefault(resultId)?.ComposedHash, pending.Deliverable.Sources,
+                            context.CurrentUtcDateTime, reason));
+                }
+            }
+
             (finalStatus, finalError) = ConsultDeliverables.FinalOutcome(deliverables, outputs, failedAggregators, failedDocuments,
-                composedDeliverables.Keys.ToHashSet(StringComparer.Ordinal), failedDeliverables);
+                composedDeliverables.Keys.ToHashSet(StringComparer.Ordinal), failedDeliverables,
+                releasedDeliverables: at29
+                    ? recordedTexts.Keys.Concat(failedDocuments.Select(d => d.ResultId)).ToHashSet(StringComparer.Ordinal)
+                    : null,
+                heldDeliverables: held);
         }
         else if (v6)
         {
@@ -2290,11 +2333,16 @@ internal static class ConsultDeliverables
         // v26 (#1155): a 26 deliverable is produced when it COMPOSED from its
         // sources (25's meaning — the aggregator's output); its failure is its own.
         IReadOnlySet<string>? composedDeliverables = null,
-        IReadOnlyDictionary<string, string>? failedDeliverables = null)
+        IReadOnlyDictionary<string, string>? failedDeliverables = null,
+        // v29 (#1305, design § 4; #1194): at 29 a deliverable is produced when it was
+        // RELEASED — its document recorded or refused by its check; one composed and
+        // never released is named, with why it was held. Null below 29.
+        IReadOnlySet<string>? releasedDeliverables = null,
+        IReadOnlyDictionary<string, string>? heldDeliverables = null)
     {
         bool Produced(Deliverable d) => d.Sources is null
             ? outputs.ContainsKey(d.NodeId)
-            : d.ResultId is not null && composedDeliverables?.Contains(d.ResultId) == true;
+            : d.ResultId is not null && (releasedDeliverables ?? composedDeliverables)?.Contains(d.ResultId) == true;
 
         var missing = deliverables.Where(d => !Produced(d)).ToList();
 
@@ -2314,7 +2362,8 @@ internal static class ConsultDeliverables
 
         var error = (missing[0].Sources is null
                 ? failedAggregators.GetValueOrDefault(missing[0].NodeId)
-                : failedDeliverables?.GetValueOrDefault(missing[0].ResultId ?? string.Empty))
+                : heldDeliverables?.GetValueOrDefault(missing[0].ResultId ?? string.Empty)
+                    ?? failedDeliverables?.GetValueOrDefault(missing[0].ResultId ?? string.Empty))
             ?? failedDeliverables?.Values.FirstOrDefault()
             ?? failedAggregators.Values.FirstOrDefault()
             ?? "The assembled documents could not be produced.";

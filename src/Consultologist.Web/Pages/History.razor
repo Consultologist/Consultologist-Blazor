@@ -576,6 +576,13 @@
                                                     <dt class="provenance-list__nested">@failed.Label</dt>
                                                     <dd class="document-failed">not produced — the check failed: @failed.Reason@(failed.Uncovered is { Count: > 0 } uncovered ? $" (not covered: {string.Join(", ", uncovered)})" : "")</dd>
                                                 }
+                                                @* v29 (#1305): a deliverable composed but never released — held on a read or
+                                                   its check; a named state with the reason, never an absence. *@
+                                                @foreach (var held in detail.HeldDocuments ?? Array.Empty<ConsultHeldDocumentResponse>())
+                                                {
+                                                    <dt class="provenance-list__nested">@held.Label</dt>
+                                                    <dd class="document-held">@(held.Reason is { } why ? $"not produced — composed, held: {why}" : "composed, held on its reads and check")@(held.ComposedHash is { } composed ? $" (composed hash {composed})" : "")</dd>
+                                                }
                                                 @* v12 #631 (§ 14): a paragraph the run's facts excluded —
                                                    recorded absence beside the document evidence. The reason
                                                    is the condition explainer's sentence: authored names and

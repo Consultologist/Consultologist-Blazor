@@ -70,4 +70,36 @@ internal static class ConsultCheckSettlement
         outcome = settled;
         return true;
     }
+
+    /// <summary>
+    /// v29 (#1305, design § 4): why a composed deliverable was never released —
+    /// the first of the three things <see cref="IsReleaseReady"/> waits on that is
+    /// still missing at the job's end: a node its macros read, a deliverable it
+    /// reads, its check. A named state, never a thrown fault.
+    /// </summary>
+    public static string HeldReason(
+        ConsultDeliverables.Deliverable deliverable,
+        IReadOnlyDictionary<string, NodeRunResult> outputs,
+        IReadOnlyDictionary<string, ConsultCheckOutcome> settledChecks,
+        IReadOnlySet<string>? skipped = null,
+        IReadOnlySet<string>? composedDeliverables = null,
+        IReadOnlySet<string>? runDeliverables = null)
+    {
+        if (deliverable.Reads?.FirstOrDefault(read => !outputs.ContainsKey(read) && skipped?.Contains(read) != true) is { } read)
+        {
+            return $"node '{read}', which its macros read, did not complete";
+        }
+
+        if (deliverable.DeliverableReads?.FirstOrDefault(id => runDeliverables?.Contains(id) == true && composedDeliverables?.Contains(id) != true) is { } other)
+        {
+            return $"deliverable '{other}', which it reads, was never composed";
+        }
+
+        if (deliverable.CheckNodeId is { } check && !settledChecks.ContainsKey(check))
+        {
+            return $"its check '{check}' never settled";
+        }
+
+        return "it was never released";
+    }
 }
