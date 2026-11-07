@@ -1,7 +1,9 @@
 # specVersion 29 — the dynamic half: a count the run discovers
 
-> **Status:** design, **revision 3** (2026-11-07). Milestone 32 (#1277). Decided with the package
-> author; being implemented (layer A #1301 merged; layer B2 #1303). Revision 2 (planning layer A):
+> **Status:** design, **revision 4** (2026-11-07). Milestone 32 (#1277). Decided with the package
+> author; being implemented (layer A, B1–B3 merged; B4 #1305). Revision 4 (planning B4): a
+> composed-but-unreleased deliverable is kept in a list of its own, and a job that ends with one is
+> failed, naming why it was held (§ 4, § 5). Revision 2 (planning layer A):
 > a loop's source is a field path, because a format's value is an object (§ 2.1); a
 > `concept_list`'s field iterates as any array field does (§ 12); the below-29 gate sentences are
 > said at the bump (§ 6); § 6 lists the sentences as built. Revision 3 (planning B2): a loop
@@ -248,8 +250,15 @@ never completed — a `reason`. A folder item's skipped row is 27's (*skipped by
 (`provenance-record.md`, line 50): at 10 it is *the blocks laid out so far; final when
 `unresolvedLoops` is empty*.
 
-**Documents.** A row may exist before its text: `composedAtUtc`, `composedHash`, `sources`, and the
-state *composed, held on its check* until release (§ 4).
+**Documents.** A deliverable has a row before its text: `composedAtUtc`, `composedHash`,
+`sources`, the state *composed, held on its check* until release (§ 4). *(Revised in revision 4,
+decided 2026-11-07: the row lives in a list of its own, `heldDocuments`, not as a document row
+without text — "no text" already means *deleted under retention* to the record's readers. A
+release, or a check's refusal, moves it to `assembledDocuments` or `failedDocuments`; one still
+there when the job ends carries `reason` — a node its macros read did not complete, a deliverable
+it reads was never composed, its check never settled — and the job is **failed** with
+*"Consultation note was composed but held: its check 'coverage' never settled."* The list is
+served whatever the job's status.)*
 
 **No hash ladder moves.** The source node's output hash already covers the list; a resolved loop's
 aggregate input hash is over its items' output hashes in item order (the 25 ladder); the composed
