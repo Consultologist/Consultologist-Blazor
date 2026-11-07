@@ -372,6 +372,14 @@ internal static class WorkflowFlowNodes
 
     private const string LoopPrefix = "item in ";
 
+    /// <summary>
+    /// v29 (#1303, design § 1.1): a loop collection that is a node's value
+    /// (<c>node.&lt;id&gt;.value…</c>) — its items are known only once the node
+    /// completes, so it lays out no blocks at start; false for a folder or input.
+    /// </summary>
+    public static bool IsNodeValueCollection(string? collection) =>
+        TemplateObjectReference.TryParse(collection, out var obj, out _, out _) && obj == TemplateObjects.Node;
+
     /// <summary>#1154: a <c>for</c> text's collection as a 25 <c>forEach</c> spells it, or null when the text is not the grammar.</summary>
     public static string? CollectionOf(string? @for) =>
         @for is { } text && text.StartsWith(LoopPrefix, StringComparison.Ordinal) && text.Length > LoopPrefix.Length ? text[LoopPrefix.Length..] : null;

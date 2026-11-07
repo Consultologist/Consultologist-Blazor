@@ -695,7 +695,10 @@ public record ConsultGenerationJobResponse(
     // v27 (#1236, record storage 9): the blocks an if/case inside a loop skipped by
     // condition — block id → the reason (the condition's text); counted among the
     // completed blocks, no text. Null when none.
-    IReadOnlyDictionary<string, string>? SkippedBlocks = null);
+    IReadOnlyDictionary<string, string>? SkippedBlocks = null,
+    // v29 (#1303): the loops over a node's value whose count is not yet known —
+    // the total is a floor while any is listed. Null when none. Trailing.
+    IReadOnlyList<string>? UnresolvedLoops = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -814,7 +817,11 @@ public record ConsultGenerationNodeDescriptor(
     // v27 (#1236, record storage 9): an if/case INSIDE a loop decides once per item —
     // its row carries this map (item id → then | else | <values> | none) and never
     // branch. Null below 9 and on a top-level flow row. Trailing.
-    IReadOnlyDictionary<string, string>? Branches = null);
+    IReadOnlyDictionary<string, string>? Branches = null,
+    // v29 (#1303): a loop over a node's value — when its count settled (Count is
+    // null until then), and why it has no items when the list was empty. Trailing.
+    DateTimeOffset? ResolvedAtUtc = null,
+    string? Reason = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultNodeBindingDescriptor (#642).</summary>
 public record ConsultNodeBindingDescriptor(string From, string? As = null);
