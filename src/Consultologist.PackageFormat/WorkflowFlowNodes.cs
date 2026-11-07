@@ -188,7 +188,7 @@ internal static class WorkflowFlowNodes
             switch (kind)
             {
                 case Kind.For:
-                    (fan, folder) = ResolveLoopCollection(node.Id, node.For!, snippets, inputsById, errors);
+                    (fan, folder) = ResolveLoopCollection(node.Id, node.For!, snippets, inputsById, errors, at29: manifest.SpecVersion >= 29);
                     if (node.Nodes is not { Count: > 0 })
                     {
                         errors.Add($"Loop '{node.Id}' has no body; name the nodes that run per item in nodes.");
@@ -382,7 +382,9 @@ internal static class WorkflowFlowNodes
         string text,
         WorkflowPackageData snippets,
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
-        List<string> errors)
+        List<string> errors,
+        // v29 (#1301, design § 2): a loop may iterate a node's value.
+        bool at29 = false)
     {
         const string prefix = LoopPrefix;
         var grammar = $"Loop '{loopId}' iterates '{text}'; a loop iterates \"item in snippet.<folder>\" or \"item in input.<id>\".";
@@ -400,6 +402,24 @@ internal static class WorkflowFlowNodes
         {
             errors.Add(grammar);
             return (null, null);
+        }
+
+        if (obj == TemplateObjects.Node && at29)
+        {
+            // v29 (#1301, design § 2.1): node.<id>.value or a field path under it;
+            // the source's place and type are judged once the node shapes exist
+            // (WorkflowPackageValidator.ValidateNodeValueLoopsAt29).
+            var valuePrefix = "." + TemplateMembers.Value;
+            if (rest != valuePrefix && !rest.StartsWith(valuePrefix + ".", StringComparison.Ordinal))
+            {
+                errors.Add($"Loop '{loopId}' iterates {reference}; a loop iterates a node's value — {TemplateObjects.Node}.{id}.{TemplateMembers.Value}.<field>.");
+                return (null, null);
+            }
+
+            var fields = rest.Length == valuePrefix.Length
+                ? Array.Empty<string>()
+                : rest[(valuePrefix.Length + 1)..].Split('.');
+            return (new NodeValueFan(id, fields), null);
         }
 
         if (obj == TemplateObjects.Node)

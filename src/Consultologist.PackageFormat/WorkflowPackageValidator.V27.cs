@@ -21,7 +21,9 @@ public static partial class WorkflowPackageValidator
         List<string> errors,
         List<string> warnings,
         // v28 (#1283): run for a 28 package by ValidateAt28, its prompts implied.
-        bool at28 = false)
+        bool at28 = false,
+        // v29 (#1301): a loop over a node's value, a folder item gated on a node.
+        bool at29 = false)
     {
         ValidateMetadata(manifest, errors);
         ValidateDerivedFrom(manifest, errors);
@@ -66,6 +68,12 @@ public static partial class WorkflowPackageValidator
         {
             nodeShapes[flow.Node.Id] = WorkflowFlowNodes.ShapeOf(flow, nodeShapes);
         }
+
+        // v29 (#1301, design § 2.1): a node-sourced loop's place and type, now the shapes exist.
+        if (at29)
+        {
+            ValidateNodeValueLoopsAt29(flows, nodeShapes, nodes.Keys.ToHashSet(StringComparer.Ordinal), errors);
+        }
         var macroFolderIds = macroFolders?.Collections.Keys.ToHashSet(StringComparer.Ordinal) ?? TemplateReferenceContext.NoIds;
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).Where(id => !macroFolderIds.Contains(id)).ToHashSet(StringComparer.Ordinal);
         var bodies = flows.BodyScopes;
@@ -94,7 +102,7 @@ public static partial class WorkflowPackageValidator
         var edges = DeriveEdgesAt26(manifest, nodes, walk, flows, errors);
         ValidateFlowEdgesAt26(flows, edges, errors);
 
-        ValidateConditionsAt27(walk, flows, errors);
+        ValidateConditionsAt27(walk, flows, errors, at29);
         ValidateMacroUseAt25(manifest, nodes, walk, errors, warnings);
         ValidateInstructionsAt26(manifest, nodes, walk, macroFolders, errors);
         ValidateReferenceGraphAt25(walked, snippets, errors, macroFolders);
@@ -104,6 +112,11 @@ public static partial class WorkflowPackageValidator
         var specs = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList();
         ValidateReachabilityAt26(manifest, specs, nodes, flows, edges, errors);
         ValidateBodyReachabilityAt26(flows, nodes, edges, errors);
+        if (at29)
+        {
+            ValidateNodeValueLoopSourcesAt29(flows, edges, errors);
+        }
+
         ValidateAcyclic(specs, edges, errors);
     }
 
@@ -120,7 +133,7 @@ public static partial class WorkflowPackageValidator
     /// flow node's condition names the loop it runs in by that relation; and it
     /// reads none of its own branch nodes, which run after it decides.
     /// </summary>
-    private static void ValidateConditionsAt27(WorkflowDerivedEdges.Walk walk, WorkflowFlowNodes.Resolved flows, List<string> errors)
+    private static void ValidateConditionsAt27(WorkflowDerivedEdges.Walk walk, WorkflowFlowNodes.Resolved flows, List<string> errors, bool at29 = false)
     {
         foreach (var condition in walk.Conditions.Where(c => c.Site != WorkflowDerivedEdges.ConditionSite.FolderItem && c.Walk.IsValid))
         {
@@ -146,6 +159,13 @@ public static partial class WorkflowPackageValidator
             }
         }
 
-        ValidateFolderItemConditionsAt26(walk, errors);
+        if (at29)
+        {
+            ValidateFolderItemConditionsAt29(walk, flows, errors);
+        }
+        else
+        {
+            ValidateFolderItemConditionsAt26(walk, errors);
+        }
     }
 }

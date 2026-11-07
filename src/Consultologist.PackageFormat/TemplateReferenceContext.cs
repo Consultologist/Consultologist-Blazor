@@ -148,6 +148,75 @@ public sealed record SnippetFolderFan(string Folder) : TemplateFan;
 /// <summary>A fan over an array input: <c>item</c> carries id, name and value (the element, typed as declared).</summary>
 public sealed record InputArrayFan(WorkflowDeclarationNode Element) : TemplateFan;
 
+/// <summary>
+/// v29 (#1301, design § 2): a fan over a node's value — the array a field path
+/// under <c>node.&lt;id&gt;.value</c> names (a format's value is an object, so the
+/// path is how a loop reaches its list). <c>item</c> carries id (the 1-based
+/// position), label and value (the element, typed from the node's format). The
+/// element is not carried: it is read from the node shapes where they exist
+/// (<see cref="Resolve"/>), so the fan can be made before the shapes are.
+/// </summary>
+public sealed record NodeValueFan(string NodeId, IReadOnlyList<string> Fields) : TemplateFan
+{
+    /// <summary>The source as written: <c>node.&lt;id&gt;.value[.f…]</c>.</summary>
+    public string Reference => $"{TemplateObjects.Node}.{NodeId}.{TemplateMembers.Value}{string.Concat(Fields.Select(f => "." + f))}";
+
+    /// <summary>The element a loop over this fan yields, or null when the source is not a typed array.</summary>
+    public TemplateValueShape? ElementIn(IReadOnlyDictionary<string, TemplateNodeShape> nodes) =>
+        Resolve(nodes, out _) is { Kind: WorkflowInputTypes.Array } array ? array.Items : null;
+
+    /// <summary>
+    /// The shape the source names, following the field path through the node's
+    /// format schema — null with a reason when the node has no value, a field is
+    /// not declared, or a step is not an object. Equality is the record's, by value
+    /// (the path compared element-wise).
+    /// </summary>
+    public TemplateValueShape? Resolve(IReadOnlyDictionary<string, TemplateNodeShape> nodes, out string? problem)
+    {
+        problem = null;
+
+        if (!nodes.TryGetValue(NodeId, out var node))
+        {
+            problem = $"node '{NodeId}' is not a node with a value";
+            return null;
+        }
+
+        if (node.Type == WorkflowInputTypes.Text || node.Schema is null)
+        {
+            problem = $"{NodeId} returns prose";
+            return null;
+        }
+
+        var shape = TemplateValueShape.FromSchema(node.Schema);
+        var walked = $"{TemplateObjects.Node}.{NodeId}.{TemplateMembers.Value}";
+
+        foreach (var field in Fields)
+        {
+            if (shape.Kind != WorkflowInputTypes.Object || shape.Fields is null)
+            {
+                problem = $"{walked} is {shape.Describe()}, not an object";
+                return null;
+            }
+
+            if (!shape.Fields.TryGetValue(field, out var next))
+            {
+                problem = $"{NodeId}'s format does not declare '{field}' under {walked} (fields: {string.Join(", ", shape.Fields.Keys.Order(StringComparer.Ordinal))})";
+                return null;
+            }
+
+            shape = next;
+            walked += "." + field;
+        }
+
+        return shape;
+    }
+
+    public bool Equals(NodeValueFan? other) =>
+        other is not null && NodeId == other.NodeId && Fields.SequenceEqual(other.Fields, StringComparer.Ordinal);
+
+    public override int GetHashCode() => HashCode.Combine(NodeId, string.Join(".", Fields));
+}
+
 /// <summary>The five reserved objects of § 1, and the roots a 25 template must not use.</summary>
 public static class TemplateObjects
 {

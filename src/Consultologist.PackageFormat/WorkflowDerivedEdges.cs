@@ -146,6 +146,16 @@ public static class WorkflowDerivedEdges
                 edges.Add(subjectId);
             }
 
+            // v29 (#1301, design § 2.1): a loop over a node's value waits on that
+            // node — its count is the node's output. Read structurally, as a case
+            // subject is; only a 29 package carries one (26–28 refuse it).
+            if (node?.Node.For is { } @for && WorkflowFlowNodes.CollectionOf(@for) is { } collection
+                && TemplateObjectReference.TryParse(collection, out var sourceObj, out var sourceId, out _)
+                && sourceObj == TemplateObjects.Node && _nodes.ContainsKey(sourceId))
+            {
+                edges.Add(sourceId);
+            }
+
             if (Parameters.TryGetValue(nodeId, out var parameters))
             {
                 edges.UnionWith(parameters.Edges);
@@ -333,6 +343,17 @@ public static class WorkflowDerivedEdges
             }
 
             _nodes.TryGetValue(nodeId, out var node);
+
+            // v29 (#1301, design § 3.2): a node fanned over a folder runs each item
+            // only once the item's gate is decided — it waits on what a node-reading
+            // gate reads.
+            if (node?.Fan is SnippetFolderFan gatedFan && _folders.TryGetValue(gatedFan.Folder, out var gatedItems))
+            {
+                foreach (var item in gatedItems)
+                {
+                    VisitNodeGatedItem(item, seen, TakeGate);
+                }
+            }
 
             foreach (var instance in node?.Node.Macros ?? new List<WorkflowNodeMacroSpec>())
             {
@@ -720,6 +741,7 @@ public static class WorkflowDerivedEdges
             {
                 VisitKey((TemplateKind.Snippet, snippet), seen, take);
                 VisitSnippetGate(snippet, seen, take);
+                VisitNodeGatedItem(snippet, seen, take);
             }
 
             foreach (var folder in refs.SnippetFolders)
@@ -729,6 +751,7 @@ public static class WorkflowDerivedEdges
                     foreach (var item in items)
                     {
                         VisitKey((TemplateKind.Snippet, item), seen, take);
+                        VisitNodeGatedItem(item, seen, take);
                     }
                 }
             }
@@ -766,6 +789,23 @@ public static class WorkflowDerivedEdges
         /// the macro's text reads. Seen under the macro's key with a suffix no id
         /// can carry.
         /// </summary>
+        /// <summary>
+        /// v29 (#1301, design § 3.3): a folder item gated on a node is decided once
+        /// that node completes, so whatever reads the item waits on the node. Only a
+        /// gate that reads a node is visited — below 29 an item's gate reads inputs
+        /// and item.id only, so nothing changes for a 26–28 package.
+        /// </summary>
+        private void VisitNodeGatedItem(string itemKey, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
+        {
+            foreach (var gate in ConditionsOf(itemKey, ConditionSite.FolderItem).Where(g => g.Walk.References.Nodes.Count > 0))
+            {
+                if (seen.Add((TemplateKind.Snippet, itemKey + "/item-if")))
+                {
+                    Visit(gate.Walk.References, seen, take);
+                }
+            }
+        }
+
         /// <summary>#1094: a standalone snippet's own gate is judged where the snippet is read — the reader waits on what it reads.</summary>
         private void VisitSnippetGate(string snippetId, HashSet<(TemplateKind, string)> seen, Action<TemplateReferences> take)
         {

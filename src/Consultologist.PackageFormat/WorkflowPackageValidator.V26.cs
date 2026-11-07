@@ -609,7 +609,29 @@ public static partial class WorkflowPackageValidator
                 // field of the element is a closed set; a folder item's fields are text.
                 var (fan, _) = flows.FanOf(flow.Node.Id);
 
-                if (fan is not InputArrayFan input)
+                if (fan is NodeValueFan nodeFan)
+                {
+                    // v29 (#1301): an enum field of the element the source node's format types.
+                    var sourceShapes = nodes.Values
+                        .Where(n => n.Format is not null)
+                        .ToDictionary(n => n.Node.Id, n => new TemplateNodeShape(n.Format!.Id, n.Format.Spec.Type, n.Format.Spec.Schema), StringComparer.Ordinal);
+                    var element = nodeFan.ElementIn(sourceShapes);
+
+                    if (element?.Fields?.GetValueOrDefault(field) is not { } typed)
+                    {
+                        var fields = element?.Fields?.Keys.Order(StringComparer.Ordinal).ToList() ?? new List<string>();
+                        errors.Add($"Node '{flow.Node.Id}' switches on {subject}, which the item does not carry (fields: {(fields.Count > 0 ? string.Join(", ", fields) : "none")}); {rule}.");
+                    }
+                    else if (typed.Kind != WorkflowInputTypes.Enum || typed.Values is not { Count: > 0 })
+                    {
+                        errors.Add($"Node '{flow.Node.Id}' switches on {subject}, which is {typed.Describe()}; {rule}.");
+                    }
+                    else
+                    {
+                        values = typed.Values;
+                    }
+                }
+                else if (fan is not InputArrayFan input)
                 {
                     errors.Add(fan is SnippetFolderFan
                         ? $"Node '{flow.Node.Id}' switches on {subject}, but a folder item's fields are text; {rule}."
@@ -696,6 +718,24 @@ public static partial class WorkflowPackageValidator
             if (flow.Kind == WorkflowFlowNodes.Kind.Case && flow.Expression is { } subject && WorkflowFlowNodes.CaseNodeSubjectOf(subject) is { } nodeId && nodes.ContainsKey(nodeId))
             {
                 targets.Add(nodeId);
+            }
+
+            // v29 (#1301, design § 2.1): a loop over a node's value waits on that
+            // node, and so does every node of its body (each runs per element).
+            if (flow.Fan is NodeValueFan fan && nodes.ContainsKey(fan.NodeId))
+            {
+                targets.Add(fan.NodeId);
+
+                foreach (var bodyId in flow.BodyNodeIds.Where(nodes.ContainsKey))
+                {
+                    if (!edges.TryGetValue(bodyId, out var bodyTargets))
+                    {
+                        bodyTargets = new HashSet<string>(StringComparer.Ordinal);
+                        edges[bodyId] = bodyTargets;
+                    }
+
+                    bodyTargets.Add(fan.NodeId);
+                }
             }
         }
 
@@ -1162,7 +1202,10 @@ public static partial class WorkflowPackageValidator
                 var elements = Enumerable.Range(0, 2).Select(i => new TemplateRenderer.LoopElement(
                     shape.Flow.Fan is InputArrayFan input
                         ? new ScriptObject { ["id"] = i.ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = Probe(input.Element) }
-                        : new ScriptObject { ["id"] = "item", [TemplateMembers.Label] = "placeholder", ["content"] = "placeholder" },
+                        : shape.Flow.Fan is NodeValueFan nodeFan
+                            // v29 (#1301): the element the source node's format types.
+                            ? new ScriptObject { ["id"] = (i + 1).ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = ProbeFromShape(nodeFan.ElementIn(shapes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)) }
+                            : new ScriptObject { ["id"] = "item", [TemplateMembers.Label] = "placeholder", ["content"] = "placeholder" },
                     "placeholder",
                     ret.HasValue,
                     ret.HasValue ? ProbeFromShape(ValueShapeOf(ret)) : null,

@@ -120,7 +120,7 @@ would otherwise have carried it (#397).
   `index.json` an object `{ "label"?, "items" }`, giving each folder a pane; no hash moves and the record keeps storage 9; the migration renames 58 prompts and 2 items
   across the ten public packages,
   [the dynamic half](customizable-workflow/package-format-v29-design.md) — specVersion 29
-  (Milestone 32, #1277, revision 1): a `for` may iterate a node's value, so its count settles
+  (Milestone 32, #1277, revision 2): a `for` may iterate a node's value, so its count settles
   when the node completes — per-loop totals, a `count-resolved` event, *not yet known* never zero;
   a folder item's `if` may read a node, its item kept as a *skipped by condition* row; a
   deliverable's row written at composition, "produced" meaning released; record storage 10; a
