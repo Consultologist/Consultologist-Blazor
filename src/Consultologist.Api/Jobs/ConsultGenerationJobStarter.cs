@@ -1088,6 +1088,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 DecidingNodes: deciding && gatingReads is { Count: > 0 } ? gatingReads.Order(StringComparer.Ordinal).ToList() : null,
                 // v29 (#1303): the loops over a node's value, resolved as their sources complete.
                 UnresolvedLoops: unresolvedLoops,
+                // v29 (#1304): the folder items decided once the nodes their if reads complete.
+                ItemGates: NodeGatedItems(package) is { Count: > 0 } itemGates ? itemGates : null,
                 Source: origin.Source,
                 ReplyToAddress: origin.ReplyToAddress,
                 Results: resultDescriptors,
@@ -1398,8 +1400,14 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         WorkflowPackage package,
         IReadOnlyDictionary<string, ConsultInputValue>? supplied,
         // v25 (#1038): the folder-less scope a 25 item's when (inputs only) is judged over.
-        ConsultConditionScope? scope = null) =>
-        (package.Data?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
+        ConsultConditionScope? scope = null)
+    {
+        // v29 (#1304, design § 3.2): an item whose if reads a node is KEPT here —
+        // it has no value to read at start — and decided by the engine once that
+        // node completes; the count is kept either way.
+        var nodeGated = NodeGatedItems(package);
+
+        return (package.Data?.Collections ?? new Dictionary<string, WorkflowDataCollection>())
             .ToDictionary(
                 entry => entry.Key,
                 entry => (IReadOnlyList<IReadOnlyDictionary<string, string>>)entry.Value.Items
@@ -1407,17 +1415,28 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     // the item in hand (the rule allows inputs and item.id). #1179:
                     // the ONE judgement of an item's gate — the render reads the
                     // settled set, never re-judges (ConsultGatedScope.JudgeSnippets).
-                    .Where(item => item.If is { } gate
-                        ? scope!.WithItem(entry.Key, item).Holds($"Snippet folder '{entry.Key}' item '{item.Id}' if", gate)
-                        : item.When is null
-                        || (scope is not null
-                            ? scope.Holds($"Snippet folder '{entry.Key}' item '{item.Id}' condition", item.When)
-                            : !WorkflowResultConditions.TryParseExpression(item.When, out var when, out _)
-                                || when is null
-                                || WorkflowResultConditions.Holds(when, supplied)))
+                    .Where(item => nodeGated.GetValueOrDefault(entry.Key)?.ContainsKey(item.Id) == true
+                        || (item.If is { } gate
+                            ? scope!.WithItem(entry.Key, item).Holds($"Snippet folder '{entry.Key}' item '{item.Id}' if", gate)
+                            : item.When is null
+                            || (scope is not null
+                                ? scope.Holds($"Snippet folder '{entry.Key}' item '{item.Id}' condition", item.When)
+                                : !WorkflowResultConditions.TryParseExpression(item.When, out var when, out _)
+                                    || when is null
+                                    || WorkflowResultConditions.Holds(when, supplied))))
                     .Select(item => (IReadOnlyDictionary<string, string>)item.Fields)
                     .ToList(),
                 StringComparer.Ordinal);
+    }
+
+    /// <summary>
+    /// v29 (#1304): the folder items gated on a node — folder → item → the nodes
+    /// its if reads; empty below 29 and for a package with none.
+    /// </summary>
+    internal static IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>> NodeGatedItems(WorkflowPackage package) =>
+        package.Manifest.SpecVersion >= 29 && package.SourceFiles is not null
+            ? WorkflowDerivedEdges.WalkOf(package.Manifest, package.SourceFiles, package.Formats).NodeGatedItems()
+            : new Dictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>(StringComparer.Ordinal);
 
     /// <summary>The block skeleton and the fans of a resolved (narrowed, pruned) package over the supplied inputs.</summary>
     internal sealed record SkeletonResolution(

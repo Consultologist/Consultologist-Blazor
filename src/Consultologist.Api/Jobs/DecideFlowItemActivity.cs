@@ -24,7 +24,11 @@ public sealed record ConsultDecideFlowItemInput(
     TemplateProfileFacts Profile,
     // The returned node of every flow node the condition reads, so an alias
     // types as it (a body node reading an earlier inner flow by bare id).
-    IReadOnlyDictionary<string, string>? FlowRets = null);
+    IReadOnlyDictionary<string, string>? FlowRets = null,
+    // v29 (#1304, design § 3.2): set when this is a folder item's gate, not an
+    // inner if/case — the folder whose item's if reads a node, decided once that
+    // node completes. FlowId then names the folder. Null below 29. Trailing.
+    string? GateFolder = null);
 
 /// <summary>
 /// v27 (#1235, design § 1.3, § 1.4, § 2): what one item's decision said — the
@@ -86,6 +90,11 @@ public sealed class DecideFlowItemActivity
     /// <summary>The decision, pure: the tests' entry point.</summary>
     internal static ConsultFlowItemDecision Decide(WorkflowPackage package, ConsultDecideFlowItemInput input)
     {
+        if (input.GateFolder is { } gateFolder)
+        {
+            return DecideItemGate(package, input, gateFolder);
+        }
+
         var flows = ConsultGenerationJobStarter.FlowsOf(package);
         if (!flows.Flows.TryGetValue(input.FlowId, out var flow) || flow.Kind == WorkflowFlowNodes.Kind.For)
         {
@@ -122,5 +131,34 @@ public sealed class DecideFlowItemActivity
             outcome.Taken?.Nodes.ToList() ?? new List<string>(),
             outcome.Taken?.RetNodeId,
             reason);
+    }
+
+    /// <summary>
+    /// v29 (#1304, design § 3.2): a folder item whose if reads a node, judged once
+    /// that node completed — over the same scope a start-time gate is judged in
+    /// (SettledFolders), now with the node's value to read. Held: "then", nothing
+    /// skipped. Not held: "none" and the reason, the condition's TEXT (#369).
+    /// </summary>
+    private static ConsultFlowItemDecision DecideItemGate(WorkflowPackage package, ConsultDecideFlowItemInput input, string folder)
+    {
+        var itemId = input.Item.GetValueOrDefault("id") ?? throw new InvalidOperationException($"The gated item of folder '{folder}' has no id.");
+        var item = package.Data?.Collections.GetValueOrDefault(folder)?.Items.FirstOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal))
+            ?? throw new InvalidOperationException($"Folder '{folder}' of '{package.Ref}' has no item '{itemId}'.");
+        var gate = item.If ?? throw new InvalidOperationException($"Folder '{folder}' item '{itemId}' of '{package.Ref}' has no if to decide.");
+
+        var holds = new ConsultConditionScope(
+                input.EffectiveInputs ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                ConsultConditionScope.TypesOf(package),
+                input.NodeTexts,
+                input.Folders,
+                input.Run,
+                input.Profile,
+                package)
+            .WithItem(folder, item)
+            .Holds($"Snippet folder '{folder}' item '{itemId}' if", gate);
+
+        return holds
+            ? new ConsultFlowItemDecision(folder, itemId, "then", new List<string>(), string.Empty, null)
+            : new ConsultFlowItemDecision(folder, itemId, "none", new List<string>(), null, ConsultConditionScope.Reason(gate));
     }
 }
