@@ -32,6 +32,10 @@
          probe and the accepted-set sentence. -->
     <InternalsVisibleTo Include="Consultologist.Api" />
     <InternalsVisibleTo Include="Consultologist.Api.Tests" />
+    <!-- #1306: the editor's test-only seam (AuthorsAboveCeiling) validates through
+         the accepted-set overload until the bump (#1307) retires it, as #1286 did. -->
+    <InternalsVisibleTo Include="Consultologist.Web" />
+    <InternalsVisibleTo Include="Consultologist.Web.Tests" />
   </ItemGroup>
 
 </Project>
