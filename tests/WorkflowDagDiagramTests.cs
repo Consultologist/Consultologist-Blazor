@@ -417,4 +417,35 @@ public class WorkflowDagDiagramTests
         Assert.Contains("-->|\"", withWalk);
         Assert.DoesNotContain("input_notes([", declarationsAlone);
     }
+
+    // v29 (#1306): a loop over a node's value is fed by that node — an edge from its
+    // box, never a stray id spelled from the path; a node gating a folder item reaches
+    // the folder's reader.
+
+    [Fact]
+    public void Diagram_At29_ALoopOverANodesValue_IsFedByTheNode()
+    {
+        var (manifest, _) = V29Package.Minimal();
+
+        var diagram = WorkflowDagDiagram.Generate(manifest);
+
+        Assert.Contains("find_problems -->|\"for\"| for_problems", diagram);
+        Assert.Contains("subgraph for_problems[\"problems: per node.find_problems.value.problems item\"]", diagram);
+        Assert.Contains("draft_problem -->|\"ret\"| problems", diagram);
+        Assert.DoesNotContain("node_find_problems", diagram);
+    }
+
+    [Fact]
+    public void Diagram_At29_ANodeGatingAFolderItem_ReachesTheFoldersReader()
+    {
+        var (manifest, files) = V29Package.With(_ => { }, f => f["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "node.scope.value == \"in_scope\"") + "Plan.");
+        var implied = WorkflowImpliedPaths.WithImpliedPrompts(manifest, files);
+        var nodes = WorkflowDerivedEdges.PrepareNodes(implied, files, V25Package.Catalog(), out var snippets, out var contextFor);
+        var walk = WorkflowDerivedEdges.WalkAll(implied, files, nodes, snippets, contextFor);
+
+        var diagram = WorkflowDagDiagram.Generate(implied, walk);
+
+        // section_notes runs per item of the folder the scope-gated item belongs to.
+        Assert.Contains(diagram.Split('\n'), line => line.Contains("scope", StringComparison.Ordinal) && line.Contains("section_notes", StringComparison.Ordinal));
+    }
 }

@@ -168,7 +168,12 @@ public static class WorkflowDagDiagram
             sb.Append('\n');
             if (collection != null)
             {
-                sb.Append($"    {Sanitize(collection)} -->|\"for\"| {subgraphId}\n");
+                // v29 (#1306): a loop over a node's value is fed by that node — its box,
+                // not an undeclared id spelled from the whole path (a stray box).
+                var source = TemplateObjectReference.TryParse(collection, out var sourceObj, out var sourceId, out _) && sourceObj == TemplateObjects.Node
+                    ? sourceId
+                    : collection;
+                sb.Append($"    {Sanitize(source)} -->|\"for\"| {subgraphId}\n");
             }
 
             var body = loop.Nodes ?? new List<string>();
