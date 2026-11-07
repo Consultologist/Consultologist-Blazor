@@ -1095,6 +1095,11 @@ public static partial class WorkflowPackageValidator
             {
                 globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "0", [nameMember] = "placeholder", ["value"] = Probe(inputFan.Element) };
             }
+            else if (templateContext.Fan is NodeValueFan nodeFan)
+            {
+                // v29 (#1301): the element the source node's format types.
+                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "1", [nameMember] = "placeholder", ["value"] = ProbeFromShape(nodeFan.ElementIn(templateContext.Nodes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)) };
+            }
             else if (templateContext.ItemDeferred)
             {
                 // C6 (#1012): a snippet or macro text runs under its reader's fan; the probe lends every member.

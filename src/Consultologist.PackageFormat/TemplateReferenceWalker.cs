@@ -1745,6 +1745,26 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         ? TemplateValueShape.FromDeclaration(input.Element)
                         : TemplateValueShape.Text);
 
+                case NodeValueFan nodeFan:
+                    // v29 (#1301, design § 2.2): an input fan item's members; the value
+                    // is the element the node's format types (untyped when the source
+                    // is not — the validator says why at the loop).
+                    if (RefusesName(name, walked.ToString()))
+                    {
+                        return Refused;
+                    }
+
+                    if (!InputFanItemMembers.Contains(name, StringComparer.Ordinal))
+                    {
+                        Errors.Add($"{_subject} reads {walked}, which an item of {nodeFan.Reference} does not carry (it carries: {string.Join(", ", InputFanItemMembers)}).");
+                        return Refused;
+                    }
+
+                    _refs.ReadItem(name);
+                    return new ShapeTarget(name == TemplateMembers.Value
+                        ? nodeFan.ElementIn(_context.Nodes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)
+                        : TemplateValueShape.Text);
+
                 default:
                     // C6 (#1012): a snippet or macro text, walked with no fan of its own —
                     // any fan item member, typed loosely; the reading node's fan decides.
@@ -1928,7 +1948,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return Refused;
 
                 case ItemTarget:
-                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan ? $"item.id, item.{NameMember}, item.value" : $"item.id, item.{NameMember}, item.content")}).");
+                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan or NodeValueFan ? $"item.id, item.{NameMember}, item.value" : $"item.id, item.{NameMember}, item.content")}).");
                     return Refused;
 
                 case FolderTarget folder when use == ChainUse.Value:
