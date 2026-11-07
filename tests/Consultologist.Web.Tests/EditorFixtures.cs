@@ -1100,6 +1100,48 @@ public static class EditorFixtures
         return new(at26.Name, at26.Version, 28, JsonDocument.Parse(migrated.ManifestJson).RootElement.Clone(), new Dictionary<string, string>(migrated.Files, StringComparer.Ordinal));
     }
 
+    /// <summary>
+    /// v29 (#1306): the 28 package at 29 with a loop over a node's value — a local
+    /// problem_list format (two array fields of one object element, and a summary),
+    /// a find_problems node returning it, and a problems loop whose draft_problem
+    /// body reads the element's fields; the deliverable sources the loop too.
+    /// </summary>
+    public static WorkflowPackageContentResponse V29()
+    {
+        var at28 = V28();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(at28.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 29;
+        var formats = root["formats"] as System.Text.Json.Nodes.JsonArray ?? new System.Text.Json.Nodes.JsonArray();
+        formats.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = "problem_list", ["file"] = "formats/problem_list.json" });
+        root["formats"] = formats;
+        var nodes = root["nodes"]!.AsArray();
+        nodes.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = "find_problems", ["label"] = "Find problems", ["format"] = "problem_list", ["onInvalid"] = "fail" });
+        nodes.Add(new System.Text.Json.Nodes.JsonObject { ["id"] = "draft_problem", ["label"] = "Draft problem", ["format"] = "prose" });
+        nodes.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "problems", ["label"] = "Problems", ["for"] = "item in node.find_problems.value.problems",
+            ["nodes"] = new System.Text.Json.Nodes.JsonArray("draft_problem"), ["ret"] = "node.draft_problem"
+        });
+        root["deliverables"]![0]!["sources"]!.AsArray().Add("node.problems");
+
+        var element = """{ "type": "object", "additionalProperties": false, "required": ["name", "severity"], "properties": { "name": { "type": "string" }, "severity": { "type": "string", "enum": ["low", "high"] } } }""";
+        var files = new Dictionary<string, string>(at28.Files, StringComparer.Ordinal)
+        {
+            ["formats/problem_list.json"] = $$"""
+                { "type": "object", "producer": "custom", "outputMacros": false,
+                  "description": "The problems a referral names.",
+                  "schema": { "type": "object", "additionalProperties": false, "required": ["problems", "risks", "summary"],
+                              "properties": { "summary": { "type": "string" },
+                                              "problems": { "type": "array", "items": {{element}} },
+                                              "risks": { "type": "array", "items": {{element}} } } } }
+                """,
+            ["prompts/find_problems.md"] = "List the problems this referral names.",
+            ["prompts/draft_problem.md"] = "Problem {{ item.id }}: {{ item.value.name }} ({{ item.value.severity }}).",
+        };
+
+        return new(at28.Name, at28.Version, 29, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
+    }
+
     public static WorkflowPackageContentResponse V27Flow(bool inLoop = true)
     {
         var at26 = V26();
