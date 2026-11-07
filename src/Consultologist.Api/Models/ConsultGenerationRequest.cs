@@ -443,7 +443,11 @@ public record ConsultGenerationJobResponse(
     IReadOnlyDictionary<string, string>? SkippedBlocks = null,
     // v29 (#1303, design § 1.1): the loops whose count is not yet known —
     // TotalBlockCount is a floor while any is listed. Null when none.
-    IReadOnlyList<string>? UnresolvedLoops = null);
+    IReadOnlyList<string>? UnresolvedLoops = null,
+    // v29 (#1305, design § 4): the deliverables composed but not released —
+    // served whatever the job's status, so a failed job names what it held.
+    // Null when none.
+    IReadOnlyList<ConsultHeldDocument>? HeldDocuments = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and
@@ -810,6 +814,23 @@ public sealed record ConsultExcludedMacro(string ResultId, string MacroId, strin
 /// Uncovered names the input terms the document did not cover, Untested the
 /// concepts the comparison could not code (never silently dropped).
 /// </summary>
+/// <summary>
+/// v29 (#1305, design § 4; #1194): a deliverable composed but not yet released —
+/// its composed hash and sources stamped at composition, its text not yet
+/// recorded. Released, it moves to the documents (or, refused by its check, to
+/// the failed ones); still here when the job ends, it was held, and Reason says
+/// why. A list of its own: a document row without text already means "deleted
+/// under retention" to the record's readers.
+/// </summary>
+public sealed record ConsultHeldDocument(
+    string ResultId,
+    string Label,
+    int Ordinal,
+    string? ComposedHash,
+    IReadOnlyList<string>? Sources,
+    DateTimeOffset ComposedAtUtc,
+    string? Reason = null);
+
 public sealed record ConsultFailedDocument(
     string ResultId,
     string Label,

@@ -373,6 +373,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         Stamp(state, 7);
         state.AssembledDocuments ??= new List<ConsultGenerationResultDocumentState>();
         state.AssembledDocuments.RemoveAll(d => d.ResultId == input.ResultId);
+        // v29 (#1305): released — no longer held.
+        state.HeldDocuments?.RemoveAll(d => d.ResultId == input.ResultId);
         state.AssembledDocuments.Add(new ConsultGenerationResultDocumentState
         {
             ResultId = input.ResultId,
@@ -405,6 +407,40 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     }
 
     /// <summary>
+    /// v29 (#1305, design § 4; #1194): a deliverable composed — its row written
+    /// now, with the composed hash and sources and no text, the named state
+    /// "composed, held on its check" until release moves it. Called again at job
+    /// end for one still held, with the reason. Upsert by result id; nothing on a
+    /// job that already ended.
+    /// </summary>
+    public void MarkDeliverableComposed(ConsultHeldDocument input)
+    {
+        var state = EnsureState();
+
+        if (state.Status is ConsultGenerationJobStatuses.Completed or ConsultGenerationJobStatuses.Failed or ConsultGenerationJobStatuses.Cancelled)
+        {
+            return;
+        }
+
+        state.HeldDocuments ??= new List<ConsultHeldDocument>();
+        var first = !state.HeldDocuments.Any(d => d.ResultId == input.ResultId);
+        state.HeldDocuments.RemoveAll(d => d.ResultId == input.ResultId);
+        state.HeldDocuments.Add(input);
+        state.HeldDocuments.Sort((a, b) => a.Ordinal.CompareTo(b.Ordinal));
+
+        if (input.Reason is { } reason)
+        {
+            state.History.Add(new JobHistoryEvent("held", $"{input.Label} was composed but held: {reason}", null, input.ComposedAtUtc));
+        }
+        else if (first)
+        {
+            state.History.Add(new JobHistoryEvent("composed", $"{input.Label} composed; released once its reads and check settle", null, input.ComposedAtUtc));
+        }
+
+        State = state;
+    }
+
+    /// <summary>
     /// v12 #624 (design § 13): one deliverable refused by its check — the
     /// third state beside produced and skipped. Upsert by ResultId (a replay
     /// re-signals identically); the history names the package's sentence.
@@ -416,6 +452,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         state.FailedDocuments ??= new List<ConsultFailedDocument>();
         state.FailedDocuments.RemoveAll(d => d.ResultId == input.ResultId);
         state.FailedDocuments.Add(input);
+        // v29 (#1305): settled by its check — no longer held.
+        state.HeldDocuments?.RemoveAll(d => d.ResultId == input.ResultId);
         state.History.Add(new JobHistoryEvent(
             "failure",
             $"Document refused by its check: {input.Label} — {input.Reason}",
@@ -1214,7 +1252,11 @@ public sealed record ConsultGenerationOrchestrationInput(
     // v29 (#1304, design § 3.2): the folder items whose if reads a node — folder
     // → item → those nodes; each is decided once they complete (decide-flow-item,
     // GateFolder). Null below 29 and when none. Appended last, same rule.
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>? ItemGates = null);
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, IReadOnlyList<string>>>? ItemGates = null,
+    // v29 (#1305): the package's specVersion, for the engine's at-29 rules (the
+    // deliverable's row at composition, "produced" meaning released). Null on a
+    // job started before this field — read as below 29. Appended last, same rule.
+    int? PackageSpecVersion = null);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -1810,6 +1852,9 @@ public sealed class ConsultGenerationJobState
     // check settles, never seeded (a mid-run fact, unlike a skip).
     public List<ConsultFailedDocument>? FailedDocuments { get; set; }
 
+    /// <summary>v29 (#1305, design § 4): the deliverables composed and not (yet) released; null below 29 and when none.</summary>
+    public List<ConsultHeldDocument>? HeldDocuments { get; set; }
+
     // #639: the consult's terminal-failure frames; null on completed jobs
     // and failures with no exception.
     public string? FailureStack { get; set; }
@@ -2158,7 +2203,8 @@ public sealed class ConsultGenerationJobState
             Classifications: Classifications,
             DecisionFailureKind: DecisionFailureKind,
             SkippedBlocks: skippedSections.Count > 0 ? skippedSections : null,
-            UnresolvedLoops: UnresolvedLoops is { Count: > 0 } ? UnresolvedLoops : null);
+            UnresolvedLoops: UnresolvedLoops is { Count: > 0 } ? UnresolvedLoops : null,
+            HeldDocuments: HeldDocuments is { Count: > 0 } ? HeldDocuments : null);
     }
 }
 
