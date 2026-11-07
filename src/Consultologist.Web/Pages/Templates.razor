@@ -6193,9 +6193,16 @@
             }
         }
 
-        foreach (var (nodeId, read) in walked.References.Nodes.OrderBy(pair => pair.Key, StringComparer.Ordinal))
+        // v29 (#1306): a node a judged gate reads (a folder item's if) earns a control too.
+        var gateNodes = PreviewGatesOf(walked, readerNodeId).SelectMany(g => g.Nodes).ToHashSet(StringComparer.Ordinal);
+        var valueReads = walked.References.Nodes.Where(pair => pair.Value.ReadsValue).Select(pair => pair.Key)
+            .Concat(gateNodes)
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal);
+
+        foreach (var nodeId in valueReads)
         {
-            if (read.ReadsValue && EffectiveNodes.FirstOrDefault(n => n.Id == nodeId) is { } node && ClassifierValues(node) is { Count: > 0 } values)
+            if (EffectiveNodes.FirstOrDefault(n => n.Id == nodeId) is { } node && ClassifierValues(node) is { Count: > 0 } values)
             {
                 picks.Add(new PreviewPick("node", nodeId, $"node.{nodeId}.value", values));
             }
@@ -8889,12 +8896,21 @@
 
     /// <summary>A published folder item's "Included when": inputs only, written to itemWhenEdits.</summary>
     private ConditionTarget ItemWhenTarget(WorkflowManifestReader.DataItemView item) =>
-        new($"{ItemWhenKeyPrefix}{item.File}", $"{FolderOfItem(item.File)} item {item.Id}", ItemWhenValue(item), text => SetItemWhen(item, text), InputsOnly: true);
+        new($"{ItemWhenKeyPrefix}{item.File}", $"{FolderOfItem(item.File)} item {item.Id}", ItemWhenValue(item), text => SetItemWhen(item, text),
+            InputsOnly: !At29, NodeFilter: ItemGateNodeFilter);
 
     /// <summary>A pending folder item's "Included when": inputs only, written on the item itself.</summary>
     private ConditionTarget AddedItemWhenTarget(AddedItem added) =>
         new($"{ItemWhenKeyPrefix}{added.Key}", $"{added.Collection} item {added.Id}", added.When,
-            text => added.When = string.IsNullOrWhiteSpace(text) ? null : text, InputsOnly: true);
+            text => added.When = string.IsNullOrWhiteSpace(text) ? null : text, InputsOnly: !At29, NodeFilter: ItemGateNodeFilter);
+
+    /// <summary>
+    /// v29 (#1306, design § 3.1): what a folder item's if may read besides inputs — a
+    /// scalar node's value, from a node that is no loop and runs inside none (a node
+    /// in a top-level if/case may, as the validator says). Inputs only below 29.
+    /// </summary>
+    private Func<string, bool>? ItemGateNodeFilter =>
+        At29 ? id => LoopIdOf(id) == null && EffectiveNodes.FirstOrDefault(n => n.Id == id) is not { IsLoop: true } : null;
 
     private bool CollectionHasWhenEdits(WorkflowManifestReader.CollectionView collection) =>
         itemWhenEdits.Keys.Any(file => file.StartsWith(collection.Directory, StringComparison.Ordinal));
