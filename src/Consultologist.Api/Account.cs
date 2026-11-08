@@ -552,11 +552,13 @@ public sealed class Account
 
         var (limit, continuationToken) = ParseJobsQueryParams(req.Url);
 
-        var (jobs, nextToken) = await _jobIndexStore.ListAsync(
+        var (page, nextToken) = await _jobIndexStore.ListAsync(
             account.AppUserId,
             limit,
             continuationToken,
             cancellationToken);
+        // #1326: one row per job — a pre-13a33672 stale Queued twin never reaches the client.
+        var jobs = ConsultGenerationJobIndexEntries.OnePerJob(page);
 
         var response = req.CreateResponse(HttpStatusCode.OK);
         FunctionCors.Apply(req, response);
