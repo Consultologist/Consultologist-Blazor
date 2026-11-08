@@ -1083,12 +1083,14 @@
                                         {
                                             var nodeItems = RailItemsFor(node);
                                             var doneItems = nodeItems.Count(item => NodeItemStatus(node, done, current, item.Id) == "Completed");
+                                            // #1330: items skipped by condition are named, not counted as run ("1/1 · 1 skipped").
+                                            var skippedItems = nodeItems.Count(item => NodeItemStatus(node, done, current, item.Id) == "Skipped");
                                             <details class="node-group" open>
                                                 <summary class="node-row">
                                                     <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
                                                     <span class="node-row__status @RunStatusCss(stageStatus)" aria-hidden="true">@RunStatusGlyph(stageStatus)</span>
                                                     <span class="node-row__label">@node.Label</span>
-                                                    <span class="node-row__count muted-text">@(nodeItems.Count == 0 && LoopCount.IsNodeValue(node.ForEach) ? "—" : $"{doneItems}/{nodeItems.Count}")</span>
+                                                    <span class="node-row__count muted-text">@(nodeItems.Count == 0 && LoopCount.IsNodeValue(node.ForEach) ? "—" : skippedItems > 0 ? $"{doneItems}/{nodeItems.Count - skippedItems} · {skippedItems} skipped" : $"{doneItems}/{nodeItems.Count}")</span>
                                                 </summary>
                                                 @if (nodeItems.Count == 0 && LoopCount.IsNodeValue(node.ForEach))
                                                 {
@@ -1101,7 +1103,8 @@
                                                 @foreach (var item in nodeItems)
                                                 {
                                                     var itemStatus = NodeItemStatus(node, done, current, item.Id);
-                                                    <div class="node-row node-row--item">
+                                                    var skipReason = itemStatus == "Skipped" && SkipKeyOf(node, item.Id) is { } skipKey ? skippedItemReasons.GetValueOrDefault(skipKey) : null;
+                                                    <div class="node-row node-row--item" title="@skipReason">
                                                         <span class="node-row__chevron" aria-hidden="true"></span>
                                                         <span class="node-row__status @RunStatusCss(itemStatus)" aria-hidden="true">@RunStatusGlyph(itemStatus)</span>
                                                         <span class="node-row__label">@item.Name</span>
@@ -1565,6 +1568,9 @@
   private Dictionary<string, string> skippedBlocks = new();
   // v27: the fan instances (nodeId:itemId) an inner if/case skipped — the rail's item rows read them.
   private HashSet<string> skippedNodeItems = new(StringComparer.Ordinal);
+
+  // #1330: why an item was skipped, keyed as skippedNodeItems is — the rail row's title.
+  private Dictionary<string, string> skippedItemReasons = new(StringComparer.Ordinal);
   // #1325: loading from the first render, so the page never shows a form it has not been given.
   private bool isBlocksLoading = true;
 
@@ -2483,6 +2489,13 @@
               [skippedBlock.BlockId] = skippedBlock.Reason
             };
             completedBlockCount = generatedBlocks.Count + failedBlockErrors.Count + skippedBlocks.Count;
+
+            // #1330: a node-gated folder item's skip reaches the rail as the event arrives, keyed by its loop.
+            if (RailSkips.LoopItemKeyOf(skippedBlock.BlockId) is { } loopItem)
+            {
+              skippedNodeItems.Add(loopItem);
+              skippedItemReasons[loopItem] = skippedBlock.Reason;
+            }
           }
           break;
 
@@ -2733,6 +2746,9 @@
         .Where(entry => entry.Key.Contains(':', StringComparison.Ordinal) && entry.Value.Status == "Skipped")
         .Select(entry => entry.Key)
         .ToHashSet(StringComparer.Ordinal);
+      skippedItemReasons = response.NodeOutputs
+        .Where(entry => skippedNodeItems.Contains(entry.Key) && !string.IsNullOrWhiteSpace(entry.Value.Reason))
+        .ToDictionary(entry => entry.Key, entry => entry.Value.Reason!, StringComparer.Ordinal);
     }
 
     if (response.Status != "Failed"
@@ -3537,6 +3553,33 @@
   // in v7 — while the live prose-step events carry the plain item id. The item
   // is always the last segment, so matching on it covers every spec version
   // (v5's plain ids have no separator at all).
+  /// <summary>#1330: the skip key that covers this node's item — its own, or its loop's — or null.</summary>
+  private string? SkipKeyOf(RailNode node, string itemId)
+  {
+    foreach (var key in new[] { $"{node.Id}:{itemId}", $"{node.Id}:{ItemPart(itemId)}" })
+    {
+      if (skippedNodeItems.Contains(key))
+      {
+        return key;
+      }
+    }
+
+    var descriptor = jobDescriptors?.FirstOrDefault(d => string.Equals(d.Id, node.Id, StringComparison.Ordinal));
+    if (descriptor is not null
+        && Consultologist.Web.Services.Provenance.RecordFlow.LoopOf(descriptor, jobDescriptors) is { } loop)
+    {
+      foreach (var key in new[] { $"{loop.Id}:{itemId}", $"{loop.Id}:{ItemPart(itemId)}" })
+      {
+        if (skippedNodeItems.Contains(key))
+        {
+          return key;
+        }
+      }
+    }
+
+    return null;
+  }
+
   private static string ItemPart(string sectionId)
   {
     var separator = sectionId.LastIndexOf(':');
@@ -3595,6 +3638,13 @@
 
     // v27 (#1236, storage 9): an inner if/case skipped this item by condition.
     if (skippedNodeItems.Contains($"{node.Id}:{itemId}") || skippedNodeItems.Contains($"{node.Id}:{ItemPart(itemId)}"))
+    {
+      return "Skipped";
+    }
+
+    // #1330 (v29, #1279): a folder item skipped by its node-gated if is skipped by the LOOP — the
+    // record keys it <loop>:<item> — and so for every body node that loop runs.
+    if (SkipKeyOf(node, itemId) is not null)
     {
       return "Skipped";
     }
