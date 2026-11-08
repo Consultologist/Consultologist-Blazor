@@ -185,7 +185,13 @@
                         @* One field per declared input, all visible: the package
                            states its intake form, and a single input keeps the
                            full-height writing area the page has always had. *@
-                        @foreach (var field in inputFields)
+                        @if (!inputsDeclared && isBlocksLoading)
+                        {
+                            @* #1325: no form until the package's own is known — the legacy
+                               single draft used to show here, then swap. *@
+                            <SkeletonText Lines="6" />
+                        }
+                        @foreach (var field in ShownInputFields)
                         {
                             <label class="input-field" @key="field.Id">
                                 <span>
@@ -1559,7 +1565,15 @@
   private Dictionary<string, string> skippedBlocks = new();
   // v27: the fan instances (nodeId:itemId) an inner if/case skipped — the rail's item rows read them.
   private HashSet<string> skippedNodeItems = new(StringComparer.Ordinal);
-  private bool isBlocksLoading;
+  // #1325: loading from the first render, so the page never shows a form it has not been given.
+  private bool isBlocksLoading = true;
+
+  // #1325: a package's declaration has been read — until then (or after a failed
+  // load) no field is drawn; the values stay in inputFields and carry on the next load.
+  private bool inputsDeclared;
+
+  private IReadOnlyList<ConsultInputField> ShownInputFields =>
+    inputsDeclared ? inputFields : Array.Empty<ConsultInputField>();
   private string? blocksLoadError;
   private bool isAiRequestLoading;
   private string? aiRequestError;
@@ -1965,6 +1979,7 @@
       // consult_draft input.
       declaredResults = package.Results;
       SyncInputFields(package.Inputs);
+      inputsDeclared = true;
 
       // v12 § 3 (#621): the optional-macro choices, offered at 12 alone and
       // reset to the NEW package's declared defaults on every (re)load —
@@ -1980,6 +1995,7 @@
     catch (Exception ex)
     {
       packageBlocks = new();
+      inputsDeclared = false;
       blocksLoadError = $"Unable to load section standards: {ex.Message}";
     }
     finally
