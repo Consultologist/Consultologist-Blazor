@@ -424,7 +424,8 @@ One layer per PR, each green on its own; each gets its own issue when it starts.
   `resolvedAtUtc`, rows `draft_problem:1…4`, the roster `Problems 1…4`, `unresolvedLoops` empty; the
   classifier answered `yes`, so `follow_up_plan` was drafted; one note, `composedHash` equal to
   its document hash. The pins (`WorkflowPackages__Default` and the operator account's) moved to
-  `test/general@v2026.11.2`.
+  `test/general@v2026.11.2`; a smoke through the pin, job `c7514a18649a44819de1fdaa47f64921`,
+  completed 9/9 at storage 10, spec 29.
 
 ## 12. Deferred and open
 
