@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.PackageFormat;
 
@@ -58,5 +59,16 @@ public partial class ConformanceFixtureExport
         // ======================================================= § 3.1: a folder item's if (SHAPE_BLIND)
         Add("invalid-folder-item-if-reads-content-at-29", "A folder item's if reading a node's content — it reads a scalar's value.", ItemIf("node.scope.content != \"\""));
         Add("invalid-folder-item-if-reads-a-loop-at-29", "A folder item's if reading a loop — a condition decides before the loop runs.", ItemIf("node.sections.content != \"\""));
+
+        // ======================================================= the gates below 29 (filed under v28/)
+        (WorkflowPackageManifest, Dictionary<string, string>) At28((WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle) =>
+            (WorkflowPackageManifestJson.Read(
+                JsonSerializer.Serialize(bundle.Manifest with { SpecVersion = 28 }, WorkflowPackageManifestJson.WriteOptions), "gate@v28", V28Package.Accepting28.ToList()),
+             bundle.Files);
+
+        cases.Add(new Case("invalid-loop-over-a-node-value-at-28", 28, "A loop over a node's value at 28 — it requires specVersion 29.",
+            At28(V29Package.Minimal()).Item1, At28(V29Package.Minimal()).Item2));
+        var gated = V28Package.WithJson(_ => { }, files => files["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "node.scope.value == \"in_scope\"") + "Plan.");
+        cases.Add(new Case("invalid-folder-item-if-reads-a-node-at-28", 28, "A folder item's if reading a scalar node's value at 28 — it requires specVersion 29.", gated.Manifest, gated.Files));
     }
 }

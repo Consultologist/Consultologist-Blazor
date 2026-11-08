@@ -432,8 +432,8 @@ public class WorkflowV8ValidationTests
         // seventeen, #822 to eighteen, #845 to nineteen, #863 to twenty, #923 to
         // twenty-one, #760 to twenty-two, #955 to twenty-three, #957 to
         // twenty-four, #1018 to twenty-five, #1149 to twenty-six, #1237 to
-        // twenty-seven, #1286 to twenty-eight — each the ladder's last rung.
-        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 }, WorkflowPackageStore.SupportedSpecVersions);
+        // twenty-seven, #1286 to twenty-eight, #1307 to twenty-nine — each the ladder's last rung.
+        Assert.Equal(new[] { 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29 }, WorkflowPackageStore.SupportedSpecVersions);
     }
 
     [Fact]
@@ -447,10 +447,10 @@ public class WorkflowV8ValidationTests
         // #424 moved the gate to 9, #492 to 10, #563 to 11, #617 to 12, #728
         // to 13, #729 to 14, #731 to 15, #730 to 16, #673 to 17, #822 to 18,
         // #845 to 19, #863 to 20, #923 to 21, #760 to 22, #955 to 23, #957 to 24 and
-        // #1018 to 25, #1149 to 26, #1237 to 27, #1286 to 28; the version after it is what the gate refuses now.
+        // #1018 to 25, #1149 to 26, #1237 to 27, #1286 to 28, #1307 to 29; the version after it is what the gate refuses now.
         Assert.Contains(
-            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 29 }).Errors,
-            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27 or 28"));
+            V8Fixtures.Validate(V8Fixtures.Minimal() with { SpecVersion = 30 }).Errors,
+            e => e.Contains("accepts specVersion 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28 or 29"));
     }
 }
 

@@ -161,7 +161,7 @@ public class WorkflowV26GateTests
         Assert.Empty(ItemIf("input.kind == \"new\" && item.id == \"hpi\""));
         Assert.Contains("Snippet folder 'sections' item 'hpi' if compares item.id to 'nope', which the folder does not contain (items: hpi, plan).", ItemIf("item.id == \"nope\""));
         Assert.Contains("Snippet folder 'sections' item 'hpi' if reads item.label; a folder item's if reads inputs and item.id only, so the folder's size is known at job start (the template's own if gates anything else).", ItemIf("item.label == \"HPI\""));
-        Assert.Contains("Snippet folder 'sections' item 'hpi' if reads node.scope; a folder item's if reads inputs and item.id only, so the folder's size is known at job start (the template's own if gates anything else).", ItemIf("node.scope.value == \"in_scope\""));
+        Assert.Contains("Snippet folder 'sections' item 'hpi' if reads node.scope.value, which requires specVersion 29.", ItemIf("node.scope.value == \"in_scope\""));
     }
 
     [Fact]

@@ -113,7 +113,7 @@ public partial class ConformanceFixtureExport
         Invalid("invalid-then-on-a-for-at-26", "then on a for node — a key the kind does not carry.", Loop(n => n with { Then = Body("node.section_notes", "section_notes") }));
         Invalid("invalid-loop-grammar-at-26", "A for that is not \"item in <collection>\".", Loop(n => n with { For = "snippet.sections" }));
         Invalid("invalid-loop-over-a-file-snippet-at-26", "A loop over a snippet that is a file, not a folder.", Loop(n => n with { For = "item in snippet.standards" }));
-        Invalid("invalid-loop-over-a-node-value-at-26", "A loop over a node's value — waits for the scheduler redesign.", Loop(n => n with { For = "item in node.extract.value" }));
+        Invalid("invalid-loop-over-a-node-value-at-26", "A loop over a node's value at 26 — it requires specVersion 29.", Loop(n => n with { For = "item in node.extract.value" }));
         Invalid("invalid-loop-without-body-at-26", "A for node with no nodes.", Loop(n => n with { Nodes = null }));
         Invalid("invalid-ret-missing-at-26", "A for node without ret — required.", Loop(n => n with { Ret = null }));
         Invalid("invalid-ret-not-in-body-at-26", "A ret naming a node outside the body.", Loop(n => n with { Ret = "node.assessment" }));
@@ -198,7 +198,7 @@ public partial class ConformanceFixtureExport
             Files(m, fs => fs["snippets/sections/index.json"] = """[ { "id": "hpi", "file": "hpi.md", "name": "HPI" }, { "id": "plan", "file": "plan.md" } ]"""));
         Invalid("invalid-reads-name-at-26", "A template reading .name — at 26 the member is .label.", P("Assess. {{ snippet.standards.name }}"));
         Invalid("invalid-item-reads-name-at-26", "A body node reading item.name — at 26 the member is .label.", Files(m, fs => fs["prompts/section.md"] = "{{ item.name }}: {{ item.content }}"));
-        Invalid("invalid-folder-item-if-reads-a-node-at-26", "A folder item's header if reading a node — inputs only, so the folder's size is known at job start.",
+        Invalid("invalid-folder-item-if-reads-a-node-at-26", "A folder item's header if reading a node's value at 26 — it requires specVersion 29.",
             Files(m, fs => fs["snippets/sections/plan.md"] = V26Package.Header("Plan", @if: "node.scope.value == \"in_scope\"") + "Plan."));
 
         // ======================================================= § 2.3 / § 2.4: the instance gate (#1089)

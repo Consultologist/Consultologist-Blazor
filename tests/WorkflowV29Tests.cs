@@ -94,27 +94,28 @@ public class WorkflowV29Tests
     }
 
     [Fact]
-    public void ThePublicEntry_StillRefuses29_UntilTheBump()
+    public void ThePublicEntry_Accepts29_SinceTheBump_AndRefuses30()
     {
-        Assert.DoesNotContain(29, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.DoesNotContain(29, WorkflowPackageStore.SupportedSpecVersions);
+        // #1307: both sets carry 29; the seam is a harmless duplicate since.
+        Assert.Contains(29, WorkflowPackageValidator.AcceptedSpecVersions);
+        Assert.Contains(29, WorkflowPackageStore.SupportedSpecVersions);
         var (manifest, files) = V29Package.Minimal();
+        Assert.Empty(WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog()).Errors);
 
-        var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-
-        Assert.Contains(result.Errors, e => e.StartsWith("specVersion 29 is not supported", StringComparison.Ordinal));
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 30 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 30 is not supported", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void At28_ALoopOverANodesValue_IsStillTheRedesignsSentence()
+    public void At28_ALoopOverANodesValue_IsTheGate()
     {
-        // The published 26–28 vectors pin this sentence until the bump re-exports them.
+        // #1307 (design § 6): below 29 a loop over a node's value is the version gate.
         var (json, files) = V29Package.MinimalJson();
         var root = JsonNode.Parse(json)!.AsObject();
         root["specVersion"] = 28;
         var errors = V28Package.Errors((V28Package.Read(root.ToJsonString()), files));
 
-        Assert.Contains("Loop 'problems' iterates node.find_problems.value.problems; a loop over a node's value waits for the scheduler redesign — iterate an input or a snippet folder.", errors);
+        Assert.Contains("Loop 'problems' iterates node.find_problems.value.problems, which requires specVersion 29.", errors);
     }
 
     // ---- the source: § 2.1 -------------------------------------------------------------
@@ -235,14 +236,14 @@ public class WorkflowV29Tests
     }
 
     [Fact]
-    public void At28_AFolderItemsIf_ReadingANode_IsStillThe26Sentence()
+    public void At28_AFolderItemsIf_ReadingANodesValue_IsTheGate()
     {
         var (json, files) = V28Package.MinimalJson();
         ItemIf("node.scope.value == \"in_scope\"")(files);
 
         var errors = V28Package.Errors((V28Package.Read(json), files));
 
-        Assert.Contains(errors, e => e.Contains("a folder item's if reads inputs and item.id only", StringComparison.Ordinal));
+        Assert.Contains("Snippet folder 'sections' item 'plan' if reads node.scope.value, which requires specVersion 29.", errors);
     }
 
     // ---- the edges: § 2.1, § 3.3 --------------------------------------------------------
