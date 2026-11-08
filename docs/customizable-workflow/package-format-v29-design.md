@@ -1,8 +1,8 @@
 # specVersion 29 — the dynamic half: a count the run discovers
 
 > **Status:** design, **revision 4** (2026-11-07). Milestone 32 (#1277). Decided with the package
-> author; implemented through the bump (layers A, B1–B4, C1–C2 merged; the bump #1307 — § 11; the
-> content #1308 next). Revision 4 (planning B4): a
+> author; implemented through the bump (layers A, B1–B4, C1–C2 merged; the bump #1307 and the
+> content #1308 — § 11). Revision 4 (planning B4): a
 > composed-but-unreleased deliverable is kept in a list of its own, and a job that ends with one is
 > failed, naming why it was held (§ 4, § 5). Revision 2 (planning layer A):
 > a loop's source is a field path, because a format's value is an object (§ 2.1); a
@@ -411,6 +411,21 @@ One layer per PR, each green on its own; each gets its own issue when it starts.
   the word.
 - **E — content.** An example package whose loop iterates a node's list (a problem list drafted
   one part per problem), and a 29 smoke job.
+
+  *As landed (2026-11-08, #1308):* consultologist-workflows#51 adds `example-problem-list`
+  v2026.11.1 at 29 — `find_problems` in a package-local custom format (`formats/problem_list.json`,
+  `summary` + `problems [{ name, detail }]`, the first public package with a `formats/` file),
+  `problems` looping over `node.find_problems.value.problems`, and a `follow_up` classifier gating
+  the standing `follow_up_plan` item — and raises the ten public packages to 29 (`--to 29`,
+  v2026.11.2, nothing rewritten). Eleven tags published. The 29 smoke, job
+  `17ba7f6f28174b04a8dc5ca2465ce0cc` on engine v2026.11.3, completed 6/6: the snapshot carried
+  `unresolvedLoops: ["problems"]` and a total of 2; one `count-resolved` (`problems`, count 4,
+  total 6, pending 0); the record at storage **10**, spec 29, the `problems` row with `count` 4 and
+  `resolvedAtUtc`, rows `draft_problem:1…4`, the roster `Problems 1…4`, `unresolvedLoops` empty; the
+  classifier answered `yes`, so `follow_up_plan` was drafted; one note, `composedHash` equal to
+  its document hash. The pins (`WorkflowPackages__Default` and the operator account's) moved to
+  `test/general@v2026.11.2`; a smoke through the pin, job `c7514a18649a44819de1fdaa47f64921`,
+  completed 9/9 at storage 10, spec 29.
 
 ## 12. Deferred and open
 
