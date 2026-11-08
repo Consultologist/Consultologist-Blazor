@@ -112,9 +112,17 @@
                                     OnRowClick="@(row => SelectJobAsync(row.Item.JobId))"
                                     RowClass="@(j => j.JobId == selectedJobId ? "job-row--selected" : null)">
                         <TemplateColumn Title="Status" SortBy="@statusSort">
-                            <span class="job-status-badge job-status-badge--@context.Status.ToLowerInvariant()">
-                                @(context.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(context.FailedAtStart, context.DecisionFailureKind) ?? context.Status)
-                            </span>
+                            @if (_goneJobIds.Contains(context.JobId))
+                            {
+                                @* #1326: the server answered 404 — named, and no longer polled. *@
+                                <span class="job-status-badge job-status-badge--notfound" title="The run behind this entry no longer exists">Not found</span>
+                            }
+                            else
+                            {
+                                <span class="job-status-badge job-status-badge--@context.Status.ToLowerInvariant()">
+                                    @(context.Deciding ? "Deciding what to produce" : DecisionState.FailedAtStartBadge(context.FailedAtStart, context.DecisionFailureKind) ?? context.Status)
+                                </span>
+                            }
                             @if (context.Source == "email")
                             {
                                 <span class="job-source-badge" title="Submitted by email">email</span>
@@ -153,9 +161,12 @@
                         </TemplateColumn>
                         <TemplateColumn Title="" Sortable="false">
                             @* stopPropagation keeps these controls from also selecting the row. *@
-                            <a class="run-view-link" href="/create/@context.JobId"
-                               @onclick:stopPropagation="true"
-                               title="@(IsTerminal(context.Status) ? "Open this run's steps" : "Open the live run view")">@(IsTerminal(context.Status) ? "view run" : "watch live")</a>
+                            @if (!_goneJobIds.Contains(context.JobId))
+                            {
+                                <a class="run-view-link" href="/create/@context.JobId"
+                                   @onclick:stopPropagation="true"
+                                   title="@(IsTerminal(context.Status) ? "Open this run's steps" : "Open the live run view")">@(IsTerminal(context.Status) ? "view run" : "watch live")</a>
+                            }
                             @if (context.Status == "Scheduled")
                             {
                                 @if (_editing == context.JobId)
@@ -1164,6 +1175,10 @@
     [Parameter]
     public string? JobId { get; set; }
 
+    /// <summary>#1326: how often a Queued or Running row is re-read; a test sets it short.</summary>
+    [Parameter]
+    public TimeSpan FastPollInterval { get; set; } = TimeSpan.FromSeconds(5);
+
     protected override async Task OnInitializedAsync()
     {
         await LoadJobsAsync();
@@ -1227,6 +1242,11 @@
     // row, and #367's link keeps offering to "watch live" a run that will not
     // happen.
     private static bool IsTerminal(string status) => status is "Completed" or "Failed" or "Cancelled";
+
+    // #1326: a row the server answered 404 for — named "Not found", never polled again.
+    private readonly HashSet<string> _goneJobIds = new(StringComparer.Ordinal);
+
+    private bool IsPollable(AccountJobSummaryResponse job) => !IsTerminal(job.Status) && !_goneJobIds.Contains(job.JobId);
 
     private string? _cancelling;
     private string? _cancelError;
@@ -1426,7 +1446,7 @@
 
     private void EnsurePollingStarted()
     {
-        if (_pollingCts != null || !jobs.Any(job => !IsTerminal(job.Status)))
+        if (_pollingCts != null || !jobs.Any(IsPollable))
         {
             return;
         }
@@ -1442,7 +1462,7 @@
         {
             while (!cts.IsCancellationRequested)
             {
-                var active = jobs.Where(job => !IsTerminal(job.Status)).ToList();
+                var active = jobs.Where(IsPollable).ToList();
 
                 if (active.Count == 0)
                 {
@@ -1450,7 +1470,7 @@
                 }
 
                 var fastCadence = active.Any(job => job.Status is "Queued" or "Running");
-                await Task.Delay(TimeSpan.FromSeconds(fastCadence ? 5 : 60), cts.Token);
+                await Task.Delay(fastCadence ? FastPollInterval : TimeSpan.FromSeconds(60), cts.Token);
 
                 if (jobsLoading)
                 {
@@ -1478,6 +1498,11 @@
                     {
                         exception.Redirect();
                         return;
+                    }
+                    catch (ConsultGenerationRefusedException refused) when (refused.Status == System.Net.HttpStatusCode.NotFound)
+                    {
+                        // #1326: no run behind this row — named, and never asked again.
+                        _goneJobIds.Add(job.JobId);
                     }
                     catch
                     {
@@ -1773,6 +1798,14 @@
                 continuationToken = result.ContinuationToken;
             }
             while (continuationToken != null);
+
+            // #1326: one row per job — a stale Queued twin of a finished run is dropped
+            // (the server collapses within a page; this covers a pair split across pages).
+            var collapsed = JobRows.OnePerJob(jobs);
+            if (collapsed.Count != jobs.Count)
+            {
+                jobs = collapsed.ToList();
+            }
         }
         catch (AccessTokenNotAvailableException exception)
         {
