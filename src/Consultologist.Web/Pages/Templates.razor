@@ -53,11 +53,14 @@
                     <span>Editing</span>
                     @* #411: a chooser, not the pin control. Selecting here used
                        to write consult.workflowPackage, so looking at a package
-                       pointed your consults at it. Consults owns that now. *@
+                       pointed your consults at it. Consults owns that now.
+                       #1322: with nothing chosen (a cold load, after a publish,
+                       an import or a revert) it names the package loaded, never
+                       the picker's built-in default. *@
                     <WorkflowPackagePicker @key="content.Ref"
                                            Disabled="@isPublishing"
                                            WritesPin="false"
-                                           Selected="@editingRef"
+                                           Selected="@(editingRef ?? content.Ref)"
                                            OnSelected="OnPackageSelectedAsync" />
                     @if (LoadedTitle is { Length: > 0 } loadedTitle)
                     {
