@@ -1090,14 +1090,15 @@
                                                     <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
                                                     <span class="node-row__status @RunStatusCss(stageStatus)" aria-hidden="true">@RunStatusGlyph(stageStatus)</span>
                                                     <span class="node-row__label">@node.Label</span>
-                                                    <span class="node-row__count muted-text">@(nodeItems.Count == 0 && LoopCount.IsNodeValue(node.ForEach) ? "—" : skippedItems > 0 ? $"{doneItems}/{nodeItems.Count - skippedItems} · {skippedItems} skipped" : $"{doneItems}/{nodeItems.Count}")</span>
+                                                    <span class="node-row__count muted-text">@(nodeItems.Count == 0 && LoopCount.IsNodeValue(node.ForEach) ? (SettledEmpty(node) is not null ? "0/0" : "—") : skippedItems > 0 ? $"{doneItems}/{nodeItems.Count - skippedItems} · {skippedItems} skipped" : $"{doneItems}/{nodeItems.Count}")</span>
                                                 </summary>
                                                 @if (nodeItems.Count == 0 && LoopCount.IsNodeValue(node.ForEach))
                                                 {
                                                     <div class="node-row node-row--item loop-count-pending">
                                                         <span class="node-row__chevron" aria-hidden="true"></span>
                                                         <span class="node-row__status" aria-hidden="true"></span>
-                                                        <span class="node-row__label muted-text">@LoopCount.Describe(IsRunFinished)</span>
+                                                        @* #1329: a list that settled empty says so, with the record's reason — "count never known" is for one that never arrived. *@
+                                                        <span class="node-row__label muted-text">@(SettledEmpty(node) ?? LoopCount.Describe(IsRunFinished))</span>
                                                     </div>
                                                 }
                                                 @foreach (var item in nodeItems)
@@ -1659,6 +1660,10 @@
   // v29 (#1303): the loops over a node's value still counting — the total is a floor
   // while any is pending; a package with one makes the pre-filled total a floor too.
   private IReadOnlySet<string> pendingLoops = new HashSet<string>(StringComparer.Ordinal);
+
+  // #1329: a loop over a node's value that settled, by loop id — the count-resolved event's count, kept so
+  // an empty list says "no items" as the event arrives, before a poll brings the record's reason.
+  private readonly Dictionary<string, int> settledLoopCounts = new(StringComparer.Ordinal);
   private bool pendingFromPackage;
   private bool CountPending => pendingFromPackage || pendingLoops.Count > 0;
   private int completedAnalysisStageCount;
@@ -2505,6 +2510,7 @@
           if (resolved != null)
           {
             (totalBlockCount, pendingLoops) = LoopCount.Apply(pendingLoops, resolved.LoopId, resolved.Total);
+            settledLoopCounts[resolved.LoopId] = resolved.Count;
             pendingFromPackage = false;
           }
           break;
@@ -3553,6 +3559,29 @@
   // in v7 — while the live prose-step events carry the plain item id. The item
   // is always the last segment, so matching on it covers every spec version
   // (v5's plain ids have no separator at all).
+  /// <summary>#1329: the loop row a body node runs inside, from the record's rows; null without them.</summary>
+  private ConsultGenerationNodeDescriptor? LoopRowOf(RailNode node) =>
+    jobDescriptors?.FirstOrDefault(d => string.Equals(d.Id, node.Id, StringComparison.Ordinal)) is { } descriptor
+      ? Consultologist.Web.Services.Provenance.RecordFlow.LoopOf(descriptor, jobDescriptors)
+      : null;
+
+  /// <summary>
+  /// #1329: the line for a node loop that settled with no items — the record's reason, or "no items"
+  /// while only the live event has said so — or null while the count is not known.
+  /// </summary>
+  private string? SettledEmpty(RailNode node)
+  {
+    var loop = LoopRowOf(node);
+    if (loop is { Count: 0 })
+    {
+      return string.IsNullOrWhiteSpace(loop.Reason) ? "no items" : loop.Reason;
+    }
+
+    return loop is not null && loop.Count is null && settledLoopCounts.TryGetValue(loop.Id, out var settled) && settled == 0
+      ? "no items"
+      : null;
+  }
+
   /// <summary>#1330: the skip key that covers this node's item — its own, or its loop's — or null.</summary>
   private string? SkipKeyOf(RailNode node, string itemId)
   {
