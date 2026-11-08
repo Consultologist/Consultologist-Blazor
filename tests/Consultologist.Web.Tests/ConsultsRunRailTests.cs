@@ -450,6 +450,61 @@ public class ConsultsRunRailTests : ClientRenderTestContext
         Assert.Equal("1/1 · 1 skipped", drafting.QuerySelector("summary .node-row__count")!.TextContent.Trim());
     }
 
+    private void WithNodeLoopRecord(int? count, string? reason)
+    {
+        WithTwoNodePackage();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed",
+            TotalBlockCount: 1, CompletedBlockCount: 1, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(), FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            SchemaVersion: 10,
+            Nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("find_problems", "Finding the problems", Prompt: "prompts/find_problems.md"),
+                new("problems", "Problems", Kind: "for", Collection: "node.find_problems.value.problems", Body: new[] { "draft_problem" }, Ret: "draft_problem", Count: count, Reads: new[] { "find_problems" }, Reason: reason),
+                new("draft_problem", "Drafting the problem", In: "problems", Prompt: "prompts/draft_problem.md"),
+            },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["find_problems"] = new("find_problems", "Finding the problems", "Completed", "i", "o", null, null),
+                ["problems"] = new("problems", "Problems", "Completed", null, null, null, null),
+            },
+            AssembledDocument: "The note.",
+            Collections: count is null ? null : new[] { new ConsultCollectionRoster("node.find_problems.value.problems", Array.Empty<ConsultCollectionItem>()) }));
+    }
+
+    private static IElement GroupFor(IRenderedComponent<Consults> page, string label) =>
+        page.FindAll(".node-group").Single(g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == label);
+
+    [Fact]
+    public void ANodeLoopThatSettledAtZero_SaysNoItems_WithItsReason_NotCountNeverKnown()
+    {
+        // #1329: the record settled the loop at 0 with a reason; the rail read "no items in the roster"
+        // as "not known" and said "count never known" — the words for a list that never arrived.
+        const string reason = "no items: node.find_problems.value.problems was empty";
+        WithNodeLoopRecord(0, reason);
+
+        var page = RenderRail();
+
+        var drafting = GroupFor(page, "Drafting the problem");
+        Assert.Equal("0/0", drafting.QuerySelector("summary .node-row__count")!.TextContent.Trim());
+        Assert.Contains(reason, drafting.TextContent);
+        Assert.DoesNotContain(LoopCount.NeverKnown, page.Markup);
+    }
+
+    [Fact]
+    public void ANodeLoopThatNeverSettled_StillSaysCountNeverKnown()
+    {
+        WithNodeLoopRecord(null, null);
+
+        var page = RenderRail();
+
+        var drafting = GroupFor(page, "Drafting the problem");
+        Assert.Equal("—", drafting.QuerySelector("summary .node-row__count")!.TextContent.Trim());
+        Assert.Contains(LoopCount.NeverKnown, drafting.TextContent);
+    }
+
     [Theory]
     [InlineData("note:sections:plan", "sections:plan")]
     [InlineData("sections:plan", "sections:plan")]

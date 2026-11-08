@@ -20,6 +20,9 @@ public class HistoryDuplicateRowsTests : ClientRenderTestContext
     private const string JobId = "ba1ec33bc68f4e88b0c8cce2eeea93eb";
     private static readonly DateTimeOffset At = new(2026, 8, 28, 1, 2, 12, TimeSpan.Zero);
 
+    // bUnit's default 1 s wait timed out once under the full suite's load; the poll itself is 20 ms.
+    private static readonly TimeSpan Settle = TimeSpan.FromSeconds(5);
+
     private static AccountJobSummaryResponse Row(string status, DateTimeOffset created, string jobId = JobId) =>
         new(jobId, status, created, created, created, TotalBlockCount: 9, CompletedBlockCount: status == "Completed" ? 9 : 0, FailedBlockCount: 0);
 
@@ -72,7 +75,7 @@ public class HistoryDuplicateRowsTests : ClientRenderTestContext
 
         var page = RenderFast();
 
-        page.WaitForAssertion(() => Assert.Contains("Not found", page.Find(".job-status-badge").TextContent));
+        page.WaitForAssertion(() => Assert.Contains("Not found", page.Find(".job-status-badge").TextContent), Settle);
         Assert.Contains("job-status-badge--notfound", page.Find(".job-status-badge").ClassName);
         Assert.DoesNotContain("watch live", page.Markup);
         Thread.Sleep(200);
@@ -88,7 +91,7 @@ public class HistoryDuplicateRowsTests : ClientRenderTestContext
 
         var page = RenderFast();
 
-        page.WaitForAssertion(() => Assert.True(AIService.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IAIEndpointService.GetConsultGenerationJobAsync)) >= 2));
+        page.WaitForAssertion(() => Assert.True(AIService.ReceivedCalls().Count(call => call.GetMethodInfo().Name == nameof(IAIEndpointService.GetConsultGenerationJobAsync)) >= 2), Settle);
         Assert.DoesNotContain("Not found", page.Find(".job-status-badge").TextContent);
     }
 }
