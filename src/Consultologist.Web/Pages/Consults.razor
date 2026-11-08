@@ -921,7 +921,7 @@
                         {
                             <div>
                                 <div class="result-header">
-                                    <h2 class="panel-title">Consultation note</h2>
+                                    <h2 class="panel-title">@RunHeading</h2>
                                     <div class="result-header__actions">
                                         <FluentBadge Appearance="Appearance.Accent">
                                             @generatedBlocks.Count sections
@@ -971,12 +971,20 @@
                                action spinner + elapsed status. *@
                             <EmptyState Class="empty-note-state"
                                         Icon="@(new Icons.Regular.Size32.DocumentText())"
-                                        Title="Consultation note">
+                                        Title="@RunHeading">
                                 <ChildContent>
                                     <p class="panel-description">
                                         Sections appear here as they are generated.
                                     </p>
-                                    @if (isAiRequestLoading)
+                                    @if (IsScheduledWait && scheduledFor is { } due)
+                                    {
+                                        @* #1332: a Scheduled job is waiting, not generating. *@
+                                        <p class="scheduled-status">@ScheduledToRunText(due)</p>
+                                        <p class="muted-text">
+                                            It starts on its own; you can leave and watch it in History.
+                                        </p>
+                                    }
+                                    else if (isAiRequestLoading)
                                     {
                                         <LoadingState>Generating&hellip;</LoadingState>
                                         @* #684: a run takes minutes — show how long it's been going
@@ -1136,7 +1144,7 @@
                                     {
                                         var stepNum = i;
                                         var done = completedAnalysisStageCount >= stepNum;
-                                        var current = !done && completedAnalysisStageCount == stepNum - 1 && isAiRequestLoading;
+                                        var current = !done && completedAnalysisStageCount == stepNum - 1 && RunInFlight;
                                         var stageStatus = done ? "Completed" : current ? "Running" : null;
                                         var isSectionStage = stepNum == stageTotal;
 
@@ -1591,6 +1599,27 @@
   private CancellationTokenSource? elapsedTicker;
   private TimeSpan RunElapsed => runStartedAt is { } start ? DateTimeOffset.UtcNow - start : TimeSpan.Zero;
 
+  // #1332: a re-attached job the server still calls Scheduled. It waits on a
+  // timer, so it is not generating: no elapsed readout, no node running. The
+  // first status that is not Scheduled (a poll, a heartbeat, any output)
+  // switches the page to the running view.
+  private DateTimeOffset? scheduledFor;
+  // Once a run is seen started it never goes back: a replayed stored snapshot
+  // (written while Scheduled, deduped under a fixed key) still says Scheduled.
+  private bool scheduledWaitEnded;
+  private bool IsScheduledWait => scheduledFor is not null && runTerminalStatus == null;
+  private bool RunInFlight => isAiRequestLoading && !IsScheduledWait;
+
+  // #1332: the deliverable labels of the package the re-attached job ran,
+  // fetched by its recorded ref (the pin may be another package).
+  private IReadOnlyList<string>? jobResultLabels;
+  private string RunHeading => jobResultLabels switch
+  {
+    { Count: 1 } labels => labels[0],
+    { Count: > 1 } => "Documents",
+    _ => "Consultation note",
+  };
+
   // #683: set once the user tries to submit, so empty required fields can be
   // called out inline. There is no other form-touched state.
   private bool attemptedSubmit;
@@ -1769,6 +1798,15 @@
 
       var snapshot = await AIService.GetConsultGenerationJobAsync(targetJobId);
       ApplyConsultGenerationJobResponse(snapshot, blockSnapshots);
+
+      // #1332: the readout counts from the job's own start, not from when this
+      // page opened; a Scheduled job has no start yet and shows no readout.
+      if (snapshot.StartedAtUtc is { } startedAt)
+      {
+        runStartedAt = startedAt;
+      }
+
+      await LoadJobResultLabelsAsync(snapshot.WorkflowPackage);
 
       // #202: Cancelled is terminal too. Without it a re-attach would open an
       // SSE stream against an orchestration that has been terminated.
@@ -2451,6 +2489,12 @@
   {
     try
     {
+      // #1332: output of any kind means a Scheduled run has started.
+      if (scheduledFor is not null && eventName is "block-completed" or "block-skipped" or "block-failed" or "node-completed" or "item-step" or "count-resolved")
+      {
+        NoteScheduledStatus("Running", scheduledFor, startedAtUtc: null);
+      }
+
       switch (eventName)
       {
         case "snapshot":
@@ -2466,6 +2510,16 @@
               snapshot.FailedBlockCount);
 
             ApplyConsultGenerationJobResponse(snapshot, GetActiveBlockSnapshots());
+          }
+          break;
+
+        case "heartbeat":
+          // #1332: the only live event that carries the status; it is how a
+          // Scheduled run learns it has started before any output arrives.
+          var heartbeat = JsonSerializer.Deserialize<ConsultGenerationHeartbeatEvent>(json, SseJsonOptions);
+          if (heartbeat != null && !string.IsNullOrWhiteSpace(heartbeat.Status))
+          {
+            NoteScheduledStatus(heartbeat.Status, scheduledFor, startedAtUtc: null);
           }
           break;
 
@@ -2661,6 +2715,7 @@
     runEventSeen = true;
     // #642: the run diagram draws from the whole latest response.
     latestRunResponse = response;
+    NoteScheduledStatus(response.Status, response.ScheduledAtUtc, response.StartedAtUtc);
     unattestedNodes = UnattestedNodes.Of(response);
     generatedBlocks = response.GeneratedBlocks;
     textDroppedAtUtc = response.TextDroppedAtUtc;
@@ -3637,7 +3692,7 @@
       return status;
     }
 
-    if (!isAiRequestLoading || RailNodes is not { } railNodes)
+    if (!RunInFlight || RailNodes is not { } railNodes)
     {
       return null;
     }
@@ -3715,7 +3770,7 @@
 
     return classifiers.Count > 0 && classifiers.All(node => nodeStatuses.GetValueOrDefault(node.Id) == "Completed")
       ? "Completed"
-      : isAiRequestLoading || (runEventSeen && runTerminalStatus == null) ? "Running" : null;
+      : RunInFlight || (runEventSeen && runTerminalStatus == null && !IsScheduledWait) ? "Running" : null;
   }
 
   private string? DoneRowStatus()
@@ -3740,6 +3795,11 @@
   // summarised in one polite live-region sentence that updates each tick.
   private string RunProgressAnnouncement()
   {
+    if (IsScheduledWait && scheduledFor is { } due)
+    {
+      return ScheduledToRunText(due);
+    }
+
     if (isAiRequestLoading)
     {
       if (totalBlockCount > 0)
@@ -4766,6 +4826,7 @@
     string Error);
 
   /// <summary>v27 (#1236): a block skipped by condition — no text; the reason is the condition's text.</summary>
+  private sealed record ConsultGenerationHeartbeatEvent(string JobId, string Status);
   private sealed record ConsultGenerationCountResolvedEvent(string JobId, string LoopId, int Count, int Total, int Pending);
 
   private sealed record ConsultGenerationBlockSkippedEvent(
@@ -4906,14 +4967,72 @@
 
   // #684: mark when the run started and re-render once a second so the elapsed
   // readout counts up smoothly; the loop stops itself when the run ends.
-  private void BeginElapsedReadout()
+  private void BeginElapsedReadout(DateTimeOffset? startedAt = null)
   {
-    runStartedAt = DateTimeOffset.UtcNow;
+    runStartedAt = startedAt ?? DateTimeOffset.UtcNow;
     elapsedTicker?.Cancel();
     elapsedTicker?.Dispose();
     elapsedTicker = new CancellationTokenSource();
     _ = TickElapsedAsync(elapsedTicker.Token);
   }
+
+  // #1332: Scheduled holds the waiting view; the first other status ends it
+  // and starts the readout from the job's start (now when it is not known).
+  private void NoteScheduledStatus(string status, DateTimeOffset? scheduledAtUtc, DateTimeOffset? startedAtUtc)
+  {
+    if (status == "Scheduled")
+    {
+      if (scheduledWaitEnded)
+      {
+        return;
+      }
+
+      scheduledFor = scheduledAtUtc ?? scheduledFor ?? DateTimeOffset.UtcNow;
+      return;
+    }
+
+    if (scheduledFor is null)
+    {
+      return;
+    }
+
+    scheduledFor = null;
+    scheduledWaitEnded = true;
+    if (isAiRequestLoading)
+    {
+      BeginElapsedReadout(startedAtUtc);
+    }
+  }
+
+  private async Task LoadJobResultLabelsAsync(string? packageRef)
+  {
+    if (string.IsNullOrWhiteSpace(packageRef))
+    {
+      return;
+    }
+
+    try
+    {
+      var content = await WorkflowService.GetCurrentPackageContentAsync(packageRef);
+      var labels = WorkflowManifestReader.ReadResults(content.Manifest)
+        .Select(result => result.Label)
+        .Where(label => !string.IsNullOrWhiteSpace(label))
+        .ToList();
+      jobResultLabels = labels.Count > 0 ? labels : null;
+    }
+    catch (AccessTokenNotAvailableException exception)
+    {
+      exception.Redirect();
+    }
+    catch
+    {
+      // Display only: the generic heading stands.
+      jobResultLabels = null;
+    }
+  }
+
+  private static string ScheduledToRunText(DateTimeOffset due) =>
+    $"Scheduled to run at {due.ToLocalTime():MMM d, h:mm tt}.";
 
   private async Task TickElapsedAsync(CancellationToken token)
   {
