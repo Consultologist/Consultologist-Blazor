@@ -46,6 +46,30 @@ public static class RunDagDiagram
         var pruned = flowAware ? RecordFlow.PrunedOf(nodes, outputs) : new Dictionary<string, IReadOnlyList<string>>(StringComparer.Ordinal);
         var nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
 
+        // #1321: Mermaid puts every node an edge inside a subgraph names into that subgraph — a
+        // top-level node a body node reads (a gate's classifier, an inner case's subject) was drawn
+        // inside the loop's box. Nodes are declared where they belong; an edge written while a
+        // subgraph is open waits, and is written after the outermost `end`.
+        var deferred = new StringBuilder();
+        var depth = 0;
+        StringBuilder Edges() => depth == 0 ? body : deferred;
+        void Open(string line)
+        {
+            body.Append(line);
+            depth++;
+        }
+
+        void Close()
+        {
+            body.Append("end\n");
+            depth--;
+            if (depth == 0 && deferred.Length > 0)
+            {
+                body.Append(deferred);
+                deferred.Clear();
+            }
+        }
+
         // External sources first, in first-seen order: the stadiums.
         var sources = new List<string>();
         foreach (var node in nodes)
@@ -122,12 +146,12 @@ public static class RunDagDiagram
                 var from = binding.Value.From;
                 if (from.StartsWith("node:", StringComparison.Ordinal))
                 {
-                    AppendEdge(body, statusById, from["node:".Length..], node.Id);
+                    AppendEdge(Edges(), statusById, from["node:".Length..], node.Id);
                 }
                 else if (from.StartsWith("input:", StringComparison.Ordinal) || from.StartsWith("data:", StringComparison.Ordinal))
                 {
                     var dashed = status == "skipped";
-                    body.Append(($"src_{Sanitize(from)} {(dashed ? "-.->" : "-->")} {id}\n"));
+                    Edges().Append(($"src_{Sanitize(from)} {(dashed ? "-.->" : "-->")} {id}\n"));
                 }
             }
 
@@ -135,7 +159,7 @@ public static class RunDagDiagram
             // template and parameters read — where bindings were below 25.
             foreach (var read in node.Reads ?? Array.Empty<string>())
             {
-                AppendEdge(body, statusById, read, node.Id);
+                AppendEdge(Edges(), statusById, read, node.Id);
             }
 
             foreach (var sourceRef in node.Aggregate ?? Array.Empty<string>())
@@ -143,7 +167,7 @@ public static class RunDagDiagram
                 // node:x below 25, node.x at 25 (#1037).
                 if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(sourceRef) is { } sourceId)
                 {
-                    AppendEdge(body, statusById, sourceId, node.Id, "aggregate");
+                    AppendEdge(Edges(), statusById, sourceId, node.Id, "aggregate");
                 }
             }
 
@@ -153,7 +177,7 @@ public static class RunDagDiagram
                 {
                     if (Consultologist.PackageFormat.TemplateObjectReference.NodeIdOf(operand) is { } operandId)
                     {
-                        body.Append(($"{Sanitize(operandId)} -.->|\"{member}\"| {id}\n"));
+                        Edges().Append(($"{Sanitize(operandId)} -.->|\"{member}\"| {id}\n"));
                     }
                 }
             }
@@ -167,6 +191,11 @@ public static class RunDagDiagram
             var kind = flow.Kind ?? "flow";
             var subgraphId = $"{Sanitize(kind)}_{id}";
             var bodies = (flow.Body ?? Array.Empty<string>()).Where(nodesById.ContainsKey).Select(bodyId => nodesById[bodyId]).ToList();
+            var loopSource = RecordFlow.IsLoop(flow)
+                && Consultologist.PackageFormat.TemplateObjectReference.TryParse(flow.Collection, out var sourceObject, out var sourceId, out _)
+                && sourceObject == Consultologist.PackageFormat.TemplateObjects.Node
+                    ? sourceId
+                    : null;
 
             if (RecordFlow.IsLoop(flow))
             {
@@ -177,7 +206,7 @@ public static class RunDagDiagram
                 var tally = LoopCount.IsUnknown(flow)
                     ? LoopCount.Describe(detail.Status is "Completed" or "Failed" or "Cancelled")
                     : $"{doneItems}/{totalItems}";
-                body.Append(($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({tally})\"]\n"));
+                Open($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({tally})\"]\n");
                 foreach (var bodyNode in bodies)
                 {
                     // v27 (#1236, record storage 9): an if/case inside the loop is a subgraph of its own, one level deeper.
@@ -191,11 +220,16 @@ public static class RunDagDiagram
                     }
                 }
 
-                body.Append("end\n");
-                if (collection.Length > 0)
+                Close();
+                if (loopSource is { } sourceNode)
+                {
+                    // v29 (#1321): a loop over a node's value — the node is the source, one for edge (as WorkflowDagDiagram draws it).
+                    Edges().Append(($"{Sanitize(sourceNode)} -->|\"for\"| {subgraphId}\n"));
+                }
+                else if (collection.Length > 0)
                 {
                     body.Append(($"src_{Sanitize(collection)}([\"{collection}\"])\n"));
-                    body.Append(($"src_{Sanitize(collection)} -->|\"for\"| {subgraphId}\n"));
+                    Edges().Append(($"src_{Sanitize(collection)} -->|\"for\"| {subgraphId}\n"));
                 }
 
                 byClass[status].Add(id);
@@ -207,7 +241,7 @@ public static class RunDagDiagram
                 var inner = RecordFlow.IsInner(flow, nodes);
                 var branch = inner ? BranchesTally(flow) : RecordFlow.BranchText(flow);
                 // #1247: the expression is package-authored text — its quotes would close the label.
-                body.Append(($"subgraph {subgraphId}[\"{Label($"{flow.Id}: {kind} {flow.Expression} — {(inner ? "per item" : $"branch: {branch}")}")}\"]\n"));
+                Open($"subgraph {subgraphId}[\"{Label($"{flow.Id}: {kind} {flow.Expression} — {(inner ? "per item" : $"branch: {branch}")}")}\"]\n");
                 foreach (var bodyNode in bodies)
                 {
                     EmitNode(bodyNode);
@@ -233,29 +267,33 @@ public static class RunDagDiagram
                     body.Append(($"{skippedId}[\"{Label($"skipped ({names.Count})<br/>{string.Join("<br/>", names)}{(reasons.Count == 1 ? $"<br/>{reasons[0]}" : string.Empty)}")}\"]\n"));
                 }
 
-                body.Append("end\n");
+                Close();
                 byClass[status].Add(id);
                 body.Append(($"{id}{{\"{Label($"{flow.Id}<br/>{flow.Label}<br/>{kind}: {flow.Expression}<br/>{(inner ? branch : $"branch: {branch}")}")}\"}}\n"));
                 // A case over a node's value (node.<id>.value) draws the dotted edge from that node.
                 if (kind == "case" && SubjectNodeOf(flow.Expression) is { } subjectId)
                 {
-                    body.Append(($"{Sanitize(subjectId)} -.->|\"case\"| {id}\n"));
+                    Edges().Append(($"{Sanitize(subjectId)} -.->|\"case\"| {id}\n"));
                 }
 
                 if (skippedItems is { Count: > 0 })
                 {
-                    body.Append(($"{id} -.->|\"none\"| {skippedId}\n"));
+                    Edges().Append(($"{id} -.->|\"none\"| {skippedId}\n"));
                 }
             }
 
             if (RetIdOf(flow) is { } retEdgeId)
             {
-                AppendEdge(body, statusById, retEdgeId, flow.Id, "ret");
+                AppendEdge(Edges(), statusById, retEdgeId, flow.Id, "ret");
             }
 
             foreach (var read in flow.Reads ?? Array.Empty<string>())
             {
-                AppendEdge(body, statusById, read, flow.Id);
+                // v29 (#1321): the loop's source node is already its for edge.
+                if (!string.Equals(read, loopSource, StringComparison.Ordinal))
+                {
+                    AppendEdge(Edges(), statusById, read, flow.Id);
+                }
             }
         }
 
