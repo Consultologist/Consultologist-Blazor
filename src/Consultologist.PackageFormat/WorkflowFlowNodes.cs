@@ -432,8 +432,8 @@ internal static class WorkflowFlowNodes
 
         if (obj == TemplateObjects.Node)
         {
-            // § 6: a count the run discovers is the next bump's.
-            errors.Add($"Loop '{loopId}' iterates {reference}; a loop over a node's value waits for the scheduler redesign — iterate an input or a snippet folder.");
+            // v29 (#1307, design § 6): below 29 a loop over a node's value is the gate.
+            errors.Add($"Loop '{loopId}' iterates {reference}, which requires specVersion 29.");
             return (null, null);
         }
 

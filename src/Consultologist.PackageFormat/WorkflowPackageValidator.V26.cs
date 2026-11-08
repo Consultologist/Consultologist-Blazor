@@ -832,7 +832,14 @@ public static partial class WorkflowPackageValidator
                 .Concat(refs.ProfileFacts.Select(m => $"{TemplateObjects.Profile}.{m}"))
                 .FirstOrDefault();
 
-            if (offending is not null)
+            // v29 (#1307, design § 6): below 29 a scalar node's value is the gate —
+            // 29 reads it; anything else keeps the sentence it always had.
+            if (refs.Nodes.FirstOrDefault() is { Key: { } nodeId, Value: { ReadsValue: true, ReadsContent: false } }
+                && offending == $"{TemplateObjects.Node}.{nodeId}")
+            {
+                errors.Add($"{condition.Subject} reads {TemplateObjects.Node}.{nodeId}.{TemplateMembers.Value}, which requires specVersion 29.");
+            }
+            else if (offending is not null)
             {
                 errors.Add($"{condition.Subject} reads {offending}; a folder item's if reads inputs and item.id only, so the folder's size is known at job start (the template's own if gates anything else).");
             }

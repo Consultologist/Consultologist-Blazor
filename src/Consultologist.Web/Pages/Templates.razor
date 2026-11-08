@@ -97,8 +97,8 @@
                     {
                         <FluentButton Appearance="Appearance.Outline"
                                       Disabled="@isPublishing"
-                                      @onclick="() => UpgradeSpecVersionTo(AuthoredNewest)">
-                            Upgrade to specVersion @AuthoredNewest
+                                      @onclick="() => UpgradeSpecVersionTo(NewestSpecVersion)">
+                            Upgrade to specVersion @NewestSpecVersion
                         </FluentButton>
                     }
                     @if (OffersRunnableUpgrade || OffersNewestUpgrade)
@@ -5130,23 +5130,10 @@
     /// writing, folder pane and descriptions landed first (#1285) behind a test-only
     /// seam this bump retired.
     /// </summary>
-    internal const int NewestSpecVersion = 28;
-
-    /// <summary>
-    /// v29 (#1306, as #1285 did for 28): a test-only seam — the editor authors the
-    /// version above the accepted ceiling (29, built by #1301–#1305) before the bump
-    /// (#1307) lifts the ceiling: the manifest reads, the desk's validate and an
-    /// import accept it, and the upgrade reaches it. No banner: the API refuses 29
-    /// until the bump, so no user opens one. Retired at the bump, as #1286 retired 28's.
-    /// </summary>
-    [Parameter]
-    public bool AuthorsAboveCeiling { get; set; }
-
-    private IReadOnlyList<int> AcceptedSet =>
-        AuthorsAboveCeiling ? PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(NewestSpecVersion + 1).ToList() : PF.WorkflowPackageValidator.AcceptedSpecVersions;
-
-    /// <summary>The newest version this editor authors: the ceiling, one above it under the seam.</summary>
-    private int AuthoredNewest => AuthorsAboveCeiling ? NewestSpecVersion + 1 : NewestSpecVersion;
+    /// v29 (#1307): the bump — both ceilings to 29 together; the editor's 29 loop
+    /// picker, item gates and upgrade rung landed first (#1306) behind a test-only
+    /// seam this bump retired.
+    internal const int NewestSpecVersion = 29;
 
 
     /// <summary>
@@ -5172,7 +5159,7 @@
     // #1149 ran 26 ahead of the editor (the opposite gap, pinned by name in
     // SpecVersionMirrorTests until #1164 brought the editor's chain to 26);
     // #1237 moved both to 27 at once.
-    internal const int RunnableSpecVersion = 28;
+    internal const int RunnableSpecVersion = 29;
 
     /// <summary>The version this publish will carry: the bump, or what is loaded.</summary>
     /// <summary>
@@ -5418,7 +5405,7 @@
         // v27 (#1236, design § 7; chained at the bump #1237): from 26 on, the 27
         // rung is a version raise — nothing rewritten. A package below 26 arrives
         // here through the rewrite above.
-        var target = AuthoredNewest;
+        var target = NewestSpecVersion;
         PF.Migration26Result? raised = null;
         if (EffectiveSpecVersion < 27)
         {
@@ -5556,7 +5543,7 @@
     /// <summary>A stored upgrade of the package just loaded takes its place — the stored-import idiom (#857).</summary>
     private void ApplyStoredUpgrade(UpgradeDraft draft)
     {
-        content = new WorkflowPackageContentResponse(draft.Name, draft.PackageVersion, AuthoredNewest, JsonDocument.Parse(draft.ManifestJson).RootElement.Clone(), draft.Files);
+        content = new WorkflowPackageContentResponse(draft.Name, draft.PackageVersion, NewestSpecVersion, JsonDocument.Parse(draft.ManifestJson).RootElement.Clone(), draft.Files);
         upgradedFrom = draft.FromSpecVersion;
         migrationNotice = draft.Notice;
     }
@@ -5576,7 +5563,8 @@
     // v26 (#1164): 2 — a stored upgrade to 25 from before the chain reached 26 is not restored as a 26 one.
     // v27 (#1237): 3 — likewise a stored upgrade to 26 is not restored as a 27 one.
     // v28 (#1286): 4 — and a stored upgrade to 27 is not restored as a 28 one.
-    private const int UpgradeDraftVersion = 4;
+    // v29 (#1307): 5 — and a stored upgrade to 28 is not restored as a 29 one.
+    private const int UpgradeDraftVersion = 5;
     private const string UpgradeKeyPrefix = "workflow-editor-upgrade:";
 
     private sealed record UpgradeDraft(int Version, int FromSpecVersion, string Name, string PackageVersion, string ManifestJson, Dictionary<string, string> Files, string? Notice);
@@ -5689,7 +5677,7 @@
         // question is whether the package as published has anywhere to go up
         // to. The pending side is the specVersionBump == null clause, which is
         // what hides the buttons once one has been pressed.
-        content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= AuthoredNewest;
+        content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
 
     // #1149: the rung this editor's one button reaches — the newest format it
     // can author AND the engine runs. Equal to both ceilings when they meet;
@@ -5702,7 +5690,7 @@
     // the gap: 10 is publishable, 9 is the newest that runs).
     private bool OffersRunnableUpgrade => CanUpgradeTo(UpgradeTarget);
 
-    private bool OffersNewestUpgrade => RunnableSpecVersion < AuthoredNewest && CanUpgradeTo(AuthoredNewest);
+    private bool OffersNewestUpgrade => RunnableSpecVersion < NewestSpecVersion && CanUpgradeTo(NewestSpecVersion);
 
     /// <summary>A staged bump past the runnable ceiling, or a loaded package already past it.</summary>
     private bool NotYetRunnable => EffectiveSpecVersion > RunnableSpecVersion;
@@ -6008,7 +5996,7 @@
                 IReadOnlyList<PF.TemplatePreviewGate> gates = Array.Empty<PF.TemplatePreviewGate>();
                 try
                 {
-                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
+                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
                     // v28 (#1285): the prompts a 28 manifest implies, as the engine reads them.
                     var previewFiles = AssembleFiles();
                     manifest = PF.WorkflowImpliedPaths.WithImpliedPrompts(manifest, previewFiles);
@@ -11464,7 +11452,7 @@
         PF.WorkflowPackageManifest manifest;
         try
         {
-            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
+            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -11476,9 +11464,7 @@
             AssembleFiles(),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorPackageWalk.CatalogFrom(formatsCatalog),
-            // #1306: the seam's set — the public entry's until the bump.
-            AcceptedSet);
+            EditorPackageWalk.CatalogFrom(formatsCatalog));
 
         var errors = formatsCatalog is null
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
@@ -19522,7 +19508,7 @@
             ImportedPackage built;
             try
             {
-                built = BuildImportedContent(bytes, AcceptedSet);
+                built = BuildImportedContent(bytes, PF.WorkflowPackageValidator.AcceptedSpecVersions);
             }
             catch (JsonException ex)
             {
@@ -19610,7 +19596,7 @@
     // corrupt stored import falls back to the registry rather than wedging.
     private void ApplyStoredImport(ImportDraft draft)
     {
-        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64), AcceptedSet);
+        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64), PF.WorkflowPackageValidator.AcceptedSpecVersions);
         content = built.Content;
         importZipBase64 = draft.ZipBase64;
         editingRef = null;
