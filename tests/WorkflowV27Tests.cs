@@ -110,7 +110,7 @@ public static class V27Package
 public class WorkflowV27Tests
 {
     [Fact]
-    public void ThePublicEntry_Accepts27_SinceTheBump_AndRefuses29()
+    public void ThePublicEntry_Accepts27_SinceTheBump_AndRefuses30()
     {
         // #1237: the accepted set carries 27 (with the store's set and both of the
         // editor's ceilings). The seam and the public door agree; the version
@@ -122,8 +122,8 @@ public class WorkflowV27Tests
         Assert.Empty(result.Errors);
         Assert.Empty(V27Package.Errors(V27Package.Minimal()));
 
-        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 29 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 29 is not supported", StringComparison.Ordinal));
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 30 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 30 is not supported", StringComparison.Ordinal));
     }
 
     [Fact]

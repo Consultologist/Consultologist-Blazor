@@ -37,8 +37,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// v27 (#1235, record storage 9): 9 for a job whose package is at specVersion
     /// 27 — an inner flow row's per-item branches, the flow node's per-item row
     /// skipped by condition with its reason, the skipped block.
+    /// v29 (#1307, record storage 10): 10 for a job whose package is at specVersion
+    /// 29 — the unresolved loops, a loop row's count null until it settles with its
+    /// moment and reason, the held documents.
     internal static void Stamp(ConsultGenerationJobState state, int at25) =>
-        state.SchemaVersion = state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
+        state.SchemaVersion = state.PackageSpecVersion >= 29 ? 10 : state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
 
     public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore)
     {
@@ -266,7 +269,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // creation — never 2, 6 or 7 — so a reader trusts the 26 rows at once.
         if (State.PackageSpecVersion >= 26)
         {
-            State.SchemaVersion = State.PackageSpecVersion >= 27 ? 9 : 8;
+            State.SchemaVersion = State.PackageSpecVersion >= 29 ? 10 : State.PackageSpecVersion >= 27 ? 9 : 8;
         }
         State.PackageTitle ??= input.PackageTitle;
         State.PackageTags ??= input.PackageTags?.ToList();
@@ -1647,7 +1650,7 @@ public sealed class ConsultGenerationJobState
     /// fact in provenance-versions.json (#400), pinned against this list by
     /// test. A new storage shape is added here and there in the same change.
     /// </summary>
-    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8, 9 };
+    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8, 9, 10 };
 
     /// <summary>#373: the specVersion of the package this job ran.</summary>
     public int? PackageSpecVersion { get; set; }

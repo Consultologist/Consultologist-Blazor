@@ -9,20 +9,20 @@ using PF = Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// #1306 (package-format-v29-design.md § 8): the editor at 29, behind the test-only
-/// seam until the bump (#1307) — a loop's picker offers a node's array fields (a node
+/// #1306 (package-format-v29-design.md § 8): the editor at 29 (behind a test-only
+/// seam until the bump, #1307, retired it) — a loop's picker offers a node's array fields (a node
 /// outside every loop, its format typing the field an array), the pick is written and
 /// published, the body's palette offers the element's fields, and a 28 package
 /// upgrades to 29 with only its version changing. Without the seam, nothing moves.
 /// </summary>
 public class TemplatesV29LoopTests : ClientRenderTestContext
 {
-    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture, bool seam = true)
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
         WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
-        return Render<Templates>(p => p.Add(x => x.AuthorsAboveCeiling, seam));
+        return Render<Templates>();
     }
 
     private void Select(IRenderedComponent<Templates> page, string key)
@@ -42,7 +42,7 @@ public class TemplatesV29LoopTests : ClientRenderTestContext
                 new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.11.2", "acct-1234567890ab@v2026.11.2"),
                 Array.Empty<string>()));
 
-    private static readonly IReadOnlyList<int> Accepting29 = PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(29).ToList();
+    private static readonly IReadOnlyList<int> Accepting29 = PF.WorkflowPackageValidator.AcceptedSpecVersions;
 
     [Fact]
     public void TheLoopPicker_OffersANodesArrayFields_AndNotAProseOrABodyNode()
@@ -76,7 +76,7 @@ public class TemplatesV29LoopTests : ClientRenderTestContext
         Assert.Equal("item in node.find_problems.value.risks", problems.GetProperty("for").GetString());
         var manifest = PF.WorkflowPackageManifestJson.Read(sent.Manifest.GetRawText(), "sent", Accepting29);
         var result = PF.WorkflowPackageValidator.Validate(manifest, sent.Files.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
-            new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog, Accepting29);
+            new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog);
         Assert.Empty(result.Errors);
     }
 
@@ -107,10 +107,9 @@ public class TemplatesV29LoopTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void WithoutTheSeam_29IsNotOffered_AndNoNodeListsAreOffered()
+    public void At28_NoNodeListsAreOffered()
     {
-        var page = RenderEditor(EditorFixtures.V28(), seam: false);
-        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Trim() == "Upgrade to specVersion 29");
+        var page = RenderEditor(EditorFixtures.V28());
 
         Select(page, "node:sections");
         Assert.DoesNotContain(Options(page, "fluent-select.loop-collection"), o => o.StartsWith("node.", StringComparison.Ordinal));
@@ -141,7 +140,7 @@ public class TemplatesV29LoopTests : ClientRenderTestContext
         Assert.Contains("\"if\": \"node.scope.value == \\\"in_scope\\\"\"", sent!.Files["snippets/sections/hpi.md"]);
         var manifest = PF.WorkflowPackageManifestJson.Read(sent.Manifest.GetRawText(), "sent", Accepting29);
         Assert.Empty(PF.WorkflowPackageValidator.Validate(manifest, sent.Files.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
-            new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog, Accepting29).Errors);
+            new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog).Errors);
     }
 
     [Fact]

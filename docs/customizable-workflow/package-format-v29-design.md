@@ -1,7 +1,8 @@
 # specVersion 29 — the dynamic half: a count the run discovers
 
 > **Status:** design, **revision 4** (2026-11-07). Milestone 32 (#1277). Decided with the package
-> author; being implemented (layer A, B1–B3 merged; B4 #1305). Revision 4 (planning B4): a
+> author; implemented through the bump (layers A, B1–B4, C1–C2 merged; the bump #1307 — § 11; the
+> content #1308 next). Revision 4 (planning B4): a
 > composed-but-unreleased deliverable is kept in a list of its own, and a job that ends with one is
 > failed, naming why it was held (§ 4, § 5). Revision 2 (planning layer A):
 > a loop's source is a field path, because a format's value is an object (§ 2.1); a
@@ -392,6 +393,22 @@ One layer per PR, each green on its own; each gets its own issue when it starts.
 - **C — Editor.** § 8.
 - **The bump.** The registry PR (`package-format-v29.md`, vectors, provenance storage 10) and the
   engine PR moving every ceiling to 29; a release, cut **after a drain** (§ 7).
+
+  *As landed (2026-11-07, #1307):* `AcceptedSpecVersions` and `SupportedSpecVersions` list 29; the
+  editor's `NewestSpecVersion` and `RunnableSpecVersion` are 29 together, the #1306 seam
+  (`AuthorsAboveCeiling`) and its `InternalsVisibleTo` retired, the stored upgrade at version 5; the
+  upgrade chains through the 28 rewrite ("Through 28:") into the 29 raise ("Through 29: …"); a 29
+  job stamps record storage **10** (`StorageVersions` gains 10); the two below-29 sentences are the
+  gates (§ 6); `--to 29` raises a 28 package and validates at 29 before writing; next-is-refused
+  moved to 30. Registry package-format **v2026.11.2** (consultologist-package-format#44): 29 listed
+  with `package-format-v29.md` and the generated schema (28's with the version changed — the `for`
+  source and an item's `if` are strings to it), `conformance/v29/` (15 vectors: 3 valid, 12
+  invalid, all `SHAPE_BLIND`), the two below-29 gates under `v28/`, the two v26 cases re-exported
+  with the gate sentences; 645 cases in all. Provenance **v2026.11.1**
+  (consultologist-provenance#45): storage 10 — `unresolvedLoops`, `totalBlockCount` a floor while
+  a loop is unresolved, the node-valued `for` row's `count`/`resolvedAtUtc`/`reason`, a node-gated
+  item's skipped row, `heldDocuments`. The release (after a drain) and the content (#1308) follow on
+  the word.
 - **E — content.** An example package whose loop iterates a node's list (a problem list drafted
   one part per problem), and a 29 smoke job.
 

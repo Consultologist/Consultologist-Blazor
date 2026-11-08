@@ -127,7 +127,7 @@ public class WorkflowV26FlowTests
     [InlineData("item in snippet.nope", "Loop 'sections' iterates snippet folder 'nope', which the package does not declare.")]
     [InlineData("item in input.nope", "Loop 'sections' iterates undeclared input 'nope'.")]
     [InlineData("item in input.notes", "Loop 'sections' iterates input 'notes', which is a text; only an array can be iterated.")]
-    [InlineData("item in node.extract.value", "Loop 'sections' iterates node.extract.value; a loop over a node's value waits for the scheduler redesign — iterate an input or a snippet folder.")]
+    [InlineData("item in node.extract.value", "Loop 'sections' iterates node.extract.value, which requires specVersion 29.")]
     public void ALoop_IteratesASnippetFolderOrAnArrayInput(string over, string sentence)
     {
         var errors = V26Package.FlowErrors(m => V26Package.WithNode(m, "sections", n => n with { For = over }));

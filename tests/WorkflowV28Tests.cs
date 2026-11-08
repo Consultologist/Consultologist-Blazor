@@ -84,7 +84,7 @@ public class WorkflowV28Tests
     }
 
     [Fact]
-    public void ThePublicEntry_Accepts28_SinceTheBump_AndRefuses29()
+    public void ThePublicEntry_Accepts28_SinceTheBump_AndRefuses30()
     {
         // #1286: both sets carry 28; the seam is a harmless duplicate since.
         Assert.Contains(28, WorkflowPackageValidator.AcceptedSpecVersions);
@@ -92,8 +92,8 @@ public class WorkflowV28Tests
         var (manifest, files) = V28Package.Minimal();
         Assert.Empty(WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog()).Errors);
 
-        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 29 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 29 is not supported", StringComparison.Ordinal));
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 30 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 30 is not supported", StringComparison.Ordinal));
     }
 
     // ---- the wire shapes ---------------------------------------------------------------
