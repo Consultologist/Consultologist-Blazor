@@ -86,7 +86,9 @@
 
 /* #202: a cancelled run. Muted rather than red — nothing failed, and it must
    not read like the failure badge above it. */
-.job-status-badge--cancelled {
+.job-status-badge--cancelled,
+/* #1326: the server no longer has the run — muted like cancelled, not a failure. */
+.job-status-badge--notfound {
 	background: color-mix(in srgb, var(--consultologist-text-muted) 14%, transparent);
 	color: var(--consultologist-text-muted);
 }
