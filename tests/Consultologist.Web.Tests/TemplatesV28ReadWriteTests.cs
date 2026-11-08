@@ -147,18 +147,18 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
         var fixture = new WorkflowPackageContentResponse("acct-1234567890ab", "v2026.07.1", 27, JsonDocument.Parse(at27.ManifestJson).RootElement.Clone(), new Dictionary<string, string>(at27.Files, StringComparer.Ordinal));
         var page = RenderEditor(fixture);
 
-        page.InvokeAsync(() => page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Upgrade to specVersion 28").Click());
+        page.InvokeAsync(() => page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Upgrade to specVersion 29").Click());
         page.Render();
 
         var notice = page.Markup;
-        Assert.Contains("Migrated to specVersion 28.", notice);
+        Assert.Contains("Migrated to specVersion 29.", notice);
         Assert.Contains("prompts/section.md → prompts/section_notes.md", notice);
         Assert.DoesNotContain("Through 27:", notice);
 
         Publish(page);
         Assert.Empty(Refusals(page));
         Assert.NotNull(sent);
-        Assert.Equal(28, sent!.Manifest.GetProperty("specVersion").GetInt32());
+        Assert.Equal(29, sent!.Manifest.GetProperty("specVersion").GetInt32());
         Assert.True(sent.Files.ContainsKey("prompts/section_notes.md"));
         Assert.False(sent.Files.ContainsKey("prompts/section.md"));
         Assert.Empty(Validated().Errors);
@@ -168,10 +168,10 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
     public void A26Package_UpgradesTo28_SayingThe27RaiseUnderItsHeading()
     {
         var page = RenderEditor(EditorFixtures.V26Gated());
-        page.InvokeAsync(() => page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Upgrade to specVersion 28").Click());
+        page.InvokeAsync(() => page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Upgrade to specVersion 29").Click());
         page.Render();
 
-        Assert.Contains("Migrated to specVersion 28.", page.Markup);
+        Assert.Contains("Migrated to specVersion 29.", page.Markup);
         Assert.Contains("Through 27: Raised to specVersion 27", page.Markup);
     }
 
@@ -190,13 +190,13 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void TheVersionAfter_29_IsRefusedAtPublish()
+    public void TheVersionAfter_30_IsRefusedAtPublish()
     {
         CapturePublish();
         var fixture = EditorFixtures.V28();
         var root = System.Text.Json.Nodes.JsonNode.Parse(fixture.Manifest.GetRawText())!.AsObject();
-        root["specVersion"] = 29;
-        var page = RenderEditor(fixture with { SpecVersion = 29, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() });
+        root["specVersion"] = 30;
+        var page = RenderEditor(fixture with { SpecVersion = 30, Manifest = JsonDocument.Parse(root.ToJsonString()).RootElement.Clone() });
         Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Trim().StartsWith("Upgrade to specVersion", StringComparison.Ordinal));
 
         Select(page, "node:assessment");
@@ -204,6 +204,6 @@ public class TemplatesV28ReadWriteTests : ClientRenderTestContext
         area.Change(area.GetAttribute("current-value") + "\nOne more line.");
         Publish(page);
         Assert.Null(sent);
-        Assert.Contains(Refusals(page), r => r.Contains("is specVersion 29; this engine runs specVersion", StringComparison.Ordinal));
+        Assert.Contains(Refusals(page), r => r.Contains("is specVersion 30; this engine runs specVersion", StringComparison.Ordinal));
     }
 }
