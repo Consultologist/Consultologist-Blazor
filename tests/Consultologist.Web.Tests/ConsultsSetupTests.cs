@@ -42,6 +42,52 @@ public class ConsultsSetupTests : ClientRenderTestContext
     }
 
     [Fact]
+    public async Task BeforeThePackageLoads_NoFieldIsShown_OnlyTheSkeleton()
+    {
+        // #1325: the page drew the legacy single "Consult draft" form until the
+        // package answered, then swapped in the package's own. Until a declaration
+        // is known there is no form to fill — a skeleton stands in.
+        var pending = new TaskCompletionSource<WorkflowPackageResponse>();
+        WorkflowService.GetCurrentPackageAsync().Returns(pending.Task);
+
+        var page = Render<Consults>();
+
+        Assert.Empty(Fields(page));
+        Assert.Empty(page.FindAll("textarea"));
+        Assert.NotEmpty(page.FindAll(".skeleton-text"));
+        var create = page.FindAll("fluent-button").First(button => button.TextContent.Trim() == "Create consult");
+        Assert.True(create.HasAttribute("disabled"));
+
+        pending.SetResult(new WorkflowPackageResponse("general", "v2026.07.10", 7, NineSections(),
+            new[]
+            {
+                new WorkflowPackageInputResponse("consult_draft", "Consult draft", true),
+                new WorkflowPackageInputResponse("prior_notes", "Prior notes", false),
+                new WorkflowPackageInputResponse("question", "Question", false),
+            },
+            null, null, null));
+        await page.InvokeAsync(() => { });
+
+        page.WaitForAssertion(() => Assert.Equal(3, Fields(page).Count));
+    }
+
+    [Fact]
+    public void WhenThePackageFailsToLoad_NoFieldIsShown()
+    {
+        // #1325 (decided): a form that cannot run takes no typing — the error and
+        // the picker say why, and the fields wait for a package that loads.
+        WorkflowService.GetCurrentPackageAsync()
+            .Returns<Task<WorkflowPackageResponse>>(_ => throw new HttpRequestException("registry unavailable"));
+
+        var page = Render<Consults>();
+
+        Assert.Contains("Unable to load section standards", page.Markup);
+        Assert.Contains("Switch to another package", page.Markup);
+        Assert.Empty(Fields(page));
+        Assert.Empty(page.FindAll("textarea"));
+    }
+
+    [Fact]
     public void ThePackageContext_RendersAboveTheIntakeFields()
     {
         // #792: the picker/title + "Sections it will generate" (the setup-context
