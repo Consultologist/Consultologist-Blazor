@@ -530,4 +530,52 @@ public class RunDagDiagramTests
         Assert.DoesNotContain("scope", IdsNamedIn(loop));
         Assert.Contains("scope -.->|\"case\"| route\n", diagram);
     }
+
+    // ----- #1331: an item skipped by its node-gated if is settled — the body node is done, never running -----
+
+    private static ConsultGenerationNodeDescriptor[] NodeGatedNodes() => new ConsultGenerationNodeDescriptor[]
+    {
+        new("follow_up", "Is a reassessment arranged?", Format: "classification", Producer: "attested", Prompt: "prompts/follow_up.md"),
+        new("sections", "Standing sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_draft" }, Ret: "section_draft", Count: 2, Reads: new[] { "follow_up" }),
+        new("section_draft", "Drafting the section", Format: "prose", Producer: "attested", Prompt: "prompts/section_draft.md", In: "sections", Reads: new[] { "follow_up" }),
+    };
+
+    [Fact]
+    public void A29NodeGatedSkip_IsSettled_TheBodyNodeIsDone_AndTheTallyNamesTheSkip()
+    {
+        // The e52c728c shape (2026-11-08): the record keys the skip by the LOOP (sections:follow_up_plan),
+        // and the body node was drawn running, "(1/2) items", on a completed run.
+        var diagram = RunDagDiagram.Build(Job(
+            nodes: NodeGatedNodes(),
+            outputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["follow_up"] = Row("follow_up", "Completed"),
+                ["sections"] = Row("sections", "Completed"),
+                ["sections:follow_up_plan"] = new("sections", "Standing sections", "Skipped", null, null, null, null, Reason: "needs `node.follow_up.value == \"yes\"`; it does not hold"),
+                ["section_draft"] = Row("section_draft", "Completed"),
+                ["section_draft:overview"] = Row("section_draft", "Completed"),
+            }));
+
+        Assert.Contains("(1/1 · 1 skipped) items", diagram);
+        Assert.Contains("subgraph for_sections[\"sections: per snippet.sections item (1/1 · 1 skipped)\"]", diagram);
+        Assert.Matches(@"class [^\n]*\bsection_draft\b[^\n]* done", diagram);
+        Assert.DoesNotMatch(@"class [^\n]*\bsection_draft\b[^\n]* running", diagram);
+    }
+
+    [Fact]
+    public void A29LoopWhoseEveryItemWasSkipped_IsNeverDrawnRunning()
+    {
+        var diagram = RunDagDiagram.Build(Job(
+            nodes: NodeGatedNodes(),
+            outputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["follow_up"] = Row("follow_up", "Completed"),
+                ["sections"] = Row("sections", "Completed"),
+                ["sections:overview"] = new("sections", "Standing sections", "Skipped", null, null, null, null, Reason: "r"),
+                ["sections:follow_up_plan"] = new("sections", "Standing sections", "Skipped", null, null, null, null, Reason: "r"),
+            }));
+
+        Assert.Contains("(0/0 · 2 skipped) items", diagram);
+        Assert.DoesNotMatch(@"class [^\n]*\bsection_draft\b[^\n]* running", diagram);
+    }
 }
