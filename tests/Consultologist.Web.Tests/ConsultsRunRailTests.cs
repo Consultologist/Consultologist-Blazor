@@ -407,6 +407,59 @@ public class ConsultsRunRailTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void AStorage10NodeGatedItem_SkippedByItsLoop_ReadsSkipped_AndTheCountNamesIt()
+    {
+        // #1330: a folder item whose header if reads a node (v29, #1279) is skipped by its LOOP —
+        // the record keys it sections:plan, NodeId sections — and the body node's rail row read it
+        // as drafted (✓, "2/2"). It reads skipped, with the condition, and the count names it.
+        WithTwoNodePackage();
+        const string reason = "needs `node.follow_up.value == \"yes\"`; it does not hold";
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(new ConsultGenerationJobResponse(
+            JobId, "user-1", "Completed",
+            TotalBlockCount: 2, CompletedBlockCount: 2, FailedBlockCount: 0,
+            GeneratedBlocks: new Dictionary<string, string>(), FailedBlocks: new Dictionary<string, string>(),
+            Success: true,
+            SchemaVersion: 10,
+            Nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("follow_up", "Is a reassessment arranged?", Prompt: "prompts/follow_up.md"),
+                new("sections", "Standing sections", Kind: "for", Collection: "snippet.standards", Body: new[] { "section_draft" }, Ret: "section_draft", Count: 2, Reads: new[] { "follow_up" }),
+                new("section_draft", "Drafting the section", In: "sections", Prompt: "prompts/section_draft.md", Reads: new[] { "follow_up" }),
+            },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["follow_up"] = new("follow_up", "Is a reassessment arranged?", "Completed", "i", "o", null, null),
+                ["sections"] = new("sections", "Standing sections", "Completed", null, null, null, null),
+                ["sections:plan"] = new("sections", "Standing sections", "Skipped", null, null, null, null, Reason: reason),
+                ["section_draft"] = new("section_draft", "Drafting the section", "Completed", null, null, null, null),
+                ["section_draft:overview"] = new("section_draft", "Drafting the section", "Completed", "i", "o", null, null),
+            },
+            AssembledDocument: "The note.",
+            SkippedBlocks: new Dictionary<string, string> { ["note:sections:plan"] = reason },
+            Collections: new[] { new ConsultCollectionRoster("standards", new[] { new ConsultCollectionItem("overview", "Overview"), new ConsultCollectionItem("plan", "Follow-up plan") }) }));
+
+        var page = RenderRail();
+
+        var drafting = Assert.Single(page.FindAll(".node-group"), g => g.QuerySelector("summary .node-row__label")!.TextContent.Trim() == "Drafting the section");
+        var rows = drafting.QuerySelectorAll(".node-row--item").ToList();
+        var plan = rows.Single(row => row.QuerySelector(".node-row__label")!.TextContent.Trim() == "Follow-up plan");
+        var overview = rows.Single(row => row.QuerySelector(".node-row__label")!.TextContent.Trim() == "Overview");
+        Assert.Contains("node-status--skipped", plan.QuerySelector(".node-row__status")!.ClassName);
+        Assert.Equal(reason, plan.GetAttribute("title"));
+        Assert.DoesNotContain("node-status--skipped", overview.QuerySelector(".node-row__status")!.ClassName);
+        Assert.Equal("1/1 · 1 skipped", drafting.QuerySelector("summary .node-row__count")!.TextContent.Trim());
+    }
+
+    [Theory]
+    [InlineData("note:sections:plan", "sections:plan")]
+    [InlineData("sections:plan", "sections:plan")]
+    [InlineData("plan", null)]
+    public void ASkippedBlocksLoopItemKey_IsItsLastTwoSegments(string blockId, string? expected) =>
+        // #1330: the live block-skipped event names the block (<result>:<loop>:<item>); the rail's
+        // skip set is keyed <loop>:<item>, as the record keys a node-gated item's skip.
+        Assert.Equal(expected, Consultologist.Web.Services.AI.RailSkips.LoopItemKeyOf(blockId));
+
+    [Fact]
     public void ABranchNodesRows_AreTheItemsItsFlowDecidedForIt_TakenShown_SentElsewhereHidden_UndecidedPending()
     {
         // #1248: a case with two branches over three items, mid-run — item 0 took narrative (its row is in),
