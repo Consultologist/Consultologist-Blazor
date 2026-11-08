@@ -38,7 +38,11 @@ public partial class ConformanceFixtureExport
                     var nodes = root["nodes"]!.AsArray();
                     nodes.Remove(nodes.Single(n => (string?)n!["id"] == "find_problems"));
                 },
-                files => files["prompts/draft_problem.md"] = "Concept {{ item.id }}: {{ item.value }}."));
+                files =>
+                {
+                    files["prompts/draft_problem.md"] = "Concept {{ item.id }}: {{ item.value }}.";
+                    files.Remove("prompts/find_problems.md"); // the removed node's prompt, so the case carries no stray-file warning
+                }));
         Add("v29-folder-item-if-reads-a-node", "A folder item drafted only when a classifier judged the case in scope — its if reads a scalar node's value (§ 3.1).",
             ItemIf("node.scope.value == \"in_scope\""));
 
