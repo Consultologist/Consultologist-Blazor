@@ -433,4 +433,101 @@ public class RunDagDiagramTests
         Assert.Contains("problems: per node.find_problems.value.problems item (counting…)", diagram);
         Assert.DoesNotContain("item (0/0)", diagram);
     }
+
+    // ----- #1321: a node a loop body reads stays outside the loop; a node-valued loop's source is the node -----
+
+    /// <summary>The span of one subgraph, from its opening line to its own <c>end</c> — nested subgraphs included.</summary>
+    private static string SubgraphText(string diagram, string subgraphId)
+    {
+        var start = diagram.IndexOf($"subgraph {subgraphId}[", StringComparison.Ordinal);
+        Assert.True(start >= 0, $"no subgraph {subgraphId}");
+        var lines = diagram[start..].Split('\n');
+        var depth = 0;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            depth += lines[i].StartsWith("subgraph ", StringComparison.Ordinal) ? 1 : lines[i] == "end" ? -1 : 0;
+            if (depth == 0)
+            {
+                return string.Join('\n', lines[..(i + 1)]) + "\n";
+            }
+        }
+
+        throw new Xunit.Sdk.XunitException($"subgraph {subgraphId} is never closed");
+    }
+
+    /// <summary>The ids a subgraph's lines name as a node or an edge end — never label text.</summary>
+    private static HashSet<string> IdsNamedIn(string subgraph) =>
+        subgraph.Split('\n').Skip(1)
+            .Select(line => System.Text.RegularExpressions.Regex.Replace(line, "\"[^\"]*\"", string.Empty))
+            .SelectMany(line => System.Text.RegularExpressions.Regex.Matches(line, @"\b[A-Za-z_][A-Za-z0-9_]*\b").Select(m => m.Value))
+            .ToHashSet(StringComparer.Ordinal);
+
+    [Fact]
+    public void A29Record_ATopLevelNodeABodyReads_IsDeclaredOutsideTheLoop_AndANodeValuedLoopDrawsItsForEdgeFromTheNode()
+    {
+        // The 29 smoke's shape (#1308, job 17ba7f6f…): a classifier gating a folder item, so the
+        // folder loop and its body read it (#1279); a loop over a node's list (#1278).
+        var diagram = RunDagDiagram.Build(Job(
+            nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("find_problems", "Finding the problems", Format: "problem_list", Producer: "custom", Prompt: "prompts/find_problems.md"),
+                new("follow_up", "Is a reassessment arranged?", Format: "classification", Producer: "attested", Prompt: "prompts/follow_up.md"),
+                new("problems", "Problems", Kind: "for", Collection: "node.find_problems.value.problems", Body: new[] { "draft_problem" }, Ret: "draft_problem", Count: 2, Reads: new[] { "find_problems" }),
+                new("draft_problem", "Drafting the problem", Format: "prose", Producer: "attested", Prompt: "prompts/draft_problem.md", In: "problems"),
+                new("sections", "Standing sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "section_draft" }, Ret: "section_draft", Count: 2, Reads: new[] { "follow_up" }),
+                new("section_draft", "Drafting the section", Format: "prose", Producer: "attested", Prompt: "prompts/section_draft.md", In: "sections", Reads: new[] { "follow_up" }),
+            },
+            outputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["find_problems"] = Row("find_problems", "Completed"),
+                ["follow_up"] = Row("follow_up", "Completed"),
+                ["problems"] = Row("problems", "Completed"),
+                ["draft_problem:1"] = Row("draft_problem", "Completed"),
+                ["draft_problem:2"] = Row("draft_problem", "Completed"),
+                ["sections"] = Row("sections", "Completed"),
+                ["section_draft:overview"] = Row("section_draft", "Completed"),
+                ["section_draft:follow_up_plan"] = Row("section_draft", "Completed"),
+            }));
+
+        // Mermaid puts every node an edge inside a subgraph names into that subgraph: the
+        // classifier must not be named inside the folder loop's at all.
+        var sections = SubgraphText(diagram, "for_sections");
+        Assert.Contains("section_draft[\"section_draft<br/>", sections);
+        Assert.DoesNotContain("follow_up", IdsNamedIn(sections));
+        var afterSections = diagram[(diagram.IndexOf(sections, StringComparison.Ordinal) + sections.Length)..];
+        Assert.Contains("follow_up --> section_draft\n", afterSections);
+        Assert.Contains("follow_up --> sections\n", afterSections);
+        Assert.Contains("src_snippet_sections -->|\"for\"| for_sections", diagram);
+
+        // The node-valued loop's source is the node itself — one for edge, no stadium, no second read edge.
+        Assert.DoesNotContain("find_problems", IdsNamedIn(SubgraphText(diagram, "for_problems")));
+        Assert.Contains("find_problems -->|\"for\"| for_problems\n", diagram);
+        Assert.DoesNotContain("src_node_", diagram);
+        Assert.DoesNotContain("find_problems --> problems\n", diagram);
+    }
+
+    [Fact]
+    public void AnInnerCase_OnATopLevelNodesValue_DrawsItsSubjectEdgeOutsideTheLoop()
+    {
+        var diagram = RunDagDiagram.Build(Job(
+            nodes: new ConsultGenerationNodeDescriptor[]
+            {
+                new("scope", "Scope", Format: "classification", Producer: "attested", Prompt: "prompts/scope.md"),
+                new("sections", "Sections", Kind: "for", Collection: "snippet.sections", Body: new[] { "route" }, Ret: "route", Count: 1),
+                new("route", "Route", Kind: "case", Expression: "node.scope.value", Body: new[] { "plan_draft" }, In: "sections",
+                    Branches: new Dictionary<string, string> { ["plan"] = "in_scope" }),
+                new("plan_draft", "Plan draft", Format: "prose", Producer: "attested", Prompt: "prompts/plan.md", In: "route"),
+            },
+            outputs: new Dictionary<string, ConsultGenerationNodeStatus>
+            {
+                ["scope"] = Row("scope", "Completed"),
+                ["sections"] = Row("sections", "Completed"),
+                ["plan_draft:plan"] = Row("plan_draft", "Completed"),
+            }));
+
+        var loop = SubgraphText(diagram, "for_sections");
+        Assert.Contains("subgraph case_route[", loop);
+        Assert.DoesNotContain("scope", IdsNamedIn(loop));
+        Assert.Contains("scope -.->|\"case\"| route\n", diagram);
+    }
 }
