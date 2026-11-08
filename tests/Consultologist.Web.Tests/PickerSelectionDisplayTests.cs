@@ -53,6 +53,24 @@ public class PickerSelectionDisplayTests : ClientRenderTestContext
     }
 
     [Fact]
+    public void WithNothingRemembered_TheChooserNamesTheLoadedPackage_NotTheDefault()
+    {
+        // #1322: with no remembered package the editor loads the pinned one, and
+        // the chooser kept its built-in default — "general@latest" above a banner
+        // naming test/general@v2026.11.2. It names what the editor loaded.
+        WithRegistry();
+        var loaded = EditorFixtures.V7();
+        WorkflowService.GetCurrentPackageContentAsync(Arg.Any<string?>()).Returns(loaded);
+
+        var page = Render<Templates>();
+
+        Assert.Equal(loaded.Ref, PickerTree.Shown(page));
+        Assert.NotEqual("general@latest", PickerTree.Shown(page));
+        PickerTree.Open(page);
+        Assert.Equal(new[] { loaded.Ref }, PickerTree.SelectedRefs(page));
+    }
+
+    [Fact]
     public async Task AChosenVersion_IsTheOptionMarkedSelected()
     {
         WithRegistry();
