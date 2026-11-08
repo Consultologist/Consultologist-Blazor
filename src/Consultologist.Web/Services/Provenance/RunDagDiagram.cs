@@ -100,14 +100,14 @@ public static class RunDagDiagram
             var label = new StringBuilder($"{node.Id}<br/>{node.Label}");
             if (node.ForEach != null)
             {
-                var (doneItems, totalItems) = ItemTally(node, outputs, detail.Collections, nodes);
-                label.Append(($"<br/>per {node.ForEach} item ({doneItems}/{totalItems})"));
+                var (doneItems, totalItems, skippedItems) = ItemTally(node, outputs, detail.Collections, nodes);
+                label.Append(($"<br/>per {node.ForEach} item ({TallyText(doneItems, totalItems, skippedItems)})"));
             }
             else if (node.In != null)
             {
                 // v26 (#1208): a body node — its items' tally; the loop's subgraph names the fan.
-                var (doneItems, totalItems) = ItemTally(node, outputs, detail.Collections, nodes);
-                label.Append(($"<br/>({doneItems}/{totalItems}) items"));
+                var (doneItems, totalItems, skippedItems) = ItemTally(node, outputs, detail.Collections, nodes);
+                label.Append(($"<br/>({TallyText(doneItems, totalItems, skippedItems)}) items"));
             }
 
             if (node.Check is { } check)
@@ -201,11 +201,11 @@ public static class RunDagDiagram
             {
                 var collection = flow.Collection ?? string.Empty;
                 var retNode = RetIdOf(flow) is { } retId && nodesById.TryGetValue(retId, out var ret) ? ret : bodies.FirstOrDefault();
-                var (doneItems, totalItems) = retNode is null ? (0, flow.Count ?? 0) : ItemTally(retNode, outputs, detail.Collections, nodes);
+                var (doneItems, totalItems, skippedItems) = retNode is null ? (0, flow.Count ?? 0, 0) : ItemTally(retNode, outputs, detail.Collections, nodes);
                 // v29 (#1303): a node's list not yet known is said so, never "(0/0)".
                 var tally = LoopCount.IsUnknown(flow)
                     ? LoopCount.Describe(detail.Status is "Completed" or "Failed" or "Cancelled")
-                    : $"{doneItems}/{totalItems}";
+                    : TallyText(doneItems, totalItems, skippedItems);
                 Open($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({tally})\"]\n");
                 foreach (var bodyNode in bodies)
                 {
@@ -417,10 +417,16 @@ public static class RunDagDiagram
                 return "running";
             }
 
-            var (done, total) = ItemTally(node, outputs, rosters, nodes);
+            var (done, total, skipped) = ItemTally(node, outputs, rosters, nodes);
             if (total > 0 && done >= total)
             {
                 return "done";
+            }
+
+            // #1331: every item its loop skipped by condition — settled, nothing ran.
+            if (total == 0 && skipped > 0)
+            {
+                return "skipped";
             }
 
             return done > 0 ? "running" : ClassFor(outputs.GetValueOrDefault(node.Id)?.Status);
@@ -447,7 +453,11 @@ public static class RunDagDiagram
         return roster?.Items.FirstOrDefault(item => string.Equals(item.Id, itemId, StringComparison.Ordinal))?.Name ?? itemId;
     }
 
-    private static (int Done, int Total) ItemTally(
+    /// <summary>#1331: "1/1", or "1/1 · 1 skipped" when the loop skipped items by condition (the rail's words, #1330).</summary>
+    private static string TallyText(int done, int total, int skipped) =>
+        skipped > 0 ? $"{done}/{total} · {skipped} skipped" : $"{done}/{total}";
+
+    private static (int Done, int Total, int Skipped) ItemTally(
         ConsultGenerationNodeDescriptor node,
         IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs,
         IReadOnlyList<ConsultCollectionRoster>? rosters,
@@ -458,23 +468,26 @@ public static class RunDagDiagram
         if (RecordFlow.IsInner(node, nodes))
         {
             var decided = node.Branches?.Count ?? 0;
-            return (decided, Math.Max(RecordFlow.LoopOf(node, nodes)?.Count ?? 0, Math.Max(decided, items.Count)));
+            return (decided, Math.Max(RecordFlow.LoopOf(node, nodes)?.Count ?? 0, Math.Max(decided, items.Count)), 0);
         }
 
         if (RecordFlow.FlowOf(node, nodes) is not null)
         {
-            return (items.Count(pair => pair.Value.Status == "Completed"), items.Count);
+            return (items.Count(pair => pair.Value.Status == "Completed"), items.Count, 0);
         }
 
         // v26 (#1208): a body node's total is its loop row's settled count; a forEach node's the roster's, as ever.
-        if (RecordFlow.LoopOf(node, nodes) is { Count: { } count })
+        if (RecordFlow.LoopOf(node, nodes) is { Count: { } count } loop)
         {
-            return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(count, items.Count));
+            // #1331 (v29, #1279): a folder item skipped by its node-gated if is skipped by the LOOP —
+            // the record keys it <loop>:<item> — so it is settled for the loop's body, not still to run.
+            var skipped = outputs.Count(pair => pair.Key.StartsWith($"{loop.Id}:", StringComparison.Ordinal) && pair.Value.Status == "Skipped");
+            return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(count, items.Count) - skipped, skipped);
         }
 
         var collectionId = node.ForEach?.Contains(':') == true ? node.ForEach[(node.ForEach.IndexOf(':') + 1)..] : node.ForEach;
         var total = rosters?.FirstOrDefault(roster => roster.CollectionId == collectionId)?.Items.Count ?? items.Count;
-        return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(total, items.Count));
+        return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(total, items.Count), 0);
     }
 
     /// <summary>v26 (#1208): the node a case subject reads — node.&lt;id&gt;.value, or node.&lt;id&gt;; null for an input.</summary>
