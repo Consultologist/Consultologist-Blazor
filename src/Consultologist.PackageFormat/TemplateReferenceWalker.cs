@@ -77,6 +77,21 @@ public static partial class TemplateReferenceWalker
         return collector.ToReferences();
     }
 
+    /// <summary>
+    /// v30 (#1339 A3, design § 4): walks a let's one expression — recorded and typed
+    /// as a condition's operands are, but its value is the let's, not a truth; and
+    /// pure: a Scriban builtin outside <see cref="TemplateObjects.PureBuiltins"/> is
+    /// refused (a let must give the same value on replay). Returns the references
+    /// and the kind the walk could type (<see cref="TemplateValueShape.Unknown"/> when not).
+    /// </summary>
+    internal static (TemplateReferences References, string Kind) WalkValue(string subject, ScriptExpression expression, TemplateReferenceContext context)
+    {
+        var collector = new TemplateReferenceCollector();
+        var visitor = new Visitor(subject, context, collector, condition: true, pure: true);
+        var operand = visitor.Typed(expression);
+        return (collector.ToReferences(), operand.Kind);
+    }
+
     /// <summary>A code block that opens and never closes, by the lexer's own tokens; the line is one-based.</summary>
     internal static bool TryFindUnclosedCode(string templateText, out int line)
     {
@@ -236,14 +251,17 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
         private readonly List<(Target Target, string Text)> _withTargets = new();
         private readonly bool _condition;
         private readonly string _text;
+        // v30 (#1339 A3): a let's expression — only pure builtins.
+        private readonly bool _pure;
 
-        public Visitor(string subject, TemplateReferenceContext context, TemplateReferenceCollector refs, bool condition = false, string text = "")
+        public Visitor(string subject, TemplateReferenceContext context, TemplateReferenceCollector refs, bool condition = false, string text = "", bool pure = false)
         {
             _subject = subject;
             _context = context;
             _refs = refs;
             _condition = condition;
             _text = text;
+            _pure = pure;
         }
 
         // ----- #1088: read occurrences and the if around them --------------------
@@ -1344,6 +1362,19 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
             if (TemplateObjects.ScribanBuiltins.Contains(root))
             {
+                // v30 (#1339 A3, design § 4.1): a let calls pure builtins only — the
+                // orchestrator replays, and the value must be the same each time.
+                if (_pure)
+                {
+                    var function = segments.Count > 0 && segments[0] is MemberSegment member ? $"{root}.{member.Name}" : root;
+
+                    if (!TemplateObjects.IsPureBuiltin(function))
+                    {
+                        Errors.Add($"{_subject} calls {function}, which is not deterministic; a let must give the same value on replay.");
+                        return Refused;
+                    }
+                }
+
                 return Opaque;
             }
 

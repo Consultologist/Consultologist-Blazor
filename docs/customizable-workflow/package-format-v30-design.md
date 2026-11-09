@@ -1,13 +1,14 @@
 # specVersion 30 — nesting, while and let: a loop's shape the run decides
 
-> **Status:** design, **revision 1** (2026-11-08). Milestone 38 (#1337). Decided with the package
-> author on 2026-11-08: all three shapes v29 named for 30, at any depth, plus #1252. Nothing is
-> built yet. This is a design, not a step-by-step plan: the Milestone 38 issues are its sections
-> and take their decisions from it. Where a comment on one of them disagrees with this text, this
-> text is the decision and names what it supersedes. Where this text proposes a *spelling* (a key,
-> an object, a sentence's words) rather than a decision, it says so; layer A settles the spelling
-> and records it here as a revision. The normative text follows in the package-format registry as
-> `package-format-v30.md` with the bump (§ 14).
+> **Status:** design, **revision 2** (2026-11-09): **layer A is built** (#1339: PRs #1349, #1350,
+> #1352 and A3), inert behind the ceiling. Revision 1 (2026-11-08) proposed spellings; layer A
+> settled them, and the package author widened `while` on 2026-11-09. This revision records both:
+> every spelling below is the built one, and § 8 lists the validator's sentences as built.
+> Milestone 38 (#1337). Decided with the package author on 2026-11-08: all three shapes v29 named
+> for 30, at any depth, plus #1252. This is a design, not a step-by-step plan: the Milestone 38
+> issues are its sections and take their decisions from it. Where a comment on one of them
+> disagrees with this text, this text is the decision and names what it supersedes. The normative
+> text follows in the package-format registry as `package-format-v30.md` with the bump (§ 14).
 >
 > **One-line model:** at 29 a loop is one level deep and runs each item once. 30 makes a loop's
 > **shape** something the run can decide:
@@ -68,10 +69,10 @@ Building them in one milestone builds that machinery once.
 | one item id per instance (`node:item`, `result:loop:item`) | an **item path**: the item ids from the outermost loop inward, joined by `/`; one level reads exactly as at 29 | § 1 |
 | a loop has one count, settled at most once | an inner loop has **one count per outer item** (a loop *instance*), each settling on its own | § 2 |
 | `item` is the one loop's item | `item` is the innermost loop's item; **`item.parent`** reaches outward | § 2 |
-| no `while`; `onInvalid: retry` is the one repeat | a **`while`** node: a body repeated while a check holds, `max` required (1–10), a row per pass | § 3 |
-| every item of a `for` runs | a `for` may declare **`until`**: its items run in order, and it stops after the item where the check holds | § 3 |
-| no computed node | a **`let`** node: one Scriban expression with a declared type, no model call, recorded and hashed | § 4 |
-| an array item is named label plus position (*"Sections to produce 1"*) | an `array<object>` input or a node-value loop may declare **`labelField`** | § 5 |
+| no `while`; `onInvalid: retry` is the one repeat | a **`while`** node: a body repeated while a check holds, `max` required (1–10), a row per pass; `checkFirst` (zero passes possible), an `until` beside the check, every earlier pass readable (`pass.previous`, `pass.history`) | § 3 |
+| every item of a `for` runs | a `for` may declare **`until`** (its items run in order, and it stops after the item where the check holds) and **`max`** (the first N items); `.stopped` says why it ended | § 3 |
+| no computed node | a **`let`** node: one Scriban expression with a declared type, no model call, pure builtins only, recorded and hashed | § 4 |
+| an array item is named label plus position (*"Sections to produce 1"*) | an `array<object>` input or **any loop over objects** may declare **`labelField`** | § 5 |
 | record storage 10 | record storage **11**: paths, loop-instance rows, pass rows, the stop reasons, the `let` row | § 7 |
 | `package-format v2026.11.2`, `provenance v2026.11.1` | the bump's package-format version; a **provenance** bump (storage 11) | § 13 |
 
@@ -172,7 +173,8 @@ a branch's, **to any depth** (decided). The 29 rule that a branch holds plain no
 loop's own item does not exist yet; `item.value.paragraphs` reads a field of the section being
 drafted. A node in the outer body is aligned by the outer path (`node.outline` is *this
 section's* outline). v29's sentence *"a loop iterates a node outside every loop"* (`WorkflowPackageValidator.V29.cs:39`)
-is lifted to *"a loop iterates a node outside it, or in an enclosing loop's body"*.
+is narrowed at 30 to *"Loop 'x' iterates node.y.value.z; y runs inside loop 'l' — a loop iterates a
+node outside it, or in an enclosing loop's body."* (as built, § 8).
 
 ### 2.3 One count per loop instance
 
@@ -196,15 +198,19 @@ instance, and `paragraphs` under `plan` is another. At 30 each instance settles 
 ### 2.4 Reads across levels
 
 **`item` is the innermost loop's item; `item.parent` is the enclosing loop's**, and so on
-outward (`item.parent.parent`). The spelling is proposed; layer A settles it.
+outward (`item.parent.parent`) — settled in layer A (revision 2).
 - A body node reads its own loop's item as at 29.
 - A paragraph's prompt reads its section's title as `item.parent.value.title`.
 - **A node in an outer body** is read by id, aligned on the common prefix: `node.outline` from
   inside `paragraphs` is this section's outline.
 - **A node in an inner body is a list** from outside it, read as a loop's elements are today
   (`{{ for e in node.paragraphs }}`).
-- **Siblings across instances are not readable.** A paragraph in `hpi` does not read a paragraph
-  in `plan`. Such a read is refused with a sentence naming both paths.
+- **Siblings across instances are not readable** — and need no sentence of their own. The
+  grammar cannot name another instance: `node.draft_paragraph` always aligns to the reader's own
+  path, so revision 1's proposed sibling sentence is unreachable statically and was dropped in
+  revision 2. What does refuse a cross-level read: a body node read from outside its loop
+  (*"… reads node 'draft_paragraph', which runs inside loop 'paragraphs'; read node.paragraphs."*)
+  and a body node reading the loop it runs in.
 
 ### 2.5 An empty inner list
 
@@ -235,7 +241,13 @@ A `while` node repeats its body: it runs once, then again for as long as its che
   and a `max` above 10 is refused naming the cap. There is no default, so the bound is always the
   author's.
 - **The check runs after each pass**, over that pass's nodes, so a `while` always runs at least
-  once. The check is a condition, like an `if`'s, that reads nodes in the body.
+  once — unless it declares **`checkFirst: true`** (revision 2): then the check runs before each
+  pass, and a `while` may run **zero passes**. Zero passes read as `.passes` 0 and `.stopped`
+  `check`; its returned node reads as skipped, as an untaken `if` branch's does.
+- **The check is a condition** that reads the body by bare id (that pass's nodes), `pass`, and
+  anything that runs before the loop — inputs, earlier nodes, an earlier loop (revision 2).
+- **`until` may sit beside `while`** (revision 2): checked after each pass; whichever fires first
+  stops the while. A node with `until` and neither `for` nor `while` is refused.
 - **Reaching the bound is a named state**, never a silent stop (decided): *"stopped at its bound
   of 3; the check never stopped holding"*. The run continues with the last pass's output.
   Whether a deliverable that read it should be held is not a `while` rule: a deliverable's
@@ -243,16 +255,34 @@ A `while` node repeats its body: it runs once, then again for as long as its che
 
 ### 3.2 What a pass reads, and what the outside reads
 
-**Inside a pass, a body node reads its own pass** by id, as any node does. **The previous pass**
-is `pass.previous` (null on the first pass). For example, a redraft reads the judge's last
-verdict with `pass.previous.judge.value.feedback`. `pass.number` is 1-based. Reading
-`pass.previous` adds no dependency edge inside a pass, so draft and judge do not form a cycle.
-The spelling is proposed; layer A settles it.
+**A pass is an object, with one shape everywhere** (settled in revision 2): `pass`,
+`pass.previous`, `pass.parent` and each element of `pass.history` all have `.number` (1-based),
+`.node.<id>`, `.previous`, `.parent` and `.history`.
 
-**Outside the loop**, `node.refine` reads like a loop's returned node:
+| read | means | a dependency edge? |
+|---|---|---|
+| `node.judge` or `pass.node.judge` | this pass's node | yes |
+| `pass.previous.node.judge` | one pass back (null on the first) | no |
+| `pass.previous.previous.node.judge` | two passes back | no |
+| `{{ for p in pass.history }}…{{ p.node.judge.value.feedback }}…{{ end }}`, `pass.history[-1]` | every earlier pass, oldest first (empty on the first) | no |
+| `pass.parent.number`, `pass.parent.previous.node.critic` | the enclosing while's pass (`pass.parent.parent` …), skipping any `for` between | this pass: yes; earlier: no |
+
+- **`pass.….node.<id>`** names a node under that pass's while **at any depth** — inside a branch or
+  an inner loop — read where `node.<id>` would be (the same scope rule): a node inside an inner
+  `for` is aligned on the item path, and from outside that `for` the read names the loop
+  (`pass.previous.node.points`).
+- **Reading an earlier pass adds no dependency edge**, so a redraft and its judge form no cycle;
+  the walk records it (`PassPrevious`) so the engine knows which outputs a pass keeps.
+- **A negative index** counts from the end of a history only; elsewhere it stays refused.
+
+**Outside the while**, `node.refine` reads like a loop's returned node:
 - `.content` and `.value` are the last pass's `ret`;
 - `.passes` is the pass count;
-- `.stopped` is `check` or `bound`.
+- `.stopped` is `check`, `until`, `bound` (§ 3.4);
+- **`.history`** is every pass: each element carries `.number` and `.node.<id>` for the while's
+  *direct* body nodes (an inner loop read whole), recorded as a read of the while — as a loop's
+  element is. `.previous`, `.parent` and `.history` on such an element are refused: the list is in
+  pass order.
 
 The pipe takes the node (v26 design § 7.1): `node.refine | concept_bullets` pipes the returned
 node, as for any flow node.
@@ -287,6 +317,16 @@ A `for` may declare `until`, a condition over the item's body nodes:
   Keeping the count keeps v29's rule that a settled count never moves. A `count-resolved` never
   fires twice.
 - **In a nested loop** the order and the stop apply to that loop instance only.
+- **What `until` reads** (revision 2): the item's body nodes by bare id, `item`, and anything that
+  runs before the loop — as a while's check does. Revision 1's *"until reads the item's own
+  nodes"* is dropped.
+- **`max` on any `for`** (revision 2): at least 1, no cap — it runs the first N items. A while's
+  `max` stays 1–10.
+- **`.stopped`** on a `for` and on a `while` (revision 2): `check` (a while's check stopped
+  holding, zero passes included), `until` (its until held), `bound` (its `max` was reached) or
+  `end` (a `for` ran out of items). It is typed by those four values.
+- **Leaving from inside the body** — `break`, `continue`, a labelled break — is not in 30
+  (#1351).
 
 ### 3.5 `onInvalid: retry`
 
@@ -304,17 +344,27 @@ A `let` node computes one typed value from one Scriban expression, with no model
 { "id": "problem_count", "label": "Counting the problems", "let": "node.find_problems.value.problems | array.size", "type": "number" }
 ```
 
-- **`type`** is `text`, `number`, `boolean`, or a format id for an object. A list is a format
-  whose top-level field is an array, as at 29 every format's value is an object. The value must
-  match its type, or the node fails, naming the mismatch.
+- **`type`** is `text`, `number`, `boolean`, or a declared object format's id — **no bare `list`**
+  (settled in revision 2): a list is a format whose top-level field is an array, as at 29 every
+  format's value is an object. A text format is refused. The value must match its type: a
+  mismatch the walk can know (`… | array.size` is a number; a comparison is a boolean) is
+  refused at publish (*"Let 'problem_count' yields a number; it declares type text."*); the rest
+  is the run's `onInvalid`.
+- **`onInvalid` is required** — `fail` or `flag`, no default; `retry` is refused (there is no model
+  to repair).
+- **It carries none of a model node's keys** — `format`, `prompt`, `with`, `failIfEmpty`,
+  `reproducible`, `macros`, `aggregate` — and implies no prompt file.
 - **What it may read:** what a template may read at that place (inputs, nodes, `item` inside a
   loop, `pass` inside a `while`), resolved by the same reference walker. So a `let` inside a loop
   computes once per item.
 - **Its typical use is a reduce over a loop's list** (`node.paragraphs.value | array.map
   "words" | array.sum`). A reduce over a dynamic list waits for the loop instance to settle, as
   any read of that list does.
-- **Refused functions:** anything not deterministic (`date.now`, random). A `let` must give the
-  same value on replay; the Durable orchestrator replays.
+- **Pure builtins only, by allowlist** (revision 2): a `let` calls only the Scriban builtins named
+  pure (`TemplateObjects.PureBuiltins`); `date.now`, `date.utc_now`, `math.random`, `math.uuid`,
+  `object.eval`, `include` and date's culture-settable format are refused by name. A test
+  enumerates Scriban's builtins so every one is classified. A `let` must give the same value on
+  replay; the Durable orchestrator replays. (A prompt may still read the clock.)
 
 ### 4.2 Recorded and hashed
 
@@ -340,8 +390,11 @@ A deliverable or check that reads it is attested the same way as one that reads 
 
 - **On an `array<object>` input, `labelField`** names a field. It is validated to be a
   **required `text` field** of the element.
-- **On a loop over a node's value**, the loop declares `labelField`, validated against the field
-  the source's format types for the element.
+- **On any loop over objects** (revision 2: a node's value, or an outer item's field
+  `item.value.<f>`), the loop declares `labelField`, validated against the field the element is
+  typed with: a required text field — in a format's schema, listed in `required` and not
+  nullable. A loop over an input takes the input's `labelField`; a folder's items keep their
+  `label` header; a `labelField` on either loop is refused naming that.
 - **A blank value falls back** to label plus position (*"Sections to produce 2"*), the 29 name.
 - **Where the name reaches:**
   - `WorkflowInputFans.Items` (`WorkflowInputFans.cs:52`) and `ConsultNodeValueLoops.ItemsOf`
@@ -356,8 +409,7 @@ A deliverable or check that reads it is attested the same way as one that reads 
 - **A nested list composes as nested iteration:**
   `{{ for s in node.sections }}{{ for p in s.paragraphs }}{{ p.content }}{{ end }}{{ end }}`.
   The element of an outer loop (`s`) exposes each inner loop **by its id** (`s.paragraphs`), with
-  the same element members 27 gave: `item`, `content`, `value` and `skipped`. The spelling is
-  proposed; layer A settles it.
+  the same element members 27 gave: `item`, `content`, `value` and `skipped` — settled in layer A.
 - **The pipe takes the node**, as built at 26: inside nested iteration it names the body node
   (`p.draft_paragraph | concept_bullets`). #1189 is not reopened.
 - **A `while`** composes as its returned node (§ 3.2). **A `let`** is read as any node's value.
@@ -384,40 +436,68 @@ rule). Storage 2–10 records read exactly as today.
 
 ## 8. The validator's sentences
 
-**Today `while`, `until`, `let` and `labelField` fail as unmapped keys**:
-`WorkflowPackageManifestJson.cs:30` disallows unknown members, so the author sees a JSON error,
-not a reason.
-- **Layer A** adds the keys to the model.
-- **The bump** gates them below 30 with sentences in the 29 idiom, for example *"Loop 'refine' is
-  a while, which requires specVersion 30."* and *"Input 'sections' declares labelField, which
-  requires specVersion 30."*.
-- **The nesting sentence** (`WorkflowFlowNodes.cs:294`) becomes the gate below 30: *"Loop
-  'paragraphs' runs inside loop 'sections', which requires specVersion 30."*.
+**As built in layer A** (revision 2). Every new sentence is said at 30 only. Below 30 each new key
+is a name-gate, and every 26–29 sentence stands word for word until the bump re-exports the vectors
+that pin it.
 
-**New at 30** (wording proposed; layer A settles it and lists them here as built):
-- **`while`:**
-  - *"While 'refine' declares no max; a while must declare its bound (1 to 10)."*
-  - *"While 'refine' declares max 12; the most is 10."*
-- **`until`:** *"Loop 'documents' until reads node.summary, which is not in its body; until
-  reads the item's own nodes."*
-- **`let`:**
-  - *"Let 'problem_count' calls date.now, which is not deterministic; a let must give the same
-    value on replay."*
-  - *"Let 'problem_count' declares type number; onInvalid retry needs a model — use fail or
-    flag."*
-- **Nesting:** *"Node 'draft_paragraph' in section 'plan' reads node.draft_paragraph of section
-  'hpi'; a node reads its own instance and its enclosing ones."* This is § 2.4's sibling refusal,
-  worded per path.
-- **`labelField`:**
-  - *"Input 'sections' labelField 'kind' names an enum field; labelField names a required text
-    field."*
-  - *"Loop 'problems' labelField 'title' is not a field of the elements of
-    node.find_problems.value.problems."*
+**Below 30** (`ValidateV30Members`): *"Node 'refine' declares while, which requires specVersion
+30."* — likewise `max`, `until`, `checkFirst`, `let`, `type`, `labelField`; and *"Input 'sections'
+declares labelField, which requires specVersion 30."* The 26 nesting sentence and 27's "a branch
+holds plain nodes" stand below 30; at 30 they are lifted.
 
-**Lifted at 30:**
-- the nesting sentence;
-- "a branch holds plain nodes" (`WorkflowFlowNodes.cs:302`);
-- "a loop iterates a node outside every loop" (`WorkflowPackageValidator.V29.cs:39`), which is narrowed (§ 2.2).
+**Nesting:**
+- *"Node 'x' lists itself in its body; a body cannot hold the node that holds it."* / *"Node 'x'
+  runs inside itself (a in b in x); …"*
+- *"Loop 'x' iterates item.value.f, but it runs inside no loop; item.value names the enclosing
+  loop's item."*; *"…; an inner loop iterates a list field of the outer item —
+  item.value.<field>."*; *"…, which the outer item types as a text, not an array."*
+- *"Loop 'x' iterates node.y.value.z; y runs inside loop 'l' — a loop iterates a node outside it,
+  or in an enclosing loop's body."*
+- *"… reads item.parent, but its loop runs inside no loop; item.parent is the enclosing loop's
+  item."*
+
+**`while` and `until`:**
+- *"While 'refine' declares no max; a while must declare its bound (1 to 10)."* / *"… declares max
+  11; the most is 10."* / *"… max 0; the least is 1."* / *"Loop 'x' declares max 0; the least is
+  1."*
+- *"While 'refine' has no body; name the nodes that run per pass in nodes."*
+- *"Node 'x' declares max, which belongs to a for or while node."* — likewise `until`; *"…
+  checkFirst, which belongs to a while node."*; *"Node 'x' declares for, while; a node is one flow
+  node — for, while, if or case."*
+- *"Node 'x' in while 'refine' is neither returned nor read; name it with ret, read it from a body
+  node or from the check."*
+
+**`pass`:**
+- *"… reads pass.number, but it runs inside no while; pass is a while's pass."*
+- *"… reads pass.parent, but its while runs inside no while; pass.parent is the enclosing while's
+  pass."*
+- *"… reads pass.previous.node.plan, which is not in while 'refine'; a pass reads the while's own
+  nodes."*
+- *"… reads pass.history as a value; a history is iterated ({{ for p in pass.history }}) or
+  indexed (pass.history[-1])."*
+- *"… reads node.refine.history[-1].previous; a pass of node.refine.history has .number and
+  .node.<id> — the list is in pass order."*
+- *"… which is not a member (a while has .content, .value, .passes, .stopped and .history)."*
+
+**`let`:**
+- *"Let 'problem_count' calls date.now, which is not deterministic; a let must give the same value
+  on replay."*
+- *"Let 'problem_count' declares onInvalid retry; retry needs a model — use fail or flag."* / *"…
+  must declare onInvalid (fail | flag); its value is checked against its type."*
+- *"Let 'problem_count' declares no type; …"* / *"… type 'prose' is a text format; a let's format
+  types an object — or write type text, number or boolean."*
+- *"Let 'problem_count' yields a number; it declares type text."*
+- *"Let 'x' declares format, which a let does not carry; a let computes its value from its
+  expression and names it with type."*
+
+**`labelField`:**
+- *"Input 'sections' labelField 'kind' names an enum field; labelField names a required text
+  field."* / *"… is optional; …"* / *"Input 'notes' declares labelField, but it is not an array
+  of objects; …"*
+- *"Loop 'problems' labelField 'title' is not a field of the elements of
+  node.find_problems.value.problems (fields: name, severity)."*
+- *"Loop 'x' declares labelField, but it iterates input.y — the input names its items (input.y's
+  labelField)."*
 
 ## 9. The engine
 
@@ -466,10 +546,11 @@ not a reason.
   by name.
 - **A `while` pane:** the check (a condition editor, as an `if`'s), `max` (empty until chosen,
   publish blocked until it is set — no default), and `ret`.
-- **`until`**: an optional condition on a `for`, with a note that it runs the items in order.
+- **`until`**: an optional condition on a `for` (with a note that it runs the items in order) and
+  on a `while`; **`max`** on a `for`; **`checkFirst`** on a `while`.
 - **A `let` pane:** the expression, with the reference walker's diagnostics, and the type,
   chosen from text/number/boolean or a format.
-- **`labelField`**: a picker on an `array<object>` input and on a node-value loop, offering the
+- **`labelField`**: a picker on an `array<object>` input and on any loop over objects, offering the
   required text fields.
 - **The Graph pane** draws nested subgraphs (the same builder as the run diagram).
 - **The upgrade rung:** `MigrateToNewestAsync` gains 29 → 30, with the notice *"Through 30:
@@ -501,11 +582,14 @@ not a reason.
 One layer per PR, each green on its own; each gets its own issue when it starts. The bump is
 last.
 
-- **A — the format, inert.** The model gains `while`, `max`, `until`, `let`, `type` and
-  `labelField`. The validator at 30, with every § 8 sentence, sits behind the ceiling
-  (`AcceptedSpecVersions` stays 29). The template walker gains `item.parent`, `pass` and nested
-  element members. The spellings this text proposes are settled here and recorded as revision 2.
-- **B — the engine**, in this order, each inert below 30:
+- **A — the format, inert (#1339, built).** The model gains `while`, `max`, `until`,
+  `checkFirst`, `let`, `type` and `labelField`; the validator at 30, with every § 8 sentence, sits
+  behind the ceiling (`AcceptedSpecVersions` stays 29); the walker gains `item.parent`, the pass
+  object and nested element members. Built in four PRs: **A1** nesting (#1349), **A2** `while` /
+  `until` (#1350), **A2b** the pass object, history and the further stops (#1352), **A3** `let`,
+  `labelField` and this revision.
+- **B — the engine**, in this order, each inert below 30 (filed: B1 #1340, B2 #1341, B3 #1342,
+  B4 #1343, B5 #1344):
   - **B1, paths at one level:** every key in § 1.2 goes through one path helper; a one-segment
     path equals today's id, so nothing changes.
   - **B2, nesting:** nested fan-out, per-instance resolution, the `count-resolved` path and
@@ -513,14 +597,14 @@ last.
   - **B3, `while` and `until`:** pass scheduling and pass rows; in-order items and *not run*.
   - **B4, `let`:** the computed operation and its row.
   - **B5, `labelField`:** naming from the field, in both fan sources.
-- **C — the pages:**
+- **C — the pages** (filed: C1 #1345, C2 #1346):
   - **C1:** the Create page and History (§ 10).
   - **C2:** the Editor (§ 11).
-- **The bump.**
+- **The bump** (#1347).
   - **Registry PRs:** package-format and provenance, with the vectors of § 13.
   - **An engine PR** moving every ceiling to 30.
   - **A release, cut after a drain** (§ 9).
-- **E — content.**
+- **E — content** (#1348).
   - An example package that nests (sections → outline → paragraphs), with a `while` refinement
     and a `let` count;
   - `labelField` in `example-conditional-sections`;
@@ -542,9 +626,10 @@ last.
   enclosing ones.
 - **A `while` whose check is the format's validity** remains `onInvalid: retry`'s one rung; a
   general repair loop is a `while` the author writes.
+- **Leaving a loop from inside its body** — `break`, `continue`, a labelled break (#1351, filed
+  2026-11-09 for after v30): keeping runs repeatable means serializing part of a pass, and the
+  returned node may not run in the last pass.
 
-**Open for layer A** (proposed here, settled there):
-- the spellings `item.parent`, `pass.previous`, `pass.number`, `.passes` and `.stopped`;
-- the element members for an inner loop (`s.paragraphs`);
-- the exact wording of § 8's sentences;
-- whether `type` admits a bare `list` or always a format.
+**Settled in layer A** (revision 2; was "open for layer A"): the spellings `item.parent`,
+`s.<inner loop>`, the pass object (`.number`, `.node`, `.previous`, `.parent`, `.history`),
+`.passes`, `.stopped` and `.history`; § 8's sentences as built; `type` admits no bare `list`.

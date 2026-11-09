@@ -394,6 +394,52 @@ public static class TemplateObjects
     /// loop state objects and the empty/blank singletons. Anything else that
     /// is not an object, a loop variable or a captured name is unresolved.
     /// </summary>
+    /// <summary>
+    /// v30 (#1339 A3, design § 4.1): the Scriban builtins a let may call — every
+    /// one deterministic, so the value is the same on replay (the orchestrator
+    /// replays). An allowlist, decided: a function not named here is refused, and
+    /// a test enumerates Scriban's builtins so each is either here or in
+    /// <see cref="ImpureBuiltins"/>.
+    /// </summary>
+    public static readonly IReadOnlySet<string> PureBuiltins = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "array.add", "array.add_range", "array.any", "array.compact", "array.concat", "array.contains",
+        "array.cycle", "array.each", "array.filter", "array.first", "array.insert_at", "array.join", "array.last",
+        "array.limit", "array.map", "array.offset", "array.remove_at", "array.reverse", "array.size", "array.sort",
+        "array.uniq", "blank", "date.add_days", "date.add_hours", "date.add_milliseconds", "date.add_minutes",
+        "date.add_months", "date.add_seconds", "date.add_years", "date.parse", "date.parse_to_string",
+        "date.to_string", "empty", "html.escape", "html.newline_to_br", "html.strip", "html.url_encode",
+        "html.url_escape", "math.abs", "math.ceil", "math.divided_by", "math.floor", "math.format", "math.is_number",
+        "math.minus", "math.modulo", "math.plus", "math.round", "math.times", "object.default", "object.format",
+        "object.from_json", "object.has_key", "object.has_value", "object.keys", "object.kind", "object.size",
+        "object.to_json", "object.typeof", "object.values", "regex.escape", "regex.match", "regex.matches",
+        "regex.replace", "regex.split", "regex.unescape", "string.append", "string.base64_decode",
+        "string.base64_encode", "string.capitalize", "string.capitalizewords", "string.contains", "string.downcase",
+        "string.empty", "string.ends_with", "string.equals_ignore_case", "string.escape", "string.handleize",
+        "string.hmac_sha1", "string.hmac_sha256", "string.hmac_sha512", "string.index_of", "string.literal",
+        "string.lstrip", "string.md5", "string.pad_left", "string.pad_right", "string.pluralize", "string.prepend",
+        "string.remove", "string.remove_first", "string.remove_last", "string.replace", "string.replace_first",
+        "string.rstrip", "string.sha1", "string.sha256", "string.sha512", "string.size", "string.slice",
+        "string.slice1", "string.split", "string.starts_with", "string.strip", "string.strip_newlines",
+        "string.to_double", "string.to_float", "string.to_int", "string.to_long", "string.truncate",
+        "string.truncatewords", "string.upcase", "string.whitespace", "timespan.from_days", "timespan.from_hours",
+        "timespan.from_milliseconds", "timespan.from_minutes", "timespan.from_seconds", "timespan.parse",
+        "timespan.zero"
+    };
+
+    /// <summary>
+    /// v30 (#1339 A3): the builtins a let may not call — the clock, randomness, a
+    /// template evaluated at run time, an include, and date's culture-settable
+    /// format; and the loop-state objects a single expression has no loop for.
+    /// </summary>
+    public static readonly IReadOnlySet<string> ImpureBuiltins = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "date.default_format", "date.format", "date.now", "date.utc_now", "include", "include_join", "math.random",
+        "math.uuid", "object.eval", "object.eval_template"
+    };
+
+    public static bool IsPureBuiltin(string function) => PureBuiltins.Contains(function);
+
     public static readonly IReadOnlySet<string> ScribanBuiltins = new HashSet<string>(StringComparer.Ordinal)
     {
         "date", "string", "array", "math", "object", "regex", "timespan", "html",
@@ -469,7 +515,11 @@ public sealed record TemplateValueShape(
     string Kind,
     IReadOnlyDictionary<string, TemplateValueShape>? Fields,
     TemplateValueShape? Items,
-    IReadOnlyList<string>? Values)
+    IReadOnlyList<string>? Values,
+    // v30 (#1339 A3, design § 5): an object's required fields — what a
+    // labelField is judged against (a declaration's required, a schema's
+    // `required`); null when not known.
+    IReadOnlySet<string>? Required = null)
 {
     public const string Unknown = "unknown";
 
@@ -487,7 +537,8 @@ public sealed record TemplateValueShape(
             node.Type,
             node.Fields is null ? null : node.Fields.ToDictionary(f => f.Id, FromDeclaration, StringComparer.Ordinal),
             node.Items is null ? null : FromDeclaration(node.Items),
-            node.Values);
+            node.Values,
+            node.Fields?.Where(f => f.Required).Select(f => f.Id).ToHashSet(StringComparer.Ordinal));
 
     /// <summary>
     /// A JSON schema folded to a shape: <c>type</c> (a nullable union counts as
@@ -519,7 +570,12 @@ public sealed record TemplateValueShape(
                 WorkflowInputTypes.Object,
                 properties?.ToDictionary(p => p.Key, p => FromSchema(p.Value), StringComparer.Ordinal)
                     ?? new Dictionary<string, TemplateValueShape>(StringComparer.Ordinal),
-                null, null);
+                null, null,
+                // A format lists every property in required and spells optional as a
+                // nullable type, so a field is required when listed and not nullable.
+                (obj["required"] as JsonArray)?.Select(r => r is JsonValue v && v.TryGetValue(out string? id) ? id : null)
+                    .Where(id => id is not null && !IsNullable(properties?[id] as JsonObject)).Select(id => id!).ToHashSet(StringComparer.Ordinal)
+                    ?? new HashSet<string>(StringComparer.Ordinal));
         }
 
         if (type == "array" || (type is null && items is not null))
@@ -535,6 +591,10 @@ public sealed record TemplateValueShape(
             _ => new TemplateValueShape(Unknown, null, null, null)
         };
     }
+
+    /// <summary>v30 (#1339 A3): a property whose type union admits null — the format's spelling of optional.</summary>
+    private static bool IsNullable(JsonObject? property) =>
+        property?["type"] is JsonArray union && union.Any(t => t is JsonValue v && v.TryGetValue(out string? name) && name == "null");
 
     private static string? TypeOf(JsonObject obj)
     {

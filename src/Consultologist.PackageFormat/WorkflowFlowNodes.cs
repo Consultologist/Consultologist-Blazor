@@ -179,6 +179,12 @@ internal static class WorkflowFlowNodes
                 errors.Add($"Node '{node.Id}' declares checkFirst, which belongs to a while node.");
             }
 
+            // v30 (#1339 A3, design § 5): a loop names its items by a field; a plain node has none.
+            if (whileAt30 && node.LabelField != null && keys.Count == 0)
+            {
+                errors.Add($"Node '{node.Id}' declares labelField, which belongs to a for node.");
+            }
+
             if (keys.Count == 0)
             {
                 foreach (var (name, present) in new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null) })
@@ -213,6 +219,8 @@ internal static class WorkflowFlowNodes
             {
                 ("format", node.Format != null), ("prompt", node.Prompt != null), ("with", node.With != null), ("onInvalid", node.OnInvalid != null),
                 ("failIfEmpty", node.FailIfEmpty != null), ("reproducible", node.Reproducible != null), ("macros", node.Macros != null),
+                // v30 (#1339 A3): a let and its type are a plain node's.
+                ("let", whileAt30 && node.Let != null), ("type", whileAt30 && node.Type != null),
             })
             {
                 if (present)
@@ -224,9 +232,9 @@ internal static class WorkflowFlowNodes
             var foreign = kind switch
             {
                 Kind.For => new[] { ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null) },
-                Kind.If => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("branches", node.Branches != null) },
-                Kind.Case => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("then", node.Then != null) },
-                Kind.While => new[] { ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null) },
+                Kind.If => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("branches", node.Branches != null), ("labelField", node.LabelField != null) },
+                Kind.Case => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("then", node.Then != null), ("labelField", node.LabelField != null) },
+                Kind.While => new[] { ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null), ("labelField", node.LabelField != null) },
                 _ => throw new InvalidOperationException($"Flow kind {kind} has no key list."),
             };
             var kindWord = kind switch

@@ -515,7 +515,11 @@ public sealed record WorkflowInputSpec(
     // response — distinct from Type, which stays the value kind. A trailing
     // optional, omitted when null, so a v≤12 manifest writes the bytes it
     // always wrote. See WorkflowExpectedContent.
-    string? ExpectedContent = null);
+    string? ExpectedContent = null,
+    // v30 (#1339 A3, design § 5): an array of objects names each item by one of
+    // its fields — a required text field of the element. Trailing optional,
+    // omitted when null; below 30 refused by name.
+    string? LabelField = null);
 
 /// <summary>
 /// One field of a declared object (v9 § 4), in an input's vocabulary — id,
@@ -1135,7 +1139,15 @@ public sealed record WorkflowNodeSpec(
     // v30 (#1339 A2b, design § 3.1): a while that checks before each pass, so it
     // may run none — absent or false, it checks after each pass (at least one).
     // Trailing optional, omitted when null; below 30 refused by name.
-    bool? CheckFirst = null);
+    bool? CheckFirst = null,
+    // v30 (#1339 A3, design § 4): a `let` node — one Scriban expression computed
+    // with no model call, its value typed by `type` (text | number | boolean | a
+    // declared object format) — and (§ 5) a for's `labelField`, naming each item
+    // by a required text field of its element. Trailing optionals, omitted when
+    // null; below 30 each is refused by name.
+    string? Let = null,
+    string? Type = null,
+    string? LabelField = null);
 
 /// <summary>
 /// v26 (package-format-v26-design.md § 1.2, #1165): a flow node's body — the

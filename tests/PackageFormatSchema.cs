@@ -437,7 +437,7 @@ internal static class PackageFormatSchema
         // bump, #1347; the bound is closed here so the render is its siblings'.)
         if (specVersion < 30)
         {
-            foreach (var member in new[] { "while", "max", "until", "checkFirst" })
+            foreach (var member in new[] { "while", "max", "until", "checkFirst", "let", "type", "labelField" })
             {
                 Remove(properties, member);
             }
@@ -449,6 +449,9 @@ internal static class PackageFormatSchema
             // A while's bound is 1–10, a for's at least 1 (A2b): the cap is the
             // validator's, by kind.
             Object(properties, "max")["minimum"] = 1;
+            Object(properties, "let")["minLength"] = 1;
+            Object(properties, "type")["minLength"] = 1;
+            Object(properties, "labelField")["minLength"] = 1;
         }
 
         if (specVersion < 26)
@@ -663,6 +666,17 @@ internal static class PackageFormatSchema
             // v16 (#730): the channel set is keyed by version — image joins at
             // 16, so v13–15 schemas keep [transcript, form] byte-for-byte.
             Object(properties, "expectedContent")["enum"] = TypeNames(WorkflowExpectedContent.ForSpecVersion(specVersion));
+        }
+
+        // v30 (#1339 A3, design § 5): an array of objects names its items by a field
+        // at 30; below it the member does not exist, and the v5–v29 bytes must not move.
+        if (specVersion < 30)
+        {
+            Remove(properties, "labelField");
+        }
+        else
+        {
+            Object(properties, "labelField")["minLength"] = 1;
         }
 
         // Required defaults to true when absent, so it is not required here.
