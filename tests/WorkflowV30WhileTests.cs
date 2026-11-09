@@ -36,7 +36,7 @@ public class WorkflowV30WhileTests
         root["deliverables"]![0]!["sources"]!.AsArray().Add("node.refine");
 
         files["formats/verdict.json"] = Verdict;
-        files["prompts/draft.md"] = "Pass {{ pass.number }}. Summarise: {{ input.notes }}{{ if pass.number > 1 }} Feedback: {{ pass.previous.judge.value.feedback }}{{ end }}";
+        files["prompts/draft.md"] = "Pass {{ pass.number }}. Summarise: {{ input.notes }}{{ if pass.number > 1 }} Feedback: {{ pass.previous.node.judge.value.feedback }}{{ end }}";
         files["prompts/judge.md"] = "Judge this draft: {{ node.draft.content }}";
     }
 
@@ -102,12 +102,16 @@ public class WorkflowV30WhileTests
         }));
 
     [Fact]
-    public void Max_OnALoop_BelongsToAWhile() =>
-        Says("Node 'parts' declares max, which belongs to a while node.", Errors(root => Node(root, "parts")["max"] = 2));
+    public void Max_OnAPlainNode_BelongsToAForOrWhile() =>
+        Says("Node 'plan' declares max, which belongs to a for or while node.", Errors(root => Node(root, "plan")["max"] = 2));
 
     [Fact]
-    public void Until_OnAWhile_BelongsToAFor() =>
-        Says("Node 'refine' declares until, which belongs to a for node.", Errors(root => Node(root, "refine")["until"] = "node.judge.value.verdict == \"good\""));
+    public void Until_OnAPlainNode_BelongsToAForOrWhile() =>
+        Says("Node 'plan' declares until, which belongs to a for or while node.", Errors(root => Node(root, "plan")["until"] = "input.notes == \"\""));
+
+    [Fact]
+    public void CheckFirst_OnALoop_BelongsToAWhile() =>
+        Says("Node 'parts' declares checkFirst, which belongs to a while node.", Errors(root => Node(root, "parts")["checkFirst"] = true));
 
     [Fact]
     public void Then_OnAWhile_IsNotItsKey() =>
@@ -151,8 +155,8 @@ public class WorkflowV30WhileTests
 
     [Fact]
     public void PassPrevious_OfANodeOutsideTheWhile_IsRefused() =>
-        Says("Node 'draft' prompt reads pass.previous.plan, which is not in while 'refine'; pass.previous reads the while's own nodes.",
-            Errors(files: files => files["prompts/draft.md"] = "{{ pass.previous.plan.content }}"));
+        Says("Node 'draft' prompt reads pass.previous.node.plan, which is not in while 'refine'; a pass reads the while's own nodes.",
+            Errors(files: files => files["prompts/draft.md"] = "{{ pass.previous.node.plan.content }}"));
 
     [Fact]
     public void Pass_OutsideEveryWhile_IsRefused() =>
@@ -170,7 +174,7 @@ public class WorkflowV30WhileTests
 
     [Fact]
     public void Pass_AMemberItDoesNotHave_IsNamed() =>
-        Says("Node 'draft' prompt reads pass.count, which is not a member (pass has .number, .previous and .parent).",
+        Says("Node 'draft' prompt reads pass.count, which is not a member (a pass has .number, .node, .previous, .parent and .history).",
             Errors(files: files => files["prompts/draft.md"] = "{{ pass.count }}"));
 
     [Fact]
@@ -196,7 +200,7 @@ public class WorkflowV30WhileTests
         }, files =>
         {
             files["prompts/critic.md"] = "Critique: {{ node.refine.content }} after {{ node.refine.passes }} passes ({{ node.refine.stopped }}).";
-            files["prompts/draft.md"] = "Round {{ pass.parent.number }}, pass {{ pass.number }}. {{ pass.parent.previous.critic.value.feedback }} {{ pass.previous.judge.value.feedback }}";
+            files["prompts/draft.md"] = "Round {{ pass.parent.number }}, pass {{ pass.number }}. {{ pass.parent.previous.node.critic.value.feedback }} {{ pass.previous.node.judge.value.feedback }}";
         }));
     }
 
@@ -225,18 +229,18 @@ public class WorkflowV30WhileTests
         // refine's body holds a loop over input items; a body node of that loop reads its own previous pass.
         NoErrors(Errors(root => AddInnerLoop(root), files =>
         {
-            files["prompts/note_point.md"] = "Point {{ item.id }}: {{ item.value.title }}. Last pass: {{ pass.previous.note_point.content }}";
-            files["prompts/draft.md"] = "{{ for p in pass.previous.points }}{{ p.content }}{{ end }}{{ input.notes }}";
+            files["prompts/note_point.md"] = "Point {{ item.id }}: {{ item.value.title }}. Last pass: {{ pass.previous.node.note_point.content }}";
+            files["prompts/draft.md"] = "{{ for p in pass.previous.node.points }}{{ p.content }}{{ end }}{{ input.notes }}";
         }));
     }
 
     [Fact]
     public void PassPrevious_OfAnInnerLoopsNode_FromOutsideThatLoop_IsRefused() =>
-        Says("Node 'draft' prompt reads pass.previous.note_point, which runs inside loop 'points'; read pass.previous.points.",
+        Says("Node 'draft' prompt reads pass.previous.node.note_point, which runs inside loop 'points'; read pass.previous.node.points.",
             Errors(root => AddInnerLoop(root), files =>
             {
                 files["prompts/note_point.md"] = "Point {{ item.value.title }}";
-                files["prompts/draft.md"] = "{{ pass.previous.note_point.content }}";
+                files["prompts/draft.md"] = "{{ pass.previous.node.note_point.content }}";
             }));
 
     [Fact]
@@ -244,7 +248,7 @@ public class WorkflowV30WhileTests
         NoErrors(Errors(root => AddInnerLoop(root), files =>
         {
             files["prompts/note_point.md"] = "Point {{ item.value.title }}";
-            files["prompts/draft.md"] = "{{ for p in pass.previous.points }}{{ p.content }}{{ end }}{{ input.notes }}";
+            files["prompts/draft.md"] = "{{ for p in pass.previous.node.points }}{{ p.content }}{{ end }}{{ input.notes }}";
         }));
 
     private static void AddInnerLoop(JsonObject root)
@@ -302,7 +306,7 @@ public class WorkflowV30WhileTests
 
     [Fact]
     public void AWhile_AMemberItDoesNotHave_IsNamed() =>
-        Says("Node 'plan' prompt reads node.refine.count, which is not a member (a while has .content, .value, .passes and .stopped).",
+        Says("Node 'plan' prompt reads node.refine.count, which is not a member (a while has .content, .value, .passes, .stopped and .history).",
             Errors(files: files => files["prompts/plan.md"] = "{{ node.refine.count }} {{ input.notes }}"));
 
     [Fact]
@@ -386,7 +390,7 @@ public class WorkflowV30WhileTests
             sources.Remove(sources.First(s => s!.GetValue<string>() == "node.refine"));
         }, files =>
         {
-            files["prompts/draft.md"] = "Section {{ item.value.title }}, pass {{ pass.number }}: {{ pass.previous.judge.value.feedback }}";
+            files["prompts/draft.md"] = "Section {{ item.value.title }}, pass {{ pass.number }}: {{ pass.previous.node.judge.value.feedback }}";
             files["prompts/judge.md"] = "Judge {{ node.draft.content }} for {{ item.value.title }}";
             files["prompts/draft_paragraph.md"] = "Point {{ item.value.point }} of {{ item.parent.value.title }}, after the summary {{ node.refine.content }}";
         }));
@@ -408,6 +412,177 @@ public class WorkflowV30WhileTests
             files["prompts/draft_paragraph.md"] = "Point {{ item.value.point }}, after {{ node.refine.content }}";
             files["prompts/assemble.md"] = "{{ for s in node.parts }}{{ s.refine.content }} ({{ s.refine.passes }}, {{ s.refine.stopped }}){{ end }}";
         }));
+    }
+
+    // ---- A2b: the pass as an object, history ----------------------------------------------
+
+    [Fact]
+    public void APass_ReadsTwoPassesBack_WithNoEdge()
+    {
+        var bundle = Refining(files: files => files["prompts/draft.md"] = "{{ pass.previous.previous.node.judge.value.feedback }} {{ pass.previous.node.draft.content }} {{ input.notes }}");
+        NoErrors(V30Package.Errors(bundle));
+
+        var walk = Walk(bundle);
+        Assert.DoesNotContain("judge", walk.EdgesOf("draft"));
+        var draft = walk.Templates.Single(t => t.Kind == TemplateKind.Prompt && t.Id == "draft");
+        Assert.Contains("judge", draft.References.PassPrevious!);
+        Assert.Contains("draft", draft.References.PassPrevious!);
+    }
+
+    [Fact]
+    public void PassNode_IsThisPass_AnEdge()
+    {
+        var walk = Walk(Refining(files: files => files["prompts/judge.md"] = "Judge {{ pass.node.draft.content }}"));
+        Assert.Contains("draft", walk.EdgesOf("judge"));
+    }
+
+    [Fact]
+    public void PassNode_ReadingAnotherThisPass_BothWays_IsACycle()
+    {
+        var errors = Errors(files: files => files["prompts/draft.md"] = "{{ pass.node.judge.value.feedback }}");
+        Assert.Contains(errors, e => e.Contains("cycle", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PassHistory_IsIteratedAndIndexed_WithNoEdge()
+    {
+        var bundle = Refining(files: files => files["prompts/draft.md"] =
+            "{{ for p in pass.history }}Pass {{ p.number }}: {{ p.node.judge.value.feedback }} (before it {{ p.previous.node.draft.content }}){{ end }}"
+            + "{{ if pass.number > 2 }}{{ pass.history[-2].node.judge.value.verdict }}{{ end }} of {{ pass.history | array.size }} {{ input.notes }}");
+        NoErrors(V30Package.Errors(bundle));
+        Assert.DoesNotContain("judge", Walk(bundle).EdgesOf("draft"));
+    }
+
+    [Fact]
+    public void PassHistory_ReadAsAValue_IsIterated() =>
+        Says("Node 'draft' prompt reads pass.history as a value; a history is iterated ({{ for p in pass.history }}) or indexed (pass.history[-1]).",
+            Errors(files: files => files["prompts/draft.md"] = "{{ pass.history }}"));
+
+    [Fact]
+    public void APass_ReadBare_NamesItsMembers() =>
+        Says("Node 'draft' prompt reads pass.previous bare; read a member (a pass has .number, .node.<id>, .previous, .parent and .history).",
+            Errors(files: files => files["prompts/draft.md"] = "{{ pass.previous }}"));
+
+    [Fact]
+    public void PassParentHistory_ReadsTheOuterWhilesPasses()
+    {
+        NoErrors(Errors(root =>
+        {
+            AddNode(root, new JsonObject { ["id"] = "critic", ["label"] = "Critic", ["format"] = "verdict", ["onInvalid"] = "fail" });
+            AddNode(root, new JsonObject
+            {
+                ["id"] = "review", ["label"] = "Review", ["while"] = "node.critic.value.verdict != \"good\"", ["max"] = 2,
+                ["nodes"] = new JsonArray("refine", "critic"), ["ret"] = "node.refine"
+            });
+            var sources = root["deliverables"]![0]!["sources"]!.AsArray();
+            sources.Remove(sources.First(s => s!.GetValue<string>() == "node.refine"));
+            sources.Add("node.review");
+        }, files =>
+        {
+            files["prompts/critic.md"] = "Critique {{ node.refine.content }}";
+            files["prompts/draft.md"] = "{{ for r in pass.parent.history }}Round {{ r.number }}: {{ r.node.critic.value.feedback }}{{ end }} {{ pass.parent.previous.node.critic.content }}";
+        }));
+    }
+
+    [Fact]
+    public void PassParentNode_ThisPassOfTheOuterWhile_IsAnEdge()
+    {
+        // critic waits on refine (it reads it), so the inner draft reading critic this pass is a cycle — the edge is real.
+        var errors = Errors(root =>
+        {
+            AddNode(root, new JsonObject { ["id"] = "critic", ["label"] = "Critic", ["format"] = "verdict", ["onInvalid"] = "fail" });
+            AddNode(root, new JsonObject
+            {
+                ["id"] = "review", ["label"] = "Review", ["while"] = "node.critic.value.verdict != \"good\"", ["max"] = 2,
+                ["nodes"] = new JsonArray("refine", "critic"), ["ret"] = "node.refine"
+            });
+        }, files =>
+        {
+            files["prompts/critic.md"] = "Critique {{ node.refine.content }}";
+            files["prompts/draft.md"] = "{{ pass.parent.node.critic.content }}";
+        });
+        Assert.Contains(errors, e => e.Contains("cycle", StringComparison.Ordinal));
+    }
+
+    // ---- A2b: history from outside --------------------------------------------------------
+
+    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Trail(string template) =>
+        Refining(root =>
+        {
+            AddNode(root, new JsonObject { ["id"] = "trail", ["label"] = "Revision trail", ["format"] = "prose" });
+            root["deliverables"]![0]!["sources"]!.AsArray().Add("node.trail");
+        }, files => files["prompts/trail.md"] = template);
+
+    [Fact]
+    public void TheOutside_ReadsAWhilesHistory_AsTheWhile()
+    {
+        var bundle = Trail("{{ for p in node.refine.history }}Pass {{ p.number }}: {{ p.node.judge.value.feedback }}{{ end }} last {{ node.refine.history[-1].node.draft.content }}");
+        NoErrors(V30Package.Errors(bundle));
+
+        var edges = Walk(bundle).EdgesOf("trail");
+        Assert.Contains("refine", edges);
+        Assert.DoesNotContain("judge", edges);
+    }
+
+    [Fact]
+    public void AnOutsideHistoryPass_HasNoPrevious() =>
+        Says("Node 'trail' prompt reads node.refine.history[-1].previous; a pass of node.refine.history has .number and .node.<id> — the list is in pass order.",
+            V30Package.Errors(Trail("{{ node.refine.history[-1].previous.number }}")));
+
+    [Fact]
+    public void AnOutsideHistoryPass_ReadsOnlyTheWhilesBody() =>
+        Says("Node 'trail' prompt reads node.refine.history[-1].node.plan, which is not in while 'refine''s body (nodes: draft, judge).",
+            V30Package.Errors(Trail("{{ node.refine.history[-1].node.plan.content }}")));
+
+    // ---- A2b: more ways to stop ----------------------------------------------------------
+
+    [Fact]
+    public void CheckFirst_OnAWhile_IsValid() =>
+        NoErrors(Errors(root => Node(root, "refine")["checkFirst"] = true));
+
+    [Fact]
+    public void Until_OnAWhile_ReadsItsBodyAndPass()
+    {
+        var bundle = Refining(root => Node(root, "refine")["until"] = "node.judge.value.verdict == \"good\" || pass.number >= 2");
+        NoErrors(V30Package.Errors(bundle));
+        Assert.Contains("judge", Walk(bundle).EdgesOf("refine"));
+    }
+
+    [Fact]
+    public void AWhilesUntil_IsNamedAsTheWhiles() =>
+        Assert.Contains(Errors(root => Node(root, "refine")["until"] = "{{ pass.number }}"),
+            e => e.StartsWith("While 'refine' until", StringComparison.Ordinal));
+
+    [Fact]
+    public void Max_OnALoop_IsUncapped() =>
+        NoErrors(V30Package.Errors(V30Package.With(root => V30Package.Node(root, "parts")["max"] = 50)));
+
+    [Fact]
+    public void Max_OnALoop_BelowOne_IsRefused() =>
+        Says("Loop 'parts' declares max 0; the least is 1.", V30Package.Errors(V30Package.With(root => V30Package.Node(root, "parts")["max"] = 0)));
+
+    [Fact]
+    public void Stopped_OnALoop_TakesTheFourValues()
+    {
+        NoErrors(V30Package.Errors(V30Package.With(root =>
+        {
+            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "assemble", ["label"] = "Assemble", ["format"] = "prose" });
+            root["deliverables"]![0]!["sources"]!.AsArray().Add("node.assemble");
+        }, files => files["prompts/assemble.md"] = "{{ if node.parts.stopped == \"end\" }}All parts.{{ else if node.parts.stopped == \"until\" }}Stopped early.{{ end }}")));
+
+        // A while's check reads a loop that ran before it — and its stop reason is typed.
+        NoErrors(Errors(root => Node(root, "refine")["until"] = "node.parts.stopped == \"bound\""));
+        var errors = Errors(root => Node(root, "refine")["until"] = "node.parts.stopped == \"done\"");
+        Assert.Contains(errors, e => e.StartsWith("While 'refine' until", StringComparison.Ordinal) && e.Contains("done", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void At29_CheckFirst_IsGated()
+    {
+        var (json, files) = V29Package.MinimalJson();
+        var root = JsonNode.Parse(json)!.AsObject();
+        V29Package.Node(root, "problems")["checkFirst"] = true;
+        Says("Node 'problems' declares checkFirst, which requires specVersion 30.", V29Package.Errors((V29Package.Read(root.ToJsonString()), files)));
     }
 
     // ---- below 30: the gate --------------------------------------------------------------
