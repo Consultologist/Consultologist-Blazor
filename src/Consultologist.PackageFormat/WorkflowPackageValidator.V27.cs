@@ -23,7 +23,9 @@ public static partial class WorkflowPackageValidator
         // v28 (#1283): run for a 28 package by ValidateAt28, its prompts implied.
         bool at28 = false,
         // v29 (#1301): a loop over a node's value, a folder item gated on a node.
-        bool at29 = false)
+        bool at29 = false,
+        // v30 (#1339): loops that nest.
+        bool at30 = false)
     {
         ValidateMetadata(manifest, errors);
         ValidateDerivedFrom(manifest, errors);
@@ -72,8 +74,15 @@ public static partial class WorkflowPackageValidator
         // v29 (#1301, design § 2.1): a node-sourced loop's place and type, now the shapes exist.
         if (at29)
         {
-            ValidateNodeValueLoopsAt29(flows, nodeShapes, nodes.Keys.ToHashSet(StringComparer.Ordinal), errors);
+            ValidateNodeValueLoopsAt29(flows, nodeShapes, nodes.Keys.ToHashSet(StringComparer.Ordinal), errors, at30);
         }
+
+        // v30 (#1339, design § 2.2): an inner loop over the outer item's field, typed now the shapes exist.
+        if (at30)
+        {
+            ValidateOuterItemLoopsAt30(flows, nodeShapes, errors);
+        }
+
         var macroFolderIds = macroFolders?.Collections.Keys.ToHashSet(StringComparer.Ordinal) ?? TemplateReferenceContext.NoIds;
         var macroIds = (manifest.Macros ?? new List<WorkflowMacroSpec>()).Select(m => m.Id).Where(id => !macroFolderIds.Contains(id)).ToHashSet(StringComparer.Ordinal);
         var bodies = flows.BodyScopes;
@@ -89,7 +98,7 @@ public static partial class WorkflowPackageValidator
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
             macroIds, macroFolderIds, fan,
             Bodies: bodies, Deliverables: deliverableIds, Labelled: true, SkippedElements: true,
-            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems);
+            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems, Nested: at30);
 
         var walk = WorkflowDerivedEdges.WalkAll(
             manifest, files,
@@ -138,12 +147,13 @@ public static partial class WorkflowPackageValidator
         foreach (var condition in walk.Conditions.Where(c => c.Site != WorkflowDerivedEdges.ConditionSite.FolderItem && c.Walk.IsValid))
         {
             var inner = condition.Site == WorkflowDerivedEdges.ConditionSite.Flow && flows.IsInner(condition.OwnerId) ? flows.Flows[condition.OwnerId] : null;
-            var loopId = inner is null ? null : flows.LoopOf(inner.Node.Id);
+            // v30 (#1339): every loop the inner flow node runs in, to any depth.
+            var loopIds = inner is null ? Array.Empty<string>() : flows.LoopsOf(inner.Node.Id);
             var reads = condition.Walk.References.Nodes.Keys.Order(StringComparer.Ordinal).ToList();
 
             foreach (var id in reads.Where(flows.IsLoop))
             {
-                errors.Add(inner is not null && id == loopId
+                errors.Add(inner is not null && loopIds.Contains(id, StringComparer.Ordinal)
                     ? $"{condition.Subject} reads node.{id}, the loop it runs in; a condition inside a loop reads the item, inputs and earlier body nodes."
                     : $"{condition.Subject} reads node.{id}, which loops; a condition decides before the loop runs — read a scalar node.");
             }

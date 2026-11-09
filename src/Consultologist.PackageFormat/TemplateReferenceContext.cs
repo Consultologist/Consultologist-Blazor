@@ -51,7 +51,11 @@ public sealed record TemplateReferenceContext(
     // #1235 (v27 design § 1.4): at 27 a loop element carries `skipped` — true for
     // an item an inner if/case skipped by condition (its content and value null).
     // False (≤26) and the member is refused with the element's set.
-    bool SkippedElements = false)
+    bool SkippedElements = false,
+    // v30 (#1339, design § 2.4): at 30 a loop may run inside a loop, and an item
+    // carries `parent` — the enclosing loop's item. False (≤29): the member is
+    // refused with the item's set.
+    bool Nested = false)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
 
@@ -140,7 +144,36 @@ public sealed record TemplateBodyScope(string Owner, bool Loop)
 }
 
 /// <summary>What the template's node fans over — null when it does not fan.</summary>
-public abstract record TemplateFan;
+public abstract record TemplateFan
+{
+    /// <summary>
+    /// v30 (#1339, design § 2.4): the fan of the loop this one runs inside — what
+    /// <c>item.parent</c> reads; null for a top-level loop and below 30.
+    /// </summary>
+    public TemplateFan? Outer { get; init; }
+
+    /// <summary>
+    /// The element a loop over <paramref name="fan"/> yields — an input's declared
+    /// element, a node value's or an outer item field's typed element; null for a
+    /// snippet folder (its items are text) and for a source that is not a typed array.
+    /// </summary>
+    public static TemplateValueShape? ElementOf(TemplateFan? fan, IReadOnlyDictionary<string, TemplateNodeShape> nodes) => fan switch
+    {
+        InputArrayFan input => TemplateValueShape.FromDeclaration(input.Element),
+        NodeValueFan node => node.ElementIn(nodes),
+        OuterItemFieldFan field => field.ElementIn(nodes),
+        _ => null,
+    };
+
+    /// <summary>The fans of the enclosing loops, nearest first.</summary>
+    public IEnumerable<TemplateFan> Outers()
+    {
+        for (var outer = Outer; outer is not null; outer = outer.Outer)
+        {
+            yield return outer;
+        }
+    }
+}
 
 /// <summary>A fan over a snippet folder: <c>item</c> carries id, name and text (the item rendered).</summary>
 public sealed record SnippetFolderFan(string Folder) : TemplateFan;
@@ -217,6 +250,70 @@ public sealed record NodeValueFan(string NodeId, IReadOnlyList<string> Fields) :
     public override int GetHashCode() => HashCode.Combine(NodeId, string.Join(".", Fields));
 }
 
+/// <summary>
+/// v30 (#1339, design § 2.2): an inner loop over a list field of the outer item —
+/// <c>item in item.value.&lt;field…&gt;</c>, where <c>item</c> is the enclosing
+/// loop's (the inner loop's own does not exist yet). The element is typed from the
+/// outer fan's element (<see cref="TemplateFan.Outer"/>, set when the loops are
+/// resolved); <c>item</c> carries id, label and value, as a node value's item does.
+/// </summary>
+public sealed record OuterItemFieldFan(IReadOnlyList<string> Fields) : TemplateFan
+{
+    /// <summary>The source as written: <c>item.value.&lt;f…&gt;</c>.</summary>
+    public string Reference => $"{TemplateObjects.Item}.{TemplateMembers.Value}{string.Concat(Fields.Select(f => "." + f))}";
+
+    /// <summary>The element a loop over this fan yields, or null when the field is not a typed array.</summary>
+    public TemplateValueShape? ElementIn(IReadOnlyDictionary<string, TemplateNodeShape> nodes) =>
+        Resolve(nodes, out _) is { Kind: WorkflowInputTypes.Array } array ? array.Items : null;
+
+    /// <summary>The shape the field path names under the outer item's value — null with a reason when there is no outer item, it has no typed value, or a step is not an object.</summary>
+    public TemplateValueShape? Resolve(IReadOnlyDictionary<string, TemplateNodeShape> nodes, out string? problem)
+    {
+        problem = null;
+
+        if (Outer is null)
+        {
+            problem = "it runs inside no loop";
+            return null;
+        }
+
+        if (ElementOf(Outer, nodes) is not { } shape || shape.Kind == TemplateValueShape.Unknown)
+        {
+            problem = Outer is SnippetFolderFan folder
+                ? $"the outer item is an item of snippet folder '{folder.Folder}', which is text"
+                : "the outer item's value is not typed";
+            return null;
+        }
+
+        var walked = $"{TemplateObjects.Item}.{TemplateMembers.Value}";
+
+        foreach (var field in Fields)
+        {
+            if (shape.Kind != WorkflowInputTypes.Object || shape.Fields is null)
+            {
+                problem = $"{walked} is {shape.Describe()}, not an object";
+                return null;
+            }
+
+            if (!shape.Fields.TryGetValue(field, out var next))
+            {
+                problem = $"the outer item does not declare '{field}' under {walked} (fields: {string.Join(", ", shape.Fields.Keys.Order(StringComparer.Ordinal))})";
+                return null;
+            }
+
+            shape = next;
+            walked += "." + field;
+        }
+
+        return shape;
+    }
+
+    public bool Equals(OuterItemFieldFan? other) =>
+        other is not null && Fields.SequenceEqual(other.Fields, StringComparer.Ordinal) && Equals(Outer, other.Outer);
+
+    public override int GetHashCode() => HashCode.Combine(string.Join(".", Fields), Outer);
+}
+
 /// <summary>The five reserved objects of § 1, and the roots a 25 template must not use.</summary>
 public static class TemplateObjects
 {
@@ -270,6 +367,8 @@ public static class TemplateMembers
     public const string Label = "label";
     /// <summary>#1105: a macro's instruction, readable at 26 as the text the model will be told.</summary>
     public const string Instruction = "instruction";
+    /// <summary>v30 (#1339, design § 2.4): an item's enclosing loop's item — <c>item.parent</c>, chained outward.</summary>
+    public const string Parent = "parent";
 
     public static readonly IReadOnlyList<string> Node = new[] { Content, Value };
     public static readonly IReadOnlyList<string> Snippet = new[] { Id, Name, Content };

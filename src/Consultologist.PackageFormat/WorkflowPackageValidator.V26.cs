@@ -609,13 +609,14 @@ public static partial class WorkflowPackageValidator
                 // field of the element is a closed set; a folder item's fields are text.
                 var (fan, _) = flows.FanOf(flow.Node.Id);
 
-                if (fan is NodeValueFan nodeFan)
+                if (fan is NodeValueFan or OuterItemFieldFan)
                 {
-                    // v29 (#1301): an enum field of the element the source node's format types.
+                    // v29 (#1301): an enum field of the element the source node's format
+                    // types. v30 (#1339): or the outer item field's element.
                     var sourceShapes = nodes.Values
                         .Where(n => n.Format is not null)
                         .ToDictionary(n => n.Node.Id, n => new TemplateNodeShape(n.Format!.Id, n.Format.Spec.Type, n.Format.Spec.Schema), StringComparer.Ordinal);
-                    var element = nodeFan.ElementIn(sourceShapes);
+                    var element = TemplateFan.ElementOf(fan, sourceShapes);
 
                     if (element?.Fields?.GetValueOrDefault(field) is not { } typed)
                     {
@@ -722,11 +723,16 @@ public static partial class WorkflowPackageValidator
 
             // v29 (#1301, design § 2.1): a loop over a node's value waits on that
             // node, and so does every node of its body (each runs per element).
+            // v30 (#1339, design § 2.3): every node beneath it, at any depth.
             if (flow.Fan is NodeValueFan fan && nodes.ContainsKey(fan.NodeId))
             {
                 targets.Add(fan.NodeId);
 
-                foreach (var bodyId in flow.BodyNodeIds.Where(nodes.ContainsKey))
+                var beneath = manifest.SpecVersion >= 30
+                    ? flows.Owner.Keys.Where(id => flows.AncestorsOf(id).Contains(flow.Node.Id, StringComparer.Ordinal))
+                    : flow.BodyNodeIds;
+
+                foreach (var bodyId in beneath.Where(nodes.ContainsKey).Order(StringComparer.Ordinal))
                 {
                     if (!edges.TryGetValue(bodyId, out var bodyTargets))
                     {
@@ -771,8 +777,9 @@ public static partial class WorkflowPackageValidator
                     }
 
                     // #1234 (v27 design § 4): one level up — a branch node reads the
-                    // loop's body nodes its flow node runs beside.
-                    if (fromOwner is not null && flows.Owner.TryGetValue(fromOwner, out var up) && up == targetOwner)
+                    // loop's body nodes its flow node runs beside. v30 (#1339, design
+                    // § 2.4): any enclosing body, to any depth.
+                    if (fromOwner is not null && flows.AncestorsOf(fromOwner).Contains(targetOwner, StringComparer.Ordinal))
                     {
                         continue;
                     }
@@ -788,7 +795,7 @@ public static partial class WorkflowPackageValidator
                         errors.Add($"Node '{fromId}' reads node '{targetId}', which runs inside {flows.Flows[targetOwner].Inside}; read node.{targetOwner}.");
                     }
                 }
-                else if (fromOwner is not null && (fromOwner == targetId || flows.LoopOf(fromId) == targetId))
+                else if (fromOwner is not null && flows.AncestorsOf(fromId).Contains(targetId, StringComparer.Ordinal))
                 {
                     // #1234: the loop two levels up (a branch node reading the loop its flow node runs in) is the loop it runs in too.
                     errors.Add(flows.IsLoop(targetId)
@@ -1202,40 +1209,7 @@ public static partial class WorkflowPackageValidator
 
             if (shape.Flow?.Kind == TemplateFlowKind.For)
             {
-                var ret = shape.Flow.Ret ?? TemplateNodeShape.Aggregator();
-                var body = shape.Flow.Body ?? new Dictionary<string, TemplateNodeShape>();
-
-                // #1154: the render's own builder — the probe and the run share one member set.
-                var elements = Enumerable.Range(0, 2).Select(i => new TemplateRenderer.LoopElement(
-                    shape.Flow.Fan is InputArrayFan input
-                        ? new ScriptObject { ["id"] = i.ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = Probe(input.Element) }
-                        : shape.Flow.Fan is NodeValueFan nodeFan
-                            // v29 (#1301): the element the source node's format types.
-                            ? new ScriptObject { ["id"] = (i + 1).ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = ProbeFromShape(nodeFan.ElementIn(shapes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)) }
-                            : new ScriptObject { ["id"] = "item", [TemplateMembers.Label] = "placeholder", ["content"] = "placeholder" },
-                    "placeholder",
-                    ret.HasValue,
-                    ret.HasValue ? ProbeFromShape(ValueShapeOf(ret)) : null,
-                    body.ToDictionary(
-                        pair => pair.Key,
-                        pair =>
-                        {
-                            var member = new ScriptObject { [TemplateMembers.Content] = "placeholder" };
-                            if (pair.Value.HasValue)
-                            {
-                                member[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(pair.Value));
-                            }
-
-                            return (object?)member;
-                        },
-                        StringComparer.Ordinal)));
-
-                node[flow.Node.Id] = TemplateRenderer.LoopList(
-                    () => new ScriptObject(),
-                    elements,
-                    "placeholder",
-                    ret.HasValue,
-                    ret.HasValue ? new ScriptArray { ProbeFromShape(ValueShapeOf(ret)), ProbeFromShape(ValueShapeOf(ret)) } : null);
+                node[flow.Node.Id] = LoopProbe(shape.Flow);
                 continue;
             }
 
@@ -1244,9 +1218,76 @@ public static partial class WorkflowPackageValidator
                 : new ScriptObject { ["content"] = "placeholder" };
         }
 
+        object LoopProbe(TemplateFlowShape loop)
+        {
+            var ret = loop.Ret ?? TemplateNodeShape.Aggregator();
+            var body = loop.Body ?? new Dictionary<string, TemplateNodeShape>();
+
+            // #1154: the render's own builder — the probe and the run share one member set.
+            var elements = Enumerable.Range(0, 2).Select(i => new TemplateRenderer.LoopElement(
+                ItemProbeAt26(loop.Fan, i, shapes),
+                "placeholder",
+                ret.HasValue,
+                ret.HasValue ? ProbeFromShape(ValueShapeOf(ret)) : null,
+                body.ToDictionary(
+                    pair => pair.Key,
+                    pair =>
+                    {
+                        // v30 (#1339, design § 6): an inner loop is a list on the outer element (s.paragraphs).
+                        if (pair.Value.Flow is { Kind: TemplateFlowKind.For } inner)
+                        {
+                            return LoopProbe(inner);
+                        }
+
+                        var member = new ScriptObject { [TemplateMembers.Content] = "placeholder" };
+                        if (pair.Value.HasValue)
+                        {
+                            member[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(pair.Value));
+                        }
+
+                        return (object?)member;
+                    },
+                    StringComparer.Ordinal)));
+
+            return TemplateRenderer.LoopList(
+                () => new ScriptObject(),
+                elements,
+                "placeholder",
+                ret.HasValue,
+                ret.HasValue ? new ScriptArray { ProbeFromShape(ValueShapeOf(ret)), ProbeFromShape(ValueShapeOf(ret)) } : null);
+        }
+
         static TemplateValueShape ValueShapeOf(TemplateNodeShape shape) =>
             shape.Type == WorkflowInputTypes.Enum && shape.Schema is null
                 ? TemplateValueShape.Text
                 : TemplateValueShape.FromSchema(shape.Schema);
+    }
+
+    /// <summary>
+    /// A loop item's probe by its fan: an input's element (0-based id), a node
+    /// value's or an outer item field's typed element (1-based), a folder item's
+    /// text. v30 (#1339, design § 2.4): with <c>parent</c>, the enclosing loop's
+    /// item, where the fan runs inside one.
+    /// </summary>
+    private static ScriptObject ItemProbeAt26(TemplateFan? fan, int index, IReadOnlyDictionary<string, TemplateNodeShape> shapes)
+    {
+        var probe = fan switch
+        {
+            InputArrayFan input => new ScriptObject { ["id"] = index.ToString(), [TemplateMembers.Label] = "placeholder", ["value"] = Probe(input.Element) },
+            NodeValueFan or OuterItemFieldFan => new ScriptObject
+            {
+                ["id"] = (index + 1).ToString(),
+                [TemplateMembers.Label] = "placeholder",
+                ["value"] = ProbeFromShape(TemplateFan.ElementOf(fan, shapes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)),
+            },
+            _ => new ScriptObject { ["id"] = "item", [TemplateMembers.Label] = "placeholder", ["content"] = "placeholder" },
+        };
+
+        if (fan?.Outer is { } outer)
+        {
+            probe[TemplateMembers.Parent] = ItemProbeAt26(outer, 0, shapes);
+        }
+
+        return probe;
     }
 }

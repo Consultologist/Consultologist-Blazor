@@ -137,7 +137,11 @@ private sealed record NodeTarget(string Id, TemplateNodeShape Shape, string? Edg
 private sealed record ItemTarget(TemplateFan? Fan = null) : Target;
 
 /// <summary>#1100 (v26 design § 1.3): one element of a loop — <c>item</c>, the returned node's <c>content</c>/<c>value</c>, and every body node by id.</summary>
-private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow) : Target;
+private sealed record LoopElementTarget(string LoopId, TemplateFlowShape Flow, string? EdgeId = null) : Target
+{
+    /// <summary>v30 (#1339, design § 6): an inner loop reached through an outer element (<c>s.paragraphs</c>) is read as the outer loop — the only name the outside sees.</summary>
+    public string ReadId => EdgeId ?? LoopId;
+}
 
     /// <summary><c>run</c> or <c>profile</c>, awaiting a fact name.</summary>
     private sealed record FactsTarget(string Object) : Target;
@@ -1582,10 +1586,23 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
         /// under the flow node's own id), read the loop's body nodes by bare id.
         /// Never down: the outside of a branch reads its flow node.
         /// </summary>
-        private bool InScope(string targetOwner, IReadOnlyDictionary<string, TemplateBodyScope> bodies) =>
-            _context.Scope is { } mine
-            && (string.Equals(targetOwner, mine, StringComparison.Ordinal)
-                || (bodies.TryGetValue(mine, out var parent) && string.Equals(targetOwner, parent.Owner, StringComparison.Ordinal)));
+        private bool InScope(string targetOwner, IReadOnlyDictionary<string, TemplateBodyScope> bodies)
+        {
+            // v30 (#1339, design § 2.4): every enclosing body, to any depth — a node
+            // reads its own instance and its enclosing ones. Below 30 the chain is at
+            // most two long, so this is 27's rule.
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            for (var at = _context.Scope; at is not null && seen.Add(at); at = bodies.TryGetValue(at, out var up) ? up.Owner : null)
+            {
+                if (string.Equals(targetOwner, at, StringComparison.Ordinal))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         private Target StepNode(NodeTarget node, string name, string before)
         {
@@ -1674,17 +1691,17 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                 // #1235 (v27 design § 1.4): whether the item was skipped by an inner
                 // if/case — a boolean, read as the loop's (the element is the loop's).
                 case TemplateMembers.Skipped when _context.SkippedElements:
-                    _refs.ReadNode(element.LoopId, content: true, value: false);
+                    _refs.ReadNode(element.ReadId, content: true, value: false);
                     return new ShapeTarget(TemplateValueShape.Boolean);
 
                 case TemplateMembers.Content:
-                    _refs.ReadNode(element.LoopId, content: true, value: false);
-                    return new NodeContentTarget(before, element.LoopId, flow.Ret ?? TemplateNodeShape.Aggregator(), flow.RetId);
+                    _refs.ReadNode(element.ReadId, content: true, value: false);
+                    return new NodeContentTarget(before, element.ReadId, flow.Ret ?? TemplateNodeShape.Aggregator(), flow.RetId);
 
                 case TemplateMembers.Value:
                     if (flow.Ret is { HasValue: true } ret)
                     {
-                        _refs.ReadNode(element.LoopId, content: false, value: true);
+                        _refs.ReadNode(element.ReadId, content: false, value: true);
                         return new NodeValueTarget(before, ValueShapeOf(ret));
                     }
 
@@ -1701,7 +1718,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                 default:
                     if (flow.Body is { } body && body.TryGetValue(name, out var shape))
                     {
-                        return new NodeTarget(name, shape, element.LoopId);
+                        return new NodeTarget(name, shape, element.ReadId);
                     }
 
                     Errors.Add($"{_subject} reads {walked}, which is not a member (a loop element has {string.Join(", ", LoopElementMembers)} and the body nodes: {string.Join(", ", (flow.Body?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
@@ -1711,6 +1728,18 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
         private Target StepItem(string name, StringBuilder walked, TemplateFan? fan)
         {
+            // v30 (#1339, design § 2.4): item.parent is the enclosing loop's item, chained outward.
+            if (name == TemplateMembers.Parent && _context.Nested && fan is not null)
+            {
+                if (fan.Outer is { } outer)
+                {
+                    return new ItemTarget(outer);
+                }
+
+                Errors.Add($"{_subject} reads {walked}, but its loop runs inside no loop; item.parent is the enclosing loop's item.");
+                return Refused;
+            }
+
             switch (fan)
             {
                 case SnippetFolderFan:
@@ -1721,7 +1750,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
                     if (!SnippetFanItemMembers.Contains(name, StringComparer.Ordinal))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which a snippet fan item does not carry (it carries: {string.Join(", ", SnippetFanItemMembers)}).");
+                        Errors.Add($"{_subject} reads {walked}, which a snippet fan item does not carry (it carries: {string.Join(", ", WithParent(SnippetFanItemMembers, fan))}).");
                         return Refused;
                     }
 
@@ -1736,7 +1765,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
                     if (!InputFanItemMembers.Contains(name, StringComparer.Ordinal))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which an input fan item does not carry (it carries: {string.Join(", ", InputFanItemMembers)}).");
+                        Errors.Add($"{_subject} reads {walked}, which an input fan item does not carry (it carries: {string.Join(", ", WithParent(InputFanItemMembers, fan))}).");
                         return Refused;
                     }
 
@@ -1745,10 +1774,11 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         ? TemplateValueShape.FromDeclaration(input.Element)
                         : TemplateValueShape.Text);
 
-                case NodeValueFan nodeFan:
+                case NodeValueFan or OuterItemFieldFan:
                     // v29 (#1301, design § 2.2): an input fan item's members; the value
                     // is the element the node's format types (untyped when the source
-                    // is not — the validator says why at the loop).
+                    // is not — the validator says why at the loop). v30 (#1339): an
+                    // outer item field's element likewise.
                     if (RefusesName(name, walked.ToString()))
                     {
                         return Refused;
@@ -1756,13 +1786,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
                     if (!InputFanItemMembers.Contains(name, StringComparer.Ordinal))
                     {
-                        Errors.Add($"{_subject} reads {walked}, which an item of {nodeFan.Reference} does not carry (it carries: {string.Join(", ", InputFanItemMembers)}).");
+                        var source = fan is NodeValueFan nodeFan ? nodeFan.Reference : ((OuterItemFieldFan)fan).Reference;
+                        Errors.Add($"{_subject} reads {walked}, which an item of {source} does not carry (it carries: {string.Join(", ", ItemMembersWithParent(fan))}).");
                         return Refused;
                     }
 
                     _refs.ReadItem(name);
                     return new ShapeTarget(name == TemplateMembers.Value
-                        ? nodeFan.ElementIn(_context.Nodes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)
+                        ? TemplateFan.ElementOf(fan, _context.Nodes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)
                         : TemplateValueShape.Text);
 
                 default:
@@ -1790,6 +1821,12 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return Refused;
             }
         }
+
+        /// <summary>v30 (#1339): an item inside a nested loop also carries parent — named in the member sentence where it exists.</summary>
+        private IEnumerable<string> WithParent(IReadOnlyList<string> members, TemplateFan? fan) =>
+            _context.Nested && fan?.Outer is not null ? members.Append(TemplateMembers.Parent) : members;
+
+        private IEnumerable<string> ItemMembersWithParent(TemplateFan? fan) => WithParent(InputFanItemMembers, fan);
 
         private Target StepFacts(string obj, string name, StringBuilder walked)
         {
@@ -1864,7 +1901,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     {
                         // #1100: node.<loop>[0] is one element of the list.
                         _refs.ReadNode(loop.ReadId, content: true, value: true);
-                        return new LoopElementTarget(loop.Id, loop.Shape.Flow!);
+                        return new LoopElementTarget(loop.Id, loop.Shape.Flow!, loop.EdgeId);
                     }
 
                     if (target is ShapeTarget { Shape: null } or ShapeTarget { Shape.IsUnknown: true })
@@ -1917,7 +1954,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                 // the returned node's content and value, and the body nodes by id.
                 case NodeTarget { Shape.Flow.Kind: TemplateFlowKind.For } loop when use == ChainUse.Iterable:
                     _refs.ReadNode(loop.ReadId, content: true, value: true);
-                    return new LoopElementTarget(loop.Id, loop.Shape.Flow!);
+                    return new LoopElementTarget(loop.Id, loop.Shape.Flow!, loop.EdgeId);
 
                 case NodeTarget { Shape.Flow.Kind: TemplateFlowKind.For } loop:
                     Errors.Add($"{_subject} reads node '{loop.Id}' bare; read {walked}.content, {walked}.value, or iterate it ({{{{ for e in {walked} }}}}).");
@@ -1948,7 +1985,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return Refused;
 
                 case ItemTarget:
-                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan or NodeValueFan ? $"item.id, item.{NameMember}, item.value" : $"item.id, item.{NameMember}, item.content")}).");
+                    Errors.Add($"{_subject} reads item bare; read a member ({(_context.Fan is InputArrayFan or NodeValueFan or OuterItemFieldFan ? $"item.id, item.{NameMember}, item.value" : $"item.id, item.{NameMember}, item.content")}).");
                     return Refused;
 
                 case FolderTarget folder when use == ChainUse.Value:
