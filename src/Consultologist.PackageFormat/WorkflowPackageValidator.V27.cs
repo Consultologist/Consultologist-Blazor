@@ -153,7 +153,11 @@ public static partial class WorkflowPackageValidator
             var loopIds = inner is null ? Array.Empty<string>() : flows.LoopsOf(inner.Node.Id);
             var reads = condition.Walk.References.Nodes.Keys.Order(StringComparer.Ordinal).ToList();
 
-            foreach (var id in reads.Where(flows.IsLoop))
+            // v30 (#1339 A2b): a while's check and an until decide after their body runs —
+            // a loop that ran before them is read like any earlier node.
+            var after = condition.Site is WorkflowDerivedEdges.ConditionSite.While or WorkflowDerivedEdges.ConditionSite.Until;
+
+            foreach (var id in reads.Where(id => !after && flows.IsLoop(id)))
             {
                 errors.Add(inner is not null && loopIds.Contains(id, StringComparer.Ordinal)
                     ? $"{condition.Subject} reads node.{id}, the loop it runs in; a condition inside a loop reads the item, inputs and earlier body nodes."

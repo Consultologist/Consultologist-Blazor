@@ -2107,6 +2107,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
         private Target StepIndex(Target target, IndexSegment index, StringBuilder walked, string before)
         {
             var literal = index.Index is ScriptLiteral { Value: int or long } lit ? lit.Value : null;
+
+            // v30 (#1339 A2b): a history counts from its end too — pass.history[-1] is the
+            // last earlier pass. Only a history: elsewhere a negative index stays refused.
+            if (literal is null && target is PassHistoryTarget or WhileHistoryTarget
+                && index.Index is ScriptUnaryExpression { Operator: ScriptUnaryOperator.Negate, Right: ScriptLiteral { Value: int or long } negated })
+            {
+                literal = -Convert.ToInt64(negated.Value, System.Globalization.CultureInfo.InvariantCulture);
+            }
             walked.Append('[').Append(literal?.ToString() ?? "…").Append(']');
 
             switch (target)
