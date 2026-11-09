@@ -155,7 +155,8 @@ public static partial class WorkflowPackageValidator
 
             // v30 (#1339 A2b): a while's check and an until decide after their body runs —
             // a loop that ran before them is read like any earlier node.
-            var after = condition.Site is WorkflowDerivedEdges.ConditionSite.While or WorkflowDerivedEdges.ConditionSite.Until;
+            // A let (A3) reads a loop's list to reduce it, after the loop settles.
+            var after = condition.Site is WorkflowDerivedEdges.ConditionSite.While or WorkflowDerivedEdges.ConditionSite.Until or WorkflowDerivedEdges.ConditionSite.Let;
 
             foreach (var id in reads.Where(id => !after && flows.IsLoop(id)))
             {

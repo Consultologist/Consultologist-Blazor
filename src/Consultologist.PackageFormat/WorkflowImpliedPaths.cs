@@ -27,7 +27,7 @@ public static class WorkflowImpliedPaths
         }
 
         var nodes = manifest.Nodes
-            .Select(node => node.Prompt is null && !IsFlow(node) && files.ContainsKey(PromptOf(node.Id))
+            .Select(node => node.Prompt is null && !NamesNoPrompt(node) && files.ContainsKey(PromptOf(node.Id))
                 ? node with { Prompt = PromptOf(node.Id) }
                 : node)
             .ToList();
@@ -44,7 +44,7 @@ public static class WorkflowImpliedPaths
         manifest.SpecVersion < 28
             ? Array.Empty<string>()
             : (manifest.Nodes ?? new List<WorkflowNodeSpec>())
-                .Where(node => node.Prompt is null && !IsFlow(node))
+                .Where(node => node.Prompt is null && !NamesNoPrompt(node))
                 .Select(node => PromptOf(node.Id))
                 .Distinct(StringComparer.Ordinal)
                 .ToList();
@@ -54,6 +54,9 @@ public static class WorkflowImpliedPaths
 
     /// <summary>True for a for, if or case node — it runs a body and reads no prompt.</summary>
     public static bool IsFlow(WorkflowNodeSpec node) => node.For is not null || node.If is not null || node.Case is not null || node.While is not null;
+
+    /// <summary>v30 (#1339 A3): a node that reads no prompt file — a flow node, or a let (computed from its expression).</summary>
+    public static bool NamesNoPrompt(WorkflowNodeSpec node) => IsFlow(node) || node.Let is not null;
 
     /// <summary>
     /// The § 2 warnings: a file under <c>prompts/</c> that is no node's prompt,

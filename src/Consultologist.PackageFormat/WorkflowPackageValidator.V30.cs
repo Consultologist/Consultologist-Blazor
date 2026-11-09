@@ -56,7 +56,11 @@ public static partial class WorkflowPackageValidator
     {
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
         {
-            foreach (var (name, present) in new[] { ("while", node.While != null), ("max", node.Max != null), ("until", node.Until != null), ("checkFirst", node.CheckFirst != null) })
+            foreach (var (name, present) in new[]
+            {
+                ("while", node.While != null), ("max", node.Max != null), ("until", node.Until != null), ("checkFirst", node.CheckFirst != null),
+                ("let", node.Let != null), ("type", node.Type != null), ("labelField", node.LabelField != null),
+            })
             {
                 if (present)
                 {
@@ -64,5 +68,86 @@ public static partial class WorkflowPackageValidator
                 }
             }
         }
+
+        foreach (var input in manifest.Inputs ?? new List<WorkflowInputSpec>())
+        {
+            if (input.LabelField != null)
+            {
+                errors.Add($"Input '{input.Id}' declares labelField, which requires specVersion 30.");
+            }
+        }
+    }
+
+    /// <summary>
+    /// § 4.1: a let — its expression is walked with the templates
+    /// (<see cref="WorkflowLetAt30.Walk"/>); here its shape. It carries no format,
+    /// prompt, with, failIfEmpty, reproducible, macros or aggregate; its type is
+    /// text, number, boolean or an object format; its onInvalid is fail or flag
+    /// (required, no default; retry needs a model). The resolved format is the
+    /// type's — synthesized for a scalar — so the shapes and probes read it as any
+    /// node's.
+    /// </summary>
+    private static ResolvedFormat? ResolveLetAt30(
+        WorkflowNodeSpec node,
+        WorkflowPackageManifest manifest,
+        IReadOnlyDictionary<string, ResolvedFormat> localFormats,
+        WorkflowFormatCatalog? catalog,
+        List<string> errors)
+    {
+        var subject = $"Let '{node.Id}'";
+
+        foreach (var (name, present) in new[]
+        {
+            ("format", node.Format != null), ("prompt", node.Prompt != null), ("with", node.With != null), ("failIfEmpty", node.FailIfEmpty != null),
+            ("reproducible", node.Reproducible != null), ("macros", node.Macros != null), ("aggregate", node.Aggregate != null), ("forEach", node.ForEach != null),
+        })
+        {
+            if (present)
+            {
+                errors.Add($"{subject} declares {name}, which a let does not carry; a let computes its value from its expression and names it with type.");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(node.OnInvalid))
+        {
+            errors.Add($"{subject} must declare onInvalid (fail | flag); its value is checked against its type.");
+        }
+        else if (node.OnInvalid == WorkflowOnInvalid.Retry)
+        {
+            errors.Add($"{subject} declares onInvalid retry; retry needs a model — use fail or flag.");
+        }
+        else if (!WorkflowOnInvalid.IsKnown(node.OnInvalid))
+        {
+            errors.Add($"{subject} onInvalid '{node.OnInvalid}' is not one of fail, flag.");
+        }
+
+        if (string.IsNullOrWhiteSpace(node.Type))
+        {
+            errors.Add($"{subject} declares no type; a let names its value's type — text, number, boolean or an object format.");
+            return null;
+        }
+
+        if (WorkflowLetAt30.ScalarSpecOf(node.Type) is { } scalar)
+        {
+            return new ResolvedFormat(node.Type, scalar, WorkflowFormatOrigin.PackageLocal);
+        }
+
+        ResolvedFormat? format = localFormats.TryGetValue(node.Type, out var local) ? local
+            : catalog is not null && catalog.TryGet(node.Type, out var entry) ? new ResolvedFormat(node.Type, entry!.Spec, WorkflowFormatOrigin.Catalogue)
+            : null;
+
+        if (format is null)
+        {
+            errors.Add($"{subject} type '{node.Type}' is neither text, number, boolean nor a package or catalogue format.");
+            return null;
+        }
+
+        if (format.Spec.Type != WorkflowInputTypes.Object)
+        {
+            errors.Add($"{subject} type '{node.Type}' is a{(format.Spec.Type is WorkflowInputTypes.Enum ? "n" : string.Empty)} {format.Spec.Type} format; a let's format types an object — or write type text, number or boolean.");
+            return null;
+        }
+
+        return format;
     }
 }

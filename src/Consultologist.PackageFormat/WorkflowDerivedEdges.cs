@@ -45,7 +45,8 @@ public static class WorkflowDerivedEdges
     // #1094 (§ 2.1, § 5.4): Snippet — a standalone snippet's own if, in its header.
     // v30 (#1339, design § 3): While — a while's check; Until — a for's until. Both
     // read the flow's own body (they decide after it runs), unlike an if.
-    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow, Macro, Snippet, While, Until }
+    // v30 (#1339 A3): Let — a let node's expression, its value (not a truth); its reads are the node's edges.
+    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow, Macro, Snippet, While, Until, Let }
 
     /// <summary>
     /// #1037 (design § 16): a <c>when</c> walked — its site, the id of what it gates
@@ -381,7 +382,7 @@ public static class WorkflowDerivedEdges
             // #1037: what the node's own when and its instances' whens read — the
             // node waits on them as it waits on what its texts read. #1100: an
             // if/case node's expression likewise — the flow node waits on it.
-            foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance, ConditionSite.Flow, ConditionSite.While, ConditionSite.Until))
+            foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance, ConditionSite.Flow, ConditionSite.While, ConditionSite.Until, ConditionSite.Let))
             {
                 Visit(condition.Walk.References, seen, TakeGate);
             }
@@ -952,6 +953,15 @@ public static class WorkflowDerivedEdges
             // by bare id (a while's check is its own pass; an until reads the loop's
             // item). Their reads are the flow node's edges, which already wait on the
             // body. Read at 30 only — below, the member gate refuses the keys.
+            if (at30 && node.Let is not null)
+            {
+                // v30 (#1339 A3, design § 4.1): a let's expression reads what its prompt
+                // would — under its fan, its body scope and its whiles' passes.
+                var letContext = ConditionContext(walkNode.Fan, walkNode.Scope);
+                conditions.Add(new WalkedCondition(ConditionSite.Let, node.Id, null, $"Let '{node.Id}'", node.Let,
+                    WorkflowLetAt30.Walk($"Let '{node.Id}'", node.Let, node.Type, letContext), letContext));
+            }
+
             if (at30)
             {
                 WalkCondition(ConditionSite.While, node.Id, null, $"While '{node.Id}' check", node.While, walkNode.Fan, node.Id);
@@ -1347,7 +1357,15 @@ public static class WorkflowDerivedEdges
 
         foreach (var node in specs)
         {
-            if (node.Format is { } id && SpecOf(id) is { } spec)
+            // v30 (#1339 A3): a let's shape is its type's — a scalar's synthesized, or its format's.
+            if (manifest.SpecVersion >= 30 && node.Let is not null)
+            {
+                if ((WorkflowLetAt30.ScalarSpecOf(node.Type) ?? (node.Type is { } letFormat ? SpecOf(letFormat) : null)) is { } letSpec)
+                {
+                    shapes[node.Id] = new TemplateNodeShape(node.Type!, letSpec.Type, letSpec.Schema);
+                }
+            }
+            else if (node.Format is { } id && SpecOf(id) is { } spec)
             {
                 // #1091: an enum node's answer set rides its shape, as the validator's shapes carry it.
                 shapes[node.Id] = new TemplateNodeShape(id, spec.Type, spec.Schema, EnumAnswerSet(node, spec, inputsById));

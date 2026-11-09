@@ -1155,6 +1155,8 @@ public static partial class WorkflowPackageValidator
         }
 
         // #1037: a condition evaluates over the same probe, and must yield a boolean.
+        // v30 (#1339 A3): a let's expression evaluates too — strictly; its value is
+        // the let's, typed at the walk and at the run, not a truth.
         foreach (var condition in walk.Conditions.Where(c => c.Walk.IsValid))
         {
             try
@@ -1162,7 +1164,7 @@ public static partial class WorkflowPackageValidator
                 var context = ContextFor(condition.Context);
                 var value = context.Evaluate(condition.Walk.Expression!);
 
-                if (value is not bool)
+                if (value is not bool && condition.Site != WorkflowDerivedEdges.ConditionSite.Let)
                 {
                     errors.Add($"{condition.Subject} must be a boolean expression; it yields {WorkflowConditionAt25.DescribeValue(value)}.");
                 }

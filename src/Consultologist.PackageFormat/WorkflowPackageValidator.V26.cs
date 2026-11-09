@@ -440,6 +440,13 @@ public static partial class WorkflowPackageValidator
 
             var (fan, folder) = flows.FanOf(node.Id);
 
+            // v30 (#1339 A3, design § 4): a let computes its value — no format, no prompt.
+            if (node.Let is not null && manifest.SpecVersion >= 30)
+            {
+                nodes[node.Id] = new NodeAt25(node, ResolveLetAt30(node, manifest, localFormats, catalog, errors), fan, folder);
+                continue;
+            }
+
             if (string.IsNullOrWhiteSpace(node.Format))
             {
                 errors.Add($"Node '{node.Id}' must declare a format at specVersion 26.");
