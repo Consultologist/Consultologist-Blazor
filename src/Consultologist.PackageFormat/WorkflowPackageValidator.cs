@@ -1529,6 +1529,12 @@ public static partial class WorkflowPackageValidator
             }
 
             ValidateInputType(manifest, input, errors);
+
+            // v30 (#1339 A3, design § 5): an array of objects names each item by a field.
+            if (manifest.SpecVersion >= 30 && input.LabelField is not null)
+            {
+                ValidateInputLabelFieldAt30(input, errors);
+            }
         }
 
         return declared;

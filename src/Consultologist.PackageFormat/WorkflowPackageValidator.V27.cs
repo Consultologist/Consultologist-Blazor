@@ -81,6 +81,8 @@ public static partial class WorkflowPackageValidator
         if (at30)
         {
             ValidateOuterItemLoopsAt30(flows, nodeShapes, errors);
+            // v30 (#1339 A3, design § 5): a loop's labelField, typed by its element.
+            ValidateLoopLabelFieldsAt30(flows, nodeShapes, errors);
         }
 
         var macroFolderIds = macroFolders?.Collections.Keys.ToHashSet(StringComparer.Ordinal) ?? TemplateReferenceContext.NoIds;

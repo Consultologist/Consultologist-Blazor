@@ -515,7 +515,11 @@ public sealed record TemplateValueShape(
     string Kind,
     IReadOnlyDictionary<string, TemplateValueShape>? Fields,
     TemplateValueShape? Items,
-    IReadOnlyList<string>? Values)
+    IReadOnlyList<string>? Values,
+    // v30 (#1339 A3, design § 5): an object's required fields — what a
+    // labelField is judged against (a declaration's required, a schema's
+    // `required`); null when not known.
+    IReadOnlySet<string>? Required = null)
 {
     public const string Unknown = "unknown";
 
@@ -533,7 +537,8 @@ public sealed record TemplateValueShape(
             node.Type,
             node.Fields is null ? null : node.Fields.ToDictionary(f => f.Id, FromDeclaration, StringComparer.Ordinal),
             node.Items is null ? null : FromDeclaration(node.Items),
-            node.Values);
+            node.Values,
+            node.Fields?.Where(f => f.Required).Select(f => f.Id).ToHashSet(StringComparer.Ordinal));
 
     /// <summary>
     /// A JSON schema folded to a shape: <c>type</c> (a nullable union counts as
@@ -565,7 +570,12 @@ public sealed record TemplateValueShape(
                 WorkflowInputTypes.Object,
                 properties?.ToDictionary(p => p.Key, p => FromSchema(p.Value), StringComparer.Ordinal)
                     ?? new Dictionary<string, TemplateValueShape>(StringComparer.Ordinal),
-                null, null);
+                null, null,
+                // A format lists every property in required and spells optional as a
+                // nullable type, so a field is required when listed and not nullable.
+                (obj["required"] as JsonArray)?.Select(r => r is JsonValue v && v.TryGetValue(out string? id) ? id : null)
+                    .Where(id => id is not null && !IsNullable(properties?[id] as JsonObject)).Select(id => id!).ToHashSet(StringComparer.Ordinal)
+                    ?? new HashSet<string>(StringComparer.Ordinal));
         }
 
         if (type == "array" || (type is null && items is not null))
@@ -581,6 +591,10 @@ public sealed record TemplateValueShape(
             _ => new TemplateValueShape(Unknown, null, null, null)
         };
     }
+
+    /// <summary>v30 (#1339 A3): a property whose type union admits null — the format's spelling of optional.</summary>
+    private static bool IsNullable(JsonObject? property) =>
+        property?["type"] is JsonArray union && union.Any(t => t is JsonValue v && v.TryGetValue(out string? name) && name == "null");
 
     private static string? TypeOf(JsonObject obj)
     {

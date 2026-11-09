@@ -150,4 +150,93 @@ public static partial class WorkflowPackageValidator
 
         return format;
     }
+
+    /// <summary>
+    /// § 5: an array of objects names each item by one of its fields — a required
+    /// text field of the element (a blank value falls back to the label and the
+    /// position, at the run).
+    /// </summary>
+    private static void ValidateInputLabelFieldAt30(WorkflowInputSpec input, List<string> errors)
+    {
+        var subject = $"Input '{input.Id}'";
+        var element = WorkflowInputTypes.Of(input) == WorkflowInputTypes.Array ? WorkflowDeclarationNode.Of(input).Items : null;
+
+        if (element is not { Type: WorkflowInputTypes.Object })
+        {
+            errors.Add($"{subject} declares labelField, but it is not an array of objects; labelField names a field of each item.");
+            return;
+        }
+
+        LabelFieldSentence($"{subject} labelField '{input.LabelField}'", input.LabelField!, TemplateValueShape.FromDeclaration(element), "of its items", errors);
+    }
+
+    /// <summary>
+    /// § 5: a loop names each item by a field of its element — over a node's value
+    /// or an outer item's field, a required text field the element's format (or
+    /// declaration) types. A loop over an input takes the input's labelField; a
+    /// folder's items are named by their label header.
+    /// </summary>
+    private static void ValidateLoopLabelFieldsAt30(
+        WorkflowFlowNodes.Resolved flows,
+        IReadOnlyDictionary<string, TemplateNodeShape> nodeShapes,
+        List<string> errors)
+    {
+        foreach (var flow in flows.Flows.Values.Where(f => f.Kind == WorkflowFlowNodes.Kind.For && f.Node.LabelField is not null).OrderBy(f => f.Node.Id, StringComparer.Ordinal))
+        {
+            var subject = $"Loop '{flow.Node.Id}'";
+
+            switch (flow.Fan)
+            {
+                case InputArrayFan:
+                    errors.Add($"{subject} declares labelField, but it iterates {flow.Collection} — the input names its items ({flow.Collection}'s labelField).");
+                    continue;
+
+                case SnippetFolderFan:
+                    errors.Add($"{subject} declares labelField, but it iterates {flow.Collection} — a folder's items are named by their label header.");
+                    continue;
+
+                case NodeValueFan or OuterItemFieldFan:
+                    break;
+
+                default:
+                    // The source did not resolve; its own sentence says why.
+                    continue;
+            }
+
+            var reference = flow.Fan switch { NodeValueFan n => n.Reference, OuterItemFieldFan o => o.Reference, _ => string.Empty };
+
+            if (TemplateFan.ElementOf(flow.Fan, nodeShapes) is not { } element || element.IsUnknown)
+            {
+                continue;
+            }
+
+            if (!element.IsObject)
+            {
+                errors.Add($"{subject} labelField '{flow.Node.LabelField}': each element of {reference} is {element.Describe()}, not an object; labelField names a field of each item.");
+                continue;
+            }
+
+            LabelFieldSentence($"{subject} labelField '{flow.Node.LabelField}'", flow.Node.LabelField!, element, $"of the elements of {reference}", errors);
+        }
+    }
+
+    private static void LabelFieldSentence(string subject, string field, TemplateValueShape element, string of, List<string> errors)
+    {
+        if (element.Fields is not { } fields || !fields.TryGetValue(field, out var shape))
+        {
+            errors.Add($"{subject} is not a field {of} (fields: {string.Join(", ", (element.Fields?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
+            return;
+        }
+
+        if (shape.Kind != WorkflowInputTypes.Text)
+        {
+            errors.Add($"{subject} names {(shape.Kind is WorkflowInputTypes.Enum or WorkflowInputTypes.Object or WorkflowInputTypes.Array ? "an" : "a")} {shape.Kind} field; labelField names a required text field.");
+            return;
+        }
+
+        if (element.Required is { } required && !required.Contains(field))
+        {
+            errors.Add($"{subject} is optional; labelField names a required text field.");
+        }
+    }
 }
