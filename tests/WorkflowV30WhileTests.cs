@@ -40,7 +40,7 @@ public class WorkflowV30WhileTests
         files["prompts/judge.md"] = "Judge this draft: {{ node.draft.content }}";
     }
 
-    private static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Refining(Action<JsonObject>? change = null, Action<Dictionary<string, string>>? files = null)
+    internal static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) Refining(Action<JsonObject>? change = null, Action<Dictionary<string, string>>? files = null)
     {
         var (json, bundleFiles) = V30Package.MinimalJson();
         var root = JsonNode.Parse(json)!.AsObject();
