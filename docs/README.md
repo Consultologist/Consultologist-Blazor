@@ -124,7 +124,14 @@ would otherwise have carried it (#397).
   when the node completes — per-loop totals, a `count-resolved` event, *not yet known* never zero;
   a folder item's `if` may read a node, its item kept as a *skipped by condition* row; a
   deliverable's row written at composition, "produced" meaning released; record storage 10; a
-  hold switch drains jobs before the release; nesting, `while` and `let` named for 30
+  hold switch drains jobs before the release; nesting, `while` and `let` named for 30,
+  [nesting, while and let](customizable-workflow/package-format-v30-design.md) — specVersion 30
+  (Milestone 38, #1337, revision 1; not yet built): a loop may nest to any depth, so items are named by a
+  path and an inner loop has one count per outer item (it may iterate the outer item's field or a
+  node in the outer body); a `while` repeats within a required bound (1–10), a row per pass; a
+  `for … until` runs in order and stops early, unrun items kept as rows; a `let` computes a typed
+  value with no model call; `labelField` names an item by its field; record storage 11; enum labels
+  and #1189 not in 30
 
 ## Research
 
