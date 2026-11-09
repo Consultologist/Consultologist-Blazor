@@ -1112,6 +1112,27 @@ public static partial class WorkflowPackageValidator
                 globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "item", [nameMember] = "placeholder", ["content"] = "placeholder", ["value"] = "placeholder" };
             }
 
+            // v30 (#1339, design § 3.2): inside a while, its pass — number, the nodes
+            // one pass back (the walker has judged which ids; the probe lends the
+            // node probes) and the enclosing while's pass down the chain.
+            if (templateContext.Passes is { Count: > 0 } passes)
+            {
+                ScriptObject? pass = null;
+
+                for (var level = passes.Count - 1; level >= 0; level--)
+                {
+                    var outer = pass;
+                    pass = new ScriptObject { [TemplateMembers.Number] = 1, [TemplateMembers.Previous] = node };
+
+                    if (outer is not null)
+                    {
+                        pass[TemplateMembers.Parent] = outer;
+                    }
+                }
+
+                globals[TemplateObjects.Pass] = pass;
+            }
+
             var context = new PromptTemplateRenderer.RenderingContext();
             context.PushGlobal(globals);
             return context;

@@ -43,7 +43,9 @@ public static class WorkflowDerivedEdges
     /// <summary>#1037: where a <c>when</c> sits — and, at 26 (#1100), <c>Flow</c>: an <c>if</c> or <c>case</c> node's own expression.</summary>
     // #1090 (v26 design § 2.2): Macro — the macro's own if, in its file's header.
     // #1094 (§ 2.1, § 5.4): Snippet — a standalone snippet's own if, in its header.
-    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow, Macro, Snippet }
+    // v30 (#1339, design § 3): While — a while's check; Until — a for's until. Both
+    // read the flow's own body (they decide after it runs), unlike an if.
+    public enum ConditionSite { Node, NodeInstance, Deliverable, DeliverableInstance, FolderItem, Flow, Macro, Snippet, While, Until }
 
     /// <summary>
     /// #1037 (design § 16): a <c>when</c> walked — its site, the id of what it gates
@@ -379,7 +381,7 @@ public static class WorkflowDerivedEdges
             // #1037: what the node's own when and its instances' whens read — the
             // node waits on them as it waits on what its texts read. #1100: an
             // if/case node's expression likewise — the flow node waits on it.
-            foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance, ConditionSite.Flow))
+            foreach (var condition in ConditionsOf(nodeId, ConditionSite.Node, ConditionSite.NodeInstance, ConditionSite.Flow, ConditionSite.While, ConditionSite.Until))
             {
                 Visit(condition.Walk.References, seen, TakeGate);
             }
@@ -893,6 +895,7 @@ public static class WorkflowDerivedEdges
         // #1102 (v26 design § 4): at 26 a node names its prompt FILE; below, the
         // declared prompt's id resolves through prompts[].
         var at26 = manifest.SpecVersion >= 26;
+        var at30 = manifest.SpecVersion >= 30;
         var promptsById = at26
             ? new Dictionary<string, WorkflowPromptSpec>(StringComparer.Ordinal)
             : (manifest.Prompts ?? new List<WorkflowPromptSpec>()).ToDictionary(p => p.Id, StringComparer.Ordinal);
@@ -943,6 +946,17 @@ public static class WorkflowDerivedEdges
             // subject is a value, not a truth — the validator reads it
             // structurally (ValidateCaseSubjectsAt26) and adds its edge itself.
             WalkCondition(ConditionSite.Flow, node.Id, null, $"Node '{node.Id}' if", node.If, walkNode.Scope is null ? null : walkNode.Fan, walkNode.Scope is null ? null : node.Id);
+
+            // v30 (#1339, design § 3.1, § 3.4): a while's check and a for's until run
+            // after the body — walked under the flow node's own id, so its body reads
+            // by bare id (a while's check is its own pass; an until reads the loop's
+            // item). Their reads are the flow node's edges, which already wait on the
+            // body. Read at 30 only — below, the member gate refuses the keys.
+            if (at30)
+            {
+                WalkCondition(ConditionSite.While, node.Id, null, $"While '{node.Id}' check", node.While, walkNode.Fan, node.Id);
+                WalkCondition(ConditionSite.Until, node.Id, null, $"Loop '{node.Id}' until", node.For is null ? null : node.Until, walkNode.Fan, node.Id);
+            }
 
             foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())
             {
@@ -1380,8 +1394,9 @@ public static class WorkflowDerivedEdges
             SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems,
             // #1235: at 27 a loop element carries `skipped`.
             SkippedElements: manifest.SpecVersion >= 27,
-            // v30 (#1339): item.parent inside a nested loop.
-            Nested: manifest.SpecVersion >= 30);
+            // v30 (#1339): item.parent inside a nested loop; pass inside a while.
+            Nested: manifest.SpecVersion >= 30,
+            Whiles: manifest.SpecVersion >= 30 ? flows.Flows.Keys.Where(flows.IsWhile).ToHashSet(StringComparer.Ordinal) : null);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {

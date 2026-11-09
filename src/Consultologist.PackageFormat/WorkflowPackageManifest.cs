@@ -1123,7 +1123,15 @@ public sealed record WorkflowNodeSpec(
     // one-line label — display only: never rendered, sent or hashed. Trailing
     // optional, omitted when null; refused on a plain node and below 28 by the
     // validator.
-    string? Description = null);
+    string? Description = null,
+    // v30 (#1339, design § 3): a `while` node — its body (`nodes`, `ret`) runs
+    // once, then again while the condition holds, at most `max` times (1 to 10,
+    // required, no default) — and `until` on a `for`: its items run in order and
+    // it stops after the item where the condition holds. Trailing optionals,
+    // omitted when null; below 30 each is refused by name by the validator.
+    string? While = null,
+    int? Max = null,
+    string? Until = null);
 
 /// <summary>
 /// v26 (package-format-v26-design.md § 1.2, #1165): a flow node's body — the

@@ -431,6 +431,26 @@ internal static class PackageFormatSchema
             Remove(properties, "prompt");
         }
 
+        // v30 (#1339, package-format-v30-design.md § 3): a while node, its bound and
+        // a for's until arrive at 30; below it none of the members exists, and the
+        // published v5–v29 bytes must not move. (The 30 file is exported at the
+        // bump, #1347; the bound is closed here so the render is its siblings'.)
+        if (specVersion < 30)
+        {
+            foreach (var member in new[] { "while", "max", "until" })
+            {
+                Remove(properties, member);
+            }
+        }
+        else
+        {
+            Object(properties, "while")["minLength"] = 1;
+            Object(properties, "until")["minLength"] = 1;
+            var max = Object(properties, "max");
+            max["minimum"] = 1;
+            max["maximum"] = WorkflowFlowNodes.MaxPasses;
+        }
+
         if (specVersion < 26)
         {
             foreach (var flow in new[] { "for", "if", "case", "then", "else", "branches", "nodes", "ret" })

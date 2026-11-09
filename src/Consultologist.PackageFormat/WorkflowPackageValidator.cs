@@ -239,6 +239,12 @@ public static partial class WorkflowPackageValidator
             ValidateV28Members(manifest, errors);
         }
 
+        // v30 (#1339): while, max and until are refused below 30, on every path.
+        if (manifest.SpecVersion < 30 && accepted.Contains(manifest.SpecVersion))
+        {
+            ValidateV30Members(manifest, errors);
+        }
+
         return new ValidationResult(errors, warnings);
     }
 

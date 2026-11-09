@@ -54,7 +54,9 @@ public static class WorkflowConditionAt25
 
         var references = TemplateReferenceWalker.WalkExpression(subject, expression!, context);
 
-        if (!references.IsValid && LegacyHint(subject, text, inputTypeOf) is { } hint)
+        // v30 (#1339, design § 3.2): pass.<member> is the object spelling at 30 — its
+        // sentences are the walk's, never the ≤24 hint.
+        if (!references.IsValid && !(context.Passes is not null && PassSpelling.IsMatch(text)) && LegacyHint(subject, text, inputTypeOf) is { } hint)
         {
             return new ConditionWalk(references with { Errors = new[] { hint } }, null);
         }
@@ -138,6 +140,8 @@ public static class WorkflowConditionAt25
         Scriban.Runtime.ScriptObject => "an object",
         _ => "a value"
     };
+
+    private static readonly System.Text.RegularExpressions.Regex PassSpelling = new(@"(^|[^a-z0-9_:.])pass\.[a-z]", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>The sentence for a condition written in the ≤24 grammar, with the 25 spelling — or null when the text is not that grammar.</summary>
     private static string? LegacyHint(string subject, string text, Func<string, string?>? inputTypeOf)

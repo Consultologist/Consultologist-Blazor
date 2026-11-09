@@ -32,7 +32,10 @@ public sealed record TemplateReferences(
     // reads as .content, and as .prompt / .instruction — the walk expands each
     // to the folder's items (MacroFolders alone is the iteration).
     IReadOnlySet<string>? MacroFolderContents = null,
-    IReadOnlySet<string>? MacroFolderPrompts = null)
+    IReadOnlySet<string>? MacroFolderPrompts = null,
+    // v30 (#1339, design § 3.2): the nodes this template reads one pass back
+    // (pass.previous.<id>) — never an edge; what a pass must keep of the last.
+    IReadOnlySet<string>? PassPrevious = null)
 {
     public bool IsValid => Errors.Count == 0;
 
@@ -123,6 +126,7 @@ internal sealed class TemplateReferenceCollector
     private readonly HashSet<string> _profileFacts = new(StringComparer.Ordinal);
     private readonly HashSet<TemplateRenderedRead> _rendered = new();
     private readonly HashSet<string> _deliverables = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _passPrevious = new(StringComparer.Ordinal);
     private readonly List<TemplateReadOccurrence> _occurrences = new();
     private readonly List<TemplateBranchBlock?> _branches = new();
 
@@ -158,6 +162,8 @@ internal sealed class TemplateReferenceCollector
 
     public void ReadRunFact(string member) => _runFacts.Add(member);
 
+    public void ReadPassPrevious(string id) => _passPrevious.Add(id);
+
     public void ReadProfileFact(string member) => _profileFacts.Add(member);
 
     public void ReadRendered(string node, string pipe, string? guard = null, bool guardCanonical = false) =>
@@ -177,5 +183,5 @@ internal sealed class TemplateReferenceCollector
     public TemplateReferences ToReferences() => new(
         _inputs, _nodes, _snippets, _snippetFolders, _macroContents, _macroPrompts, _macroFolders, _itemMembers,
         _runFacts, _profileFacts, _rendered, _occurrences, _branches.Where(b => b is not null).Cast<TemplateBranchBlock>().ToList(), Errors, Warnings,
-        _deliverables, _macroFolderContents, _macroFolderPrompts);
+        _deliverables, _macroFolderContents, _macroFolderPrompts, _passPrevious);
 }

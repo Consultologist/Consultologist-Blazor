@@ -34,6 +34,12 @@ internal static class WorkflowFlowDecision
             throw new InvalidOperationException($"Loop '{flow.Node.Id}' is not decided; a loop runs over its collection.");
         }
 
+        if (flow.Kind == WorkflowFlowNodes.Kind.While)
+        {
+            // v30 (#1339, design § 3.1): a while runs its body, then checks after each pass.
+            throw new InvalidOperationException($"While '{flow.Node.Id}' is not decided; a while repeats its body while its check holds.");
+        }
+
         return Decide(flow.Node.Id, flow.Kind, flow.Expression ?? string.Empty, flow.Bodies, scope, pipes);
     }
 
@@ -41,6 +47,11 @@ internal static class WorkflowFlowDecision
     public static Outcome Decide(string flowId, WorkflowFlowNodes.Kind kind, string expression, IReadOnlyList<WorkflowFlowNodes.Body> bodies, TemplateRenderScope scope, IReadOnlyDictionary<string, Func<TemplateNodeOutput, string>>? pipes = null)
     {
         var subject = $"Node '{flowId}' {(kind == WorkflowFlowNodes.Kind.If ? "if" : "case")}";
+
+        if (kind is WorkflowFlowNodes.Kind.For or WorkflowFlowNodes.Kind.While)
+        {
+            throw new InvalidOperationException($"Node '{flowId}' is a {(kind == WorkflowFlowNodes.Kind.For ? "for" : "while")}, which is not decided.");
+        }
 
         if (kind == WorkflowFlowNodes.Kind.If)
         {
