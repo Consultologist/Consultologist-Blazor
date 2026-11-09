@@ -123,11 +123,35 @@ private sealed record NodeTarget(string Id, TemplateNodeShape Shape, string? Edg
     public string ReadId => EdgeId ?? Id;
 }
 
-/// <summary>v30 (#1339, design § 3.2): a while's pass — <c>Level</c> 0 the nearest while, 1 its enclosing one (<c>pass.parent</c>), …</summary>
-private sealed record PassTarget(int Level) : Target;
+/// <summary>
+/// v30 (#1339, design § 3.2): a pass — one shape everywhere (<c>.number</c>,
+/// <c>.node.&lt;id&gt;</c>, <c>.previous</c>, <c>.parent</c>, <c>.history</c>).
+/// <c>Level</c> 0 is the nearest while, 1 its enclosing one (<c>pass.parent</c>), …;
+/// <c>Back</c> 0 is this pass, n the pass n back, <see cref="History"/> an element of
+/// <c>pass.history</c> (some earlier pass).
+/// </summary>
+private sealed record PassTarget(int Level, int Back = 0) : Target
+{
+    public const int History = -1;
 
-/// <summary>v30 (#1339, design § 3.2): <c>pass.previous</c> of while <c>WhileId</c>, awaiting a node id under it.</summary>
-private sealed record PassPreviousTarget(string WhileId) : Target;
+    /// <summary>An earlier pass — its node reads add no edge.</summary>
+    public bool Earlier => Back != 0;
+}
+
+/// <summary>v30 (#1339): <c>pass….node</c>, awaiting a node id under that pass's while.</summary>
+private sealed record PassNodeTarget(int Level, int Back) : Target;
+
+/// <summary>v30 (#1339 A2b): <c>pass….history</c> — every earlier pass of the while at <c>Level</c>, oldest first; iterable.</summary>
+private sealed record PassHistoryTarget(int Level) : Target;
+
+/// <summary>v30 (#1339 A2b): <c>node.&lt;while&gt;.history</c> read from outside — its passes, each <c>.number</c> and <c>.node.&lt;body id&gt;</c>, recorded as the while.</summary>
+private sealed record WhileHistoryTarget(string WhileId, TemplateFlowShape Flow, string ReadId) : Target;
+
+/// <summary>v30 (#1339 A2b): one element of a while's history read from outside.</summary>
+private sealed record WhileHistoryElementTarget(string WhileId, TemplateFlowShape Flow, string ReadId) : Target;
+
+/// <summary>v30 (#1339 A2b): <c>e.node</c> on an outside history element, awaiting one of the while's direct body nodes.</summary>
+private sealed record WhileHistoryNodeTarget(string WhileId, TemplateFlowShape Flow, string ReadId) : Target;
 
     /// <summary>A snippet — by id, or an item of a folder.</summary>
     private sealed record SnippetTarget(string? Id, string? Folder) : Target;
@@ -1306,7 +1330,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         return Refused;
                     }
 
-                    return new PassTarget(0);
+                    return new PassTarget(0, 0);
 
                 case TemplateObjects.RetiredData:
                     Errors.Add($"{_subject} reads 'data'; at specVersion 25 data is 'snippet' — read snippet.<id>.content.");
@@ -1418,8 +1442,9 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
         {
             SnippetTarget => SnippetMembers.Contains(name, StringComparer.Ordinal),
             MacroTarget => MacroMembers.Contains(name, StringComparer.Ordinal),
-            NodeTarget node => (node.Shape.IsWhile && !node.Previous ? TemplateMembers.While : TemplateMembers.Node).Contains(name, StringComparer.Ordinal),
+            NodeTarget node => (node.Shape.IsWhile ? TemplateMembers.While : TemplateMembers.Node).Contains(name, StringComparer.Ordinal),
             PassTarget => TemplateMembers.Pass.Contains(name, StringComparer.Ordinal),
+            WhileHistoryElementTarget => TemplateMembers.WhileHistoryElement.Contains(name, StringComparer.Ordinal),
             DeliverableTarget => TemplateMembers.Deliverable.Contains(name, StringComparer.Ordinal),
             LoopElementTarget element => LoopElementMembers.Contains(name, StringComparer.Ordinal) || (element.Flow.Body?.ContainsKey(name) ?? false),
             FactsTarget { Object: TemplateObjects.Run } => TemplateMembers.Run.Contains(name, StringComparer.Ordinal),
@@ -1584,10 +1609,16 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return StepFacts(facts.Object, name, walked);
 
                 case PassTarget pass:
-                    return StepPass(pass, name, walked, before);
+                    return StepPass(pass, name, walked);
 
-                case PassPreviousTarget previous:
-                    return StepPassPrevious(previous, name, walked, before);
+                case PassNodeTarget passNode:
+                    return StepPassNode(passNode, name, walked, before);
+
+                case WhileHistoryElementTarget element:
+                    return StepWhileHistoryElement(element, name, walked);
+
+                case WhileHistoryNodeTarget historyNode:
+                    return StepWhileHistoryNode(historyNode, name, walked);
 
                 case ObjectTarget:
                     return Refused;
@@ -1704,9 +1735,29 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                 return new NodeValueTarget(before, ValueShapeOf(node.Shape));
             }
 
-            // v30 (#1339, design § 3.2): a while also says how many passes it ran and why it stopped.
-            if (node.Shape.IsWhile && !node.Previous)
+            // v30 (#1339 A2b, design § 3.4): a loop says why it stopped (end, until, bound).
+            if (node.Shape.Flow?.Kind == TemplateFlowKind.For && _context.Nested)
             {
+                if (name == TemplateMembers.Stopped)
+                {
+                    RecordNode(node, content: false, value: false);
+                    return new ShapeTarget(new TemplateValueShape(WorkflowInputTypes.Enum, null, null, StoppedValues));
+                }
+
+                Errors.Add($"{_subject} reads {before}.{name}, which is not a member (a loop has .content, .value and .stopped, and is iterated).");
+                return Refused;
+            }
+
+            // v30 (#1339, design § 3.2): a while also says how many passes it ran, why it
+            // stopped, and (A2b) every pass it ran.
+            if (node.Shape.IsWhile)
+            {
+                if (name == TemplateMembers.History && node.Shape.Flow is { } whileFlow)
+                {
+                    RecordNode(node, content: true, value: true);
+                    return new WhileHistoryTarget(node.Id, whileFlow, node.ReadId);
+                }
+
                 if (name == TemplateMembers.Passes)
                 {
                     RecordNode(node, content: false, value: false);
@@ -1719,7 +1770,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     return new ShapeTarget(new TemplateValueShape(WorkflowInputTypes.Enum, null, null, StoppedValues));
                 }
 
-                Errors.Add($"{_subject} reads {before}.{name}, which is not a member (a while has .content, .value, .passes and .stopped).");
+                Errors.Add($"{_subject} reads {before}.{name}, which is not a member (a while has .content, .value, .passes, .stopped and .history).");
                 return Refused;
             }
 
@@ -1727,11 +1778,15 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             return Refused;
         }
 
-        /// <summary>v30 (#1339, design § 3.2): why a while stopped — its check stopped holding, or it reached its bound.</summary>
-        private static readonly IReadOnlyList<string> StoppedValues = new[] { "check", "bound" };
+        /// <summary>
+        /// v30 (#1339, design § 3.2, § 3.4): why a while or a loop stopped — its check
+        /// stopped holding (a while, zero passes included), its until held, it reached
+        /// its max, or (a loop) it ran out of items.
+        /// </summary>
+        private static readonly IReadOnlyList<string> StoppedValues = new[] { "check", "until", "bound", "end" };
 
-        /// <summary>v30 (#1339, design § 3.2): <c>pass.number</c>, <c>pass.previous</c>, <c>pass.parent</c>.</summary>
-        private Target StepPass(PassTarget pass, string name, StringBuilder walked, string before)
+        /// <summary>v30 (#1339, design § 3.2): a pass's members — the same on <c>pass</c>, <c>pass.previous</c>, <c>pass.parent</c> and a <c>pass.history</c> element.</summary>
+        private Target StepPass(PassTarget pass, string name, StringBuilder walked)
         {
             var passes = _context.Passes!;
 
@@ -1740,8 +1795,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                 case TemplateMembers.Number:
                     return new ShapeTarget(new TemplateValueShape(WorkflowInputTypes.Number, null, null, null));
 
+                case TemplateObjects.Node:
+                    return new PassNodeTarget(pass.Level, pass.Back);
+
                 case TemplateMembers.Previous:
-                    return new PassPreviousTarget(passes[pass.Level]);
+                    return pass with { Back = pass.Back == PassTarget.History ? PassTarget.History : pass.Back + 1 };
+
+                case TemplateMembers.History:
+                    return new PassHistoryTarget(pass.Level);
 
                 case TemplateMembers.Parent:
                     if (pass.Level + 1 >= passes.Count)
@@ -1750,21 +1811,25 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         return Refused;
                     }
 
-                    return new PassTarget(pass.Level + 1);
+                    // The enclosing while's pass holds while this while runs — its current one.
+                    return new PassTarget(pass.Level + 1, 0);
 
                 default:
-                    Errors.Add($"{_subject} reads {walked}, which is not a member (pass has .number, .previous and .parent).");
+                    Errors.Add($"{_subject} reads {walked}, which is not a member (a pass has .number, .node, .previous, .parent and .history).");
                     return Refused;
             }
         }
 
         /// <summary>
-        /// v30 (#1339, design § 3.2): <c>pass.previous.&lt;id&gt;</c> — a node under the
-        /// while, at any depth, read where <c>node.&lt;id&gt;</c> would be (the same scope
-        /// rule), one pass back; null on the first pass; no edge.
+        /// v30 (#1339, design § 3.2): <c>pass….node.&lt;id&gt;</c> — a node under the
+        /// pass's while, at any depth, read where <c>node.&lt;id&gt;</c> would be (the
+        /// same scope rule). This pass: an ordinary read (an edge). An earlier pass:
+        /// null before it ran; no edge.
         /// </summary>
-        private Target StepPassPrevious(PassPreviousTarget previous, string id, StringBuilder walked, string before)
+        private Target StepPassNode(PassNodeTarget target, string id, StringBuilder walked, string before)
         {
+            var whileId = _context.Passes![target.Level];
+
             if (!_context.Nodes.TryGetValue(id, out var shape))
             {
                 Errors.Add($"{_subject} reads {walked}, which the package does not declare.");
@@ -1777,7 +1842,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
             for (var at = id; bodies.TryGetValue(at, out var up) && seen.Add(up.Owner); at = up.Owner)
             {
-                if (up.Owner == previous.WhileId)
+                if (up.Owner == whileId)
                 {
                     under = true;
                     break;
@@ -1786,7 +1851,7 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
 
             if (!under)
             {
-                Errors.Add($"{_subject} reads {walked}, which is not in while '{previous.WhileId}'; pass.previous reads the while's own nodes.");
+                Errors.Add($"{_subject} reads {walked}, which is not in while '{whileId}'; a pass reads the while's own nodes.");
                 return Refused;
             }
 
@@ -1796,7 +1861,39 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                 return Refused;
             }
 
-            return new NodeTarget(id, shape, Previous: true);
+            return new NodeTarget(id, shape, Previous: target.Back != 0);
+        }
+
+        /// <summary>v30 (#1339 A2b): an element of a while's history read from outside — its pass number and its body nodes.</summary>
+        private Target StepWhileHistoryElement(WhileHistoryElementTarget element, string name, StringBuilder walked)
+        {
+            if (name == TemplateMembers.Number)
+            {
+                _refs.ReadNode(element.ReadId, content: false, value: false);
+                return new ShapeTarget(new TemplateValueShape(WorkflowInputTypes.Number, null, null, null));
+            }
+
+            if (name == TemplateObjects.Node)
+            {
+                return new WhileHistoryNodeTarget(element.WhileId, element.Flow, element.ReadId);
+            }
+
+            Errors.Add(name is TemplateMembers.Previous or TemplateMembers.Parent or TemplateMembers.History
+                ? $"{_subject} reads {walked}; a pass of node.{element.WhileId}.history has .number and .node.<id> — the list is in pass order."
+                : $"{_subject} reads {walked}, which is not a member (a pass of node.{element.WhileId}.history has .number and .node.<id>).");
+            return Refused;
+        }
+
+        /// <summary>v30 (#1339 A2b): <c>e.node.&lt;id&gt;</c> on an outside history element — one of the while's direct body nodes, recorded as the while.</summary>
+        private Target StepWhileHistoryNode(WhileHistoryNodeTarget target, string id, StringBuilder walked)
+        {
+            if (target.Flow.Body is { } body && body.TryGetValue(id, out var shape))
+            {
+                return new NodeTarget(id, shape, target.ReadId);
+            }
+
+            Errors.Add($"{_subject} reads {walked}, which is not in while '{target.WhileId}''s body (nodes: {string.Join(", ", (target.Flow.Body?.Keys ?? Enumerable.Empty<string>()).Order(StringComparer.Ordinal))}).");
+            return Refused;
         }
 
         /// <summary>The shape of a node's <c>.value</c>: an enum format's answer set when it has no schema, else its schema's.</summary>
@@ -2010,6 +2107,14 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
         private Target StepIndex(Target target, IndexSegment index, StringBuilder walked, string before)
         {
             var literal = index.Index is ScriptLiteral { Value: int or long } lit ? lit.Value : null;
+
+            // v30 (#1339 A2b): a history counts from its end too — pass.history[-1] is the
+            // last earlier pass. Only a history: elsewhere a negative index stays refused.
+            if (literal is null && target is PassHistoryTarget or WhileHistoryTarget
+                && index.Index is ScriptUnaryExpression { Operator: ScriptUnaryOperator.Negate, Right: ScriptLiteral { Value: int or long } negated })
+            {
+                literal = -Convert.ToInt64(negated.Value, System.Globalization.CultureInfo.InvariantCulture);
+            }
             walked.Append('[').Append(literal?.ToString() ?? "…").Append(']');
 
             switch (target)
@@ -2027,6 +2132,17 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                         Errors.Add($"{_subject} accesses {before} dynamically ({before}[…]); static member access only.");
                         VisitNode(index.Index);
                         return Refused;
+                    }
+
+                    // v30 (#1339 A2b): one pass of a history.
+                    if (target is PassHistoryTarget passHistory)
+                    {
+                        return new PassTarget(passHistory.Level, PassTarget.History);
+                    }
+
+                    if (target is WhileHistoryTarget whileHistory)
+                    {
+                        return new WhileHistoryElementTarget(whileHistory.WhileId, whileHistory.Flow, whileHistory.ReadId);
                     }
 
                     if (target is NodeTarget { Shape.Flow.Kind: TemplateFlowKind.For } loop)
@@ -2116,8 +2232,19 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
                     Errors.Add($"{_subject} reads '{facts.Object}' bare; name the fact: {facts.Object}.{string.Join(" or " + facts.Object + ".", facts.Object == TemplateObjects.Run ? TemplateMembers.Run : TemplateMembers.Profile)}.");
                     return Refused;
 
-                case PassTarget or PassPreviousTarget:
-                    Errors.Add($"{_subject} reads {walked} bare; read a member (pass.number, pass.previous.<node>.content or .value, pass.parent).");
+                // v30 (#1339 A2b): a history is iterated — its element is a pass.
+                case PassHistoryTarget history when use == ChainUse.Iterable:
+                    return new PassTarget(history.Level, PassTarget.History);
+
+                case WhileHistoryTarget history when use == ChainUse.Iterable:
+                    return new WhileHistoryElementTarget(history.WhileId, history.Flow, history.ReadId);
+
+                case PassHistoryTarget or WhileHistoryTarget:
+                    Errors.Add($"{_subject} reads {walked} as a value; a history is iterated ({{{{ for p in {walked} }}}}) or indexed ({walked}[-1]).");
+                    return Refused;
+
+                case PassTarget or PassNodeTarget or WhileHistoryElementTarget or WhileHistoryNodeTarget:
+                    Errors.Add($"{_subject} reads {walked} bare; read a member (a pass has .number, .node.<id>, .previous, .parent and .history).");
                     return Refused;
 
                 case ItemTarget:
@@ -2288,6 +2415,9 @@ private sealed record DeliverableContentTarget(string Path, string Id) : ShapeTa
             {
                 case LoopElementTarget element:
                     return element;
+
+                case PassTarget or WhileHistoryElementTarget:
+                    return target;
 
                 case FolderTarget folder:
                     ReadFolder(folder);

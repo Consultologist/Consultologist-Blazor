@@ -56,7 +56,7 @@ public static partial class WorkflowPackageValidator
     {
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
         {
-            foreach (var (name, present) in new[] { ("while", node.While != null), ("max", node.Max != null), ("until", node.Until != null) })
+            foreach (var (name, present) in new[] { ("while", node.While != null), ("max", node.Max != null), ("until", node.Until != null), ("checkFirst", node.CheckFirst != null) })
             {
                 if (present)
                 {

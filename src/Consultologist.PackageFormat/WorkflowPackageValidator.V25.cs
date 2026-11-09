@@ -1121,8 +1121,12 @@ public static partial class WorkflowPackageValidator
 
                 for (var level = passes.Count - 1; level >= 0; level--)
                 {
+                    // Self-similar (A2b): a pass's previous and history elements are passes,
+                    // so the probe lends itself — any chain back renders.
                     var outer = pass;
-                    pass = new ScriptObject { [TemplateMembers.Number] = 1, [TemplateMembers.Previous] = node };
+                    pass = new ScriptObject { [TemplateMembers.Number] = 1, [TemplateObjects.Node] = node };
+                    pass[TemplateMembers.Previous] = pass;
+                    pass[TemplateMembers.History] = new ScriptArray { pass, pass };
 
                     if (outer is not null)
                     {

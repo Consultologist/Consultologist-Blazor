@@ -1131,7 +1131,11 @@ public sealed record WorkflowNodeSpec(
     // omitted when null; below 30 each is refused by name by the validator.
     string? While = null,
     int? Max = null,
-    string? Until = null);
+    string? Until = null,
+    // v30 (#1339 A2b, design § 3.1): a while that checks before each pass, so it
+    // may run none — absent or false, it checks after each pass (at least one).
+    // Trailing optional, omitted when null; below 30 refused by name.
+    bool? CheckFirst = null);
 
 /// <summary>
 /// v26 (package-format-v26-design.md § 1.2, #1165): a flow node's body — the
