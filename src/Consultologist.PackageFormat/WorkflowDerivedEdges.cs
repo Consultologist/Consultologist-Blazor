@@ -1379,7 +1379,9 @@ public static class WorkflowDerivedEdges
         contextFor = fan => new TemplateReferenceContext(inputShapes, shapes, snippetIds, folderIds, macroIds, macroFolderIds, fan, Bodies: bodies, Deliverables: deliverableIds, Labelled: labelled,
             SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems,
             // #1235: at 27 a loop element carries `skipped`.
-            SkippedElements: manifest.SpecVersion >= 27);
+            SkippedElements: manifest.SpecVersion >= 27,
+            // v30 (#1339): item.parent inside a nested loop.
+            Nested: manifest.SpecVersion >= 30);
 
         static IReadOnlyList<string>? EnumAnswerSet(WorkflowNodeSpec node, WorkflowFormatSpec spec, IReadOnlyDictionary<string, WorkflowInputSpec> inputs)
         {

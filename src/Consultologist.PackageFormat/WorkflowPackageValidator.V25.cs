@@ -1095,10 +1095,16 @@ public static partial class WorkflowPackageValidator
             {
                 globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "0", [nameMember] = "placeholder", ["value"] = Probe(inputFan.Element) };
             }
-            else if (templateContext.Fan is NodeValueFan nodeFan)
+            else if (templateContext.Fan is NodeValueFan or OuterItemFieldFan)
             {
-                // v29 (#1301): the element the source node's format types.
-                globals[TemplateObjects.Item] = new ScriptObject { ["id"] = "1", [nameMember] = "placeholder", ["value"] = ProbeFromShape(nodeFan.ElementIn(templateContext.Nodes) ?? new TemplateValueShape(TemplateValueShape.Unknown, null, null, null)) };
+                // v29 (#1301): the element the source node's format types. v30 (#1339):
+                // an outer item field's element, and item.parent down the chain.
+                globals[TemplateObjects.Item] = ItemProbeAt26(templateContext.Fan, 0, templateContext.Nodes);
+            }
+
+            if (templateContext.Fan?.Outer is not null && globals[TemplateObjects.Item] is ScriptObject item && !item.ContainsKey(TemplateMembers.Parent))
+            {
+                item[TemplateMembers.Parent] = ItemProbeAt26(templateContext.Fan.Outer, 0, templateContext.Nodes);
             }
             else if (templateContext.ItemDeferred)
             {

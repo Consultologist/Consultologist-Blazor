@@ -72,27 +72,33 @@ internal static class WorkflowFlowNodes
         public bool IsInner(string flowId) => Flows.ContainsKey(flowId) && Owner.ContainsKey(flowId);
 
         /// <summary>
-        /// #1234 (v27 design § 4): the loop a node runs in — its owner when that is
-        /// a loop, its owner's owner when it runs in a branch of an inner flow node
-        /// (two levels; a branch holds plain nodes); null for a top-level node and
-        /// for a node of a top-level if/case.
+        /// v30 (#1339, design § 1.2): the flow nodes a node runs inside, nearest
+        /// first — its owner, its owner's owner, to the top. Guarded against a
+        /// body that holds its own holder (refused by <see cref="Resolve"/>).
         /// </summary>
-        public string? LoopOf(string nodeId)
+        public IReadOnlyList<string> AncestorsOf(string nodeId)
         {
-            var id = nodeId;
+            var chain = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal) { nodeId };
 
-            for (var depth = 0; depth < 2 && Owner.TryGetValue(id, out var ownerId); depth++)
+            for (var id = nodeId; Owner.TryGetValue(id, out var ownerId) && seen.Add(ownerId); id = ownerId)
             {
-                if (IsLoop(ownerId))
-                {
-                    return ownerId;
-                }
-
-                id = ownerId;
+                chain.Add(ownerId);
             }
 
-            return null;
+            return chain;
         }
+
+        /// <summary>v30 (#1339, design § 1.2): the loops a node runs inside, outermost first — the chain its item path follows.</summary>
+        public IReadOnlyList<string> LoopsOf(string nodeId) => AncestorsOf(nodeId).Where(IsLoop).Reverse().ToList();
+
+        /// <summary>
+        /// #1234 (v27 design § 4): the loop a node runs in — the nearest loop up its
+        /// chain of owners (through an inner if/case's branch); null for a top-level
+        /// node and for a node of a top-level if/case. v30 (#1339): to any depth; below
+        /// 30 the shape keeps the chain at two levels, so the answer is 29's.
+        /// </summary>
+        public string? LoopOf(string nodeId) => AncestorsOf(nodeId).FirstOrDefault(IsLoop);
 
         /// <summary>The walker's view of the bodies: body node id → where it runs (the chain is read through the map — a scope's own entry names its owner).</summary>
         public IReadOnlyDictionary<string, TemplateBodyScope> BodyScopes =>
@@ -104,8 +110,15 @@ internal static class WorkflowFlowNodes
                 ? (loop.Fan, loop.Folder)
                 : (null, null);
 
-        /// <summary>#1234: the flow nodes in the order their shapes are built — an if/case before a loop, so a loop returning one finds its branch shape (§ 1.5).</summary>
-        public IEnumerable<Flow> InShapeOrder => Flows.Values.OrderBy(f => f.Kind == Kind.For ? 1 : 0);
+        /// <summary>
+        /// #1234: the flow nodes in the order their shapes are built — an if/case
+        /// before a loop, so a loop returning one finds its branch shape (§ 1.5).
+        /// v30 (#1339): the deepest first, so an outer flow node's body holds its
+        /// inner ones' shapes (an outer element's <c>s.paragraphs</c>).
+        /// </summary>
+        public IEnumerable<Flow> InShapeOrder => Flows.Values
+            .OrderByDescending(f => AncestorsOf(f.Node.Id).Count)
+            .ThenBy(f => f.Kind == Kind.For ? 1 : 0);
     }
 
     /// <summary>
@@ -188,7 +201,7 @@ internal static class WorkflowFlowNodes
             switch (kind)
             {
                 case Kind.For:
-                    (fan, folder) = ResolveLoopCollection(node.Id, node.For!, snippets, inputsById, errors, at29: manifest.SpecVersion >= 29);
+                    (fan, folder) = ResolveLoopCollection(node.Id, node.For!, snippets, inputsById, errors, at29: manifest.SpecVersion >= 29, at30: manifest.SpecVersion >= 30);
                     if (node.Nodes is not { Count: > 0 })
                     {
                         errors.Add($"Loop '{node.Id}' has no body; name the nodes that run per item in nodes.");
@@ -250,6 +263,9 @@ internal static class WorkflowFlowNodes
         // if/case, whose branches hold plain nodes (#1234, v27 design § 1.1);
         // ret required and a member.
         var at27 = manifest.SpecVersion >= 27;
+        // v30 (#1339, design § 2.1): a for inside a for, while or branch, and a
+        // flow node inside a branch, to any depth.
+        var at30 = manifest.SpecVersion >= 30;
         var owner = new Dictionary<string, string>(StringComparer.Ordinal);
         // The loop each if/case is listed in, read before ownership settles so
         // the sentences below do not depend on the manifest's node order.
@@ -289,13 +305,13 @@ internal static class WorkflowFlowNodes
 
                     if (flows.TryGetValue(id, out var inner))
                     {
-                        if (inner.Kind == Kind.For)
+                        if (inner.Kind == Kind.For && !at30)
                         {
                             errors.Add($"Loop '{id}' runs inside {flow.Inside}; nesting waits for the scheduler redesign.");
                             continue;
                         }
 
-                        if (flow.Kind != Kind.For)
+                        if (flow.Kind != Kind.For && !at30)
                         {
                             // One level (§ 1.1): a branch holds plain nodes — inside a loop
                             // naming the chain; at the top level the 26 sentence below 27.
@@ -349,7 +365,74 @@ internal static class WorkflowFlowNodes
             }
         }
 
+        if (at30)
+        {
+            ResolveNestingAt30(flows, owner, errors);
+        }
+
         return new Resolved(flows, owner);
+    }
+
+    /// <summary>
+    /// v30 (#1339, design § 2): a body that holds the flow node holding it is
+    /// refused (each node of the cycle loses its owner, so the walks end), and
+    /// each loop's fan learns the fan of the loop it runs inside, outermost
+    /// first — what <c>item.parent</c> reads and what an <c>item.value.&lt;field&gt;</c>
+    /// source is typed against.
+    /// </summary>
+    private static void ResolveNestingAt30(Dictionary<string, Flow> flows, Dictionary<string, string> owner, List<string> errors)
+    {
+        foreach (var id in flows.Keys.Order(StringComparer.Ordinal).ToList())
+        {
+            var path = new List<string> { id };
+
+            for (var at = id; owner.TryGetValue(at, out var up); at = up)
+            {
+                if (up == id)
+                {
+                    errors.Add(path.Count == 1
+                        ? $"Node '{id}' lists itself in its body; a body cannot hold the node that holds it."
+                        : $"Node '{id}' runs inside itself ({string.Join(" in ", path)} in {id}); a body cannot hold the node that holds it.");
+
+                    foreach (var member in path)
+                    {
+                        owner.Remove(member);
+                    }
+
+                    break;
+                }
+
+                if (path.Contains(up, StringComparer.Ordinal))
+                {
+                    break; // a cycle above this node: said from one of its own members
+                }
+
+                path.Add(up);
+            }
+        }
+
+        var resolved = new Resolved(flows, owner);
+
+        foreach (var loop in flows.Values.Where(f => f.Kind == Kind.For).OrderBy(f => resolved.AncestorsOf(f.Node.Id).Count).ToList())
+        {
+            var outerId = resolved.LoopOf(loop.Node.Id);
+
+            if (outerId is null)
+            {
+                if (loop.Fan is OuterItemFieldFan field)
+                {
+                    errors.Add($"Loop '{loop.Node.Id}' iterates {field.Reference}, but it runs inside no loop; item.value names the enclosing loop's item.");
+                    flows[loop.Node.Id] = loop with { Fan = null };
+                }
+
+                continue;
+            }
+
+            if (loop.Fan is { } fan && flows[outerId].Fan is { } outer)
+            {
+                flows[loop.Node.Id] = loop with { Fan = fan with { Outer = outer } };
+            }
+        }
     }
 
     /// <summary><c>node.&lt;id&gt;.value</c> → the id; anything else → null. A case subject names a node this way or an enum input.</summary>
@@ -392,7 +475,9 @@ internal static class WorkflowFlowNodes
         IReadOnlyDictionary<string, WorkflowInputSpec> inputsById,
         List<string> errors,
         // v29 (#1301, design § 2): a loop may iterate a node's value.
-        bool at29 = false)
+        bool at29 = false,
+        // v30 (#1339, design § 2.2): an inner loop may iterate the outer item's field.
+        bool at30 = false)
     {
         const string prefix = LoopPrefix;
         var grammar = $"Loop '{loopId}' iterates '{text}'; a loop iterates \"item in snippet.<folder>\" or \"item in input.<id>\".";
@@ -428,6 +513,20 @@ internal static class WorkflowFlowNodes
                 ? Array.Empty<string>()
                 : rest[(valuePrefix.Length + 1)..].Split('.');
             return (new NodeValueFan(id, fields), null);
+        }
+
+        if (obj == TemplateObjects.Item && at30)
+        {
+            // v30 (#1339, design § 2.2): item.value.<field…> — a list field of the
+            // enclosing loop's item; the outer fan is attached, and the field typed,
+            // once the loops are resolved (ResolveNestingAt30, ValidateNestingAt30).
+            if (id != TemplateMembers.Value || rest.Length < 2 || rest[0] != '.')
+            {
+                errors.Add($"Loop '{loopId}' iterates {reference}; an inner loop iterates a list field of the outer item — {TemplateObjects.Item}.{TemplateMembers.Value}.<field>.");
+                return (null, null);
+            }
+
+            return (new OuterItemFieldFan(rest[1..].Split('.')), null);
         }
 
         if (obj == TemplateObjects.Node)

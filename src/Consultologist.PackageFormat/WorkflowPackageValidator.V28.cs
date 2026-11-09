@@ -19,7 +19,9 @@ public static partial class WorkflowPackageValidator
         List<string> errors,
         List<string> warnings,
         // v29 (#1301): run for a 29 package, which adds to 28 and retires nothing.
-        bool at29 = false)
+        bool at29 = false,
+        // v30 (#1339): run for a 30 package, which adds to 29 and retires nothing.
+        bool at30 = false)
     {
         foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
         {
@@ -35,7 +37,7 @@ public static partial class WorkflowPackageValidator
 
         // An explicit prompt was refused above; it is not implied over.
         var implied = WorkflowImpliedPaths.WithImpliedPrompts(manifest with { Nodes = manifest.Nodes?.Select(n => n with { Prompt = null }).ToList() }, files);
-        ValidateAt27(implied, files, catalog, errors, warnings, at28: true, at29: at29);
+        ValidateAt27(implied, files, catalog, errors, warnings, at28: true, at29: at29, at30: at30);
         warnings.AddRange(WorkflowImpliedPaths.StrayFiles(implied, files));
     }
 

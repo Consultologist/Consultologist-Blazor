@@ -19,7 +19,9 @@ public static partial class WorkflowPackageValidator
         WorkflowFlowNodes.Resolved flows,
         IReadOnlyDictionary<string, TemplateNodeShape> nodeShapes,
         IReadOnlyCollection<string> declaredNodes,
-        List<string> errors)
+        List<string> errors,
+        // v30 (#1339, design § 2.2): a source may sit in an enclosing loop's body.
+        bool at30 = false)
     {
         foreach (var flow in flows.Flows.Values.Where(f => f.Kind == WorkflowFlowNodes.Kind.For).OrderBy(f => f.Node.Id, StringComparer.Ordinal))
         {
@@ -36,13 +38,24 @@ public static partial class WorkflowPackageValidator
                 continue;
             }
 
-            if (flows.LoopOf(fan.NodeId) is { } inside)
+            if (at30)
+            {
+                // v30: outside the loop, or in a body that encloses it — a node of
+                // the outer body is read per outer item (§ 2.2).
+                if (flows.Owner.TryGetValue(fan.NodeId, out var sourceOwner)
+                    && !flows.AncestorsOf(flow.Node.Id).Contains(sourceOwner, StringComparer.Ordinal))
+                {
+                    errors.Add($"{subject}; {fan.NodeId} runs inside {flows.Flows[sourceOwner].Inside} — a loop iterates a node outside it, or in an enclosing loop's body.");
+                    continue;
+                }
+            }
+            else if (flows.LoopOf(fan.NodeId) is { } inside)
             {
                 errors.Add($"{subject}; {fan.NodeId} runs inside loop '{inside}' — a loop iterates a node outside every loop.");
                 continue;
             }
 
-            if (flows.Owner.TryGetValue(fan.NodeId, out var owner))
+            if (!at30 && flows.Owner.TryGetValue(fan.NodeId, out var owner))
             {
                 errors.Add($"{subject}; {fan.NodeId} runs inside node '{owner}' — a loop iterates a node outside every flow node.");
                 continue;
