@@ -126,7 +126,7 @@ would otherwise have carried it (#397).
   deliverable's row written at composition, "produced" meaning released; record storage 10; a
   hold switch drains jobs before the release; nesting, `while` and `let` named for 30,
   [nesting, while and let](customizable-workflow/package-format-v30-design.md) — specVersion 30
-  (Milestone 38, #1337, revision 1; not yet built): a loop may nest to any depth, so items are named by a
+  (Milestone 38, #1337, revision 2; layer A built in #1339, inert — the engine is B1–B5): a loop may nest to any depth, so items are named by a
   path and an inner loop has one count per outer item (it may iterate the outer item's field or a
   node in the outer body); a `while` repeats within a required bound (1–10), a row per pass; a
   `for … until` runs in order and stops early, unrun items kept as rows; a `let` computes a typed
