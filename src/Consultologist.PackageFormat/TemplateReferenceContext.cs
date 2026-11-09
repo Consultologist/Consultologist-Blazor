@@ -55,9 +55,43 @@ public sealed record TemplateReferenceContext(
     // v30 (#1339, design § 2.4): at 30 a loop may run inside a loop, and an item
     // carries `parent` — the enclosing loop's item. False (≤29): the member is
     // refused with the item's set.
-    bool Nested = false)
+    bool Nested = false,
+    // v30 (#1339, design § 3.2): the package's while nodes — with Scope and
+    // Bodies, what `pass` and `pass.parent` name (Passes). Null (≤29): `pass` is
+    // no object.
+    IReadOnlySet<string>? Whiles = null)
 {
     public static readonly IReadOnlySet<string> NoIds = new HashSet<string>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// v30 (#1339, design § 3.2): the whiles this template runs inside, nearest
+    /// first — up the chain from <see cref="Scope"/> (a body node's owner; a
+    /// while's own check is walked under the while's id, so it is its own pass).
+    /// Empty at 30 outside every while; null below 30.
+    /// </summary>
+    public IReadOnlyList<string>? Passes
+    {
+        get
+        {
+            if (Whiles is null)
+            {
+                return null;
+            }
+
+            var chain = new List<string>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            for (var at = Scope; at is not null && seen.Add(at); at = Bodies is { } bodies && bodies.TryGetValue(at, out var up) ? up.Owner : null)
+            {
+                if (Whiles.Contains(at))
+                {
+                    chain.Add(at);
+                }
+            }
+
+            return chain;
+        }
+    }
 
     /// <summary>A context with nothing declared — a template may then reference nothing.</summary>
     public static readonly TemplateReferenceContext Empty = new(
@@ -89,6 +123,9 @@ public sealed record TemplateNodeShape(
     /// <summary>Whether <c>node.&lt;id&gt;.value</c> exists: every type but text parses; a loop's when its returned node's does.</summary>
     public bool HasValue => Flow?.Kind == TemplateFlowKind.For ? Flow.Ret?.HasValue == true : Type != WorkflowInputTypes.Text;
 
+    /// <summary>v30 (#1339, design § 3.2): a while — its returned node's shape, plus <c>.passes</c> and <c>.stopped</c>.</summary>
+    public bool IsWhile => Flow?.Kind == TemplateFlowKind.While;
+
     /// <summary>#1065: the shape of an aggregator node — <c>.content</c> is its composed text; <c>.value</c> and a renderer pipe are refused by name.</summary>
     public static TemplateNodeShape Aggregator() => new(string.Empty, WorkflowInputTypes.Text, Aggregates: true);
 
@@ -105,8 +142,8 @@ public sealed record TemplateNodeShape(
         new(string.Empty, WorkflowInputTypes.Text, Flow: new TemplateFlowShape(kind, null, null, disagreement));
 }
 
-/// <summary>#1100 (v26 design § 1): the three flow nodes.</summary>
-public enum TemplateFlowKind { For, If, Case }
+/// <summary>#1100 (v26 design § 1): the flow nodes; v30 (#1339, design § 3) adds the while.</summary>
+public enum TemplateFlowKind { For, If, Case, While }
 
 /// <summary>
 /// #1100 (v26 design § 1.3): a flow node as a template reads it. <c>Ret</c> is
@@ -137,10 +174,10 @@ public sealed record TemplateFlowShape(
 }
 
 /// <summary>#1100 (v26 design § 1.2): where a body node runs — the flow node it is attached to, and whether that is a loop.</summary>
-public sealed record TemplateBodyScope(string Owner, bool Loop)
+public sealed record TemplateBodyScope(string Owner, bool Loop, bool While = false)
 {
-    /// <summary>"loop 'l'" / "node 'x'" — the sentences' word for where the node runs.</summary>
-    public string Inside => Loop ? $"loop '{Owner}'" : $"node '{Owner}'";
+    /// <summary>"loop 'l'" / "while 'w'" / "node 'x'" — the sentences' word for where the node runs.</summary>
+    public string Inside => Loop ? $"loop '{Owner}'" : While ? $"while '{Owner}'" : $"node '{Owner}'";
 }
 
 /// <summary>What the template's node fans over — null when it does not fan.</summary>
@@ -334,6 +371,15 @@ public static class TemplateObjects
     /// <summary>#1101 (v26 design § 3.1): the sixth object — a deliverable's composed text, <c>deliverable.&lt;id&gt;.content</c>. Reserved at every version; resolves where the context carries deliverables.</summary>
     public const string Deliverable = "deliverable";
 
+    /// <summary>
+    /// v30 (#1339, design § 3.2): a while's pass — <c>pass.number</c> (1-based),
+    /// <c>pass.previous.&lt;node&gt;</c> (the node one pass back; null on the first;
+    /// no dependency edge) and <c>pass.parent</c> (the enclosing while's pass).
+    /// An object at 30 only (<see cref="TemplateReferenceContext.Passes"/>), so
+    /// it is not in <see cref="All"/> nor reserved below 30.
+    /// </summary>
+    public const string Pass = "pass";
+
     /// <summary><c>data</c> became <c>snippet</c> at 25 (§ 4).</summary>
     public const string RetiredData = "data";
 
@@ -371,6 +417,14 @@ public static class TemplateMembers
     public const string Parent = "parent";
 
     public static readonly IReadOnlyList<string> Node = new[] { Content, Value };
+
+    /// <summary>v30 (#1339, design § 3.2): a pass's members, and what a while adds to its returned node's.</summary>
+    public const string Number = "number";
+    public const string Previous = "previous";
+    public const string Passes = "passes";
+    public const string Stopped = "stopped";
+    public static readonly IReadOnlyList<string> Pass = new[] { Number, Previous, Parent };
+    public static readonly IReadOnlyList<string> While = new[] { Content, Value, Passes, Stopped };
     public static readonly IReadOnlyList<string> Snippet = new[] { Id, Name, Content };
 
     /// <summary>C6 (#1012): the members a fan item may carry under either fan kind — what a text walked with no fan of its own may read.</summary>

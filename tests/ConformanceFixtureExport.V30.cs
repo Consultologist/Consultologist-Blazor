@@ -5,7 +5,7 @@ namespace Consultologist.Api.Tests;
 
 /// <summary>
 /// #1339 (package-format-v30-design.md § 13): the specVersion 30 conformance
-/// vectors — loops that nest (A1), then while/until (A2) and let/labelField (A3).
+/// vectors — loops that nest (A1), while/until (A2), then let/labelField (A3).
 /// The valid baseline is <see cref="V30Package.Minimal"/>; each invalid case
 /// breaks one sentence against it; the recorded outcome is whatever the
 /// validator says. Held back by the export while 30 is above the accepted
@@ -80,5 +80,67 @@ public partial class ConformanceFixtureExport
             V30Package.With(_ => { }, files => files["prompts/outline.md"] = "Outline {{ item.value.title }} after {{ node.draft_paragraph.content }}."));
         Add("invalid-inner-source-reads-the-inner-loop-at-30", "An outer body node feeding an inner loop that reads that loop — the source runs before it.",
             V30Package.With(_ => { }, files => files["prompts/outline.md"] = "Outline {{ item.value.title }} after {{ node.paragraphs.content }}."));
+
+        // ======================================================= valid: § 3 while and until (A2)
+        var refining = WorkflowV30WhileTests.Refining;
+
+        void InParts(JsonObject root)
+        {
+            V30Package.Node(root, "parts")["nodes"]!.AsArray().Add("refine");
+            var sources = root["deliverables"]![0]!["sources"]!.AsArray();
+            sources.Remove(sources.First(s => s!.GetValue<string>() == "node.refine"));
+        }
+
+        void Review(JsonObject root)
+        {
+            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "critic", ["label"] = "Critic", ["format"] = "verdict", ["onInvalid"] = "fail" });
+            root["nodes"]!.AsArray().Add(new JsonObject
+            {
+                ["id"] = "review", ["label"] = "Review", ["while"] = "node.critic.value.verdict != \"good\"", ["max"] = 2,
+                ["nodes"] = new JsonArray("refine", "critic"), ["ret"] = "node.refine"
+            });
+            var sources = root["deliverables"]![0]!["sources"]!.AsArray();
+            sources.Remove(sources.First(s => s!.GetValue<string>() == "node.refine"));
+            sources.Add("node.review");
+        }
+
+        Add("v30-while", "A while redrafting a summary until a judge calls it good, at most 3 passes; the draft reads the judge's last feedback as pass.previous.judge (§ 3.1, § 3.2).", refining(null, null));
+        Add("v30-while-in-a-loop", "A while inside a loop: each part's summary is redrafted per item, reading item and pass together (§ 2.1, § 3.1).",
+            refining(InParts, files =>
+            {
+                files["prompts/draft.md"] = "Section {{ item.value.title }}, pass {{ pass.number }}: {{ pass.previous.judge.value.feedback }}";
+                files["prompts/judge.md"] = "Judge {{ node.draft.content }} for {{ item.value.title }}";
+                files["prompts/draft_paragraph.md"] = "Point {{ item.value.point }} of {{ item.parent.value.title }}, after {{ node.refine.content }}";
+            }));
+        Add("v30-while-in-a-while", "A while inside a while: the inner draft reads the outer pass as pass.parent and its critic one pass back (§ 3.2).",
+            refining(Review, files =>
+            {
+                files["prompts/critic.md"] = "Critique {{ node.refine.content }} after {{ node.refine.passes }} passes ({{ node.refine.stopped }}).";
+                files["prompts/draft.md"] = "Round {{ pass.parent.number }}, pass {{ pass.number }}. {{ pass.parent.previous.critic.value.feedback }} {{ pass.previous.judge.value.feedback }}";
+            }));
+        Add("v30-while-passes-and-stopped", "The outside reads a while's last pass and how it ended: node.refine.passes and .stopped (§ 3.2).",
+            refining(root =>
+            {
+                root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "report", ["label"] = "Report", ["format"] = "prose" });
+                root["deliverables"]![0]!["sources"]!.AsArray().Add("node.report");
+            }, files => files["prompts/report.md"] = "After {{ node.refine.passes }} passes{{ if node.refine.stopped == \"bound\" }} (at its bound){{ end }}: {{ node.refine.content }}"));
+        Add("v30-for-until", "A for that stops early: its parts run in order and it stops after the first plan part (§ 3.4).",
+            V30Package.With(root => V30Package.Node(root, "parts")["until"] = "item.value.kind == \"plan\" || (node.outline.value.points | array.size) > 4"));
+
+        // ======================================================= § 3: while and until refusals
+        // SHAPE_BLIND: a missing max (the schema cannot tie it to while), until on a
+        // while, and every pass read; max 0 and max 11 the schema refuses too.
+        Add("invalid-while-without-max-at-30", "A while that declares no bound.", refining(root => V30Package.Node(root, "refine").Remove("max"), null));
+        Add("invalid-while-max-above-the-cap-at-30", "A while whose bound is above 10.", refining(root => V30Package.Node(root, "refine")["max"] = 11, null));
+        Add("invalid-while-max-zero-at-30", "A while whose bound is 0.", refining(root => V30Package.Node(root, "refine")["max"] = 0, null));
+        Add("invalid-until-on-a-while-at-30", "until on a while — it belongs to a for.", refining(root => V30Package.Node(root, "refine")["until"] = "node.judge.value.verdict == \"good\"", null));
+        Add("invalid-pass-outside-a-while-at-30", "pass.number read by a node that runs inside no while.",
+            refining(null, files => files["prompts/plan.md"] = "Plan {{ pass.number }}: {{ input.notes }}"));
+        Add("invalid-pass-previous-of-an-outside-node-at-30", "pass.previous naming a node outside the while.",
+            refining(null, files => files["prompts/draft.md"] = "{{ pass.previous.plan.content }}"));
+        Add("invalid-body-reads-its-while-at-30", "A body node reading the while it runs in — read the previous pass instead.",
+            refining(null, files => files["prompts/judge.md"] = "Judge {{ node.refine.content }}"));
+        Add("invalid-pass-parent-with-no-outer-while-at-30", "pass.parent read in a while that runs inside no while.",
+            refining(null, files => files["prompts/draft.md"] = "{{ pass.parent.number }}"));
     }
 }

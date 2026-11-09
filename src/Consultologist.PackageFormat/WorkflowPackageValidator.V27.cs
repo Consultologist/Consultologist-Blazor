@@ -98,7 +98,9 @@ public static partial class WorkflowPackageValidator
             snippets.Collections.Keys.ToHashSet(StringComparer.Ordinal),
             macroIds, macroFolderIds, fan,
             Bodies: bodies, Deliverables: deliverableIds, Labelled: true, SkippedElements: true,
-            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems, Nested: at30);
+            SnippetFolderItems: snippetFolderItems, MacroFolderItems: macroFolderItems, Nested: at30,
+            // v30 (#1339, design § 3.2): pass inside a while.
+            Whiles: at30 ? flows.Flows.Keys.Where(flows.IsWhile).ToHashSet(StringComparer.Ordinal) : null);
 
         var walk = WorkflowDerivedEdges.WalkAll(
             manifest, files,
@@ -120,7 +122,7 @@ public static partial class WorkflowPackageValidator
 
         var specs = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToList();
         ValidateReachabilityAt26(manifest, specs, nodes, flows, edges, errors);
-        ValidateBodyReachabilityAt26(flows, nodes, edges, errors);
+        ValidateBodyReachabilityAt26(flows, nodes, edges, errors, at30 ? walk : null);
         if (at29)
         {
             ValidateNodeValueLoopSourcesAt29(flows, edges, errors);

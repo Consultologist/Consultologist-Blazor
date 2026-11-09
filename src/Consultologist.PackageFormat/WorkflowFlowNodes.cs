@@ -14,7 +14,7 @@ namespace Consultologist.PackageFormat;
 /// </summary>
 internal static class WorkflowFlowNodes
 {
-    public enum Kind { For, If, Case }
+    public enum Kind { For, If, Case, While }
 
     /// <summary>One body of a flow node: the loop's, an if's then/else, a case's branch (with its values) or else.</summary>
     public sealed record Body(string Label, IReadOnlyList<string> Nodes, string? Ret, IReadOnlyList<string>? When)
@@ -33,14 +33,14 @@ internal static class WorkflowFlowNodes
         string? Expression)
     {
         /// <summary>"Loop 'l'" for a for node, "Node 'x'" for an if or case node — the sentences' subject.</summary>
-        public string Subject => Kind == Kind.For ? $"Loop '{Node.Id}'" : $"Node '{Node.Id}'";
+        public string Subject => Kind switch { Kind.For => $"Loop '{Node.Id}'", Kind.While => $"While '{Node.Id}'", _ => $"Node '{Node.Id}'" };
 
         /// <summary>"loop 'l'" / "node 'x'" — where a body node runs.</summary>
-        public string Inside => Kind == Kind.For ? $"loop '{Node.Id}'" : $"node '{Node.Id}'";
+        public string Inside => Kind switch { Kind.For => $"loop '{Node.Id}'", Kind.While => $"while '{Node.Id}'", _ => $"node '{Node.Id}'" };
 
         public IEnumerable<string> BodyNodeIds => Bodies.SelectMany(b => b.Nodes);
 
-        public string BodySubject(Body body) => Kind == Kind.For ? Subject : $"{Subject} {body.Label}";
+        public string BodySubject(Body body) => Kind is Kind.For or Kind.While ? Subject : $"{Subject} {body.Label}";
 
         /// <summary>
         /// #1154: a loop's collection as a 25 <c>forEach</c> spells it —
@@ -56,7 +56,14 @@ internal static class WorkflowFlowNodes
         /// <summary>#1154: the node a case switches on (<c>node.&lt;id&gt;.value</c>), or null — an enum input, or not a case.</summary>
         public string? SubjectNodeId => Kind == Kind.Case && Expression is { } subject ? CaseNodeSubjectOf(subject) : null;
 
-        public TemplateFlowKind TemplateKind => Kind switch { Kind.For => TemplateFlowKind.For, Kind.If => TemplateFlowKind.If, _ => TemplateFlowKind.Case };
+        public TemplateFlowKind TemplateKind => Kind switch
+        {
+            Kind.For => TemplateFlowKind.For,
+            Kind.If => TemplateFlowKind.If,
+            Kind.Case => TemplateFlowKind.Case,
+            Kind.While => TemplateFlowKind.While,
+            _ => throw new InvalidOperationException($"Flow kind {Kind} has no template kind."),
+        };
     }
 
     /// <summary>The flow nodes by id, and each body node's owner (the flow node it runs inside).</summary>
@@ -67,6 +74,12 @@ internal static class WorkflowFlowNodes
             new Dictionary<string, string>(StringComparer.Ordinal));
 
         public bool IsLoop(string id) => Flows.TryGetValue(id, out var flow) && flow.Kind == Kind.For;
+
+        /// <summary>v30 (#1339, design § 3.1): a while node — its body repeats per pass; not a loop (no item, no fan).</summary>
+        public bool IsWhile(string id) => Flows.TryGetValue(id, out var flow) && flow.Kind == Kind.While;
+
+        /// <summary>v30 (#1339, design § 3.2): the whiles a node runs inside, nearest first — what <c>pass</c> and <c>pass.parent</c> name.</summary>
+        public IReadOnlyList<string> WhilesOf(string nodeId) => AncestorsOf(nodeId).Where(IsWhile).ToList();
 
         /// <summary>#1234: a flow node listed in a loop's body — an if/case decided per item at 27.</summary>
         public bool IsInner(string flowId) => Flows.ContainsKey(flowId) && Owner.ContainsKey(flowId);
@@ -102,7 +115,7 @@ internal static class WorkflowFlowNodes
 
         /// <summary>The walker's view of the bodies: body node id → where it runs (the chain is read through the map — a scope's own entry names its owner).</summary>
         public IReadOnlyDictionary<string, TemplateBodyScope> BodyScopes =>
-            Owner.ToDictionary(pair => pair.Key, pair => new TemplateBodyScope(pair.Value, IsLoop(pair.Value)), StringComparer.Ordinal);
+            Owner.ToDictionary(pair => pair.Key, pair => new TemplateBodyScope(pair.Value, IsLoop(pair.Value), IsWhile(pair.Value)), StringComparer.Ordinal);
 
         /// <summary>The fan a node's template runs under: its loop's (through its flow node at 27), or none.</summary>
         public (TemplateFan? Fan, WorkflowDataCollection? Folder) FanOf(string nodeId) =>
@@ -137,12 +150,27 @@ internal static class WorkflowFlowNodes
         var declared = (manifest.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
         var flows = new Dictionary<string, Flow>(StringComparer.Ordinal);
 
+        // v30 (#1339, design § 3): while, max and until are read at 30 only; below
+        // it the member gate (ValidateV30Members) refuses each by name.
+        var whileAt30 = manifest.SpecVersion >= 30;
+
         foreach (var node in declared.Values)
         {
             var keys = new List<string>();
             if (node.For != null) keys.Add("for");
+            if (whileAt30 && node.While != null) keys.Add("while");
             if (node.If != null) keys.Add("if");
             if (node.Case != null) keys.Add("case");
+
+            if (whileAt30 && node.Max != null && node.While == null)
+            {
+                errors.Add($"Node '{node.Id}' declares max, which belongs to a while node.");
+            }
+
+            if (whileAt30 && node.Until != null && node.For == null)
+            {
+                errors.Add($"Node '{node.Id}' declares until, which belongs to a for node.");
+            }
 
             if (keys.Count == 0)
             {
@@ -159,11 +187,20 @@ internal static class WorkflowFlowNodes
 
             if (keys.Count > 1)
             {
-                errors.Add($"Node '{node.Id}' declares {string.Join(", ", keys)}; a node is one flow node — for, if or case.");
+                errors.Add(keys.Contains("while")
+                    ? $"Node '{node.Id}' declares {string.Join(", ", keys)}; a node is one flow node — for, while, if or case."
+                    : $"Node '{node.Id}' declares {string.Join(", ", keys)}; a node is one flow node — for, if or case.");
                 continue;
             }
 
-            var kind = keys[0] switch { "for" => Kind.For, "if" => Kind.If, _ => Kind.Case };
+            var kind = keys[0] switch
+            {
+                "for" => Kind.For,
+                "while" => Kind.While,
+                "if" => Kind.If,
+                "case" => Kind.Case,
+                _ => throw new InvalidOperationException($"Unknown flow key '{keys[0]}'."),
+            };
 
             foreach (var (name, present) in new[]
             {
@@ -181,9 +218,18 @@ internal static class WorkflowFlowNodes
             {
                 Kind.For => new[] { ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null) },
                 Kind.If => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("branches", node.Branches != null) },
-                _ => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("then", node.Then != null) },
+                Kind.Case => new[] { ("nodes", node.Nodes != null), ("ret", node.Ret != null), ("then", node.Then != null) },
+                Kind.While => new[] { ("then", node.Then != null), ("else", node.Else != null), ("branches", node.Branches != null) },
+                _ => throw new InvalidOperationException($"Flow kind {kind} has no key list."),
             };
-            var kindWord = kind switch { Kind.For => "a for", Kind.If => "an if", _ => "a case" };
+            var kindWord = kind switch
+            {
+                Kind.For => "a for",
+                Kind.While => "a while",
+                Kind.If => "an if",
+                Kind.Case => "a case",
+                _ => throw new InvalidOperationException($"Flow kind {kind} has no name."),
+            };
 
             foreach (var (name, present) in foreign)
             {
@@ -228,7 +274,32 @@ internal static class WorkflowFlowNodes
 
                     break;
 
-                default:
+                case Kind.While:
+                    // v30 (#1339, design § 3.1): the check runs after each pass; the
+                    // bound is the author's — required, 1 to 10, no default.
+                    expression = node.While;
+                    if (node.Max is not { } max)
+                    {
+                        errors.Add($"While '{node.Id}' declares no max; a while must declare its bound (1 to {MaxPasses}).");
+                    }
+                    else if (max > MaxPasses)
+                    {
+                        errors.Add($"While '{node.Id}' declares max {max}; the most is {MaxPasses}.");
+                    }
+                    else if (max < 1)
+                    {
+                        errors.Add($"While '{node.Id}' declares max {max}; the least is 1.");
+                    }
+
+                    if (node.Nodes is not { Count: > 0 })
+                    {
+                        errors.Add($"While '{node.Id}' has no body; name the nodes that run per pass in nodes.");
+                    }
+
+                    bodies.Add(new Body("body", node.Nodes ?? new List<string>(), node.Ret, null));
+                    break;
+
+                case Kind.Case:
                     expression = node.Case;
                     if (node.Branches is not { Count: > 0 })
                     {
@@ -454,6 +525,9 @@ internal static class WorkflowFlowNodes
             : null;
 
     private const string LoopPrefix = "item in ";
+
+    /// <summary>v30 (#1339, design § 3.1): the most passes a while may declare — the engine's cap.</summary>
+    public const int MaxPasses = 10;
 
     /// <summary>
     /// v29 (#1303, design § 1.1): a loop collection that is a node's value

@@ -53,7 +53,7 @@ public static class WorkflowImpliedPaths
     public static string PromptOf(string nodeId) => WorkflowFileMove.ImpliedPath("node", nodeId);
 
     /// <summary>True for a for, if or case node — it runs a body and reads no prompt.</summary>
-    public static bool IsFlow(WorkflowNodeSpec node) => node.For is not null || node.If is not null || node.Case is not null;
+    public static bool IsFlow(WorkflowNodeSpec node) => node.For is not null || node.If is not null || node.Case is not null || node.While is not null;
 
     /// <summary>
     /// The § 2 warnings: a file under <c>prompts/</c> that is no node's prompt,

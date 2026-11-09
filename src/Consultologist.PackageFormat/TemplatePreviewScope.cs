@@ -221,7 +221,8 @@ public static class TemplatePreviewScope
             inputsById,
             new List<string>());
 
-        foreach (var flow in flows.Flows.Values.Where(f => f.Kind != WorkflowFlowNodes.Kind.For))
+        // v30 (#1339): a while is no gate — its body always runs at least once.
+        foreach (var flow in flows.Flows.Values.Where(f => f.Kind is WorkflowFlowNodes.Kind.If or WorkflowFlowNodes.Kind.Case))
         {
             var bodies = flow.Bodies.Select(b => new TemplatePreviewBranch(b.Label, b.Nodes, b.RetNodeId, b.When)).ToList();
             var loop = flows.LoopOf(flow.Node.Id);

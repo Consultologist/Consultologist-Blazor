@@ -46,4 +46,23 @@ public static partial class WorkflowPackageValidator
             }
         }
     }
+
+    /// <summary>
+    /// § 3, § 8: what only 30 spells, refused below it by name — a while node,
+    /// its bound, and a for's until. (Below 30 the flow resolver does not read
+    /// these keys, so this is the one sentence each.)
+    /// </summary>
+    private static void ValidateV30Members(WorkflowPackageManifest manifest, List<string> errors)
+    {
+        foreach (var node in manifest.Nodes ?? new List<WorkflowNodeSpec>())
+        {
+            foreach (var (name, present) in new[] { ("while", node.While != null), ("max", node.Max != null), ("until", node.Until != null) })
+            {
+                if (present)
+                {
+                    errors.Add($"Node '{node.Id}' declares {name}, which requires specVersion 30.");
+                }
+            }
+        }
+    }
 }

@@ -1161,10 +1161,22 @@ public static partial class WorkflowPackageValidator
         WorkflowFlowNodes.Resolved flows,
         IReadOnlyDictionary<string, NodeAt25> nodes,
         IReadOnlyDictionary<string, HashSet<string>> edges,
-        List<string> errors)
+        List<string> errors,
+        // v30 (#1339, design § 3): a while's check and a for's until read the body
+        // after it runs, and pass.previous reads a node one pass back — no edge,
+        // but a read: each keeps a body node reachable.
+        WorkflowDerivedEdges.Walk? walk = null)
     {
+        var previousReads = walk?.Templates.SelectMany(t => t.References.PassPrevious ?? TemplateReferenceContext.NoIds).ToHashSet(StringComparer.Ordinal)
+            ?? new HashSet<string>(StringComparer.Ordinal);
+
         foreach (var flow in flows.Flows.Values)
         {
+            var checkReads = walk?.ConditionsOf(flow.Node.Id, WorkflowDerivedEdges.ConditionSite.While, WorkflowDerivedEdges.ConditionSite.Until)
+                .SelectMany(c => c.Walk.References.Nodes.Keys)
+                .ToHashSet(StringComparer.Ordinal)
+                ?? new HashSet<string>(StringComparer.Ordinal);
+
             foreach (var body in flow.Bodies)
             {
                 var members = body.Nodes.Where(id => nodes.ContainsKey(id) && flows.Owner.TryGetValue(id, out var o) && o == flow.Node.Id).Distinct(StringComparer.Ordinal).ToList();
@@ -1182,13 +1194,18 @@ public static partial class WorkflowPackageValidator
                         continue;
                     }
 
-                    var read = readers.Any(m => m != id && edges.TryGetValue(m, out var targets) && targets.Contains(id));
+                    var read = readers.Any(m => m != id && edges.TryGetValue(m, out var targets) && targets.Contains(id))
+                        || checkReads.Contains(id)
+                        || previousReads.Contains(id);
 
                     if (!read)
                     {
-                        errors.Add(flow.Kind == WorkflowFlowNodes.Kind.For
-                            ? $"Node '{id}' in loop '{flow.Node.Id}' is neither returned nor read; name it with ret or read it from a body node."
-                            : $"Node '{id}' in node '{flow.Node.Id}' {body.Label} is neither returned nor read; name it with ret or read it from a body node.");
+                        errors.Add(flow.Kind switch
+                        {
+                            WorkflowFlowNodes.Kind.For => $"Node '{id}' in loop '{flow.Node.Id}' is neither returned nor read; name it with ret or read it from a body node.",
+                            WorkflowFlowNodes.Kind.While => $"Node '{id}' in while '{flow.Node.Id}' is neither returned nor read; name it with ret, read it from a body node or from the check.",
+                            _ => $"Node '{id}' in node '{flow.Node.Id}' {body.Label} is neither returned nor read; name it with ret or read it from a body node.",
+                        });
                     }
                 }
             }
@@ -1213,9 +1230,18 @@ public static partial class WorkflowPackageValidator
                 continue;
             }
 
-            node[flow.Node.Id] = shape.HasValue
+            var probe = shape.HasValue
                 ? new ScriptObject { ["content"] = "placeholder", ["value"] = ProbeFromShape(ValueShapeOf(shape)) }
                 : new ScriptObject { ["content"] = "placeholder" };
+
+            if (shape.IsWhile)
+            {
+                // v30 (#1339, design § 3.2): a while also says its passes and why it stopped.
+                probe[TemplateMembers.Passes] = 2;
+                probe[TemplateMembers.Stopped] = "check";
+            }
+
+            node[flow.Node.Id] = probe;
         }
 
         object LoopProbe(TemplateFlowShape loop)
@@ -1243,6 +1269,12 @@ public static partial class WorkflowPackageValidator
                         if (pair.Value.HasValue)
                         {
                             member[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(pair.Value));
+                        }
+
+                        if (pair.Value.IsWhile)
+                        {
+                            member[TemplateMembers.Passes] = 2;
+                            member[TemplateMembers.Stopped] = "check";
                         }
 
                         return (object?)member;
