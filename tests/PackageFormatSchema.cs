@@ -437,7 +437,7 @@ internal static class PackageFormatSchema
         // bump, #1347; the bound is closed here so the render is its siblings'.)
         if (specVersion < 30)
         {
-            foreach (var member in new[] { "while", "max", "until" })
+            foreach (var member in new[] { "while", "max", "until", "checkFirst" })
             {
                 Remove(properties, member);
             }
@@ -446,9 +446,9 @@ internal static class PackageFormatSchema
         {
             Object(properties, "while")["minLength"] = 1;
             Object(properties, "until")["minLength"] = 1;
-            var max = Object(properties, "max");
-            max["minimum"] = 1;
-            max["maximum"] = WorkflowFlowNodes.MaxPasses;
+            // A while's bound is 1–10, a for's at least 1 (A2b): the cap is the
+            // validator's, by kind.
+            Object(properties, "max")["minimum"] = 1;
         }
 
         if (specVersion < 26)

@@ -1230,6 +1230,12 @@ public static partial class WorkflowPackageValidator
                 continue;
             }
 
+            if (shape.IsWhile)
+            {
+                node[flow.Node.Id] = WhileProbe(shape);
+                continue;
+            }
+
             var probe = shape.HasValue
                 ? new ScriptObject { ["content"] = "placeholder", ["value"] = ProbeFromShape(ValueShapeOf(shape)) }
                 : new ScriptObject { ["content"] = "placeholder" };
@@ -1242,6 +1248,35 @@ public static partial class WorkflowPackageValidator
             }
 
             node[flow.Node.Id] = probe;
+        }
+
+        // v30 (#1339, design § 3.2): a while reads as its returned node, with its passes,
+        // why it stopped and (A2b) its history — each pass's number and body nodes.
+        ScriptObject WhileProbe(TemplateNodeShape shape)
+        {
+            var probe = new ScriptObject { [TemplateMembers.Content] = "placeholder" };
+            if (shape.HasValue)
+            {
+                probe[TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(shape));
+            }
+
+            probe[TemplateMembers.Passes] = 2;
+            probe[TemplateMembers.Stopped] = "check";
+            var bodyProbe = new ScriptObject();
+            foreach (var (id, bodyShape) in shape.Flow?.Body ?? new Dictionary<string, TemplateNodeShape>())
+            {
+                bodyProbe[id] = bodyShape.Flow?.Kind == TemplateFlowKind.For ? LoopProbe(bodyShape.Flow)
+                    : bodyShape.IsWhile ? WhileProbe(bodyShape)
+                    : bodyShape.HasValue ? new ScriptObject { [TemplateMembers.Content] = "placeholder", [TemplateMembers.Value] = ProbeFromShape(ValueShapeOf(bodyShape)) }
+                    : new ScriptObject { [TemplateMembers.Content] = "placeholder" };
+            }
+
+            probe[TemplateMembers.History] = new ScriptArray
+            {
+                new ScriptObject { [TemplateMembers.Number] = 1, [TemplateObjects.Node] = bodyProbe },
+                new ScriptObject { [TemplateMembers.Number] = 2, [TemplateObjects.Node] = bodyProbe },
+            };
+            return probe;
         }
 
         object LoopProbe(TemplateFlowShape loop)
@@ -1273,20 +1308,22 @@ public static partial class WorkflowPackageValidator
 
                         if (pair.Value.IsWhile)
                         {
-                            member[TemplateMembers.Passes] = 2;
-                            member[TemplateMembers.Stopped] = "check";
+                            return WhileProbe(pair.Value);
                         }
 
                         return (object?)member;
                     },
                     StringComparer.Ordinal)));
 
-            return TemplateRenderer.LoopList(
+            var list = TemplateRenderer.LoopList(
                 () => new ScriptObject(),
                 elements,
                 "placeholder",
                 ret.HasValue,
                 ret.HasValue ? new ScriptArray { ProbeFromShape(ValueShapeOf(ret)), ProbeFromShape(ValueShapeOf(ret)) } : null);
+            // v30 (#1339 A2b, design § 3.4): why the loop stopped — the walker admits it at 30 only.
+            list.ScriptObject[TemplateMembers.Stopped] = "end";
+            return list;
         }
 
         static TemplateValueShape ValueShapeOf(TemplateNodeShape shape) =>

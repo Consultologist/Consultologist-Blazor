@@ -955,7 +955,7 @@ public static class WorkflowDerivedEdges
             if (at30)
             {
                 WalkCondition(ConditionSite.While, node.Id, null, $"While '{node.Id}' check", node.While, walkNode.Fan, node.Id);
-                WalkCondition(ConditionSite.Until, node.Id, null, $"Loop '{node.Id}' until", node.For is null ? null : node.Until, walkNode.Fan, node.Id);
+                WalkCondition(ConditionSite.Until, node.Id, null, node.For is null ? $"While '{node.Id}' until" : $"Loop '{node.Id}' until", node.For is null && node.While is null ? null : node.Until, walkNode.Fan, node.Id);
             }
 
             foreach (var instance in node.Macros ?? new List<WorkflowNodeMacroSpec>())

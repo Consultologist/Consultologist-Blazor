@@ -162,14 +162,21 @@ internal static class WorkflowFlowNodes
             if (node.If != null) keys.Add("if");
             if (node.Case != null) keys.Add("case");
 
-            if (whileAt30 && node.Max != null && node.While == null)
+            // v30 (#1339 A2b): max bounds a while or a for; until stops a for or a
+            // while; checkFirst is a while's.
+            if (whileAt30 && node.Max != null && node.While == null && node.For == null)
             {
-                errors.Add($"Node '{node.Id}' declares max, which belongs to a while node.");
+                errors.Add($"Node '{node.Id}' declares max, which belongs to a for or while node.");
             }
 
-            if (whileAt30 && node.Until != null && node.For == null)
+            if (whileAt30 && node.Until != null && node.For == null && node.While == null)
             {
-                errors.Add($"Node '{node.Id}' declares until, which belongs to a for node.");
+                errors.Add($"Node '{node.Id}' declares until, which belongs to a for or while node.");
+            }
+
+            if (whileAt30 && node.CheckFirst != null && node.While == null)
+            {
+                errors.Add($"Node '{node.Id}' declares checkFirst, which belongs to a while node.");
             }
 
             if (keys.Count == 0)
@@ -248,6 +255,12 @@ internal static class WorkflowFlowNodes
             {
                 case Kind.For:
                     (fan, folder) = ResolveLoopCollection(node.Id, node.For!, snippets, inputsById, errors, at29: manifest.SpecVersion >= 29, at30: manifest.SpecVersion >= 30);
+                    // v30 (#1339 A2b): a for may cap the items it runs — at least 1, no cap.
+                    if (whileAt30 && node.Max is < 1)
+                    {
+                        errors.Add($"Loop '{node.Id}' declares max {node.Max}; the least is 1.");
+                    }
+
                     if (node.Nodes is not { Count: > 0 })
                     {
                         errors.Add($"Loop '{node.Id}' has no body; name the nodes that run per item in nodes.");
@@ -677,6 +690,17 @@ internal static class WorkflowFlowNodes
         }
 
         var known = rets.Where(r => r.Shape is not null).ToList();
+
+        // v30 (#1339 A2b, design § 3.2): a while reads as its returned node, and carries
+        // its body's shapes — what an element of node.<while>.history types .node.<id> by.
+        if (flow.Kind == Kind.While && known.Count == 1 && rets.Count == 1)
+        {
+            var body = flow.BodyNodeIds
+                .Distinct(StringComparer.Ordinal)
+                .Where(shapes.ContainsKey)
+                .ToDictionary(id => id, id => shapes[id], StringComparer.Ordinal);
+            return known[0].Shape! with { Flow = new TemplateFlowShape(TemplateFlowKind.While, known[0].Id!, known[0].Shape!, Body: body) };
+        }
 
         if (known.Count > 0 && known.Count == rets.Count
             && known.Select(r => r.Shape!.Format).Distinct(StringComparer.Ordinal).Count() == 1)
