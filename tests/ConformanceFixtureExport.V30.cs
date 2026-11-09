@@ -5,7 +5,7 @@ namespace Consultologist.Api.Tests;
 
 /// <summary>
 /// #1339 (package-format-v30-design.md § 13): the specVersion 30 conformance
-/// vectors — loops that nest (A1), while/until (A2), then let/labelField (A3).
+/// vectors — loops that nest (A1), while/until (A2, A2b), let and labelField (A3).
 /// The valid baseline is <see cref="V30Package.Minimal"/>; each invalid case
 /// breaks one sentence against it; the recorded outcome is whatever the
 /// validator says. Held back by the export while 30 is above the accepted
@@ -175,5 +175,40 @@ public partial class ConformanceFixtureExport
             refining(Trail, files => files["prompts/trail.md"] = "{{ node.refine.history[-1].previous.number }}"));
         Add("invalid-pass-history-as-a-value-at-30", "pass.history read as a value — it is iterated or indexed.",
             refining(null, files => files["prompts/draft.md"] = "{{ pass.history }}"));
+
+        // ======================================================= valid: § 4 let, § 5 labelField (A3)
+        var counting = WorkflowV30LetTests.Counting;
+
+        Add("v30-let", "A let counting the problems a node names, with no model call; each drafted problem reads the count (§ 4.1).", counting(null, null));
+        Add("v30-let-in-a-loop", "A let inside a loop, computed once per item from the item (§ 4.1).",
+            counting(root =>
+            {
+                (V30Package.Node(root, "problem_count")["let"], V30Package.Node(root, "problem_count")["type"]) = ("item.value.name | string.size", "number");
+                V30Package.Node(root, "problems")["nodes"]!.AsArray().Add("problem_count");
+            }, null));
+        Add("v30-let-of-a-format", "A let typed by an object format, iterated by a loop (§ 4.1).",
+            counting(root =>
+            {
+                (V30Package.Node(root, "problem_count")["let"], V30Package.Node(root, "problem_count")["type"]) = ("node.find_problems.value", "problem_list");
+                V30Package.Node(root, "problems")["for"] = "item in node.problem_count.value.problems";
+            }, files => files["prompts/draft_problem.md"] = "{{ item.value.name }}: {{ node.problem_count.value.summary }}"));
+        Add("v30-label-field", "Items named by a field: a loop over a node's value by each problem's name, and parts by their title (§ 5).",
+            V30Package.With(root =>
+            {
+                V30Package.Node(root, "problems")["labelField"] = "name";
+                V30Package.Node(root, "parts")["labelField"] = "title";
+            }));
+
+        // ======================================================= § 4, § 5 refusals (A3)
+        Add("invalid-let-without-type-at-30", "A let that names no type.", counting(root => V30Package.Node(root, "problem_count").Remove("type"), null));
+        Add("invalid-let-of-a-text-format-at-30", "A let typed by a text format.", counting(root => V30Package.Node(root, "problem_count")["type"] = "prose", null));
+        Add("invalid-let-retry-at-30", "A let that would retry — there is no model to repair.", counting(root => V30Package.Node(root, "problem_count")["onInvalid"] = "retry", null));
+        Add("invalid-let-with-a-format-at-30", "A let that also declares a format.", counting(root => V30Package.Node(root, "problem_count")["format"] = "prose", null));
+        Add("invalid-let-reads-the-clock-at-30", "A let calling date.now — not deterministic on replay.", counting(root => V30Package.Node(root, "problem_count")["let"] = "date.now", null));
+        Add("invalid-let-type-mismatch-at-30", "A let whose expression is a number, declared text.", counting(root => V30Package.Node(root, "problem_count")["type"] = "text", null));
+        Add("invalid-label-field-not-a-field-at-30", "A loop naming its items by a field its elements do not have.",
+            V30Package.With(root => V30Package.Node(root, "problems")["labelField"] = "title"));
+        Add("invalid-label-field-enum-at-30", "A loop naming its items by an enum field.",
+            V30Package.With(root => V30Package.Node(root, "problems")["labelField"] = "severity"));
     }
 }
