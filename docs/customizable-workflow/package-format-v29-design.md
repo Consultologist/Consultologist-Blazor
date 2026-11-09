@@ -431,6 +431,8 @@ One layer per PR, each green on its own; each gets its own issue when it starts.
 
 **Named for 30** (Milestone 38, decided 2026-11-05) — each still refused at 29 by its 26 sentence:
 
+*→ Decided in the [v30 design](package-format-v30-design.md) (#1337, 2026-11-08): all three, at any depth, with #1252's `labelField`.*
+
 - **A `for` inside a `for` (#1280).** Rows and blocks take paths (`sections/hpi/paragraphs/2`);
   one total per loop *instance*; SSE ids, the event store's keys, History and the run diagram carry
   the path. Open: what an inner loop iterates (the outer item's field, a folder, a node's value),

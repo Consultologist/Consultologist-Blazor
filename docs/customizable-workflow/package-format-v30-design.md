@@ -129,7 +129,7 @@ Every structure that carries one item id carries a path at 30:
     `ConsultGenerationState.cs:635`);
   - `ItemProgress`, which is keyed by a bare item id today and would collide across sections.
 - **Events:** the `item-step` key and its parse, which splits at the *last* `:`
-  (`ConsultGenerationTransport.cs:2322`). That still works, because a path has no `:`. The
+  (`ConsultGenerationTransport.cs:2323`). That still works, because a path has no `:`. The
   `block-*` keys, and `count-resolved`, which becomes per instance (§ 2.3).
 - **The Web:** `RailSkips.LoopItemKeyOf` (`RailSkips.cs:12`), `RecordFlow.LoopOf` and
   `SkippedItemsOf` (`RecordFlow.cs:36`, `:64`), and the manifest reader's `LoopOf`.
@@ -171,7 +171,7 @@ a branch's, **to any depth** (decided). The 29 rule that a branch holds plain no
 **What the inner `for` expression reads.** It names the *outer* item as `item`, because the inner
 loop's own item does not exist yet; `item.value.paragraphs` reads a field of the section being
 drafted. A node in the outer body is aligned by the outer path (`node.outline` is *this
-section's* outline). v29's sentence *"a loop iterates a node outside every loop"* (`V29.cs:39`)
+section's* outline). v29's sentence *"a loop iterates a node outside every loop"* (`WorkflowPackageValidator.V29.cs:39`)
 is lifted to *"a loop iterates a node outside it, or in an enclosing loop's body"*.
 
 ### 2.3 One count per loop instance
@@ -350,3 +350,201 @@ A deliverable or check that reads it is attested the same way as one that reads 
     `block-skipped` labels with no other change (`WorkflowPackageBlocks.ItemName`, `:176`).
 - **Folder items are unchanged**: they are named by their `label` header.
 - **It lands with the 30 bump** (decided), not as an optional key at 29.
+
+## 6. The deliverable at 30
+
+- **A nested list composes as nested iteration:**
+  `{{ for s in node.sections }}{{ for p in s.paragraphs }}{{ p.content }}{{ end }}{{ end }}`.
+  The element of an outer loop (`s`) exposes each inner loop **by its id** (`s.paragraphs`), with
+  the same element members 27 gave: `item`, `content`, `value` and `skipped`. The spelling is
+  proposed; layer A settles it.
+- **The pipe takes the node**, as built at 26: inside nested iteration it names the body node
+  (`p.draft_paragraph | concept_bullets`). #1189 is not reopened.
+- **A `while`** composes as its returned node (§ 3.2). **A `let`** is read as any node's value.
+- **Not run.** An item *not run: stopped early* (§ 3.4) composes as a skipped element
+  (`e.skipped`), as an item skipped by condition does at 27.
+
+## 7. The record (storage 11)
+
+A 30 job is stamped **record storage 11**:
+- the ladder at `ConsultGenerationState.cs:44` gains `>= 30 ? 11`;
+- `StorageVersions` (`:1653`) gains 11;
+- the provenance registry's `recordStorageVersions` gains it.
+
+What 11 adds over 10:
+- **item keys are paths** (§ 1);
+- **loop-instance rows**: one per inner instance, holding its loop id, outer path, count, settled
+  moment and reason. A top-level loop keeps its 29 row (path null);
+- **pass rows** for a `while` (§ 3.3), and the `while` row's `passes` and `stopped`;
+- **the stopped-early state** of an unrun `until` item, and the item it stopped at;
+- **the `let` row** (§ 4.2).
+
+As at 29, the record holds hashes, ids, counts and reasons, **never element values** (#369's
+rule). Storage 2–10 records read exactly as today.
+
+## 8. The validator's sentences
+
+**Today `while`, `until`, `let` and `labelField` fail as unmapped keys**:
+`WorkflowPackageManifestJson.cs:30` disallows unknown members, so the author sees a JSON error,
+not a reason.
+- **Layer A** adds the keys to the model.
+- **The bump** gates them below 30 with sentences in the 29 idiom, for example *"Loop 'refine' is
+  a while, which requires specVersion 30."* and *"Input 'sections' declares labelField, which
+  requires specVersion 30."*.
+- **The nesting sentence** (`WorkflowFlowNodes.cs:294`) becomes the gate below 30: *"Loop
+  'paragraphs' runs inside loop 'sections', which requires specVersion 30."*.
+
+**New at 30** (wording proposed; layer A settles it and lists them here as built):
+- **`while`:**
+  - *"While 'refine' declares no max; a while must declare its bound (1 to 10)."*
+  - *"While 'refine' declares max 12; the most is 10."*
+- **`until`:** *"Loop 'documents' until reads node.summary, which is not in its body; until
+  reads the item's own nodes."*
+- **`let`:**
+  - *"Let 'problem_count' calls date.now, which is not deterministic; a let must give the same
+    value on replay."*
+  - *"Let 'problem_count' declares type number; onInvalid retry needs a model — use fail or
+    flag."*
+- **Nesting:** *"Node 'draft_paragraph' in section 'plan' reads node.draft_paragraph of section
+  'hpi'; a node reads its own instance and its enclosing ones."* This is § 2.4's sibling refusal,
+  worded per path.
+- **`labelField`:**
+  - *"Input 'sections' labelField 'kind' names an enum field; labelField names a required text
+    field."*
+  - *"Loop 'problems' labelField 'title' is not a field of the elements of
+    node.find_problems.value.problems."*
+
+**Lifted at 30:**
+- the nesting sentence;
+- "a branch holds plain nodes" (`WorkflowFlowNodes.cs:302`);
+- "a loop iterates a node outside every loop" (`WorkflowPackageValidator.V29.cs:39`), which is narrowed (§ 2.2).
+
+## 9. The engine
+
+- **The orchestrator stays one flat ready loop** (`ConsultGenerationEngine.cs:32`), with one
+  activity per instance and no sub-orchestrations. Its keys become paths (§ 1.2), and
+  `FanItems` reads by loop instance (§ 2.3).
+- **Per-instance resolution:** `ResolveLoopsFedByAsync` (`:719`) resolves the instances a node
+  feeds under its path. An outer item's appearance seeds its inner instances.
+- **`while`:**
+  - the scheduler starts pass *n + 1* when pass *n*'s nodes are settled and the check, evaluated
+    as an `if` is today (`DecideFlowItem`), holds, below `max`;
+  - each pass's instances are keyed by the pass segment.
+- **`until`:** the loop's items start one at a time in list order. After each item, the check is
+  decided; when it holds, the remaining items are marked *not run* in one entity call.
+- **`let`:** `RunComputedNodeActivity` with a `let` operation (§ 4.2).
+- **The Durable contract:**
+  - no orchestrator, entity or activity is renamed (the `[Function]` strings are the deployed
+    contract);
+  - payloads only gain trailing optional fields (`Path`, `Pass`);
+  - a 26–29 job's payloads serialize exactly as today.
+- **Draining before the release**, as at 29 (v29 design § 7): set `Jobs__HoldNewJobs`, wait for
+  `show-active-jobs.sh` to say *"Safe to release"*, cut the release, verify, then clear the hold.
+
+## 10. The Create page and History
+
+- **The run rail** indents by depth: an inner loop's group sits under its outer item's row, and
+  its count is per instance (*"Paragraphs 3/5"* under *Assessment and plan*, *"counting…"* under a
+  section still outlining).
+- **History** draws the same tree from the record, with the loop-instance rows' counts and
+  reasons.
+- **A `while`** shows *"pass 2 of at most 3"* while running. Once done, it shows *"3 passes —
+  stopped at its bound"* or *"2 passes — the check stopped holding"*, and each pass is
+  expandable.
+- **An `until` loop** shows its unrun items as *"not run: stopped early at item 3"*.
+- **A `let`** is a row with its value's type and hash, like a computed node.
+- **The run diagram** (`RunDagDiagram`) already defers edges until the outermost subgraph closes
+  (#1321), so a loop subgraph inside a loop subgraph draws correctly. A `while` is a subgraph
+  labelled with its bound, and a `let` is a node with a computed shape.
+- **The Create page's `count-resolved` handler** keys `settledLoopCounts` by instance (#1329's
+  map).
+
+## 11. The Editor at 30
+
+- **The loop pane** lists a loop inside a loop, offers *for / while / if / case* as a body
+  member, and shows the inner loop's source choices (§ 2.2) with the outer item's fields offered
+  by name.
+- **A `while` pane:** the check (a condition editor, as an `if`'s), `max` (empty until chosen,
+  publish blocked until it is set — no default), and `ret`.
+- **`until`**: an optional condition on a `for`, with a note that it runs the items in order.
+- **A `let` pane:** the expression, with the reference walker's diagnostics, and the type,
+  chosen from text/number/boolean or a format.
+- **`labelField`**: a picker on an `array<object>` input and on a node-value loop, offering the
+  required text fields.
+- **The Graph pane** draws nested subgraphs (the same builder as the run diagram).
+- **The upgrade rung:** `MigrateToNewestAsync` gains 29 → 30, with the notice *"Through 30:
+  nothing changes in this package; loops may now nest, repeat (while) or stop early (until), and
+  a let computes a value."*.
+
+## 12. Migration 29 → 30
+
+**None.** 30 only permits what 29 refused (the v27 § 7 model). `scripts/migrate-workflow-package.cs
+--to 30` bumps the version and validates at 30.
+
+## 13. The registry
+
+- **Documents:** `package-format-v30.md` (a full grammar, as v29 is) and its generated schema.
+- **`conformance/v30/`**, split as at 29 into:
+  - valid;
+  - invalid, schema-catchable;
+  - invalid, `SHAPE_BLIND`;
+  - warning.
+
+  It holds at least: a three-level nesting, an inner loop over an outer body node, a `while` at
+  its bound, an `until` that stops early, a `let` reduce, `labelField` on both sources, and each
+  § 8 refusal.
+- **Gate vectors under `v29/`**, one per new key and one for nesting, each refused at 29.
+- **The provenance registry:** `recordStorageVersions` gains 11.
+
+## 14. Phasing (Milestone 38)
+
+One layer per PR, each green on its own; each gets its own issue when it starts. The bump is
+last.
+
+- **A — the format, inert.** The model gains `while`, `max`, `until`, `let`, `type` and
+  `labelField`. The validator at 30, with every § 8 sentence, sits behind the ceiling
+  (`AcceptedSpecVersions` stays 29). The template walker gains `item.parent`, `pass` and nested
+  element members. The spellings this text proposes are settled here and recorded as revision 2.
+- **B — the engine**, in this order, each inert below 30:
+  - **B1, paths at one level:** every key in § 1.2 goes through one path helper; a one-segment
+    path equals today's id, so nothing changes.
+  - **B2, nesting:** nested fan-out, per-instance resolution, the `count-resolved` path and
+    storage 11's instance rows.
+  - **B3, `while` and `until`:** pass scheduling and pass rows; in-order items and *not run*.
+  - **B4, `let`:** the computed operation and its row.
+  - **B5, `labelField`:** naming from the field, in both fan sources.
+- **C — the pages:**
+  - **C1:** the Create page and History (§ 10).
+  - **C2:** the Editor (§ 11).
+- **The bump.**
+  - **Registry PRs:** package-format and provenance, with the vectors of § 13.
+  - **An engine PR** moving every ceiling to 30.
+  - **A release, cut after a drain** (§ 9).
+- **E — content.**
+  - An example package that nests (sections → outline → paragraphs), with a `while` refinement
+    and a `let` count;
+  - `labelField` in `example-conditional-sections`;
+  - the ten public packages raised to 30 (`--to 30`);
+  - a 30 smoke, then the pins moved, only on the word.
+
+## 15. Deferred and open
+
+**Not in 30 (decided 2026-11-08):**
+- **Enum value labels** (#1014, #1061): `{ value, label }` entries and `input.<id>.label`, for a
+  later bump.
+- **The renderer pipe inside a loop** (#1189): it stays as built at 26, taking the node. Nesting
+  and `while` apply that rule (§§ 3.2, 6); the question is reopened only on the evidence #1189
+  names.
+
+**Not at 30:**
+- **Conditions on run facts** (`run.date`), out of scope since #1062.
+- **Reading siblings across loop instances** (§ 2.4): a node reads its own instance and its
+  enclosing ones.
+- **A `while` whose check is the format's validity** remains `onInvalid: retry`'s one rung; a
+  general repair loop is a `while` the author writes.
+
+**Open for layer A** (proposed here, settled there):
+- the spellings `item.parent`, `pass.previous`, `pass.number`, `.passes` and `.stopped`;
+- the element members for an inner loop (`s.paragraphs`);
+- the exact wording of § 8's sentences;
+- whether `type` admits a bare `list` or always a format.
