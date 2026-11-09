@@ -218,3 +218,135 @@ never a failure. The outer item still completes; its deliverable part reads an e
 - Item rows keyed by path.
 - The record shows the shape the run took. As at 29, it never records the element values
   (#369's rule).
+
+## 3. `while` and `for … until` (#1281)
+
+### 3.1 `while`: the shape
+
+A `while` node repeats its body: it runs once, then again for as long as its check holds, at most
+`max` times. It returns the **last pass's** named node.
+
+```json
+{ "id": "refine", "label": "Refining the summary", "while": "node.judge.value.verdict != \"good\"", "max": 3,
+  "nodes": ["draft", "judge"], "ret": "node.draft" }
+```
+
+- **`max` is required, 1 to 10** (decided; the engine's cap is 10). A missing `max` is refused,
+  and a `max` above 10 is refused naming the cap. There is no default, so the bound is always the
+  author's.
+- **The check runs after each pass**, over that pass's nodes, so a `while` always runs at least
+  once. The check is a condition, like an `if`'s, that reads nodes in the body.
+- **Reaching the bound is a named state**, never a silent stop (decided): *"stopped at its bound
+  of 3; the check never stopped holding"*. The run continues with the last pass's output.
+  Whether a deliverable that read it should be held is not a `while` rule: a deliverable's
+  `check` does that, as it does today.
+
+### 3.2 What a pass reads, and what the outside reads
+
+**Inside a pass, a body node reads its own pass** by id, as any node does. **The previous pass**
+is `pass.previous` (null on the first pass). For example, a redraft reads the judge's last
+verdict with `pass.previous.judge.value.feedback`. `pass.number` is 1-based. Reading
+`pass.previous` adds no dependency edge inside a pass, so draft and judge do not form a cycle.
+The spelling is proposed; layer A settles it.
+
+**Outside the loop**, `node.refine` reads like a loop's returned node:
+- `.content` and `.value` are the last pass's `ret`;
+- `.passes` is the pass count;
+- `.stopped` is `check` or `bound`.
+
+The pipe takes the node (v26 design § 7.1): `node.refine | concept_bullets` pipes the returned
+node, as for any flow node.
+
+### 3.3 A row per pass
+
+Every pass is recorded (decided). Body rows are keyed by pass, using the path grammar with the
+pass number as the segment (`draft:2`, `judge:2`), so a nested `while` composes like a nested
+`for`. Each pass's output is hashed like any node's. The `while`'s own row names `passes` and
+`stopped` with its reason (§ 7).
+
+**The count does not move the total.** Only the last pass's `ret` feeds a deliverable, so a
+`while` adds one block however many passes it runs. The rail shows progress as *"pass 2 of at
+most 3"*, not as blocks.
+
+### 3.4 `for … until`
+
+A `for` may declare `until`, a condition over the item's body nodes:
+
+```json
+{ "id": "documents", "for": "item in input.documents", "until": "node.classify.value.final == true",
+  "nodes": ["classify", "extract"], "ret": "node.extract" }
+```
+
+- **Its items run in order, one at a time** (decided). The loop stops after the item where the
+  check holds, so which items ran is the same on every run. Only this loop is serialized;
+  everything else still runs in parallel.
+- **The items it did not run stay rows**: *"not run: stopped early at item 3"*. Their blocks are
+  skipped with that reason, as an item *skipped by condition* is at 27.
+- **So the count does not shrink.** This supersedes the "a count that shrinks" wording of v29
+  design § 12. The loop's count stays the list's length; what changes is how many items ran.
+  Keeping the count keeps v29's rule that a settled count never moves. A `count-resolved` never
+  fires twice.
+- **In a nested loop** the order and the stop apply to that loop instance only.
+
+### 3.5 `onInvalid: retry`
+
+`onInvalid: retry` stays the one-rung key: one repair message, once, for a format that failed to
+validate (#1100). A `while` is the general repeat. They do not interact: a body node with
+`retry` retries inside its pass.
+
+## 4. `let` (#1282)
+
+### 4.1 The shape
+
+A `let` node computes one typed value from one Scriban expression, with no model call (decided):
+
+```json
+{ "id": "problem_count", "label": "Counting the problems", "let": "node.find_problems.value.problems | array.size", "type": "number" }
+```
+
+- **`type`** is `text`, `number`, `boolean`, or a format id for an object. A list is a format
+  whose top-level field is an array, as at 29 every format's value is an object. The value must
+  match its type, or the node fails, naming the mismatch.
+- **What it may read:** what a template may read at that place (inputs, nodes, `item` inside a
+  loop, `pass` inside a `while`), resolved by the same reference walker. So a `let` inside a loop
+  computes once per item.
+- **Its typical use is a reduce over a loop's list** (`node.paragraphs.value | array.map
+  "words" | array.sum`). A reduce over a dynamic list waits for the loop instance to settle, as
+  any read of that list does.
+- **Refused functions:** anything not deterministic (`date.now`, random). A `let` must give the
+  same value on replay; the Durable orchestrator replays.
+
+### 4.2 Recorded and hashed
+
+The engine runs a `let` as a computed node: `RunComputedNodeActivity`
+(`RunComputedNodeActivity.cs:44`) with a new operation, so no activity is renamed or added. Its
+row records:
+- the input hash, over the expression and the values it read;
+- the value, as canonical JSON;
+- the output hash;
+- the producer, `computed`.
+
+A deliverable or check that reads it is attested the same way as one that reads a model's node.
+`onInvalid: fail` and `flag` apply. `retry` is refused, because there is no model to repair.
+
+## 5. Item naming (#1252)
+
+**An item may be named by one of its own fields** (decided: a declared key, not a convention).
+
+```json
+{ "id": "sections", "label": "Sections to produce", "type": "array", "items": "object",
+  "fields": [{ "id": "title", "type": "text", "required": true }, …], "labelField": "title" }
+```
+
+- **On an `array<object>` input, `labelField`** names a field. It is validated to be a
+  **required `text` field** of the element.
+- **On a loop over a node's value**, the loop declares `labelField`, validated against the field
+  the source's format types for the element.
+- **A blank value falls back** to label plus position (*"Sections to produce 2"*), the 29 name.
+- **Where the name reaches:**
+  - `WorkflowInputFans.Items` (`WorkflowInputFans.cs:52`) and `ConsultNodeValueLoops.ItemsOf`
+    (`ConsultNodeValueLoops.cs:101`) set `name` from the field;
+  - from there it reaches the composed heading, the rail, History, the block names and the
+    `block-skipped` labels with no other change (`WorkflowPackageBlocks.ItemName`, `:176`).
+- **Folder items are unchanged**: they are named by their `label` header.
+- **It lands with the 30 bump** (decided), not as an optional key at 29.
