@@ -104,11 +104,11 @@ public partial class ConformanceFixtureExport
             sources.Add("node.review");
         }
 
-        Add("v30-while", "A while redrafting a summary until a judge calls it good, at most 3 passes; the draft reads the judge's last feedback as pass.previous.judge (§ 3.1, § 3.2).", refining(null, null));
+        Add("v30-while", "A while redrafting a summary until a judge calls it good, at most 3 passes; the draft reads the judge's last feedback as pass.previous.node.judge (§ 3.1, § 3.2).", refining(null, null));
         Add("v30-while-in-a-loop", "A while inside a loop: each part's summary is redrafted per item, reading item and pass together (§ 2.1, § 3.1).",
             refining(InParts, files =>
             {
-                files["prompts/draft.md"] = "Section {{ item.value.title }}, pass {{ pass.number }}: {{ pass.previous.judge.value.feedback }}";
+                files["prompts/draft.md"] = "Section {{ item.value.title }}, pass {{ pass.number }}: {{ pass.previous.node.judge.value.feedback }}";
                 files["prompts/judge.md"] = "Judge {{ node.draft.content }} for {{ item.value.title }}";
                 files["prompts/draft_paragraph.md"] = "Point {{ item.value.point }} of {{ item.parent.value.title }}, after {{ node.refine.content }}";
             }));
@@ -116,7 +116,7 @@ public partial class ConformanceFixtureExport
             refining(Review, files =>
             {
                 files["prompts/critic.md"] = "Critique {{ node.refine.content }} after {{ node.refine.passes }} passes ({{ node.refine.stopped }}).";
-                files["prompts/draft.md"] = "Round {{ pass.parent.number }}, pass {{ pass.number }}. {{ pass.parent.previous.critic.value.feedback }} {{ pass.previous.judge.value.feedback }}";
+                files["prompts/draft.md"] = "Round {{ pass.parent.number }}, pass {{ pass.number }}. {{ pass.parent.previous.node.critic.value.feedback }} {{ pass.previous.node.judge.value.feedback }}";
             }));
         Add("v30-while-passes-and-stopped", "The outside reads a while's last pass and how it ended: node.refine.passes and .stopped (§ 3.2).",
             refining(root =>
@@ -133,14 +133,47 @@ public partial class ConformanceFixtureExport
         Add("invalid-while-without-max-at-30", "A while that declares no bound.", refining(root => V30Package.Node(root, "refine").Remove("max"), null));
         Add("invalid-while-max-above-the-cap-at-30", "A while whose bound is above 10.", refining(root => V30Package.Node(root, "refine")["max"] = 11, null));
         Add("invalid-while-max-zero-at-30", "A while whose bound is 0.", refining(root => V30Package.Node(root, "refine")["max"] = 0, null));
-        Add("invalid-until-on-a-while-at-30", "until on a while — it belongs to a for.", refining(root => V30Package.Node(root, "refine")["until"] = "node.judge.value.verdict == \"good\"", null));
+        Add("invalid-until-on-a-plain-node-at-30", "until on a plain node — it belongs to a for or a while.", refining(root => V30Package.Node(root, "plan")["until"] = "input.notes == \"\"", null));
         Add("invalid-pass-outside-a-while-at-30", "pass.number read by a node that runs inside no while.",
             refining(null, files => files["prompts/plan.md"] = "Plan {{ pass.number }}: {{ input.notes }}"));
         Add("invalid-pass-previous-of-an-outside-node-at-30", "pass.previous naming a node outside the while.",
-            refining(null, files => files["prompts/draft.md"] = "{{ pass.previous.plan.content }}"));
+            refining(null, files => files["prompts/draft.md"] = "{{ pass.previous.node.plan.content }}"));
         Add("invalid-body-reads-its-while-at-30", "A body node reading the while it runs in — read the previous pass instead.",
             refining(null, files => files["prompts/judge.md"] = "Judge {{ node.refine.content }}"));
         Add("invalid-pass-parent-with-no-outer-while-at-30", "pass.parent read in a while that runs inside no while.",
             refining(null, files => files["prompts/draft.md"] = "{{ pass.parent.number }}"));
+
+        // ======================================================= valid: § 3 the pass as an object, more ways to stop (A2b)
+        void Trail(JsonObject root)
+        {
+            root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "trail", ["label"] = "Revision trail", ["format"] = "prose" });
+            root["deliverables"]![0]!["sources"]!.AsArray().Add("node.trail");
+        }
+
+        Add("v30-pass-history", "A draft reading every earlier pass (pass.history, oldest first) and the one two back (pass.previous.previous); a trail reading node.refine.history from outside (§ 3.2).",
+            refining(Trail, files =>
+            {
+                files["prompts/draft.md"] = "{{ for p in pass.history }}Pass {{ p.number }}: {{ p.node.judge.value.feedback }}{{ end }} {{ pass.previous.previous.node.judge.value.feedback }} {{ input.notes }}";
+                files["prompts/trail.md"] = "{{ for p in node.refine.history }}Pass {{ p.number }}: {{ p.node.draft.content }}{{ end }} Last: {{ node.refine.history[-1].node.judge.value.verdict }}";
+            }));
+        Add("v30-while-check-first", "A while that checks before each pass, so it may run none (§ 3.1).",
+            refining(root => V30Package.Node(root, "refine")["checkFirst"] = true, null));
+        Add("v30-while-until", "A while with an until beside its check: it stops when either says so (§ 3.1, § 3.4).",
+            refining(root => V30Package.Node(root, "refine")["until"] = "node.judge.value.verdict == \"good\" || pass.number >= 2", null));
+        Add("v30-for-max", "A for that runs at most its first 2 parts, and a template reading why it stopped (§ 3.4).",
+            V30Package.With(root =>
+            {
+                V30Package.Node(root, "parts")["max"] = 2;
+                root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "assemble", ["label"] = "Assemble", ["format"] = "prose" });
+                root["deliverables"]![0]!["sources"]!.AsArray().Add("node.assemble");
+            }, files => files["prompts/assemble.md"] = "{{ node.parts.content }}{{ if node.parts.stopped == \"bound\" }} (first 2 parts){{ end }}"));
+
+        // ======================================================= § 3 refusals (A2b)
+        Add("invalid-check-first-on-a-for-at-30", "checkFirst on a for — it belongs to a while.", V30Package.With(root => V30Package.Node(root, "parts")["checkFirst"] = true));
+        Add("invalid-for-max-zero-at-30", "A for whose max is 0.", V30Package.With(root => V30Package.Node(root, "parts")["max"] = 0));
+        Add("invalid-outside-history-previous-at-30", "An element of a while's history read from outside has no previous — the list is in pass order.",
+            refining(Trail, files => files["prompts/trail.md"] = "{{ node.refine.history[-1].previous.number }}"));
+        Add("invalid-pass-history-as-a-value-at-30", "pass.history read as a value — it is iterated or indexed.",
+            refining(null, files => files["prompts/draft.md"] = "{{ pass.history }}"));
     }
 }
