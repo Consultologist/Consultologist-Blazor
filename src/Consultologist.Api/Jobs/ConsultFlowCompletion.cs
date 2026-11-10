@@ -46,14 +46,14 @@ internal static class ConsultFlowCompletion
         }
 
         var items = fanItems(ret);
-        var failed = items.Where(item => itemFailed(ret, item["id"])).Select(item => WorkflowItemPath.Key(ret.Id, item["id"])).ToList();
+        var failed = items.Where(item => itemFailed(ret, WorkflowItemPath.OfItem(item)!)).Select(item => WorkflowItemPath.Key(ret.Id, WorkflowItemPath.OfItem(item)!)).ToList();
         if (failed.Count > 0)
         {
             return new Composed(null, $"{flow.Label} could not assemble: {string.Join(", ", failed)} did not complete.");
         }
 
-        var present = items.Where(item => skipped?.Contains(ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])) != true).ToList();
-        if (!present.All(item => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(ret.Id, item["id"]))))
+        var present = items.Where(item => skipped?.Contains(ConsultNodeScheduler.InstanceKey(ret.Id, WorkflowItemPath.OfItem(item)!)) != true).ToList();
+        if (!present.All(item => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(ret.Id, WorkflowItemPath.OfItem(item)!))))
         {
             return null;
         }
@@ -62,9 +62,9 @@ internal static class ConsultFlowCompletion
         {
             new ConsultAggregateRenderer.ForEachPart(present
                 .Select(item => (
-                    item["id"],
+                    WorkflowItemPath.OfItem(item)!,
                     WorkflowPackageBlocks.ItemName(item),
-                    outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].RawOutput.Trim()))
+                    outputs[ConsultNodeScheduler.InstanceKey(ret.Id, WorkflowItemPath.OfItem(item)!)].RawOutput.Trim()))
                 .ToList()),
         };
         var rendered = ConsultAggregateRenderer.Render(parts);
@@ -74,7 +74,7 @@ internal static class ConsultFlowCompletion
             new NodeRunResult(
                 rendered,
                 null,
-                ConsultGenerationProvenance.ComputeAggregateInputHash(present.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].OutputHash).ToList()),
+                ConsultGenerationProvenance.ComputeAggregateInputHash(present.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, WorkflowItemPath.OfItem(item)!)].OutputHash).ToList()),
                 hash,
                 ConsultGenerationProvenance.NodeHashVersionAt25,
                 AgentOutputHash: hash),

@@ -249,7 +249,7 @@ public sealed class ConsultGenerationOrchestrator
 
         // v26 (#1154): a 26 folder item carries its header's label where a 25 item carried name.
         string ItemName(ConsultNodeDescriptor node, string itemId) =>
-            WorkflowPackageBlocks.ItemName(FanItems(node).First(item => item["id"] == itemId));
+            WorkflowPackageBlocks.ItemName(FanItems(node).First(item => WorkflowItemPath.OfItem(item)! == itemId));
 
         // v26 (#1154, design § 3): a block is named by the LOOP a deliverable
         // sources; the body node the loop returns is what completes it.
@@ -323,7 +323,7 @@ public sealed class ConsultGenerationOrchestrator
 
         void StartInstance(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item)
         {
-            var instanceKey = ConsultNodeScheduler.InstanceKey(node.Id, item?["id"]);
+            var instanceKey = ConsultNodeScheduler.InstanceKey(node.Id, WorkflowItemPath.OfItem(item));
             started.Add(instanceKey);
 
             // v25 (B3 #1002, design § 1): a node with a format renders over
@@ -346,7 +346,7 @@ public sealed class ConsultGenerationOrchestrator
                             ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs, SkippedKeys()),
                             node.Format,
                             node.FormatHash),
-                        AgentActivityRetryOptions)] = (node.Id, item?["id"]);
+                        AgentActivityRetryOptions)] = (node.Id, WorkflowItemPath.OfItem(item));
                     return;
                 }
 
@@ -390,7 +390,7 @@ public sealed class ConsultGenerationOrchestrator
                         SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),
                         // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
                         Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds())),
-                    AgentActivityRetryOptions)] = (node.Id, item?["id"]);
+                    AgentActivityRetryOptions)] = (node.Id, WorkflowItemPath.OfItem(item));
                 return;
             }
 
@@ -428,7 +428,7 @@ public sealed class ConsultGenerationOrchestrator
                     Producer: node.Producer,
                     FormatHash: node.FormatHash,
                     Op: node.Op),
-                AgentActivityRetryOptions)] = (node.Id, item?["id"]);
+                AgentActivityRetryOptions)] = (node.Id, WorkflowItemPath.OfItem(item));
         }
 
         // v27 (#1235): one decision per (flow, item) — the item's scope: the
@@ -544,7 +544,7 @@ public sealed class ConsultGenerationOrchestrator
 
         void StartDecision(ConsultNodeDescriptor flow, IReadOnlyDictionary<string, string> item)
         {
-            started.Add(ConsultNodeScheduler.InstanceKey(flow.Id, item["id"]));
+            started.Add(ConsultNodeScheduler.InstanceKey(flow.Id, WorkflowItemPath.OfItem(item)!));
             pendingDecisions[context.CallActivityAsync<ConsultFlowItemDecision>(
                 ConsultGenerationActivityNames.DecideFlowItem,
                 new ConsultDecideFlowItemInput(
@@ -560,7 +560,7 @@ public sealed class ConsultGenerationOrchestrator
                     ConsultRenderPayload.FlowRetsFor(flow, nodesById, ItemRets()),
                     // #1356: the flows its condition reads that took no branch, for this item.
                     SkippedNodes: ConsultRenderPayload.SkippedReadsFor(flow, item, nodesById, skippedNodes, inner.SkippedInstances)),
-                AgentActivityRetryOptions)] = (flow.Id, item["id"]);
+                AgentActivityRetryOptions)] = (flow.Id, WorkflowItemPath.OfItem(item)!);
         }
 
         void StartReadyInstances()
@@ -588,7 +588,7 @@ public sealed class ConsultGenerationOrchestrator
                     {
                         foreach (var item in FanItems(node))
                         {
-                            var itemId = item["id"];
+                            var itemId = WorkflowItemPath.OfItem(item)!;
 
                             if (failedItems.Contains(FailedKey(node, itemId))
                                 || started.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
@@ -622,7 +622,7 @@ public sealed class ConsultGenerationOrchestrator
 
                 foreach (var item in FanItems(node))
                 {
-                    var itemId = item["id"];
+                    var itemId = WorkflowItemPath.OfItem(item)!;
 
                     // v27 (#1235): a branch node's instance runs only once its flow node
                     // took the branch holding it for this item.
@@ -738,7 +738,7 @@ public sealed class ConsultGenerationOrchestrator
                     new ConsultGenerationLoopResolution(
                         loop.Id,
                         collection,
-                        resolution.Items.Select(item => new ConsultCollectionItem(item["id"], WorkflowPackageBlocks.ItemName(item))).ToList(),
+                        resolution.Items.Select(item => new ConsultCollectionItem(WorkflowItemPath.OfItem(item)!, WorkflowPackageBlocks.ItemName(item))).ToList(),
                         blocks,
                         totalBlockCount,
                         context.CurrentUtcDateTime,
@@ -768,14 +768,14 @@ public sealed class ConsultGenerationOrchestrator
 
                 // v27 (#1235): an untaken branch instance and an item skipped by condition are settled too.
                 var allSettled = FanItems(node).All(item =>
-                    inner.Settled(node, item["id"], outputs, failedItems.Contains(FailedKey(node, item["id"]))));
+                    inner.Settled(node, WorkflowItemPath.OfItem(item)!, outputs, failedItems.Contains(FailedKey(node, WorkflowItemPath.OfItem(item)!))));
 
                 // #1246 (diagnostic, ids and flags only — no text): why an inner flow is not yet node-level complete.
                 if (!allSettled && ConsultInnerFlows.IsInner(node) && !context.IsReplaying)
                 {
                     var facts = string.Join(" ", FanItems(node).Select(item =>
                     {
-                        var itemId = item["id"];
+                        var itemId = WorkflowItemPath.OfItem(item)!;
                         var key = ConsultNodeScheduler.InstanceKey(node.Id, itemId);
                         var ret = inner.RetOf(node.Id, itemId);
                         return $"{itemId}[decided={inner.Decided(node.Id, itemId)} ret={ret ?? "-"} alias={outputs.ContainsKey(key)} retOut={(ret is null ? "-" : outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(ret, itemId)).ToString())} skipped={inner.SkippedInstances.Contains(key)}]";
@@ -1092,8 +1092,8 @@ public sealed class ConsultGenerationOrchestrator
                         {
                             var sourceItems = FanItems(source);
                             var failed = sourceItems
-                                .Where(item => failedItems.Contains(FailedKey(source, item["id"])))
-                                .Select(item => item["id"])
+                                .Where(item => failedItems.Contains(FailedKey(source, WorkflowItemPath.OfItem(item)!)))
+                                .Select(item => WorkflowItemPath.OfItem(item)!)
                                 .ToList();
 
                             if (failed.Count > 0)
@@ -1102,7 +1102,7 @@ public sealed class ConsultGenerationOrchestrator
                                 continue;
                             }
 
-                            if (!sourceItems.All(item => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(sourceId, item["id"]))))
+                            if (!sourceItems.All(item => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(sourceId, WorkflowItemPath.OfItem(item)!))))
                             {
                                 allSettled = false;
                                 continue;
@@ -1110,12 +1110,12 @@ public sealed class ConsultGenerationOrchestrator
 
                             parts.Add(new ConsultAggregateRenderer.ForEachPart(sourceItems
                                 .Select(item => (
-                                    item["id"],
-                                    item.GetValueOrDefault("name", item["id"]),
-                                    outputs[ConsultNodeScheduler.InstanceKey(sourceId, item["id"])].RawOutput.Trim()))
+                                    WorkflowItemPath.OfItem(item)!,
+                                    item.GetValueOrDefault("name", WorkflowItemPath.OfItem(item)!),
+                                    outputs[ConsultNodeScheduler.InstanceKey(sourceId, WorkflowItemPath.OfItem(item)!)].RawOutput.Trim()))
                                 .ToList()));
                             sourceHashes.AddRange(sourceItems
-                                .Select(item => outputs[ConsultNodeScheduler.InstanceKey(sourceId, item["id"])].OutputHash));
+                                .Select(item => outputs[ConsultNodeScheduler.InstanceKey(sourceId, WorkflowItemPath.OfItem(item)!)].OutputHash));
                         }
                         else if (failedAggregators.ContainsKey(sourceId))
                         {
@@ -1727,9 +1727,9 @@ public sealed class ConsultGenerationOrchestrator
         // v27 (#1235): a branch node's instance its flow node decided against never starts.
         var expectedInstances = nodes.Where(node => node.Aggregate is null && node.Check is null && node.Kind is null).Sum(node => node.ForEach is null
             ? 1
-            : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, item["id"])) && !inner.Untaken(node, item["id"])
+            : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, WorkflowItemPath.OfItem(item)!)) && !inner.Untaken(node, WorkflowItemPath.OfItem(item)!)
                 // v29 (#1304): an item its folder gate excluded never starts.
-                && !inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, item["id"]))));
+                && !inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, WorkflowItemPath.OfItem(item)!))));
         if (started.Count(key => outputs.ContainsKey(key)) < expectedInstances && failedItems.Count == 0)
         {
             // Unreachable for validated packages (the graph is acyclic and complete);
@@ -2100,8 +2100,8 @@ internal static class ConsultNodeScheduler
     /// <paramref name="readerPath"/> — aligned on the common prefix, as deep as the
     /// dependency runs in loops (none outside every loop).
     /// </summary>
-    public static string? AlignedPath(ConsultNodeDescriptor dependency, string? readerPath)
-        => WorkflowItemPath.Prefix(readerPath, LoopDepthOf(dependency));
+    public static string? AlignedPath(ConsultNodeDescriptor dependency, string? readerPath, IReadOnlyDictionary<string, ConsultNodeDescriptor>? nodesById = null)
+        => WorkflowItemPath.Prefix(readerPath, LoopDepthOf(dependency, nodesById));
 
     /// <summary>
     /// v29 (#1303, design § 1.2): a node in a loop whose count is not yet known — the
@@ -2144,7 +2144,34 @@ internal static class ConsultNodeScheduler
     /// #1340: how many loops a node's instances are keyed under — at ≤29 a node
     /// fans or it does not (one level); B2 (#1341) walks the chain of loops.
     /// </summary>
-    public static int LoopDepthOf(ConsultNodeDescriptor node) => node.ForEach is null ? 0 : 1;
+    public static int LoopDepthOf(ConsultNodeDescriptor node) => LoopDepthOf(node, null);
+
+    /// <summary>
+    /// #1341 (v30 design § 1.2): how many loops a node's instances are keyed under —
+    /// the <c>for</c> rows up its <c>in</c> chain (a body node under its loop; a loop's
+    /// own row under the loops around it), cycle-guarded; a ≤25 node fanned by its own
+    /// forEach (no <c>in</c>) is one. Without the rows, one level, as at 29.
+    /// </summary>
+    public static int LoopDepthOf(ConsultNodeDescriptor node, IReadOnlyDictionary<string, ConsultNodeDescriptor>? nodesById)
+    {
+        if (nodesById is null)
+        {
+            return node.ForEach is null ? 0 : 1;
+        }
+
+        var depth = 0;
+        var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+
+        for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+        {
+            if (owner.Kind == ConsultNodeFlows.For)
+            {
+                depth++;
+            }
+        }
+
+        return depth == 0 && node.ForEach is not null ? 1 : depth;
+    }
 
     /// <summary>
     /// A scalar node is ready when every node: dependency completed; a forEach
@@ -2165,7 +2192,7 @@ internal static class ConsultNodeScheduler
     {
         return NodeDependencies(node).All(dependencyId =>
         {
-            var key = InstanceKey(dependencyId, AlignedPath(nodesById[dependencyId], itemId));
+            var key = InstanceKey(dependencyId, AlignedPath(nodesById[dependencyId], itemId, nodesById));
             // v27 (#1235): an if/case inside a loop skipped for the item is settled too (flow:item).
             return skipped?.Contains(dependencyId) == true || skipped?.Contains(key) == true || outputs.ContainsKey(key);
         });
@@ -2504,7 +2531,7 @@ internal static class ConsultNodeVariableResolver
         var target = nodesById[targetId];
         var result = outputs[ConsultNodeScheduler.InstanceKey(
             targetId,
-            target.ForEach is null ? null : ConsultNodeScheduler.AlignedPath(target, WorkflowItemPath.OfItem(item))
+            target.ForEach is null ? null : ConsultNodeScheduler.AlignedPath(target, WorkflowItemPath.OfItem(item), nodesById)
                 ?? throw new InvalidOperationException(
                     $"Node '{nodeId}' binding '{variable}' targets forEach node '{targetId}' outside a forEach instance."))];
 

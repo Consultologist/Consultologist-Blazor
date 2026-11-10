@@ -1,3 +1,4 @@
+using Consultologist.PackageFormat;
 using Consultologist.Api.Models;
 
 namespace Consultologist.Api.Jobs;
@@ -88,13 +89,13 @@ internal sealed class ConsultInnerFlows
         {
             foreach (var item in fanItems(flow))
             {
-                var key = ConsultNodeScheduler.InstanceKey(flow.Id, item["id"]);
-                if (outputs.ContainsKey(key) || RetOf(flow.Id, item["id"]) is not { } ret)
+                var key = ConsultNodeScheduler.InstanceKey(flow.Id, WorkflowItemPath.OfItem(item)!);
+                if (outputs.ContainsKey(key) || RetOf(flow.Id, WorkflowItemPath.OfItem(item)!) is not { } ret)
                 {
                     continue;
                 }
 
-                if (outputs.TryGetValue(ConsultNodeScheduler.InstanceKey(ret, item["id"]), out var branchResult))
+                if (outputs.TryGetValue(ConsultNodeScheduler.InstanceKey(ret, WorkflowItemPath.OfItem(item)!), out var branchResult))
                 {
                     outputs[key] = branchResult;
                     progressed = true;
@@ -107,5 +108,5 @@ internal sealed class ConsultInnerFlows
 
     /// <summary>The instances of a branch node that never run — one per item its flow node decided against it.</summary>
     public int UntakenInstances(ConsultNodeDescriptor node, IEnumerable<IReadOnlyDictionary<string, string>> items) =>
-        FlowOf(node) is null ? 0 : items.Count(item => Untaken(node, item["id"]));
+        FlowOf(node) is null ? 0 : items.Count(item => Untaken(node, WorkflowItemPath.OfItem(item)!));
 }
