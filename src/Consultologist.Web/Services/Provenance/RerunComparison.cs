@@ -102,7 +102,7 @@ public static class RerunComparison
         {
             return outputs
                 .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-                .Select(pair => new Row(pair.Key, pair.Value.Label, pair.Key.Contains(':'), null, pair.Value.OutputHash, NotOnSource))
+                .Select(pair => new Row(pair.Key, pair.Value.Label, Consultologist.PackageFormat.WorkflowItemPath.IsItemKey(pair.Key), null, pair.Value.OutputHash, NotOnSource))
                 .ToList();
         }
 
@@ -120,10 +120,10 @@ public static class RerunComparison
                 }
 
                 foreach (var (key, entry) in outputs
-                    .Where(pair => pair.Key.StartsWith(descriptor.Id + ":", StringComparison.Ordinal))
+                    .Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, descriptor.Id) is not null)
                     .OrderBy(pair => pair.Key, StringComparer.Ordinal))
                 {
-                    Add(key, key[(descriptor.Id.Length + 1)..], isItem: true, entry, reproducible);
+                    Add(key, Consultologist.PackageFormat.WorkflowItemPath.PathFor(key, descriptor.Id)!, isItem: true, entry, reproducible);
                 }
             }
         }
@@ -131,7 +131,7 @@ public static class RerunComparison
         {
             foreach (var (key, entry) in outputs.OrderBy(pair => pair.Key, StringComparer.Ordinal))
             {
-                Add(key, entry.Label, key.Contains(':'), entry, reproducible: false);
+                Add(key, entry.Label, Consultologist.PackageFormat.WorkflowItemPath.IsItemKey(key), entry, reproducible: false);
             }
         }
 

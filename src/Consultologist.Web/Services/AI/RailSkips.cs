@@ -9,15 +9,5 @@ namespace Consultologist.Web.Services.AI;
 public static class RailSkips
 {
     /// <summary><c>loop:item</c> from a block id's last two segments, or null when it has fewer than two.</summary>
-    public static string? LoopItemKeyOf(string blockId)
-    {
-        var last = blockId.LastIndexOf(':');
-        if (last <= 0)
-        {
-            return null;
-        }
-
-        var previous = blockId.LastIndexOf(':', last - 1);
-        return previous < 0 ? blockId : blockId[(previous + 1)..];
-    }
+    public static string? LoopItemKeyOf(string blockId) => Consultologist.PackageFormat.WorkflowItemPath.LoopItemOfBlock(blockId);
 }

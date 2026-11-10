@@ -35,15 +35,29 @@ public static class RecordFlow
     /// <summary>The loop row a body node runs inside, or null; v27 (#1236): a branch node's through its if/case — a reader walks in until it meets a for.</summary>
     public static ConsultGenerationNodeDescriptor? LoopOf(ConsultGenerationNodeDescriptor node, IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes)
     {
-        if (node.In is not { } ownerId)
+        // v30 (#1340, design § 1.2): up the in chain to the nearest loop, to any depth —
+        // through if/case rows; guarded against a row that holds its holder. At ≤29 the
+        // record keeps the chain at two levels, so the answer is 29's.
+        var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+
+        for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId); )
         {
-            return null;
+            var owner = nodes?.FirstOrDefault(n => n.Id == ownerId);
+
+            if (owner is { Kind: Loop })
+            {
+                return owner;
+            }
+
+            if (owner is null || !IsBranching(owner))
+            {
+                return null;
+            }
+
+            ownerId = owner.In;
         }
 
-        var owner = nodes?.FirstOrDefault(n => n.Id == ownerId);
-        return owner is { Kind: Loop } ? owner
-            : owner is not null && IsBranching(owner) && owner.In is { } loopId ? nodes?.FirstOrDefault(n => n.Id == loopId && n.Kind == Loop)
-            : null;
+        return null;
     }
 
     /// <summary>v27 (#1236, record storage 9): an if/case inside a loop — its in names a for; decided once per item (its branches map), never a branch of its own.</summary>
@@ -63,8 +77,8 @@ public static class RecordFlow
     /// <summary>v27: the items an inner if/case skipped by condition — its &lt;flow&gt;:&lt;item&gt; rows with status Skipped — item id → the reason (the condition's text).</summary>
     public static IReadOnlyDictionary<string, string> SkippedItemsOf(ConsultGenerationNodeDescriptor flow, IReadOnlyDictionary<string, ConsultGenerationNodeStatus>? outputs) =>
         (outputs ?? new Dictionary<string, ConsultGenerationNodeStatus>())
-            .Where(pair => pair.Key.StartsWith(flow.Id + ":", StringComparison.Ordinal) && pair.Value.Status == "Skipped")
-            .ToDictionary(pair => pair.Key[(flow.Id.Length + 1)..], pair => pair.Value.Reason ?? "took no branch", StringComparer.Ordinal);
+            .Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, flow.Id) is not null && pair.Value.Status == "Skipped")
+            .ToDictionary(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, flow.Id)!, pair => pair.Value.Reason ?? "took no branch", StringComparer.Ordinal);
 
     /// <summary>Every id a flow row lists as its body — drawn inside its flow, never at the top level.</summary>
     public static IReadOnlySet<string> BodyIds(IReadOnlyList<ConsultGenerationNodeDescriptor> nodes) =>
@@ -85,7 +99,7 @@ public static class RecordFlow
         {
             var missing = (flow.Body ?? Array.Empty<string>())
                 .Where(id => !ids.Contains(id)
-                    || (outputs is null || (!outputs.ContainsKey(id) && !outputs.Keys.Any(k => k.StartsWith(id + ":", StringComparison.Ordinal)))))
+                    || (outputs is null || (!outputs.ContainsKey(id) && !outputs.Keys.Any(k => Consultologist.PackageFormat.WorkflowItemPath.PathFor(k, id) is not null))))
                 .ToList();
             if (missing.Count > 0)
             {

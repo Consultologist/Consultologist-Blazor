@@ -159,9 +159,20 @@ public static class WorkflowManifestReader
                 return direct;
             }
 
-            return FlowOf(all, nodeId) is { IsLoop: false } flow
-                ? all.FirstOrDefault(candidate => candidate.IsLoop && candidate.Nodes is { } body && body.Contains(flow.Id, StringComparer.Ordinal))
-                : null;
+            // v30 (#1340, design § 1.2): up through the flow nodes holding it to the
+            // nearest loop, to any depth; guarded against a body that holds its holder.
+            // At ≤29 the shape keeps it at two levels, so the answer is 29's.
+            var seen = new HashSet<string>(StringComparer.Ordinal) { nodeId };
+
+            for (var flow = FlowOf(all, nodeId); flow is not null && seen.Add(flow.Id); flow = FlowOf(all, flow.Id))
+            {
+                if (all.FirstOrDefault(candidate => candidate.IsLoop && candidate.Nodes is { } body && body.Contains(flow.Id, StringComparer.Ordinal)) is { } loop)
+                {
+                    return loop;
+                }
+            }
+
+            return null;
         }
 
         /// <summary>

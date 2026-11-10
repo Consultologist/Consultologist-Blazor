@@ -406,7 +406,7 @@ public static class RunDagDiagram
         // v26 (#1208): a body node fans through its loop row — the same roll-up.
         if (RecordFlow.FanOf(node, nodes) != null)
         {
-            var items = outputs.Where(pair => pair.Key.StartsWith($"{node.Id}:", StringComparison.Ordinal)).ToList();
+            var items = outputs.Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, node.Id) is not null).ToList();
             if (items.Any(pair => pair.Value.Status == "Failed"))
             {
                 return "failed";
@@ -463,7 +463,7 @@ public static class RunDagDiagram
         IReadOnlyList<ConsultCollectionRoster>? rosters,
         IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
     {
-        var items = outputs.Where(pair => pair.Key.StartsWith($"{node.Id}:", StringComparison.Ordinal)).ToList();
+        var items = outputs.Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, node.Id) is not null).ToList();
         // v27 (#1236): an if/case inside a loop is done per item decided (its branches map); a branch node over the items it ran.
         if (RecordFlow.IsInner(node, nodes))
         {
@@ -481,7 +481,7 @@ public static class RunDagDiagram
         {
             // #1331 (v29, #1279): a folder item skipped by its node-gated if is skipped by the LOOP —
             // the record keys it <loop>:<item> — so it is settled for the loop's body, not still to run.
-            var skipped = outputs.Count(pair => pair.Key.StartsWith($"{loop.Id}:", StringComparison.Ordinal) && pair.Value.Status == "Skipped");
+            var skipped = outputs.Count(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, loop.Id) is not null && pair.Value.Status == "Skipped");
             return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(count, items.Count) - skipped, skipped);
         }
 

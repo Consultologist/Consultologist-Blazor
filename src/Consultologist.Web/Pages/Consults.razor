@@ -8,6 +8,7 @@
 @using Consultologist.Web.Services.AI
 @using Consultologist.Web.Services.Accounts
 @using Consultologist.Web.Services.Diagnostics
+@using ItemPath = Consultologist.PackageFormat.WorkflowItemPath
 @using Consultologist.Web.Services.Documents
 @using Consultologist.Web.Services.Forms
 @inject NavigationManager Navigation
@@ -943,7 +944,7 @@
                                             <section class="note-section">
                                                 <h3>
                                                     @standard.Name
-                                                    @if (unattestedNodes.TryGetValue(standard.Id.Split(':')[0], out var markedEntry))
+                                                    @if (unattestedNodes.TryGetValue(ItemPath.NodeOf(standard.Id), out var markedEntry))
                                                     {
                                                         <span class="note-section__unattested" title="@UnattestedNodes.SentenceFor(markedEntry.Kind)">@UnattestedNodes.Pill(markedEntry.Kind)</span>
                                                     }
@@ -1915,8 +1916,8 @@
   }
 
   private bool HasItemRow(string nodeId, string itemId) =>
-    completedNodeItems.Contains($"{nodeId}:{itemId}")
-    || failedBlockErrors.Keys.Any(key => string.Equals(ItemPart(key), itemId, StringComparison.Ordinal) && key.StartsWith(nodeId + ":", StringComparison.Ordinal));
+    completedNodeItems.Contains(ItemPath.Key(nodeId, itemId))
+    || failedBlockErrors.Keys.Any(key => string.Equals(ItemPart(key), itemId, StringComparison.Ordinal) && ItemPath.PathFor(key, nodeId) is not null);
 
   /// <summary>The inner if/case whose body lists the node, or null for every other node.</summary>
   private ConsultGenerationNodeDescriptor? BranchFlowOf(string nodeId)
@@ -2607,7 +2608,7 @@
             aiProgressNotice = $"{stepLabel}: {sectionStep.ItemName}";
             // Step is the forEach node id that just completed for this section
             // (one event per node/section pair) — the run rail's per-group ticks.
-            completedNodeItems.Add($"{sectionStep.Step}:{sectionStep.ItemId}");
+            completedNodeItems.Add(ItemPath.Key(sectionStep.Step, sectionStep.ItemId));
           }
           break;
 
@@ -2791,7 +2792,7 @@
     // done and re-attach alike.
     if (response.NodeOutputs is { Count: > 0 })
     {
-      foreach (var (key, output) in response.NodeOutputs.Where(entry => !entry.Key.Contains(':', StringComparison.Ordinal)))
+      foreach (var (key, output) in response.NodeOutputs.Where(entry => !ItemPath.IsItemKey(entry.Key)))
       {
         nodeStatuses[key] = output.Status;
       }
@@ -2799,12 +2800,12 @@
       // v27 (#1248): the fan instances the record has completed — the polled response feeds the
       // same set the item-step events do, so a branch node's rows know which items it ran for.
       completedNodeItems.UnionWith(response.NodeOutputs
-        .Where(entry => entry.Key.Contains(':', StringComparison.Ordinal) && entry.Value.Status == "Completed")
+        .Where(entry => ItemPath.IsItemKey(entry.Key) && entry.Value.Status == "Completed")
         .Select(entry => entry.Key));
 
       // v27 (#1236, storage 9): an inner if/case's item it skipped by condition — the item row's state.
       skippedNodeItems = response.NodeOutputs
-        .Where(entry => entry.Key.Contains(':', StringComparison.Ordinal) && entry.Value.Status == "Skipped")
+        .Where(entry => ItemPath.IsItemKey(entry.Key) && entry.Value.Status == "Skipped")
         .Select(entry => entry.Key)
         .ToHashSet(StringComparer.Ordinal);
       skippedItemReasons = response.NodeOutputs
@@ -3640,7 +3641,7 @@
   /// <summary>#1330: the skip key that covers this node's item — its own, or its loop's — or null.</summary>
   private string? SkipKeyOf(RailNode node, string itemId)
   {
-    foreach (var key in new[] { $"{node.Id}:{itemId}", $"{node.Id}:{ItemPart(itemId)}" })
+    foreach (var key in new[] { ItemPath.Key(node.Id, itemId), ItemPath.Key(node.Id, ItemPart(itemId)) })
     {
       if (skippedNodeItems.Contains(key))
       {
@@ -3652,7 +3653,7 @@
     if (descriptor is not null
         && Consultologist.Web.Services.Provenance.RecordFlow.LoopOf(descriptor, jobDescriptors) is { } loop)
     {
-      foreach (var key in new[] { $"{loop.Id}:{itemId}", $"{loop.Id}:{ItemPart(itemId)}" })
+      foreach (var key in new[] { ItemPath.Key(loop.Id, itemId), ItemPath.Key(loop.Id, ItemPart(itemId)) })
       {
         if (skippedNodeItems.Contains(key))
         {
@@ -3664,11 +3665,8 @@
     return null;
   }
 
-  private static string ItemPart(string sectionId)
-  {
-    var separator = sectionId.LastIndexOf(':');
-    return separator < 0 ? sectionId : sectionId[(separator + 1)..];
-  }
+  // #1340: a block id's item path — the text after its last colon (the id itself when none).
+  private static string ItemPart(string sectionId) => ItemPath.PathOfBlock(sectionId);
 
   // Per-item status under one forEach node, keyed by the plain item id (the
   // prose-step events' currency). Pair ticks come from those events; a done
@@ -3708,8 +3706,8 @@
   // sections — keyed by composite block ids in v6 — skip their remaining steps.
   private string? NodeItemStatus(RailNode node, bool nodeDone, bool nodeCurrent, string itemId)
   {
-    if (completedNodeItems.Contains($"{node.Id}:{ItemPart(itemId)}")
-        || completedNodeItems.Contains($"{node.Id}:{itemId}")
+    if (completedNodeItems.Contains(ItemPath.Key(node.Id, ItemPart(itemId)))
+        || completedNodeItems.Contains(ItemPath.Key(node.Id, itemId))
         || (node.IsResult && generatedBlocks.ContainsKey(itemId)))
     {
       return "Completed";
@@ -3721,7 +3719,7 @@
     }
 
     // v27 (#1236, storage 9): an inner if/case skipped this item by condition.
-    if (skippedNodeItems.Contains($"{node.Id}:{itemId}") || skippedNodeItems.Contains($"{node.Id}:{ItemPart(itemId)}"))
+    if (skippedNodeItems.Contains(ItemPath.Key(node.Id, itemId)) || skippedNodeItems.Contains(ItemPath.Key(node.Id, ItemPart(itemId))))
     {
       return "Skipped";
     }
