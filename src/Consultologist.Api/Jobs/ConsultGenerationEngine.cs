@@ -242,34 +242,7 @@ public sealed class ConsultGenerationOrchestrator
         // v29 (#1303, design § 1.2): a node in a loop whose count is not yet known —
         // the loop itself, its body, or an if/case in its body. None of it settles
         // until the loop resolves: an empty list is not yet a finished loop.
-        bool AwaitsCount(ConsultNodeDescriptor node)
-        {
-            if (unresolvedLoops.Count == 0)
-            {
-                return false;
-            }
-
-            // v30 (#1340, design § 1.2): up the chain of owners to the root — at ≤29 the
-            // shape keeps it at three hops (body node, inner if/case, loop), so the answer
-            // is 29's; guarded against a body that holds its holder.
-            var seen = new HashSet<string>(StringComparer.Ordinal);
-            for (var id = node.Id; seen.Add(id); )
-            {
-                if (unresolvedLoops.Contains(id))
-                {
-                    return true;
-                }
-
-                if (nodesById.GetValueOrDefault(id)?.In is not { } owner)
-                {
-                    return false;
-                }
-
-                id = owner;
-            }
-
-            return false;
-        }
+        bool AwaitsCount(ConsultNodeDescriptor node) => ConsultNodeScheduler.AwaitsCount(node, nodesById, unresolvedLoops);
 
         string FailedKey(ConsultNodeDescriptor node, string itemId) =>
             v6 ? WorkflowItemPath.Key(CollectionIdOf(node), itemId) : itemId;
@@ -2126,6 +2099,43 @@ internal static class ConsultNodeScheduler
     /// </summary>
     public static string? AlignedPath(ConsultNodeDescriptor dependency, string? readerPath)
         => WorkflowItemPath.Prefix(readerPath, LoopDepthOf(dependency));
+
+    /// <summary>
+    /// v29 (#1303, design § 1.2): a node in a loop whose count is not yet known — the
+    /// loop itself, its body, or a flow node in its body. None of it settles until
+    /// the loop resolves: an empty list is not yet a finished loop. v30 (#1340): up
+    /// the chain of owners to the root — at ≤29 the shape keeps it at three hops
+    /// (body node, inner if/case, loop), so the answer is 29's; guarded against a
+    /// body that holds its holder.
+    /// </summary>
+    public static bool AwaitsCount(
+        ConsultNodeDescriptor node,
+        IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
+        IReadOnlySet<string> unresolvedLoops)
+    {
+        if (unresolvedLoops.Count == 0)
+        {
+            return false;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        for (var id = node.Id; seen.Add(id); )
+        {
+            if (unresolvedLoops.Contains(id))
+            {
+                return true;
+            }
+
+            if (nodesById.GetValueOrDefault(id)?.In is not { } owner)
+            {
+                return false;
+            }
+
+            id = owner;
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// #1340: how many loops a node's instances are keyed under — at ≤29 a node

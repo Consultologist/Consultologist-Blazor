@@ -106,4 +106,56 @@ public class ItemPathGoldenTests
     }
 
     private static string SourceFile([CallerFilePath] string path = "") => path;
+
+    // ----- the root walk and the legacy key, beside the golden ------------------------------
+
+    private static Dictionary<string, ConsultNodeDescriptor> ById(params ConsultNodeDescriptor[] nodes) =>
+        nodes.ToDictionary(n => n.Id, StringComparer.Ordinal);
+
+    [Fact]
+    public void AwaitsCount_WalksFromABranchNode_ThroughItsIf_ToTheUnresolvedLoop()
+    {
+        var nodes = ById(
+            new("problems", "Problems", Kind: "for", Collection: "node.find_problems.value.problems", Body: new[] { "triage" }, Ret: "triage"),
+            new("triage", "Triage", Kind: "if", Body: new[] { "escalate" }, In: "problems"),
+            new("escalate", "Escalate", In: "triage"),
+            new("find_problems", "Find problems"));
+        var unresolved = new HashSet<string>(StringComparer.Ordinal) { "problems" };
+
+        Assert.True(ConsultNodeScheduler.AwaitsCount(nodes["escalate"], nodes, unresolved));
+        Assert.True(ConsultNodeScheduler.AwaitsCount(nodes["triage"], nodes, unresolved));
+        Assert.True(ConsultNodeScheduler.AwaitsCount(nodes["problems"], nodes, unresolved));
+        Assert.False(ConsultNodeScheduler.AwaitsCount(nodes["find_problems"], nodes, unresolved));
+        Assert.False(ConsultNodeScheduler.AwaitsCount(nodes["escalate"], nodes, new HashSet<string>(StringComparer.Ordinal)));
+    }
+
+    [Fact]
+    public void AwaitsCount_StopsAtACycle()
+    {
+        var nodes = ById(new("a", "A", In: "b"), new("b", "B", In: "a"));
+        Assert.False(ConsultNodeScheduler.AwaitsCount(nodes["a"], nodes, new HashSet<string>(StringComparer.Ordinal) { "loop" }));
+    }
+
+    [Fact]
+    public void ALegacyItemRowWhoseItemIsABlockId_SplitsAtItsLastColon_AsEver()
+    {
+        // Below 26 an engine item may carry its block id as its id (draft:consult:hpi): the
+        // item-step parse has always split at the LAST colon, so the head is draft:consult —
+        // no step of that name — and no event is raised. The helper keeps the rule.
+        var response = new ConsultGenerationJobResponse(
+            "job-1", "user-1", ConsultGenerationJobStatuses.Running, 1, 0, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), false,
+            ItemProgress: new Dictionary<string, ConsultGenerationItemProgress>
+            {
+                ["consult:hpi"] = new("consult:hpi", "History of Present Illness", null, 1, 1),
+                ["hpi"] = new("hpi", "History of Present Illness", null, 1, 1),
+            },
+            ItemSteps: new[] { new ConsultItemStepDescriptor("draft", "Drafting section") },
+            NodeOutputs: new Dictionary<string, ConsultGenerationNodeStatusResponse>(StringComparer.Ordinal)
+            {
+                ["draft:consult:hpi"] = new("draft", "draft:consult:hpi", ConsultGenerationNodeStatuses.Completed),
+            });
+
+        Assert.DoesNotContain(ConsultGenerationJobs.CreateSemanticEventCandidates(response), c => c.EventType == ConsultGenerationItemSteps.EventName);
+    }
 }
