@@ -447,7 +447,11 @@ public record ConsultGenerationJobResponse(
     // v29 (#1305, design § 4): the deliverables composed but not released —
     // served whatever the job's status, so a failed job names what it held.
     // Null when none.
-    IReadOnlyList<ConsultHeldDocument>? HeldDocuments = null);
+    IReadOnlyList<ConsultHeldDocument>? HeldDocuments = null,
+    // v30 (#1341, design § 7, storage 11): the rows of a nested loop's instances.
+    // Omitted when null, so a 26–29 record serves the bytes it always did.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<Consultologist.Api.Jobs.ConsultLoopInstanceRow>? LoopInstances = null);
 
 /// <summary>
 /// One v7 deliverable on the job response: authored id and label, the text, and

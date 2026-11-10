@@ -41,7 +41,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// 29 — the unresolved loops, a loop row's count null until it settles with its
     /// moment and reason, the held documents.
     internal static void Stamp(ConsultGenerationJobState state, int at25) =>
-        state.SchemaVersion = state.PackageSpecVersion >= 29 ? 10 : state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
+        // v30 (#1341, design § 7): a 30 job is record storage 11 — paths, loop-instance rows.
+        state.SchemaVersion = state.PackageSpecVersion >= 30 ? 11 : state.PackageSpecVersion >= 29 ? 10 : state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
 
     public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore)
     {
@@ -128,15 +129,24 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var label = state.Nodes?.FirstOrDefault(node => string.Equals(node.Id, input.LoopId, StringComparison.Ordinal))?.Label ?? input.LoopId;
 
         // v30 (#1341): one instance of a nested loop — its blocks, its roster (ids are
-        // paths, unique across instances) and the total; the loop stays unresolved.
+        // paths, unique across instances), the total and (storage 11) its row; the loop
+        // stays unresolved. A failed instance records its row and sentence only.
         if (input.Path is { } path)
         {
-            state.Collections ??= new List<ConsultCollectionRoster>();
-            state.Collections.Add(new ConsultCollectionRoster(input.Collection, input.Items));
+            state.LoopInstances ??= new List<ConsultLoopInstanceRow>();
+            state.LoopInstances.Add(new ConsultLoopInstanceRow(
+                input.LoopId, path, input.Failure is null ? input.Items.Count : null, input.ResolvedAtUtc, input.Reason, input.Failure));
+
+            if (input.Failure is null)
+            {
+                state.Collections ??= new List<ConsultCollectionRoster>();
+                state.Collections.Add(new ConsultCollectionRoster(input.Collection, input.Items));
+            }
+
             state.History.Add(new JobHistoryEvent(
-                "loop-resolved",
-                input.Reason is { } instanceReason
-                    ? $"{label} ({path}): {instanceReason}"
+                input.Failure is null ? "loop-resolved" : "loop-failed",
+                input.Failure is { } instanceFailure ? $"{label} ({path}): {instanceFailure}"
+                    : input.Reason is { } instanceReason ? $"{label} ({path}): {instanceReason}"
                     : $"{label} ({path}): {input.Items.Count} {(input.Items.Count == 1 ? "item" : "items")}",
                 null,
                 input.ResolvedAtUtc));
@@ -293,7 +303,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // creation — never 2, 6 or 7 — so a reader trusts the 26 rows at once.
         if (State.PackageSpecVersion >= 26)
         {
-            State.SchemaVersion = State.PackageSpecVersion >= 29 ? 10 : State.PackageSpecVersion >= 27 ? 9 : 8;
+            State.SchemaVersion = State.PackageSpecVersion >= 30 ? 11 : State.PackageSpecVersion >= 29 ? 10 : State.PackageSpecVersion >= 27 ? 9 : 8;
         }
         State.PackageTitle ??= input.PackageTitle;
         State.PackageTags ??= input.PackageTags?.ToList();
@@ -1402,7 +1412,25 @@ public sealed record ConsultGenerationLoopResolution(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     string? Path = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    bool? Settled = null);
+    bool? Settled = null,
+    // v30 (#1341, decided 2026-11-10): an instance whose list could not be read — its
+    // row records the sentence (no items, no blocks). Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Failure = null);
+
+/// <summary>
+/// v30 (#1341, design § 7, record storage 11): one instance of a loop that runs inside a
+/// loop — the loop, the outer item's path, how many items it settled to (null when it
+/// failed), when, and why it has none (an empty list's reason) or the sentence it failed
+/// with. Never an element's value (#369).
+/// </summary>
+public sealed record ConsultLoopInstanceRow(
+    string LoopId,
+    string Path,
+    int? Count,
+    DateTimeOffset ResolvedAtUtc,
+    string? Reason = null,
+    string? Failure = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1821,6 +1849,14 @@ public sealed class ConsultGenerationJobState
     /// Null below 29 and when the job has none.
     /// </summary>
     public List<string>? UnresolvedLoops { get; set; }
+
+    /// <summary>
+    /// v30 (#1341, design § 7, record storage 11): one row per instance of a loop that
+    /// runs inside a loop — its loop, outer path, count, settled moment and reason, or
+    /// the sentence it failed with. A top-level loop keeps its row on the node. Null
+    /// below 30 and when the job has none.
+    /// </summary>
+    public List<ConsultLoopInstanceRow>? LoopInstances { get; set; }
     public Dictionary<string, ConsultNodeOutputState>? NodeOutputs { get; set; }
 
     // v6: the result aggregator's rendered output — the deliverable itself
@@ -2240,7 +2276,8 @@ public sealed class ConsultGenerationJobState
             DecisionFailureKind: DecisionFailureKind,
             SkippedBlocks: skippedSections.Count > 0 ? skippedSections : null,
             UnresolvedLoops: UnresolvedLoops is { Count: > 0 } ? UnresolvedLoops : null,
-            HeldDocuments: HeldDocuments is { Count: > 0 } ? HeldDocuments : null);
+            HeldDocuments: HeldDocuments is { Count: > 0 } ? HeldDocuments : null,
+            LoopInstances: LoopInstances is { Count: > 0 } ? LoopInstances : null);
     }
 }
 
