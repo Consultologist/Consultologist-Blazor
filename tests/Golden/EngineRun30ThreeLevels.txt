@@ -1,0 +1,2306 @@
+# calls
+entity Initialize {"JobId":"<job>","AppUserId":"user-1","Items":[{"id":"consult:assessment","name":"Assessment"},{"id":"consult:sections:hpi","name":"HPI"},{"id":"consult:sections:plan","name":"Plan"},{"id":"consult:assemble","name":"Assemble"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"c8a8bff519247d135be7ebe90f1cba29a6174a3cb34ff87d10c8fb8ec9d432f5","ItemSteps":[{"Id":"section_notes","Label":"Section notes"},{"Id":"draft_problem","Label":"Draft problem"},{"Id":"outline","Label":"Outline the section"},{"Id":"draft_paragraph","Label":"Draft paragraph"},{"Id":"paragraphs","Label":"Paragraphs"},{"Id":"draft_sentence","Label":"Draft sentence"},{"Id":"sentences","Label":"Sentences"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","PromptId":"prompts/extract.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"extract","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"concept-extraction","AgentVersion":"1","CustomSchemaHash":null,"Macros":null,"Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/extract.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"scope","Label":"Scope","PromptId":"prompts/scope.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"scope","Aggregate":null,"Values":["in_scope","out_of_scope"],"Reproducible":null,"Check":null,"Template":null,"AgentName":"classification","AgentVersion":"1","CustomSchemaHash":null,"Macros":null,"Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/scope.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"assessment","Label":"Assessment","PromptId":"prompts/assessment.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"assessment","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":[{"Id":"closing","After":true,"When":null,"ForItem":null,"Reads":null,"If":null}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":["extract"],"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/assessment.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"section_notes","Label":"Section notes","PromptId":"prompts/section_notes.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"snippet.sections","ConceptSource":"section_notes","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"sections","Branch":null,"DeliverableReads":null,"Prompt":"prompts/section_notes.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"coverage","Label":"Coverage","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"coverage","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"sections","Label":"Sections","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"sections","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":"for","Collection":"snippet.sections","Expression":null,"Body":["section_notes"],"Ret":"section_notes","In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":2,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"find_problems","Label":"Find problems","PromptId":"prompts/find_problems.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"find_problems","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Macros":null,"Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/find_problems.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"draft_problem","Label":"Draft problem","PromptId":"prompts/draft_problem.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.find_problems.value.problems","ConceptSource":"draft_problem","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"problems","Branch":null,"DeliverableReads":null,"Prompt":"prompts/draft_problem.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"problems","Label":"Problems","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"problems","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":["find_problems"],"With":null,"OnInvalid":null,"Kind":"for","Collection":"node.find_problems.value.problems","Expression":null,"Body":["draft_problem"],"Ret":"draft_problem","In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"plan","Label":"Plan the sections","PromptId":"prompts/plan.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"plan","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee","Macros":null,"Format":"section_plan","Producer":"custom","FormatHash":"9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/plan.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"outline","Label":"Outline the section","PromptId":"prompts/outline.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.plan.value.sections","ConceptSource":"outline","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","Macros":null,"Format":"outline","Producer":"custom","FormatHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"parts","Branch":null,"DeliverableReads":null,"Prompt":"prompts/outline.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"draft_paragraph","Label":"Draft paragraph","PromptId":"prompts/draft_paragraph.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.outline.value.points","ConceptSource":"draft_paragraph","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"paragraphs","Branch":null,"DeliverableReads":null,"Prompt":"prompts/draft_paragraph.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"parts","Label":"Parts","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"parts","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":["plan"],"With":null,"OnInvalid":null,"Kind":"for","Collection":"node.plan.value.sections","Expression":null,"Body":["outline","paragraphs"],"Ret":"paragraphs","In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"paragraphs","Label":"Paragraphs","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.plan.value.sections","ConceptSource":"paragraphs","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":["outline"],"With":null,"OnInvalid":null,"Kind":"for","Collection":"node.outline.value.points","Expression":null,"Body":["draft_paragraph","sentences"],"Ret":"sentences","In":"parts","Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"draft_sentence","Label":"Draft sentence","PromptId":"prompts/draft_sentence.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"input.questions","ConceptSource":"draft_sentence","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":["draft_paragraph"],"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"sentences","Branch":null,"DeliverableReads":null,"Prompt":"prompts/draft_sentence.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"sentences","Label":"Sentences","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.outline.value.points","ConceptSource":"sentences","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":"for","Collection":"input.questions","Expression":null,"Body":["draft_sentence"],"Ret":"draft_sentence","In":"paragraphs","Branch":null,"DeliverableReads":null,"Prompt":null,"Count":2,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"assemble","Label":"Assemble","PromptId":"prompts/assemble.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"assemble","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":["parts"],"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/assemble.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null}],"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","Source":"app","ScheduledAtUtc":null,"InputOrigins":null,"SkippedDocuments":null,"Collections":null,"PackageSpecVersion":null,"InputDocumentOrigins":null,"PackageTitle":null,"PackageTags":null,"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","Terminology":null,"TerminologyServerRef":null,"Deciding":null,"ApiHost":null,"EngineCommit":"<commit>","InputsBlob":null,"RerunBaseline":null,"MacroChoices":null,"ExcludedMacros":null,"EngineRelease":null,"TerminologyServerRelease":null,"ResolvedInputTypes":null,"AcknowledgedShortInputs":null,"FormatsRef":"formats@v2026.11.1","UnresolvedLoops":null}
+entity MarkRunning null
+activity run-prompt-node {"NodeId":"extract","PromptId":"prompts/extract.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"extract","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"concept-extraction","AgentVersion":"1","Before":null,"After":null,"Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"scope","PromptId":"prompts/scope.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"scope","VariableTypes":{"kind":"enum","questions":"array"},"Values":["in_scope","out_of_scope"],"Template":null,"AgentName":"classification","AgentVersion":"1","Before":null,"After":null,"Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"section_notes:hpi","PromptId":"prompts/section_notes.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"section_notes","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},"ForEach":"snippet.sections","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"section_notes:plan","PromptId":"prompts/section_notes.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"section_notes","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"plan","label":"Plan","content":"Plan."},"ForEach":"snippet.sections","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"find_problems","PromptId":"prompts/find_problems.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"find_problems","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","Before":null,"After":null,"Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"plan","PromptId":"prompts/plan.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"plan","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","Before":null,"After":null,"Format":"section_plan","Producer":"custom","FormatHash":"9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeCompleted {"NodeId":"extract","Label":"Extract concepts","Concepts":null,"InputHash":"in:extract","OutputHash":"out:extract","CompletedNodeCount":1,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+activity run-prompt-node {"NodeId":"assessment","PromptId":"prompts/assessment.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"assessment","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"extract":"{ \u0022concepts\u0022: [ { \u0022term\u0022: \u0022Asthma\u0022, \u0022id\u0022: \u0022195967001\u0022, \u0022type\u0022: \u0022disorder\u0022, \u0022isActive\u0022: true } ] }"},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{},"FailIfEmpty":null,"Instances":[{"Id":"closing","After":true,"When":null,"ForItem":null,"Reads":null,"If":null}],"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-computed-node {"NodeId":"coverage","Op":"terms_subset","With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"NodeTexts":{"extract":"{ \u0022concepts\u0022: [ { \u0022term\u0022: \u0022Asthma\u0022, \u0022id\u0022: \u0022195967001\u0022, \u0022type\u0022: \u0022disorder\u0022, \u0022isActive\u0022: true } ] }"},"Format":"terms_subset","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2"}
+entity MarkNodeCompleted {"NodeId":"assessment","Label":"Assessment","Concepts":null,"InputHash":"in:assessment","OutputHash":"out:assessment","CompletedNodeCount":2,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:assessment","BlockName":"Assessment","Success":true,"GeneratedText":"[assessment]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"scope","Label":"Scope","Concepts":null,"InputHash":"in:scope","OutputHash":"out:scope","CompletedNodeCount":3,"TotalNodeCount":17,"HashVersion":6,"Classification":"in_scope","Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeItemCompleted {"NodeId":"section_notes","Label":"Section notes","ItemId":"hpi","ItemName":"HPI","Concepts":null,"InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sections:hpi","BlockName":"HPI","Success":true,"GeneratedText":"[section_notes:hpi]","Error":null,"ErrorStack":null}
+entity MarkNodeItemCompleted {"NodeId":"section_notes","Label":"Section notes","ItemId":"plan","ItemName":"Plan","Concepts":null,"InputHash":"in:section_notes:plan","OutputHash":"out:section_notes:plan","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sections:plan","BlockName":"Plan","Success":true,"GeneratedText":"[section_notes:plan]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"section_notes","Label":"Section notes","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":4,"TotalNodeCount":17,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"sections","Label":"Sections","Concepts":null,"InputHash":"f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2","OutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","CompletedNodeCount":5,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"find_problems","Label":"Find problems","Concepts":null,"InputHash":"in:find_problems","OutputHash":"out:find_problems","CompletedNodeCount":6,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity ResolveLoop {"LoopId":"problems","Collection":"node.find_problems.value.problems","Items":[{"Id":"1","Name":"Problems 1"}],"Blocks":[{"Id":"consult:problems:1","Name":"Problems 1"}],"Total":5,"ResolvedAtUtc":"<time>","Reason":null}
+activity run-prompt-node {"NodeId":"draft_problem:1","PromptId":"prompts/draft_problem.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_problem","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Problems 1","value":"{\u0022name\u0022:\u0022Asthma\u0022,\u0022severity\u0022:\u0022low\u0022}","valueKind":"json"},"ForEach":"node.find_problems.value.problems","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeItemCompleted {"NodeId":"draft_problem","Label":"Draft problem","ItemId":"1","ItemName":"Problems 1","Concepts":null,"InputHash":"in:draft_problem:1","OutputHash":"out:draft_problem:1","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:problems:1","BlockName":"Problems 1","Success":true,"GeneratedText":"[draft_problem:1]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"draft_problem","Label":"Draft problem","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":7,"TotalNodeCount":17,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"problems","Label":"Problems","Concepts":null,"InputHash":"f25cbab9c9449a4f2aa6006cc9613bddbc5e8e4d9f4b2ea6e9a56c2c8f828cfa","OutputHash":"7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133","CompletedNodeCount":8,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133","Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"plan","Label":"Plan the sections","Concepts":null,"InputHash":"in:plan","OutputHash":"out:plan","CompletedNodeCount":9,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity ResolveLoop {"LoopId":"parts","Collection":"node.plan.value.sections","Items":[{"Id":"1","Name":"Parts 1"},{"Id":"2","Name":"Parts 2"}],"Blocks":[],"Total":5,"ResolvedAtUtc":"<time>","Reason":null}
+activity run-prompt-node {"NodeId":"outline:1","PromptId":"prompts/outline.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"outline","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","Before":null,"After":null,"Format":"outline","Producer":"custom","FormatHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"},"ForEach":"node.plan.value.sections","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"outline:2","PromptId":"prompts/outline.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"outline","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","Before":null,"After":null,"Format":"outline","Producer":"custom","FormatHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"2","name":"Parts 2","value":"{\u0022title\u0022:\u0022Plan\u0022,\u0022kind\u0022:\u0022plan\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022follow-up\u0022}]}","valueKind":"json"},"ForEach":"node.plan.value.sections","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeItemCompleted {"NodeId":"outline","Label":"Outline the section","ItemId":"2","ItemName":"Parts 2","Concepts":null,"InputHash":"in:outline:2","OutputHash":"out:outline:2","CompletedChainCount":1,"TotalChainCount":2,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity ResolveLoop {"LoopId":"paragraphs","Collection":"node.outline.value.points","Items":[{"Id":"2/1","Name":"Paragraphs 1"}],"Blocks":[],"Total":5,"ResolvedAtUtc":"<time>","Reason":null,"Path":"2"}
+entity ResolveLoop {"LoopId":"sentences","Collection":"input.questions","Items":[{"Id":"2/1/0","Name":"Questions 1"},{"Id":"2/1/1","Name":"Questions 2"}],"Blocks":[{"Id":"consult:sentences:2/1/0","Name":"Questions 1"},{"Id":"consult:sentences:2/1/1","Name":"Questions 2"}],"Total":7,"ResolvedAtUtc":"<time>","Reason":null,"Path":"2/1"}
+activity run-prompt-node {"NodeId":"draft_paragraph:2/1","PromptId":"prompts/draft_paragraph.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_paragraph","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Review in a month.\u0022}","valueKind":"json","path":"2/1"},"ForEach":"node.outline.value.points","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"2","name":"Parts 2","value":"{\u0022title\u0022:\u0022Plan\u0022,\u0022kind\u0022:\u0022plan\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022follow-up\u0022}]}","valueKind":"json"}}]}
+entity MarkNodeItemCompleted {"NodeId":"draft_paragraph","Label":"Draft paragraph","ItemId":"2/1","ItemName":"Paragraphs 1","Concepts":null,"InputHash":"in:draft_paragraph:2/1","OutputHash":"out:draft_paragraph:2/1","CompletedChainCount":1,"TotalChainCount":2,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+activity run-prompt-node {"NodeId":"draft_sentence:2/1/0","PromptId":"prompts/draft_sentence.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_sentence","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"draft_paragraph":"Paragraph 2/1."},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"0","name":"Questions 1","value":"Does anything at home trigger the wheeze?","path":"2/1/0"},"ForEach":"input.questions","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"2","name":"Parts 2","value":"{\u0022title\u0022:\u0022Plan\u0022,\u0022kind\u0022:\u0022plan\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022follow-up\u0022}]}","valueKind":"json"}},{"Collection":"node.outline.value.points","Item":{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Review in a month.\u0022}","valueKind":"json","path":"2/1"}}]}
+activity run-prompt-node {"NodeId":"draft_sentence:2/1/1","PromptId":"prompts/draft_sentence.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_sentence","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"draft_paragraph":"Paragraph 2/1."},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Questions 2","value":"Is there a cough that wakes them at night?","path":"2/1/1"},"ForEach":"input.questions","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"2","name":"Parts 2","value":"{\u0022title\u0022:\u0022Plan\u0022,\u0022kind\u0022:\u0022plan\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022follow-up\u0022}]}","valueKind":"json"}},{"Collection":"node.outline.value.points","Item":{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Review in a month.\u0022}","valueKind":"json","path":"2/1"}}]}
+entity MarkNodeItemCompleted {"NodeId":"draft_sentence","Label":"Draft sentence","ItemId":"2/1/1","ItemName":"Questions 2","Concepts":null,"InputHash":"in:draft_sentence:2/1/1","OutputHash":"out:draft_sentence:2/1/1","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sentences:2/1/1","BlockName":"Questions 2","Success":true,"GeneratedText":"Sentence 2/1/1.","Error":null,"ErrorStack":null}
+entity MarkNodeItemCompleted {"NodeId":"draft_sentence","Label":"Draft sentence","ItemId":"2/1/0","ItemName":"Questions 1","Concepts":null,"InputHash":"in:draft_sentence:2/1/0","OutputHash":"out:draft_sentence:2/1/0","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sentences:2/1/0","BlockName":"Questions 1","Success":true,"GeneratedText":"Sentence 2/1/0.","Error":null,"ErrorStack":null}
+entity MarkNodeItemCompleted {"NodeId":"outline","Label":"Outline the section","ItemId":"1","ItemName":"Parts 1","Concepts":null,"InputHash":"in:outline:1","OutputHash":"out:outline:1","CompletedChainCount":1,"TotalChainCount":2,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"outline","Label":"Outline the section","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":10,"TotalNodeCount":17,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity ResolveLoop {"LoopId":"paragraphs","Collection":"node.outline.value.points","Items":[{"Id":"1/1","Name":"Paragraphs 1"},{"Id":"1/2","Name":"Paragraphs 2"}],"Blocks":[],"Total":7,"ResolvedAtUtc":"<time>","Reason":null,"Path":"1"}
+entity ResolveLoop {"LoopId":"paragraphs","Collection":"node.outline.value.points","Items":[{"Id":"1/1","Name":"Paragraphs 1"},{"Id":"1/2","Name":"Paragraphs 2"},{"Id":"2/1","Name":"Paragraphs 1"}],"Blocks":[],"Total":7,"ResolvedAtUtc":"<time>","Reason":null,"Settled":true}
+entity ResolveLoop {"LoopId":"sentences","Collection":"input.questions","Items":[{"Id":"1/1/0","Name":"Questions 1"},{"Id":"1/1/1","Name":"Questions 2"}],"Blocks":[{"Id":"consult:sentences:1/1/0","Name":"Questions 1"},{"Id":"consult:sentences:1/1/1","Name":"Questions 2"}],"Total":9,"ResolvedAtUtc":"<time>","Reason":null,"Path":"1/1"}
+entity ResolveLoop {"LoopId":"sentences","Collection":"input.questions","Items":[{"Id":"1/2/0","Name":"Questions 1"},{"Id":"1/2/1","Name":"Questions 2"}],"Blocks":[{"Id":"consult:sentences:1/2/0","Name":"Questions 1"},{"Id":"consult:sentences:1/2/1","Name":"Questions 2"}],"Total":11,"ResolvedAtUtc":"<time>","Reason":null,"Path":"1/2"}
+entity ResolveLoop {"LoopId":"sentences","Collection":"input.questions","Items":[{"Id":"1/1/0","Name":"Questions 1"},{"Id":"1/1/1","Name":"Questions 2"},{"Id":"1/2/0","Name":"Questions 1"},{"Id":"1/2/1","Name":"Questions 2"},{"Id":"2/1/0","Name":"Questions 1"},{"Id":"2/1/1","Name":"Questions 2"}],"Blocks":[],"Total":11,"ResolvedAtUtc":"<time>","Reason":null,"Settled":true}
+activity run-prompt-node {"NodeId":"draft_paragraph:1/1","PromptId":"prompts/draft_paragraph.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_paragraph","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Onset was sudden.\u0022}","valueKind":"json","path":"1/1"},"ForEach":"node.outline.value.points","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"}}]}
+activity run-prompt-node {"NodeId":"draft_paragraph:1/2","PromptId":"prompts/draft_paragraph.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_paragraph","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"2","name":"Paragraphs 2","value":"{\u0022point\u0022:\u0022It has worsened.\u0022}","valueKind":"json","path":"1/2"},"ForEach":"node.outline.value.points","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"}}]}
+entity MarkNodeItemCompleted {"NodeId":"draft_paragraph","Label":"Draft paragraph","ItemId":"1/2","ItemName":"Paragraphs 2","Concepts":null,"InputHash":"in:draft_paragraph:1/2","OutputHash":"out:draft_paragraph:1/2","CompletedChainCount":1,"TotalChainCount":2,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+activity run-prompt-node {"NodeId":"draft_sentence:1/2/0","PromptId":"prompts/draft_sentence.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_sentence","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"draft_paragraph":"Paragraph 1/2."},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"0","name":"Questions 1","value":"Does anything at home trigger the wheeze?","path":"1/2/0"},"ForEach":"input.questions","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"}},{"Collection":"node.outline.value.points","Item":{"id":"2","name":"Paragraphs 2","value":"{\u0022point\u0022:\u0022It has worsened.\u0022}","valueKind":"json","path":"1/2"}}]}
+activity run-prompt-node {"NodeId":"draft_sentence:1/2/1","PromptId":"prompts/draft_sentence.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_sentence","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"draft_paragraph":"Paragraph 1/2."},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Questions 2","value":"Is there a cough that wakes them at night?","path":"1/2/1"},"ForEach":"input.questions","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"}},{"Collection":"node.outline.value.points","Item":{"id":"2","name":"Paragraphs 2","value":"{\u0022point\u0022:\u0022It has worsened.\u0022}","valueKind":"json","path":"1/2"}}]}
+entity MarkNodeItemCompleted {"NodeId":"draft_sentence","Label":"Draft sentence","ItemId":"1/2/1","ItemName":"Questions 2","Concepts":null,"InputHash":"in:draft_sentence:1/2/1","OutputHash":"out:draft_sentence:1/2/1","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sentences:1/2/1","BlockName":"Questions 2","Success":true,"GeneratedText":"Sentence 1/2/1.","Error":null,"ErrorStack":null}
+entity MarkNodeItemCompleted {"NodeId":"draft_sentence","Label":"Draft sentence","ItemId":"1/2/0","ItemName":"Questions 1","Concepts":null,"InputHash":"in:draft_sentence:1/2/0","OutputHash":"out:draft_sentence:1/2/0","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sentences:1/2/0","BlockName":"Questions 1","Success":true,"GeneratedText":"Sentence 1/2/0.","Error":null,"ErrorStack":null}
+entity MarkNodeItemCompleted {"NodeId":"draft_paragraph","Label":"Draft paragraph","ItemId":"1/1","ItemName":"Paragraphs 1","Concepts":null,"InputHash":"in:draft_paragraph:1/1","OutputHash":"out:draft_paragraph:1/1","CompletedChainCount":1,"TotalChainCount":2,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"draft_paragraph","Label":"Draft paragraph","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":11,"TotalNodeCount":17,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+activity run-prompt-node {"NodeId":"draft_sentence:1/1/0","PromptId":"prompts/draft_sentence.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_sentence","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"draft_paragraph":"Paragraph 1/1."},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"0","name":"Questions 1","value":"Does anything at home trigger the wheeze?","path":"1/1/0"},"ForEach":"input.questions","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"}},{"Collection":"node.outline.value.points","Item":{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Onset was sudden.\u0022}","valueKind":"json","path":"1/1"}}]}
+activity run-prompt-node {"NodeId":"draft_sentence:1/1/1","PromptId":"prompts/draft_sentence.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_sentence","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"draft_paragraph":"Paragraph 1/1."},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Questions 2","value":"Is there a cough that wakes them at night?","path":"1/1/1"},"ForEach":"input.questions","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null,"Parents":[{"Collection":"node.plan.value.sections","Item":{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"}},{"Collection":"node.outline.value.points","Item":{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Onset was sudden.\u0022}","valueKind":"json","path":"1/1"}}]}
+entity MarkNodeItemCompleted {"NodeId":"draft_sentence","Label":"Draft sentence","ItemId":"1/1/1","ItemName":"Questions 2","Concepts":null,"InputHash":"in:draft_sentence:1/1/1","OutputHash":"out:draft_sentence:1/1/1","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sentences:1/1/1","BlockName":"Questions 2","Success":true,"GeneratedText":"Sentence 1/1/1.","Error":null,"ErrorStack":null}
+entity MarkNodeItemCompleted {"NodeId":"draft_sentence","Label":"Draft sentence","ItemId":"1/1/0","ItemName":"Questions 1","Concepts":null,"InputHash":"in:draft_sentence:1/1/0","OutputHash":"out:draft_sentence:1/1/0","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sentences:1/1/0","BlockName":"Questions 1","Success":true,"GeneratedText":"Sentence 1/1/0.","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"draft_sentence","Label":"Draft sentence","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":12,"TotalNodeCount":17,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"paragraphs","Label":"Paragraphs","Concepts":null,"InputHash":"90408636cf306de65154b5d4bff22b07416af1c948d84078dccfefb338bb0480","OutputHash":"5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c","CompletedNodeCount":13,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c","Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"sentences","Label":"Sentences","Concepts":null,"InputHash":"00317042d2aabf54884efc9222bc22321074cd20986c6ac5ffa17f64ddb0470c","OutputHash":"34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07","CompletedNodeCount":14,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07","Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"parts","Label":"Parts","Concepts":null,"InputHash":"8d0779221b910867e805320684006554685bf10a3c9ef2ed8239d572b8c1bf11","OutputHash":"cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d","CompletedNodeCount":15,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d","Appended":null,"Excluded":null}
+activity run-prompt-node {"NodeId":"assemble","PromptId":"prompts/assemble.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"assemble","VariableTypes":{"kind":"enum","questions":"array"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"parts":"## Parts 1\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.\n\n## Paragraphs 2\n\n## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1.\n\n## Parts 2\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1."},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022","questions":"[\u0022Does anything at home trigger the wheeze?\u0022,\u0022Is there a cough that wakes them at night?\u0022]"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":{"parts":{"Collection":"node.plan.value.sections","RetId":"paragraphs","Items":[{"id":"1","name":"Parts 1","value":"{\u0022title\u0022:\u0022History\u0022,\u0022kind\u0022:\u0022history\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022onset\u0022},{\u0022topic\u0022:\u0022course\u0022}]}","valueKind":"json"},{"id":"2","name":"Parts 2","value":"{\u0022title\u0022:\u0022Plan\u0022,\u0022kind\u0022:\u0022plan\u0022,\u0022topics\u0022:[{\u0022topic\u0022:\u0022follow-up\u0022}]}","valueKind":"json"}],"Texts":{"outline":{"1":"{ \u0022points\u0022: [ { \u0022point\u0022: \u0022Onset was sudden.\u0022 }, { \u0022point\u0022: \u0022It has worsened.\u0022 } ] }","2":"{ \u0022points\u0022: [ { \u0022point\u0022: \u0022Review in a month.\u0022 } ] }"},"paragraphs":{"1":"## Paragraphs 1\n\n## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.\n\n## Paragraphs 2\n\n## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1.","2":"## Paragraphs 1\n\n## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1."}},"Skipped":null,"Inner":{"paragraphs":{"1":{"Collection":"node.outline.value.points","RetId":"sentences","Items":[{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Onset was sudden.\u0022}","valueKind":"json","path":"1/1"},{"id":"2","name":"Paragraphs 2","value":"{\u0022point\u0022:\u0022It has worsened.\u0022}","valueKind":"json","path":"1/2"}],"Texts":{"draft_paragraph":{"1":"Paragraph 1/1.","2":"Paragraph 1/2."},"sentences":{"1":"## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.","2":"## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1."}},"Skipped":null,"Inner":{"sentences":{"1":{"Collection":"input.questions","RetId":"draft_sentence","Items":[{"id":"0","name":"Questions 1","value":"Does anything at home trigger the wheeze?","path":"1/1/0"},{"id":"1","name":"Questions 2","value":"Is there a cough that wakes them at night?","path":"1/1/1"}],"Texts":{"draft_sentence":{"0":"Sentence 1/1/0.","1":"Sentence 1/1/1."}},"Skipped":null,"Composed":"## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1."},"2":{"Collection":"input.questions","RetId":"draft_sentence","Items":[{"id":"0","name":"Questions 1","value":"Does anything at home trigger the wheeze?","path":"1/2/0"},{"id":"1","name":"Questions 2","value":"Is there a cough that wakes them at night?","path":"1/2/1"}],"Texts":{"draft_sentence":{"0":"Sentence 1/2/0.","1":"Sentence 1/2/1."}},"Skipped":null,"Composed":"## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1."}}},"Composed":"## Paragraphs 1\n\n## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.\n\n## Paragraphs 2\n\n## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1."},"2":{"Collection":"node.outline.value.points","RetId":"sentences","Items":[{"id":"1","name":"Paragraphs 1","value":"{\u0022point\u0022:\u0022Review in a month.\u0022}","valueKind":"json","path":"2/1"}],"Texts":{"draft_paragraph":{"1":"Paragraph 2/1."},"sentences":{"1":"## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1."}},"Skipped":null,"Inner":{"sentences":{"1":{"Collection":"input.questions","RetId":"draft_sentence","Items":[{"id":"0","name":"Questions 1","value":"Does anything at home trigger the wheeze?","path":"2/1/0"},{"id":"1","name":"Questions 2","value":"Is there a cough that wakes them at night?","path":"2/1/1"}],"Texts":{"draft_sentence":{"0":"Sentence 2/1/0.","1":"Sentence 2/1/1."}},"Skipped":null,"Composed":"## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1."}}},"Composed":"## Paragraphs 1\n\n## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1."}}}}},"FlowRets":{"parts":"paragraphs"},"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeCompleted {"NodeId":"assemble","Label":"Assemble","Concepts":null,"InputHash":"in:assemble","OutputHash":"out:assemble","CompletedNodeCount":16,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:assemble","BlockName":"Assemble","Success":true,"GeneratedText":"[assemble]","Error":null,"ErrorStack":null}
+entity MarkDeliverableComposed {"ResultId":"consult","Label":"Consultation note","Ordinal":0,"ComposedHash":"72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b","Sources":["assessment","sections","problems","parts","assemble"],"ComposedAtUtc":"<time>","Reason":null}
+entity MarkNodeCompleted {"NodeId":"coverage","Label":"Coverage","Concepts":null,"InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedNodeCount":17,"TotalNodeCount":17,"HashVersion":6,"Classification":null,"Tokens":null,"Check":{"Passed":true,"Uncovered":null,"Untested":["Asthma"]},"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","Appended":null,"Excluded":null}
+entity CompleteResultDocument {"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]\n\n## Problems 1\n\n[draft_problem:1]\n\n## Parts 1\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.\n\n## Paragraphs 2\n\n## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1.\n\n## Parts 2\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1.\n\n[assemble]","Ordinal":0,"Appended":null,"Unsigned":null,"ComposedHash":"72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b","Sources":["assessment","sections","problems","parts","assemble"]}
+entity FinalizeJob {"Status":"Completed","Error":null,"AccountKind":"","FailureStack":null}
+entity RecordDelivery {"Outcome":"address-not-set","RecordedAtUtc":"<time>","DocumentAttached":null}
+# prompts
+## extract
+Extract the concepts from:
+A fictional referral: a 40-year-old with wheeze and a fever.
+## scope
+Is this in scope? A fictional referral: a 40-year-old with wheeze and a fever.
+## section_notes:hpi
+HPI: History: A fictional referral: a 40-year-old with wheeze and a fever.
+## section_notes:plan
+Plan: Plan.
+## find_problems
+List the problems this referral names: A fictional referral: a 40-year-old with wheeze and a fever.
+## plan
+Plan the sections this referral needs: A fictional referral: a 40-year-old with wheeze and a fever.
+## assessment
+Assess.
+Follow the local standards.
+A fictional referral: a 40-year-old with wheeze and a fever.
+- {term: "Asthma", id: "195967001", type: "disorder", isActive: true}
+
+## draft_problem:1
+Problem 1: Asthma (low).
+## outline:1
+Outline the section History.
+## outline:2
+Outline the section Plan.
+## draft_paragraph:2/1
+Point Review in a month. of Plan.
+## draft_sentence:2/1/0
+Part Plan, point Review in a month., question 0: Does anything at home trigger the wheeze?. Paragraph 2/1.
+## draft_sentence:2/1/1
+Part Plan, point Review in a month., question 1: Is there a cough that wakes them at night?. Paragraph 2/1.
+## draft_paragraph:1/1
+Point Onset was sudden. of History.
+## draft_paragraph:1/2
+Point It has worsened. of History.
+## draft_sentence:1/2/0
+Part History, point It has worsened., question 0: Does anything at home trigger the wheeze?. Paragraph 1/2.
+## draft_sentence:1/2/1
+Part History, point It has worsened., question 1: Is there a cough that wakes them at night?. Paragraph 1/2.
+## draft_sentence:1/1/0
+Part History, point Onset was sudden., question 0: Does anything at home trigger the wheeze?. Paragraph 1/1.
+## draft_sentence:1/1/1
+Part History, point Onset was sudden., question 1: Is there a cough that wakes them at night?. Paragraph 1/1.
+## assemble
+## History
+- Onset was sudden.: [0] Sentence 1/1/0. [1] Sentence 1/1/1.
+- It has worsened.: [0] Sentence 1/2/0. [1] Sentence 1/2/1.
+## Plan
+- Review in a month.: [0] Sentence 2/1/0. [1] Sentence 2/1/1.
+
+# the served record
+{
+  "JobId": "<job>",
+  "AppUserId": "user-1",
+  "Status": "Completed",
+  "TotalBlockCount": 11,
+  "CompletedBlockCount": 11,
+  "FailedBlockCount": 0,
+  "GeneratedBlocks": {
+    "consult:assessment": "[assessment]",
+    "consult:sections:hpi": "[section_notes:hpi]",
+    "consult:sections:plan": "[section_notes:plan]",
+    "consult:assemble": "[assemble]",
+    "consult:problems:1": "[draft_problem:1]",
+    "consult:sentences:2/1/0": "Sentence 2/1/0.",
+    "consult:sentences:2/1/1": "Sentence 2/1/1.",
+    "consult:sentences:1/1/0": "Sentence 1/1/0.",
+    "consult:sentences:1/1/1": "Sentence 1/1/1.",
+    "consult:sentences:1/2/0": "Sentence 1/2/0.",
+    "consult:sentences:1/2/1": "Sentence 1/2/1."
+  },
+  "FailedBlocks": {},
+  "Success": true,
+  "SchemaVersion": 11,
+  "AnalysisStatus": null,
+  "AnalysisError": null,
+  "CompletedStageCount": 17,
+  "TotalStageCount": 17,
+  "ItemProgress": {
+    "hpi": {
+      "ItemId": "hpi",
+      "ItemName": "HPI",
+      "Step": "section_notes",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "plan": {
+      "ItemId": "plan",
+      "ItemName": "Plan",
+      "Step": "section_notes",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "1": {
+      "ItemId": "1",
+      "ItemName": "Problems 1",
+      "Step": "outline",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 2
+    },
+    "2": {
+      "ItemId": "2",
+      "ItemName": "Parts 2",
+      "Step": "outline",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 2
+    },
+    "2/1": {
+      "ItemId": "2/1",
+      "ItemName": "Paragraphs 1",
+      "Step": "draft_paragraph",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 2
+    },
+    "2/1/1": {
+      "ItemId": "2/1/1",
+      "ItemName": "Questions 2",
+      "Step": "draft_sentence",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "2/1/0": {
+      "ItemId": "2/1/0",
+      "ItemName": "Questions 1",
+      "Step": "draft_sentence",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "1/2": {
+      "ItemId": "1/2",
+      "ItemName": "Paragraphs 2",
+      "Step": "draft_paragraph",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 2
+    },
+    "1/2/1": {
+      "ItemId": "1/2/1",
+      "ItemName": "Questions 2",
+      "Step": "draft_sentence",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "1/2/0": {
+      "ItemId": "1/2/0",
+      "ItemName": "Questions 1",
+      "Step": "draft_sentence",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "1/1": {
+      "ItemId": "1/1",
+      "ItemName": "Paragraphs 1",
+      "Step": "draft_paragraph",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 2
+    },
+    "1/1/1": {
+      "ItemId": "1/1/1",
+      "ItemName": "Questions 2",
+      "Step": "draft_sentence",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "1/1/0": {
+      "ItemId": "1/1/0",
+      "ItemName": "Questions 1",
+      "Step": "draft_sentence",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    }
+  },
+  "RuntimeFailureStage": null,
+  "RuntimeFailureError": null,
+  "CreatedAtUtc": "<time>",
+  "StartedAtUtc": "<time>",
+  "CompletedAtUtc": "<time>",
+  "History": [
+    {
+      "Kind": "success",
+      "Label": "Extract concepts",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Assessment",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Assessment",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Scope",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: HPI",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Plan",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section notes",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Sections",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Find problems",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Problems: 1 item",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Problems 1",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Draft problem",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Problems",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Plan the sections",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Parts: 2 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Paragraphs (2): 1 item",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Sentences (2/1): 2 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Questions 2",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Questions 1",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Outline the section",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Paragraphs (1): 2 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Paragraphs: 3 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Sentences (1/1): 2 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Sentences (1/2): 2 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Sentences: 6 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Questions 2",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Questions 1",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Draft paragraph",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Questions 2",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Questions 1",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Draft sentence",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Paragraphs",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Sentences",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Parts",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Assemble",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Assemble",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "composed",
+      "Label": "Consultation note composed; released once its reads and check settle",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Coverage",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Assembled document produced: Consultation note",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Done",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "delivery",
+      "Label": "Not emailed \u2014 no delivery address on the account",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    }
+  ],
+  "WorkflowPackage": "general@v2026.08.1",
+  "EffectiveInputHash": "c8a8bff519247d135be7ebe90f1cba29a6174a3cb34ff87d10c8fb8ec9d432f5",
+  "ItemSteps": [
+    {
+      "Id": "section_notes",
+      "Label": "Section notes"
+    },
+    {
+      "Id": "draft_problem",
+      "Label": "Draft problem"
+    },
+    {
+      "Id": "outline",
+      "Label": "Outline the section"
+    },
+    {
+      "Id": "draft_paragraph",
+      "Label": "Draft paragraph"
+    },
+    {
+      "Id": "paragraphs",
+      "Label": "Paragraphs"
+    },
+    {
+      "Id": "draft_sentence",
+      "Label": "Draft sentence"
+    },
+    {
+      "Id": "sentences",
+      "Label": "Sentences"
+    }
+  ],
+  "Nodes": [
+    {
+      "Id": "extract",
+      "Label": "Extract concepts",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "extract",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "concept-extraction",
+      "AgentVersion": "1",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "concept_list",
+      "Producer": "attested",
+      "FormatHash": "39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/extract.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "scope",
+      "Label": "Scope",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "scope",
+      "Aggregate": null,
+      "Values": [
+        "in_scope",
+        "out_of_scope"
+      ],
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "classification",
+      "AgentVersion": "1",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "classification",
+      "Producer": "attested",
+      "FormatHash": "510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/scope.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "assessment",
+      "Label": "Assessment",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "assessment",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": [
+        {
+          "Id": "closing",
+          "After": true,
+          "When": null,
+          "ForItem": null,
+          "Reads": null,
+          "If": null
+        }
+      ],
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": [
+        "extract"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/assessment.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "section_notes",
+      "Label": "Section notes",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "section_notes",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "sections",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/section_notes.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "coverage",
+      "Label": "Coverage",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "coverage",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "terms_subset",
+      "Producer": "computed",
+      "FormatHash": "3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2",
+      "Op": "terms_subset",
+      "Reads": [
+        "extract"
+      ],
+      "With": {
+        "of": "extract",
+        "in": "extract",
+        "failWith": "The note names problems the source does not."
+      },
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "sections",
+      "Label": "Sections",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "sections",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "snippet.sections",
+      "Expression": null,
+      "Body": [
+        "section_notes"
+      ],
+      "Ret": "section_notes",
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 2,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "find_problems",
+      "Label": "Find problems",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "find_problems",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "custom-json",
+      "AgentVersion": "1",
+      "CustomSchemaHash": "169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3",
+      "Macros": null,
+      "Format": "problem_list",
+      "Producer": "custom",
+      "FormatHash": "169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/find_problems.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "draft_problem",
+      "Label": "Draft problem",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "draft_problem",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "problems",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/draft_problem.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "problems",
+      "Label": "Problems",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "problems",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": [
+        "find_problems"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "node.find_problems.value.problems",
+      "Expression": null,
+      "Body": [
+        "draft_problem"
+      ],
+      "Ret": "draft_problem",
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 1,
+      "Branches": null,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null
+    },
+    {
+      "Id": "plan",
+      "Label": "Plan the sections",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "plan",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "custom-json",
+      "AgentVersion": "1",
+      "CustomSchemaHash": "9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee",
+      "Macros": null,
+      "Format": "section_plan",
+      "Producer": "custom",
+      "FormatHash": "9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/plan.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "outline",
+      "Label": "Outline the section",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "outline",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "custom-json",
+      "AgentVersion": "1",
+      "CustomSchemaHash": "fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef",
+      "Macros": null,
+      "Format": "outline",
+      "Producer": "custom",
+      "FormatHash": "fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "parts",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/outline.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "draft_paragraph",
+      "Label": "Draft paragraph",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "draft_paragraph",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "paragraphs",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/draft_paragraph.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "parts",
+      "Label": "Parts",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "parts",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": [
+        "plan"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "node.plan.value.sections",
+      "Expression": null,
+      "Body": [
+        "outline",
+        "paragraphs"
+      ],
+      "Ret": "paragraphs",
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 2,
+      "Branches": null,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null
+    },
+    {
+      "Id": "paragraphs",
+      "Label": "Paragraphs",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "paragraphs",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": [
+        "outline"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "node.outline.value.points",
+      "Expression": null,
+      "Body": [
+        "draft_paragraph",
+        "sentences"
+      ],
+      "Ret": "sentences",
+      "In": "parts",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 3,
+      "Branches": null,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null
+    },
+    {
+      "Id": "draft_sentence",
+      "Label": "Draft sentence",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "draft_sentence",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": [
+        "draft_paragraph"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "sentences",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/draft_sentence.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "sentences",
+      "Label": "Sentences",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "sentences",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "input.questions",
+      "Expression": null,
+      "Body": [
+        "draft_sentence"
+      ],
+      "Ret": "draft_sentence",
+      "In": "paragraphs",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 6,
+      "Branches": null,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null
+    },
+    {
+      "Id": "assemble",
+      "Label": "Assemble",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "assemble",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": [
+        "parts"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/assemble.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    }
+  ],
+  "NodeOutputs": {
+    "extract": {
+      "NodeId": "extract",
+      "Label": "Extract concepts",
+      "Status": "Completed",
+      "InputHash": "in:extract",
+      "OutputHash": "out:extract",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "assessment": {
+      "NodeId": "assessment",
+      "Label": "Assessment",
+      "Status": "Completed",
+      "InputHash": "in:assessment",
+      "OutputHash": "out:assessment",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "scope": {
+      "NodeId": "scope",
+      "Label": "Scope",
+      "Status": "Completed",
+      "InputHash": "in:scope",
+      "OutputHash": "out:scope",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": "in_scope",
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "section_notes:hpi": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": "in:section_notes:hpi",
+      "OutputHash": "out:section_notes:hpi",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "section_notes:plan": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": "in:section_notes:plan",
+      "OutputHash": "out:section_notes:plan",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "section_notes": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "sections": {
+      "NodeId": "sections",
+      "Label": "Sections",
+      "Status": "Completed",
+      "InputHash": "f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2",
+      "OutputHash": "6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "find_problems": {
+      "NodeId": "find_problems",
+      "Label": "Find problems",
+      "Status": "Completed",
+      "InputHash": "in:find_problems",
+      "OutputHash": "out:find_problems",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_problem:1": {
+      "NodeId": "draft_problem",
+      "Label": "Draft problem",
+      "Status": "Completed",
+      "InputHash": "in:draft_problem:1",
+      "OutputHash": "out:draft_problem:1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_problem": {
+      "NodeId": "draft_problem",
+      "Label": "Draft problem",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "problems": {
+      "NodeId": "problems",
+      "Label": "Problems",
+      "Status": "Completed",
+      "InputHash": "f25cbab9c9449a4f2aa6006cc9613bddbc5e8e4d9f4b2ea6e9a56c2c8f828cfa",
+      "OutputHash": "7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "plan": {
+      "NodeId": "plan",
+      "Label": "Plan the sections",
+      "Status": "Completed",
+      "InputHash": "in:plan",
+      "OutputHash": "out:plan",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "outline:2": {
+      "NodeId": "outline",
+      "Label": "Outline the section",
+      "Status": "Completed",
+      "InputHash": "in:outline:2",
+      "OutputHash": "out:outline:2",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_paragraph:2/1": {
+      "NodeId": "draft_paragraph",
+      "Label": "Draft paragraph",
+      "Status": "Completed",
+      "InputHash": "in:draft_paragraph:2/1",
+      "OutputHash": "out:draft_paragraph:2/1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_sentence:2/1/1": {
+      "NodeId": "draft_sentence",
+      "Label": "Draft sentence",
+      "Status": "Completed",
+      "InputHash": "in:draft_sentence:2/1/1",
+      "OutputHash": "out:draft_sentence:2/1/1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_sentence:2/1/0": {
+      "NodeId": "draft_sentence",
+      "Label": "Draft sentence",
+      "Status": "Completed",
+      "InputHash": "in:draft_sentence:2/1/0",
+      "OutputHash": "out:draft_sentence:2/1/0",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "outline:1": {
+      "NodeId": "outline",
+      "Label": "Outline the section",
+      "Status": "Completed",
+      "InputHash": "in:outline:1",
+      "OutputHash": "out:outline:1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "outline": {
+      "NodeId": "outline",
+      "Label": "Outline the section",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_paragraph:1/2": {
+      "NodeId": "draft_paragraph",
+      "Label": "Draft paragraph",
+      "Status": "Completed",
+      "InputHash": "in:draft_paragraph:1/2",
+      "OutputHash": "out:draft_paragraph:1/2",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_sentence:1/2/1": {
+      "NodeId": "draft_sentence",
+      "Label": "Draft sentence",
+      "Status": "Completed",
+      "InputHash": "in:draft_sentence:1/2/1",
+      "OutputHash": "out:draft_sentence:1/2/1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_sentence:1/2/0": {
+      "NodeId": "draft_sentence",
+      "Label": "Draft sentence",
+      "Status": "Completed",
+      "InputHash": "in:draft_sentence:1/2/0",
+      "OutputHash": "out:draft_sentence:1/2/0",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_paragraph:1/1": {
+      "NodeId": "draft_paragraph",
+      "Label": "Draft paragraph",
+      "Status": "Completed",
+      "InputHash": "in:draft_paragraph:1/1",
+      "OutputHash": "out:draft_paragraph:1/1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_paragraph": {
+      "NodeId": "draft_paragraph",
+      "Label": "Draft paragraph",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_sentence:1/1/1": {
+      "NodeId": "draft_sentence",
+      "Label": "Draft sentence",
+      "Status": "Completed",
+      "InputHash": "in:draft_sentence:1/1/1",
+      "OutputHash": "out:draft_sentence:1/1/1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_sentence:1/1/0": {
+      "NodeId": "draft_sentence",
+      "Label": "Draft sentence",
+      "Status": "Completed",
+      "InputHash": "in:draft_sentence:1/1/0",
+      "OutputHash": "out:draft_sentence:1/1/0",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_sentence": {
+      "NodeId": "draft_sentence",
+      "Label": "Draft sentence",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "paragraphs": {
+      "NodeId": "paragraphs",
+      "Label": "Paragraphs",
+      "Status": "Completed",
+      "InputHash": "90408636cf306de65154b5d4bff22b07416af1c948d84078dccfefb338bb0480",
+      "OutputHash": "5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "sentences": {
+      "NodeId": "sentences",
+      "Label": "Sentences",
+      "Status": "Completed",
+      "InputHash": "00317042d2aabf54884efc9222bc22321074cd20986c6ac5ffa17f64ddb0470c",
+      "OutputHash": "34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "parts": {
+      "NodeId": "parts",
+      "Label": "Parts",
+      "Status": "Completed",
+      "InputHash": "8d0779221b910867e805320684006554685bf10a3c9ef2ed8239d572b8c1bf11",
+      "OutputHash": "cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "assemble": {
+      "NodeId": "assemble",
+      "Label": "Assemble",
+      "Status": "Completed",
+      "InputHash": "in:assemble",
+      "OutputHash": "out:assemble",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "coverage": {
+      "NodeId": "coverage",
+      "Label": "Coverage",
+      "Status": "Completed",
+      "InputHash": "f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f",
+      "OutputHash": "a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": {
+        "Passed": true,
+        "Uncovered": null,
+        "Untested": [
+          "Asthma"
+        ]
+      },
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": {
+        "Valid": true,
+        "Errors": []
+      },
+      "AgentOutputHash": "a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    }
+  },
+  "AgentVersions": null,
+  "EffectiveInputHashVersion": 6,
+  "CatalogRef": "output-contracts@v2026.08.1",
+  "WorkflowOutputHash": "b1f3a3fc8241f853e67276b0ee97b49fcd93e2e593b863dcc9d7b180ce1c691d",
+  "WorkflowOutputHashVersion": 3,
+  "AssembledDocument": null,
+  "Source": "app",
+  "ScheduledAtUtc": null,
+  "AssembledDocuments": [
+    {
+      "ResultId": "consult",
+      "Label": "Consultation note",
+      "Text": "[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]\n\n## Problems 1\n\n[draft_problem:1]\n\n## Parts 1\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.\n\n## Paragraphs 2\n\n## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1.\n\n## Parts 2\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1.\n\n[assemble]",
+      "DocumentHash": "72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b",
+      "Appended": null,
+      "Unsigned": null,
+      "ComposedHash": "72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b",
+      "Sources": [
+        "assessment",
+        "sections",
+        "problems",
+        "parts",
+        "assemble"
+      ]
+    }
+  ],
+  "InputOrigins": null,
+  "ResolvedInputTypes": null,
+  "SkippedDocuments": null,
+  "Collections": [
+    {
+      "CollectionId": "sections",
+      "Items": [
+        {
+          "Id": "hpi",
+          "Name": "HPI"
+        },
+        {
+          "Id": "plan",
+          "Name": "Plan"
+        }
+      ]
+    },
+    {
+      "CollectionId": "input.questions",
+      "Items": [
+        {
+          "Id": "0",
+          "Name": "Questions 1"
+        },
+        {
+          "Id": "1",
+          "Name": "Questions 2"
+        }
+      ]
+    },
+    {
+      "CollectionId": "node.find_problems.value.problems",
+      "Items": [
+        {
+          "Id": "1",
+          "Name": "Problems 1"
+        }
+      ]
+    },
+    {
+      "CollectionId": "node.plan.value.sections",
+      "Items": [
+        {
+          "Id": "1",
+          "Name": "Parts 1"
+        },
+        {
+          "Id": "2",
+          "Name": "Parts 2"
+        }
+      ]
+    },
+    {
+      "CollectionId": "node.outline.value.points",
+      "Items": [
+        {
+          "Id": "2/1",
+          "Name": "Paragraphs 1"
+        }
+      ]
+    },
+    {
+      "CollectionId": "input.questions",
+      "Items": [
+        {
+          "Id": "2/1/0",
+          "Name": "Questions 1"
+        },
+        {
+          "Id": "2/1/1",
+          "Name": "Questions 2"
+        }
+      ]
+    },
+    {
+      "CollectionId": "node.outline.value.points",
+      "Items": [
+        {
+          "Id": "1/1",
+          "Name": "Paragraphs 1"
+        },
+        {
+          "Id": "1/2",
+          "Name": "Paragraphs 2"
+        }
+      ]
+    },
+    {
+      "CollectionId": "input.questions",
+      "Items": [
+        {
+          "Id": "1/1/0",
+          "Name": "Questions 1"
+        },
+        {
+          "Id": "1/1/1",
+          "Name": "Questions 2"
+        }
+      ]
+    },
+    {
+      "CollectionId": "input.questions",
+      "Items": [
+        {
+          "Id": "1/2/0",
+          "Name": "Questions 1"
+        },
+        {
+          "Id": "1/2/1",
+          "Name": "Questions 2"
+        }
+      ]
+    }
+  ],
+  "PackageSpecVersion": 30,
+  "PackageTitle": null,
+  "StartFailure": null,
+  "PackageTags": [],
+  "PackageFormatRef": "package-format@v2026.11.2",
+  "ProvenanceRef": "provenance@v2026.11.1",
+  "Terminology": null,
+  "TerminologyServerRef": null,
+  "TextDroppedAtUtc": null,
+  "DeliveryOutcome": "address-not-set",
+  "DeliveredAtUtc": null,
+  "DeliveryDocumentAttached": null,
+  "Deciding": null,
+  "DecidedAtUtc": "<time>",
+  "Classifications": {
+    "scope": "in_scope"
+  },
+  "DecisionFailureKind": null,
+  "ApiHost": null,
+  "EngineCommit":"<commit>",
+  "EngineRelease": null,
+  "TerminologyServerRelease": null,
+  "OutputsBlob": null,
+  "InputsBlob": null,
+  "InputsDroppedAtUtc": null,
+  "HeldInputs": null,
+  "RerunOf": null,
+  "RerunVerdict": null,
+  "RerunDivergence": null,
+  "Tokens": null,
+  "MacroChoices": null,
+  "FailedDocuments": null,
+  "ExcludedMacros": null,
+  "FailureStack": null,
+  "FailedBlockStacks": null,
+  "AcknowledgedShortInputs": null,
+  "FormatsRef": "formats@v2026.11.1",
+  "SkippedBlocks": null,
+  "UnresolvedLoops": null,
+  "HeldDocuments": null,
+  "LoopInstances": [
+    {
+      "LoopId": "paragraphs",
+      "Path": "2",
+      "Count": 1,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null,
+      "Failure": null
+    },
+    {
+      "LoopId": "sentences",
+      "Path": "2/1",
+      "Count": 2,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null,
+      "Failure": null
+    },
+    {
+      "LoopId": "paragraphs",
+      "Path": "1",
+      "Count": 2,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null,
+      "Failure": null
+    },
+    {
+      "LoopId": "sentences",
+      "Path": "1/1",
+      "Count": 2,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null,
+      "Failure": null
+    },
+    {
+      "LoopId": "sentences",
+      "Path": "1/2",
+      "Count": 2,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null,
+      "Failure": null
+    }
+  ]
+}
+# the event candidates
+snapshot | snapshot | {"JobId":"<job>","AppUserId":"user-1","Status":"Completed","TotalBlockCount":11,"CompletedBlockCount":11,"FailedBlockCount":0,"GeneratedBlocks":{"consult:assessment":"[assessment]","consult:sections:hpi":"[section_notes:hpi]","consult:sections:plan":"[section_notes:plan]","consult:assemble":"[assemble]","consult:problems:1":"[draft_problem:1]","consult:sentences:2/1/0":"Sentence 2/1/0.","consult:sentences:2/1/1":"Sentence 2/1/1.","consult:sentences:1/1/0":"Sentence 1/1/0.","consult:sentences:1/1/1":"Sentence 1/1/1.","consult:sentences:1/2/0":"Sentence 1/2/0.","consult:sentences:1/2/1":"Sentence 1/2/1."},"FailedBlocks":{},"Success":true,"SchemaVersion":11,"CompletedStageCount":17,"TotalStageCount":17,"ItemProgress":{"hpi":{"ItemId":"hpi","ItemName":"HPI","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1},"plan":{"ItemId":"plan","ItemName":"Plan","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1},"1":{"ItemId":"1","ItemName":"Problems 1","Step":"outline","CompletedStepCount":1,"TotalStepCount":2},"2":{"ItemId":"2","ItemName":"Parts 2","Step":"outline","CompletedStepCount":1,"TotalStepCount":2},"2/1":{"ItemId":"2/1","ItemName":"Paragraphs 1","Step":"draft_paragraph","CompletedStepCount":1,"TotalStepCount":2},"2/1/1":{"ItemId":"2/1/1","ItemName":"Questions 2","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"2/1/0":{"ItemId":"2/1/0","ItemName":"Questions 1","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/2":{"ItemId":"1/2","ItemName":"Paragraphs 2","Step":"draft_paragraph","CompletedStepCount":1,"TotalStepCount":2},"1/2/1":{"ItemId":"1/2/1","ItemName":"Questions 2","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/2/0":{"ItemId":"1/2/0","ItemName":"Questions 1","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/1":{"ItemId":"1/1","ItemName":"Paragraphs 1","Step":"draft_paragraph","CompletedStepCount":1,"TotalStepCount":2},"1/1/1":{"ItemId":"1/1/1","ItemName":"Questions 2","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/1/0":{"ItemId":"1/1/0","ItemName":"Questions 1","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1}},"CreatedAtUtc":"<time>","StartedAtUtc":"<time>","CompletedAtUtc":"<time>","History":[{"Kind":"success","Label":"Extract concepts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Scope","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: HPI","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Plan","OccurredAt":"<time>"},{"Kind":"success","Label":"Section notes","OccurredAt":"<time>"},{"Kind":"success","Label":"Sections","OccurredAt":"<time>"},{"Kind":"success","Label":"Find problems","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Problems: 1 item","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Problems 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft problem","OccurredAt":"<time>"},{"Kind":"success","Label":"Problems","OccurredAt":"<time>"},{"Kind":"success","Label":"Plan the sections","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Parts: 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Paragraphs (2): 1 item","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences (2/1): 2 items","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Outline the section","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Paragraphs (1): 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Paragraphs: 3 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences (1/1): 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences (1/2): 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences: 6 items","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft paragraph","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft sentence","OccurredAt":"<time>"},{"Kind":"success","Label":"Paragraphs","OccurredAt":"<time>"},{"Kind":"success","Label":"Sentences","OccurredAt":"<time>"},{"Kind":"success","Label":"Parts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assemble","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assemble","OccurredAt":"<time>"},{"Kind":"composed","Label":"Consultation note composed; released once its reads and check settle","OccurredAt":"<time>"},{"Kind":"success","Label":"Coverage","OccurredAt":"<time>"},{"Kind":"success","Label":"Assembled document produced: Consultation note","OccurredAt":"<time>"},{"Kind":"success","Label":"Done","OccurredAt":"<time>"},{"Kind":"delivery","Label":"Not emailed \u2014 no delivery address on the account","OccurredAt":"<time>"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"c8a8bff519247d135be7ebe90f1cba29a6174a3cb34ff87d10c8fb8ec9d432f5","ItemSteps":[{"Id":"section_notes","Label":"Section notes"},{"Id":"draft_problem","Label":"Draft problem"},{"Id":"outline","Label":"Outline the section"},{"Id":"draft_paragraph","Label":"Draft paragraph"},{"Id":"paragraphs","Label":"Paragraphs"},{"Id":"draft_sentence","Label":"Draft sentence"},{"Id":"sentences","Label":"Sentences"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","ConceptSource":"extract","AgentName":"concept-extraction","AgentVersion":"1","Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","OnInvalid":"fail","Prompt":"prompts/extract.md"},{"Id":"scope","Label":"Scope","ConceptSource":"scope","Values":["in_scope","out_of_scope"],"AgentName":"classification","AgentVersion":"1","Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","OnInvalid":"fail","Prompt":"prompts/scope.md"},{"Id":"assessment","Label":"Assessment","ConceptSource":"assessment","AgentName":"consult-prose","AgentVersion":"3","Macros":[{"Id":"closing","After":true}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["extract"],"Prompt":"prompts/assessment.md"},{"Id":"section_notes","Label":"Section notes","ConceptSource":"section_notes","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"sections","Prompt":"prompts/section_notes.md"},{"Id":"coverage","Label":"Coverage","ConceptSource":"coverage","Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail"},{"Id":"sections","Label":"Sections","ConceptSource":"sections","Kind":"for","Collection":"snippet.sections","Body":["section_notes"],"Ret":"section_notes","Count":2},{"Id":"find_problems","Label":"Find problems","ConceptSource":"find_problems","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","OnInvalid":"fail","Prompt":"prompts/find_problems.md"},{"Id":"draft_problem","Label":"Draft problem","ConceptSource":"draft_problem","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"problems","Prompt":"prompts/draft_problem.md"},{"Id":"problems","Label":"Problems","ConceptSource":"problems","Reads":["find_problems"],"Kind":"for","Collection":"node.find_problems.value.problems","Body":["draft_problem"],"Ret":"draft_problem","Count":1,"ResolvedAtUtc":"<time>"},{"Id":"plan","Label":"Plan the sections","ConceptSource":"plan","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee","Format":"section_plan","Producer":"custom","FormatHash":"9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee","OnInvalid":"fail","Prompt":"prompts/plan.md"},{"Id":"outline","Label":"Outline the section","ConceptSource":"outline","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","Format":"outline","Producer":"custom","FormatHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","OnInvalid":"fail","In":"parts","Prompt":"prompts/outline.md"},{"Id":"draft_paragraph","Label":"Draft paragraph","ConceptSource":"draft_paragraph","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"paragraphs","Prompt":"prompts/draft_paragraph.md"},{"Id":"parts","Label":"Parts","ConceptSource":"parts","Reads":["plan"],"Kind":"for","Collection":"node.plan.value.sections","Body":["outline","paragraphs"],"Ret":"paragraphs","Count":2,"ResolvedAtUtc":"<time>"},{"Id":"paragraphs","Label":"Paragraphs","ConceptSource":"paragraphs","Reads":["outline"],"Kind":"for","Collection":"node.outline.value.points","Body":["draft_paragraph","sentences"],"Ret":"sentences","In":"parts","Count":3,"ResolvedAtUtc":"<time>"},{"Id":"draft_sentence","Label":"Draft sentence","ConceptSource":"draft_sentence","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["draft_paragraph"],"In":"sentences","Prompt":"prompts/draft_sentence.md"},{"Id":"sentences","Label":"Sentences","ConceptSource":"sentences","Kind":"for","Collection":"input.questions","Body":["draft_sentence"],"Ret":"draft_sentence","In":"paragraphs","Count":6,"ResolvedAtUtc":"<time>"},{"Id":"assemble","Label":"Assemble","ConceptSource":"assemble","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["parts"],"Prompt":"prompts/assemble.md"}],"NodeOutputs":{"extract":{"NodeId":"extract","Label":"Extract concepts","Status":"Completed","InputHash":"in:extract","OutputHash":"out:extract","CompletedAtUtc":"<time>","HashVersion":6},"assessment":{"NodeId":"assessment","Label":"Assessment","Status":"Completed","InputHash":"in:assessment","OutputHash":"out:assessment","CompletedAtUtc":"<time>","HashVersion":6},"scope":{"NodeId":"scope","Label":"Scope","Status":"Completed","InputHash":"in:scope","OutputHash":"out:scope","CompletedAtUtc":"<time>","HashVersion":6,"Classification":"in_scope"},"section_notes:hpi":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedAtUtc":"<time>","HashVersion":6},"section_notes:plan":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:plan","OutputHash":"out:section_notes:plan","CompletedAtUtc":"<time>","HashVersion":6},"section_notes":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","CompletedAtUtc":"<time>"},"sections":{"NodeId":"sections","Label":"Sections","Status":"Completed","InputHash":"f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2","OutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202"},"find_problems":{"NodeId":"find_problems","Label":"Find problems","Status":"Completed","InputHash":"in:find_problems","OutputHash":"out:find_problems","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem:1":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","InputHash":"in:draft_problem:1","OutputHash":"out:draft_problem:1","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","CompletedAtUtc":"<time>"},"problems":{"NodeId":"problems","Label":"Problems","Status":"Completed","InputHash":"f25cbab9c9449a4f2aa6006cc9613bddbc5e8e4d9f4b2ea6e9a56c2c8f828cfa","OutputHash":"7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133"},"plan":{"NodeId":"plan","Label":"Plan the sections","Status":"Completed","InputHash":"in:plan","OutputHash":"out:plan","CompletedAtUtc":"<time>","HashVersion":6},"outline:2":{"NodeId":"outline","Label":"Outline the section","Status":"Completed","InputHash":"in:outline:2","OutputHash":"out:outline:2","CompletedAtUtc":"<time>","HashVersion":6},"draft_paragraph:2/1":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","InputHash":"in:draft_paragraph:2/1","OutputHash":"out:draft_paragraph:2/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:2/1/1":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:2/1/1","OutputHash":"out:draft_sentence:2/1/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:2/1/0":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:2/1/0","OutputHash":"out:draft_sentence:2/1/0","CompletedAtUtc":"<time>","HashVersion":6},"outline:1":{"NodeId":"outline","Label":"Outline the section","Status":"Completed","InputHash":"in:outline:1","OutputHash":"out:outline:1","CompletedAtUtc":"<time>","HashVersion":6},"outline":{"NodeId":"outline","Label":"Outline the section","Status":"Completed","CompletedAtUtc":"<time>"},"draft_paragraph:1/2":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","InputHash":"in:draft_paragraph:1/2","OutputHash":"out:draft_paragraph:1/2","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:1/2/1":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/2/1","OutputHash":"out:draft_sentence:1/2/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:1/2/0":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/2/0","OutputHash":"out:draft_sentence:1/2/0","CompletedAtUtc":"<time>","HashVersion":6},"draft_paragraph:1/1":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","InputHash":"in:draft_paragraph:1/1","OutputHash":"out:draft_paragraph:1/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_paragraph":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","CompletedAtUtc":"<time>"},"draft_sentence:1/1/1":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/1/1","OutputHash":"out:draft_sentence:1/1/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:1/1/0":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/1/0","OutputHash":"out:draft_sentence:1/1/0","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","CompletedAtUtc":"<time>"},"paragraphs":{"NodeId":"paragraphs","Label":"Paragraphs","Status":"Completed","InputHash":"90408636cf306de65154b5d4bff22b07416af1c948d84078dccfefb338bb0480","OutputHash":"5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c"},"sentences":{"NodeId":"sentences","Label":"Sentences","Status":"Completed","InputHash":"00317042d2aabf54884efc9222bc22321074cd20986c6ac5ffa17f64ddb0470c","OutputHash":"34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07"},"parts":{"NodeId":"parts","Label":"Parts","Status":"Completed","InputHash":"8d0779221b910867e805320684006554685bf10a3c9ef2ed8239d572b8c1bf11","OutputHash":"cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d"},"assemble":{"NodeId":"assemble","Label":"Assemble","Status":"Completed","InputHash":"in:assemble","OutputHash":"out:assemble","CompletedAtUtc":"<time>","HashVersion":6},"coverage":{"NodeId":"coverage","Label":"Coverage","Status":"Completed","InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedAtUtc":"<time>","HashVersion":6,"Check":{"Passed":true,"Untested":["Asthma"]},"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584"}},"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","WorkflowOutputHash":"b1f3a3fc8241f853e67276b0ee97b49fcd93e2e593b863dcc9d7b180ce1c691d","WorkflowOutputHashVersion":3,"Source":"app","AssembledDocuments":[{"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]\n\n## Problems 1\n\n[draft_problem:1]\n\n## Parts 1\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.\n\n## Paragraphs 2\n\n## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1.\n\n## Parts 2\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1.\n\n[assemble]","DocumentHash":"72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b","ComposedHash":"72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b","Sources":["assessment","sections","problems","parts","assemble"]}],"Collections":[{"CollectionId":"sections","Items":[{"Id":"hpi","Name":"HPI"},{"Id":"plan","Name":"Plan"}]},{"CollectionId":"input.questions","Items":[{"Id":"0","Name":"Questions 1"},{"Id":"1","Name":"Questions 2"}]},{"CollectionId":"node.find_problems.value.problems","Items":[{"Id":"1","Name":"Problems 1"}]},{"CollectionId":"node.plan.value.sections","Items":[{"Id":"1","Name":"Parts 1"},{"Id":"2","Name":"Parts 2"}]},{"CollectionId":"node.outline.value.points","Items":[{"Id":"2/1","Name":"Paragraphs 1"}]},{"CollectionId":"input.questions","Items":[{"Id":"2/1/0","Name":"Questions 1"},{"Id":"2/1/1","Name":"Questions 2"}]},{"CollectionId":"node.outline.value.points","Items":[{"Id":"1/1","Name":"Paragraphs 1"},{"Id":"1/2","Name":"Paragraphs 2"}]},{"CollectionId":"input.questions","Items":[{"Id":"1/1/0","Name":"Questions 1"},{"Id":"1/1/1","Name":"Questions 2"}]},{"CollectionId":"input.questions","Items":[{"Id":"1/2/0","Name":"Questions 1"},{"Id":"1/2/1","Name":"Questions 2"}]}],"PackageSpecVersion":30,"PackageTags":[],"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","DeliveryOutcome":"address-not-set","DecidedAtUtc":"<time>","Classifications":{"scope":"in_scope"},"EngineCommit":"<commit>","FormatsRef":"formats@v2026.11.1","LoopInstances":[{"LoopId":"paragraphs","Path":"2","Count":1,"ResolvedAtUtc":"<time>"},{"LoopId":"sentences","Path":"2/1","Count":2,"ResolvedAtUtc":"<time>"},{"LoopId":"paragraphs","Path":"1","Count":2,"ResolvedAtUtc":"<time>"},{"LoopId":"sentences","Path":"1/1","Count":2,"ResolvedAtUtc":"<time>"},{"LoopId":"sentences","Path":"1/2","Count":2,"ResolvedAtUtc":"<time>"}]}
+node-completed | node:extract | {"JobId":"<job>","NodeId":"extract","Label":"Extract concepts","Message":"Extract concepts completed.","CompletedNodeCount":1,"TotalNodeCount":17}
+node-completed | node:scope | {"JobId":"<job>","NodeId":"scope","Label":"Scope","Message":"Scope completed.","CompletedNodeCount":2,"TotalNodeCount":17}
+node-completed | node:assessment | {"JobId":"<job>","NodeId":"assessment","Label":"Assessment","Message":"Assessment completed.","CompletedNodeCount":3,"TotalNodeCount":17}
+node-completed | node:section_notes | {"JobId":"<job>","NodeId":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedNodeCount":4,"TotalNodeCount":17}
+node-completed | node:coverage | {"JobId":"<job>","NodeId":"coverage","Label":"Coverage","Message":"Coverage completed.","CompletedNodeCount":5,"TotalNodeCount":17}
+node-completed | node:sections | {"JobId":"<job>","NodeId":"sections","Label":"Sections","Message":"Sections completed.","CompletedNodeCount":6,"TotalNodeCount":17}
+node-completed | node:find_problems | {"JobId":"<job>","NodeId":"find_problems","Label":"Find problems","Message":"Find problems completed.","CompletedNodeCount":7,"TotalNodeCount":17}
+node-completed | node:draft_problem | {"JobId":"<job>","NodeId":"draft_problem","Label":"Draft problem","Message":"Draft problem completed.","CompletedNodeCount":8,"TotalNodeCount":17}
+node-completed | node:problems | {"JobId":"<job>","NodeId":"problems","Label":"Problems","Message":"Problems completed.","CompletedNodeCount":9,"TotalNodeCount":17}
+node-completed | node:plan | {"JobId":"<job>","NodeId":"plan","Label":"Plan the sections","Message":"Plan the sections completed.","CompletedNodeCount":10,"TotalNodeCount":17}
+node-completed | node:outline | {"JobId":"<job>","NodeId":"outline","Label":"Outline the section","Message":"Outline the section completed.","CompletedNodeCount":11,"TotalNodeCount":17}
+node-completed | node:draft_paragraph | {"JobId":"<job>","NodeId":"draft_paragraph","Label":"Draft paragraph","Message":"Draft paragraph completed.","CompletedNodeCount":12,"TotalNodeCount":17}
+node-completed | node:parts | {"JobId":"<job>","NodeId":"parts","Label":"Parts","Message":"Parts completed.","CompletedNodeCount":13,"TotalNodeCount":17}
+node-completed | node:paragraphs | {"JobId":"<job>","NodeId":"paragraphs","Label":"Paragraphs","Message":"Paragraphs completed.","CompletedNodeCount":14,"TotalNodeCount":17}
+node-completed | node:draft_sentence | {"JobId":"<job>","NodeId":"draft_sentence","Label":"Draft sentence","Message":"Draft sentence completed.","CompletedNodeCount":15,"TotalNodeCount":17}
+node-completed | node:sentences | {"JobId":"<job>","NodeId":"sentences","Label":"Sentences","Message":"Sentences completed.","CompletedNodeCount":16,"TotalNodeCount":17}
+node-completed | node:assemble | {"JobId":"<job>","NodeId":"assemble","Label":"Assemble","Message":"Assemble completed.","CompletedNodeCount":17,"TotalNodeCount":17}
+item-step | item-step:1:draft_problem | {"JobId":"<job>","ItemId":"1","ItemName":"Problems 1","Step":"draft_problem","Label":"Draft problem","Message":"Draft problem completed.","CompletedStepCount":1,"TotalStepCount":2}
+item-step | item-step:1:outline | {"JobId":"<job>","ItemId":"1","ItemName":"Problems 1","Step":"outline","Label":"Outline the section","Message":"Outline the section completed.","CompletedStepCount":1,"TotalStepCount":2}
+item-step | item-step:1/1:draft_paragraph | {"JobId":"<job>","ItemId":"1/1","ItemName":"Paragraphs 1","Step":"draft_paragraph","Label":"Draft paragraph","Message":"Draft paragraph completed.","CompletedStepCount":1,"TotalStepCount":2}
+item-step | item-step:1/1/0:draft_sentence | {"JobId":"<job>","ItemId":"1/1/0","ItemName":"Questions 1","Step":"draft_sentence","Label":"Draft sentence","Message":"Draft sentence completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:1/1/1:draft_sentence | {"JobId":"<job>","ItemId":"1/1/1","ItemName":"Questions 2","Step":"draft_sentence","Label":"Draft sentence","Message":"Draft sentence completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:1/2:draft_paragraph | {"JobId":"<job>","ItemId":"1/2","ItemName":"Paragraphs 2","Step":"draft_paragraph","Label":"Draft paragraph","Message":"Draft paragraph completed.","CompletedStepCount":1,"TotalStepCount":2}
+item-step | item-step:1/2/0:draft_sentence | {"JobId":"<job>","ItemId":"1/2/0","ItemName":"Questions 1","Step":"draft_sentence","Label":"Draft sentence","Message":"Draft sentence completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:1/2/1:draft_sentence | {"JobId":"<job>","ItemId":"1/2/1","ItemName":"Questions 2","Step":"draft_sentence","Label":"Draft sentence","Message":"Draft sentence completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:2:outline | {"JobId":"<job>","ItemId":"2","ItemName":"Parts 2","Step":"outline","Label":"Outline the section","Message":"Outline the section completed.","CompletedStepCount":1,"TotalStepCount":2}
+item-step | item-step:2/1:draft_paragraph | {"JobId":"<job>","ItemId":"2/1","ItemName":"Paragraphs 1","Step":"draft_paragraph","Label":"Draft paragraph","Message":"Draft paragraph completed.","CompletedStepCount":1,"TotalStepCount":2}
+item-step | item-step:2/1/0:draft_sentence | {"JobId":"<job>","ItemId":"2/1/0","ItemName":"Questions 1","Step":"draft_sentence","Label":"Draft sentence","Message":"Draft sentence completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:2/1/1:draft_sentence | {"JobId":"<job>","ItemId":"2/1/1","ItemName":"Questions 2","Step":"draft_sentence","Label":"Draft sentence","Message":"Draft sentence completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:hpi:section_notes | {"JobId":"<job>","ItemId":"hpi","ItemName":"HPI","Step":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:plan:section_notes | {"JobId":"<job>","ItemId":"plan","ItemName":"Plan","Step":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedStepCount":1,"TotalStepCount":1}
+block-completed | block-completed:consult:assemble | {"JobId":"<job>","BlockId":"consult:assemble","Text":"[assemble]"}
+block-completed | block-completed:consult:assessment | {"JobId":"<job>","BlockId":"consult:assessment","Text":"[assessment]"}
+block-completed | block-completed:consult:problems:1 | {"JobId":"<job>","BlockId":"consult:problems:1","Text":"[draft_problem:1]"}
+block-completed | block-completed:consult:sections:hpi | {"JobId":"<job>","BlockId":"consult:sections:hpi","Text":"[section_notes:hpi]"}
+block-completed | block-completed:consult:sections:plan | {"JobId":"<job>","BlockId":"consult:sections:plan","Text":"[section_notes:plan]"}
+block-completed | block-completed:consult:sentences:1/1/0 | {"JobId":"<job>","BlockId":"consult:sentences:1/1/0","Text":"Sentence 1/1/0."}
+block-completed | block-completed:consult:sentences:1/1/1 | {"JobId":"<job>","BlockId":"consult:sentences:1/1/1","Text":"Sentence 1/1/1."}
+block-completed | block-completed:consult:sentences:1/2/0 | {"JobId":"<job>","BlockId":"consult:sentences:1/2/0","Text":"Sentence 1/2/0."}
+block-completed | block-completed:consult:sentences:1/2/1 | {"JobId":"<job>","BlockId":"consult:sentences:1/2/1","Text":"Sentence 1/2/1."}
+block-completed | block-completed:consult:sentences:2/1/0 | {"JobId":"<job>","BlockId":"consult:sentences:2/1/0","Text":"Sentence 2/1/0."}
+block-completed | block-completed:consult:sentences:2/1/1 | {"JobId":"<job>","BlockId":"consult:sentences:2/1/1","Text":"Sentence 2/1/1."}
+count-resolved | count-resolved:paragraphs | {"JobId":"<job>","LoopId":"paragraphs","Count":3,"Total":11,"Pending":0}
+count-resolved | count-resolved:parts | {"JobId":"<job>","LoopId":"parts","Count":2,"Total":11,"Pending":0}
+count-resolved | count-resolved:problems | {"JobId":"<job>","LoopId":"problems","Count":1,"Total":11,"Pending":0}
+count-resolved | count-resolved:sentences | {"JobId":"<job>","LoopId":"sentences","Count":6,"Total":11,"Pending":0}
+count-resolved | count-resolved:paragraphs:1 | {"JobId":"<job>","LoopId":"paragraphs","Count":2,"Total":11,"Pending":0,"Path":"1"}
+count-resolved | count-resolved:paragraphs:2 | {"JobId":"<job>","LoopId":"paragraphs","Count":1,"Total":11,"Pending":0,"Path":"2"}
+count-resolved | count-resolved:sentences:1/1 | {"JobId":"<job>","LoopId":"sentences","Count":2,"Total":11,"Pending":0,"Path":"1/1"}
+count-resolved | count-resolved:sentences:1/2 | {"JobId":"<job>","LoopId":"sentences","Count":2,"Total":11,"Pending":0,"Path":"1/2"}
+count-resolved | count-resolved:sentences:2/1 | {"JobId":"<job>","LoopId":"sentences","Count":2,"Total":11,"Pending":0,"Path":"2/1"}
+done | done | {"JobId":"<job>","AppUserId":"user-1","Status":"Completed","TotalBlockCount":11,"CompletedBlockCount":11,"FailedBlockCount":0,"GeneratedBlocks":{"consult:assessment":"[assessment]","consult:sections:hpi":"[section_notes:hpi]","consult:sections:plan":"[section_notes:plan]","consult:assemble":"[assemble]","consult:problems:1":"[draft_problem:1]","consult:sentences:2/1/0":"Sentence 2/1/0.","consult:sentences:2/1/1":"Sentence 2/1/1.","consult:sentences:1/1/0":"Sentence 1/1/0.","consult:sentences:1/1/1":"Sentence 1/1/1.","consult:sentences:1/2/0":"Sentence 1/2/0.","consult:sentences:1/2/1":"Sentence 1/2/1."},"FailedBlocks":{},"Success":true,"SchemaVersion":11,"CompletedStageCount":17,"TotalStageCount":17,"ItemProgress":{"hpi":{"ItemId":"hpi","ItemName":"HPI","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1},"plan":{"ItemId":"plan","ItemName":"Plan","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1},"1":{"ItemId":"1","ItemName":"Problems 1","Step":"outline","CompletedStepCount":1,"TotalStepCount":2},"2":{"ItemId":"2","ItemName":"Parts 2","Step":"outline","CompletedStepCount":1,"TotalStepCount":2},"2/1":{"ItemId":"2/1","ItemName":"Paragraphs 1","Step":"draft_paragraph","CompletedStepCount":1,"TotalStepCount":2},"2/1/1":{"ItemId":"2/1/1","ItemName":"Questions 2","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"2/1/0":{"ItemId":"2/1/0","ItemName":"Questions 1","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/2":{"ItemId":"1/2","ItemName":"Paragraphs 2","Step":"draft_paragraph","CompletedStepCount":1,"TotalStepCount":2},"1/2/1":{"ItemId":"1/2/1","ItemName":"Questions 2","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/2/0":{"ItemId":"1/2/0","ItemName":"Questions 1","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/1":{"ItemId":"1/1","ItemName":"Paragraphs 1","Step":"draft_paragraph","CompletedStepCount":1,"TotalStepCount":2},"1/1/1":{"ItemId":"1/1/1","ItemName":"Questions 2","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1},"1/1/0":{"ItemId":"1/1/0","ItemName":"Questions 1","Step":"draft_sentence","CompletedStepCount":1,"TotalStepCount":1}},"CreatedAtUtc":"<time>","StartedAtUtc":"<time>","CompletedAtUtc":"<time>","History":[{"Kind":"success","Label":"Extract concepts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Scope","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: HPI","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Plan","OccurredAt":"<time>"},{"Kind":"success","Label":"Section notes","OccurredAt":"<time>"},{"Kind":"success","Label":"Sections","OccurredAt":"<time>"},{"Kind":"success","Label":"Find problems","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Problems: 1 item","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Problems 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft problem","OccurredAt":"<time>"},{"Kind":"success","Label":"Problems","OccurredAt":"<time>"},{"Kind":"success","Label":"Plan the sections","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Parts: 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Paragraphs (2): 1 item","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences (2/1): 2 items","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Outline the section","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Paragraphs (1): 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Paragraphs: 3 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences (1/1): 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences (1/2): 2 items","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Sentences: 6 items","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft paragraph","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Questions 1","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft sentence","OccurredAt":"<time>"},{"Kind":"success","Label":"Paragraphs","OccurredAt":"<time>"},{"Kind":"success","Label":"Sentences","OccurredAt":"<time>"},{"Kind":"success","Label":"Parts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assemble","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assemble","OccurredAt":"<time>"},{"Kind":"composed","Label":"Consultation note composed; released once its reads and check settle","OccurredAt":"<time>"},{"Kind":"success","Label":"Coverage","OccurredAt":"<time>"},{"Kind":"success","Label":"Assembled document produced: Consultation note","OccurredAt":"<time>"},{"Kind":"success","Label":"Done","OccurredAt":"<time>"},{"Kind":"delivery","Label":"Not emailed \u2014 no delivery address on the account","OccurredAt":"<time>"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"c8a8bff519247d135be7ebe90f1cba29a6174a3cb34ff87d10c8fb8ec9d432f5","ItemSteps":[{"Id":"section_notes","Label":"Section notes"},{"Id":"draft_problem","Label":"Draft problem"},{"Id":"outline","Label":"Outline the section"},{"Id":"draft_paragraph","Label":"Draft paragraph"},{"Id":"paragraphs","Label":"Paragraphs"},{"Id":"draft_sentence","Label":"Draft sentence"},{"Id":"sentences","Label":"Sentences"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","ConceptSource":"extract","AgentName":"concept-extraction","AgentVersion":"1","Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","OnInvalid":"fail","Prompt":"prompts/extract.md"},{"Id":"scope","Label":"Scope","ConceptSource":"scope","Values":["in_scope","out_of_scope"],"AgentName":"classification","AgentVersion":"1","Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","OnInvalid":"fail","Prompt":"prompts/scope.md"},{"Id":"assessment","Label":"Assessment","ConceptSource":"assessment","AgentName":"consult-prose","AgentVersion":"3","Macros":[{"Id":"closing","After":true}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["extract"],"Prompt":"prompts/assessment.md"},{"Id":"section_notes","Label":"Section notes","ConceptSource":"section_notes","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"sections","Prompt":"prompts/section_notes.md"},{"Id":"coverage","Label":"Coverage","ConceptSource":"coverage","Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail"},{"Id":"sections","Label":"Sections","ConceptSource":"sections","Kind":"for","Collection":"snippet.sections","Body":["section_notes"],"Ret":"section_notes","Count":2},{"Id":"find_problems","Label":"Find problems","ConceptSource":"find_problems","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","OnInvalid":"fail","Prompt":"prompts/find_problems.md"},{"Id":"draft_problem","Label":"Draft problem","ConceptSource":"draft_problem","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"problems","Prompt":"prompts/draft_problem.md"},{"Id":"problems","Label":"Problems","ConceptSource":"problems","Reads":["find_problems"],"Kind":"for","Collection":"node.find_problems.value.problems","Body":["draft_problem"],"Ret":"draft_problem","Count":1,"ResolvedAtUtc":"<time>"},{"Id":"plan","Label":"Plan the sections","ConceptSource":"plan","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee","Format":"section_plan","Producer":"custom","FormatHash":"9749dc34f08a514ac168a8a31531663e98f35b274fedec6c2b88fc2c9cd31dee","OnInvalid":"fail","Prompt":"prompts/plan.md"},{"Id":"outline","Label":"Outline the section","ConceptSource":"outline","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","Format":"outline","Producer":"custom","FormatHash":"fd4ebc09246c92ac5f5792f9ede8b5987c0ed4689b3b5773bdce70d6265a45ef","OnInvalid":"fail","In":"parts","Prompt":"prompts/outline.md"},{"Id":"draft_paragraph","Label":"Draft paragraph","ConceptSource":"draft_paragraph","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"paragraphs","Prompt":"prompts/draft_paragraph.md"},{"Id":"parts","Label":"Parts","ConceptSource":"parts","Reads":["plan"],"Kind":"for","Collection":"node.plan.value.sections","Body":["outline","paragraphs"],"Ret":"paragraphs","Count":2,"ResolvedAtUtc":"<time>"},{"Id":"paragraphs","Label":"Paragraphs","ConceptSource":"paragraphs","Reads":["outline"],"Kind":"for","Collection":"node.outline.value.points","Body":["draft_paragraph","sentences"],"Ret":"sentences","In":"parts","Count":3,"ResolvedAtUtc":"<time>"},{"Id":"draft_sentence","Label":"Draft sentence","ConceptSource":"draft_sentence","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["draft_paragraph"],"In":"sentences","Prompt":"prompts/draft_sentence.md"},{"Id":"sentences","Label":"Sentences","ConceptSource":"sentences","Kind":"for","Collection":"input.questions","Body":["draft_sentence"],"Ret":"draft_sentence","In":"paragraphs","Count":6,"ResolvedAtUtc":"<time>"},{"Id":"assemble","Label":"Assemble","ConceptSource":"assemble","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["parts"],"Prompt":"prompts/assemble.md"}],"NodeOutputs":{"extract":{"NodeId":"extract","Label":"Extract concepts","Status":"Completed","InputHash":"in:extract","OutputHash":"out:extract","CompletedAtUtc":"<time>","HashVersion":6},"assessment":{"NodeId":"assessment","Label":"Assessment","Status":"Completed","InputHash":"in:assessment","OutputHash":"out:assessment","CompletedAtUtc":"<time>","HashVersion":6},"scope":{"NodeId":"scope","Label":"Scope","Status":"Completed","InputHash":"in:scope","OutputHash":"out:scope","CompletedAtUtc":"<time>","HashVersion":6,"Classification":"in_scope"},"section_notes:hpi":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedAtUtc":"<time>","HashVersion":6},"section_notes:plan":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:plan","OutputHash":"out:section_notes:plan","CompletedAtUtc":"<time>","HashVersion":6},"section_notes":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","CompletedAtUtc":"<time>"},"sections":{"NodeId":"sections","Label":"Sections","Status":"Completed","InputHash":"f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2","OutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202"},"find_problems":{"NodeId":"find_problems","Label":"Find problems","Status":"Completed","InputHash":"in:find_problems","OutputHash":"out:find_problems","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem:1":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","InputHash":"in:draft_problem:1","OutputHash":"out:draft_problem:1","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","CompletedAtUtc":"<time>"},"problems":{"NodeId":"problems","Label":"Problems","Status":"Completed","InputHash":"f25cbab9c9449a4f2aa6006cc9613bddbc5e8e4d9f4b2ea6e9a56c2c8f828cfa","OutputHash":"7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"7c37bded4c80e90452b09dd3687aaee7e46c84e83c0055398f2bda8f3004a133"},"plan":{"NodeId":"plan","Label":"Plan the sections","Status":"Completed","InputHash":"in:plan","OutputHash":"out:plan","CompletedAtUtc":"<time>","HashVersion":6},"outline:2":{"NodeId":"outline","Label":"Outline the section","Status":"Completed","InputHash":"in:outline:2","OutputHash":"out:outline:2","CompletedAtUtc":"<time>","HashVersion":6},"draft_paragraph:2/1":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","InputHash":"in:draft_paragraph:2/1","OutputHash":"out:draft_paragraph:2/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:2/1/1":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:2/1/1","OutputHash":"out:draft_sentence:2/1/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:2/1/0":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:2/1/0","OutputHash":"out:draft_sentence:2/1/0","CompletedAtUtc":"<time>","HashVersion":6},"outline:1":{"NodeId":"outline","Label":"Outline the section","Status":"Completed","InputHash":"in:outline:1","OutputHash":"out:outline:1","CompletedAtUtc":"<time>","HashVersion":6},"outline":{"NodeId":"outline","Label":"Outline the section","Status":"Completed","CompletedAtUtc":"<time>"},"draft_paragraph:1/2":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","InputHash":"in:draft_paragraph:1/2","OutputHash":"out:draft_paragraph:1/2","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:1/2/1":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/2/1","OutputHash":"out:draft_sentence:1/2/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:1/2/0":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/2/0","OutputHash":"out:draft_sentence:1/2/0","CompletedAtUtc":"<time>","HashVersion":6},"draft_paragraph:1/1":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","InputHash":"in:draft_paragraph:1/1","OutputHash":"out:draft_paragraph:1/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_paragraph":{"NodeId":"draft_paragraph","Label":"Draft paragraph","Status":"Completed","CompletedAtUtc":"<time>"},"draft_sentence:1/1/1":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/1/1","OutputHash":"out:draft_sentence:1/1/1","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence:1/1/0":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","InputHash":"in:draft_sentence:1/1/0","OutputHash":"out:draft_sentence:1/1/0","CompletedAtUtc":"<time>","HashVersion":6},"draft_sentence":{"NodeId":"draft_sentence","Label":"Draft sentence","Status":"Completed","CompletedAtUtc":"<time>"},"paragraphs":{"NodeId":"paragraphs","Label":"Paragraphs","Status":"Completed","InputHash":"90408636cf306de65154b5d4bff22b07416af1c948d84078dccfefb338bb0480","OutputHash":"5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"5b6977b1285b28292b547a8d92fc9b9ec04cc50dc55fdc3ee67debfe7e73ef1c"},"sentences":{"NodeId":"sentences","Label":"Sentences","Status":"Completed","InputHash":"00317042d2aabf54884efc9222bc22321074cd20986c6ac5ffa17f64ddb0470c","OutputHash":"34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"34e32eda38f0111d2e5c2239a4893d6a59848f58a0d7fd5ae971d3068ef35a07"},"parts":{"NodeId":"parts","Label":"Parts","Status":"Completed","InputHash":"8d0779221b910867e805320684006554685bf10a3c9ef2ed8239d572b8c1bf11","OutputHash":"cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"cba065a29b950cca00e4d7ab61aafb8cacbb260db10fa0564b5cee9750ace61d"},"assemble":{"NodeId":"assemble","Label":"Assemble","Status":"Completed","InputHash":"in:assemble","OutputHash":"out:assemble","CompletedAtUtc":"<time>","HashVersion":6},"coverage":{"NodeId":"coverage","Label":"Coverage","Status":"Completed","InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedAtUtc":"<time>","HashVersion":6,"Check":{"Passed":true,"Untested":["Asthma"]},"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584"}},"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","WorkflowOutputHash":"b1f3a3fc8241f853e67276b0ee97b49fcd93e2e593b863dcc9d7b180ce1c691d","WorkflowOutputHashVersion":3,"Source":"app","AssembledDocuments":[{"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]\n\n## Problems 1\n\n[draft_problem:1]\n\n## Parts 1\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 1/1/0.\n\n## Questions 2\n\nSentence 1/1/1.\n\n## Paragraphs 2\n\n## Questions 1\n\nSentence 1/2/0.\n\n## Questions 2\n\nSentence 1/2/1.\n\n## Parts 2\n\n## Paragraphs 1\n\n## Questions 1\n\nSentence 2/1/0.\n\n## Questions 2\n\nSentence 2/1/1.\n\n[assemble]","DocumentHash":"72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b","ComposedHash":"72624afc1131396fcc0fd0ab0b3c5d3b378fbe9a817297e2c91a32cb9006d30b","Sources":["assessment","sections","problems","parts","assemble"]}],"Collections":[{"CollectionId":"sections","Items":[{"Id":"hpi","Name":"HPI"},{"Id":"plan","Name":"Plan"}]},{"CollectionId":"input.questions","Items":[{"Id":"0","Name":"Questions 1"},{"Id":"1","Name":"Questions 2"}]},{"CollectionId":"node.find_problems.value.problems","Items":[{"Id":"1","Name":"Problems 1"}]},{"CollectionId":"node.plan.value.sections","Items":[{"Id":"1","Name":"Parts 1"},{"Id":"2","Name":"Parts 2"}]},{"CollectionId":"node.outline.value.points","Items":[{"Id":"2/1","Name":"Paragraphs 1"}]},{"CollectionId":"input.questions","Items":[{"Id":"2/1/0","Name":"Questions 1"},{"Id":"2/1/1","Name":"Questions 2"}]},{"CollectionId":"node.outline.value.points","Items":[{"Id":"1/1","Name":"Paragraphs 1"},{"Id":"1/2","Name":"Paragraphs 2"}]},{"CollectionId":"input.questions","Items":[{"Id":"1/1/0","Name":"Questions 1"},{"Id":"1/1/1","Name":"Questions 2"}]},{"CollectionId":"input.questions","Items":[{"Id":"1/2/0","Name":"Questions 1"},{"Id":"1/2/1","Name":"Questions 2"}]}],"PackageSpecVersion":30,"PackageTags":[],"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","DeliveryOutcome":"address-not-set","DecidedAtUtc":"<time>","Classifications":{"scope":"in_scope"},"EngineCommit":"<commit>","FormatsRef":"formats@v2026.11.1","LoopInstances":[{"LoopId":"paragraphs","Path":"2","Count":1,"ResolvedAtUtc":"<time>"},{"LoopId":"sentences","Path":"2/1","Count":2,"ResolvedAtUtc":"<time>"},{"LoopId":"paragraphs","Path":"1","Count":2,"ResolvedAtUtc":"<time>"},{"LoopId":"sentences","Path":"1/1","Count":2,"ResolvedAtUtc":"<time>"},{"LoopId":"sentences","Path":"1/2","Count":2,"ResolvedAtUtc":"<time>"}]}

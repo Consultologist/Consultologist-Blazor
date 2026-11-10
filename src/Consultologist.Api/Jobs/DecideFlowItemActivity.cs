@@ -33,7 +33,11 @@ public sealed record ConsultDecideFlowItemInput(
     // branch — for this item, the sibling inner flows it skipped — read as null.
     // Trailing; written only when set, so a decision that reads none serializes as before.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<string>? SkippedNodes = null);
+    IReadOnlyList<string>? SkippedNodes = null,
+    // v30 (#1341, design § 2.4): the enclosing loops' items, outermost first — what a
+    // condition's item.parent reads. Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<ConsultParentItem>? Parents = null);
 
 /// <summary>
 /// v27 (#1235, design § 1.3, § 1.4, § 2): what one item's decision said — the
@@ -121,7 +125,7 @@ public sealed class DecideFlowItemActivity
                 input.Run,
                 input.Profile,
                 package)
-            .WithFanItem(input.Collection, input.Item) with { SkippedNodes = input.SkippedNodes };
+            .WithFanItem(input.Collection, input.Item) with { SkippedNodes = input.SkippedNodes, Parents = input.Parents };
 
         var outcome = scope.Decide(flow);
         var reason = outcome.Skipped

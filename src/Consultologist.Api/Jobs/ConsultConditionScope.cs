@@ -27,13 +27,15 @@ internal sealed record ConsultConditionScope(
     IReadOnlyDictionary<string, string>? Item = null,
     string? ItemFan = null,
     // #1356: the flows that took no branch for this scope's item — read as null.
-    IReadOnlyList<string>? SkippedNodes = null)
+    IReadOnlyList<string>? SkippedNodes = null,
+    // v30 (#1341): the enclosing loops' items, outermost first (item.parent).
+    IReadOnlyList<ConsultParentItem>? Parents = null)
 {
     private TemplateRenderScope? _scope;
     private IReadOnlySet<string>? _inert;
 
     private TemplateRenderScope Scope =>
-        _scope ??= ConsultRenderPayload.ScopeFor(Variables, VariableTypes, NodeTexts, Folders, Item, ItemFan, Run, Profile, Package, skipped: SkippedNodes);
+        _scope ??= ConsultRenderPayload.ScopeFor(Variables, VariableTypes, NodeTexts, Folders, Item, ItemFan, Run, Profile, Package, skipped: SkippedNodes, parents: Parents);
 
     /// <summary>v26 (#1177): the macros whose own gate (the header's `if`) does not hold over this scope — none below 26.</summary>
     private IReadOnlySet<string> Inert =>

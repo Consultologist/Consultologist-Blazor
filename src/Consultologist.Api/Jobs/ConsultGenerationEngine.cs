@@ -257,6 +257,51 @@ public sealed class ConsultGenerationOrchestrator
             return null;
         }
 
+        // v30 (#1341, design § 2.4): the items of the loops enclosing an instance's own
+        // loop, outermost first — each the outer loop's item whose path is the instance
+        // path's prefix at that loop's depth. Null outside a nested loop.
+        IReadOnlyList<ConsultParentItem>? ParentsOf(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item)
+        {
+            if (nestedLoops.Count == 0 || WorkflowItemPath.OfItem(item) is not { } path)
+            {
+                return null;
+            }
+
+            var enclosing = new List<ConsultNodeDescriptor>();
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.For)
+                {
+                    enclosing.Add(owner);
+                }
+            }
+
+            var depth = WorkflowItemPath.Depth(path);
+            var parents = new List<ConsultParentItem>();
+            for (var level = 1; level < enclosing.Count && level < depth; level++)
+            {
+                // A nested loop's own row fans over its enclosing loop's items.
+                var innerRow = enclosing[level - 1];
+                var prefix = WorkflowItemPath.Prefix(path, depth - level);
+                if (innerRow.ForEach is null || FanItems(innerRow).FirstOrDefault(outer => WorkflowItemPath.OfItem(outer) == prefix) is not { } outerItem)
+                {
+                    break;
+                }
+
+                parents.Insert(0, new ConsultParentItem(innerRow.ForEach, outerItem));
+            }
+
+            return parents.Count > 0 ? parents : null;
+        }
+
+        // v30 (#1341, design § 6): a nested loop's settled instance items, for the lists a
+        // loop read whole carries per element. Null below 30 (no nested loop).
+        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?>? InstanceItems() =>
+            nestedLoops.Count == 0
+                ? null
+                : (loopId, outerPath) => loopInstances.Get(loopId, outerPath) is { Failed: false } instance ? instance.Items : null;
+
         // v30 (#1341, design § 1.1): a deliverable's block for a nested loop's item is named
         // by that innermost loop — when the node is the loop's ret and the loops above return
         // each other up to the top, the (innermost loop, top loop) a deliverable sources.
@@ -433,12 +478,14 @@ public sealed class ConsultGenerationOrchestrator
                         Instances: node.Macros,
                         // v26 (#1154, design § 1.3): the loops read whole, the flow
                         // nodes' returned nodes, the flows that took no branch.
-                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys()),
+                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), InstanceItems()),
                         FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
                         // #1356: and, for this item, the sibling inner flows it skipped.
                         SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),
                         // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
-                        Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds())),
+                        Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds()),
+                        // v30 (#1341, design § 2.4): item.parent, for an instance of a nested loop.
+                        Parents: ParentsOf(node, item)),
                     AgentActivityRetryOptions)] = (node.Id, WorkflowItemPath.OfItem(item));
                 return;
             }
@@ -608,7 +655,8 @@ public sealed class ConsultGenerationOrchestrator
                     ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
                     ConsultRenderPayload.FlowRetsFor(flow, nodesById, ItemRets()),
                     // #1356: the flows its condition reads that took no branch, for this item.
-                    SkippedNodes: ConsultRenderPayload.SkippedReadsFor(flow, item, nodesById, skippedNodes, inner.SkippedInstances)),
+                    SkippedNodes: ConsultRenderPayload.SkippedReadsFor(flow, item, nodesById, skippedNodes, inner.SkippedInstances),
+                    Parents: ParentsOf(flow, item)),
                 AgentActivityRetryOptions)] = (flow.Id, WorkflowItemPath.OfItem(item)!);
         }
 
@@ -830,7 +878,8 @@ public sealed class ConsultGenerationOrchestrator
                     var instanceItems = ConsultNodeValueLoops.WithPath(resolution.Items, outerPath);
                     loopInstances.Resolve(loop.Id, outerPath, instanceItems, resolution.Reason);
 
-                    var blocks = NestedBlockOf(nodesById[loop.Ret!]) is { } nestedBlock
+                    // A loop whose ret is a loop (a middle level) lays out no blocks — its innermost loop's instances do.
+                    var blocks = !ReturnsALoop(loop) && NestedBlockOf(nodesById[loop.Ret!]) is { } nestedBlock
                         ? deliverables
                             .Where(deliverable => deliverable.Sources?.Contains(nestedBlock.Top, StringComparer.Ordinal) == true)
                             .SelectMany(deliverable => instanceItems.Select(item => new ConsultCollectionItem(

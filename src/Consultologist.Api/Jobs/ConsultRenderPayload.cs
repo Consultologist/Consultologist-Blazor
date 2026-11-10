@@ -132,7 +132,7 @@ internal static class ConsultRenderPayload
         }
 
         return ScopeFor(input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, input.Item, input.ForEach, input.Run, input.Profile, package,
-            input.Loops, input.FlowRets, input.SkippedNodes, input.Deliverables);
+            input.Loops, input.FlowRets, input.SkippedNodes, input.Deliverables, input.Parents);
     }
 
     /// <summary>
@@ -178,7 +178,10 @@ internal static class ConsultRenderPayload
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collections,
         // v27 (#1235, design § 1.4): the instance keys (flow:item) an inner if/case
         // skipped by condition — those items are elements with no returned text.
-        IReadOnlySet<string>? skipped = null)
+        IReadOnlySet<string>? skipped = null,
+        // v30 (#1341, design § 6): a nested loop's instance items (loop id, outer path → items, or
+        // null) — a loop read whole carries, per item, the lists of the loops its body holds.
+        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?>? instanceItems = null)
     {
         Dictionary<string, ConsultLoopPayload>? loops = null;
 
@@ -220,10 +223,65 @@ internal static class ConsultRenderPayload
                 StringComparer.Ordinal);
 
             loops ??= new Dictionary<string, ConsultLoopPayload>(StringComparer.Ordinal);
-            loops[readId] = new ConsultLoopPayload(collection, ret, items, texts, skippedItems.Count > 0 ? skippedItems : null);
+            loops[readId] = new ConsultLoopPayload(collection, ret, items, texts, skippedItems.Count > 0 ? skippedItems : null,
+                Inner: instanceItems is null ? null : InnerLoopsOf(loop, items, nodesById, outputs, skipped, instanceItems));
         }
 
         return loops;
+    }
+
+    /// <summary>
+    /// v30 (#1341, design § 6): for each loop a loop's body holds, its instance under
+    /// each of the loop's items — that instance's items (keyed by their own ids), its
+    /// body nodes' texts by item and its composed text — recursively. Null when the
+    /// body holds no loop.
+    /// </summary>
+    private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>? InnerLoopsOf(
+        ConsultNodeDescriptor loop,
+        IReadOnlyList<IReadOnlyDictionary<string, string>> items,
+        IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
+        IReadOnlyDictionary<string, NodeRunResult> outputs,
+        IReadOnlySet<string>? skipped,
+        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?> instanceItems)
+    {
+        Dictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>? inner = null;
+
+        foreach (var innerLoop in (loop.Body ?? Array.Empty<string>()).Select(nodesById.GetValueOrDefault)
+            .Where(body => body is { Kind: ConsultNodeFlows.For, Collection: not null, Ret: not null } && string.Equals(body.In, loop.Id, StringComparison.Ordinal)))
+        {
+            var instances = new Dictionary<string, ConsultLoopPayload>(StringComparer.Ordinal);
+
+            foreach (var item in items)
+            {
+                var outerPath = WorkflowItemPath.OfItem(item)!;
+                if (instanceItems(innerLoop!.Id, outerPath) is not { } innerItems)
+                {
+                    continue;
+                }
+
+                var skippedItems = innerItems.Where(i => skipped?.Contains(ConsultNodeScheduler.InstanceKey(innerLoop.Ret!, WorkflowItemPath.OfItem(i))) == true)
+                    .Select(i => i["id"]).ToList();
+                var texts = (innerLoop.Body ?? Array.Empty<string>()).ToDictionary(
+                    bodyId => bodyId,
+                    bodyId => (IReadOnlyDictionary<string, string>)innerItems
+                        .Where(i => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(bodyId, WorkflowItemPath.OfItem(i))))
+                        .ToDictionary(
+                            i => i["id"],
+                            i => outputs[ConsultNodeScheduler.InstanceKey(bodyId, WorkflowItemPath.OfItem(i))] is var output ? output.Classification ?? output.RawOutput : string.Empty,
+                            StringComparer.Ordinal),
+                    StringComparer.Ordinal);
+
+                instances[item["id"]] = new ConsultLoopPayload(innerLoop.Collection!, innerLoop.Ret!, innerItems, texts,
+                    skippedItems.Count > 0 ? skippedItems : null,
+                    InnerLoopsOf(innerLoop, innerItems, nodesById, outputs, skipped, instanceItems),
+                    outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(innerLoop.Id, outerPath))?.RawOutput ?? string.Empty);
+            }
+
+            inner ??= new Dictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>(StringComparer.Ordinal);
+            inner[innerLoop!.Id] = instances;
+        }
+
+        return inner;
     }
 
     /// <summary>
@@ -279,7 +337,9 @@ internal static class ConsultRenderPayload
         IReadOnlyDictionary<string, string>? flowRets = null,
         IReadOnlyList<string>? skipped = null,
         // v26 (#1155): the deliverables read, composed (null = skipped).
-        IReadOnlyDictionary<string, string?>? deliverables = null)
+        IReadOnlyDictionary<string, string?>? deliverables = null,
+        // v30 (#1341): the enclosing loops' items, outermost first (item.parent).
+        IReadOnlyList<ConsultParentItem>? parents = null)
     {
         var manifest = package.Manifest;
         var nodesById = (package.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
@@ -340,29 +400,50 @@ internal static class ConsultRenderPayload
                 : new TemplateFanItem(id, name, Text: fanned.GetValueOrDefault("content", string.Empty));
         }
 
-        var fanItem = item is not null && forEach is not null ? FanItemOf(item, forEach) : null;
+        // v30 (#1341, design § 2.4): item.parent, chained outward — each enclosing loop's
+        // item typed by its own collection.
+        TemplateFanItem? parentItem = null;
+        foreach (var outer in parents ?? Array.Empty<ConsultParentItem>())
+        {
+            parentItem = FanItemOf(outer.Item, outer.Collection) with { Parent = parentItem };
+        }
+
+        var fanItem = item is not null && forEach is not null ? FanItemOf(item, forEach) with { Parent = parentItem } : null;
 
         // v26 (#1154, design § 1.3): each loop read whole — its items, every
         // body node's output per item typed by that node's format, and the
         // loop's own composed text (the aggregator's bytes, already in nodes).
         var loopOutputs = loops?.ToDictionary(
             pair => pair.Key,
-            pair => new TemplateLoopOutput(
-                pair.Value.RetId,
-                pair.Value.Items.Select(fanned => FanItemOf(fanned, pair.Value.Collection)).ToList(),
-                pair.Value.Texts.ToDictionary(
+            pair => LoopOutputOf(pair.Key, pair.Value,
+                nodes.TryGetValue(pair.Key, out var composed)
+                    ? composed
+                    : throw new InvalidOperationException($"The payload carries loop '{pair.Key}' but not its composed text.")),
+            StringComparer.Ordinal);
+
+        // v30 (#1341, design § 6): an inner loop's list per outer item, recursively —
+        // the instance's composed text its own (Composed).
+        TemplateLoopOutput LoopOutputOf(string loopId, ConsultLoopPayload loop, TemplateNodeOutput output) =>
+            new(
+                loop.RetId,
+                loop.Items.Select(fanned => FanItemOf(fanned, loop.Collection)).ToList(),
+                loop.Texts.ToDictionary(
                     body => body.Key,
                     body => (IReadOnlyDictionary<string, TemplateNodeOutput>)body.Value.ToDictionary(
                         perItem => perItem.Key,
                         perItem => OutputOf(body.Key, perItem.Value, perItem.Key),
                         StringComparer.Ordinal),
                     StringComparer.Ordinal),
-                nodes.TryGetValue(pair.Key, out var composed)
-                    ? composed
-                    : throw new InvalidOperationException($"The payload carries loop '{pair.Key}' but not its composed text."),
+                output,
                 // v27 (#1235): the items skipped by condition.
-                pair.Value.Skipped is { Count: > 0 } skippedItems ? skippedItems.ToHashSet(StringComparer.Ordinal) : null),
-            StringComparer.Ordinal);
+                loop.Skipped is { Count: > 0 } skippedItems ? skippedItems.ToHashSet(StringComparer.Ordinal) : null,
+                Inner: loop.Inner?.ToDictionary(
+                    inner => inner.Key,
+                    inner => (IReadOnlyDictionary<string, TemplateLoopOutput>)inner.Value.ToDictionary(
+                        instance => instance.Key,
+                        instance => LoopOutputOf(inner.Key, instance.Value, OutputOf(inner.Key, instance.Value.Composed ?? string.Empty, null)),
+                        StringComparer.Ordinal),
+                    StringComparer.Ordinal));
 
         // v26 (#1157, design § 5): a macro's label and instruction are its
         // header's and its text is the body — the store's split, carried on the

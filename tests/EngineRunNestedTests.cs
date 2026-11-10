@@ -11,8 +11,8 @@ namespace Consultologist.Api.Tests;
 /// #1341 B2b (package-format-v30-design.md § 1, § 2): a 30 job whose loop runs inside a
 /// loop, end to end in the engine harness — the inner loop is scheduled per outer item
 /// (a loop instance), each instance resolves its own list and count, and the job runs to
-/// completion. Rendering item.parent and s.paragraphs is B2d; these prompts read only
-/// the innermost item and the outer body's nodes.
+/// completion. B2d: an item reads its enclosing loops' items as item.parent, and a
+/// template iterates the nested lists through the outer element (s.paragraphs).
 /// </summary>
 public class EngineRunNestedTests
 {
@@ -44,7 +44,7 @@ public class EngineRunNestedTests
         WorkflowPackageStore.PackageOf(WorkflowPackageStore.Materialise("test@v30", bundle.Manifest,
             new Dictionary<string, string>(bundle.Files, StringComparer.Ordinal), null, V29Catalog.Catalog, V25Package.Catalog(), V30Package.Accepting30));
 
-    /// <summary>The 30 minimal with a draft that reads its own item and its part's outline — no item.parent (B2d).</summary>
+    /// <summary>The 30 minimal with a draft that reads its own item and its part's outline.</summary>
     internal static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) TwoLevels(Action<JsonObject>? change = null, Action<Dictionary<string, string>>? files = null) =>
         V30Package.With(root => change?.Invoke(root), bundle =>
         {
@@ -126,6 +126,107 @@ public class EngineRunNestedTests
         Assert.Equal((0, "no items: node.outline.value.points was empty"), (run.State.LoopInstances!.Single(r => r.Path == "2").Count, run.State.LoopInstances!.Single(r => r.Path == "2").Reason));
         Assert.DoesNotContain(run.Prompts, p => p.NodeId.StartsWith("draft_paragraph:2/", StringComparison.Ordinal));
         Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+    }
+
+    // ---- B2d: item.parent and nested lists (design § 2.4, § 6) ----------------------------
+
+    /// <summary>The v30-three-levels fixture, plus an assemble node iterating the nested lists down to the sentences.</summary>
+    internal static (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) ThreeLevels() =>
+        V30Package.With(
+            root =>
+            {
+                root["inputs"]!.AsArray().Add(new JsonObject { ["id"] = "questions", ["label"] = "Questions", ["type"] = "array", ["items"] = "text" });
+                var paragraphs = V30Package.Node(root, "paragraphs");
+                paragraphs["nodes"] = new JsonArray("draft_paragraph", "sentences");
+                paragraphs["ret"] = "node.sentences";
+                root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "draft_sentence", ["label"] = "Draft sentence", ["format"] = "prose" });
+                root["nodes"]!.AsArray().Add(new JsonObject
+                {
+                    ["id"] = "sentences", ["label"] = "Sentences", ["for"] = "item in input.questions",
+                    ["nodes"] = new JsonArray("draft_sentence"), ["ret"] = "node.draft_sentence"
+                });
+                root["nodes"]!.AsArray().Add(new JsonObject { ["id"] = "assemble", ["label"] = "Assemble", ["format"] = "prose" });
+                root["deliverables"]![0]!["sources"]!.AsArray().Add("node.assemble");
+            },
+            files =>
+            {
+                files["prompts/draft_paragraph.md"] = "Point {{ item.value.point }} of {{ item.parent.value.title }}.";
+                files["prompts/draft_sentence.md"] =
+                    "Part {{ item.parent.parent.value.title }}, point {{ item.parent.value.point }}, question {{ item.id }}: {{ item.value }}. {{ node.draft_paragraph.content }}";
+                files["prompts/assemble.md"] =
+                    "{{ for s in node.parts }}## {{ s.item.value.title }}\n{{ for p in s.paragraphs }}- {{ p.item.value.point }}:{{ for q in p.sentences }} [{{ q.item.id }}] {{ q.content }}{{ end }}\n{{ end }}{{ end }}";
+            });
+
+    internal static readonly Dictionary<string, ConsultInputValue> NotesAndQuestions = new(Notes, StringComparer.Ordinal)
+    {
+        ["questions"] = ConsultInputValue.OfArray(new[] { ConsultInputValue.OfText("Does anything at home trigger the wheeze?"), ConsultInputValue.OfText("Is there a cough that wakes them at night?") }),
+    };
+
+    [Fact]
+    public async Task AnInnerItem_ReadsItsPartAsItemParent()
+    {
+        var run = await EngineRun.StartAsync(Load(TwoLevels(files: files =>
+            files["prompts/draft_paragraph.md"] = "Part {{ item.parent.value.title }} ({{ item.parent.id }}), point {{ item.value.point }}")), Notes, Outputs);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        Assert.Equal(
+            new[] { ("draft_paragraph:1/1", "Part History (1), point Onset was sudden."), ("draft_paragraph:1/2", "Part History (1), point It has worsened."), ("draft_paragraph:2/1", "Part Plan (2), point Review in a month.") },
+            run.Prompts.Where(p => p.NodeId.StartsWith("draft_paragraph:", StringComparison.Ordinal)).OrderBy(p => p.NodeId, StringComparer.Ordinal).ToArray());
+    }
+
+    [Fact]
+    public async Task ThreeLevels_RunToCompletion_ReadingBothParents_AndTheNestedLists()
+    {
+        var run = await EngineRun.StartAsync(Load(ThreeLevels()), NotesAndQuestions,
+            key => WorkflowItemPath.NodeOf(key) switch
+            {
+                "draft_sentence" => $"Sentence {WorkflowItemPath.PathFor(key, "draft_sentence")}.",
+                "draft_paragraph" => $"Paragraph {WorkflowItemPath.PathFor(key, "draft_paragraph")}.",
+                _ => Outputs(key),
+            });
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        // The blocks are the innermost loop's — a middle level lays out none of its own.
+        var served = run.State.ToResponse();
+        Assert.Equal((11, 11), (served.TotalBlockCount, served.CompletedBlockCount));
+        Assert.DoesNotContain(run.State.Blocks.Keys, id => id.StartsWith("consult:paragraphs:", StringComparison.Ordinal));
+        var sentences = run.Prompts.Where(p => p.NodeId.StartsWith("draft_sentence:", StringComparison.Ordinal)).OrderBy(p => p.NodeId, StringComparer.Ordinal).ToList();
+        Assert.Equal(new[] { "draft_sentence:1/1/0", "draft_sentence:1/1/1", "draft_sentence:1/2/0", "draft_sentence:1/2/1", "draft_sentence:2/1/0", "draft_sentence:2/1/1" },
+            sentences.Select(p => p.NodeId));
+        Assert.Equal("Part History, point It has worsened., question 0: Does anything at home trigger the wheeze?. Paragraph 1/2.", sentences[2].Prompt);
+        Assert.Equal("Part Plan, point Review in a month., question 1: Is there a cough that wakes them at night?. Paragraph 2/1.", sentences[5].Prompt);
+
+        // A count per instance at each level: paragraphs under each part, sentences under each paragraph.
+        Assert.Equal(
+            new[] { ("paragraphs", "1", (int?)2), ("paragraphs", "2", 1), ("sentences", "1/1", 2), ("sentences", "1/2", 2), ("sentences", "2/1", 2) },
+            run.State.LoopInstances!.Select(r => (r.LoopId, r.Path, r.Count)).Order());
+
+        Assert.Equal(
+            "## History\n- Onset was sudden.: [0] Sentence 1/1/0. [1] Sentence 1/1/1.\n- It has worsened.: [0] Sentence 1/2/0. [1] Sentence 1/2/1.\n"
+            + "## Plan\n- Review in a month.: [0] Sentence 2/1/0. [1] Sentence 2/1/1.\n",
+            Assert.Single(run.Prompts, p => p.NodeId == "assemble").Prompt);
+        Matches("EngineRun30ThreeLevels.txt", run.Trace());
+    }
+
+    [Fact]
+    public async Task AnInnerIf_InANestedLoop_DecidesOnItemParent()
+    {
+        // paragraphs' body: an if on the part's kind — only a history part's points are drafted.
+        var run = await EngineRun.StartAsync(Load(TwoLevels(root =>
+        {
+            var paragraphs = V30Package.Node(root, "paragraphs");
+            paragraphs["nodes"] = new JsonArray("history_only");
+            paragraphs["ret"] = "node.history_only";
+            root["nodes"]!.AsArray().Add(new JsonObject
+            {
+                ["id"] = "history_only", ["label"] = "History only", ["if"] = "item.parent.value.kind == \"history\"",
+                ["then"] = new JsonObject { ["nodes"] = new JsonArray("draft_paragraph"), ["ret"] = "node.draft_paragraph" },
+            });
+        })), Notes, Outputs);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        Assert.Equal(new[] { "draft_paragraph:1/1", "draft_paragraph:1/2" },
+            run.Prompts.Select(p => p.NodeId).Where(id => id.StartsWith("draft_paragraph:", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
     }
 
     private static void Matches(string name, string actual)

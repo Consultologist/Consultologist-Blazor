@@ -86,14 +86,20 @@ public sealed record TemplateLoopOutput(
     // still elements (the loop is the collection), with `skipped` true, content
     // and value null, and only the body nodes that ran; absent from the values.
     IReadOnlySet<string>? Skipped = null,
-    string? Collection = null);
+    string? Collection = null,
+    // v30 (#1341, design § 6): the loops this loop's body holds, per outer item — inner
+    // loop id → this loop's item id → that instance's list, so an element exposes each
+    // inner loop by its id (s.paragraphs). Null below 30.
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, TemplateLoopOutput>>? Inner = null);
 
 /// <summary>
 /// The fan item an instance runs for: a snippet fan carries <c>Text</c> (a
 /// template, rendered when read); an input fan carries <c>Value</c> (the
 /// element's canonical form or carrier JSON) typed by <c>Element</c>.
 /// </summary>
-public sealed record TemplateFanItem(string Id, string Name, string? Text = null, string? Value = null, WorkflowDeclarationNode? Element = null);
+public sealed record TemplateFanItem(string Id, string Name, string? Text = null, string? Value = null, WorkflowDeclarationNode? Element = null,
+    // v30 (#1341, design § 2.4): the enclosing loop's item — item.parent, chained outward. Null below 30.
+    TemplateFanItem? Parent = null);
 
 /// <summary>A macro as the template reads it: its text (a template, rendered when read) and its instruction (the <c>.prompt</c> half the mechanics sentence completes).</summary>
 public sealed record TemplateMacroSource(
@@ -282,12 +288,19 @@ public static class TemplateRenderer
         // builder with the validator's probe, so the two member sets are one.
         foreach (var (id, loop) in scope.Loops ?? new Dictionary<string, TemplateLoopOutput>())
         {
-            var path = $"{TemplateObjects.Node}.{id}";
+            node[id] = LoopListOf(loop, $"{TemplateObjects.Node}.{id}", null);
+        }
+
+        // v30 (#1341, design § 6): one list, and — for each element — each inner loop's
+        // list for that element's item (its items' parent the element's item).
+        ScriptArray LoopListOf(TemplateLoopOutput loop, string path, TemplateFanItem? parent)
+        {
             // #1235 (v27 design § 1.4): a skipped item is an element with `skipped`
             // true, no content and no value, and only the body nodes that ran for it.
             var present = loop.Items.Where(item => loop.Skipped?.Contains(item.Id) != true).ToList();
-            var elements = loop.Items.Select(item =>
+            var elements = loop.Items.Select(listed =>
             {
+                var item = parent is not null && listed.Parent is null ? listed with { Parent = parent } : listed;
                 var elementPath = $"{path}[{item.Id}]";
                 var skipped = loop.Skipped?.Contains(item.Id) == true;
                 var ret = skipped ? null : loop.Body[loop.RetId][item.Id];
@@ -297,6 +310,15 @@ public static class TemplateRenderer
                         pair => pair.Key,
                         pair => (object?)NodeObjectOf(pair.Key, pair.Value[item.Id], $"{elementPath}.{pair.Key}"),
                         StringComparer.Ordinal);
+
+                foreach (var (innerId, instances) in loop.Inner ?? new Dictionary<string, IReadOnlyDictionary<string, TemplateLoopOutput>>())
+                {
+                    if (instances.TryGetValue(item.Id, out var instance))
+                    {
+                        body[innerId] = LoopListOf(instance, $"{elementPath}.{innerId}", item);
+                    }
+                }
+
                 return new LoopElement(
                     ItemObject(subject, $"{elementPath}.{TemplateMembers.Item}", item, globals, trace, scope.Labelled),
                     ret?.Text,
@@ -307,7 +329,7 @@ public static class TemplateRenderer
             });
             var values = new ScriptArray(present.Select(item => NodeValue(subject, loop.RetId, loop.Body[loop.RetId][item.Id])));
 
-            node[id] = LoopList(() => new ClosedObject(subject, $"{path}[]"), elements, loop.Output.Text, true, values);
+            return LoopList(() => new ClosedObject(subject, $"{path}[]"), elements, loop.Output.Text, true, values);
         }
 
         // #1154 (§ 1.3): a flow node that took no branch reads null — a guard sees it.
@@ -529,7 +551,7 @@ public static class TemplateRenderer
         _ => value.GetType().Name.ToLowerInvariant(),
     };
 
-    private static LazyMembersObject Rendered(string subject, string path, string id, string name, string text, string templateSubject, ScriptObject globals, TemplateRenderTrace? trace, bool labelled = false)
+    private static LazyMembersObject Rendered(string subject, string path, string id, string name, string text, string templateSubject, ScriptObject globals, TemplateRenderTrace? trace, bool labelled = false, ScriptObject? parent = null)
     {
         var rendered = new Lazy<string>(() => RenderWith(templateSubject, text, globals, trace, nested: true));
         var members = new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
@@ -544,15 +566,25 @@ public static class TemplateRenderer
             members[TemplateMembers.Label] = () => name;
         }
 
+        if (parent is not null)
+        {
+            members[TemplateMembers.Parent] = () => parent;
+        }
+
         return new LazyMembersObject(subject, path, members);
     }
 
     /// <summary>The fan item as a template reads it: a snippet item renders its text when read; an input element carries its materialised value.</summary>
     private static ScriptObject ItemObject(string subject, string path, TemplateFanItem fanItem, ScriptObject globals, TemplateRenderTrace? trace, bool labelled)
     {
+        // v30 (#1341, design § 2.4): the enclosing loop's item, chained outward.
+        var parent = fanItem.Parent is { } outer
+            ? ItemObject(subject, $"{path}.{TemplateMembers.Parent}", outer, globals, trace, labelled)
+            : null;
+
         if (fanItem.Text is not null)
         {
-            return Rendered(subject, path, fanItem.Id, fanItem.Name, fanItem.Text, $"{subject} item '{fanItem.Id}'", globals, trace, labelled);
+            return Rendered(subject, path, fanItem.Id, fanItem.Name, fanItem.Text, $"{subject} item '{fanItem.Id}'", globals, trace, labelled, parent);
         }
 
         var element = new ClosedObject(subject, path)
@@ -564,6 +596,11 @@ public static class TemplateRenderer
         if (labelled)
         {
             element[TemplateMembers.Label] = fanItem.Name;
+        }
+
+        if (parent is not null)
+        {
+            element[TemplateMembers.Parent] = parent;
         }
 
         return element;

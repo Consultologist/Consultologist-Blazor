@@ -95,7 +95,18 @@ public sealed record ConsultPromptNodeActivityInput(
     // v26 (#1155, design § 3.1): the deliverables this node reads as
     // deliverable.<id>.content — id → the composed text, null for one skipped
     // by its if. Null below 26 and when none. Appended last, same rule.
-    IReadOnlyDictionary<string, string?>? Deliverables = null);
+    IReadOnlyDictionary<string, string?>? Deliverables = null,
+    // v30 (#1341, design § 2.4): the enclosing loops' items, outermost first — what
+    // item.parent reads. Written only when set (a nested instance), so a 26–29
+    // payload is the bytes it always was.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<ConsultParentItem>? Parents = null);
+
+/// <summary>
+/// v30 (#1341, design § 2.4): one enclosing loop's item for an instance of a loop that
+/// runs inside it — the loop's collection (what types the item) and the item.
+/// </summary>
+public sealed record ConsultParentItem(string Collection, IReadOnlyDictionary<string, string> Item);
 
 /// <summary>
 /// v26 (#1154): a loop as the orchestrator hands it to the activity — its
@@ -110,7 +121,14 @@ public sealed record ConsultLoopPayload(
     // v27 (#1235, design § 1.4): the items an inner if/case skipped by condition —
     // elements with `skipped` true and no returned text; the texts map is sparse
     // for an inner flow node and its branch nodes (the items they ran). Null (26).
-    IReadOnlyList<string>? Skipped = null);
+    IReadOnlyList<string>? Skipped = null,
+    // v30 (#1341, design § 6): the loops this loop's body holds, per item — inner loop
+    // id → this loop's item id → that instance's list; and an instance's own composed
+    // text (its list read whole). Written only when set; null below 30.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>? Inner = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Composed = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable

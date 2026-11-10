@@ -413,4 +413,48 @@ public class TemplateRendererTests
 
         Assert.Equal("hpi:drafted h;plan:skipped/notes p;exam:drafted e; 3 drafted h\n\ndrafted e", rendered);
     }
+
+    [Fact]
+    public void AnItemWithParents_ReadsThemAsItemParent_ChainedOutward()
+    {
+        // #1341 (v30 design § 2.4): the enclosing loops' items, innermost parent first.
+        var item = new TemplateFanItem("0", "Question 1", Text: "q", Parent: new TemplateFanItem("2", "Point 2", Text: "p", Parent: new TemplateFanItem("1", "Part 1", Text: "s")));
+
+        Assert.Equal("0<2<Part 1", Render("{{ item.id }}<{{ item.parent.id }}<{{ item.parent.parent.name }}", Scope(item: item)));
+        // An item with no enclosing loop has no parent member.
+        Assert.Throws<InvalidOperationException>(() => Render("{{ item.parent.id }}", Scope(item: new TemplateFanItem("0", "Question 1", Text: "q"))));
+    }
+
+    [Fact]
+    public void AnElement_ExposesItsInnerLoopsList_WhoseItemsReadTheElementAsParent()
+    {
+        // #1341 (v30 design § 6): for s in node.parts / for p in s.paragraphs.
+        static TemplateNodeOutput Out(string text) => new(text, "prose", "x");
+        static TemplateLoopOutput Paragraphs(params string[] ids) => new(
+            "draft",
+            ids.Select(id => new TemplateFanItem(id, "Point " + id, Text: id)).ToList(),
+            new Dictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>>
+            {
+                ["draft"] = ids.ToDictionary(id => id, id => Out("drafted " + id)),
+            },
+            Out(string.Join("\n\n", ids.Select(id => "drafted " + id))));
+
+        var parts = new TemplateLoopOutput(
+            "paragraphs",
+            new List<TemplateFanItem> { new("1", "Part 1", Text: "one"), new("2", "Part 2", Text: "two") },
+            new Dictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>>
+            {
+                ["paragraphs"] = new Dictionary<string, TemplateNodeOutput> { ["1"] = Out("drafted a\n\ndrafted b"), ["2"] = Out("drafted c") },
+            },
+            Out("drafted a\n\ndrafted b\n\ndrafted c"),
+            Inner: new Dictionary<string, IReadOnlyDictionary<string, TemplateLoopOutput>>
+            {
+                ["paragraphs"] = new Dictionary<string, TemplateLoopOutput> { ["1"] = Paragraphs("a", "b"), ["2"] = Paragraphs("c") },
+            });
+        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["parts"] = parts.Output }) with { Loops = new Dictionary<string, TemplateLoopOutput> { ["parts"] = parts } };
+
+        var rendered = Render("{{ for s in node.parts }}{{ s.item.id }}[{{ for p in s.paragraphs }}{{ p.item.id }}/{{ p.item.parent.id }}={{ p.content }},{{ end }}{{ s.paragraphs | array.size }}]{{ end }}", scope);
+
+        Assert.Equal("1[a/1=drafted a,b/1=drafted b,2]2[c/2=drafted c,1]", rendered);
+    }
 }
