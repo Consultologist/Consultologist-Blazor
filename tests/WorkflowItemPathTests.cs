@@ -42,6 +42,18 @@ public class WorkflowItemPathTests
     }
 
     [Fact]
+    public void ALegacyKey_WhoseItemIsABlockId_KeepsEachSitesRule()
+    {
+        // Below 26 an engine item's id may be its block id: the first colon names the
+        // node (the activities' rule), the last the item segment (the events' rule).
+        Assert.True(WorkflowItemPath.TryParseKey("draft:consult:hpi", out var node, out var path));
+        Assert.Equal(("draft", "consult:hpi"), (node, path));
+        Assert.True(WorkflowItemPath.TrySplitAtLast("draft:consult:hpi", out var head, out var last));
+        Assert.Equal(("draft:consult", "hpi"), (head, last));
+        Assert.False(WorkflowItemPath.TrySplitAtLast("extract", out _, out _));
+    }
+
+    [Fact]
     public void ABareNodeId_IsNoItemKey()
     {
         Assert.False(WorkflowItemPath.TryParseKey("extract", out var node, out _));

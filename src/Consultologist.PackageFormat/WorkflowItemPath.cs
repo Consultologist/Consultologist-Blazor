@@ -13,9 +13,14 @@ namespace Consultologist.PackageFormat;
 /// <para><b>One level is today's id, byte for byte</b>: a one-segment path is the
 /// item id, and a key is <c>{node}:{path}</c>. Item ids keep their source's form
 /// (an array input's 0-based position, a node value's 1-based one, a folder
-/// item's file stem) and never hold <c>/</c> or <c>:</c>; node ids are
-/// <c>^[a-z][a-z0-9_]*</c>. So a key splits at its first <c>:</c>, and a block
-/// id's path is the text after its last.</para>
+/// item's file stem) and at 26 and above never hold <c>/</c> or <c>:</c>; node ids
+/// are <c>^[a-z][a-z0-9_]*</c>. So a key splits at its first <c>:</c>
+/// (<see cref="TryParseKey"/>), and a block id's path is the text after its last.
+/// Below 26 an engine item may carry a whole block id as its id
+/// (<c>draft:consult:hpi</c>), where the first and the last <c>:</c> disagree: each
+/// parse keeps the rule its site has always used — <see cref="TryParseKey"/> for
+/// the first, <see cref="TrySplitAtLast"/> for the last — so no key reads
+/// differently.</para>
 ///
 /// <para>A folder gate's <c>{folder}/{item}</c> key is not a path (§ 1.1): it
 /// lives in its own dictionary and never meets one.</para>
@@ -82,6 +87,25 @@ public static class WorkflowItemPath
         }
 
         (nodeId, path) = (key[..colon], key[(colon + 1)..]);
+        return true;
+    }
+
+    /// <summary>
+    /// Splits a key at its <b>last</b> <c>:</c> — the head before it, the last
+    /// segment after — the rule the event stream's item-step parse and the pages'
+    /// item reads have always used; false when there is none.
+    /// </summary>
+    public static bool TrySplitAtLast(string key, out string head, out string last)
+    {
+        var colon = key.LastIndexOf(':');
+
+        if (colon <= 0)
+        {
+            (head, last) = (key, string.Empty);
+            return false;
+        }
+
+        (head, last) = (key[..colon], key[(colon + 1)..]);
         return true;
     }
 
