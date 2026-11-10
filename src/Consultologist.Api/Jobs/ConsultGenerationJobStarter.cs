@@ -3638,8 +3638,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ? items.Count
                 : null,
             // v30 (#1342, design § 3): a while's bound, until and checkFirst.
-            Max: flow.Kind == WorkflowFlowNodes.Kind.While ? flow.Node.Max : null,
-            Until: flow.Kind == WorkflowFlowNodes.Kind.While ? flow.Node.Until : null,
+            // v30 (#1342, design § 3.4): and a for's max and until.
+            Max: flow.Kind is WorkflowFlowNodes.Kind.While or WorkflowFlowNodes.Kind.For ? flow.Node.Max : null,
+            Until: flow.Kind is WorkflowFlowNodes.Kind.While or WorkflowFlowNodes.Kind.For ? flow.Node.Until : null,
             CheckFirst: flow.Kind == WorkflowFlowNodes.Kind.While && flow.Node.CheckFirst == true ? true : null);
     }
 

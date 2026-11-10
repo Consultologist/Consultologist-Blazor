@@ -23,6 +23,9 @@ public sealed class ConsultGenerationOrchestrator
     /// <summary>v30 (#1342): a while's check decision is keyed while:&lt;id&gt;.</summary>
     private const string WhilePrefix = "while:";
 
+    /// <summary>v30 (#1342): a for's until decision is keyed until:&lt;loop&gt;.</summary>
+    private const string UntilPrefix = "until:";
+
     private static readonly TaskOptions AgentActivityRetryOptions = TaskOptions.FromRetryPolicy(
         new RetryPolicy(
             maxNumberOfAttempts: 3,
@@ -228,6 +231,14 @@ public sealed class ConsultGenerationOrchestrator
         var passesOpened = new Dictionary<string, int>(StringComparer.Ordinal);
         var whileChecksStarted = new HashSet<string>(StringComparer.Ordinal);
         var whileStops = new Dictionary<string, (int Passes, string Stopped)>(StringComparer.Ordinal);
+        // v30 (#1342, design § 3.4): a for's stop (until | bound | end), its items whose until
+        // was decided, the checks started, the items not run ("<loop>/<item>"), and the loops
+        // whose max has been applied.
+        var loopStops = new Dictionary<string, string>(StringComparer.Ordinal);
+        var untilDecided = new HashSet<string>(StringComparer.Ordinal);
+        var untilStarted = new HashSet<string>(StringComparer.Ordinal);
+        var notRunItems = new HashSet<string>(StringComparer.Ordinal);
+        var boundsApplied = new HashSet<string>(StringComparer.Ordinal);
 
         // v25 (B3 #1002): a snippet folder fan (snippet:<folder>) keys its
         // snapshot by the folder id, as a data collection fan did.
@@ -264,6 +275,72 @@ public sealed class ConsultGenerationOrchestrator
 
             return null;
         }
+
+        // v30 (#1342, design § 3.4): the top-level for a fanned node runs in (its nearest
+        // enclosing flow that is a for, when that for is at the top). Null otherwise.
+        ConsultNodeDescriptor? TopLoopOf(ConsultNodeDescriptor node)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.While)
+                {
+                    return null;
+                }
+
+                if (owner.Kind == ConsultNodeFlows.For)
+                {
+                    return ConsultNodeScheduler.LoopDepthOf(owner, nodesById) == 0 ? owner : null;
+                }
+            }
+
+            return null;
+        }
+
+        // A top-level 30 for that stops early: its until, or its max. None below 30.
+        bool Stoppable(ConsultNodeDescriptor loop) =>
+            loop.Kind == ConsultNodeFlows.For && (loop.Until is not null || loop.Max is not null) && loop.Ret is not null
+            && ConsultNodeScheduler.LoopDepthOf(loop, nodesById) == 0;
+
+        // The loop's items, in list order (its returned node fans over them).
+        IReadOnlyList<IReadOnlyDictionary<string, string>> LoopItems(ConsultNodeDescriptor loop) => FanItems(nodesById[loop.Ret!]);
+
+        // The fanned nodes of a top-level loop: its body, inner flows and branch nodes.
+        IEnumerable<ConsultNodeDescriptor> FannedIn(ConsultNodeDescriptor loop) =>
+            nodes.Where(node => node.ForEach is not null && TopLoopOf(node)?.Id == loop.Id);
+
+        bool ItemFailedIn(ConsultNodeDescriptor loop, string itemId) =>
+            FannedIn(loop).Any(node => failedItems.Contains(FailedKey(node, itemId)));
+
+        bool ItemSettledIn(ConsultNodeDescriptor loop, string itemId) =>
+            FannedIn(loop).All(node => inner.Settled(node, itemId, outputs, failedItems.Contains(FailedKey(node, itemId))));
+
+        // v30 (#1342, design § 3.4): may this item of a node's loop start? Past the loop's max,
+        // never; under its until, only once every earlier item's until was decided (or the
+        // item failed — decided 2026-11-10: a failed item goes on to the next).
+        bool MayStart(ConsultNodeDescriptor node, string itemId)
+        {
+            if (TopLoopOf(node) is not { } loop || !Stoppable(loop))
+            {
+                return true;
+            }
+
+            var items = LoopItems(loop);
+            var index = items.ToList().FindIndex(item => WorkflowItemPath.OfItem(item) == itemId);
+            if (loop.Max is { } max && index >= max)
+            {
+                return false;
+            }
+
+            return loop.Until is null
+                || items.Take(Math.Max(0, index)).All(earlier => untilDecided.Contains($"{loop.Id}/{WorkflowItemPath.OfItem(earlier)}") || ItemFailedIn(loop, WorkflowItemPath.OfItem(earlier)!));
+        }
+
+        // v30 (#1342, design § 3.4): why a 30 loop read whole stopped — until, bound, or end.
+        string? LoopStoppedOf(string loopId) =>
+            input.PackageSpecVersion >= 30 && nodesById.TryGetValue(loopId, out var loop) && loop.Kind == ConsultNodeFlows.For
+                ? loopStops.GetValueOrDefault(loopId) ?? "end"
+                : null;
 
         // v30 (#1342, design § 3): the while a node's instances run in — its nearest
         // enclosing flow that repeats, when no for lies between (a while in a for, or
@@ -553,7 +630,7 @@ public sealed class ConsultGenerationOrchestrator
                         Instances: node.Macros,
                         // v26 (#1154, design § 1.3): the loops read whole, the flow
                         // nodes' returned nodes, the flows that took no branch.
-                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), InstanceItems()),
+                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), stoppedOf: LoopStoppedOf, instanceItems: InstanceItems()),
                         FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
                         // #1356: and, for this item, the sibling inner flows it skipped.
                         SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),
@@ -738,6 +815,95 @@ public sealed class ConsultGenerationOrchestrator
                 AgentActivityRetryOptions)] = (flow.Id, WorkflowItemPath.OfItem(item)!);
         }
 
+        // v30 (#1342, design § 3.4): an item's until, once its body settled — decided as an
+        // inner if is, over the item and its body's nodes.
+        void StartUntilCheck(ConsultNodeDescriptor loop, IReadOnlyDictionary<string, string> item)
+        {
+            var itemId = WorkflowItemPath.OfItem(item)!;
+            untilStarted.Add($"{loop.Id}/{itemId}");
+            pendingDecisions[context.CallActivityAsync<ConsultFlowItemDecision>(
+                ConsultGenerationActivityNames.DecideFlowItem,
+                new ConsultDecideFlowItemInput(
+                    input.WorkflowPackage!,
+                    loop.Id,
+                    nodesById[loop.Ret!].ForEach ?? loop.Collection!,
+                    item,
+                    new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
+                    ConsultRenderPayload.NodeTextsFor(loop, item, nodesById, outputs, SkippedKeys()),
+                    RenderFolders(),
+                    ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
+                    ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
+                    SkippedNodes: ConsultRenderPayload.SkippedReadsFor(loop, item, nodesById, skippedNodes, inner.SkippedInstances),
+                    Until: true),
+                AgentActivityRetryOptions)] = (UntilPrefix + loop.Id, itemId);
+        }
+
+        // What an until settles: held at item k, the items after it are not run.
+        async Task SettleUntilAsync(string loopId, string itemId, ConsultFlowItemDecision decision)
+        {
+            untilDecided.Add($"{loopId}/{itemId}");
+            if (decision.Branch != "until" || loopStops.GetValueOrDefault(loopId) == "until")
+            {
+                return;
+            }
+
+            var loop = nodesById[loopId];
+            var items = LoopItems(loop).ToList();
+            var index = items.FindIndex(item => WorkflowItemPath.OfItem(item) == itemId);
+            var at = $"item {index + 1} ({WorkflowPackageBlocks.ItemName(items[index])})";
+            await StopLoopAsync(loop, "until", $"its until held at {at}", items.Skip(index + 1), $"not run: stopped early at {at}");
+        }
+
+        // v30 (#1342, design § 3.4): a for's max — once its list is known, the items past it
+        // are not run (the count stays the list's length).
+        async Task ApplyLoopBoundsAsync()
+        {
+            foreach (var loop in nodes.Where(node => Stoppable(node) && node.Max is not null && !boundsApplied.Contains(node.Id) && !unresolvedLoops.Contains(node.Id)))
+            {
+                boundsApplied.Add(loop.Id);
+                var items = LoopItems(loop);
+                if (items.Count > loop.Max!.Value)
+                {
+                    await StopLoopAsync(loop, "bound", $"stopped at its bound of {loop.Max}", items.Skip(loop.Max.Value), $"not run: stopped at its bound of {loop.Max}");
+                }
+            }
+        }
+
+        // The stop, in one entity call: every item not run settles (its instances skipped, so
+        // the loop and the deliverable compose without them) and its blocks are skipped.
+        async Task StopLoopAsync(ConsultNodeDescriptor loop, string stopped, string stopReason, IEnumerable<IReadOnlyDictionary<string, string>> notRun, string itemReason)
+        {
+            loopStops[loop.Id] = stopped;
+            var items = new List<ConsultNotRunItem>();
+
+            foreach (var item in notRun)
+            {
+                var itemId = WorkflowItemPath.OfItem(item)!;
+                if (!notRunItems.Add($"{loop.Id}/{itemId}"))
+                {
+                    continue;
+                }
+
+                foreach (var fanned in FannedIn(loop))
+                {
+                    inner.SkippedInstances.Add(ConsultNodeScheduler.InstanceKey(fanned.Id, itemId));
+                }
+
+                var blockIds = deliverables
+                    .Where(deliverable => deliverable.Sources?.Contains(loop.Id, StringComparer.Ordinal) == true)
+                    .Select(deliverable => WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, itemId))
+                    .ToList();
+                completedBlockCount += blockIds.Count;
+                items.Add(new ConsultNotRunItem(itemId, WorkflowPackageBlocks.ItemName(item), itemReason, blockIds));
+            }
+
+            await context.Entities.CallEntityAsync(
+                entityId,
+                nameof(ConsultGenerationJobEntity.StopLoop),
+                new ConsultGenerationLoopStopped(loop.Id, loop.Label, stopped, stopReason, items));
+            await MarkFullyCompletedChainNodesAsync();
+        }
+
         // v30 (#1342, design § 3.1): a while's check after pass n (n = 0: before the first,
         // under checkFirst) — decided as an if is, over that pass's nodes and the pass;
         // before the first pass the body reads as skipped.
@@ -855,6 +1021,28 @@ public sealed class ConsultGenerationOrchestrator
         {
             StartItemGates();
 
+            // v30 (#1342, design § 3.4): each for with an until not stopped by it — the first
+            // item whose until is undecided asks it once its body settled; a failed item's
+            // until is not asked (it goes on to the next).
+            foreach (var loop in nodes.Where(node => Stoppable(node) && node.Until is not null && loopStops.GetValueOrDefault(node.Id) != "until"))
+            {
+                foreach (var item in LoopItems(loop))
+                {
+                    var itemId = WorkflowItemPath.OfItem(item)!;
+                    if (untilDecided.Contains($"{loop.Id}/{itemId}") || notRunItems.Contains($"{loop.Id}/{itemId}") || ItemFailedIn(loop, itemId))
+                    {
+                        continue;
+                    }
+
+                    if (!untilStarted.Contains($"{loop.Id}/{itemId}") && ItemSettledIn(loop, itemId))
+                    {
+                        StartUntilCheck(loop, item);
+                    }
+
+                    break;
+                }
+            }
+
             // v30 (#1342): each while not stopped — pass 1 opens at once (unless checkFirst);
             // a settled pass (or, under checkFirst, the start) asks its check.
             foreach (var whileNode in nodes.Where(node => node.Kind == ConsultNodeFlows.While && WhileOf(node) is null && ConsultNodeScheduler.LoopDepthOf(node, nodesById) == 0))
@@ -902,7 +1090,9 @@ public sealed class ConsultGenerationOrchestrator
                             if (failedItems.Contains(FailedKey(node, itemId))
                                 || started.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
                                 || inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
-                                || WaitsOnItemGate(node))
+                                || WaitsOnItemGate(node)
+                                // v30 (#1342): past the loop's max, or waiting on an earlier item's until.
+                                || !MayStart(node, itemId))
                             {
                                 continue;
                             }
@@ -956,7 +1146,9 @@ public sealed class ConsultGenerationOrchestrator
                         || !inner.Taken(node, itemId)
                         // v29 (#1304): an item its gate excluded never runs; one not yet decided waits.
                         || inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, itemId))
-                        || WaitsOnItemGate(node))
+                        || WaitsOnItemGate(node)
+                        // v30 (#1342): past the loop's max, or waiting on an earlier item's until.
+                        || !MayStart(node, itemId))
                     {
                         continue;
                     }
@@ -1547,6 +1739,7 @@ public sealed class ConsultGenerationOrchestrator
         // (package-format-v6-design.md §§ 3, 6).
         async Task TryCompleteAggregatorsAsync()
         {
+            await ApplyLoopBoundsAsync();
             var progressed = true;
 
             while (progressed)
@@ -1784,6 +1977,16 @@ public sealed class ConsultGenerationOrchestrator
 
                     if (isLoop)
                     {
+                        // v30 (#1342, design § 3.4): a for with an until or a max that ran out of items says so.
+                        if (Stoppable(flow) && !loopStops.ContainsKey(flow.Id))
+                        {
+                            loopStops[flow.Id] = "end";
+                            await context.Entities.CallEntityAsync(
+                                entityId,
+                                nameof(ConsultGenerationJobEntity.StopLoop),
+                                new ConsultGenerationLoopStopped(flow.Id, flow.Label, "end", "it ran out of items", Array.Empty<ConsultNotRunItem>()));
+                        }
+
                         continue;
                     }
 
@@ -1899,6 +2102,10 @@ public sealed class ConsultGenerationOrchestrator
                 if (flowId.StartsWith(ItemGatePrefix, StringComparison.Ordinal))
                 {
                     await SettleItemGateAsync(flowId[ItemGatePrefix.Length..], decidedItemId, await decided);
+                }
+                else if (flowId.StartsWith(UntilPrefix, StringComparison.Ordinal))
+                {
+                    await SettleUntilAsync(flowId[UntilPrefix.Length..], decidedItemId, await decided);
                 }
                 else if (flowId.StartsWith(WhilePrefix, StringComparison.Ordinal))
                 {
