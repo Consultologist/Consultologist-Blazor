@@ -118,6 +118,18 @@ public class EngineRunUntilTests
         Assert.Equal("1:ran;2:ran;3:not run; (first 2 parts)", Assert.Single(run.Prompts, p => p.NodeId == "assemble").Prompt);
     }
 
+    [Fact]
+    public async Task AMax_OnAListKnownAtStart_NeverStartsTheItemsPastIt()
+    {
+        // The sections loop iterates a snippet folder (hpi, plan) — its items are known before anything runs.
+        var run = await EngineRun.StartAsync(Load(_ => { }, root => V30Package.Node(root, "sections")["max"] = 1), EngineRunNestedTests.Notes, Outputs);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        Assert.Equal(new[] { "section_notes:hpi" }, run.Prompts.Select(p => p.NodeId).Where(id => id.StartsWith("section_notes:", StringComparison.Ordinal)));
+        Assert.Equal("not run: stopped at its bound of 1", run.State.Blocks["consult:sections:plan"].Reason);
+        Assert.Equal((2, "bound"), Assert.Single(run.State.Nodes!, n => n.Id == "sections") is var row ? (row.Count, row.Stopped) : default);
+    }
+
     private static void Matches(string name, string actual)
     {
         var golden = Path.Combine(Path.GetDirectoryName(SourceFile())!, "Golden", name);
