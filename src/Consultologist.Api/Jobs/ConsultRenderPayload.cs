@@ -226,7 +226,7 @@ internal static class ConsultRenderPayload
 
             loops ??= new Dictionary<string, ConsultLoopPayload>(StringComparer.Ordinal);
             loops[readId] = new ConsultLoopPayload(collection, ret, items, texts, skippedItems.Count > 0 ? skippedItems : null,
-                Inner: instanceItems is null ? null : InnerLoopsOf(loop, items, nodesById, outputs, skipped, instanceItems),
+                Inner: instanceItems is null ? null : InnerLoopsOf(loop, items, nodesById, outputs, skipped, instanceItems, stoppedOf),
                 Stopped: stoppedOf?.Invoke(readId));
         }
 
@@ -245,7 +245,9 @@ internal static class ConsultRenderPayload
         IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
         IReadOnlyDictionary<string, NodeRunResult> outputs,
         IReadOnlySet<string>? skipped,
-        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?> instanceItems)
+        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?> instanceItems,
+        // v30 (#1342 B3c): why each instance stopped, by its key (loop:<outer>).
+        Func<string, string?>? stoppedOf = null)
     {
         Dictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>? inner = null;
 
@@ -276,8 +278,9 @@ internal static class ConsultRenderPayload
 
                 instances[item["id"]] = new ConsultLoopPayload(innerLoop.Collection!, innerLoop.Ret!, innerItems, texts,
                     skippedItems.Count > 0 ? skippedItems : null,
-                    InnerLoopsOf(innerLoop, innerItems, nodesById, outputs, skipped, instanceItems),
-                    outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(innerLoop.Id, outerPath))?.RawOutput ?? string.Empty);
+                    InnerLoopsOf(innerLoop, innerItems, nodesById, outputs, skipped, instanceItems, stoppedOf),
+                    outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(innerLoop.Id, outerPath))?.RawOutput ?? string.Empty,
+                    stoppedOf?.Invoke(ConsultNodeScheduler.InstanceKey(innerLoop.Id, outerPath)));
             }
 
             inner ??= new Dictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>(StringComparer.Ordinal);

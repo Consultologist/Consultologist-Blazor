@@ -598,18 +598,26 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             }
         }
 
-        if (state.Nodes is { } nodes)
+        if (input.Path is { } path)
+        {
+            if (state.LoopInstances is { } rows && rows.FindIndex(row => row.LoopId == input.LoopId && row.Path == path) is var at && at >= 0)
+            {
+                rows[at] = rows[at] with { Stopped = input.Stopped, StopReason = input.StopReason };
+            }
+        }
+        else if (state.Nodes is { } nodes)
         {
             state.Nodes = nodes
                 .Select(node => node.Id == input.LoopId ? node with { Stopped = input.Stopped, StopReason = input.StopReason } : node)
                 .ToList();
         }
 
+        var subject = input.Path is { } instancePath ? $"{input.Label} ({instancePath})" : input.Label;
         state.History.Add(new JobHistoryEvent(
             "loop-stopped",
             input.NotRun.Count == 0
-                ? $"{input.Label}: {input.StopReason}"
-                : $"{input.Label}: {input.StopReason}; {input.NotRun.Count} {(input.NotRun.Count == 1 ? "item" : "items")} not run",
+                ? $"{subject}: {input.StopReason}"
+                : $"{subject}: {input.StopReason}; {input.NotRun.Count} {(input.NotRun.Count == 1 ? "item" : "items")} not run",
             null,
             now));
         State = state;
@@ -1807,7 +1815,11 @@ public sealed record ConsultGenerationNodeItemUpdate(
 /// its until held, or its max was reached (Stopped "until" | "bound"), or it ran out
 /// ("end", nothing not run) — and the items it did not run, each with its blocks.
 /// </summary>
-public sealed record ConsultGenerationLoopStopped(string LoopId, string Label, string Stopped, string StopReason, IReadOnlyList<ConsultNotRunItem> NotRun);
+public sealed record ConsultGenerationLoopStopped(string LoopId, string Label, string Stopped, string StopReason, IReadOnlyList<ConsultNotRunItem> NotRun,
+    // v30 (#1342 B3c, decided 2026-11-10): the instance's outer path for a loop inside a loop —
+    // its loop-instance row says why, not the loop's row. Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Path = null);
 
 /// <summary>v30 (#1342): an item a for did not run — its id, name, the reason ("not run: …") and the blocks it would have filled.</summary>
 public sealed record ConsultNotRunItem(string ItemId, string ItemName, string Reason, IReadOnlyList<string> BlockIds);
