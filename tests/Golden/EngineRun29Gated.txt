@@ -1,0 +1,1298 @@
+# calls
+entity Initialize {"JobId":"<job>","AppUserId":"user-1","Items":[{"id":"consult:assessment","name":"Assessment"},{"id":"consult:sections:hpi","name":"HPI"},{"id":"consult:sections:plan","name":"Plan"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786","ItemSteps":[{"Id":"section_notes","Label":"Section notes"},{"Id":"draft_problem","Label":"Draft problem"},{"Id":"escalate","Label":"Escalate"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","PromptId":"prompts/extract.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"extract","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"concept-extraction","AgentVersion":"1","CustomSchemaHash":null,"Macros":null,"Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/extract.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"scope","Label":"Scope","PromptId":"prompts/scope.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"scope","Aggregate":null,"Values":["in_scope","out_of_scope"],"Reproducible":null,"Check":null,"Template":null,"AgentName":"classification","AgentVersion":"1","CustomSchemaHash":null,"Macros":null,"Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/scope.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"assessment","Label":"Assessment","PromptId":"prompts/assessment.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"assessment","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":[{"Id":"closing","After":true,"When":null,"ForItem":null,"Reads":null,"If":null}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":["extract"],"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/assessment.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"section_notes","Label":"Section notes","PromptId":"prompts/section_notes.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"snippet.sections","ConceptSource":"section_notes","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":["scope"],"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"sections","Branch":null,"DeliverableReads":null,"Prompt":"prompts/section_notes.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"coverage","Label":"Coverage","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"coverage","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"sections","Label":"Sections","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"sections","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":["scope"],"With":null,"OnInvalid":null,"Kind":"for","Collection":"snippet.sections","Expression":null,"Body":["section_notes"],"Ret":"section_notes","In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":2,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"find_problems","Label":"Find problems","PromptId":"prompts/find_problems.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"find_problems","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Macros":null,"Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/find_problems.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"draft_problem","Label":"Draft problem","PromptId":"prompts/draft_problem.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.find_problems.value.problems","ConceptSource":"draft_problem","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"problems","Branch":null,"DeliverableReads":null,"Prompt":"prompts/draft_problem.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"problems","Label":"Problems","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"problems","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":["find_problems"],"With":null,"OnInvalid":null,"Kind":"for","Collection":"node.find_problems.value.problems","Expression":null,"Body":["draft_problem","triage"],"Ret":"triage","In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"escalate","Label":"Escalate","PromptId":"prompts/escalate.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.find_problems.value.problems","ConceptSource":"escalate","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":["draft_problem"],"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"triage","Branch":null,"DeliverableReads":null,"Prompt":"prompts/escalate.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"triage","Label":"Triage","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"node.find_problems.value.problems","ConceptSource":"triage","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":"if","Collection":null,"Expression":"item.value.severity == \u0022high\u0022","Body":["escalate"],"Ret":null,"In":"problems","Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null}],"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","Source":"app","ScheduledAtUtc":null,"InputOrigins":null,"SkippedDocuments":null,"Collections":null,"PackageSpecVersion":null,"InputDocumentOrigins":null,"PackageTitle":null,"PackageTags":null,"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","Terminology":null,"TerminologyServerRef":null,"Deciding":null,"ApiHost":null,"EngineCommit":"3c4bfcf29abbd43b767ecfe8098a9326448569b6","InputsBlob":null,"RerunBaseline":null,"MacroChoices":null,"ExcludedMacros":null,"EngineRelease":null,"TerminologyServerRelease":null,"ResolvedInputTypes":null,"AcknowledgedShortInputs":null,"FormatsRef":"formats@v2026.11.1","UnresolvedLoops":null}
+entity MarkRunning null
+activity run-prompt-node {"NodeId":"extract","PromptId":"prompts/extract.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"extract","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"concept-extraction","AgentVersion":"1","Before":null,"After":null,"Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"scope","PromptId":"prompts/scope.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"scope","VariableTypes":{"kind":"enum"},"Values":["in_scope","out_of_scope"],"Template":null,"AgentName":"classification","AgentVersion":"1","Before":null,"After":null,"Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"find_problems","PromptId":"prompts/find_problems.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"find_problems","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"custom-json","AgentVersion":"1","Before":null,"After":null,"Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeCompleted {"NodeId":"extract","Label":"Extract concepts","Concepts":null,"InputHash":"in:extract","OutputHash":"out:extract","CompletedNodeCount":1,"TotalNodeCount":11,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+activity run-prompt-node {"NodeId":"assessment","PromptId":"prompts/assessment.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"assessment","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"extract":"{ \u0022concepts\u0022: [ { \u0022term\u0022: \u0022Asthma\u0022, \u0022id\u0022: \u0022195967001\u0022, \u0022type\u0022: \u0022disorder\u0022, \u0022isActive\u0022: true } ] }"},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":[{"Id":"closing","After":true,"When":null,"ForItem":null,"Reads":null,"If":null}],"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-computed-node {"NodeId":"coverage","Op":"terms_subset","With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"NodeTexts":{"extract":"{ \u0022concepts\u0022: [ { \u0022term\u0022: \u0022Asthma\u0022, \u0022id\u0022: \u0022195967001\u0022, \u0022type\u0022: \u0022disorder\u0022, \u0022isActive\u0022: true } ] }"},"Format":"terms_subset","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2"}
+entity MarkNodeCompleted {"NodeId":"assessment","Label":"Assessment","Concepts":null,"InputHash":"in:assessment","OutputHash":"out:assessment","CompletedNodeCount":2,"TotalNodeCount":11,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:assessment","BlockName":"Assessment","Success":true,"GeneratedText":"[assessment]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"scope","Label":"Scope","Concepts":null,"InputHash":"in:scope","OutputHash":"out:scope","CompletedNodeCount":3,"TotalNodeCount":11,"HashVersion":6,"Classification":"in_scope","Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+activity decide-flow-item {"WorkflowPackage":"general@v2026.08.1","FlowId":"sections","Collection":"snippet.sections","Item":{"id":"plan","label":"Plan","content":"Plan."},"EffectiveInputs":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"NodeTexts":{"scope":"in_scope"},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"FlowRets":null,"GateFolder":"sections"}
+entity MarkNodeCompleted {"NodeId":"find_problems","Label":"Find problems","Concepts":null,"InputHash":"in:find_problems","OutputHash":"out:find_problems","CompletedNodeCount":4,"TotalNodeCount":11,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity ResolveLoop {"LoopId":"problems","Collection":"node.find_problems.value.problems","Items":[{"Id":"1","Name":"Problems 1"},{"Id":"2","Name":"Problems 2"}],"Blocks":[{"Id":"consult:problems:1","Name":"Problems 1"},{"Id":"consult:problems:2","Name":"Problems 2"}],"Total":5,"ResolvedAtUtc":"<time>","Reason":null}
+activity run-prompt-node {"NodeId":"draft_problem:1","PromptId":"prompts/draft_problem.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_problem","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"1","name":"Problems 1","value":"{\u0022name\u0022:\u0022Asthma\u0022,\u0022severity\u0022:\u0022low\u0022}","valueKind":"json"},"ForEach":"node.find_problems.value.problems","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"draft_problem:2","PromptId":"prompts/draft_problem.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"draft_problem","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"2","name":"Problems 2","value":"{\u0022name\u0022:\u0022Sepsis\u0022,\u0022severity\u0022:\u0022high\u0022}","valueKind":"json"},"ForEach":"node.find_problems.value.problems","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity decide-flow-item {"WorkflowPackage":"general@v2026.08.1","FlowId":"triage","Collection":"node.find_problems.value.problems","Item":{"id":"1","name":"Problems 1","value":"{\u0022name\u0022:\u0022Asthma\u0022,\u0022severity\u0022:\u0022low\u0022}","valueKind":"json"},"EffectiveInputs":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"FlowRets":null,"GateFolder":null}
+activity decide-flow-item {"WorkflowPackage":"general@v2026.08.1","FlowId":"triage","Collection":"node.find_problems.value.problems","Item":{"id":"2","name":"Problems 2","value":"{\u0022name\u0022:\u0022Sepsis\u0022,\u0022severity\u0022:\u0022high\u0022}","valueKind":"json"},"EffectiveInputs":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"FlowRets":null,"GateFolder":null}
+entity MarkNodeItemCompleted {"NodeId":"draft_problem","Label":"Draft problem","ItemId":"2","ItemName":"Problems 2","Concepts":null,"InputHash":"in:draft_problem:2","OutputHash":"out:draft_problem:2","CompletedChainCount":1,"TotalChainCount":3,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeItemCompleted {"NodeId":"draft_problem","Label":"Draft problem","ItemId":"1","ItemName":"Problems 1","Concepts":null,"InputHash":"in:draft_problem:1","OutputHash":"out:draft_problem:1","CompletedChainCount":1,"TotalChainCount":3,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"draft_problem","Label":"Draft problem","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":5,"TotalNodeCount":11,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"coverage","Label":"Coverage","Concepts":null,"InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedNodeCount":6,"TotalNodeCount":11,"HashVersion":6,"Classification":null,"Tokens":null,"Check":{"Passed":true,"Uncovered":null,"Untested":["Asthma"]},"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","Appended":null,"Excluded":null}
+entity MarkNodeItemSkipped {"NodeId":"sections","ItemId":"plan","Label":"Sections","Reason":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold"}
+entity SkipBlock {"BlockId":"consult:sections:plan","BlockName":"Plan","Reason":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold"}
+activity run-prompt-node {"NodeId":"section_notes:hpi","PromptId":"prompts/section_notes.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"section_notes","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"scope":"in_scope"},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"}]},"Item":{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},"ForEach":"snippet.sections","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeItemCompleted {"NodeId":"section_notes","Label":"Section notes","ItemId":"hpi","ItemName":"HPI","Concepts":null,"InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sections:hpi","BlockName":"HPI","Success":true,"GeneratedText":"[section_notes:hpi]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"section_notes","Label":"Section notes","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":7,"TotalNodeCount":11,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"sections","Label":"Sections","Concepts":null,"InputHash":"428fe1d310e4d312c724b3d2f012062846ffcd8f20bfc89504d86a9e9eeed521","OutputHash":"3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030","CompletedNodeCount":8,"TotalNodeCount":11,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030","Appended":null,"Excluded":null}
+entity RecordFlowBranch {"FlowId":"triage","ItemId":"1","Branch":"none"}
+entity MarkNodeItemSkipped {"NodeId":"triage","ItemId":"1","Label":"Triage","Reason":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"}
+entity SkipBlock {"BlockId":"consult:problems:1","BlockName":"Problems 1","Reason":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"}
+entity RecordFlowBranch {"FlowId":"triage","ItemId":"2","Branch":"then"}
+activity run-prompt-node {"NodeId":"escalate:2","PromptId":"prompts/escalate.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"escalate","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"draft_problem":"[draft_problem:2]"},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"}]},"Item":{"id":"2","name":"Problems 2","value":"{\u0022name\u0022:\u0022Sepsis\u0022,\u0022severity\u0022:\u0022high\u0022}","valueKind":"json"},"ForEach":"node.find_problems.value.problems","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{"scope":"in_scope"},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeItemCompleted {"NodeId":"escalate","Label":"Escalate","ItemId":"2","ItemName":"Problems 2","Concepts":null,"InputHash":"in:escalate:2","OutputHash":"out:escalate:2","CompletedChainCount":2,"TotalChainCount":3,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:problems:2","BlockName":"Problems 2","Success":true,"GeneratedText":"[escalate:2]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"escalate","Label":"Escalate","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":9,"TotalNodeCount":11,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"triage","Label":"Triage","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":10,"TotalNodeCount":11,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"problems","Label":"Problems","Concepts":null,"InputHash":"9640a19559185eaf832c45e743ea43c0cd79407f0d15cf75619545595a28edd3","OutputHash":"c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84","CompletedNodeCount":11,"TotalNodeCount":11,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84","Appended":null,"Excluded":null}
+entity MarkDeliverableComposed {"ResultId":"consult","Label":"Consultation note","Ordinal":0,"ComposedHash":"19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367","Sources":["assessment","sections","problems"],"ComposedAtUtc":"<time>","Reason":null}
+entity CompleteResultDocument {"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Problems 2\n\n[escalate:2]","Ordinal":0,"Appended":null,"Unsigned":null,"ComposedHash":"19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367","Sources":["assessment","sections","problems"]}
+entity FinalizeJob {"Status":"Completed","Error":null,"AccountKind":"","FailureStack":null}
+entity RecordDelivery {"Outcome":"address-not-set","RecordedAtUtc":"<time>","DocumentAttached":null}
+# prompts
+## extract
+Extract the concepts from:
+A fictional referral: a 40-year-old with wheeze and a fever.
+## scope
+Is this in scope? A fictional referral: a 40-year-old with wheeze and a fever.
+## find_problems
+List the problems this referral names: A fictional referral: a 40-year-old with wheeze and a fever.
+## assessment
+Assess.
+Follow the local standards.
+A fictional referral: a 40-year-old with wheeze and a fever.
+- {term: "Asthma", id: "195967001", type: "disorder", isActive: true}
+
+## draft_problem:1
+Problem 1: Asthma (low).
+## draft_problem:2
+Problem 2: Sepsis (high).
+## section_notes:hpi
+HPI: History: A fictional referral: a 40-year-old with wheeze and a fever.
+## escalate:2
+Escalate Sepsis: [draft_problem:2]
+# the served record
+{
+  "JobId": "<job>",
+  "AppUserId": "user-1",
+  "Status": "Completed",
+  "TotalBlockCount": 5,
+  "CompletedBlockCount": 5,
+  "FailedBlockCount": 0,
+  "GeneratedBlocks": {
+    "consult:assessment": "[assessment]",
+    "consult:sections:hpi": "[section_notes:hpi]",
+    "consult:problems:2": "[escalate:2]"
+  },
+  "FailedBlocks": {},
+  "Success": true,
+  "SchemaVersion": 10,
+  "AnalysisStatus": null,
+  "AnalysisError": null,
+  "CompletedStageCount": 11,
+  "TotalStageCount": 11,
+  "ItemProgress": {
+    "2": {
+      "ItemId": "2",
+      "ItemName": "Problems 2",
+      "Step": "escalate",
+      "CompletedStepCount": 2,
+      "TotalStepCount": 3
+    },
+    "1": {
+      "ItemId": "1",
+      "ItemName": "Problems 1",
+      "Step": "draft_problem",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 3
+    },
+    "hpi": {
+      "ItemId": "hpi",
+      "ItemName": "HPI",
+      "Step": "section_notes",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    }
+  },
+  "RuntimeFailureStage": null,
+  "RuntimeFailureError": null,
+  "CreatedAtUtc": "<time>",
+  "StartedAtUtc": "<time>",
+  "CompletedAtUtc": "<time>",
+  "History": [
+    {
+      "Kind": "success",
+      "Label": "Extract concepts",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Assessment",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Assessment",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Scope",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Find problems",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "loop-resolved",
+      "Label": "Problems: 2 items",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Draft problem",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Coverage",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "skipped",
+      "Label": "Sections (plan)",
+      "Detail": "needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold",
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "skipped",
+      "Label": "Section skipped: Plan",
+      "Detail": "needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold",
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: HPI",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section notes",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Sections",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "skipped",
+      "Label": "Triage (1)",
+      "Detail": "needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold",
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "skipped",
+      "Label": "Section skipped: Problems 1",
+      "Detail": "needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold",
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Problems 2",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Escalate",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Triage",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Problems",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "composed",
+      "Label": "Consultation note composed; released once its reads and check settle",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Assembled document produced: Consultation note",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Done",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "delivery",
+      "Label": "Not emailed \u2014 no delivery address on the account",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    }
+  ],
+  "WorkflowPackage": "general@v2026.08.1",
+  "EffectiveInputHash": "70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786",
+  "ItemSteps": [
+    {
+      "Id": "section_notes",
+      "Label": "Section notes"
+    },
+    {
+      "Id": "draft_problem",
+      "Label": "Draft problem"
+    },
+    {
+      "Id": "escalate",
+      "Label": "Escalate"
+    }
+  ],
+  "Nodes": [
+    {
+      "Id": "extract",
+      "Label": "Extract concepts",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "extract",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "concept-extraction",
+      "AgentVersion": "1",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "concept_list",
+      "Producer": "attested",
+      "FormatHash": "39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/extract.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "scope",
+      "Label": "Scope",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "scope",
+      "Aggregate": null,
+      "Values": [
+        "in_scope",
+        "out_of_scope"
+      ],
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "classification",
+      "AgentVersion": "1",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "classification",
+      "Producer": "attested",
+      "FormatHash": "510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/scope.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "assessment",
+      "Label": "Assessment",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "assessment",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": [
+        {
+          "Id": "closing",
+          "After": true,
+          "When": null,
+          "ForItem": null,
+          "Reads": null,
+          "If": null
+        }
+      ],
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": [
+        "extract"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/assessment.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "section_notes",
+      "Label": "Section notes",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "section_notes",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": [
+        "scope"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "sections",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/section_notes.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "coverage",
+      "Label": "Coverage",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "coverage",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "terms_subset",
+      "Producer": "computed",
+      "FormatHash": "3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2",
+      "Op": "terms_subset",
+      "Reads": [
+        "extract"
+      ],
+      "With": {
+        "of": "extract",
+        "in": "extract",
+        "failWith": "The note names problems the source does not."
+      },
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "sections",
+      "Label": "Sections",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "sections",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": [
+        "scope"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "snippet.sections",
+      "Expression": null,
+      "Body": [
+        "section_notes"
+      ],
+      "Ret": "section_notes",
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 2,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "find_problems",
+      "Label": "Find problems",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "find_problems",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "custom-json",
+      "AgentVersion": "1",
+      "CustomSchemaHash": "169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3",
+      "Macros": null,
+      "Format": "problem_list",
+      "Producer": "custom",
+      "FormatHash": "169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/find_problems.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "draft_problem",
+      "Label": "Draft problem",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "draft_problem",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "problems",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/draft_problem.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "problems",
+      "Label": "Problems",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "problems",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": [
+        "find_problems"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "node.find_problems.value.problems",
+      "Expression": null,
+      "Body": [
+        "draft_problem",
+        "triage"
+      ],
+      "Ret": "triage",
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 2,
+      "Branches": null,
+      "ResolvedAtUtc": "<time>",
+      "Reason": null
+    },
+    {
+      "Id": "escalate",
+      "Label": "Escalate",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "escalate",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": [
+        "draft_problem"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "triage",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/escalate.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "triage",
+      "Label": "Triage",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "triage",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "if",
+      "Collection": null,
+      "Expression": "item.value.severity == \u0022high\u0022",
+      "Body": [
+        "escalate"
+      ],
+      "Ret": null,
+      "In": "problems",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": null,
+      "Branches": {
+        "1": "none",
+        "2": "then"
+      },
+      "ResolvedAtUtc": null,
+      "Reason": null
+    }
+  ],
+  "NodeOutputs": {
+    "extract": {
+      "NodeId": "extract",
+      "Label": "Extract concepts",
+      "Status": "Completed",
+      "InputHash": "in:extract",
+      "OutputHash": "out:extract",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "assessment": {
+      "NodeId": "assessment",
+      "Label": "Assessment",
+      "Status": "Completed",
+      "InputHash": "in:assessment",
+      "OutputHash": "out:assessment",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "scope": {
+      "NodeId": "scope",
+      "Label": "Scope",
+      "Status": "Completed",
+      "InputHash": "in:scope",
+      "OutputHash": "out:scope",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": "in_scope",
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "find_problems": {
+      "NodeId": "find_problems",
+      "Label": "Find problems",
+      "Status": "Completed",
+      "InputHash": "in:find_problems",
+      "OutputHash": "out:find_problems",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_problem:2": {
+      "NodeId": "draft_problem",
+      "Label": "Draft problem",
+      "Status": "Completed",
+      "InputHash": "in:draft_problem:2",
+      "OutputHash": "out:draft_problem:2",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_problem:1": {
+      "NodeId": "draft_problem",
+      "Label": "Draft problem",
+      "Status": "Completed",
+      "InputHash": "in:draft_problem:1",
+      "OutputHash": "out:draft_problem:1",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "draft_problem": {
+      "NodeId": "draft_problem",
+      "Label": "Draft problem",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "coverage": {
+      "NodeId": "coverage",
+      "Label": "Coverage",
+      "Status": "Completed",
+      "InputHash": "f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f",
+      "OutputHash": "a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": {
+        "Passed": true,
+        "Uncovered": null,
+        "Untested": [
+          "Asthma"
+        ]
+      },
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": {
+        "Valid": true,
+        "Errors": []
+      },
+      "AgentOutputHash": "a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "sections:plan": {
+      "NodeId": "sections",
+      "Label": "Sections",
+      "Status": "Skipped",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": "needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold"
+    },
+    "section_notes:hpi": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": "in:section_notes:hpi",
+      "OutputHash": "out:section_notes:hpi",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "section_notes": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "sections": {
+      "NodeId": "sections",
+      "Label": "Sections",
+      "Status": "Completed",
+      "InputHash": "428fe1d310e4d312c724b3d2f012062846ffcd8f20bfc89504d86a9e9eeed521",
+      "OutputHash": "3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "triage:1": {
+      "NodeId": "triage",
+      "Label": "Triage",
+      "Status": "Skipped",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": "needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"
+    },
+    "escalate:2": {
+      "NodeId": "escalate",
+      "Label": "Escalate",
+      "Status": "Completed",
+      "InputHash": "in:escalate:2",
+      "OutputHash": "out:escalate:2",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "escalate": {
+      "NodeId": "escalate",
+      "Label": "Escalate",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "triage": {
+      "NodeId": "triage",
+      "Label": "Triage",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "problems": {
+      "NodeId": "problems",
+      "Label": "Problems",
+      "Status": "Completed",
+      "InputHash": "9640a19559185eaf832c45e743ea43c0cd79407f0d15cf75619545595a28edd3",
+      "OutputHash": "c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    }
+  },
+  "AgentVersions": null,
+  "EffectiveInputHashVersion": 6,
+  "CatalogRef": "output-contracts@v2026.08.1",
+  "WorkflowOutputHash": "f0ad82746c2b5a5f55d747b16a69fd6029b63c52d9be79f974757eeb66d487c4",
+  "WorkflowOutputHashVersion": 3,
+  "AssembledDocument": null,
+  "Source": "app",
+  "ScheduledAtUtc": null,
+  "AssembledDocuments": [
+    {
+      "ResultId": "consult",
+      "Label": "Consultation note",
+      "Text": "[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Problems 2\n\n[escalate:2]",
+      "DocumentHash": "19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367",
+      "Appended": null,
+      "Unsigned": null,
+      "ComposedHash": "19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367",
+      "Sources": [
+        "assessment",
+        "sections",
+        "problems"
+      ]
+    }
+  ],
+  "InputOrigins": null,
+  "ResolvedInputTypes": null,
+  "SkippedDocuments": null,
+  "Collections": [
+    {
+      "CollectionId": "sections",
+      "Items": [
+        {
+          "Id": "hpi",
+          "Name": "HPI"
+        },
+        {
+          "Id": "plan",
+          "Name": "Plan"
+        }
+      ]
+    },
+    {
+      "CollectionId": "node.find_problems.value.problems",
+      "Items": [
+        {
+          "Id": "1",
+          "Name": "Problems 1"
+        },
+        {
+          "Id": "2",
+          "Name": "Problems 2"
+        }
+      ]
+    }
+  ],
+  "PackageSpecVersion": 29,
+  "PackageTitle": null,
+  "StartFailure": null,
+  "PackageTags": [],
+  "PackageFormatRef": "package-format@v2026.11.2",
+  "ProvenanceRef": "provenance@v2026.11.1",
+  "Terminology": null,
+  "TerminologyServerRef": null,
+  "TextDroppedAtUtc": null,
+  "DeliveryOutcome": "address-not-set",
+  "DeliveredAtUtc": null,
+  "DeliveryDocumentAttached": null,
+  "Deciding": null,
+  "DecidedAtUtc": "<time>",
+  "Classifications": {
+    "scope": "in_scope"
+  },
+  "DecisionFailureKind": null,
+  "ApiHost": null,
+  "EngineCommit": "3c4bfcf29abbd43b767ecfe8098a9326448569b6",
+  "EngineRelease": null,
+  "TerminologyServerRelease": null,
+  "OutputsBlob": null,
+  "InputsBlob": null,
+  "InputsDroppedAtUtc": null,
+  "HeldInputs": null,
+  "RerunOf": null,
+  "RerunVerdict": null,
+  "RerunDivergence": null,
+  "Tokens": null,
+  "MacroChoices": null,
+  "FailedDocuments": null,
+  "ExcludedMacros": null,
+  "FailureStack": null,
+  "FailedBlockStacks": null,
+  "AcknowledgedShortInputs": null,
+  "FormatsRef": "formats@v2026.11.1",
+  "SkippedBlocks": {
+    "consult:sections:plan": "needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold",
+    "consult:problems:1": "needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"
+  },
+  "UnresolvedLoops": null,
+  "HeldDocuments": null
+}
+# the event candidates
+snapshot | snapshot | {"JobId":"<job>","AppUserId":"user-1","Status":"Completed","TotalBlockCount":5,"CompletedBlockCount":5,"FailedBlockCount":0,"GeneratedBlocks":{"consult:assessment":"[assessment]","consult:sections:hpi":"[section_notes:hpi]","consult:problems:2":"[escalate:2]"},"FailedBlocks":{},"Success":true,"SchemaVersion":10,"CompletedStageCount":11,"TotalStageCount":11,"ItemProgress":{"2":{"ItemId":"2","ItemName":"Problems 2","Step":"escalate","CompletedStepCount":2,"TotalStepCount":3},"1":{"ItemId":"1","ItemName":"Problems 1","Step":"draft_problem","CompletedStepCount":1,"TotalStepCount":3},"hpi":{"ItemId":"hpi","ItemName":"HPI","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1}},"CreatedAtUtc":"<time>","StartedAtUtc":"<time>","CompletedAtUtc":"<time>","History":[{"Kind":"success","Label":"Extract concepts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Scope","OccurredAt":"<time>"},{"Kind":"success","Label":"Find problems","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Problems: 2 items","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft problem","OccurredAt":"<time>"},{"Kind":"success","Label":"Coverage","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Sections (plan)","Detail":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Section skipped: Plan","Detail":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: HPI","OccurredAt":"<time>"},{"Kind":"success","Label":"Section notes","OccurredAt":"<time>"},{"Kind":"success","Label":"Sections","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Triage (1)","Detail":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Section skipped: Problems 1","Detail":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Problems 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Escalate","OccurredAt":"<time>"},{"Kind":"success","Label":"Triage","OccurredAt":"<time>"},{"Kind":"success","Label":"Problems","OccurredAt":"<time>"},{"Kind":"composed","Label":"Consultation note composed; released once its reads and check settle","OccurredAt":"<time>"},{"Kind":"success","Label":"Assembled document produced: Consultation note","OccurredAt":"<time>"},{"Kind":"success","Label":"Done","OccurredAt":"<time>"},{"Kind":"delivery","Label":"Not emailed \u2014 no delivery address on the account","OccurredAt":"<time>"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786","ItemSteps":[{"Id":"section_notes","Label":"Section notes"},{"Id":"draft_problem","Label":"Draft problem"},{"Id":"escalate","Label":"Escalate"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","ConceptSource":"extract","AgentName":"concept-extraction","AgentVersion":"1","Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","OnInvalid":"fail","Prompt":"prompts/extract.md"},{"Id":"scope","Label":"Scope","ConceptSource":"scope","Values":["in_scope","out_of_scope"],"AgentName":"classification","AgentVersion":"1","Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","OnInvalid":"fail","Prompt":"prompts/scope.md"},{"Id":"assessment","Label":"Assessment","ConceptSource":"assessment","AgentName":"consult-prose","AgentVersion":"3","Macros":[{"Id":"closing","After":true}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["extract"],"Prompt":"prompts/assessment.md"},{"Id":"section_notes","Label":"Section notes","ConceptSource":"section_notes","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["scope"],"In":"sections","Prompt":"prompts/section_notes.md"},{"Id":"coverage","Label":"Coverage","ConceptSource":"coverage","Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail"},{"Id":"sections","Label":"Sections","ConceptSource":"sections","Reads":["scope"],"Kind":"for","Collection":"snippet.sections","Body":["section_notes"],"Ret":"section_notes","Count":2},{"Id":"find_problems","Label":"Find problems","ConceptSource":"find_problems","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","OnInvalid":"fail","Prompt":"prompts/find_problems.md"},{"Id":"draft_problem","Label":"Draft problem","ConceptSource":"draft_problem","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"problems","Prompt":"prompts/draft_problem.md"},{"Id":"problems","Label":"Problems","ConceptSource":"problems","Reads":["find_problems"],"Kind":"for","Collection":"node.find_problems.value.problems","Body":["draft_problem","triage"],"Ret":"triage","Count":2,"ResolvedAtUtc":"<time>"},{"Id":"escalate","Label":"Escalate","ConceptSource":"escalate","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["draft_problem"],"In":"triage","Prompt":"prompts/escalate.md"},{"Id":"triage","Label":"Triage","ConceptSource":"triage","Kind":"if","Expression":"item.value.severity == \u0022high\u0022","Body":["escalate"],"In":"problems","Branches":{"1":"none","2":"then"}}],"NodeOutputs":{"extract":{"NodeId":"extract","Label":"Extract concepts","Status":"Completed","InputHash":"in:extract","OutputHash":"out:extract","CompletedAtUtc":"<time>","HashVersion":6},"assessment":{"NodeId":"assessment","Label":"Assessment","Status":"Completed","InputHash":"in:assessment","OutputHash":"out:assessment","CompletedAtUtc":"<time>","HashVersion":6},"scope":{"NodeId":"scope","Label":"Scope","Status":"Completed","InputHash":"in:scope","OutputHash":"out:scope","CompletedAtUtc":"<time>","HashVersion":6,"Classification":"in_scope"},"find_problems":{"NodeId":"find_problems","Label":"Find problems","Status":"Completed","InputHash":"in:find_problems","OutputHash":"out:find_problems","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem:2":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","InputHash":"in:draft_problem:2","OutputHash":"out:draft_problem:2","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem:1":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","InputHash":"in:draft_problem:1","OutputHash":"out:draft_problem:1","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","CompletedAtUtc":"<time>"},"coverage":{"NodeId":"coverage","Label":"Coverage","Status":"Completed","InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedAtUtc":"<time>","HashVersion":6,"Check":{"Passed":true,"Untested":["Asthma"]},"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584"},"sections:plan":{"NodeId":"sections","Label":"Sections","Status":"Skipped","CompletedAtUtc":"<time>","Reason":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold"},"section_notes:hpi":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedAtUtc":"<time>","HashVersion":6},"section_notes":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","CompletedAtUtc":"<time>"},"sections":{"NodeId":"sections","Label":"Sections","Status":"Completed","InputHash":"428fe1d310e4d312c724b3d2f012062846ffcd8f20bfc89504d86a9e9eeed521","OutputHash":"3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030"},"triage:1":{"NodeId":"triage","Label":"Triage","Status":"Skipped","CompletedAtUtc":"<time>","Reason":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"},"escalate:2":{"NodeId":"escalate","Label":"Escalate","Status":"Completed","InputHash":"in:escalate:2","OutputHash":"out:escalate:2","CompletedAtUtc":"<time>","HashVersion":6},"escalate":{"NodeId":"escalate","Label":"Escalate","Status":"Completed","CompletedAtUtc":"<time>"},"triage":{"NodeId":"triage","Label":"Triage","Status":"Completed","CompletedAtUtc":"<time>"},"problems":{"NodeId":"problems","Label":"Problems","Status":"Completed","InputHash":"9640a19559185eaf832c45e743ea43c0cd79407f0d15cf75619545595a28edd3","OutputHash":"c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84"}},"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","WorkflowOutputHash":"f0ad82746c2b5a5f55d747b16a69fd6029b63c52d9be79f974757eeb66d487c4","WorkflowOutputHashVersion":3,"Source":"app","AssembledDocuments":[{"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Problems 2\n\n[escalate:2]","DocumentHash":"19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367","ComposedHash":"19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367","Sources":["assessment","sections","problems"]}],"Collections":[{"CollectionId":"sections","Items":[{"Id":"hpi","Name":"HPI"},{"Id":"plan","Name":"Plan"}]},{"CollectionId":"node.find_problems.value.problems","Items":[{"Id":"1","Name":"Problems 1"},{"Id":"2","Name":"Problems 2"}]}],"PackageSpecVersion":29,"PackageTags":[],"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","DeliveryOutcome":"address-not-set","DecidedAtUtc":"<time>","Classifications":{"scope":"in_scope"},"EngineCommit":"3c4bfcf29abbd43b767ecfe8098a9326448569b6","FormatsRef":"formats@v2026.11.1","SkippedBlocks":{"consult:sections:plan":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold","consult:problems:1":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"}}
+node-completed | node:extract | {"JobId":"<job>","NodeId":"extract","Label":"Extract concepts","Message":"Extract concepts completed.","CompletedNodeCount":1,"TotalNodeCount":11}
+node-completed | node:scope | {"JobId":"<job>","NodeId":"scope","Label":"Scope","Message":"Scope completed.","CompletedNodeCount":2,"TotalNodeCount":11}
+node-completed | node:assessment | {"JobId":"<job>","NodeId":"assessment","Label":"Assessment","Message":"Assessment completed.","CompletedNodeCount":3,"TotalNodeCount":11}
+node-completed | node:section_notes | {"JobId":"<job>","NodeId":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedNodeCount":4,"TotalNodeCount":11}
+node-completed | node:coverage | {"JobId":"<job>","NodeId":"coverage","Label":"Coverage","Message":"Coverage completed.","CompletedNodeCount":5,"TotalNodeCount":11}
+node-completed | node:sections | {"JobId":"<job>","NodeId":"sections","Label":"Sections","Message":"Sections completed.","CompletedNodeCount":6,"TotalNodeCount":11}
+node-completed | node:find_problems | {"JobId":"<job>","NodeId":"find_problems","Label":"Find problems","Message":"Find problems completed.","CompletedNodeCount":7,"TotalNodeCount":11}
+node-completed | node:draft_problem | {"JobId":"<job>","NodeId":"draft_problem","Label":"Draft problem","Message":"Draft problem completed.","CompletedNodeCount":8,"TotalNodeCount":11}
+node-completed | node:problems | {"JobId":"<job>","NodeId":"problems","Label":"Problems","Message":"Problems completed.","CompletedNodeCount":9,"TotalNodeCount":11}
+node-completed | node:escalate | {"JobId":"<job>","NodeId":"escalate","Label":"Escalate","Message":"Escalate completed.","CompletedNodeCount":10,"TotalNodeCount":11}
+node-completed | node:triage | {"JobId":"<job>","NodeId":"triage","Label":"Triage","Message":"Triage completed.","CompletedNodeCount":11,"TotalNodeCount":11}
+item-step | item-step:1:draft_problem | {"JobId":"<job>","ItemId":"1","ItemName":"Problems 1","Step":"draft_problem","Label":"Draft problem","Message":"Draft problem completed.","CompletedStepCount":1,"TotalStepCount":3}
+item-step | item-step:2:draft_problem | {"JobId":"<job>","ItemId":"2","ItemName":"Problems 2","Step":"draft_problem","Label":"Draft problem","Message":"Draft problem completed.","CompletedStepCount":2,"TotalStepCount":3}
+item-step | item-step:2:escalate | {"JobId":"<job>","ItemId":"2","ItemName":"Problems 2","Step":"escalate","Label":"Escalate","Message":"Escalate completed.","CompletedStepCount":2,"TotalStepCount":3}
+item-step | item-step:hpi:section_notes | {"JobId":"<job>","ItemId":"hpi","ItemName":"HPI","Step":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedStepCount":1,"TotalStepCount":1}
+block-completed | block-completed:consult:assessment | {"JobId":"<job>","BlockId":"consult:assessment","Text":"[assessment]"}
+block-completed | block-completed:consult:problems:2 | {"JobId":"<job>","BlockId":"consult:problems:2","Text":"[escalate:2]"}
+block-completed | block-completed:consult:sections:hpi | {"JobId":"<job>","BlockId":"consult:sections:hpi","Text":"[section_notes:hpi]"}
+block-skipped | block-skipped:consult:problems:1 | {"JobId":"<job>","BlockId":"consult:problems:1","Reason":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"}
+block-skipped | block-skipped:consult:sections:plan | {"JobId":"<job>","BlockId":"consult:sections:plan","Reason":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold"}
+count-resolved | count-resolved:problems | {"JobId":"<job>","LoopId":"problems","Count":2,"Total":5,"Pending":0}
+done | done | {"JobId":"<job>","AppUserId":"user-1","Status":"Completed","TotalBlockCount":5,"CompletedBlockCount":5,"FailedBlockCount":0,"GeneratedBlocks":{"consult:assessment":"[assessment]","consult:sections:hpi":"[section_notes:hpi]","consult:problems:2":"[escalate:2]"},"FailedBlocks":{},"Success":true,"SchemaVersion":10,"CompletedStageCount":11,"TotalStageCount":11,"ItemProgress":{"2":{"ItemId":"2","ItemName":"Problems 2","Step":"escalate","CompletedStepCount":2,"TotalStepCount":3},"1":{"ItemId":"1","ItemName":"Problems 1","Step":"draft_problem","CompletedStepCount":1,"TotalStepCount":3},"hpi":{"ItemId":"hpi","ItemName":"HPI","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1}},"CreatedAtUtc":"<time>","StartedAtUtc":"<time>","CompletedAtUtc":"<time>","History":[{"Kind":"success","Label":"Extract concepts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Scope","OccurredAt":"<time>"},{"Kind":"success","Label":"Find problems","OccurredAt":"<time>"},{"Kind":"loop-resolved","Label":"Problems: 2 items","OccurredAt":"<time>"},{"Kind":"success","Label":"Draft problem","OccurredAt":"<time>"},{"Kind":"success","Label":"Coverage","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Sections (plan)","Detail":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Section skipped: Plan","Detail":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: HPI","OccurredAt":"<time>"},{"Kind":"success","Label":"Section notes","OccurredAt":"<time>"},{"Kind":"success","Label":"Sections","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Triage (1)","Detail":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"skipped","Label":"Section skipped: Problems 1","Detail":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Problems 2","OccurredAt":"<time>"},{"Kind":"success","Label":"Escalate","OccurredAt":"<time>"},{"Kind":"success","Label":"Triage","OccurredAt":"<time>"},{"Kind":"success","Label":"Problems","OccurredAt":"<time>"},{"Kind":"composed","Label":"Consultation note composed; released once its reads and check settle","OccurredAt":"<time>"},{"Kind":"success","Label":"Assembled document produced: Consultation note","OccurredAt":"<time>"},{"Kind":"success","Label":"Done","OccurredAt":"<time>"},{"Kind":"delivery","Label":"Not emailed \u2014 no delivery address on the account","OccurredAt":"<time>"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786","ItemSteps":[{"Id":"section_notes","Label":"Section notes"},{"Id":"draft_problem","Label":"Draft problem"},{"Id":"escalate","Label":"Escalate"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","ConceptSource":"extract","AgentName":"concept-extraction","AgentVersion":"1","Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","OnInvalid":"fail","Prompt":"prompts/extract.md"},{"Id":"scope","Label":"Scope","ConceptSource":"scope","Values":["in_scope","out_of_scope"],"AgentName":"classification","AgentVersion":"1","Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","OnInvalid":"fail","Prompt":"prompts/scope.md"},{"Id":"assessment","Label":"Assessment","ConceptSource":"assessment","AgentName":"consult-prose","AgentVersion":"3","Macros":[{"Id":"closing","After":true}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["extract"],"Prompt":"prompts/assessment.md"},{"Id":"section_notes","Label":"Section notes","ConceptSource":"section_notes","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["scope"],"In":"sections","Prompt":"prompts/section_notes.md"},{"Id":"coverage","Label":"Coverage","ConceptSource":"coverage","Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail"},{"Id":"sections","Label":"Sections","ConceptSource":"sections","Reads":["scope"],"Kind":"for","Collection":"snippet.sections","Body":["section_notes"],"Ret":"section_notes","Count":2},{"Id":"find_problems","Label":"Find problems","ConceptSource":"find_problems","AgentName":"custom-json","AgentVersion":"1","CustomSchemaHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","Format":"problem_list","Producer":"custom","FormatHash":"169fa15b17e9c46301c9dae8a67c5f29127555988197969f1e6e26103d91eec3","OnInvalid":"fail","Prompt":"prompts/find_problems.md"},{"Id":"draft_problem","Label":"Draft problem","ConceptSource":"draft_problem","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"problems","Prompt":"prompts/draft_problem.md"},{"Id":"problems","Label":"Problems","ConceptSource":"problems","Reads":["find_problems"],"Kind":"for","Collection":"node.find_problems.value.problems","Body":["draft_problem","triage"],"Ret":"triage","Count":2,"ResolvedAtUtc":"<time>"},{"Id":"escalate","Label":"Escalate","ConceptSource":"escalate","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["draft_problem"],"In":"triage","Prompt":"prompts/escalate.md"},{"Id":"triage","Label":"Triage","ConceptSource":"triage","Kind":"if","Expression":"item.value.severity == \u0022high\u0022","Body":["escalate"],"In":"problems","Branches":{"1":"none","2":"then"}}],"NodeOutputs":{"extract":{"NodeId":"extract","Label":"Extract concepts","Status":"Completed","InputHash":"in:extract","OutputHash":"out:extract","CompletedAtUtc":"<time>","HashVersion":6},"assessment":{"NodeId":"assessment","Label":"Assessment","Status":"Completed","InputHash":"in:assessment","OutputHash":"out:assessment","CompletedAtUtc":"<time>","HashVersion":6},"scope":{"NodeId":"scope","Label":"Scope","Status":"Completed","InputHash":"in:scope","OutputHash":"out:scope","CompletedAtUtc":"<time>","HashVersion":6,"Classification":"in_scope"},"find_problems":{"NodeId":"find_problems","Label":"Find problems","Status":"Completed","InputHash":"in:find_problems","OutputHash":"out:find_problems","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem:2":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","InputHash":"in:draft_problem:2","OutputHash":"out:draft_problem:2","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem:1":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","InputHash":"in:draft_problem:1","OutputHash":"out:draft_problem:1","CompletedAtUtc":"<time>","HashVersion":6},"draft_problem":{"NodeId":"draft_problem","Label":"Draft problem","Status":"Completed","CompletedAtUtc":"<time>"},"coverage":{"NodeId":"coverage","Label":"Coverage","Status":"Completed","InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedAtUtc":"<time>","HashVersion":6,"Check":{"Passed":true,"Untested":["Asthma"]},"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584"},"sections:plan":{"NodeId":"sections","Label":"Sections","Status":"Skipped","CompletedAtUtc":"<time>","Reason":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold"},"section_notes:hpi":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedAtUtc":"<time>","HashVersion":6},"section_notes":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","CompletedAtUtc":"<time>"},"sections":{"NodeId":"sections","Label":"Sections","Status":"Completed","InputHash":"428fe1d310e4d312c724b3d2f012062846ffcd8f20bfc89504d86a9e9eeed521","OutputHash":"3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"3784e3f1e89f0af6a6c65d7652a1797cb024af8f5bc4b6fc5550e366d953a030"},"triage:1":{"NodeId":"triage","Label":"Triage","Status":"Skipped","CompletedAtUtc":"<time>","Reason":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"},"escalate:2":{"NodeId":"escalate","Label":"Escalate","Status":"Completed","InputHash":"in:escalate:2","OutputHash":"out:escalate:2","CompletedAtUtc":"<time>","HashVersion":6},"escalate":{"NodeId":"escalate","Label":"Escalate","Status":"Completed","CompletedAtUtc":"<time>"},"triage":{"NodeId":"triage","Label":"Triage","Status":"Completed","CompletedAtUtc":"<time>"},"problems":{"NodeId":"problems","Label":"Problems","Status":"Completed","InputHash":"9640a19559185eaf832c45e743ea43c0cd79407f0d15cf75619545595a28edd3","OutputHash":"c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"c73716a6bc63a1c5dc69251465fd8e55bbf8f6618d7d526c62caa7afc8474e84"}},"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","WorkflowOutputHash":"f0ad82746c2b5a5f55d747b16a69fd6029b63c52d9be79f974757eeb66d487c4","WorkflowOutputHashVersion":3,"Source":"app","AssembledDocuments":[{"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Problems 2\n\n[escalate:2]","DocumentHash":"19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367","ComposedHash":"19403dbf0222698f6cc315d26aa1f7879cb20fbd36140b3514921f856acb9367","Sources":["assessment","sections","problems"]}],"Collections":[{"CollectionId":"sections","Items":[{"Id":"hpi","Name":"HPI"},{"Id":"plan","Name":"Plan"}]},{"CollectionId":"node.find_problems.value.problems","Items":[{"Id":"1","Name":"Problems 1"},{"Id":"2","Name":"Problems 2"}]}],"PackageSpecVersion":29,"PackageTags":[],"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","DeliveryOutcome":"address-not-set","DecidedAtUtc":"<time>","Classifications":{"scope":"in_scope"},"EngineCommit":"3c4bfcf29abbd43b767ecfe8098a9326448569b6","FormatsRef":"formats@v2026.11.1","SkippedBlocks":{"consult:sections:plan":"needs \u0060node.scope.value == \u0022out_of_scope\u0022\u0060; it does not hold","consult:problems:1":"needs \u0060item.value.severity == \u0022high\u0022\u0060; it does not hold"}}
