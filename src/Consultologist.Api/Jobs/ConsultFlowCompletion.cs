@@ -46,7 +46,7 @@ internal static class ConsultFlowCompletion
         }
 
         var items = fanItems(ret);
-        var failed = items.Where(item => itemFailed(ret, item["id"])).Select(item => $"{ret.Id}:{item["id"]}").ToList();
+        var failed = items.Where(item => itemFailed(ret, item["id"])).Select(item => WorkflowItemPath.Key(ret.Id, item["id"])).ToList();
         if (failed.Count > 0)
         {
             return new Composed(null, $"{flow.Label} could not assemble: {string.Join(", ", failed)} did not complete.");

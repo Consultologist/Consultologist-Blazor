@@ -93,7 +93,7 @@ public static class UnattestedNodes
 
         foreach (var (key, status) in response.NodeOutputs ?? new Dictionary<string, ConsultGenerationNodeStatus>())
         {
-            if (status.Unattested == true && !key.Contains(':', StringComparison.Ordinal) && !entries.ContainsKey(key))
+            if (status.Unattested == true && !Consultologist.PackageFormat.WorkflowItemPath.IsItemKey(key) && !entries.ContainsKey(key))
             {
                 entries[key] = new Entry(key, status.Label, status.CustomSchemaHash, status.CustomAgent);
             }
@@ -118,7 +118,7 @@ public static class UnattestedNodes
         }
 
         var item = outputs
-            .Where(pair => pair.Key.StartsWith(nodeId + ":", StringComparison.Ordinal))
+            .Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, nodeId) is not null)
             .OrderBy(pair => pair.Key, StringComparer.Ordinal)
             .Select(pair => pair.Value)
             .FirstOrDefault(status => status.CustomSchemaHash is { Length: > 0 } || status.CustomAgent is { Length: > 0 });

@@ -2170,7 +2170,7 @@
                 {
                     if (branch == "none")
                     {
-                        var skipped = detail.NodeOutputs.GetValueOrDefault($"{descriptor.Id}:{itemId}")
+                        var skipped = detail.NodeOutputs.GetValueOrDefault(Consultologist.PackageFormat.WorkflowItemPath.Key(descriptor.Id, itemId))
                             ?? new ConsultGenerationNodeStatus(descriptor.Id, descriptor.Label, "Skipped", null, null, null, null);
                         tags[itemId] = $"skipped — {skipped.Reason ?? "took no branch"}";
                         perItem.Add((itemId, skipped));
@@ -2178,7 +2178,7 @@
                     }
 
                     var returned = (descriptor.Body ?? Array.Empty<string>())
-                        .Select(bodyId => (bodyId, Entry: detail.NodeOutputs.GetValueOrDefault($"{bodyId}:{itemId}")))
+                        .Select(bodyId => (bodyId, Entry: detail.NodeOutputs.GetValueOrDefault(Consultologist.PackageFormat.WorkflowItemPath.Key(bodyId, itemId))))
                         .FirstOrDefault(pair => pair.Entry is not null);
                     tags[itemId] = returned.Entry is null ? branch : $"{branch} → {returned.bodyId}";
                     perItem.Add((itemId, returned.Entry ?? new ConsultGenerationNodeStatus(descriptor.Id, descriptor.Label, "Running", null, null, null, null)));
@@ -2189,8 +2189,8 @@
             }
 
             var items = detail.NodeOutputs
-                .Where(pair => pair.Key.StartsWith(descriptor.Id + ":", StringComparison.Ordinal))
-                .Select(pair => (ItemId: pair.Key[(descriptor.Id.Length + 1)..], Entry: pair.Value))
+                .Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, descriptor.Id) is not null)
+                .Select(pair => (ItemId: Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, descriptor.Id)!, Entry: pair.Value))
                 .OrderBy(pair => pair.ItemId, StringComparer.Ordinal)
                 .ToList();
 

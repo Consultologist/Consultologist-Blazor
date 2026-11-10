@@ -100,9 +100,5 @@ internal static class ConsultGatedScope
             TemplatePipes.Engine);
 
     /// <summary>The node id of an instance key ("nodeId" or "nodeId:itemId").</summary>
-    internal static string NodeIdOf(string instanceKey)
-    {
-        var colon = instanceKey.IndexOf(':');
-        return colon < 0 ? instanceKey : instanceKey[..colon];
-    }
+    internal static string NodeIdOf(string instanceKey) => WorkflowItemPath.NodeOf(instanceKey);
 }

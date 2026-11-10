@@ -43,7 +43,7 @@ internal static class ConsultRenderPayload
 
             var read = nodesById.GetValueOrDefault(readId)
                 ?? throw new InvalidOperationException($"Node '{node.Id}' reads node '{readId}', which the job does not carry.");
-            var key = ConsultNodeScheduler.InstanceKey(readId, read.ForEach is null ? null : item?["id"]);
+            var key = ConsultNodeScheduler.InstanceKey(readId, ConsultNodeScheduler.AlignedPath(read, WorkflowItemPath.OfItem(item)));
             // v27 (#1235, design § 1.4): an inner if/case skipped for this item — the read is omitted, the render reads null.
             if (skipped?.Contains(key) == true)
             {

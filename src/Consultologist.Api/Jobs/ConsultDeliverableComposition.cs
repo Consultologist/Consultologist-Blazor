@@ -1,3 +1,4 @@
+using Consultologist.PackageFormat;
 using Consultologist.Api.Models;
 using Consultologist.Api.Workflow;
 
@@ -52,7 +53,7 @@ internal static class ConsultDeliverableComposition
                     ? returned
                     : throw new InvalidOperationException($"Deliverable '{deliverable.ResultId}' sources loop '{sourceId}', which returns no node the job carries.");
                 var items = fanItems(ret);
-                var failedItems = items.Where(item => itemFailed(ret, item["id"])).Select(item => $"{ret.Id}:{item["id"]}").ToList();
+                var failedItems = items.Where(item => itemFailed(ret, item["id"])).Select(item => WorkflowItemPath.Key(ret.Id, item["id"])).ToList();
                 if (failedItems.Count > 0)
                 {
                     failed.AddRange(failedItems);
