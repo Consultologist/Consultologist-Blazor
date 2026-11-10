@@ -497,4 +497,21 @@ public class TemplateRendererTests
         var zero = Scope() with { Whiles = new Dictionary<string, TemplateWhileOutput> { ["refine"] = new(0, "check", Array.Empty<TemplateWhilePass>()) } };
         Assert.Equal("none 0 check", Render("{{ if node.refine.content }}some{{ else }}none{{ end }} {{ node.refine.passes }} {{ node.refine.stopped }}", zero));
     }
+
+    [Fact]
+    public void ALoopList_SaysWhyItStopped_AndANotRunItemIsASkippedElement()
+    {
+        // #1342 (v30 design § 3.4, § 6): stopped on the list; an item not run composes as skipped.
+        static TemplateNodeOutput Out(string text) => new(text, "prose", "x");
+        var loop = new TemplateLoopOutput(
+            "draft",
+            new List<TemplateFanItem> { new("1", "Part 1", Text: "a"), new("2", "Part 2", Text: "b") },
+            new Dictionary<string, IReadOnlyDictionary<string, TemplateNodeOutput>> { ["draft"] = new Dictionary<string, TemplateNodeOutput> { ["1"] = Out("one") } },
+            Out("one"),
+            Skipped: new HashSet<string> { "2" },
+            Stopped: "until");
+        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["parts"] = loop.Output }) with { Loops = new Dictionary<string, TemplateLoopOutput> { ["parts"] = loop } };
+
+        Assert.Equal("until 1:one 2:skipped", Render("{{ node.parts.stopped }}{{ for e in node.parts }} {{ e.item.id }}:{{ if e.skipped }}skipped{{ else }}{{ e.content }}{{ end }}{{ end }}", scope));
+    }
 }
