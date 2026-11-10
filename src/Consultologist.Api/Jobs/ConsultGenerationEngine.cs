@@ -386,7 +386,8 @@ public sealed class ConsultGenerationOrchestrator
                         // nodes' returned nodes, the flows that took no branch.
                         Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys()),
                         FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
-                        SkippedNodes: skippedNodes.Count > 0 ? skippedNodes.Order(StringComparer.Ordinal).ToList() : null,
+                        // #1356: and, for this item, the sibling inner flows it skipped.
+                        SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),
                         // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
                         Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds())),
                     AgentActivityRetryOptions)] = (node.Id, item?["id"]);
@@ -556,7 +557,9 @@ public sealed class ConsultGenerationOrchestrator
                     RenderFolders(),
                     ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
                     ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
-                    ConsultRenderPayload.FlowRetsFor(flow, nodesById, ItemRets())),
+                    ConsultRenderPayload.FlowRetsFor(flow, nodesById, ItemRets()),
+                    // #1356: the flows its condition reads that took no branch, for this item.
+                    SkippedNodes: ConsultRenderPayload.SkippedReadsFor(flow, item, nodesById, skippedNodes, inner.SkippedInstances)),
                 AgentActivityRetryOptions)] = (flow.Id, item["id"]);
         }
 

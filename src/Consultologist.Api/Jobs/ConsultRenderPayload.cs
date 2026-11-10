@@ -59,6 +59,37 @@ internal static class ConsultRenderPayload
         return texts;
     }
 
+    /// <summary>
+    /// #1356 (v26 design § 1.3, v27 § 1.4): the flow nodes an instance's render reads
+    /// as null — the flows that took no branch (node-level, as ever) and, for this
+    /// item, each read whose instance an inner if/case skipped. The render is per
+    /// instance, so the per-item ones are bare ids, beside the node-level ones;
+    /// <see cref="NodeTextsFor"/> omits the same reads. Null when there are none.
+    /// </summary>
+    public static IReadOnlyList<string>? SkippedReadsFor(
+        ConsultNodeDescriptor node,
+        IReadOnlyDictionary<string, string>? item,
+        IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
+        IReadOnlySet<string> skippedNodes,
+        IReadOnlySet<string> skippedInstances)
+    {
+        var skipped = new HashSet<string>(skippedNodes, StringComparer.Ordinal);
+
+        if (skippedInstances.Count > 0)
+        {
+            foreach (var readId in node.Reads ?? Array.Empty<string>())
+            {
+                if (nodesById.TryGetValue(readId, out var read)
+                    && skippedInstances.Contains(ConsultNodeScheduler.InstanceKey(readId, ConsultNodeScheduler.AlignedPath(read, WorkflowItemPath.OfItem(item)))))
+                {
+                    skipped.Add(readId);
+                }
+            }
+        }
+
+        return skipped.Count > 0 ? skipped.Order(StringComparer.Ordinal).ToList() : null;
+    }
+
     /// <summary>The snippet folders of the snapshot: every collection that is not an input fan, as settled at job start.</summary>
     public static IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>> FoldersFor(
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? collections) =>

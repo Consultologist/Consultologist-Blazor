@@ -28,7 +28,12 @@ public sealed record ConsultDecideFlowItemInput(
     // v29 (#1304, design § 3.2): set when this is a folder item's gate, not an
     // inner if/case — the folder whose item's if reads a node, decided once that
     // node completes. FlowId then names the folder. Null below 29. Trailing.
-    string? GateFolder = null);
+    string? GateFolder = null,
+    // #1356 (v26 design § 1.3, v27 § 1.4): the flows the condition reads that took no
+    // branch — for this item, the sibling inner flows it skipped — read as null.
+    // Trailing; written only when set, so a decision that reads none serializes as before.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? SkippedNodes = null);
 
 /// <summary>
 /// v27 (#1235, design § 1.3, § 1.4, § 2): what one item's decision said — the
@@ -115,7 +120,7 @@ public sealed class DecideFlowItemActivity
                 input.Run,
                 input.Profile,
                 package)
-            .WithFanItem(input.Collection, input.Item);
+            .WithFanItem(input.Collection, input.Item) with { SkippedNodes = input.SkippedNodes };
 
         var outcome = scope.Decide(flow);
         var reason = outcome.Skipped
