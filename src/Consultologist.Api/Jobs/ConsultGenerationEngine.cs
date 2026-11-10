@@ -932,6 +932,14 @@ public sealed class ConsultGenerationOrchestrator
                         new BlockGenerationResult(WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, outerPath), WorkflowPackageBlocks.ItemName(outer), false, null, failure));
                 }
             }
+
+            // Storage 11 (#1341): the failed instance's row, with its sentence.
+            await context.Entities.CallEntityAsync(
+                entityId,
+                nameof(ConsultGenerationJobEntity.ResolveLoop),
+                new ConsultGenerationLoopResolution(
+                    loop.Id, loop.Collection!, Array.Empty<ConsultCollectionItem>(), Array.Empty<ConsultCollectionItem>(),
+                    totalBlockCount, context.CurrentUtcDateTime, Path: outerPath, Failure: failure));
         }
 
         async Task MarkFullyCompletedChainNodesAsync()

@@ -97,6 +97,12 @@ public class EngineRunNestedTests
         Assert.Equal("Paragraphs could not read its list: node.outline.value.points is not a list.", failed.Error);
         Assert.Equal(ConsultGenerationBlockStatuses.Completed, run.State.Blocks["consult:paragraphs:1/1"].Status);
         Assert.NotEqual(ConsultGenerationJobStatuses.Running, run.State.Status);
+
+        // Storage 11 (#1341): the failed instance has its row, with its sentence and no count.
+        var row = Assert.Single(run.State.LoopInstances!, r => r.Path == "2");
+        Assert.Equal(("paragraphs", (int?)null, "Paragraphs could not read its list: node.outline.value.points is not a list."), (row.LoopId, row.Count, row.Failure));
+        Assert.Equal(2, Assert.Single(run.State.LoopInstances!, r => r.Path == "1").Count);
+        Assert.DoesNotContain(ConsultGenerationJobs.CreateSemanticEventCandidates(run.State.ToResponse()), c => c.EventKey == "count-resolved:paragraphs:2");
     }
 
     [Fact]
@@ -117,6 +123,7 @@ public class EngineRunNestedTests
             key => key == "outline:2" ? """{ "points": [] }""" : Outputs(key));
 
         Assert.Contains(run.State.History, e => e.Kind == "loop-resolved" && e.Label == "Paragraphs (2): no items: node.outline.value.points was empty");
+        Assert.Equal((0, "no items: node.outline.value.points was empty"), (run.State.LoopInstances!.Single(r => r.Path == "2").Count, run.State.LoopInstances!.Single(r => r.Path == "2").Reason));
         Assert.DoesNotContain(run.Prompts, p => p.NodeId.StartsWith("draft_paragraph:2/", StringComparison.Ordinal));
         Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
     }

@@ -2193,6 +2193,20 @@ public sealed class ConsultGenerationJobs
                 new ConsultGenerationCountResolvedEvent(response.JobId, loop.Id, loop.Count!.Value, response.TotalBlockCount, response.UnresolvedLoops?.Count ?? 0));
         }
 
+        // v30 (#1341, design § 2.3): an instance of a nested loop settles its own count —
+        // one event per settled instance, keyed by its path. A failed one raises none (its block says so).
+        foreach (var instance in (response.LoopInstances ?? Array.Empty<ConsultLoopInstanceRow>())
+            .Where(row => row.Count is not null)
+            .OrderBy(row => row.LoopId, StringComparer.Ordinal)
+            .ThenBy(row => row.Path, StringComparer.Ordinal))
+        {
+            AddEventCandidate(
+                candidates,
+                ConsultGenerationCountResolvedEvent.EventName,
+                $"{ConsultGenerationCountResolvedEvent.EventName}:{instance.LoopId}:{instance.Path}",
+                new ConsultGenerationCountResolvedEvent(response.JobId, instance.LoopId, instance.Count!.Value, response.TotalBlockCount, response.UnresolvedLoops?.Count ?? 0, instance.Path));
+        }
+
         if (IsTerminalJobStatus(response.Status))
         {
             if (response.Status == ConsultGenerationJobStatuses.Failed)
@@ -2548,7 +2562,11 @@ public sealed record ConsultGenerationCountResolvedEvent(
     string LoopId,
     int Count,
     int Total,
-    int Pending)
+    int Pending,
+    // v30 (#1341, design § 2.3): the outer path of a nested loop's instance; omitted
+    // for a top-level loop, so a 29 event's payload is the bytes it always was.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Path = null)
 {
     public const string EventName = "count-resolved";
 }
