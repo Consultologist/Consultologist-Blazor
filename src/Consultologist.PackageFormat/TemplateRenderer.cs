@@ -311,9 +311,12 @@ public static class TemplateRenderer
         }
 
         // #1154 (§ 1.3): a flow node that took no branch reads null — a guard sees it.
+        // #1356: as a node whose .content and .value are null and which tests false —
+        // the guard a template may write is a member's (the walker refuses a bare
+        // node read), and a member of plain null throws under strict rendering.
         foreach (var id in scope.SkippedNodes ?? new HashSet<string>())
         {
-            node[id] = null;
+            node[id] = new SkippedNodeObject();
         }
 
         globals[TemplateObjects.Node] = node;
@@ -730,6 +733,21 @@ public static class TemplateRenderer
     /// member access, which stays on for a node's parsed value, where an
     /// optional field may be absent).
     /// </summary>
+    /// <summary>
+    /// #1356 (v26 design § 1.3): a flow node that took no branch, as a render reads
+    /// it — <c>.content</c> and <c>.value</c> are null, and the node itself tests
+    /// false (<see cref="PromptTemplateRenderer.RenderingContext.ToBool"/>), so
+    /// <c>{{ if node.triage.content }}</c> and <c>{{ if node.triage }}</c> both see it.
+    /// </summary>
+    internal sealed class SkippedNodeObject : ScriptObject
+    {
+        public SkippedNodeObject()
+        {
+            this[TemplateMembers.Content] = null;
+            this[TemplateMembers.Value] = null;
+        }
+    }
+
     private class ClosedObject : ScriptObject
     {
         private readonly string _subject;
