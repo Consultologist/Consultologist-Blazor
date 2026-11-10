@@ -98,6 +98,18 @@ public class V26RenderTests
     }
 
     [Fact]
+    public void AFlowNodeThatTookNoBranch_ReadsNullMembers_UnderTheGuardAWalkerAccepts()
+    {
+        // #1356: the walker refuses a bare node read, so the guard a template may write is a
+        // member's — null for a flow that took no branch, never a failure; unguarded, empty.
+        var package = V26JobStartTests.Package(m => V26JobStartTests.WithTriage(m, withElse: false));
+        var input = Input("assessment", "prompts/assessment.md", skipped: new[] { "triage" });
+
+        Assert.Equal("no|no|[]",
+            ConsultRenderPayload.RenderAt25(input, package, "{{ if node.triage.content }}yes{{ else }}no{{ end }}|{{ if node.triage.value }}yes{{ else }}no{{ end }}|[{{ node.triage.content }}]"));
+    }
+
+    [Fact]
     public void AnIfNode_ReadsAsItsReturnedNode_Typed()
     {
         var package = V26JobStartTests.Package(m => V26JobStartTests.WithTriage(m));

@@ -80,6 +80,73 @@ public class EngineRunGoldenTests
     }
 
     [Fact]
+    public async Task ABodyNode_ReadingItsSiblingInnerIf_ReadsNull_ForAnItemThatTookNoBranch()
+    {
+        // #1356: draft_problem reads the triage if beside it; the mild problem takes no branch,
+        // so its draft reads node.triage as null — under the guard, not a failure.
+        var bundle = V29Package.With(root =>
+        {
+            var nodes = root["nodes"]!.AsArray();
+            nodes.Add(new JsonObject { ["id"] = "escalate", ["label"] = "Escalate", ["format"] = "prose" });
+            nodes.Add(new JsonObject
+            {
+                ["id"] = "triage", ["label"] = "Triage", ["if"] = "item.value.severity == \"high\"",
+                ["then"] = new JsonObject { ["nodes"] = new JsonArray("escalate"), ["ret"] = "node.escalate" },
+            });
+            V29Package.Node(root, "problems")["nodes"]!.AsArray().Add("triage");
+        }, files =>
+        {
+            files["prompts/escalate.md"] = "Escalate {{ item.value.name }}.";
+            files["prompts/draft_problem.md"] = "Problem {{ item.id }}: {{ item.value.name }}.{{ if node.triage.content }} {{ node.triage.content }}{{ else }} Routine.{{ end }}";
+        });
+
+        var run = await EngineRun.StartAsync(Load(bundle, "test@v29"), Notes, Outputs);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        Assert.Contains(run.Prompts, p => p.NodeId == "draft_problem:1" && p.Prompt.EndsWith("Routine.", StringComparison.Ordinal));
+        Assert.Contains(run.Prompts, p => p.NodeId == "draft_problem:2" && p.Prompt.Contains("[escalate:2]", StringComparison.Ordinal));
+        Matches("EngineRun29SiblingRead.txt", run.Trace());
+    }
+
+    [Fact]
+    public async Task AnInnerIfsCondition_ReadingItsSkippedSibling_ReadsNull()
+    {
+        // #1356: followup's condition reads the triage if beside it; for the mild problem triage
+        // took no branch, so the condition reads node.triage.content as null — and holds.
+        var bundle = V29Package.With(root =>
+        {
+            var nodes = root["nodes"]!.AsArray();
+            nodes.Add(new JsonObject { ["id"] = "escalate", ["label"] = "Escalate", ["format"] = "prose" });
+            nodes.Add(new JsonObject
+            {
+                ["id"] = "triage", ["label"] = "Triage", ["if"] = "item.value.severity == \"high\"",
+                ["then"] = new JsonObject { ["nodes"] = new JsonArray("escalate"), ["ret"] = "node.escalate" },
+            });
+            nodes.Add(new JsonObject { ["id"] = "note", ["label"] = "Note", ["format"] = "prose" });
+            nodes.Add(new JsonObject
+            {
+                ["id"] = "followup", ["label"] = "Follow-up", ["if"] = "node.triage.content == null",
+                ["then"] = new JsonObject { ["nodes"] = new JsonArray("note"), ["ret"] = "node.note" },
+            });
+            var problems = V29Package.Node(root, "problems");
+            problems["nodes"]!.AsArray().Add("triage");
+            problems["nodes"]!.AsArray().Add("followup");
+            problems["ret"] = "node.followup";
+        }, files =>
+        {
+            files["prompts/escalate.md"] = "Escalate {{ item.value.name }}.";
+            files["prompts/note.md"] = "Note {{ item.value.name }}: {{ node.draft_problem.content }}";
+        });
+
+        var run = await EngineRun.StartAsync(Load(bundle, "test@v29"), Notes, Outputs);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        Assert.Contains(run.Prompts, p => p.NodeId == "note:1");
+        Assert.DoesNotContain(run.Prompts, p => p.NodeId == "note:2");
+        Matches("EngineRun29SiblingCondition.txt", run.Trace());
+    }
+
+    [Fact]
     public async Task A26Job_RunsAsItDidBeforeNesting()
     {
         var bundle = V26Package.Minimal();
