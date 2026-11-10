@@ -90,7 +90,10 @@ public sealed record TemplateLoopOutput(
     // v30 (#1341, design § 6): the loops this loop's body holds, per outer item — inner
     // loop id → this loop's item id → that instance's list, so an element exposes each
     // inner loop by its id (s.paragraphs). Null below 30.
-    IReadOnlyDictionary<string, IReadOnlyDictionary<string, TemplateLoopOutput>>? Inner = null);
+    IReadOnlyDictionary<string, IReadOnlyDictionary<string, TemplateLoopOutput>>? Inner = null,
+    // v30 (#1342, design § 3.4): why the loop stopped — until (its until held), bound
+    // (its max was reached) or end (it ran out of items). Null below 30.
+    string? Stopped = null);
 
 /// <summary>
 /// The fan item an instance runs for: a snippet fan carries <c>Text</c> (a
@@ -345,7 +348,13 @@ public static class TemplateRenderer
             });
             var values = new ScriptArray(present.Select(item => NodeValue(subject, loop.RetId, loop.Body[loop.RetId][item.Id])));
 
-            return LoopList(() => new ClosedObject(subject, $"{path}[]"), elements, loop.Output.Text, true, values);
+            var list = LoopList(() => new ClosedObject(subject, $"{path}[]"), elements, loop.Output.Text, true, values);
+            if (loop.Stopped is { } stopped)
+            {
+                list.ScriptObject[TemplateMembers.Stopped] = stopped;
+            }
+
+            return list;
         }
 
         // #1154 (§ 1.3): a flow node that took no branch reads null — a guard sees it.
