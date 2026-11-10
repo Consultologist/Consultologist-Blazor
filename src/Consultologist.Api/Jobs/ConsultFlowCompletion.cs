@@ -88,4 +88,7 @@ internal static class ConsultNodeFlows
     public const string For = "for";
     public const string If = "if";
     public const string Case = "case";
+
+    /// <summary>v30 (#1342): a node that repeats its body pass by pass.</summary>
+    public const string While = "while";
 }

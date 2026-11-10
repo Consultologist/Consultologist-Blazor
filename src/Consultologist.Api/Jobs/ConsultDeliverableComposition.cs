@@ -78,6 +78,13 @@ internal static class ConsultDeliverableComposition
                 continue;
             }
 
+            // v30 (#1342, decided 2026-11-10): a while that ran no pass has no section —
+            // its block was skipped with the reason; the document composes without it.
+            if (source.Kind == ConsultNodeFlows.While && !outputs.ContainsKey(sourceId) && skipped?.Contains(sourceId) == true)
+            {
+                continue;
+            }
+
             // An if/case's row is its returned node's result (the alias); a
             // prose node's its own.
             if (!outputs.TryGetValue(sourceId, out var scalar))

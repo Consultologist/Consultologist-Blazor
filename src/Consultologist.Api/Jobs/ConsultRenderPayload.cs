@@ -132,7 +132,7 @@ internal static class ConsultRenderPayload
         }
 
         return ScopeFor(input.Variables, input.VariableTypes, input.NodeTexts, input.Folders, input.Item, input.ForEach, input.Run, input.Profile, package,
-            input.Loops, input.FlowRets, input.SkippedNodes, input.Deliverables, input.Parents);
+            input.Loops, input.FlowRets, input.SkippedNodes, input.Deliverables, input.Parents, input.Pass, input.Whiles);
     }
 
     /// <summary>
@@ -339,7 +339,10 @@ internal static class ConsultRenderPayload
         // v26 (#1155): the deliverables read, composed (null = skipped).
         IReadOnlyDictionary<string, string?>? deliverables = null,
         // v30 (#1341): the enclosing loops' items, outermost first (item.parent).
-        IReadOnlyList<ConsultParentItem>? parents = null)
+        IReadOnlyList<ConsultParentItem>? parents = null,
+        // v30 (#1342): the pass this render runs in, and the whiles it reads from outside.
+        ConsultPassPayload? pass = null,
+        IReadOnlyDictionary<string, ConsultWhilePayload>? whiles = null)
     {
         var manifest = package.Manifest;
         var nodesById = (package.Nodes ?? new List<WorkflowNodeSpec>()).DistinctBy(n => n.Id, StringComparer.Ordinal).ToDictionary(n => n.Id, StringComparer.Ordinal);
@@ -497,7 +500,18 @@ internal static class ConsultRenderPayload
                             item.Header?.If))
                         .ToList(),
                     StringComparer.Ordinal)
-                : null);
+                : null,
+            // v30 (#1342, design § 3.2): the pass and the whiles read from outside.
+            Pass: pass is null ? null : new TemplatePassScope(pass.Number, PassesOf(pass.Earlier)),
+            Whiles: whiles?.ToDictionary(
+                entry => entry.Key,
+                entry => new TemplateWhileOutput(entry.Value.Passes, entry.Value.Stopped, PassesOf(entry.Value.History)),
+                StringComparer.Ordinal));
+
+        IReadOnlyList<TemplateWhilePass> PassesOf(IReadOnlyList<ConsultPassTexts> passes) =>
+            passes.Select(earlier => new TemplateWhilePass(
+                earlier.Number,
+                earlier.Texts.ToDictionary(text => text.Key, text => OutputOf(text.Key, text.Value), StringComparer.Ordinal))).ToList();
     }
 
     /// <summary>The type a node's format declares — the stamped catalogue's, or a package-local format file's — so <c>.value</c> parses accordingly; text when unknown.</summary>
