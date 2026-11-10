@@ -67,10 +67,20 @@ public static class WorkflowItemPath
     /// path is read from it.
     /// </summary>
     public static string? OfItem(IReadOnlyDictionary<string, string>? item) =>
-        item is not null && item.TryGetValue("id", out var id) ? id : null;
+        item is null ? null
+        : item.TryGetValue(PathMember, out var path) ? path
+        : item.TryGetValue("id", out var id) ? id
+        : null;
 
     /// <inheritdoc cref="OfItem(IReadOnlyDictionary{string, string}?)"/>
-    public static string? OfItem(JsonObject? item) => item?["id"]?.GetValue<string>();
+    public static string? OfItem(JsonObject? item) => (item?[PathMember] ?? item?["id"])?.GetValue<string>();
+
+    /// <summary>
+    /// #1341 (v30 design § 1.1): the member an item of a NESTED loop instance carries —
+    /// its whole path (<c>hpi/2</c>), beside its own <c>id</c> (<c>2</c>). Only a nested
+    /// item carries it, so a one-level item's map is what it always was.
+    /// </summary>
+    public const string PathMember = "path";
 
     /// <summary>A node's key for one path — <c>{node}:{path}</c>, the bare node id outside every loop.</summary>
     public static string Key(string nodeId, string? path) => path is null ? nodeId : $"{nodeId}:{path}";

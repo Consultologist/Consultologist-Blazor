@@ -43,7 +43,7 @@ internal static class ConsultRenderPayload
 
             var read = nodesById.GetValueOrDefault(readId)
                 ?? throw new InvalidOperationException($"Node '{node.Id}' reads node '{readId}', which the job does not carry.");
-            var key = ConsultNodeScheduler.InstanceKey(readId, ConsultNodeScheduler.AlignedPath(read, WorkflowItemPath.OfItem(item)));
+            var key = ConsultNodeScheduler.InstanceKey(readId, ConsultNodeScheduler.AlignedPath(read, WorkflowItemPath.OfItem(item), nodesById));
             // v27 (#1235, design § 1.4): an inner if/case skipped for this item — the read is omitted, the render reads null.
             if (skipped?.Contains(key) == true)
             {
@@ -80,7 +80,7 @@ internal static class ConsultRenderPayload
             foreach (var readId in node.Reads ?? Array.Empty<string>())
             {
                 if (nodesById.TryGetValue(readId, out var read)
-                    && skippedInstances.Contains(ConsultNodeScheduler.InstanceKey(readId, ConsultNodeScheduler.AlignedPath(read, WorkflowItemPath.OfItem(item)))))
+                    && skippedInstances.Contains(ConsultNodeScheduler.InstanceKey(readId, ConsultNodeScheduler.AlignedPath(read, WorkflowItemPath.OfItem(item), nodesById))))
                 {
                     skipped.Add(readId);
                 }
@@ -326,7 +326,8 @@ internal static class ConsultRenderPayload
 
             // v29 (#1303, design § 2.2): an item of a node's list — its value the
             // element, structured when the element is an object or array.
-            if (WorkflowFlowNodes.IsNodeValueCollection(fan))
+            // v30 (#1341, design § 2.2): an item of the outer item's list field reads as one.
+            if (WorkflowFlowNodes.IsNodeValueCollection(fan) || fan.StartsWith("item.value.", StringComparison.Ordinal))
             {
                 return new TemplateFanItem(id, name, Value: fanned.GetValueOrDefault("value", string.Empty), Element: ConsultNodeValueLoops.ElementOf(fanned));
             }

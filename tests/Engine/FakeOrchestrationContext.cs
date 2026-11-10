@@ -70,8 +70,15 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
             throw new InvalidOperationException($"The test answers no activity '{name.Name}'.");
         }
 
-        var result = respond(input);
-        return Task.FromResult(RoundTrip<TResult>(result));
+        // A responder that throws is an activity that failed: the orchestrator awaits a faulted task.
+        try
+        {
+            return Task.FromResult(RoundTrip<TResult>(respond(input)));
+        }
+        catch (Exception ex)
+        {
+            return Task.FromException<TResult>(ex);
+        }
     }
 
     public override Task CreateTimer(DateTime fireAt, CancellationToken cancellationToken)

@@ -111,7 +111,8 @@ public sealed class DecideFlowItemActivity
             throw new InvalidOperationException($"Node '{input.FlowId}' runs in no loop; a top-level flow node is decided by the fire set.");
         }
 
-        var itemId = input.Item.GetValueOrDefault("id") ?? throw new InvalidOperationException($"The item of '{input.FlowId}' has no id.");
+        // #1341: the item's path — its id at one level, outer/id inside a nested loop.
+        var itemId = WorkflowItemPath.OfItem(input.Item) ?? throw new InvalidOperationException($"The item of '{input.FlowId}' has no id.");
         var scope = new ConsultConditionScope(
                 input.EffectiveInputs ?? new Dictionary<string, string>(StringComparer.Ordinal),
                 ConsultConditionScope.TypesOf(package),

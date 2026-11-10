@@ -1540,8 +1540,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                     .ToList()))
             .ToList();
 
+        // v30 (#1341, design § 2.3): a loop inside a loop is unresolved at start whatever it
+        // iterates — its instances settle per outer item, at run time. None below 30.
+        var flows = package.Manifest.SpecVersion >= 30 ? FlowsOf(package) : null;
         var unresolvedLoops = package.Nodes
-            .Where(node => WorkflowFlowNodes.IsNodeValueCollection(WorkflowFlowNodes.CollectionOf(node.For)))
+            .Where(node => WorkflowFlowNodes.IsNodeValueCollection(WorkflowFlowNodes.CollectionOf(node.For))
+                || (node.For is not null && flows?.LoopOf(node.Id) is not null))
             .Select(node => node.Id)
             .ToList();
 

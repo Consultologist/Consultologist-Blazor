@@ -44,6 +44,9 @@ internal sealed class EngineRun
         JobId = jobId;
     }
 
+    /// <summary>A scripted reply that makes the prompt node's activity fail.</summary>
+    public const string Fails = "<fails>";
+
     public FakeOrchestrationContext Context { get; }
 
     public ConsultGenerationJobEntity Entity { get; }
@@ -139,6 +142,11 @@ internal sealed class EngineRun
                 }
 
                 var text = outputs?.Invoke(node.NodeId) ?? $"[{node.NodeId}]";
+                if (text == Fails)
+                {
+                    throw new InvalidOperationException($"{node.NodeId} failed in the test.");
+                }
+
                 // A classifier's answer rides beside its text, as the activity normalises it.
                 return new NodeRunResult(text, null, $"in:{node.NodeId}", $"out:{node.NodeId}", 6,
                     Classification: node.Format == "classification" ? text : null);

@@ -53,7 +53,7 @@ internal static class ConsultDeliverableComposition
                     ? returned
                     : throw new InvalidOperationException($"Deliverable '{deliverable.ResultId}' sources loop '{sourceId}', which returns no node the job carries.");
                 var items = fanItems(ret);
-                var failedItems = items.Where(item => itemFailed(ret, item["id"])).Select(item => WorkflowItemPath.Key(ret.Id, item["id"])).ToList();
+                var failedItems = items.Where(item => itemFailed(ret, WorkflowItemPath.OfItem(item)!)).Select(item => WorkflowItemPath.Key(ret.Id, WorkflowItemPath.OfItem(item)!)).ToList();
                 if (failedItems.Count > 0)
                 {
                     failed.AddRange(failedItems);
@@ -67,14 +67,14 @@ internal static class ConsultDeliverableComposition
                     return null;
                 }
 
-                var present = items.Where(item => skipped?.Contains(ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])) != true).ToList();
+                var present = items.Where(item => skipped?.Contains(ConsultNodeScheduler.InstanceKey(ret.Id, WorkflowItemPath.OfItem(item)!)) != true).ToList();
                 parts.Add(new ConsultAggregateRenderer.ForEachPart(present
                     .Select(item => (
-                        item["id"],
+                        WorkflowItemPath.OfItem(item)!,
                         WorkflowPackageBlocks.ItemName(item),
-                        outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].RawOutput.Trim()))
+                        outputs[ConsultNodeScheduler.InstanceKey(ret.Id, WorkflowItemPath.OfItem(item)!)].RawOutput.Trim()))
                     .ToList()));
-                hashes.AddRange(present.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, item["id"])].OutputHash));
+                hashes.AddRange(present.Select(item => outputs[ConsultNodeScheduler.InstanceKey(ret.Id, WorkflowItemPath.OfItem(item)!)].OutputHash));
                 continue;
             }
 

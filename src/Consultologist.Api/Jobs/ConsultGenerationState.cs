@@ -125,8 +125,33 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         }
 
         state.TotalBlockCount = input.Total;
-        state.Collections ??= new List<ConsultCollectionRoster>();
-        state.Collections.Add(new ConsultCollectionRoster(input.Collection, input.Items));
+        var label = state.Nodes?.FirstOrDefault(node => string.Equals(node.Id, input.LoopId, StringComparison.Ordinal))?.Label ?? input.LoopId;
+
+        // v30 (#1341): one instance of a nested loop — its blocks, its roster (ids are
+        // paths, unique across instances) and the total; the loop stays unresolved.
+        if (input.Path is { } path)
+        {
+            state.Collections ??= new List<ConsultCollectionRoster>();
+            state.Collections.Add(new ConsultCollectionRoster(input.Collection, input.Items));
+            state.History.Add(new JobHistoryEvent(
+                "loop-resolved",
+                input.Reason is { } instanceReason
+                    ? $"{label} ({path}): {instanceReason}"
+                    : $"{label} ({path}): {input.Items.Count} {(input.Items.Count == 1 ? "item" : "items")}",
+                null,
+                input.ResolvedAtUtc));
+            State = state;
+            await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+            return;
+        }
+
+        // A nested loop's last call carries every instance's items; its rosters are already in.
+        if (input.Settled != true)
+        {
+            state.Collections ??= new List<ConsultCollectionRoster>();
+            state.Collections.Add(new ConsultCollectionRoster(input.Collection, input.Items));
+        }
+
         state.UnresolvedLoops.Remove(input.LoopId);
 
         if (state.Nodes?.FindIndex(node => string.Equals(node.Id, input.LoopId, StringComparison.Ordinal)) is { } at and >= 0)
@@ -134,7 +159,6 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             state.Nodes[at] = state.Nodes[at] with { Count = input.Items.Count, ResolvedAtUtc = input.ResolvedAtUtc, Reason = input.Reason };
         }
 
-        var label = state.Nodes?.FirstOrDefault(node => string.Equals(node.Id, input.LoopId, StringComparison.Ordinal))?.Label ?? input.LoopId;
         state.History.Add(new JobHistoryEvent(
             "loop-resolved",
             input.Reason is { } reason
@@ -1369,7 +1393,16 @@ public sealed record ConsultGenerationLoopResolution(
     IReadOnlyList<ConsultCollectionItem> Blocks,
     int Total,
     DateTimeOffset ResolvedAtUtc,
-    string? Reason = null);
+    string? Reason = null,
+    // v30 (#1341, design § 2.3): a NESTED loop resolves per instance — Path is the
+    // outer item's path (its blocks and roster are added; the loop stays unresolved),
+    // and one last call with Settled true, once every outer item has its instance,
+    // takes the loop off the unresolved list and stamps its row with every instance's
+    // items. Trailing; written only when set, so a 29 resolution serializes as before.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Path = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    bool? Settled = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
