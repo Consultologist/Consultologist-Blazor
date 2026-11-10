@@ -249,8 +249,11 @@ public sealed class ConsultGenerationOrchestrator
                 return false;
             }
 
-            var id = node.Id;
-            for (var depth = 0; depth < 3; depth++)
+            // v30 (#1340, design § 1.2): up the chain of owners to the root — at ≤29 the
+            // shape keeps it at three hops (body node, inner if/case, loop), so the answer
+            // is 29's; guarded against a body that holds its holder.
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            for (var id = node.Id; seen.Add(id); )
             {
                 if (unresolvedLoops.Contains(id))
                 {
@@ -269,7 +272,7 @@ public sealed class ConsultGenerationOrchestrator
         }
 
         string FailedKey(ConsultNodeDescriptor node, string itemId) =>
-            v6 ? $"{CollectionIdOf(node)}:{itemId}" : itemId;
+            v6 ? WorkflowItemPath.Key(CollectionIdOf(node), itemId) : itemId;
 
         // v26 (#1154): a 26 folder item carries its header's label where a 25 item carried name.
         string ItemName(ConsultNodeDescriptor node, string itemId) =>
@@ -558,7 +561,7 @@ public sealed class ConsultGenerationOrchestrator
                     await context.Entities.CallEntityAsync(
                         entityId,
                         nameof(ConsultGenerationJobEntity.SkipBlock),
-                        new ConsultGenerationBlockSkip($"{deliverable.BlockPrefix}{loop.Id}:{itemId}", name, reason));
+                        new ConsultGenerationBlockSkip(WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, itemId), name, reason));
                 }
             }
 
@@ -702,7 +705,7 @@ public sealed class ConsultGenerationOrchestrator
                     await context.Entities.CallEntityAsync(
                         entityId,
                         nameof(ConsultGenerationJobEntity.SkipBlock),
-                        new ConsultGenerationBlockSkip($"{deliverable.BlockPrefix}{loop.Id}:{itemId}", ItemName(flow, itemId), reason));
+                        new ConsultGenerationBlockSkip(WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, itemId), ItemName(flow, itemId), reason));
                 }
             }
 
@@ -749,7 +752,7 @@ public sealed class ConsultGenerationOrchestrator
                 var blocks = deliverables
                     .Where(deliverable => deliverable.Sources?.Contains(loop.Id, StringComparer.Ordinal) == true)
                     .SelectMany(deliverable => resolution.Items.Select(item => new ConsultCollectionItem(
-                        $"{deliverable.BlockPrefix}{loop.Id}:{item["id"]}", WorkflowPackageBlocks.ItemName(item))))
+                        WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, WorkflowItemPath.OfItem(item)!), WorkflowPackageBlocks.ItemName(item))))
                     .ToList();
                 totalBlockCount += blocks.Count;
 
@@ -855,7 +858,7 @@ public sealed class ConsultGenerationOrchestrator
                         await context.Entities.CallEntityAsync(
                             entityId,
                             nameof(ConsultGenerationJobEntity.FailBlock),
-                            new BlockGenerationResult($"{deliverable.BlockPrefix}{BlockNodeOf(source!)}:{itemId}", ItemName(node, itemId), false, null, error));
+                            new BlockGenerationResult(WorkflowItemPath.BlockId(deliverable.BlockPrefix, BlockNodeOf(source!), itemId), ItemName(node, itemId), false, null, error));
                     }
                 }
             }
@@ -1119,7 +1122,7 @@ public sealed class ConsultGenerationOrchestrator
 
                             if (failed.Count > 0)
                             {
-                                failedContributors.AddRange(failed.Select(id => $"{sourceId}:{id}"));
+                                failedContributors.AddRange(failed.Select(id => WorkflowItemPath.Key(sourceId, id)));
                                 continue;
                             }
 
@@ -1553,7 +1556,7 @@ public sealed class ConsultGenerationOrchestrator
                             await context.Entities.CallEntityAsync(
                                 entityId,
                                 nameof(ConsultGenerationJobEntity.CompleteBlock),
-                                new BlockGenerationResult($"{deliverable.BlockPrefix}{BlockNodeOfItem(node, itemId)}:{itemId}", ItemName(node, itemId), true, result.RawOutput.Trim(), null));
+                                new BlockGenerationResult(WorkflowItemPath.BlockId(deliverable.BlockPrefix, BlockNodeOfItem(node, itemId), itemId), ItemName(node, itemId), true, result.RawOutput.Trim(), null));
                         }
                     }
                 }
@@ -2112,9 +2115,23 @@ public sealed class ConsultGenerationOrchestrator
 /// </summary>
 internal static class ConsultNodeScheduler
 {
-    /// <summary>Scalar nodes key by id; forEach instances by "nodeId:itemId".</summary>
-    public static string InstanceKey(string nodeId, string? itemId)
-        => itemId is null ? nodeId : $"{nodeId}:{itemId}";
+    /// <summary>Scalar nodes key by id; forEach instances by "nodeId:path" (#1340: the item's path — at one level its id).</summary>
+    public static string InstanceKey(string nodeId, string? itemPath)
+        => WorkflowItemPath.Key(nodeId, itemPath);
+
+    /// <summary>
+    /// #1340 (v30 design § 1.2): a dependency's path for a reader at
+    /// <paramref name="readerPath"/> — aligned on the common prefix, as deep as the
+    /// dependency runs in loops (none outside every loop).
+    /// </summary>
+    public static string? AlignedPath(ConsultNodeDescriptor dependency, string? readerPath)
+        => WorkflowItemPath.Prefix(readerPath, LoopDepthOf(dependency));
+
+    /// <summary>
+    /// #1340: how many loops a node's instances are keyed under — at ≤29 a node
+    /// fans or it does not (one level); B2 (#1341) walks the chain of loops.
+    /// </summary>
+    public static int LoopDepthOf(ConsultNodeDescriptor node) => node.ForEach is null ? 0 : 1;
 
     /// <summary>
     /// A scalar node is ready when every node: dependency completed; a forEach
@@ -2135,7 +2152,7 @@ internal static class ConsultNodeScheduler
     {
         return NodeDependencies(node).All(dependencyId =>
         {
-            var key = InstanceKey(dependencyId, nodesById[dependencyId].ForEach is null ? null : itemId);
+            var key = InstanceKey(dependencyId, AlignedPath(nodesById[dependencyId], itemId));
             // v27 (#1235): an if/case inside a loop skipped for the item is settled too (flow:item).
             return skipped?.Contains(dependencyId) == true || skipped?.Contains(key) == true || outputs.ContainsKey(key);
         });
@@ -2474,7 +2491,7 @@ internal static class ConsultNodeVariableResolver
         var target = nodesById[targetId];
         var result = outputs[ConsultNodeScheduler.InstanceKey(
             targetId,
-            target.ForEach is null ? null : item?["id"]
+            target.ForEach is null ? null : ConsultNodeScheduler.AlignedPath(target, WorkflowItemPath.OfItem(item))
                 ?? throw new InvalidOperationException(
                     $"Node '{nodeId}' binding '{variable}' targets forEach node '{targetId}' outside a forEach instance."))];
 

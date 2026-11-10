@@ -147,7 +147,7 @@ internal static class ConsultNodeDispatch
         WorkflowFormatCatalog engineFormats,
         string conceptSource)
     {
-        var nodeId = input.NodeId.Split(':')[0];
+        var nodeId = WorkflowItemPath.NodeOf(input.NodeId);
         var node = package.Nodes?.FirstOrDefault(n => string.Equals(n.Id, nodeId, StringComparison.Ordinal))
             ?? throw new InvalidOperationException($"Package {package.Ref} has no node '{nodeId}'.");
         var schemaId = node.Output?.Schema

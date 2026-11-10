@@ -2320,11 +2320,10 @@ public sealed class ConsultGenerationJobs
 
         var completed = (response.NodeOutputs ?? new Dictionary<string, ConsultGenerationNodeStatusResponse>())
             .Where(entry => entry.Value.Status == ConsultGenerationNodeStatuses.Completed)
-            .Select(entry => (Key: entry.Key, Separator: entry.Key.LastIndexOf(':')))
-            .Where(entry => entry.Separator > 0)
-            .Select(entry => (
-                NodeId: entry.Key[..entry.Separator],
-                ItemId: entry.Key[(entry.Separator + 1)..]))
+            // #1340: an item row's key split at its last colon, as ever (the helper keeps the rule).
+            .Select(entry => (Split: WorkflowItemPath.TrySplitAtLast(entry.Key, out var head, out var last), NodeId: head, ItemId: last))
+            .Where(entry => entry.Split)
+            .Select(entry => (entry.NodeId, entry.ItemId))
             .Where(entry => labels.ContainsKey(entry.NodeId))
             .OrderBy(entry => entry.ItemId, StringComparer.Ordinal)
             .ThenBy(entry => entry.NodeId, StringComparer.Ordinal);

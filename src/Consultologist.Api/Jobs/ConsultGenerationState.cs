@@ -490,7 +490,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var state = EnsureState();
         Stamp(state, 6);
 
-        var output = state.GetOrAddNodeOutput($"{input.NodeId}:{input.ItemId}", input.Label);
+        var output = state.GetOrAddNodeOutput(WorkflowItemPath.Key(input.NodeId, input.ItemId), input.Label);
         output.NodeId = input.NodeId;
         output.ItemId = input.ItemId;
         output.Status = ConsultGenerationNodeStatuses.Completed;
@@ -637,7 +637,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var state = EnsureState();
         Stamp(state, 6);
 
-        var output = state.GetOrAddNodeOutput($"{input.NodeId}:{input.ItemId}", input.Label);
+        var output = state.GetOrAddNodeOutput(WorkflowItemPath.Key(input.NodeId, input.ItemId), input.Label);
         output.NodeId = input.NodeId;
         output.ItemId = input.ItemId;
         output.Status = ConsultGenerationNodeStatuses.Skipped;
@@ -958,7 +958,7 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         }
 
         foreach (var key in outputs.Keys
-            .Where(k => k.StartsWith(nodeId + ":", StringComparison.Ordinal))
+            .Where(k => WorkflowItemPath.PathFor(k, nodeId) is not null)
             .OrderBy(k => k, StringComparer.Ordinal))
         {
             yield return key;

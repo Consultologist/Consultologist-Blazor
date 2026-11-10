@@ -162,7 +162,7 @@ public static class WorkflowPackageBlocks
                 foreach (var item in items)
                 {
                     blocks.Add(new WorkflowDeliverableBlock(
-                        $"{result.Id}:{sourceId}:{item["id"]}",
+                        WorkflowItemPath.BlockId($"{result.Id}:", sourceId, item["id"]),
                         ItemName(item),
                         item.GetValueOrDefault("content", string.Empty)));
                 }
@@ -199,7 +199,7 @@ public static class WorkflowPackageBlocks
                 foreach (var item in settled)
                 {
                     yield return new WorkflowDeliverableBlock(
-                        resultId is null ? $"{sourceId}:{item["id"]}" : $"{resultId}:{sourceId}:{item["id"]}",
+                        WorkflowItemPath.BlockId(resultId is null ? string.Empty : $"{resultId}:", sourceId, item["id"]),
                         item.GetValueOrDefault("name", item["id"]),
                         item.GetValueOrDefault("content", string.Empty));
                 }
@@ -217,7 +217,7 @@ public static class WorkflowPackageBlocks
                 foreach (var item in collection.Items)
                 {
                     yield return new WorkflowDeliverableBlock(
-                        resultId is null ? $"{sourceId}:{item.Id}" : $"{resultId}:{sourceId}:{item.Id}",
+                        WorkflowItemPath.BlockId(resultId is null ? string.Empty : $"{resultId}:", sourceId, item.Id),
                         item.Fields.GetValueOrDefault("name", item.Id),
                         item.Fields.GetValueOrDefault("content", string.Empty));
                 }
