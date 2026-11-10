@@ -61,8 +61,45 @@ internal static class ConsultNodeValueLoops
             return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loopLabel} could not read its list: {source.NodeId}'s value is not JSON.");
         }
 
-        var walked = $"{TemplateObjects.Node}.{source.NodeId}.{TemplateMembers.Value}";
-        foreach (var field in source.Fields)
+        return ItemsFrom(value, $"{TemplateObjects.Node}.{source.NodeId}.{TemplateMembers.Value}", source.Fields, loopLabel);
+    }
+
+    /// <summary>
+    /// #1341 (v30 design § 2.2): an inner loop over a list field of its OUTER item
+    /// (<c>item.value.&lt;field…&gt;</c>) — read from the outer item's value as a node's
+    /// value is, with the same sentences, its walk spelled from <c>item.value</c>.
+    /// </summary>
+    public static Resolution ItemsOfOuterItem(IReadOnlyDictionary<string, string> outer, string collection, string loopLabel)
+    {
+        const string prefix = "item.value.";
+        if (!collection.StartsWith(prefix, StringComparison.Ordinal) || collection.Length == prefix.Length)
+        {
+            return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loopLabel} iterates {collection}, which is not a field of the outer item.");
+        }
+
+        JsonNode? value;
+        try
+        {
+            value = JsonNode.Parse(outer.GetValueOrDefault("value") ?? string.Empty);
+        }
+        catch (JsonException)
+        {
+            return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loopLabel} could not read its list: the outer item's value is not JSON.");
+        }
+
+        return ItemsFrom(value, "item.value", collection[prefix.Length..].Split('.'), loopLabel);
+    }
+
+    /// <summary>#1341: a nested instance's items, each carrying its path (<c>outer/id</c>) beside its own id.</summary>
+    public static IReadOnlyList<IReadOnlyDictionary<string, string>> WithPath(IEnumerable<IReadOnlyDictionary<string, string>> items, string outerPath) =>
+        items.Select(item => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(item, StringComparer.Ordinal)
+        {
+            [WorkflowItemPath.PathMember] = WorkflowItemPath.Of(new[] { outerPath, item["id"] }),
+        }).ToList();
+
+    private static Resolution ItemsFrom(JsonNode? value, string walked, IReadOnlyList<string> fields, string loopLabel)
+    {
+        foreach (var field in fields)
         {
             if (value is not JsonObject obj || !obj.TryGetPropertyValue(field, out var next))
             {
