@@ -100,6 +100,17 @@ public class EngineRunNestedTests
     }
 
     [Fact]
+    public async Task AnInnerItemThatFails_FailsItsOwnBlock_ByItsPath()
+    {
+        var run = await EngineRun.StartAsync(Load(TwoLevels()), Notes,
+            key => key == "draft_paragraph:1/2" ? EngineRun.Fails : Outputs(key));
+
+        Assert.Equal(ConsultGenerationBlockStatuses.Failed, run.State.Blocks["consult:paragraphs:1/2"].Status);
+        Assert.Equal(ConsultGenerationBlockStatuses.Completed, run.State.Blocks["consult:paragraphs:1/1"].Status);
+        Assert.Equal(ConsultGenerationBlockStatuses.Completed, run.State.Blocks["consult:paragraphs:2/1"].Status);
+    }
+
+    [Fact]
     public async Task AnEmptyInnerList_SettlesAtZero_WithItsReason()
     {
         var run = await EngineRun.StartAsync(Load(TwoLevels()), Notes,
