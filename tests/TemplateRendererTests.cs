@@ -457,4 +457,44 @@ public class TemplateRendererTests
 
         Assert.Equal("1[a/1=drafted a,b/1=drafted b,2]2[c/2=drafted c,1]", rendered);
     }
+
+    [Fact]
+    public void APass_ReadsItsNumber_ThisPassesNodes_OnePassBack_AndItsHistory()
+    {
+        // #1342 (v30 design § 3.2): pass, pass.previous and each history element share one shape.
+        static TemplateNodeOutput Out(string text) => new(text, "prose", "x");
+        var earlier = new List<TemplateWhilePass>
+        {
+            new(1, new Dictionary<string, TemplateNodeOutput> { ["judge"] = Out("too long") }),
+            new(2, new Dictionary<string, TemplateNodeOutput> { ["judge"] = Out("too vague") }),
+        };
+        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["judge"] = Out("good") }) with { Pass = new TemplatePassScope(3, earlier) };
+
+        var rendered = Render("{{ pass.number }}|{{ pass.node.judge.content }}|{{ pass.previous.node.judge.content }}|{{ pass.previous.previous.number }}|{{ for p in pass.history }}{{ p.number }}:{{ p.node.judge.content }};{{ end }}|{{ pass.history[-1].number }}", scope);
+
+        Assert.Equal("3|good|too vague|1|1:too long;2:too vague;|2", rendered);
+        Assert.Equal("", Render("{{ if pass.previous }}x{{ end }}", Scope() with { Pass = new TemplatePassScope(1, Array.Empty<TemplateWhilePass>()) }));
+    }
+
+    [Fact]
+    public void AWhile_ReadFromOutside_IsItsLastPass_WithPassesStoppedAndHistory()
+    {
+        static TemplateNodeOutput Out(string text) => new(text, "prose", "x");
+        var whiles = new Dictionary<string, TemplateWhileOutput>
+        {
+            ["refine"] = new(2, "check", new List<TemplateWhilePass>
+            {
+                new(1, new Dictionary<string, TemplateNodeOutput> { ["draft"] = Out("first") }),
+                new(2, new Dictionary<string, TemplateNodeOutput> { ["draft"] = Out("second") }),
+            }),
+        };
+        var scope = Scope(nodes: new Dictionary<string, TemplateNodeOutput> { ["refine"] = Out("second") }) with { Whiles = whiles };
+
+        Assert.Equal("second 2 check first/second",
+            Render("{{ node.refine.content }} {{ node.refine.passes }} {{ node.refine.stopped }} {{ node.refine.history[0].node.draft.content }}/{{ node.refine.history[-1].node.draft.content }}", scope));
+
+        // Zero passes: the while reads as skipped, with its passes and why.
+        var zero = Scope() with { Whiles = new Dictionary<string, TemplateWhileOutput> { ["refine"] = new(0, "check", Array.Empty<TemplateWhilePass>()) } };
+        Assert.Equal("none 0 check", Render("{{ if node.refine.content }}some{{ else }}none{{ end }} {{ node.refine.passes }} {{ node.refine.stopped }}", zero));
+    }
 }
