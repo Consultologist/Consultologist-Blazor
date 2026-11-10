@@ -173,7 +173,23 @@ public sealed record TemplateRenderScope(
     // #1179 (v26 design § 5.2): a standalone snippet's label — its header's — by
     // id, for `snippet.<id>.label`; a folder item's rides the folder item. Null
     // is the 25 render (the id names the snippet).
-    IReadOnlyDictionary<string, string>? SnippetLabels = null);
+    IReadOnlyDictionary<string, string>? SnippetLabels = null,
+    // v30 (#1342, design § 3.2): inside a while's pass — its number and the earlier
+    // passes (pass.previous, pass.history); this pass's nodes are node.<id>. Null
+    // outside a while and below 30.
+    TemplatePassScope? Pass = null,
+    // v30 (#1342, design § 3.2): the whiles this render reads from outside — their
+    // passes, why they stopped and each pass's body nodes (node.<while>.history).
+    IReadOnlyDictionary<string, TemplateWhileOutput>? Whiles = null);
+
+/// <summary>v30 (#1342): one pass of a while as a later read sees it — its number and its body nodes' outputs by id.</summary>
+public sealed record TemplateWhilePass(int Number, IReadOnlyDictionary<string, TemplateNodeOutput> Nodes);
+
+/// <summary>v30 (#1342, design § 3.2): the pass a render runs in — its number, the earlier passes oldest first, and (B3c) the enclosing while's pass.</summary>
+public sealed record TemplatePassScope(int Number, IReadOnlyList<TemplateWhilePass> Earlier, TemplatePassScope? Parent = null);
+
+/// <summary>v30 (#1342, design § 3.2): a while read from outside — how many passes, why it stopped (check | until | bound) and every pass, oldest first.</summary>
+public sealed record TemplateWhileOutput(int Passes, string Stopped, IReadOnlyList<TemplateWhilePass> History);
 
 /// <summary>
 /// The specVersion 25 render (design §§ 1, 4, 5.3; B3 #1002): one Scriban
@@ -341,7 +357,94 @@ public static class TemplateRenderer
             node[id] = new SkippedNodeObject();
         }
 
+        // v30 (#1342, design § 3.2): one pass, as an earlier read sees it — its number,
+        // its body nodes, and its own previous and history (the passes before it).
+        ScriptObject EarlierPass(IReadOnlyList<TemplateWhilePass> passes, int index, string path)
+        {
+            var pass = passes[index];
+            var nodes = new ClosedObject(subject, $"{path}.{TemplateObjects.Node}");
+            foreach (var (id, output) in pass.Nodes)
+            {
+                nodes[id] = NodeObjectOf(id, output, $"{path}.{TemplateObjects.Node}.{id}");
+            }
+
+            var earlier = new ClosedObject(subject, path)
+            {
+                [TemplateMembers.Number] = pass.Number,
+                [TemplateObjects.Node] = nodes,
+            };
+            earlier[TemplateMembers.Previous] = index > 0 ? EarlierPass(passes, index - 1, $"{path}.{TemplateMembers.Previous}") : null;
+            earlier[TemplateMembers.History] = new ScriptArray(Enumerable.Range(0, index).Select(i => EarlierPass(passes, i, $"{path}.{TemplateMembers.History}[{i}]")));
+            return earlier;
+        }
+
+        // v30 (#1342, design § 3.2): a while read from outside — its returned node's
+        // content and value, its passes, why it stopped, and every pass (number and the
+        // while's direct body nodes). Zero passes: content and value null.
+        foreach (var (id, whileOutput) in scope.Whiles ?? new Dictionary<string, TemplateWhileOutput>())
+        {
+            var path = $"{TemplateObjects.Node}.{id}";
+            var history = new ScriptArray(whileOutput.History.Select((pass, i) =>
+            {
+                var elementPath = $"{path}.{TemplateMembers.History}[{i}]";
+                var nodes = new ClosedObject(subject, $"{elementPath}.{TemplateObjects.Node}");
+                foreach (var (bodyId, output) in pass.Nodes)
+                {
+                    nodes[bodyId] = NodeObjectOf(bodyId, output, $"{elementPath}.{TemplateObjects.Node}.{bodyId}");
+                }
+
+                return new ClosedObject(subject, elementPath) { [TemplateMembers.Number] = pass.Number, [TemplateObjects.Node] = nodes };
+            }));
+
+            if (scope.Nodes.TryGetValue(id, out var ret))
+            {
+                node[id] = new NodeObject(subject, id, ret,
+                    new Dictionary<string, Func<object?>>(StringComparer.Ordinal)
+                    {
+                        [TemplateMembers.Content] = () => ret.Text,
+                        [TemplateMembers.Value] = () => NodeValue(subject, id, ret),
+                        [TemplateMembers.Passes] = () => whileOutput.Passes,
+                        [TemplateMembers.Stopped] = () => whileOutput.Stopped,
+                        [TemplateMembers.History] = () => history,
+                    },
+                    path);
+            }
+            else
+            {
+                var skipped = new SkippedNodeObject();
+                skipped[TemplateMembers.Passes] = whileOutput.Passes;
+                skipped[TemplateMembers.Stopped] = whileOutput.Stopped;
+                skipped[TemplateMembers.History] = history;
+                node[id] = skipped;
+            }
+        }
+
         globals[TemplateObjects.Node] = node;
+
+        // v30 (#1342, design § 3.2): the pass this render runs in — its number, this
+        // pass's nodes (node.<id>, aligned on the pass), one pass back and every earlier
+        // pass, all of one shape; the enclosing while's pass as parent (B3c).
+        ScriptObject PassObject(TemplatePassScope pass, string path)
+        {
+            var current = new ClosedObject(subject, path)
+            {
+                [TemplateMembers.Number] = pass.Number,
+                [TemplateObjects.Node] = node,
+            };
+            current[TemplateMembers.Previous] = pass.Earlier.Count > 0 ? EarlierPass(pass.Earlier, pass.Earlier.Count - 1, $"{path}.{TemplateMembers.Previous}") : null;
+            current[TemplateMembers.History] = new ScriptArray(Enumerable.Range(0, pass.Earlier.Count).Select(i => EarlierPass(pass.Earlier, i, $"{path}.{TemplateMembers.History}[{i}]")));
+            if (pass.Parent is { } parent)
+            {
+                current[TemplateMembers.Parent] = PassObject(parent, $"{path}.{TemplateMembers.Parent}");
+            }
+
+            return current;
+        }
+
+        if (scope.Pass is { } runningPass)
+        {
+            globals[TemplateObjects.Pass] = PassObject(runningPass, TemplateObjects.Pass);
+        }
 
         var snippet = new ClosedObject(subject, TemplateObjects.Snippet);
         foreach (var (id, text) in scope.Snippets)

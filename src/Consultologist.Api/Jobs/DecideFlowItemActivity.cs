@@ -37,7 +37,11 @@ public sealed record ConsultDecideFlowItemInput(
     // v30 (#1341, design § 2.4): the enclosing loops' items, outermost first — what a
     // condition's item.parent reads. Trailing; written only when set.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<ConsultParentItem>? Parents = null);
+    IReadOnlyList<ConsultParentItem>? Parents = null,
+    // v30 (#1342, design § 3.1): set when this is a while's check after pass Pass.Number
+    // (0: before the first, under checkFirst) — FlowId names the while. Trailing.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    ConsultPassPayload? Pass = null);
 
 /// <summary>
 /// v27 (#1235, design § 1.3, § 1.4, § 2): what one item's decision said — the
@@ -105,6 +109,11 @@ public sealed class DecideFlowItemActivity
         }
 
         var flows = ConsultGenerationJobStarter.FlowsOf(package);
+        if (input.Pass is { } pass && flows.Flows.TryGetValue(input.FlowId, out var whileFlow) && whileFlow.Kind == WorkflowFlowNodes.Kind.While)
+        {
+            return DecideWhileCheck(package, input, whileFlow, pass);
+        }
+
         if (!flows.Flows.TryGetValue(input.FlowId, out var flow) || flow.Kind == WorkflowFlowNodes.Kind.For)
         {
             throw new InvalidOperationException($"Node '{input.FlowId}' is not an if or case node of '{package.Ref}'.");
@@ -141,6 +150,35 @@ public sealed class DecideFlowItemActivity
             outcome.Taken?.Nodes.ToList() ?? new List<string>(),
             outcome.Taken?.RetNodeId,
             reason);
+    }
+
+    /// <summary>
+    /// v30 (#1342, design § 3.1): a while's check after a pass (or, under checkFirst,
+    /// before one) — its until first (after a pass only), then its while, over that
+    /// pass's nodes and the pass object. Branch: "again" (run another pass), "until"
+    /// (its until held) or "check" (its check stopped holding); the bound is the
+    /// orchestrator's (it knows max).
+    /// </summary>
+    private static ConsultFlowItemDecision DecideWhileCheck(WorkflowPackage package, ConsultDecideFlowItemInput input, WorkflowFlowNodes.Flow flow, ConsultPassPayload pass)
+    {
+        var scope = new ConsultConditionScope(
+                input.EffectiveInputs ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                ConsultConditionScope.TypesOf(package),
+                input.NodeTexts,
+                input.Folders,
+                input.Run,
+                input.Profile,
+                package) with { SkippedNodes = input.SkippedNodes, Pass = pass };
+        var passId = pass.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        if (pass.Number > 0 && flow.Node.Until is { } until && scope.Holds($"While '{flow.Node.Id}' until", until))
+        {
+            return new ConsultFlowItemDecision(flow.Node.Id, passId, "until", new List<string>(), null, "its until held");
+        }
+
+        return scope.Holds($"While '{flow.Node.Id}' check", flow.Expression!)
+            ? new ConsultFlowItemDecision(flow.Node.Id, passId, "again", new List<string>(), string.Empty, null)
+            : new ConsultFlowItemDecision(flow.Node.Id, passId, "check", new List<string>(), null, ConsultConditionScope.Reason(flow.Expression!));
     }
 
     /// <summary>

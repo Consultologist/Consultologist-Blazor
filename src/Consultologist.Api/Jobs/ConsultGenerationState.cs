@@ -555,10 +555,42 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // v25 (B5 #1004): the completion's record, per item as per node.
         CopyCompletion(output, input.AgentOutputHash, input.Appended, input.Excluded);
 
-        var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
-        progress.Step = input.NodeId;
-        progress.CompletedStepCount = input.CompletedChainCount;
-        progress.TotalStepCount = input.TotalChainCount;
+        if (input.Pass != true)
+        {
+            var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
+            progress.Step = input.NodeId;
+            progress.CompletedStepCount = input.CompletedChainCount;
+            progress.TotalStepCount = input.TotalChainCount;
+        }
+
+        State = state;
+    }
+
+    /// <summary>
+    /// v30 (#1342, design § 3.1, § 3.3, record storage 11): a while stopped — its row
+    /// names how many passes it ran, why it stopped and the sentence (the bound's is a
+    /// named state: "stopped at its bound of N; the check never stopped holding"); the
+    /// history says so. The count of blocks does not move: a while is one block.
+    /// </summary>
+    public void SettleWhile(ConsultGenerationWhileSettled input)
+    {
+        var state = EnsureState();
+        Stamp(state, 6);
+
+        if (state.Nodes is { } nodes)
+        {
+            state.Nodes = nodes
+                .Select(node => node.Id == input.WhileId
+                    ? node with { Passes = input.Passes, Stopped = input.Stopped, StopReason = input.Reason }
+                    : node)
+                .ToList();
+        }
+
+        state.History.Add(new JobHistoryEvent(
+            "while-stopped",
+            $"{input.Label}: {input.Passes} {(input.Passes == 1 ? "pass" : "passes")}, {input.Reason}",
+            null,
+            input.StoppedAtUtc));
         State = state;
     }
 
@@ -1685,7 +1717,18 @@ public sealed record ConsultGenerationNodeItemUpdate(
     // as on the node update. Appended last.
     string? AgentOutputHash = null,
     IReadOnlyList<ConsultAppendedEntry>? Appended = null,
-    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null,
+    // v30 (#1342, design § 3.3): a while's pass row (draft:2) — recorded and hashed as an
+    // item's is, but no item progress (a pass is not an item; the rail's "pass 2 of at
+    // most 3" is the Create page's). Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    bool? Pass = null);
+
+/// <summary>
+/// v30 (#1342, design § 3.1, § 3.3, record storage 11): a while stopped — how many passes
+/// it ran, why (check | until | bound) and the sentence the record names it by.
+/// </summary>
+public sealed record ConsultGenerationWhileSettled(string WhileId, string Label, int Passes, string Stopped, string Reason, DateTimeOffset StoppedAtUtc);
 
 public sealed class ConsultGenerationJobState
 {

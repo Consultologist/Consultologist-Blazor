@@ -20,6 +20,9 @@ public sealed class ConsultGenerationOrchestrator
     // v29 (#1304): the decision key a folder item's gate rides under (gate:<folder>), never a node id.
     private const string ItemGatePrefix = "gate:";
 
+    /// <summary>v30 (#1342): a while's check decision is keyed while:&lt;id&gt;.</summary>
+    private const string WhilePrefix = "while:";
+
     private static readonly TaskOptions AgentActivityRetryOptions = TaskOptions.FromRetryPolicy(
         new RetryPolicy(
             maxNumberOfAttempts: 3,
@@ -220,6 +223,11 @@ public sealed class ConsultGenerationOrchestrator
         var failedItems = new HashSet<string>(StringComparer.Ordinal);
         var failedAggregators = new Dictionary<string, string>(StringComparer.Ordinal);
         var nodeLevelCompleted = new HashSet<string>(StringComparer.Ordinal);
+        // v30 (#1342, design § 3.1): a while's passes — how many are open, the checks
+        // started ("<while>/<pass>"), and, once it stops, how many passes it ran and why.
+        var passesOpened = new Dictionary<string, int>(StringComparer.Ordinal);
+        var whileChecksStarted = new HashSet<string>(StringComparer.Ordinal);
+        var whileStops = new Dictionary<string, (int Passes, string Stopped)>(StringComparer.Ordinal);
 
         // v25 (B3 #1002): a snippet folder fan (snippet:<folder>) keys its
         // snapshot by the folder id, as a data collection fan did.
@@ -255,6 +263,73 @@ public sealed class ConsultGenerationOrchestrator
             }
 
             return null;
+        }
+
+        // v30 (#1342, design § 3): the while a node's instances run in — its nearest
+        // enclosing flow that repeats, when no for lies between (a while in a for, or
+        // a for in a while, is B3c). Null for every other node, and below 30.
+        ConsultNodeDescriptor? WhileOf(ConsultNodeDescriptor node)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.For)
+                {
+                    return null;
+                }
+
+                if (owner.Kind == ConsultNodeFlows.While)
+                {
+                    return owner;
+                }
+            }
+
+            return null;
+        }
+
+        static string PassId(int number) => number.ToString(CultureInfo.InvariantCulture);
+
+        // A pass is a while's item: its id is its number.
+        static IReadOnlyDictionary<string, string> PassItem(int number) =>
+            new Dictionary<string, string>(StringComparer.Ordinal) { ["id"] = PassId(number), ["name"] = $"Pass {number}" };
+
+        IReadOnlyList<string> BodyOf(ConsultNodeDescriptor whileNode) => whileNode.Body ?? (IReadOnlyList<string>)Array.Empty<string>();
+
+        bool PassSettled(ConsultNodeDescriptor whileNode, int number) =>
+            BodyOf(whileNode).All(bodyId => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(bodyId, PassId(number))));
+
+        // One pass's direct body texts, for a later pass's pass.previous / .history and for node.<while>.history.
+        ConsultPassTexts PassTextsOf(ConsultNodeDescriptor whileNode, int number) =>
+            new(number, BodyOf(whileNode)
+                .Where(bodyId => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(bodyId, PassId(number))))
+                .ToDictionary(
+                    bodyId => bodyId,
+                    bodyId => outputs[ConsultNodeScheduler.InstanceKey(bodyId, PassId(number))] is var output ? output.Classification ?? output.RawOutput : string.Empty,
+                    StringComparer.Ordinal));
+
+        ConsultPassPayload PassOf(ConsultNodeDescriptor whileNode, int number) =>
+            new(number, Enumerable.Range(1, Math.Max(0, number - 1)).Select(earlier => PassTextsOf(whileNode, earlier)).ToList());
+
+        // v30 (#1342, design § 3.2): the pass a while's body instance runs in.
+        ConsultPassPayload? PassFor(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item) =>
+            WhileOf(node) is { } whileNode && WorkflowItemPath.OfItem(item) is { } passId && int.TryParse(passId, NumberStyles.None, CultureInfo.InvariantCulture, out var number)
+                ? PassOf(whileNode, number)
+                : null;
+
+        // v30 (#1342, design § 3.2): the stopped whiles a node reads from outside — passes, why, every pass.
+        IReadOnlyDictionary<string, ConsultWhilePayload>? WhilesFor(ConsultNodeDescriptor node)
+        {
+            Dictionary<string, ConsultWhilePayload>? read = null;
+            foreach (var readId in node.Reads ?? Array.Empty<string>())
+            {
+                if (whileStops.TryGetValue(readId, out var stop) && nodesById.TryGetValue(readId, out var whileNode))
+                {
+                    read ??= new Dictionary<string, ConsultWhilePayload>(StringComparer.Ordinal);
+                    read[readId] = new ConsultWhilePayload(stop.Passes, stop.Stopped, Enumerable.Range(1, stop.Passes).Select(number => PassTextsOf(whileNode, number)).ToList());
+                }
+            }
+
+            return read;
         }
 
         // v30 (#1341, design § 2.4): the items of the loops enclosing an instance's own
@@ -485,7 +560,10 @@ public sealed class ConsultGenerationOrchestrator
                         // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
                         Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds()),
                         // v30 (#1341, design § 2.4): item.parent, for an instance of a nested loop.
-                        Parents: ParentsOf(node, item)),
+                        Parents: ParentsOf(node, item),
+                        // v30 (#1342, design § 3.2): the pass it runs in; the whiles it reads.
+                        Pass: PassFor(node, item),
+                        Whiles: WhilesFor(node)),
                     AgentActivityRetryOptions)] = (node.Id, WorkflowItemPath.OfItem(item));
                 return;
             }
@@ -660,9 +738,143 @@ public sealed class ConsultGenerationOrchestrator
                 AgentActivityRetryOptions)] = (flow.Id, WorkflowItemPath.OfItem(item)!);
         }
 
+        // v30 (#1342, design § 3.1): a while's check after pass n (n = 0: before the first,
+        // under checkFirst) — decided as an if is, over that pass's nodes and the pass;
+        // before the first pass the body reads as skipped.
+        void StartWhileCheck(ConsultNodeDescriptor whileNode, int number)
+        {
+            whileChecksStarted.Add($"{whileNode.Id}/{number}");
+            var item = number == 0 ? null : PassItem(number);
+            var body = number == 0 ? BodyOf(whileNode).ToList() : null;
+            var skipped = body is null ? SkippedKeys() : SkippedKeys().Concat(body).ToHashSet(StringComparer.Ordinal);
+            pendingDecisions[context.CallActivityAsync<ConsultFlowItemDecision>(
+                ConsultGenerationActivityNames.DecideFlowItem,
+                new ConsultDecideFlowItemInput(
+                    input.WorkflowPackage!,
+                    whileNode.Id,
+                    WhilePrefix + whileNode.Id,
+                    item ?? PassItem(0),
+                    new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
+                    ConsultRenderPayload.NodeTextsFor(whileNode, item, nodesById, outputs, skipped),
+                    RenderFolders(),
+                    ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
+                    ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
+                    SkippedNodes: body,
+                    Pass: PassOf(whileNode, number)),
+                AgentActivityRetryOptions)] = (WhilePrefix + whileNode.Id, PassId(number));
+        }
+
+        // A while's check is ready once pass n settled and what it reads outside the body has.
+        bool WhileCheckReady(ConsultNodeDescriptor whileNode, int number) =>
+            (number == 0 || PassSettled(whileNode, number))
+            && (whileNode.Reads ?? Array.Empty<string>()).All(readId => BodyOf(whileNode).Contains(readId, StringComparer.Ordinal)
+                || outputs.ContainsKey(readId) || skippedNodes.Contains(readId));
+
+        // v30 (#1342, design § 3.1): what a check settles — another pass below max; else the
+        // while stops: its check, its until, or its bound (a named state, never silent).
+        async Task SettleWhileCheckAsync(string whileId, int number, ConsultFlowItemDecision decision)
+        {
+            var whileNode = nodesById[whileId];
+            var max = whileNode.Max ?? WorkflowFlowNodes.MaxPasses;
+
+            if (decision.Branch == "again")
+            {
+                if (number < max)
+                {
+                    passesOpened[whileId] = number + 1;
+                    return;
+                }
+
+                await StopWhileAsync(whileNode, number, "bound", $"stopped at its bound of {max}; the check never stopped holding");
+                return;
+            }
+
+            await StopWhileAsync(whileNode, number, decision.Branch,
+                number == 0 ? "its check did not hold before the first pass"
+                : decision.Branch == "until" ? "its until held"
+                : "its check stopped holding");
+        }
+
+        // The while's row names its passes and why it stopped; with none, its block is skipped
+        // with the reason (decided 2026-11-10) and a reader sees it skipped. Otherwise the
+        // last pass's ret completes it (TryCompleteAggregatorsAsync): one block.
+        async Task StopWhileAsync(ConsultNodeDescriptor whileNode, int passes, string stopped, string reason)
+        {
+            whileStops[whileNode.Id] = (passes, stopped);
+            await context.Entities.CallEntityAsync(
+                entityId,
+                nameof(ConsultGenerationJobEntity.SettleWhile),
+                new ConsultGenerationWhileSettled(whileNode.Id, whileNode.Label, passes, stopped, reason, context.CurrentUtcDateTime));
+
+            if (passes > 0)
+            {
+                return;
+            }
+
+            foreach (var skippedId in BodyOf(whileNode).Append(whileNode.Id))
+            {
+                skippedNodes.Add(skippedId);
+                completedNodeCount++;
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.MarkNodeSkipped),
+                    new ConsultGenerationNodeSkip(skippedId, nodesById[skippedId].Label, reason, completedNodeCount, totalNodeCount));
+            }
+
+            foreach (var deliverable in deliverables.Where(d => d.SourceIds.Contains(whileNode.Id)))
+            {
+                completedBlockCount++;
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.SkipBlock),
+                    new ConsultGenerationBlockSkip($"{deliverable.BlockPrefix}{whileNode.Id}", whileNode.Label, reason));
+            }
+        }
+
+        // A pass that could not finish fails the while: its block fails with the sentence and
+        // no further pass opens; the run goes on, as after a loop that could not assemble.
+        async Task FailWhileAsync(ConsultNodeDescriptor whileNode, string failure)
+        {
+            if (!failedAggregators.TryAdd(whileNode.Id, failure))
+            {
+                return;
+            }
+
+            failedItems.Add(WhilePrefix + whileNode.Id);
+            foreach (var deliverable in deliverables.Where(d => d.SourceIds.Contains(whileNode.Id)))
+            {
+                failedBlockCount++;
+                await context.Entities.CallEntityAsync(
+                    entityId,
+                    nameof(ConsultGenerationJobEntity.FailBlock),
+                    new BlockGenerationResult($"{deliverable.BlockPrefix}{whileNode.Id}", whileNode.Label, false, null, failure));
+            }
+        }
+
         void StartReadyInstances()
         {
             StartItemGates();
+
+            // v30 (#1342): each while not stopped — pass 1 opens at once (unless checkFirst);
+            // a settled pass (or, under checkFirst, the start) asks its check.
+            foreach (var whileNode in nodes.Where(node => node.Kind == ConsultNodeFlows.While && WhileOf(node) is null && ConsultNodeScheduler.LoopDepthOf(node, nodesById) == 0))
+            {
+                if (whileStops.ContainsKey(whileNode.Id) || failedAggregators.ContainsKey(whileNode.Id))
+                {
+                    continue;
+                }
+
+                var opened = passesOpened.GetValueOrDefault(whileNode.Id);
+                if (opened == 0 && whileNode.CheckFirst != true)
+                {
+                    passesOpened[whileNode.Id] = opened = 1;
+                }
+
+                if (!whileChecksStarted.Contains($"{whileNode.Id}/{opened}") && WhileCheckReady(whileNode, opened))
+                {
+                    StartWhileCheck(whileNode, opened);
+                }
+            }
 
             foreach (var node in nodes)
             {
@@ -699,6 +911,22 @@ public sealed class ConsultGenerationOrchestrator
                             {
                                 StartDecision(node, item);
                             }
+                        }
+                    }
+
+                    continue;
+                }
+
+                // v30 (#1342): a while's body node runs once per open pass, keyed by the pass.
+                if (WhileOf(node) is { } owner)
+                {
+                    for (var number = 1; number <= passesOpened.GetValueOrDefault(owner.Id); number++)
+                    {
+                        if (!started.Contains(ConsultNodeScheduler.InstanceKey(node.Id, PassId(number)))
+                            && !failedAggregators.ContainsKey(owner.Id)
+                            && ConsultNodeScheduler.InstanceReady(node, PassId(number), nodesById, outputs, SkippedKeys()))
+                        {
+                            StartInstance(node, PassItem(number));
                         }
                     }
 
@@ -1502,21 +1730,45 @@ public sealed class ConsultGenerationOrchestrator
                         continue;
                     }
 
-                    var composed = ConsultFlowCompletion.TryCompose(flow, nodesById, outputs, FanItems, (node, itemId) => failedItems.Contains(FailedKey(node, itemId)), inner.SkippedInstances);
-                    if (composed is null)
+                    NodeRunResult flowResult;
+                    if (flow.Kind == ConsultNodeFlows.While)
                     {
-                        continue;
+                        // v30 (#1342, design § 3.3): a stopped while is its last pass's ret —
+                        // one block; its body nodes' rows complete beside it.
+                        if (!whileStops.TryGetValue(flow.Id, out var stop) || stop.Passes == 0)
+                        {
+                            continue;
+                        }
+
+                        progressed = true;
+                        flowResult = outputs[ConsultNodeScheduler.InstanceKey(flow.Ret!, PassId(stop.Passes))];
+                        foreach (var bodyId in BodyOf(flow))
+                        {
+                            completedNodeCount++;
+                            await context.Entities.CallEntityAsync(
+                                entityId,
+                                nameof(ConsultGenerationJobEntity.MarkNodeCompleted),
+                                new ConsultGenerationNodeUpdate(bodyId, nodesById[bodyId].Label, null, null, null, completedNodeCount, totalNodeCount));
+                        }
                     }
-
-                    progressed = true;
-
-                    if (composed.Failure is { } failure)
+                    else
                     {
-                        failedAggregators[flow.Id] = failure;
-                        continue;
-                    }
+                        var composed = ConsultFlowCompletion.TryCompose(flow, nodesById, outputs, FanItems, (node, itemId) => failedItems.Contains(FailedKey(node, itemId)), inner.SkippedInstances);
+                        if (composed is null)
+                        {
+                            continue;
+                        }
 
-                    var flowResult = composed.Result!;
+                        progressed = true;
+
+                        if (composed.Failure is { } failure)
+                        {
+                            failedAggregators[flow.Id] = failure;
+                            continue;
+                        }
+
+                        flowResult = composed.Result!;
+                    }
                     outputs[flow.Id] = flowResult;
                     completedNodeCount++;
 
@@ -1566,7 +1818,11 @@ public sealed class ConsultGenerationOrchestrator
                         }
 
                         var composedDeliverable = ConsultDeliverableComposition.TryCompose(
-                            deliverable, nodesById, outputs, FanItems, (node, itemId) => failedItems.Contains(FailedKey(node, itemId)), inner.SkippedInstances);
+                            deliverable, nodesById, outputs, FanItems, (node, itemId) => failedItems.Contains(FailedKey(node, itemId)),
+                            // v30 (#1342): and the whiles that ran no pass.
+                            whileStops.Any(stop => stop.Value.Passes == 0)
+                                ? inner.SkippedInstances.Concat(whileStops.Where(stop => stop.Value.Passes == 0).Select(stop => stop.Key)).ToHashSet(StringComparer.Ordinal)
+                                : inner.SkippedInstances);
                         if (composedDeliverable is null)
                         {
                             continue;
@@ -1643,6 +1899,10 @@ public sealed class ConsultGenerationOrchestrator
                 if (flowId.StartsWith(ItemGatePrefix, StringComparison.Ordinal))
                 {
                     await SettleItemGateAsync(flowId[ItemGatePrefix.Length..], decidedItemId, await decided);
+                }
+                else if (flowId.StartsWith(WhilePrefix, StringComparison.Ordinal))
+                {
+                    await SettleWhileCheckAsync(flowId[WhilePrefix.Length..], int.Parse(decidedItemId, CultureInfo.InvariantCulture), await decided);
                 }
                 else
                 {
@@ -1742,6 +2002,25 @@ public sealed class ConsultGenerationOrchestrator
                 if (!await ResolveLoopsFedByAsync(node, result))
                 {
                     return false;
+                }
+            }
+            else if (WhileOf(node) is { } whileOwner)
+            {
+                // v30 (#1342, design § 3.3): a pass instance — recorded and hashed as an
+                // item's is; once the pass settles, the ready loop asks the check.
+                try
+                {
+                    var passResult = await completedTask;
+                    outputs[ConsultNodeScheduler.InstanceKey(nodeId, itemId)] = passResult;
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.MarkNodeItemCompleted),
+                        ItemUpdateFrom(node, itemId, $"Pass {itemId}", passResult, 0, 0) with { Pass = true });
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex, "A while's pass could not finish. JobId={JobId}, NodeId={NodeId}, Pass={Pass}", context.InstanceId, nodeId, itemId);
+                    await FailWhileAsync(whileOwner, $"{whileOwner.Label} could not finish pass {itemId}: {node.Label} failed: {ex.Message}");
                 }
             }
             else
@@ -2029,7 +2308,8 @@ public sealed class ConsultGenerationOrchestrator
 
         // v27 (#1235): a branch node's instance its flow node decided against never starts.
         var expectedInstances = nodes.Where(node => node.Aggregate is null && node.Check is null && node.Kind is null).Sum(node => node.ForEach is null
-            ? 1
+            // v30 (#1342): a while's body node runs once per pass it opened.
+            ? WhileOf(node) is { } whileOwner ? passesOpened.GetValueOrDefault(whileOwner.Id) : 1
             : FanItems(node).Count(item => !failedItems.Contains(FailedKey(node, WorkflowItemPath.OfItem(item)!)) && !inner.Untaken(node, WorkflowItemPath.OfItem(item)!)
                 // v29 (#1304): an item its folder gate excluded never starts.
                 && !inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(node.Id, WorkflowItemPath.OfItem(item)!))));
@@ -2467,7 +2747,8 @@ internal static class ConsultNodeScheduler
 
         for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
         {
-            if (owner.Kind == ConsultNodeFlows.For)
+            // v30 (#1342): a while's passes key its body as a loop's items do.
+            if (owner.Kind is ConsultNodeFlows.For or ConsultNodeFlows.While)
             {
                 depth++;
             }

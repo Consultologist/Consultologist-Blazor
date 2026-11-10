@@ -100,7 +100,23 @@ public sealed record ConsultPromptNodeActivityInput(
     // item.parent reads. Written only when set (a nested instance), so a 26–29
     // payload is the bytes it always was.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    IReadOnlyList<ConsultParentItem>? Parents = null);
+    IReadOnlyList<ConsultParentItem>? Parents = null,
+    // v30 (#1342, design § 3.2): the pass this instance runs in (pass.number, .previous,
+    // .history) and the whiles it reads from outside (node.<while>.passes, .stopped,
+    // .history). Each written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    ConsultPassPayload? Pass = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyDictionary<string, ConsultWhilePayload>? Whiles = null);
+
+/// <summary>v30 (#1342): one pass of a while — its number and its direct body nodes' output texts by id.</summary>
+public sealed record ConsultPassTexts(int Number, IReadOnlyDictionary<string, string> Texts);
+
+/// <summary>v30 (#1342, design § 3.2): the pass an instance (or a check) runs in — its number and the earlier passes, oldest first.</summary>
+public sealed record ConsultPassPayload(int Number, IReadOnlyList<ConsultPassTexts> Earlier);
+
+/// <summary>v30 (#1342, design § 3.2): a while as a reader outside it sees it — its passes, why it stopped, and every pass.</summary>
+public sealed record ConsultWhilePayload(int Passes, string Stopped, IReadOnlyList<ConsultPassTexts> History);
 
 /// <summary>
 /// v30 (#1341, design § 2.4): one enclosing loop's item for an instance of a loop that

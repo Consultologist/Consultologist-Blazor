@@ -676,7 +676,23 @@ public sealed record ConsultNodeDescriptor(
     // it has no items when the list was empty. Null on every other row and
     // below 29. Appended last, same rule.
     DateTimeOffset? ResolvedAtUtc = null,
-    string? Reason = null)
+    string? Reason = null,
+    // v30 (#1342, design § 3, storage 11): a while's bound (a for's, B3b), its
+    // until and checkFirst — and, once it stops, how many passes it ran, why
+    // (check | until | bound | end) and the sentence the record names it by.
+    // Each written only when set, so a 26–29 row is the bytes it always was.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? Max = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Until = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    bool? CheckFirst = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? Passes = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Stopped = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? StopReason = null)
 {
     /// <summary>
     /// v26 (#1156, record storage 8): the row as the served record carries it —

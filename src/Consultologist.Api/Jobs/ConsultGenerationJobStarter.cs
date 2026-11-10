@@ -1274,7 +1274,8 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // v27 (#1235, design § 5): an if/case INSIDE a loop is decided once
             // per item by the engine — nothing here: every body kept, no branch,
             // nothing pruned; its edge to its bodies closes the reachable set.
-            if (flow.Kind == WorkflowFlowNodes.Kind.For || flows.IsInner(flow.Node.Id))
+            // v30 (#1342): a while repeats its body; it is never decided here either.
+            if (flow.Kind is WorkflowFlowNodes.Kind.For or WorkflowFlowNodes.Kind.While || flows.IsInner(flow.Node.Id))
             {
                 kept = flow.BodyNodeIds;
             }
@@ -3611,7 +3612,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // items decide).
         WorkflowFlowNodes.Resolved? flows = null)
     {
-        var taken = flow.Kind == WorkflowFlowNodes.Kind.For
+        var taken = flow.Kind is WorkflowFlowNodes.Kind.For or WorkflowFlowNodes.Kind.While
             ? flow.Bodies.FirstOrDefault()
             : branch is null ? null : flow.Bodies.FirstOrDefault(body => WorkflowFlowDecision.BranchLabel(body) == branch);
         var inner = flows is not null && flows.IsInner(flow.Node.Id);
@@ -3623,7 +3624,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             ForEach: loopOf?.Collection,
             ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(flow.Node.Id, flow.Node.Id),
             Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
-            Kind: flow.Kind switch { WorkflowFlowNodes.Kind.For => "for", WorkflowFlowNodes.Kind.If => "if", _ => "case" },
+            Kind: flow.Kind switch { WorkflowFlowNodes.Kind.For => "for", WorkflowFlowNodes.Kind.If => "if", WorkflowFlowNodes.Kind.While => ConsultNodeFlows.While, _ => "case" },
             Collection: flow.Collection,
             Expression: flow.Expression,
             Body: flow.BodyNodeIds.Distinct(StringComparer.Ordinal).ToList(),
@@ -3635,7 +3636,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             Count: flow.Kind == WorkflowFlowNodes.Kind.For && flow.Collection is { } collection && collectionSets is not null
                 && collectionSets.TryGetValue(WorkflowFanSources.CollectionIdOf(collection), out var items)
                 ? items.Count
-                : null);
+                : null,
+            // v30 (#1342, design § 3): a while's bound, until and checkFirst.
+            Max: flow.Kind == WorkflowFlowNodes.Kind.While ? flow.Node.Max : null,
+            Until: flow.Kind == WorkflowFlowNodes.Kind.While ? flow.Node.Until : null,
+            CheckFirst: flow.Kind == WorkflowFlowNodes.Kind.While && flow.Node.CheckFirst == true ? true : null);
     }
 
     /// <summary>v26 (#1154): a package at 26 — its manifest says so (26 keeps formats on its plain nodes, so <see cref="IsAt25"/> holds there too, rightly, for every 25 path).</summary>
