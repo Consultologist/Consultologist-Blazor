@@ -183,6 +183,8 @@ internal sealed class EngineRun
         var masked = text.ToString().Replace(JobId, "<job>").Replace(JobId[..8], "<job8>");
         masked = Regex.Replace(masked, @"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?", "<time>");
         masked = Regex.Replace(masked, @"\b\d{4}-\d{2}-\d{2}\b", "<date>");
+        // The build stamps its commit into the attestation; it moves with every commit.
+        masked = Regex.Replace(masked, @"""EngineCommit"":\s?""[0-9a-f]+""", @"""EngineCommit"":""<commit>""");
         return masked.Replace("\r\n", "\n");
     }
 
