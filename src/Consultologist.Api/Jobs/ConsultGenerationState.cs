@@ -631,6 +631,21 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var state = EnsureState();
         Stamp(state, 6);
 
+        // v30 (#1342 B3c, decided 2026-11-10): a while inside a for's item — its instance's row.
+        if (input.Path is { } path)
+        {
+            state.LoopInstances ??= new List<ConsultLoopInstanceRow>();
+            state.LoopInstances.Add(new ConsultLoopInstanceRow(
+                input.WhileId, path, null, input.StoppedAtUtc, Passes: input.Passes, Stopped: input.Stopped, StopReason: input.Reason));
+            state.History.Add(new JobHistoryEvent(
+                "while-stopped",
+                $"{input.Label} ({path}): {input.Passes} {(input.Passes == 1 ? "pass" : "passes")}, {input.Reason}",
+                null,
+                input.StoppedAtUtc));
+            State = state;
+            return;
+        }
+
         if (state.Nodes is { } nodes)
         {
             state.Nodes = nodes
@@ -1516,7 +1531,16 @@ public sealed record ConsultLoopInstanceRow(
     int? Count,
     DateTimeOffset ResolvedAtUtc,
     string? Reason = null,
-    string? Failure = null);
+    string? Failure = null,
+    // v30 (#1342, decided 2026-11-10): why this instance stopped — a while's passes and its
+    // check | until | bound, or a for's until | bound | end — and the sentence. Written only
+    // when set, so a #1341 row keeps its bytes.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    int? Passes = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Stopped = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? StopReason = null);
 
 public sealed record ConsultGenerationNodeUpdate(
     string NodeId,
@@ -1792,7 +1816,11 @@ public sealed record ConsultNotRunItem(string ItemId, string ItemName, string Re
 /// v30 (#1342, design § 3.1, § 3.3, record storage 11): a while stopped — how many passes
 /// it ran, why (check | until | bound) and the sentence the record names it by.
 /// </summary>
-public sealed record ConsultGenerationWhileSettled(string WhileId, string Label, int Passes, string Stopped, string Reason, DateTimeOffset StoppedAtUtc);
+public sealed record ConsultGenerationWhileSettled(string WhileId, string Label, int Passes, string Stopped, string Reason, DateTimeOffset StoppedAtUtc,
+    // v30 (#1342 B3c): the outer item's path for a while inside a for — its instance's row,
+    // not the while's. Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Path = null);
 
 public sealed class ConsultGenerationJobState
 {
