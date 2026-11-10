@@ -172,6 +172,12 @@ public sealed class ConsultGenerationOrchestrator
         // recorded activity completions; variable rendering is pure over recorded
         // results (external/consultologist-package-format/package-format-v5.md).
         var nodesById = nodes.ToDictionary(node => node.Id, StringComparer.Ordinal);
+        // v30 (#1341, design § 2.3): the loops that run INSIDE a loop — each runs once per
+        // outer item (a loop instance), its list settling per instance. None below 30, so
+        // a 26–29 job takes the 29 path everywhere this is consulted.
+        var nestedLoops = nodes.Where(node => node.Kind == ConsultNodeFlows.For && ConsultNodeScheduler.LoopDepthOf(node, nodesById) >= 1).ToList();
+        var nestedLoopIds = nestedLoops.Select(loop => loop.Id).ToHashSet(StringComparer.Ordinal);
+        var loopInstances = new ConsultLoopInstances();
         var chainNodes = nodes.Where(node => node.ForEach != null).ToList();
         var aggregators = nodes.Where(node => node.Aggregate != null).ToList();
         // v26 (#1154, design § 1): the flow nodes — a loop completes as the
@@ -223,13 +229,56 @@ public sealed class ConsultGenerationOrchestrator
         // single shared set. Failed-item keys are collection-scoped in v6 (item
         // ids are unique per collection, not globally).
         IReadOnlyList<IReadOnlyDictionary<string, string>> FanItems(ConsultNodeDescriptor node) =>
-            v6
+            // v30 (#1341): a node under a nested loop fans over every settled instance's
+            // items (each carrying its path), in the outer items' order.
+            nestedLoops.Count > 0 && NestedLoopOf(node) is { } nested
+                ? loopInstances.ItemsIn(nested.Id, FanItems(nested).Select(outer => WorkflowItemPath.OfItem(outer)!))
+                : v6
                 ? resolvedItems.GetValueOrDefault(CollectionIdOf(node))
                     ?? collections?.GetValueOrDefault(CollectionIdOf(node))
                     // v29 (#1303): a node's list not yet known fans nothing — yet.
                     ?? (WorkflowFlowNodes.IsNodeValueCollection(CollectionIdOf(node)) ? Array.Empty<IReadOnlyDictionary<string, string>>() : null)
                     ?? throw new InvalidOperationException($"Node '{node.Id}' fans collection '{CollectionIdOf(node)}', which the job snapshot does not carry.")
                 : items;
+
+        // v30 (#1341): the nearest loop a node runs in, when that loop is nested; null otherwise
+        // (a top-level loop's body, and a nested loop's own row — it fans over its outer items).
+        ConsultNodeDescriptor? NestedLoopOf(ConsultNodeDescriptor node)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.For)
+                {
+                    return nestedLoopIds.Contains(owner.Id) ? owner : null;
+                }
+            }
+
+            return null;
+        }
+
+        // v30 (#1341, design § 1.1): a deliverable's block for a nested loop's item is named
+        // by that innermost loop — when the node is the loop's ret and the loops above return
+        // each other up to the top, the (innermost loop, top loop) a deliverable sources.
+        (string Loop, string Top)? NestedBlockOf(ConsultNodeDescriptor node)
+        {
+            if (node.In is not { } loopId || !nestedLoopIds.Contains(loopId) || !string.Equals(nodesById[loopId].Ret, node.Id, StringComparison.Ordinal))
+            {
+                return null;
+            }
+
+            var top = nodesById[loopId];
+            while (top.In is { } upId && nodesById.TryGetValue(upId, out var up) && up.Kind == ConsultNodeFlows.For && string.Equals(up.Ret, top.Id, StringComparison.Ordinal))
+            {
+                top = up;
+            }
+
+            return (loopId, top.Id);
+        }
+
+        // v30 (#1341): a loop whose ret is a loop lays out no blocks of its own — the innermost does.
+        bool ReturnsALoop(ConsultNodeDescriptor loop) =>
+            loop.Ret is { } retId && nodesById.TryGetValue(retId, out var ret) && ret.Kind == ConsultNodeFlows.For;
 
         // v29 (#1303): the snapshot's collections with every settled node list beside them — what a reader of a loop renders over.
         IReadOnlyDictionary<string, IReadOnlyList<IReadOnlyDictionary<string, string>>>? CollectionsWithResolved() =>
@@ -697,7 +746,7 @@ public sealed class ConsultGenerationOrchestrator
         // 2026-11-07); an empty one is a loop with no items and a reason.
         async Task<bool> ResolveLoopsFedByAsync(ConsultNodeDescriptor source, NodeRunResult result)
         {
-            foreach (var loop in nodes.Where(n => n.Kind == ConsultNodeFlows.For && unresolvedLoops.Contains(n.Id)).ToList())
+            foreach (var loop in nodes.Where(n => n.Kind == ConsultNodeFlows.For && unresolvedLoops.Contains(n.Id) && !nestedLoopIds.Contains(n.Id)).ToList())
             {
                 if (loop.Collection is not { } collection
                     || ConsultNodeValueLoops.SourceOf(collection) is not { } fed
@@ -726,7 +775,7 @@ public sealed class ConsultGenerationOrchestrator
                 unresolvedLoops.Remove(loop.Id);
 
                 var blocks = deliverables
-                    .Where(deliverable => deliverable.Sources?.Contains(loop.Id, StringComparer.Ordinal) == true)
+                    .Where(deliverable => deliverable.Sources?.Contains(loop.Id, StringComparer.Ordinal) == true && !ReturnsALoop(loop))
                     .SelectMany(deliverable => resolution.Items.Select(item => new ConsultCollectionItem(
                         WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, WorkflowItemPath.OfItem(item)!), WorkflowPackageBlocks.ItemName(item))))
                     .ToList();
@@ -746,6 +795,143 @@ public sealed class ConsultGenerationOrchestrator
             }
 
             return true;
+        }
+
+        // v30 (#1341, design § 2.2–§ 2.5): each nested loop's instance resolves once its
+        // source is known for that outer item — the outer item's own field at once, a node
+        // of an enclosing body when that node completes for the outer path, a top-level
+        // node, input or folder once its list is known. An empty list settles at 0 with its
+        // reason; an unreadable one fails THAT outer item (decided 2026-11-10), never the
+        // job. The loop leaves the unresolved set when every outer item has its instance.
+        async Task ResolveNestedInstancesAsync()
+        {
+            foreach (var loop in nestedLoops)
+            {
+                if (!unresolvedLoops.Contains(loop.Id) || loop.Collection is not { } collection)
+                {
+                    continue;
+                }
+
+                foreach (var outer in FanItems(loop))
+                {
+                    var outerPath = WorkflowItemPath.OfItem(outer)!;
+                    if (loopInstances.Has(loop.Id, outerPath) || NestedSourceOf(loop, collection, outer, outerPath) is not { } resolution)
+                    {
+                        continue;
+                    }
+
+                    if (resolution.Failure is { } failure)
+                    {
+                        loopInstances.Fail(loop.Id, outerPath, failure);
+                        await FailNestedInstanceAsync(loop, outer, outerPath, failure);
+                        continue;
+                    }
+
+                    var instanceItems = ConsultNodeValueLoops.WithPath(resolution.Items, outerPath);
+                    loopInstances.Resolve(loop.Id, outerPath, instanceItems, resolution.Reason);
+
+                    var blocks = NestedBlockOf(nodesById[loop.Ret!]) is { } nestedBlock
+                        ? deliverables
+                            .Where(deliverable => deliverable.Sources?.Contains(nestedBlock.Top, StringComparer.Ordinal) == true)
+                            .SelectMany(deliverable => instanceItems.Select(item => new ConsultCollectionItem(
+                                WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, WorkflowItemPath.OfItem(item)!), WorkflowPackageBlocks.ItemName(item))))
+                            .ToList()
+                        : new List<ConsultCollectionItem>();
+                    totalBlockCount += blocks.Count;
+
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.ResolveLoop),
+                        new ConsultGenerationLoopResolution(
+                            loop.Id,
+                            collection,
+                            instanceItems.Select(item => new ConsultCollectionItem(WorkflowItemPath.OfItem(item)!, WorkflowPackageBlocks.ItemName(item))).ToList(),
+                            blocks,
+                            totalBlockCount,
+                            context.CurrentUtcDateTime,
+                            resolution.Reason,
+                            Path: outerPath));
+                }
+
+                if (!EnclosingLoopUnresolved(loop) && FanItems(loop).All(outer => loopInstances.Has(loop.Id, WorkflowItemPath.OfItem(outer)!)))
+                {
+                    unresolvedLoops.Remove(loop.Id);
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.ResolveLoop),
+                        new ConsultGenerationLoopResolution(
+                            loop.Id,
+                            collection,
+                            loopInstances.ItemsIn(loop.Id, FanItems(loop).Select(outer => WorkflowItemPath.OfItem(outer)!))
+                                .Select(item => new ConsultCollectionItem(WorkflowItemPath.OfItem(item)!, WorkflowPackageBlocks.ItemName(item))).ToList(),
+                            Array.Empty<ConsultCollectionItem>(),
+                            totalBlockCount,
+                            context.CurrentUtcDateTime,
+                            Settled: true));
+                }
+            }
+        }
+
+        bool EnclosingLoopUnresolved(ConsultNodeDescriptor loop)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { loop.Id };
+            for (var ownerId = loop.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.For && unresolvedLoops.Contains(owner.Id))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // v30 (#1341): a nested instance's list, when its source is known for the outer item; null while it is not.
+        ConsultNodeValueLoops.Resolution? NestedSourceOf(ConsultNodeDescriptor loop, string collection, IReadOnlyDictionary<string, string> outer, string outerPath)
+        {
+            if (ConsultNodeValueLoops.SourceOf(collection) is { } fed)
+            {
+                var source = nodesById[fed.NodeId];
+                var aligned = ConsultNodeScheduler.AlignedPath(source, outerPath, nodesById);
+                if (outputs.TryGetValue(ConsultNodeScheduler.InstanceKey(source.Id, aligned), out var result))
+                {
+                    return ConsultNodeValueLoops.ItemsOf(result, collection, loop.Label);
+                }
+
+                return aligned is not null && source.ForEach is not null && failedItems.Contains(FailedKey(source, aligned))
+                    ? new ConsultNodeValueLoops.Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loop.Label} could not read its list: {source.Label} did not complete for this item.")
+                    : null;
+            }
+
+            if (collection.StartsWith("item.value.", StringComparison.Ordinal))
+            {
+                return ConsultNodeValueLoops.ItemsOfOuterItem(outer, collection, loop.Label);
+            }
+
+            return collections?.GetValueOrDefault(WorkflowFanSources.CollectionIdOf(collection)) is { } listed
+                ? new ConsultNodeValueLoops.Resolution(listed, listed.Count == 0 ? $"no items: {collection} was empty" : null, null)
+                : null;
+        }
+
+        // v30 (#1341, decided 2026-11-10): an unreadable inner list fails its OUTER item —
+        // its block fails with the sentence, the loop above cannot assemble it, the rest run on.
+        async Task FailNestedInstanceAsync(ConsultNodeDescriptor loop, IReadOnlyDictionary<string, string> outer, string outerPath, string failure)
+        {
+            logger.LogWarning("A nested loop could not read its list. JobId={JobId}, LoopId={LoopId}", context.InstanceId, loop.Id);
+            failedItems.Add(FailedKey(loop, outerPath));
+
+            if (NestedBlockOf(nodesById[loop.Ret!]) is { } nestedBlock)
+            {
+                foreach (var deliverable in deliverables.Where(d => d.Sources?.Contains(nestedBlock.Top, StringComparer.Ordinal) == true))
+                {
+                    totalBlockCount++;
+                    failedBlockCount++;
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.FailBlock),
+                        new BlockGenerationResult(WorkflowItemPath.BlockId(deliverable.BlockPrefix, loop.Id, outerPath), WorkflowPackageBlocks.ItemName(outer), false, null, failure));
+                }
+            }
         }
 
         async Task MarkFullyCompletedChainNodesAsync()
@@ -815,6 +1001,19 @@ public sealed class ConsultGenerationOrchestrator
                     entityId,
                     nameof(ConsultGenerationJobEntity.FailBlock),
                     new BlockGenerationResult(itemId, ItemName(node, itemId), false, null, error, errorStack));
+            }
+            else if (NestedBlockOf(node) is { } nestedBlock)
+            {
+                // v30 (#1341): the innermost loop's block of the item, named by its path.
+                foreach (var deliverable in deliverables.Where(d => d.Sources?.Contains(nestedBlock.Top, StringComparer.Ordinal) == true))
+                {
+                    failedBlockCount++;
+
+                    await context.Entities.CallEntityAsync(
+                        entityId,
+                        nameof(ConsultGenerationJobEntity.FailBlock),
+                        new BlockGenerationResult(WorkflowItemPath.BlockId(deliverable.BlockPrefix, nestedBlock.Loop, itemId), ItemName(node, itemId), false, null, error));
+                }
             }
             else
             {
@@ -1208,6 +1407,37 @@ public sealed class ConsultGenerationOrchestrator
                 // (#1246: the one alias writer, shared with the summary pass).
                 progressed |= inner.AliasTakenRets(outputs, FanItems);
 
+                // v30 (#1341, design § 2.3): a nested loop composes PER INSTANCE — the outer
+                // item's list of its returned node — into loop:<outer path>, which the loop
+                // above reads as that item's text (its ret is this loop).
+                foreach (var loop in nestedLoops)
+                {
+                    foreach (var outer in FanItems(loop))
+                    {
+                        var outerPath = WorkflowItemPath.OfItem(outer)!;
+                        var key = ConsultNodeScheduler.InstanceKey(loop.Id, outerPath);
+                        if (outputs.ContainsKey(key) || failedItems.Contains(FailedKey(loop, outerPath)) || loopInstances.Get(loop.Id, outerPath) is not { Failed: false } instance)
+                        {
+                            continue;
+                        }
+
+                        var composedInstance = ConsultFlowCompletion.TryCompose(loop, nodesById, outputs, _ => instance.Items, (node, itemId) => failedItems.Contains(FailedKey(node, itemId)), inner.SkippedInstances);
+                        if (composedInstance is null)
+                        {
+                            continue;
+                        }
+
+                        progressed = true;
+                        if (composedInstance.Failure is not null)
+                        {
+                            failedItems.Add(FailedKey(loop, outerPath));
+                            continue;
+                        }
+
+                        outputs[key] = composedInstance.Result!;
+                    }
+                }
+
                 foreach (var flow in flowNodes)
                 {
                     if (outputs.ContainsKey(flow.Id) || failedAggregators.ContainsKey(flow.Id) || skippedNodes.Contains(flow.Id) || AwaitsCount(flow))
@@ -1341,6 +1571,7 @@ public sealed class ConsultGenerationOrchestrator
         // job failed inside it and the orchestration must return.
         async Task<bool> RunToQuiescenceAsync()
         {
+        await ResolveNestedInstancesAsync();
         StartReadyInstances();
 
         while (pendingTasks.Count > 0 || pendingDecisions.Count > 0)
@@ -1360,6 +1591,7 @@ public sealed class ConsultGenerationOrchestrator
                 {
                     await SettleDecisionAsync(flowId, decidedItemId, await decided);
                 }
+                await ResolveNestedInstancesAsync();
                 await TryCompleteAggregatorsAsync();
                 PublishStatus(ConsultGenerationJobStatuses.Running);
                 StartReadyInstances();
@@ -1524,6 +1756,19 @@ public sealed class ConsultGenerationOrchestrator
                     {
                         // v27 (#1235): the taken ret of an inner if/case completes the block of
                         // the loop returning that flow (the deliverable's completion key).
+                        // v30 (#1341): the innermost loop's ret completes that loop's block, named by
+                        // its path, for a deliverable sourcing the top of the ret chain.
+                        if (NestedBlockOf(node) is { } nestedBlock && deliverable.Sources?.Contains(nestedBlock.Top, StringComparer.Ordinal) == true)
+                        {
+                            completedBlockCount++;
+
+                            await context.Entities.CallEntityAsync(
+                                entityId,
+                                nameof(ConsultGenerationJobEntity.CompleteBlock),
+                                new BlockGenerationResult(WorkflowItemPath.BlockId(deliverable.BlockPrefix, nestedBlock.Loop, itemId), ItemName(node, itemId), true, result.RawOutput.Trim(), null));
+                            continue;
+                        }
+
                         if (deliverable.SourceIds.Contains(nodeId)
                             || (inner.FlowOf(node) is { } flowOf && inner.IsTakenRet(node, itemId) && deliverable.SourceIds.Contains(flowOf.Id)))
                         {
@@ -1540,6 +1785,7 @@ public sealed class ConsultGenerationOrchestrator
                 await MarkFullyCompletedChainNodesAsync();
             }
 
+            await ResolveNestedInstancesAsync();
             await TryCompleteAggregatorsAsync();
             PublishStatus(ConsultGenerationJobStatuses.Running);
             StartReadyInstances();

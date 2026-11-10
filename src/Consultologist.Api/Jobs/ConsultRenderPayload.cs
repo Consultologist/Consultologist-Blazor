@@ -326,7 +326,8 @@ internal static class ConsultRenderPayload
 
             // v29 (#1303, design § 2.2): an item of a node's list — its value the
             // element, structured when the element is an object or array.
-            if (WorkflowFlowNodes.IsNodeValueCollection(fan))
+            // v30 (#1341, design § 2.2): an item of the outer item's list field reads as one.
+            if (WorkflowFlowNodes.IsNodeValueCollection(fan) || fan.StartsWith("item.value.", StringComparison.Ordinal))
             {
                 return new TemplateFanItem(id, name, Value: fanned.GetValueOrDefault("value", string.Empty), Element: ConsultNodeValueLoops.ElementOf(fanned));
             }
