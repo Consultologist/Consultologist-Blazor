@@ -183,14 +183,17 @@ public sealed class DecideFlowItemActivity
     /// </summary>
     private static ConsultFlowItemDecision DecideWhileCheck(WorkflowPackage package, ConsultDecideFlowItemInput input, WorkflowFlowNodes.Flow flow, ConsultPassPayload pass)
     {
-        var scope = new ConsultConditionScope(
+        var bare = new ConsultConditionScope(
                 input.EffectiveInputs ?? new Dictionary<string, string>(StringComparer.Ordinal),
                 ConsultConditionScope.TypesOf(package),
                 input.NodeTexts,
                 input.Folders,
                 input.Run,
                 input.Profile,
-                package) with { SkippedNodes = input.SkippedNodes, Pass = pass };
+                package);
+        // v30 (#1342 B3c): inside a for's item, the check reads that item as `item`.
+        var scope = (input.Parents is { Count: > 0 } parents ? bare.WithFanItem(parents[^1].Collection, parents[^1].Item) : bare)
+            with { SkippedNodes = input.SkippedNodes, Pass = pass };
         var passId = pass.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         if (pass.Number > 0 && flow.Node.Until is { } until && scope.Holds($"While '{flow.Node.Id}' until", until))
