@@ -166,7 +166,7 @@ public static class PromptTemplateRenderer
         }
 
         public override bool ToBool(SourceSpan span, object? value) =>
-            value is ScriptArray { Count: 0 } ? false : base.ToBool(span, value);
+            value is ScriptArray { Count: 0 } or TemplateRenderer.SkippedNodeObject ? false : base.ToBool(span, value);
     }
 
     /// <summary>
