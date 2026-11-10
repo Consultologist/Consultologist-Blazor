@@ -179,6 +179,8 @@ internal static class ConsultRenderPayload
         // v27 (#1235, design § 1.4): the instance keys (flow:item) an inner if/case
         // skipped by condition — those items are elements with no returned text.
         IReadOnlySet<string>? skipped = null,
+        // v30 (#1342, design § 3.4): why a loop read whole stopped (until | bound | end); null below 30.
+        Func<string, string?>? stoppedOf = null,
         // v30 (#1341, design § 6): a nested loop's instance items (loop id, outer path → items, or
         // null) — a loop read whole carries, per item, the lists of the loops its body holds.
         Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?>? instanceItems = null)
@@ -224,7 +226,8 @@ internal static class ConsultRenderPayload
 
             loops ??= new Dictionary<string, ConsultLoopPayload>(StringComparer.Ordinal);
             loops[readId] = new ConsultLoopPayload(collection, ret, items, texts, skippedItems.Count > 0 ? skippedItems : null,
-                Inner: instanceItems is null ? null : InnerLoopsOf(loop, items, nodesById, outputs, skipped, instanceItems));
+                Inner: instanceItems is null ? null : InnerLoopsOf(loop, items, nodesById, outputs, skipped, instanceItems),
+                Stopped: stoppedOf?.Invoke(readId));
         }
 
         return loops;
@@ -440,6 +443,7 @@ internal static class ConsultRenderPayload
                 output,
                 // v27 (#1235): the items skipped by condition.
                 loop.Skipped is { Count: > 0 } skippedItems ? skippedItems.ToHashSet(StringComparer.Ordinal) : null,
+                Stopped: loop.Stopped,
                 Inner: loop.Inner?.ToDictionary(
                     inner => inner.Key,
                     inner => (IReadOnlyDictionary<string, TemplateLoopOutput>)inner.Value.ToDictionary(

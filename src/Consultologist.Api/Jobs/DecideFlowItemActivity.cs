@@ -41,7 +41,11 @@ public sealed record ConsultDecideFlowItemInput(
     // v30 (#1342, design § 3.1): set when this is a while's check after pass Pass.Number
     // (0: before the first, under checkFirst) — FlowId names the while. Trailing.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    ConsultPassPayload? Pass = null);
+    ConsultPassPayload? Pass = null,
+    // v30 (#1342, design § 3.4): set when this is a for's until, judged after the item's
+    // body settled — FlowId names the loop, Item the item. Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    bool? Until = null);
 
 /// <summary>
 /// v27 (#1235, design § 1.3, § 1.4, § 2): what one item's decision said — the
@@ -112,6 +116,24 @@ public sealed class DecideFlowItemActivity
         if (input.Pass is { } pass && flows.Flows.TryGetValue(input.FlowId, out var whileFlow) && whileFlow.Kind == WorkflowFlowNodes.Kind.While)
         {
             return DecideWhileCheck(package, input, whileFlow, pass);
+        }
+
+        if (input.Until == true && flows.Flows.TryGetValue(input.FlowId, out var loopFlow) && loopFlow.Kind == WorkflowFlowNodes.Kind.For && loopFlow.Node.Until is { } until)
+        {
+            // v30 (#1342, design § 3.4): the item's until, over its body's nodes and the item.
+            var itemScope = new ConsultConditionScope(
+                    input.EffectiveInputs ?? new Dictionary<string, string>(StringComparer.Ordinal),
+                    ConsultConditionScope.TypesOf(package),
+                    input.NodeTexts,
+                    input.Folders,
+                    input.Run,
+                    input.Profile,
+                    package)
+                .WithFanItem(input.Collection, input.Item) with { SkippedNodes = input.SkippedNodes, Parents = input.Parents };
+            var untilItem = WorkflowItemPath.OfItem(input.Item) ?? throw new InvalidOperationException($"The item of '{input.FlowId}' has no id.");
+            return itemScope.Holds($"For '{input.FlowId}' until", until)
+                ? new ConsultFlowItemDecision(input.FlowId, untilItem, "until", new List<string>(), null, "its until held")
+                : new ConsultFlowItemDecision(input.FlowId, untilItem, "again", new List<string>(), string.Empty, null);
         }
 
         if (!flows.Flows.TryGetValue(input.FlowId, out var flow) || flow.Kind == WorkflowFlowNodes.Kind.For)

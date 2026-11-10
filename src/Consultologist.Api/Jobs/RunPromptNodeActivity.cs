@@ -144,7 +144,10 @@ public sealed record ConsultLoopPayload(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     IReadOnlyDictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>? Inner = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? Composed = null);
+    string? Composed = null,
+    // v30 (#1342, design § 3.4): why the loop stopped (until | bound | end). Written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Stopped = null);
 
 /// <summary>
 /// One node run. Deserialized concepts ride the recorded activity result so Durable

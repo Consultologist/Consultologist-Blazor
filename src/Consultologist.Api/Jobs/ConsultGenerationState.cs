@@ -567,6 +567,60 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     }
 
     /// <summary>
+    /// v30 (#1342, design § 3.4, record storage 11): a for stopped — in ONE call, every
+    /// item it did not run gets its row (loop:item, Skipped, the reason) and its blocks
+    /// skipped with that reason, and the loop's row names why it stopped. The count is
+    /// never touched (the list's length stands), so count-resolved never fires twice.
+    /// </summary>
+    public async Task StopLoop(ConsultGenerationLoopStopped input)
+    {
+        var state = EnsureState();
+        Stamp(state, 6);
+        var now = DateTimeOffset.UtcNow;
+
+        foreach (var item in input.NotRun)
+        {
+            var row = state.GetOrAddNodeOutput(WorkflowItemPath.Key(input.LoopId, item.ItemId), input.Label);
+            row.NodeId = input.LoopId;
+            row.ItemId = item.ItemId;
+            row.Status = ConsultGenerationNodeStatuses.Skipped;
+            row.Reason = item.Reason;
+            row.CompletedAtUtc = now;
+
+            foreach (var blockId in item.BlockIds)
+            {
+                var block = state.GetOrAddBlock(blockId, item.ItemName);
+                block.Status = ConsultGenerationBlockStatuses.Skipped;
+                block.GeneratedText = null;
+                block.Error = null;
+                block.Reason = item.Reason;
+                block.CompletedAtUtc = now;
+            }
+        }
+
+        if (state.Nodes is { } nodes)
+        {
+            state.Nodes = nodes
+                .Select(node => node.Id == input.LoopId ? node with { Stopped = input.Stopped, StopReason = input.StopReason } : node)
+                .ToList();
+        }
+
+        state.History.Add(new JobHistoryEvent(
+            "loop-stopped",
+            input.NotRun.Count == 0
+                ? $"{input.Label}: {input.StopReason}"
+                : $"{input.Label}: {input.StopReason}; {input.NotRun.Count} {(input.NotRun.Count == 1 ? "item" : "items")} not run",
+            null,
+            now));
+        State = state;
+
+        if (input.NotRun.Any(item => item.BlockIds.Count > 0))
+        {
+            await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+        }
+    }
+
+    /// <summary>
     /// v30 (#1342, design § 3.1, § 3.3, record storage 11): a while stopped — its row
     /// names how many passes it ran, why it stopped and the sentence (the bound's is a
     /// named state: "stopped at its bound of N; the check never stopped holding"); the
@@ -1723,6 +1777,16 @@ public sealed record ConsultGenerationNodeItemUpdate(
     // most 3" is the Create page's). Trailing; written only when set.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     bool? Pass = null);
+
+/// <summary>
+/// v30 (#1342, design § 3.4, record storage 11): a for stopped before its list ran out —
+/// its until held, or its max was reached (Stopped "until" | "bound"), or it ran out
+/// ("end", nothing not run) — and the items it did not run, each with its blocks.
+/// </summary>
+public sealed record ConsultGenerationLoopStopped(string LoopId, string Label, string Stopped, string StopReason, IReadOnlyList<ConsultNotRunItem> NotRun);
+
+/// <summary>v30 (#1342): an item a for did not run — its id, name, the reason ("not run: …") and the blocks it would have filled.</summary>
+public sealed record ConsultNotRunItem(string ItemId, string ItemName, string Reason, IReadOnlyList<string> BlockIds);
 
 /// <summary>
 /// v30 (#1342, design § 3.1, § 3.3, record storage 11): a while stopped — how many passes
