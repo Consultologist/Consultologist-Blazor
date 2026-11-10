@@ -1,0 +1,727 @@
+# calls
+entity Initialize {"JobId":"<job>","AppUserId":"user-1","Items":[{"id":"consult:assessment","name":"Assessment"},{"id":"consult:sections:hpi","name":"HPI"},{"id":"consult:sections:plan","name":"Plan"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786","ItemSteps":[{"Id":"section_notes","Label":"Section notes"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","PromptId":"prompts/extract.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"extract","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"concept-extraction","AgentVersion":"1","CustomSchemaHash":null,"Macros":null,"Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/extract.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"scope","Label":"Scope","PromptId":"prompts/scope.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"scope","Aggregate":null,"Values":["in_scope","out_of_scope"],"Reproducible":null,"Check":null,"Template":null,"AgentName":"classification","AgentVersion":"1","CustomSchemaHash":null,"Macros":null,"Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","Op":null,"Reads":null,"With":null,"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/scope.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"assessment","Label":"Assessment","PromptId":"prompts/assessment.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"assessment","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":[{"Id":"closing","After":true,"When":null,"ForItem":null,"Reads":null,"If":null}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":["extract"],"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":"prompts/assessment.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"section_notes","Label":"Section notes","PromptId":"prompts/section.md","Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":"snippet.sections","ConceptSource":"section_notes","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","CustomSchemaHash":null,"Macros":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":"sections","Branch":null,"DeliverableReads":null,"Prompt":"prompts/section.md","Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"coverage","Label":"Coverage","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"coverage","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail","Kind":null,"Collection":null,"Expression":null,"Body":null,"Ret":null,"In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":null,"Branches":null,"ResolvedAtUtc":null,"Reason":null},{"Id":"sections","Label":"Sections","PromptId":null,"Bindings":null,"OutputContract":null,"FailIfEmpty":null,"ForEach":null,"ConceptSource":"sections","Aggregate":null,"Values":null,"Reproducible":null,"Check":null,"Template":null,"AgentName":null,"AgentVersion":null,"CustomSchemaHash":null,"Macros":null,"Format":null,"Producer":null,"FormatHash":null,"Op":null,"Reads":null,"With":null,"OnInvalid":null,"Kind":"for","Collection":"snippet.sections","Expression":null,"Body":["section_notes"],"Ret":"section_notes","In":null,"Branch":null,"DeliverableReads":null,"Prompt":null,"Count":2,"Branches":null,"ResolvedAtUtc":null,"Reason":null}],"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","Source":"app","ScheduledAtUtc":null,"InputOrigins":null,"SkippedDocuments":null,"Collections":null,"PackageSpecVersion":null,"InputDocumentOrigins":null,"PackageTitle":null,"PackageTags":null,"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","Terminology":null,"TerminologyServerRef":null,"Deciding":null,"ApiHost":null,"EngineCommit":"<commit>","InputsBlob":null,"RerunBaseline":null,"MacroChoices":null,"ExcludedMacros":null,"EngineRelease":null,"TerminologyServerRelease":null,"ResolvedInputTypes":null,"AcknowledgedShortInputs":null,"FormatsRef":"formats@v2026.11.1","UnresolvedLoops":null}
+entity MarkRunning null
+activity run-prompt-node {"NodeId":"extract","PromptId":"prompts/extract.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"extract","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"concept-extraction","AgentVersion":"1","Before":null,"After":null,"Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"scope","PromptId":"prompts/scope.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"scope","VariableTypes":{"kind":"enum"},"Values":["in_scope","out_of_scope"],"Template":null,"AgentName":"classification","AgentVersion":"1","Before":null,"After":null,"Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":"fail","Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"section_notes:hpi","PromptId":"prompts/section.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"section_notes","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},"ForEach":"snippet.sections","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-prompt-node {"NodeId":"section_notes:plan","PromptId":"prompts/section.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"section_notes","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":{"id":"plan","label":"Plan","content":"Plan."},"ForEach":"snippet.sections","Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":null,"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+entity MarkNodeCompleted {"NodeId":"extract","Label":"Extract concepts","Concepts":null,"InputHash":"in:extract","OutputHash":"out:extract","CompletedNodeCount":1,"TotalNodeCount":6,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+activity run-prompt-node {"NodeId":"assessment","PromptId":"prompts/assessment.md","Variables":{"notes":"A fictional referral: a 40-year-old with wheeze and a fever.","kind":"new"},"WorkflowPackage":"general@v2026.08.1","OutputContract":null,"ConceptSource":"assessment","VariableTypes":{"kind":"enum"},"Values":null,"Template":null,"AgentName":"consult-prose","AgentVersion":"3","Before":null,"After":null,"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Op":null,"NodeTexts":{"extract":"{ \u0022concepts\u0022: [ { \u0022term\u0022: \u0022Asthma\u0022, \u0022id\u0022: \u0022195967001\u0022, \u0022type\u0022: \u0022disorder\u0022, \u0022isActive\u0022: true } ] }"},"Folders":{"sections":[{"id":"hpi","label":"HPI","content":"History: {{ input.notes }}"},{"id":"plan","label":"Plan","content":"Plan."}]},"Item":null,"ForEach":null,"Run":{"Date":"<date>","Job":"<job8>","Package":"general@v2026.08.1","Host":""},"Profile":{"Name":"","Signature":""},"With":null,"OnInvalid":null,"Supplied":{"notes":"\u0022A fictional referral: a 40-year-old with wheeze and a fever.\u0022","kind":"\u0022new\u0022"},"Classifications":{},"FailIfEmpty":null,"Instances":[{"Id":"closing","After":true,"When":null,"ForItem":null,"Reads":null,"If":null}],"Loops":null,"FlowRets":null,"SkippedNodes":null,"Deliverables":null}
+activity run-computed-node {"NodeId":"coverage","Op":"terms_subset","With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"NodeTexts":{"extract":"{ \u0022concepts\u0022: [ { \u0022term\u0022: \u0022Asthma\u0022, \u0022id\u0022: \u0022195967001\u0022, \u0022type\u0022: \u0022disorder\u0022, \u0022isActive\u0022: true } ] }"},"Format":"terms_subset","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2"}
+entity MarkNodeCompleted {"NodeId":"assessment","Label":"Assessment","Concepts":null,"InputHash":"in:assessment","OutputHash":"out:assessment","CompletedNodeCount":2,"TotalNodeCount":6,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:assessment","BlockName":"Assessment","Success":true,"GeneratedText":"[assessment]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"scope","Label":"Scope","Concepts":null,"InputHash":"in:scope","OutputHash":"out:scope","CompletedNodeCount":3,"TotalNodeCount":6,"HashVersion":6,"Classification":"in_scope","Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeItemCompleted {"NodeId":"section_notes","Label":"Section notes","ItemId":"hpi","ItemName":"HPI","Concepts":null,"InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sections:hpi","BlockName":"HPI","Success":true,"GeneratedText":"[section_notes:hpi]","Error":null,"ErrorStack":null}
+entity MarkNodeItemCompleted {"NodeId":"section_notes","Label":"Section notes","ItemId":"plan","ItemName":"Plan","Concepts":null,"InputHash":"in:section_notes:plan","OutputHash":"out:section_notes:plan","CompletedChainCount":1,"TotalChainCount":1,"HashVersion":6,"Tokens":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity CompleteBlock {"BlockId":"consult:sections:plan","BlockName":"Plan","Success":true,"GeneratedText":"[section_notes:plan]","Error":null,"ErrorStack":null}
+entity MarkNodeCompleted {"NodeId":"section_notes","Label":"Section notes","Concepts":null,"InputHash":null,"OutputHash":null,"CompletedNodeCount":4,"TotalNodeCount":6,"HashVersion":null,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":null,"Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"sections","Label":"Sections","Concepts":null,"InputHash":"f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2","OutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","CompletedNodeCount":5,"TotalNodeCount":6,"HashVersion":6,"Classification":null,"Tokens":null,"Check":null,"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":null,"AgentOutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","Appended":null,"Excluded":null}
+entity MarkNodeCompleted {"NodeId":"coverage","Label":"Coverage","Concepts":null,"InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedNodeCount":6,"TotalNodeCount":6,"HashVersion":6,"Classification":null,"Tokens":null,"Check":{"Passed":true,"Uncovered":null,"Untested":["Asthma"]},"NodeStartedAtUtc":null,"DurationMs":null,"Unattested":null,"CustomSchemaHash":null,"CustomAgent":null,"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","Appended":null,"Excluded":null}
+entity CompleteResultDocument {"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]","Ordinal":0,"Appended":null,"Unsigned":null,"ComposedHash":"5ae7ccd710f002f03c524d70c10a65e778541c1b66b8ccd819399800a6226bab","Sources":["assessment","sections"]}
+entity FinalizeJob {"Status":"Completed","Error":null,"AccountKind":"","FailureStack":null}
+entity RecordDelivery {"Outcome":"address-not-set","RecordedAtUtc":"<time>","DocumentAttached":null}
+# prompts
+## extract
+Extract the concepts from:
+A fictional referral: a 40-year-old with wheeze and a fever.
+## scope
+Is this in scope? A fictional referral: a 40-year-old with wheeze and a fever.
+## section_notes:hpi
+HPI: History: A fictional referral: a 40-year-old with wheeze and a fever.
+## section_notes:plan
+Plan: Plan.
+## assessment
+Assess.
+Follow the local standards.
+A fictional referral: a 40-year-old with wheeze and a fever.
+- {term: "Asthma", id: "195967001", type: "disorder", isActive: true}
+
+# the served record
+{
+  "JobId": "<job>",
+  "AppUserId": "user-1",
+  "Status": "Completed",
+  "TotalBlockCount": 3,
+  "CompletedBlockCount": 3,
+  "FailedBlockCount": 0,
+  "GeneratedBlocks": {
+    "consult:assessment": "[assessment]",
+    "consult:sections:hpi": "[section_notes:hpi]",
+    "consult:sections:plan": "[section_notes:plan]"
+  },
+  "FailedBlocks": {},
+  "Success": true,
+  "SchemaVersion": 8,
+  "AnalysisStatus": null,
+  "AnalysisError": null,
+  "CompletedStageCount": 6,
+  "TotalStageCount": 6,
+  "ItemProgress": {
+    "hpi": {
+      "ItemId": "hpi",
+      "ItemName": "HPI",
+      "Step": "section_notes",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    },
+    "plan": {
+      "ItemId": "plan",
+      "ItemName": "Plan",
+      "Step": "section_notes",
+      "CompletedStepCount": 1,
+      "TotalStepCount": 1
+    }
+  },
+  "RuntimeFailureStage": null,
+  "RuntimeFailureError": null,
+  "CreatedAtUtc": "<time>",
+  "StartedAtUtc": "<time>",
+  "CompletedAtUtc": "<time>",
+  "History": [
+    {
+      "Kind": "success",
+      "Label": "Extract concepts",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Assessment",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Assessment",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Scope",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: HPI",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section completed: Plan",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Section notes",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Sections",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Coverage",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Assembled document produced: Consultation note",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "success",
+      "Label": "Done",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    },
+    {
+      "Kind": "delivery",
+      "Label": "Not emailed \u2014 no delivery address on the account",
+      "Detail": null,
+      "OccurredAt": "<time>"
+    }
+  ],
+  "WorkflowPackage": "general@v2026.08.1",
+  "EffectiveInputHash": "70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786",
+  "ItemSteps": [
+    {
+      "Id": "section_notes",
+      "Label": "Section notes"
+    }
+  ],
+  "Nodes": [
+    {
+      "Id": "extract",
+      "Label": "Extract concepts",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "extract",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "concept-extraction",
+      "AgentVersion": "1",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "concept_list",
+      "Producer": "attested",
+      "FormatHash": "39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/extract.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "scope",
+      "Label": "Scope",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "scope",
+      "Aggregate": null,
+      "Values": [
+        "in_scope",
+        "out_of_scope"
+      ],
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "classification",
+      "AgentVersion": "1",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "classification",
+      "Producer": "attested",
+      "FormatHash": "510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/scope.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "assessment",
+      "Label": "Assessment",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "assessment",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": [
+        {
+          "Id": "closing",
+          "After": true,
+          "When": null,
+          "ForItem": null,
+          "Reads": null,
+          "If": null
+        }
+      ],
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": [
+        "extract"
+      ],
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/assessment.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "section_notes",
+      "Label": "Section notes",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "section_notes",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": "consult-prose",
+      "AgentVersion": "3",
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "prose",
+      "Producer": "attested",
+      "FormatHash": "7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada",
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": "sections",
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": "prompts/section.md",
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "coverage",
+      "Label": "Coverage",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "coverage",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": "terms_subset",
+      "Producer": "computed",
+      "FormatHash": "3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2",
+      "Op": "terms_subset",
+      "Reads": [
+        "extract"
+      ],
+      "With": {
+        "of": "extract",
+        "in": "extract",
+        "failWith": "The note names problems the source does not."
+      },
+      "OnInvalid": "fail",
+      "Kind": null,
+      "Collection": null,
+      "Expression": null,
+      "Body": null,
+      "Ret": null,
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": null,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    },
+    {
+      "Id": "sections",
+      "Label": "Sections",
+      "PromptId": null,
+      "Bindings": null,
+      "OutputContract": null,
+      "FailIfEmpty": null,
+      "ForEach": null,
+      "ConceptSource": "sections",
+      "Aggregate": null,
+      "Values": null,
+      "Reproducible": null,
+      "Check": null,
+      "Template": null,
+      "AgentName": null,
+      "AgentVersion": null,
+      "CustomSchemaHash": null,
+      "Macros": null,
+      "Format": null,
+      "Producer": null,
+      "FormatHash": null,
+      "Op": null,
+      "Reads": null,
+      "With": null,
+      "OnInvalid": null,
+      "Kind": "for",
+      "Collection": "snippet.sections",
+      "Expression": null,
+      "Body": [
+        "section_notes"
+      ],
+      "Ret": "section_notes",
+      "In": null,
+      "Branch": null,
+      "DeliverableReads": null,
+      "Prompt": null,
+      "Count": 2,
+      "Branches": null,
+      "ResolvedAtUtc": null,
+      "Reason": null
+    }
+  ],
+  "NodeOutputs": {
+    "extract": {
+      "NodeId": "extract",
+      "Label": "Extract concepts",
+      "Status": "Completed",
+      "InputHash": "in:extract",
+      "OutputHash": "out:extract",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "assessment": {
+      "NodeId": "assessment",
+      "Label": "Assessment",
+      "Status": "Completed",
+      "InputHash": "in:assessment",
+      "OutputHash": "out:assessment",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "scope": {
+      "NodeId": "scope",
+      "Label": "Scope",
+      "Status": "Completed",
+      "InputHash": "in:scope",
+      "OutputHash": "out:scope",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": "in_scope",
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "section_notes:hpi": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": "in:section_notes:hpi",
+      "OutputHash": "out:section_notes:hpi",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "section_notes:plan": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": "in:section_notes:plan",
+      "OutputHash": "out:section_notes:plan",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "section_notes": {
+      "NodeId": "section_notes",
+      "Label": "Section notes",
+      "Status": "Completed",
+      "InputHash": null,
+      "OutputHash": null,
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": null,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": null,
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "sections": {
+      "NodeId": "sections",
+      "Label": "Sections",
+      "Status": "Completed",
+      "InputHash": "f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2",
+      "OutputHash": "6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": null,
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": null,
+      "AgentOutputHash": "6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    },
+    "coverage": {
+      "NodeId": "coverage",
+      "Label": "Coverage",
+      "Status": "Completed",
+      "InputHash": "f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f",
+      "OutputHash": "a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584",
+      "CompletedAtUtc": "<time>",
+      "Error": null,
+      "HashVersion": 6,
+      "Classification": null,
+      "Tokens": null,
+      "Check": {
+        "Passed": true,
+        "Uncovered": null,
+        "Untested": [
+          "Asthma"
+        ]
+      },
+      "StartedAtUtc": null,
+      "DurationMs": null,
+      "ErrorType": null,
+      "ErrorStack": null,
+      "Unattested": null,
+      "CustomSchemaHash": null,
+      "CustomAgent": null,
+      "Validation": {
+        "Valid": true,
+        "Errors": []
+      },
+      "AgentOutputHash": "a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584",
+      "Appended": null,
+      "Excluded": null,
+      "Reason": null
+    }
+  },
+  "AgentVersions": null,
+  "EffectiveInputHashVersion": 6,
+  "CatalogRef": "output-contracts@v2026.08.1",
+  "WorkflowOutputHash": "1eec85508733ae94526b04071f989f48160df682599bd76473ed3b9be1c6397d",
+  "WorkflowOutputHashVersion": 3,
+  "AssembledDocument": null,
+  "Source": "app",
+  "ScheduledAtUtc": null,
+  "AssembledDocuments": [
+    {
+      "ResultId": "consult",
+      "Label": "Consultation note",
+      "Text": "[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]",
+      "DocumentHash": "5ae7ccd710f002f03c524d70c10a65e778541c1b66b8ccd819399800a6226bab",
+      "Appended": null,
+      "Unsigned": null,
+      "ComposedHash": "5ae7ccd710f002f03c524d70c10a65e778541c1b66b8ccd819399800a6226bab",
+      "Sources": [
+        "assessment",
+        "sections"
+      ]
+    }
+  ],
+  "InputOrigins": null,
+  "ResolvedInputTypes": null,
+  "SkippedDocuments": null,
+  "Collections": [
+    {
+      "CollectionId": "sections",
+      "Items": [
+        {
+          "Id": "hpi",
+          "Name": "HPI"
+        },
+        {
+          "Id": "plan",
+          "Name": "Plan"
+        }
+      ]
+    }
+  ],
+  "PackageSpecVersion": 26,
+  "PackageTitle": null,
+  "StartFailure": null,
+  "PackageTags": [],
+  "PackageFormatRef": "package-format@v2026.11.2",
+  "ProvenanceRef": "provenance@v2026.11.1",
+  "Terminology": null,
+  "TerminologyServerRef": null,
+  "TextDroppedAtUtc": null,
+  "DeliveryOutcome": "address-not-set",
+  "DeliveredAtUtc": null,
+  "DeliveryDocumentAttached": null,
+  "Deciding": null,
+  "DecidedAtUtc": "<time>",
+  "Classifications": {
+    "scope": "in_scope"
+  },
+  "DecisionFailureKind": null,
+  "ApiHost": null,
+  "EngineCommit":"<commit>",
+  "EngineRelease": null,
+  "TerminologyServerRelease": null,
+  "OutputsBlob": null,
+  "InputsBlob": null,
+  "InputsDroppedAtUtc": null,
+  "HeldInputs": null,
+  "RerunOf": null,
+  "RerunVerdict": null,
+  "RerunDivergence": null,
+  "Tokens": null,
+  "MacroChoices": null,
+  "FailedDocuments": null,
+  "ExcludedMacros": null,
+  "FailureStack": null,
+  "FailedBlockStacks": null,
+  "AcknowledgedShortInputs": null,
+  "FormatsRef": "formats@v2026.11.1",
+  "SkippedBlocks": null,
+  "UnresolvedLoops": null,
+  "HeldDocuments": null
+}
+# the event candidates
+snapshot | snapshot | {"JobId":"<job>","AppUserId":"user-1","Status":"Completed","TotalBlockCount":3,"CompletedBlockCount":3,"FailedBlockCount":0,"GeneratedBlocks":{"consult:assessment":"[assessment]","consult:sections:hpi":"[section_notes:hpi]","consult:sections:plan":"[section_notes:plan]"},"FailedBlocks":{},"Success":true,"SchemaVersion":8,"CompletedStageCount":6,"TotalStageCount":6,"ItemProgress":{"hpi":{"ItemId":"hpi","ItemName":"HPI","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1},"plan":{"ItemId":"plan","ItemName":"Plan","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1}},"CreatedAtUtc":"<time>","StartedAtUtc":"<time>","CompletedAtUtc":"<time>","History":[{"Kind":"success","Label":"Extract concepts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Scope","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: HPI","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Plan","OccurredAt":"<time>"},{"Kind":"success","Label":"Section notes","OccurredAt":"<time>"},{"Kind":"success","Label":"Sections","OccurredAt":"<time>"},{"Kind":"success","Label":"Coverage","OccurredAt":"<time>"},{"Kind":"success","Label":"Assembled document produced: Consultation note","OccurredAt":"<time>"},{"Kind":"success","Label":"Done","OccurredAt":"<time>"},{"Kind":"delivery","Label":"Not emailed \u2014 no delivery address on the account","OccurredAt":"<time>"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786","ItemSteps":[{"Id":"section_notes","Label":"Section notes"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","ConceptSource":"extract","AgentName":"concept-extraction","AgentVersion":"1","Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","OnInvalid":"fail","Prompt":"prompts/extract.md"},{"Id":"scope","Label":"Scope","ConceptSource":"scope","Values":["in_scope","out_of_scope"],"AgentName":"classification","AgentVersion":"1","Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","OnInvalid":"fail","Prompt":"prompts/scope.md"},{"Id":"assessment","Label":"Assessment","ConceptSource":"assessment","AgentName":"consult-prose","AgentVersion":"3","Macros":[{"Id":"closing","After":true}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["extract"],"Prompt":"prompts/assessment.md"},{"Id":"section_notes","Label":"Section notes","ConceptSource":"section_notes","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"sections","Prompt":"prompts/section.md"},{"Id":"coverage","Label":"Coverage","ConceptSource":"coverage","Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail"},{"Id":"sections","Label":"Sections","ConceptSource":"sections","Kind":"for","Collection":"snippet.sections","Body":["section_notes"],"Ret":"section_notes","Count":2}],"NodeOutputs":{"extract":{"NodeId":"extract","Label":"Extract concepts","Status":"Completed","InputHash":"in:extract","OutputHash":"out:extract","CompletedAtUtc":"<time>","HashVersion":6},"assessment":{"NodeId":"assessment","Label":"Assessment","Status":"Completed","InputHash":"in:assessment","OutputHash":"out:assessment","CompletedAtUtc":"<time>","HashVersion":6},"scope":{"NodeId":"scope","Label":"Scope","Status":"Completed","InputHash":"in:scope","OutputHash":"out:scope","CompletedAtUtc":"<time>","HashVersion":6,"Classification":"in_scope"},"section_notes:hpi":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedAtUtc":"<time>","HashVersion":6},"section_notes:plan":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:plan","OutputHash":"out:section_notes:plan","CompletedAtUtc":"<time>","HashVersion":6},"section_notes":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","CompletedAtUtc":"<time>"},"sections":{"NodeId":"sections","Label":"Sections","Status":"Completed","InputHash":"f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2","OutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202"},"coverage":{"NodeId":"coverage","Label":"Coverage","Status":"Completed","InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedAtUtc":"<time>","HashVersion":6,"Check":{"Passed":true,"Untested":["Asthma"]},"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584"}},"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","WorkflowOutputHash":"1eec85508733ae94526b04071f989f48160df682599bd76473ed3b9be1c6397d","WorkflowOutputHashVersion":3,"Source":"app","AssembledDocuments":[{"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]","DocumentHash":"5ae7ccd710f002f03c524d70c10a65e778541c1b66b8ccd819399800a6226bab","ComposedHash":"5ae7ccd710f002f03c524d70c10a65e778541c1b66b8ccd819399800a6226bab","Sources":["assessment","sections"]}],"Collections":[{"CollectionId":"sections","Items":[{"Id":"hpi","Name":"HPI"},{"Id":"plan","Name":"Plan"}]}],"PackageSpecVersion":26,"PackageTags":[],"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","DeliveryOutcome":"address-not-set","DecidedAtUtc":"<time>","Classifications":{"scope":"in_scope"},"EngineCommit":"<commit>","FormatsRef":"formats@v2026.11.1"}
+node-completed | node:extract | {"JobId":"<job>","NodeId":"extract","Label":"Extract concepts","Message":"Extract concepts completed.","CompletedNodeCount":1,"TotalNodeCount":6}
+node-completed | node:scope | {"JobId":"<job>","NodeId":"scope","Label":"Scope","Message":"Scope completed.","CompletedNodeCount":2,"TotalNodeCount":6}
+node-completed | node:assessment | {"JobId":"<job>","NodeId":"assessment","Label":"Assessment","Message":"Assessment completed.","CompletedNodeCount":3,"TotalNodeCount":6}
+node-completed | node:section_notes | {"JobId":"<job>","NodeId":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedNodeCount":4,"TotalNodeCount":6}
+node-completed | node:coverage | {"JobId":"<job>","NodeId":"coverage","Label":"Coverage","Message":"Coverage completed.","CompletedNodeCount":5,"TotalNodeCount":6}
+node-completed | node:sections | {"JobId":"<job>","NodeId":"sections","Label":"Sections","Message":"Sections completed.","CompletedNodeCount":6,"TotalNodeCount":6}
+item-step | item-step:hpi:section_notes | {"JobId":"<job>","ItemId":"hpi","ItemName":"HPI","Step":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedStepCount":1,"TotalStepCount":1}
+item-step | item-step:plan:section_notes | {"JobId":"<job>","ItemId":"plan","ItemName":"Plan","Step":"section_notes","Label":"Section notes","Message":"Section notes completed.","CompletedStepCount":1,"TotalStepCount":1}
+block-completed | block-completed:consult:assessment | {"JobId":"<job>","BlockId":"consult:assessment","Text":"[assessment]"}
+block-completed | block-completed:consult:sections:hpi | {"JobId":"<job>","BlockId":"consult:sections:hpi","Text":"[section_notes:hpi]"}
+block-completed | block-completed:consult:sections:plan | {"JobId":"<job>","BlockId":"consult:sections:plan","Text":"[section_notes:plan]"}
+done | done | {"JobId":"<job>","AppUserId":"user-1","Status":"Completed","TotalBlockCount":3,"CompletedBlockCount":3,"FailedBlockCount":0,"GeneratedBlocks":{"consult:assessment":"[assessment]","consult:sections:hpi":"[section_notes:hpi]","consult:sections:plan":"[section_notes:plan]"},"FailedBlocks":{},"Success":true,"SchemaVersion":8,"CompletedStageCount":6,"TotalStageCount":6,"ItemProgress":{"hpi":{"ItemId":"hpi","ItemName":"HPI","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1},"plan":{"ItemId":"plan","ItemName":"Plan","Step":"section_notes","CompletedStepCount":1,"TotalStepCount":1}},"CreatedAtUtc":"<time>","StartedAtUtc":"<time>","CompletedAtUtc":"<time>","History":[{"Kind":"success","Label":"Extract concepts","OccurredAt":"<time>"},{"Kind":"success","Label":"Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Assessment","OccurredAt":"<time>"},{"Kind":"success","Label":"Scope","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: HPI","OccurredAt":"<time>"},{"Kind":"success","Label":"Section completed: Plan","OccurredAt":"<time>"},{"Kind":"success","Label":"Section notes","OccurredAt":"<time>"},{"Kind":"success","Label":"Sections","OccurredAt":"<time>"},{"Kind":"success","Label":"Coverage","OccurredAt":"<time>"},{"Kind":"success","Label":"Assembled document produced: Consultation note","OccurredAt":"<time>"},{"Kind":"success","Label":"Done","OccurredAt":"<time>"},{"Kind":"delivery","Label":"Not emailed \u2014 no delivery address on the account","OccurredAt":"<time>"}],"WorkflowPackage":"general@v2026.08.1","EffectiveInputHash":"70c3616d971828b0ad9ea2b4164d39f2f34213c7070c9bfe4affdc44a58d4786","ItemSteps":[{"Id":"section_notes","Label":"Section notes"}],"Nodes":[{"Id":"extract","Label":"Extract concepts","ConceptSource":"extract","AgentName":"concept-extraction","AgentVersion":"1","Format":"concept_list","Producer":"attested","FormatHash":"39c414264e61280c65e50b0871e71589692f73d78afeeb279a0ff347d1031aa7","OnInvalid":"fail","Prompt":"prompts/extract.md"},{"Id":"scope","Label":"Scope","ConceptSource":"scope","Values":["in_scope","out_of_scope"],"AgentName":"classification","AgentVersion":"1","Format":"classification","Producer":"attested","FormatHash":"510a2a7460f79e7dc547081e041262683c3999c77b9c3f347ed18b08bf02358e","OnInvalid":"fail","Prompt":"prompts/scope.md"},{"Id":"assessment","Label":"Assessment","ConceptSource":"assessment","AgentName":"consult-prose","AgentVersion":"3","Macros":[{"Id":"closing","After":true}],"Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","Reads":["extract"],"Prompt":"prompts/assessment.md"},{"Id":"section_notes","Label":"Section notes","ConceptSource":"section_notes","AgentName":"consult-prose","AgentVersion":"3","Format":"prose","Producer":"attested","FormatHash":"7ca4adf09b0c565b262cc24c0ca6521089c8aa3a2fd0dfb2b161bfe489070ada","In":"sections","Prompt":"prompts/section.md"},{"Id":"coverage","Label":"Coverage","ConceptSource":"coverage","Format":"terms_subset","Producer":"computed","FormatHash":"3f913d45ee84449f3f1949b965240ff5403ec4734f3ee4760113ddcd523c26f2","Op":"terms_subset","Reads":["extract"],"With":{"of":"extract","in":"extract","failWith":"The note names problems the source does not."},"OnInvalid":"fail"},{"Id":"sections","Label":"Sections","ConceptSource":"sections","Kind":"for","Collection":"snippet.sections","Body":["section_notes"],"Ret":"section_notes","Count":2}],"NodeOutputs":{"extract":{"NodeId":"extract","Label":"Extract concepts","Status":"Completed","InputHash":"in:extract","OutputHash":"out:extract","CompletedAtUtc":"<time>","HashVersion":6},"assessment":{"NodeId":"assessment","Label":"Assessment","Status":"Completed","InputHash":"in:assessment","OutputHash":"out:assessment","CompletedAtUtc":"<time>","HashVersion":6},"scope":{"NodeId":"scope","Label":"Scope","Status":"Completed","InputHash":"in:scope","OutputHash":"out:scope","CompletedAtUtc":"<time>","HashVersion":6,"Classification":"in_scope"},"section_notes:hpi":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:hpi","OutputHash":"out:section_notes:hpi","CompletedAtUtc":"<time>","HashVersion":6},"section_notes:plan":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","InputHash":"in:section_notes:plan","OutputHash":"out:section_notes:plan","CompletedAtUtc":"<time>","HashVersion":6},"section_notes":{"NodeId":"section_notes","Label":"Section notes","Status":"Completed","CompletedAtUtc":"<time>"},"sections":{"NodeId":"sections","Label":"Sections","Status":"Completed","InputHash":"f73e4848ee6519240b6969615503487f3c1f07bff6d7e0e662d82343a4b795d2","OutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202","CompletedAtUtc":"<time>","HashVersion":6,"AgentOutputHash":"6cc1b5f53a576a6987db6a7b877dd11686292c6443629dca6e53be21053c9202"},"coverage":{"NodeId":"coverage","Label":"Coverage","Status":"Completed","InputHash":"f224edd5fd9725c83fefe216892fe1d192e843ec5efd24d49884d941dabf523f","OutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584","CompletedAtUtc":"<time>","HashVersion":6,"Check":{"Passed":true,"Untested":["Asthma"]},"Validation":{"Valid":true,"Errors":[]},"AgentOutputHash":"a5f9d4375fd7deb72ffc71079793055c3870977ce00fe5cc24d4552eccfdf584"}},"EffectiveInputHashVersion":6,"CatalogRef":"output-contracts@v2026.08.1","WorkflowOutputHash":"1eec85508733ae94526b04071f989f48160df682599bd76473ed3b9be1c6397d","WorkflowOutputHashVersion":3,"Source":"app","AssembledDocuments":[{"ResultId":"consult","Label":"Consultation note","Text":"[assessment]\n\n## HPI\n\n[section_notes:hpi]\n\n## Plan\n\n[section_notes:plan]","DocumentHash":"5ae7ccd710f002f03c524d70c10a65e778541c1b66b8ccd819399800a6226bab","ComposedHash":"5ae7ccd710f002f03c524d70c10a65e778541c1b66b8ccd819399800a6226bab","Sources":["assessment","sections"]}],"Collections":[{"CollectionId":"sections","Items":[{"Id":"hpi","Name":"HPI"},{"Id":"plan","Name":"Plan"}]}],"PackageSpecVersion":26,"PackageTags":[],"PackageFormatRef":"package-format@v2026.11.2","ProvenanceRef":"provenance@v2026.11.1","DeliveryOutcome":"address-not-set","DecidedAtUtc":"<time>","Classifications":{"scope":"in_scope"},"EngineCommit":"<commit>","FormatsRef":"formats@v2026.11.1"}
