@@ -231,6 +231,8 @@ public sealed class ConsultGenerationOrchestrator
         var passesOpened = new Dictionary<string, int>(StringComparer.Ordinal);
         var whileChecksStarted = new HashSet<string>(StringComparer.Ordinal);
         var whileStops = new Dictionary<string, (int Passes, string Stopped)>(StringComparer.Ordinal);
+        // v30 (#1342 B3d): the while instances that could not finish inside a while ("<while>:<outer>").
+        var failedWhileInstances = new HashSet<string>(StringComparer.Ordinal);
         // v30 (#1342, design § 3.4): a for's stop (until | bound | end), its items whose until
         // was decided, the checks started, the items not run ("<loop>/<item>"), and the loops
         // whose max has been applied.
@@ -248,9 +250,13 @@ public sealed class ConsultGenerationOrchestrator
         // single shared set. Failed-item keys are collection-scoped in v6 (item
         // ids are unique per collection, not globally).
         IReadOnlyList<IReadOnlyDictionary<string, string>> FanItems(ConsultNodeDescriptor node) =>
+            // v30 (#1342 B3d): a for inside a while runs once per pass — its row fans over
+            // the while's opened passes, as a nested loop's row fans over its outer items.
+            node.Kind == ConsultNodeFlows.For && RepeatOwnerOf(node) is { Kind: ConsultNodeFlows.While } passOwner
+                ? PassItemsOf(passOwner)
             // v30 (#1341): a node under a nested loop fans over every settled instance's
             // items (each carrying its path), in the outer items' order.
-            nestedLoops.Count > 0 && NestedLoopOf(node) is { } nested
+            : nestedLoops.Count > 0 && NestedLoopOf(node) is { } nested
                 ? loopInstances.ItemsIn(nested.Id, FanItems(nested).Select(outer => WorkflowItemPath.OfItem(outer)!))
                 : v6
                 ? resolvedItems.GetValueOrDefault(CollectionIdOf(node))
@@ -290,33 +296,18 @@ public sealed class ConsultGenerationOrchestrator
 
                 if (owner.Kind == ConsultNodeFlows.For)
                 {
-                    // v30 (#1342 B3c): a nested for too — but not one inside a while (B3d).
-                    return InsideAWhile(owner) ? null : owner;
+                    // v30 (#1342 B3c/B3d): a nested for too, and one inside a while.
+                    return owner;
                 }
             }
 
             return null;
         }
 
-        bool InsideAWhile(ConsultNodeDescriptor node)
-        {
-            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
-            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
-            {
-                if (owner.Kind == ConsultNodeFlows.While)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        // A 30 for that stops early: its until, or its max — at the top, or (B3c) per instance
-        // inside a loop. None below 30, and none inside a while (B3d).
+        // A 30 for that stops early: its until, or its max — at the top, or per instance inside
+        // a loop (B3c) or a while (B3d). None below 30.
         bool Stoppable(ConsultNodeDescriptor loop) =>
-            loop.Kind == ConsultNodeFlows.For && (loop.Until is not null || loop.Max is not null) && loop.Ret is not null
-            && !InsideAWhile(loop);
+            loop.Kind == ConsultNodeFlows.For && (loop.Until is not null || loop.Max is not null) && loop.Ret is not null;
 
         // v30 (#1342 B3c): the instance an item of a loop belongs to — null at the top, else the
         // outer path (its path's prefix at the loop's depth); and an instance's key.
@@ -438,23 +429,78 @@ public sealed class ConsultGenerationOrchestrator
 
         IReadOnlyList<string> BodyOf(ConsultNodeDescriptor whileNode) => whileNode.Body ?? (IReadOnlyList<string>)Array.Empty<string>();
 
-        // v30 (#1342 B3c): the outer paths a while's instances run under — none for a while at
-        // the top (one instance), else each item of the loop it runs in (its row fans over them).
-        IReadOnlyList<string?> OuterPathsOf(ConsultNodeDescriptor whileNode) =>
-            ConsultNodeScheduler.LoopDepthOf(whileNode, nodesById) == 0
-                ? new string?[] { null }
-                : FanItems(whileNode).Select(item => WorkflowItemPath.OfItem(item)).ToList();
+        // v30 (#1342 B3d): the nearest flow a node repeats under — a for or a while — up its in chain.
+        ConsultNodeDescriptor? RepeatOwnerOf(ConsultNodeDescriptor node)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind is ConsultNodeFlows.For or ConsultNodeFlows.While)
+                {
+                    return owner;
+                }
+            }
 
-        // The enclosing loop's item a while instance runs for; null at the top.
+            return null;
+        }
+
+        // v30 (#1342 B3c/B3d): the outer paths a while's instances run under — none for a while at
+        // the top (one instance); inside a for, each of its items (the while's row fans over them);
+        // inside a while, each pass that while's instances opened.
+        IReadOnlyList<string?> OuterPathsOf(ConsultNodeDescriptor whileNode) =>
+            RepeatOwnerOf(whileNode) switch
+            {
+                null => new string?[] { null },
+                { Kind: ConsultNodeFlows.While } owner => PassItemsOf(owner).Select(item => WorkflowItemPath.OfItem(item)).ToList(),
+                _ => FanItems(whileNode).Select(item => WorkflowItemPath.OfItem(item)).ToList(),
+            };
+
+        // The passes a while's instances opened, as items (a pass's path rides inside a for's item or an outer pass).
+        IReadOnlyList<IReadOnlyDictionary<string, string>> PassItemsOf(ConsultNodeDescriptor whileNode) =>
+            OuterPathsOf(whileNode)
+                .SelectMany(outer => Enumerable.Range(1, passesOpened.GetValueOrDefault(WhileKey(whileNode, outer))).Select(number => PassItem(outer, number)))
+                .ToList();
+
+        // The enclosing for's item a while instance runs for — through any while between; null at the top.
         IReadOnlyDictionary<string, string>? OuterItemOf(ConsultNodeDescriptor whileNode, string? outer) =>
-            outer is null ? null : FanItems(whileNode).FirstOrDefault(item => WorkflowItemPath.OfItem(item) == outer);
+            outer is null ? null
+            : RepeatOwnerOf(whileNode) is { Kind: ConsultNodeFlows.While } owner
+                ? PassOfPath(outer) is { } pass ? OuterItemOf(owner, pass.Outer) : null
+                : FanItems(whileNode).FirstOrDefault(item => WorkflowItemPath.OfItem(item) == outer);
+
+        // v30 (#1342 B3d): whether a while instance (or one it runs inside) could not finish.
+        bool WhileInstanceFailed(ConsultNodeDescriptor whileNode, string? outer) =>
+            failedWhileInstances.Contains(WhileKey(whileNode, outer))
+            || (outer is null
+                ? failedAggregators.ContainsKey(whileNode.Id)
+                : RepeatOwnerOf(whileNode) is { Kind: ConsultNodeFlows.While } owner
+                    ? PassOfPath(outer) is { } pass && WhileInstanceFailed(owner, pass.Outer)
+                    : failedItems.Contains(FailedKey(whileNode, outer)));
+
+        // v30 (#1342 B3d): whether a while a loop runs inside can still open a pass.
+        bool EnclosingWhileRunning(ConsultNodeDescriptor node)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.While
+                    && OuterPathsOf(owner).Any(outer => !whileStops.ContainsKey(WhileKey(owner, outer)) && !WhileInstanceFailed(owner, outer)))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         // The for a while runs in (its nearest enclosing loop), or null at the top.
         ConsultNodeDescriptor? LoopAround(ConsultNodeDescriptor whileNode) =>
             whileNode.In is { } ownerId && nodesById.TryGetValue(ownerId, out var owner) && owner.Kind == ConsultNodeFlows.For ? owner : null;
 
+        // (B3d: an inner while that ran no pass in this pass is settled too.)
         bool PassSettled(ConsultNodeDescriptor whileNode, string? outer, int number) =>
-            BodyOf(whileNode).All(bodyId => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(bodyId, PassPath(outer, number))));
+            BodyOf(whileNode).All(bodyId => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(bodyId, PassPath(outer, number)))
+                || inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(bodyId, PassPath(outer, number))));
 
         // One pass's direct body texts, for a later pass's pass.previous / .history and for node.<while>.history.
         ConsultPassTexts PassTextsOf(ConsultNodeDescriptor whileNode, string? outer, int number) =>
@@ -465,14 +511,34 @@ public sealed class ConsultGenerationOrchestrator
                     bodyId => outputs[ConsultNodeScheduler.InstanceKey(bodyId, PassPath(outer, number))] is var output ? output.Classification ?? output.RawOutput : string.Empty,
                     StringComparer.Ordinal));
 
+        // (B3d: inside a while, the enclosing pass as pass.parent.)
         ConsultPassPayload PassOf(ConsultNodeDescriptor whileNode, string? outer, int number) =>
-            new(number, Enumerable.Range(1, Math.Max(0, number - 1)).Select(earlier => PassTextsOf(whileNode, outer, earlier)).ToList());
+            new(number, Enumerable.Range(1, Math.Max(0, number - 1)).Select(earlier => PassTextsOf(whileNode, outer, earlier)).ToList(),
+                RepeatOwnerOf(whileNode) is { Kind: ConsultNodeFlows.While } owner && PassOfPath(outer) is { } enclosing
+                    ? PassOf(owner, enclosing.Outer, enclosing.Number)
+                    : null);
 
-        // v30 (#1342, design § 3.2): the pass a while's body instance runs in.
+        // v30 (#1342, design § 3.2): the pass a while's body instance runs in — (B3d) through any
+        // for between, its pass the item path's prefix at the while's level.
         ConsultPassPayload? PassFor(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item) =>
-            WhileOf(node) is { } whileNode && PassOfPath(WorkflowItemPath.OfItem(item)) is { } pass
+            NearestWhileOf(node) is { } whileNode
+            && PassOfPath(WorkflowItemPath.Prefix(WorkflowItemPath.OfItem(item), ConsultNodeScheduler.LoopDepthOf(whileNode, nodesById) + 1)) is { } pass
                 ? PassOf(whileNode, pass.Outer, pass.Number)
                 : null;
+
+        ConsultNodeDescriptor? NearestWhileOf(ConsultNodeDescriptor node)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.While)
+                {
+                    return owner;
+                }
+            }
+
+            return null;
+        }
 
         // v30 (#1342 B3c): a while's body inside a for's item renders that item as `item`
         // (the pass is `pass`); its instance key stays the pass's path.
@@ -586,7 +652,9 @@ public sealed class ConsultGenerationOrchestrator
         bool AwaitsCount(ConsultNodeDescriptor node) => ConsultNodeScheduler.AwaitsCount(node, nodesById, unresolvedLoops);
 
         string FailedKey(ConsultNodeDescriptor node, string itemId) =>
-            v6 ? WorkflowItemPath.Key(CollectionIdOf(node), itemId) : itemId;
+            // v30 (#1342 B3d): a row repeating inside a while has no collection — keyed by itself.
+            node.ForEach is null && node.Kind is not null ? WorkflowItemPath.Key(node.Id, itemId)
+            : v6 ? WorkflowItemPath.Key(CollectionIdOf(node), itemId) : itemId;
 
         // v26 (#1154): a 26 folder item carries its header's label where a 25 item carried name.
         string ItemName(ConsultNodeDescriptor node, string itemId) =>
@@ -726,7 +794,7 @@ public sealed class ConsultGenerationOrchestrator
                         Instances: node.Macros,
                         // v26 (#1154, design § 1.3): the loops read whole, the flow
                         // nodes' returned nodes, the flows that took no branch.
-                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), stoppedOf: LoopStoppedOf, instanceItems: InstanceItems()),
+                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), stoppedOf: LoopStoppedOf, instanceItems: InstanceItems(), item: item),
                         FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
                         // #1356: and, for this item, the sibling inner flows it skipped.
                         SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),
@@ -1166,6 +1234,18 @@ public sealed class ConsultGenerationOrchestrator
         // sentence; inside a for's item, that item fails. No further pass opens; the run goes on.
         async Task FailWhileAsync(ConsultNodeDescriptor whileNode, string? outer, string failure)
         {
+            // v30 (#1342 B3d): inside a while, the instance fails the enclosing pass's while instance.
+            if (outer is not null && RepeatOwnerOf(whileNode) is { Kind: ConsultNodeFlows.While } owner)
+            {
+                failedWhileInstances.Add(WhileKey(whileNode, outer));
+                if (PassOfPath(outer) is { } enclosing)
+                {
+                    await FailWhileAsync(owner, enclosing.Outer, failure);
+                }
+
+                return;
+            }
+
             if (outer is not null)
             {
                 await FailItemAsync(whileNode, outer, failure);
@@ -1220,20 +1300,16 @@ public sealed class ConsultGenerationOrchestrator
             // v30 (#1342): each while not stopped — pass 1 opens at once (unless checkFirst);
             // a settled pass (or, under checkFirst, the start) asks its check.
             // v30 (#1342 B3c): inside a for, one instance per item the loop runs.
-            foreach (var whileNode in nodes.Where(node => node.Kind == ConsultNodeFlows.While && WhileOf(node) is null))
+            // (B3d: and inside a while, one instance per pass it opened.)
+            foreach (var whileNode in nodes.Where(node => node.Kind == ConsultNodeFlows.While))
             {
-                if (failedAggregators.ContainsKey(whileNode.Id))
-                {
-                    continue;
-                }
-
                 foreach (var outer in OuterPathsOf(whileNode))
                 {
                     var key = WhileKey(whileNode, outer);
                     if (whileStops.ContainsKey(key)
+                        || WhileInstanceFailed(whileNode, outer)
                         || (outer is not null
-                            && (failedItems.Contains(FailedKey(whileNode, outer))
-                                || inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(whileNode.Id, outer))
+                            && (inner.SkippedInstances.Contains(ConsultNodeScheduler.InstanceKey(whileNode.Id, outer))
                                 || !inner.Taken(whileNode, outer)
                                 || !MayStart(whileNode, outer))))
                     {
@@ -1305,8 +1381,7 @@ public sealed class ConsultGenerationOrchestrator
                         {
                             var passPath = PassPath(outer, number);
                             if (!started.Contains(ConsultNodeScheduler.InstanceKey(node.Id, passPath))
-                                && !failedAggregators.ContainsKey(owner.Id)
-                                && (outer is null || !failedItems.Contains(FailedKey(owner, outer)))
+                                && !WhileInstanceFailed(owner, outer)
                                 && ConsultNodeScheduler.InstanceReady(node, passPath, nodesById, outputs, SkippedKeys()))
                             {
                                 StartInstance(node, PassItem(outer, number));
@@ -1516,7 +1591,8 @@ public sealed class ConsultGenerationOrchestrator
                             Path: outerPath));
                 }
 
-                if (!EnclosingLoopUnresolved(loop) && FanItems(loop).All(outer => loopInstances.Has(loop.Id, WorkflowItemPath.OfItem(outer)!)))
+                // (B3d: inside a while, not while it can still open a pass.)
+                if (!EnclosingLoopUnresolved(loop) && !EnclosingWhileRunning(loop) && FanItems(loop).All(outer => loopInstances.Has(loop.Id, WorkflowItemPath.OfItem(outer)!)))
                 {
                     unresolvedLoops.Remove(loop.Id);
                     await context.Entities.CallEntityAsync(
@@ -1618,7 +1694,9 @@ public sealed class ConsultGenerationOrchestrator
 
             foreach (var node in chainNodes)
             {
-                if (nodeLevelCompleted.Contains(node.Id) || AwaitsCount(node))
+                // v30 (#1342 B3d): a nested loop's row completes once, where it composes
+                // (TryCompleteAggregatorsAsync, with its hashes) — never here as well.
+                if (nodeLevelCompleted.Contains(node.Id) || AwaitsCount(node) || node.Kind == ConsultNodeFlows.For)
                 {
                     continue;
                 }
@@ -2146,7 +2224,12 @@ public sealed class ConsultGenerationOrchestrator
 
                         progressed = true;
                         flowResult = outputs[ConsultNodeScheduler.InstanceKey(flow.Ret!, PassPath(null, stop.Passes))];
-                        foreach (var bodyId in BodyOf(flow))
+                        // (B3d: and the bodies of the whiles inside it.)
+                        IEnumerable<string> BodiesWithin(ConsultNodeDescriptor repeating) =>
+                            BodyOf(repeating).SelectMany(bodyId => nodesById[bodyId].Kind == ConsultNodeFlows.While
+                                ? BodiesWithin(nodesById[bodyId]).Prepend(bodyId)
+                                : new[] { bodyId });
+                        foreach (var bodyId in BodiesWithin(flow))
                         {
                             completedNodeCount++;
                             await context.Entities.CallEntityAsync(

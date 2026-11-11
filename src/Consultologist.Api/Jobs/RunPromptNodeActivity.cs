@@ -113,7 +113,10 @@ public sealed record ConsultPromptNodeActivityInput(
 public sealed record ConsultPassTexts(int Number, IReadOnlyDictionary<string, string> Texts);
 
 /// <summary>v30 (#1342, design § 3.2): the pass an instance (or a check) runs in — its number and the earlier passes, oldest first.</summary>
-public sealed record ConsultPassPayload(int Number, IReadOnlyList<ConsultPassTexts> Earlier);
+public sealed record ConsultPassPayload(int Number, IReadOnlyList<ConsultPassTexts> Earlier,
+    // v30 (#1342 B3d): the enclosing while's pass (pass.parent). Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    ConsultPassPayload? Parent = null);
 
 /// <summary>v30 (#1342, design § 3.2): a while as a reader outside it sees it — its passes, why it stopped, and every pass.</summary>
 public sealed record ConsultWhilePayload(int Passes, string Stopped, IReadOnlyList<ConsultPassTexts> History);
