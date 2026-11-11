@@ -552,6 +552,12 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             output.Validation = input.Validation;
         }
 
+        // v30 (#1343): a let's row names its producer.
+        if (input.Producer != null)
+        {
+            output.Producer = input.Producer;
+        }
+
         // v25 (B5 #1004): the completion's record, per item as per node.
         CopyCompletion(output, input.AgentOutputHash, input.Appended, input.Excluded);
 
@@ -736,6 +742,12 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         if (input.Validation != null)
         {
             node.Validation = input.Validation;
+        }
+
+        // v30 (#1343): a let's row names its producer.
+        if (input.Producer != null)
+        {
+            node.Producer = input.Producer;
         }
 
         // v25 (B5 #1004, design § 6): the reply's digest, what was appended
@@ -1588,7 +1600,11 @@ public sealed record ConsultGenerationNodeUpdate(
     // payloads from before. Appended last, same rule.
     string? AgentOutputHash = null,
     IReadOnlyList<ConsultAppendedEntry>? Appended = null,
-    IReadOnlyList<ConsultNodeExclusion>? Excluded = null);
+    IReadOnlyList<ConsultNodeExclusion>? Excluded = null,
+    // v30 (#1343, design § 4.2): who produced the value — "computed" on a let's row,
+    // null on every other. Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Producer = null);
 
 /// <summary>v10 (#496): what the boundary decided — the one Decide signal.</summary>
 public sealed record ConsultGenerationDecision(
@@ -1808,7 +1824,10 @@ public sealed record ConsultGenerationNodeItemUpdate(
     // item's is, but no item progress (a pass is not an item; the rail's "pass 2 of at
     // most 3" is the Create page's). Trailing; written only when set.
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    bool? Pass = null);
+    bool? Pass = null,
+    // v30 (#1343, design § 4.2): "computed" on a let's per-item row. Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Producer = null);
 
 /// <summary>
 /// v30 (#1342, design § 3.4, record storage 11): a for stopped before its list ran out —
@@ -2349,7 +2368,8 @@ public sealed class ConsultGenerationJobState
                     pair.Value.AgentOutputHash,
                     pair.Value.Appended,
                     pair.Value.Excluded,
-                    pair.Value.Reason)),
+                    pair.Value.Reason,
+                    pair.Value.Producer)),
             AgentVersions: AgentVersions,
             EffectiveInputHashVersion: EffectiveInputHashVersion,
             CatalogRef: CatalogRef,
@@ -2530,6 +2550,11 @@ public sealed class ConsultNodeOutputState
     // — valid with no errors, or every way it missed. Null on a text format
     // and on records from before.
     public ConsultValidationOutcome? Validation { get; set; }
+
+    // v30 (#1343, design § 4.2): "computed" on a let's row; null on every other
+    // (and on records from before), and then not written.
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? Producer { get; set; }
 
     // v25 (B5 #1004, design § 6): the reply's own digest beside OutputHash
     // (definition 6: over the output after this node's reply rendered and its

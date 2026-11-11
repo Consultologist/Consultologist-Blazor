@@ -3397,6 +3397,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             return DescribeFlowNodeAt26(flow, reads, branch, collectionSets, flows);
         }
 
+        // v30 (#1343, design § 4.2): a let runs as a computed node — no prompt, no model.
+        if (node.Let is not null && manifest?.SpecVersion >= 30)
+        {
+            return DescribeLetAt30(node, formats, stampedFormats, macroFiles, reads, manifest, flows);
+        }
+
         // v25 (B2 #1001, design § 3.7): a node that declares a format is
         // resolved from its package's own stamped formats version — the stamp
         // first (hash, producer, agent or op as recorded at publish), else the
@@ -3486,6 +3492,49 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 .Select(macro => new ConsultNodeMacroDescriptor(
                     macro.Id, macro.IsAfter, macro.When, macro.ForItem, ClassifiersReadBy(macro.Id, macros, macroFiles), macro.If))
                 .ToList());
+    }
+
+    /// <summary>
+    /// v30 (#1343, design § 4.2): a let's row — producer computed, operation let, its
+    /// expression and type; a format type carries the format's id and hash as a
+    /// model node's does, a scalar type neither. It fans under its loop as any body
+    /// node does, and its reads are the expression's (the walk's edges).
+    /// </summary>
+    private static ConsultNodeDescriptor DescribeLetAt30(
+        WorkflowNodeSpec node,
+        WorkflowFormatCatalog? formats,
+        IReadOnlyDictionary<string, WorkflowStampedFormat>? stampedFormats,
+        IReadOnlyDictionary<string, string>? macroFiles,
+        IReadOnlySet<string>? reads,
+        WorkflowPackageManifest manifest,
+        WorkflowFlowNodes.Resolved? flows)
+    {
+        var type = node.Type ?? WorkflowLetAt30.Text;
+        string? format = null;
+        string? formatHash = null;
+
+        if (WorkflowLetAt30.ScalarSpecOf(type) is null)
+        {
+            format = type;
+            formatHash = stampedFormats?.GetValueOrDefault(type)?.FormatHash
+                ?? (formats is not null && formats.TryGet(type, out var catalogue) ? WorkflowFormatSpecJson.Sha256Hex(catalogue!.CanonicalJson) : null)
+                ?? (FormatSpecFor(type, null, macroFiles, manifest) is { } local ? WorkflowFormatSpecJson.Sha256Hex(WorkflowFormatSpecJson.CanonicalJson(local)) : null);
+        }
+
+        return new ConsultNodeDescriptor(
+            node.Id,
+            node.Label,
+            ForEach: node.ForEach ?? (flows?.LoopOf(node.Id) is { } loopId && flows.Flows.TryGetValue(loopId, out var loop) ? loop.Collection : null),
+            ConceptSource: WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(node.Id, node.Id),
+            Format: format,
+            Producer: WorkflowFormatProducers.Computed,
+            FormatHash: formatHash,
+            Op: WorkflowLetAt30.Op,
+            Reads: reads is { Count: > 0 } ? reads.Order(StringComparer.Ordinal).ToList() : null,
+            OnInvalid: node.OnInvalid,
+            In: flows?.Owner.GetValueOrDefault(node.Id),
+            Let: node.Let,
+            LetType: type);
     }
 
     private static ConsultNodeDescriptor DescribeNodeAt25(

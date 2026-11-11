@@ -397,14 +397,21 @@ internal static class ConsultRenderPayload
 
         // v26 (#1154): a flow node's output types as its returned node's. v27
         // (#1235): an inner if/case's as the branch it took for the item.
-        TemplateNodeOutput OutputOf(string id, string text, string? itemId = null) =>
-            new(
+        // v30 (#1343): a let's stored value is its JSON (a text let's, the text) — passed
+        // as ValueJson so a number or boolean let's .value reads as its type.
+        TemplateNodeOutput OutputOf(string id, string text, string? itemId = null)
+        {
+            var node = nodesById.GetValueOrDefault(
+                (itemId is null ? null : flowRets?.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(id, itemId)))
+                ?? flowRets?.GetValueOrDefault(id)
+                ?? id);
+
+            return new(
                 text,
-                FormatTypeOf(package, nodesById.GetValueOrDefault(
-                    (itemId is null ? null : flowRets?.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(id, itemId)))
-                    ?? flowRets?.GetValueOrDefault(id)
-                    ?? id)),
-                WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(id, id));
+                FormatTypeOf(package, node),
+                WorkflowNodeDefaults.WellKnownConceptSources.GetValueOrDefault(id, id),
+                IsLetAt30(package, node) ? text : null);
+        }
 
         var nodes = nodeTexts.ToDictionary(pair => pair.Key, pair => OutputOf(pair.Key, pair.Value, item?.GetValueOrDefault("id")), StringComparer.Ordinal);
 
@@ -558,11 +565,25 @@ internal static class ConsultRenderPayload
     }
 
     /// <summary>The type a node's format declares — the stamped catalogue's, or a package-local format file's — so <c>.value</c> parses accordingly; text when unknown.</summary>
+    /// <summary>v30 (#1343): a let node of a 30 package — computed, typed by its type.</summary>
+    internal static bool IsLetAt30(WorkflowPackage package, WorkflowNodeSpec? node) =>
+        node?.Let is not null && package.Manifest.SpecVersion >= 30;
+
     internal static string FormatTypeOf(WorkflowPackage package, WorkflowNodeSpec? node)
     {
-        if (node?.Format is not { } formatId)
+        // v30 (#1343, design § 4.1): a let types by its type — a scalar is its own
+        // name, a format id resolves as a model node's format does.
+        var isLet = IsLetAt30(package, node);
+        var formatId = isLet ? node!.Type : node?.Format;
+
+        if (formatId is null)
         {
             return WorkflowInputTypes.Text;
+        }
+
+        if (isLet && WorkflowLetAt30.ScalarSpecOf(formatId) is not null)
+        {
+            return formatId;
         }
 
         var local = package.Manifest.Formats?.FirstOrDefault(f => string.Equals(f.Id, formatId, StringComparison.Ordinal));

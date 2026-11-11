@@ -692,7 +692,14 @@ public sealed record ConsultNodeDescriptor(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     string? Stopped = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? StopReason = null)
+    string? StopReason = null,
+    // v30 (#1343, design § 4): a let's expression and its declared type (text,
+    // number, boolean or a format's id) — package text, never a value. It runs as a
+    // computed node (Producer computed, Op let). Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Let = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? LetType = null)
 {
     /// <summary>
     /// v26 (#1156, record storage 8): the row as the served record carries it —
@@ -919,7 +926,10 @@ public sealed record ConsultGenerationNodeStatusResponse(
     // an if/case inside a loop that took no branch for the item: the
     // condition's TEXT in the fixed form (never the value it read, #369). Null
     // on every other row. Appended last.
-    string? Reason = null);
+    string? Reason = null,
+    // v30 (#1343, design § 4.2): "computed" on a let's row. Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Producer = null);
 
 /// <summary>#390: the body of a reschedule — a job id in the route, a time here.</summary>
 public sealed record RescheduleConsultRequest(DateTimeOffset? ScheduledAtUtc);
