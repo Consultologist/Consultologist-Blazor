@@ -32,4 +32,25 @@ public class LoopCountTests
         Assert.Equal("counting…", LoopCount.Describe(finished: false));
         Assert.Equal("count never known", LoopCount.Describe(finished: true));
     }
+
+    [Fact]
+    public void AnInstancesCount_ReTotals_ButTheLoopStaysPending_UntilTheSnapshotSaysSo()
+    {
+        // v30 (#1345): a loop inside a loop settles per instance — another may yet open.
+        var pending = new HashSet<string>(StringComparer.Ordinal) { "paragraphs" };
+
+        var (total, next) = LoopCount.Apply(pending, "paragraphs", 7, "1");
+
+        Assert.Equal(7, total);
+        Assert.Equal(new[] { "paragraphs" }, next);
+        Assert.Equal(new[] { "problems" }.Length, LoopCount.Apply(new HashSet<string> { "problems", "x" }, "problems", 3, null).Pending.Count);
+    }
+
+    [Fact]
+    public void ASettledCount_IsKeptByTheLoop_OrByTheLoopsInstance()
+    {
+        Assert.Equal("problems", LoopCount.SettledKey("problems", null));
+        Assert.Equal("paragraphs:1", LoopCount.SettledKey("paragraphs", "1"));
+        Assert.Equal("sentences:1/2", LoopCount.SettledKey("sentences", "1/2"));
+    }
 }

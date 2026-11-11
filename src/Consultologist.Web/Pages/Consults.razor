@@ -2564,8 +2564,10 @@
           var resolved = JsonSerializer.Deserialize<ConsultGenerationCountResolvedEvent>(json, SseJsonOptions);
           if (resolved != null)
           {
-            (totalBlockCount, pendingLoops) = LoopCount.Apply(pendingLoops, resolved.LoopId, resolved.Total);
-            settledLoopCounts[resolved.LoopId] = resolved.Count;
+            // v30 (#1345): an instance's count (a loop inside a loop or a while) is kept by its path;
+            // the loop stays pending until the snapshot says no instance can still open.
+            (totalBlockCount, pendingLoops) = LoopCount.Apply(pendingLoops, resolved.LoopId, resolved.Total, resolved.Path);
+            settledLoopCounts[LoopCount.SettledKey(resolved.LoopId, resolved.Path)] = resolved.Count;
             pendingFromPackage = false;
           }
           break;
@@ -4825,7 +4827,8 @@
 
   /// <summary>v27 (#1236): a block skipped by condition — no text; the reason is the condition's text.</summary>
   private sealed record ConsultGenerationHeartbeatEvent(string JobId, string Status);
-  private sealed record ConsultGenerationCountResolvedEvent(string JobId, string LoopId, int Count, int Total, int Pending);
+  // v30 (#1345): Path — the outer item's or pass's path for a nested instance; null at the top.
+  private sealed record ConsultGenerationCountResolvedEvent(string JobId, string LoopId, int Count, int Total, int Pending, string? Path = null);
 
   private sealed record ConsultGenerationBlockSkippedEvent(
     string JobId,
