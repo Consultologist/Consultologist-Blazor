@@ -518,11 +518,27 @@ public sealed class ConsultGenerationOrchestrator
                     ? PassOf(owner, enclosing.Outer, enclosing.Number)
                     : null);
 
-        // v30 (#1342, design § 3.2): the pass a while's body instance runs in.
+        // v30 (#1342, design § 3.2): the pass a while's body instance runs in — (B3d) through any
+        // for between, its pass the item path's prefix at the while's level.
         ConsultPassPayload? PassFor(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item) =>
-            WhileOf(node) is { } whileNode && PassOfPath(WorkflowItemPath.OfItem(item)) is { } pass
+            NearestWhileOf(node) is { } whileNode
+            && PassOfPath(WorkflowItemPath.Prefix(WorkflowItemPath.OfItem(item), ConsultNodeScheduler.LoopDepthOf(whileNode, nodesById) + 1)) is { } pass
                 ? PassOf(whileNode, pass.Outer, pass.Number)
                 : null;
+
+        ConsultNodeDescriptor? NearestWhileOf(ConsultNodeDescriptor node)
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+            for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId) && nodesById.TryGetValue(ownerId, out var owner); ownerId = owner.In)
+            {
+                if (owner.Kind == ConsultNodeFlows.While)
+                {
+                    return owner;
+                }
+            }
+
+            return null;
+        }
 
         // v30 (#1342 B3c): a while's body inside a for's item renders that item as `item`
         // (the pass is `pass`); its instance key stays the pass's path.
@@ -636,7 +652,9 @@ public sealed class ConsultGenerationOrchestrator
         bool AwaitsCount(ConsultNodeDescriptor node) => ConsultNodeScheduler.AwaitsCount(node, nodesById, unresolvedLoops);
 
         string FailedKey(ConsultNodeDescriptor node, string itemId) =>
-            v6 ? WorkflowItemPath.Key(CollectionIdOf(node), itemId) : itemId;
+            // v30 (#1342 B3d): a row repeating inside a while has no collection — keyed by itself.
+            node.ForEach is null && node.Kind is not null ? WorkflowItemPath.Key(node.Id, itemId)
+            : v6 ? WorkflowItemPath.Key(CollectionIdOf(node), itemId) : itemId;
 
         // v26 (#1154): a 26 folder item carries its header's label where a 25 item carried name.
         string ItemName(ConsultNodeDescriptor node, string itemId) =>
@@ -776,7 +794,7 @@ public sealed class ConsultGenerationOrchestrator
                         Instances: node.Macros,
                         // v26 (#1154, design § 1.3): the loops read whole, the flow
                         // nodes' returned nodes, the flows that took no branch.
-                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), stoppedOf: LoopStoppedOf, instanceItems: InstanceItems()),
+                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), stoppedOf: LoopStoppedOf, instanceItems: InstanceItems(), item: item),
                         FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
                         // #1356: and, for this item, the sibling inner flows it skipped.
                         SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),

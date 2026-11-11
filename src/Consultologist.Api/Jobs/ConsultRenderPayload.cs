@@ -183,7 +183,9 @@ internal static class ConsultRenderPayload
         Func<string, string?>? stoppedOf = null,
         // v30 (#1341, design § 6): a nested loop's instance items (loop id, outer path → items, or
         // null) — a loop read whole carries, per item, the lists of the loops its body holds.
-        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?>? instanceItems = null)
+        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?>? instanceItems = null,
+        // v30 (#1342 B3d): the reader's item (its path aligns a loop it runs beside).
+        IReadOnlyDictionary<string, string>? item = null)
     {
         Dictionary<string, ConsultLoopPayload>? loops = null;
 
@@ -191,6 +193,19 @@ internal static class ConsultRenderPayload
         {
             if (nodesById.GetValueOrDefault(readId) is not { Kind: ConsultNodeFlows.For, Collection: { } collection, Ret: { } ret } loop)
             {
+                continue;
+            }
+
+            // v30 (#1342 B3d, decided 2026-11-10): a loop inside a loop or a while, read whole by
+            // a node beside it — the instance of the reader's item or pass, as the loop above reads it.
+            if (instanceItems is not null && ConsultNodeScheduler.LoopDepthOf(loop, nodesById) > 0)
+            {
+                var outerPath = ConsultNodeScheduler.AlignedPath(loop, WorkflowItemPath.OfItem(item), nodesById)
+                    ?? throw new InvalidOperationException($"Node '{node.Id}' reads loop '{loop.Id}', which runs inside a loop, from outside it.");
+                var instance = instanceItems(loop.Id, outerPath)
+                    ?? throw new InvalidOperationException($"Node '{node.Id}' reads loop '{loop.Id}', whose instance '{outerPath}' has not settled.");
+                loops ??= new Dictionary<string, ConsultLoopPayload>(StringComparer.Ordinal);
+                loops[readId] = InstancePayloadOf(loop, outerPath, instance, nodesById, outputs, skipped, instanceItems, stoppedOf);
                 continue;
             }
 
@@ -239,6 +254,40 @@ internal static class ConsultRenderPayload
     /// body nodes' texts by item and its composed text — recursively. Null when the
     /// body holds no loop.
     /// </summary>
+    /// <summary>
+    /// v30 (#1341, #1342 B3d): one instance of a loop inside a loop or a while — its items (keyed by
+    /// their own ids), its body nodes' texts by item, its skipped items, the loops its body holds,
+    /// its composed text and why it stopped.
+    /// </summary>
+    private static ConsultLoopPayload InstancePayloadOf(
+        ConsultNodeDescriptor loop,
+        string outerPath,
+        IReadOnlyList<IReadOnlyDictionary<string, string>> items,
+        IReadOnlyDictionary<string, ConsultNodeDescriptor> nodesById,
+        IReadOnlyDictionary<string, NodeRunResult> outputs,
+        IReadOnlySet<string>? skipped,
+        Func<string, string, IReadOnlyList<IReadOnlyDictionary<string, string>>?> instanceItems,
+        Func<string, string?>? stoppedOf)
+    {
+        var skippedItems = items.Where(i => skipped?.Contains(ConsultNodeScheduler.InstanceKey(loop.Ret!, WorkflowItemPath.OfItem(i))) == true)
+            .Select(i => i["id"]).ToList();
+        var texts = (loop.Body ?? Array.Empty<string>()).ToDictionary(
+            bodyId => bodyId,
+            bodyId => (IReadOnlyDictionary<string, string>)items
+                .Where(i => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(bodyId, WorkflowItemPath.OfItem(i))))
+                .ToDictionary(
+                    i => i["id"],
+                    i => outputs[ConsultNodeScheduler.InstanceKey(bodyId, WorkflowItemPath.OfItem(i))] is var output ? output.Classification ?? output.RawOutput : string.Empty,
+                    StringComparer.Ordinal),
+            StringComparer.Ordinal);
+
+        return new ConsultLoopPayload(loop.Collection!, loop.Ret!, items, texts,
+            skippedItems.Count > 0 ? skippedItems : null,
+            InnerLoopsOf(loop, items, nodesById, outputs, skipped, instanceItems, stoppedOf),
+            outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(loop.Id, outerPath))?.RawOutput ?? string.Empty,
+            stoppedOf?.Invoke(ConsultNodeScheduler.InstanceKey(loop.Id, outerPath)));
+    }
+
     private static IReadOnlyDictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>? InnerLoopsOf(
         ConsultNodeDescriptor loop,
         IReadOnlyList<IReadOnlyDictionary<string, string>> items,
@@ -264,23 +313,7 @@ internal static class ConsultRenderPayload
                     continue;
                 }
 
-                var skippedItems = innerItems.Where(i => skipped?.Contains(ConsultNodeScheduler.InstanceKey(innerLoop.Ret!, WorkflowItemPath.OfItem(i))) == true)
-                    .Select(i => i["id"]).ToList();
-                var texts = (innerLoop.Body ?? Array.Empty<string>()).ToDictionary(
-                    bodyId => bodyId,
-                    bodyId => (IReadOnlyDictionary<string, string>)innerItems
-                        .Where(i => outputs.ContainsKey(ConsultNodeScheduler.InstanceKey(bodyId, WorkflowItemPath.OfItem(i))))
-                        .ToDictionary(
-                            i => i["id"],
-                            i => outputs[ConsultNodeScheduler.InstanceKey(bodyId, WorkflowItemPath.OfItem(i))] is var output ? output.Classification ?? output.RawOutput : string.Empty,
-                            StringComparer.Ordinal),
-                    StringComparer.Ordinal);
-
-                instances[item["id"]] = new ConsultLoopPayload(innerLoop.Collection!, innerLoop.Ret!, innerItems, texts,
-                    skippedItems.Count > 0 ? skippedItems : null,
-                    InnerLoopsOf(innerLoop, innerItems, nodesById, outputs, skipped, instanceItems, stoppedOf),
-                    outputs.GetValueOrDefault(ConsultNodeScheduler.InstanceKey(innerLoop.Id, outerPath))?.RawOutput ?? string.Empty,
-                    stoppedOf?.Invoke(ConsultNodeScheduler.InstanceKey(innerLoop.Id, outerPath)));
+                instances[item["id"]] = InstancePayloadOf(innerLoop!, outerPath, innerItems, nodesById, outputs, skipped, instanceItems, stoppedOf);
             }
 
             inner ??= new Dictionary<string, IReadOnlyDictionary<string, ConsultLoopPayload>>(StringComparer.Ordinal);
