@@ -509,11 +509,14 @@ internal static class ConsultRenderPayload
                     StringComparer.Ordinal)
                 : null,
             // v30 (#1342, design § 3.2): the pass and the whiles read from outside.
-            Pass: pass is null ? null : new TemplatePassScope(pass.Number, PassesOf(pass.Earlier)),
+            Pass: pass is null ? null : PassScopeOf(pass),
             Whiles: whiles?.ToDictionary(
                 entry => entry.Key,
                 entry => new TemplateWhileOutput(entry.Value.Passes, entry.Value.Stopped, PassesOf(entry.Value.History)),
                 StringComparer.Ordinal));
+
+        TemplatePassScope PassScopeOf(ConsultPassPayload payload) =>
+            new(payload.Number, PassesOf(payload.Earlier), payload.Parent is null ? null : PassScopeOf(payload.Parent));
 
         IReadOnlyList<TemplateWhilePass> PassesOf(IReadOnlyList<ConsultPassTexts> passes) =>
             passes.Select(earlier => new TemplateWhilePass(
