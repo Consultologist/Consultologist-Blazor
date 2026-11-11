@@ -162,7 +162,9 @@ public static class WorkflowLetAt30
             return (stored, Array.Empty<string>());
         }
 
-        var errors = JsonSchemaSubsetValidator.Validate(json, formatSchema);
+        // The schema walk reads parsed JSON (element-backed values), as a model's reply is —
+        // so the stored text is what it checks, never the in-memory nodes ToJson built.
+        var errors = JsonSchemaSubsetValidator.Validate(JsonNode.Parse(stored), formatSchema);
         return (stored, errors.Select(error => $"{subject}'s value does not match format {type}: {error}").ToList());
     }
 

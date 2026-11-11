@@ -82,6 +82,20 @@ public class WorkflowV30LetValueTests
     }
 
     [Fact]
+    public void AFormatsObject_WithTextFields_IsCheckedAsParsedJson()
+    {
+        // #1343 B4b: the schema walk reads text fields as a reply's are — the in-memory
+        // values ToJson builds could not be read as JSON elements, and the check threw.
+        var value = WorkflowLetAt30.Evaluate(Subject, "node.find_problems.value", Scope(Problems));
+        var schema = JsonNode.Parse("""{"type":"object","properties":{"problems":{"type":"array","items":{"type":"object","properties":{"name":{"type":"string"},"weight":{"type":"number"}}}}}}""");
+
+        Assert.Empty(WorkflowLetAt30.ValueOf(Subject, "problem_list", value, schema).Errors);
+        // Both names are text where the schema wants a number: two errors, one per element.
+        Assert.Equal(2, WorkflowLetAt30.ValueOf(Subject, "problem_list", value,
+            JsonNode.Parse("""{"type":"object","properties":{"problems":{"type":"array","items":{"type":"object","properties":{"name":{"type":"number"}}}}}}""")).Errors.Count);
+    }
+
+    [Fact]
     public void AList_IsNotAFormatsObject()
     {
         var value = WorkflowLetAt30.Evaluate(Subject, "node.find_problems.value.problems", Scope(Problems));
