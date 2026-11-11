@@ -196,6 +196,26 @@ public class EngineRunLetReadsTests
         Assert.Equal(ConsultGenerationBlockStatuses.Completed, run.State.Blocks["consult:sections:hpi"].Status);
     }
 
+    // ---- what a let's input hash covers -----------------------------------------------------
+
+    [Fact]
+    public void ALetsInputHash_CoversItsExpression_ItsReads_ItsItem_AndItsPass()
+    {
+        var bare = new ConsultPromptNodeActivityInput("x", "", new Dictionary<string, string>(),
+            NodeTexts: new Dictionary<string, string> { ["a"] = "1" });
+        var payloads = new[]
+        {
+            bare,
+            bare with { NodeTexts = new Dictionary<string, string> { ["a"] = "2" } },
+            bare with { Item = new Dictionary<string, string> { ["id"] = "1" } },
+            bare with { Pass = new ConsultPassPayload(1, Array.Empty<ConsultPassTexts>()) },
+            bare with { Pass = new ConsultPassPayload(2, Array.Empty<ConsultPassTexts>()) },
+        };
+
+        Assert.Equal(payloads.Length, payloads.Select(payload => RunComputedNodeActivity.LetInputOf("e", payload)).Distinct().Count());
+        Assert.NotEqual(RunComputedNodeActivity.LetInputOf("e", bare), RunComputedNodeActivity.LetInputOf("f", bare));
+    }
+
     private static void Matches(string name, string actual)
     {
         var golden = Path.Combine(Path.GetDirectoryName(SourceFile())!, "Golden", name);
