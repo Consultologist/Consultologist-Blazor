@@ -161,6 +161,13 @@ public class EngineRunLetReadsTests
         var block = run.State.Blocks["consult:problem_count"];
         Assert.Equal((ConsultGenerationBlockStatuses.Completed, "Anaemia, Gout"), (block.Status, block.GeneratedText));
         Assert.Equal(ConsultGenerationProvenance.Sha256Hex("Anaemia, Gout"), run.State.NodeOutputs!["problem_count"].OutputHash);
+
+        // Attested as any source is (v26 § 10): the document row names the let among its
+        // sources, and its composed hash is over the text the let's value is part of.
+        var document = Assert.Single(run.State.AssembledDocuments!, d => d.ResultId == "consult");
+        Assert.Contains("problem_count", document.Sources!);
+        Assert.Contains("Anaemia, Gout", document.Text);
+        Assert.NotNull(document.ComposedHash);
     }
 
     // ---- a let that fails inside a loop -----------------------------------------------------
