@@ -730,6 +730,54 @@ public sealed class ConsultGenerationOrchestrator
                     allNodes, nodesById);
 
 
+        // The payload a prompt node at this place renders over — and (v30 #1343) the
+        // scope a let there evaluates over: the same reads, item, parents and pass.
+        ConsultPromptNodeActivityInput PromptPayloadOf(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item, string instanceKey) =>
+            new ConsultPromptNodeActivityInput(
+                instanceKey,
+                node.PromptId!,
+                new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
+                input.WorkflowPackage,
+                null,
+                node.ConceptSource,
+                input.InputTypes is null ? null : new Dictionary<string, string>(input.InputTypes, StringComparer.Ordinal),
+                node.Values,
+                node.Template,
+                node.AgentName,
+                node.AgentVersion,
+                Format: node.Format,
+                Producer: node.Producer,
+                FormatHash: node.FormatHash,
+                Op: node.Op,
+                NodeTexts: ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs, SkippedKeys()),
+                Folders: RenderFolders(),
+                // v30 (#1342 B3c): inside a for's item, a while's body renders that item.
+                Item: RenderItemOf(node, item),
+                ForEach: node.ForEach,
+                Run: ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
+                Profile: ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
+                With: node.With,
+                OnInvalid: node.OnInvalid,
+                // v25 (B5 #1004): what an instance's when is judged against,
+                // as the orchestrator holds it — the completion runs in the activity.
+                Supplied: input.SuppliedInputs is null ? null : new Dictionary<string, string>(input.SuppliedInputs, StringComparer.Ordinal),
+                Classifications: Classifications(),
+                FailIfEmpty: node.FailIfEmpty,
+                Instances: node.Macros,
+                // v26 (#1154, design § 1.3): the loops read whole, the flow
+                // nodes' returned nodes, the flows that took no branch.
+                Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), stoppedOf: LoopStoppedOf, instanceItems: InstanceItems(), item: item),
+                FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
+                // #1356: and, for this item, the sibling inner flows it skipped.
+                SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),
+                // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
+                Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds()),
+                // v30 (#1341, design § 2.4): item.parent, for an instance of a nested loop.
+                Parents: ParentsOf(node, item),
+                // v30 (#1342, design § 3.2): the pass it runs in; the whiles it reads.
+                Pass: PassFor(node, item),
+                Whiles: WhilesFor(node, item));
+
         void StartInstance(ConsultNodeDescriptor node, IReadOnlyDictionary<string, string>? item)
         {
             var instanceKey = ConsultNodeScheduler.InstanceKey(node.Id, WorkflowItemPath.OfItem(item));
@@ -740,6 +788,27 @@ public sealed class ConsultGenerationOrchestrator
             // only it holds — the outputs this instance reads, the settled
             // folders, the facts — and no flat variables, no before/after
             // blocks (instances compose on the output side, B5).
+            // v30 (#1343, design § 4.2): a let — computed, no model — evaluates its expression
+            // over the scope a template at its place reads; a scalar let declares no format.
+            if (node.Let is not null && string.Equals(node.Op, WorkflowLetAt30.Op, StringComparison.Ordinal))
+            {
+                pendingTasks[context.CallActivityAsync<NodeRunResult>(
+                    ConsultGenerationActivityNames.RunComputedNode,
+                    new ConsultComputedNodeActivityInput(
+                        instanceKey,
+                        WorkflowLetAt30.Op,
+                        new Dictionary<string, string>(StringComparer.Ordinal),
+                        new Dictionary<string, string>(StringComparer.Ordinal),
+                        node.Format,
+                        node.FormatHash,
+                        Let: node.Let,
+                        LetType: node.LetType,
+                        OnInvalid: node.OnInvalid,
+                        Scope: PromptPayloadOf(node, item, instanceKey)),
+                    AgentActivityRetryOptions)] = (node.Id, WorkflowItemPath.OfItem(item));
+                return;
+            }
+
             if (node.Format is not null)
             {
                 // v25 (B4 #1003, design § 3.7): a computed node — no prompt, no
@@ -761,50 +830,7 @@ public sealed class ConsultGenerationOrchestrator
 
                 pendingTasks[context.CallActivityAsync<NodeRunResult>(
                     ConsultGenerationActivityNames.RunPromptNode,
-                    new ConsultPromptNodeActivityInput(
-                        instanceKey,
-                        node.PromptId!,
-                        new Dictionary<string, string>(effectiveInputs, StringComparer.Ordinal),
-                        input.WorkflowPackage,
-                        null,
-                        node.ConceptSource,
-                        input.InputTypes is null ? null : new Dictionary<string, string>(input.InputTypes, StringComparer.Ordinal),
-                        node.Values,
-                        node.Template,
-                        node.AgentName,
-                        node.AgentVersion,
-                        Format: node.Format,
-                        Producer: node.Producer,
-                        FormatHash: node.FormatHash,
-                        Op: node.Op,
-                        NodeTexts: ConsultRenderPayload.NodeTextsFor(node, item, nodesById, outputs, SkippedKeys()),
-                        Folders: RenderFolders(),
-                        // v30 (#1342 B3c): inside a for's item, a while's body renders that item.
-                        Item: RenderItemOf(node, item),
-                        ForEach: node.ForEach,
-                        Run: ConsultRenderPayload.RunFactsFor(context.CurrentUtcDateTime, context.InstanceId, input.WorkflowPackage, input.ApiHost),
-                        Profile: ConsultRenderPayload.ProfileFactsFor(input.ProfileName, input.Signature),
-                        With: node.With,
-                        OnInvalid: node.OnInvalid,
-                        // v25 (B5 #1004): what an instance's when is judged against,
-                        // as the orchestrator holds it — the completion runs in the activity.
-                        Supplied: input.SuppliedInputs is null ? null : new Dictionary<string, string>(input.SuppliedInputs, StringComparer.Ordinal),
-                        Classifications: Classifications(),
-                        FailIfEmpty: node.FailIfEmpty,
-                        Instances: node.Macros,
-                        // v26 (#1154, design § 1.3): the loops read whole, the flow
-                        // nodes' returned nodes, the flows that took no branch.
-                        Loops: ConsultRenderPayload.LoopsFor(node, nodesById, outputs, CollectionsWithResolved(), SkippedKeys(), stoppedOf: LoopStoppedOf, instanceItems: InstanceItems(), item: item),
-                        FlowRets: ConsultRenderPayload.FlowRetsFor(node, nodesById, ItemRets()),
-                        // #1356: and, for this item, the sibling inner flows it skipped.
-                        SkippedNodes: ConsultRenderPayload.SkippedReadsFor(node, item, nodesById, skippedNodes, inner.SkippedInstances),
-                        // v26 (#1155, design § 3.1): the deliverables this node reads, composed.
-                        Deliverables: ConsultRenderPayload.DeliverableTextsFor(node.DeliverableReads, composedDeliverables, RunDeliverableIds()),
-                        // v30 (#1341, design § 2.4): item.parent, for an instance of a nested loop.
-                        Parents: ParentsOf(node, item),
-                        // v30 (#1342, design § 3.2): the pass it runs in; the whiles it reads.
-                        Pass: PassFor(node, item),
-                        Whiles: WhilesFor(node, item)),
+                    PromptPayloadOf(node, item, instanceKey),
                     AgentActivityRetryOptions)] = (node.Id, WorkflowItemPath.OfItem(item));
                 return;
             }
@@ -3087,8 +3113,13 @@ public sealed class ConsultGenerationOrchestrator
             Validation: result.Validation,
             AgentOutputHash: result.AgentOutputHash,
             Appended: result.Appended,
-            Excluded: result.Excluded);
+            Excluded: result.Excluded,
+            Producer: LetProducerOf(node));
     }
+
+    /// <summary>v30 (#1343, design § 4.2): a let's row names its producer, computed; every other row none (its bytes unchanged).</summary>
+    private static string? LetProducerOf(ConsultNodeDescriptor node) =>
+        node.Let is not null ? WorkflowFormatProducers.Computed : null;
 
     internal static ConsultGenerationNodeItemUpdate ItemUpdateFrom(
         ConsultNodeDescriptor node, string itemId, string itemName, NodeRunResult result, int completedChainCount, int totalChainCount)
@@ -3106,7 +3137,8 @@ public sealed class ConsultGenerationOrchestrator
             Validation: result.Validation,
             AgentOutputHash: result.AgentOutputHash,
             Appended: result.Appended,
-            Excluded: result.Excluded);
+            Excluded: result.Excluded,
+            Producer: LetProducerOf(node));
     }
 
     internal static ConsultGenerationDeliveryRecord DeliveryRecordFor(Email.EmailIntakeReplyOutcome? outcome) =>

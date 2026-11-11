@@ -889,7 +889,10 @@ public record ConsultGenerationNodeStatus(
     // v27 (#1235, record storage 9): why a per-item row is Skipped — an if/case
     // inside a loop took no branch for the item; the condition's text, never a
     // value. History reads it at #1236.
-    string? Reason = null);
+    string? Reason = null,
+    // v30 (#1343, record storage 11): "computed" on a let's row; absent on every
+    // other. The Create page and History read it at C1 (#1345).
+    string? Producer = null);
 
 /// <summary>v25 (B4 #1003): a reply validated against its format — valid, or every way it missed.</summary>
 public record ConsultValidationOutcome(bool Valid, IReadOnlyList<string> Errors);
