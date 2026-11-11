@@ -44,7 +44,7 @@ internal static class ConsultNodeValueLoops
     }
 
     /// <summary>The loop's items from its source's recorded output (the bytes the renderer reads as <c>.value</c>).</summary>
-    public static Resolution ItemsOf(NodeRunResult output, string collection, string loopLabel)
+    public static Resolution ItemsOf(NodeRunResult output, string collection, string loopLabel, string? labelField = null)
     {
         if (SourceOf(collection) is not { } source)
         {
@@ -61,7 +61,7 @@ internal static class ConsultNodeValueLoops
             return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loopLabel} could not read its list: {source.NodeId}'s value is not JSON.");
         }
 
-        return ItemsFrom(value, $"{TemplateObjects.Node}.{source.NodeId}.{TemplateMembers.Value}", source.Fields, loopLabel);
+        return ItemsFrom(value, $"{TemplateObjects.Node}.{source.NodeId}.{TemplateMembers.Value}", source.Fields, loopLabel, labelField);
     }
 
     /// <summary>
@@ -69,7 +69,7 @@ internal static class ConsultNodeValueLoops
     /// (<c>item.value.&lt;field…&gt;</c>) — read from the outer item's value as a node's
     /// value is, with the same sentences, its walk spelled from <c>item.value</c>.
     /// </summary>
-    public static Resolution ItemsOfOuterItem(IReadOnlyDictionary<string, string> outer, string collection, string loopLabel)
+    public static Resolution ItemsOfOuterItem(IReadOnlyDictionary<string, string> outer, string collection, string loopLabel, string? labelField = null)
     {
         const string prefix = "item.value.";
         if (!collection.StartsWith(prefix, StringComparison.Ordinal) || collection.Length == prefix.Length)
@@ -87,7 +87,7 @@ internal static class ConsultNodeValueLoops
             return new Resolution(Array.Empty<IReadOnlyDictionary<string, string>>(), null, $"{loopLabel} could not read its list: the outer item's value is not JSON.");
         }
 
-        return ItemsFrom(value, "item.value", collection[prefix.Length..].Split('.'), loopLabel);
+        return ItemsFrom(value, "item.value", collection[prefix.Length..].Split('.'), loopLabel, labelField);
     }
 
     /// <summary>#1341: a nested instance's items, each carrying its path (<c>outer/id</c>) beside its own id.</summary>
@@ -97,7 +97,7 @@ internal static class ConsultNodeValueLoops
             [WorkflowItemPath.PathMember] = WorkflowItemPath.Of(new[] { outerPath, item["id"] }),
         }).ToList();
 
-    private static Resolution ItemsFrom(JsonNode? value, string walked, IReadOnlyList<string> fields, string loopLabel)
+    private static Resolution ItemsFrom(JsonNode? value, string walked, IReadOnlyList<string> fields, string loopLabel, string? labelField)
     {
         foreach (var field in fields)
         {
@@ -135,7 +135,7 @@ internal static class ConsultNodeValueLoops
                 var item = new Dictionary<string, string>(StringComparer.Ordinal)
                 {
                     ["id"] = position,
-                    ["name"] = $"{loopLabel} {position}",
+                    ["name"] = NameOf(element, labelField) ?? $"{loopLabel} {position}",
                 };
 
                 if (element is JsonValue scalar && scalar.TryGetValue(out string? text))
@@ -154,6 +154,21 @@ internal static class ConsultNodeValueLoops
 
         return new Resolution(items, null, null);
     }
+
+    /// <summary>
+    /// v30 (#1344, design § 5): an element named by its loop's <c>labelField</c> — the
+    /// field's text, trimmed; null (label plus position) when the field is blank,
+    /// absent or not text, or the loop declares none (always, below 30).
+    /// </summary>
+    internal static string? NameOf(JsonNode? element, string? labelField) =>
+        labelField is not null
+            && element is JsonObject obj
+            && obj.TryGetPropertyValue(labelField, out var field)
+            && field is JsonValue value
+            && value.TryGetValue(out string? text)
+            && !string.IsNullOrWhiteSpace(text)
+                ? WorkflowItemNames.FromField(text)
+                : null;
 
     /// <summary>
     /// How a template reads an item's value: an object or array element as

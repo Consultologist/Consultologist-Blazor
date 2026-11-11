@@ -1518,7 +1518,7 @@ public sealed class ConsultGenerationOrchestrator
                     continue;
                 }
 
-                var resolution = ConsultNodeValueLoops.ItemsOf(result, collection, loop.Label);
+                var resolution = ConsultNodeValueLoops.ItemsOf(result, collection, loop.Label, loop.LabelField);
 
                 if (resolution.Failure is { } failure)
                 {
@@ -1660,7 +1660,7 @@ public sealed class ConsultGenerationOrchestrator
                 var aligned = ConsultNodeScheduler.AlignedPath(source, outerPath, nodesById);
                 if (outputs.TryGetValue(ConsultNodeScheduler.InstanceKey(source.Id, aligned), out var result))
                 {
-                    return ConsultNodeValueLoops.ItemsOf(result, collection, loop.Label);
+                    return ConsultNodeValueLoops.ItemsOf(result, collection, loop.Label, loop.LabelField);
                 }
 
                 return aligned is not null && source.ForEach is not null && failedItems.Contains(FailedKey(source, aligned))
@@ -1670,7 +1670,7 @@ public sealed class ConsultGenerationOrchestrator
 
             if (collection.StartsWith("item.value.", StringComparison.Ordinal))
             {
-                return ConsultNodeValueLoops.ItemsOfOuterItem(outer, collection, loop.Label);
+                return ConsultNodeValueLoops.ItemsOfOuterItem(outer, collection, loop.Label, loop.LabelField);
             }
 
             return collections?.GetValueOrDefault(WorkflowFanSources.CollectionIdOf(collection)) is { } listed
