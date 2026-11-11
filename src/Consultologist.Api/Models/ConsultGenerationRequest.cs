@@ -692,7 +692,14 @@ public sealed record ConsultNodeDescriptor(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     string? Stopped = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? StopReason = null)
+    string? StopReason = null,
+    // v30 (#1343, design § 4): a let's expression and its declared type (text,
+    // number, boolean or a format's id) — package text, never a value. It runs as a
+    // computed node (Producer computed, Op let). Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? Let = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? LetType = null)
 {
     /// <summary>
     /// v26 (#1156, record storage 8): the row as the served record carries it —

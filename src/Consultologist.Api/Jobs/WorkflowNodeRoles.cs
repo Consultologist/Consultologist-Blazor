@@ -18,9 +18,10 @@ internal static class WorkflowNodeRoles
         WorkflowNodeKinds.IsClassifier(node)
         || (node.Format is { } format && SpecOf(format, package)?.Type == WorkflowInputTypes.Enum);
 
+    // v30 (#1343): a let is computed but is no check — it declares a type, not a format.
     public static bool IsCheckOf(WorkflowNodeSpec node, WorkflowPackage package) =>
         WorkflowNodeKinds.IsCheck(node)
-        || (node.Format is { } format && SpecOf(format, package)?.Producer == WorkflowFormatProducers.Computed);
+        || (node.Let is null && node.Format is { } format && SpecOf(format, package)?.Producer == WorkflowFormatProducers.Computed);
 
     private static WorkflowFormatSpec? SpecOf(string formatId, WorkflowPackage package) =>
         ConsultGenerationJobStarter.FormatSpecFor(formatId, package.Formats, package.SourceFiles, package.Manifest);
