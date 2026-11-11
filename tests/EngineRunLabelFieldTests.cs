@@ -146,6 +146,38 @@ public class EngineRunLabelFieldTests
     }
 
     [Fact]
+    public async Task AnInnerLoopOverANodesValue_NamesEachInstancesItemsByItsField()
+    {
+        var run = await EngineRun.StartAsync(
+            Named(root => V30Package.Node(root, "paragraphs")["labelField"] = "point"), EngineRunNestedTests.Notes, EngineRunNestedTests.Outputs);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        Assert.Equal(("Onset was sudden.", "It has worsened.", "Review in a month."),
+            (run.State.Blocks["consult:paragraphs:1/1"].Name, run.State.Blocks["consult:paragraphs:1/2"].Name, run.State.Blocks["consult:paragraphs:2/1"].Name));
+    }
+
+    [Fact]
+    public async Task AnInnerLoopOverAnOuterItemsField_NamesItsItemsByItsField()
+    {
+        var run = await EngineRun.StartAsync(
+            EngineRunNestedTests.Load(EngineRunNestedTests.TwoLevels(
+                root =>
+                {
+                    var paragraphs = V30Package.Node(root, "paragraphs");
+                    paragraphs["for"] = "item in item.value.topics";
+                    paragraphs["labelField"] = "topic";
+                    V30Package.Node(root, "parts")["nodes"] = new JsonArray("paragraphs");
+                    root["nodes"]!.AsArray().Remove(root["nodes"]!.AsArray().Single(n => n!["id"]!.GetValue<string>() == "outline"));
+                },
+                files => files["prompts/draft_paragraph.md"] = "Topic {{ item.value.topic }} of {{ item.parent.value.title }}.")),
+            EngineRunNestedTests.Notes, EngineRunNestedTests.Outputs);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+        Assert.Equal(("onset", "course", "follow-up"),
+            (run.State.Blocks["consult:paragraphs:1/1"].Name, run.State.Blocks["consult:paragraphs:1/2"].Name, run.State.Blocks["consult:paragraphs:2/1"].Name));
+    }
+
+    [Fact]
     public async Task AnItemNotRun_IsNamedByItsField_InTheSkippedReason()
     {
         var run = await EngineRun.StartAsync(
