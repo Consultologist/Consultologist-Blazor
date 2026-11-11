@@ -108,6 +108,35 @@ public class EngineRunLabelFieldTests
         Assert.Equal(new[] { "History", "Sections to produce 2", "Sections to produce 3" }, items.Select(item => item["name"]));
     }
 
+    // ---- the cap (design § 5, revision 3) -----------------------------------------------------
+
+    [Fact]
+    public void AFieldName_IsCappedAt120Characters_EndingInAnEllipsis()
+    {
+        var exactly = new string('a', 120);
+        var longer = "  " + new string('b', 200) + "  ";
+
+        Assert.Equal(exactly, WorkflowItemNames.FromField(exactly));
+        var capped = WorkflowItemNames.FromField(longer);
+        Assert.Equal(120, capped.Length);
+        Assert.Equal(new string('b', 119) + "…", capped);
+    }
+
+    [Fact]
+    public void BothNamingSites_CapAFieldName()
+    {
+        var title = new string('t', 300);
+        var input = new WorkflowInputSpec("sections", "Sections to produce", true, WorkflowInputTypes.Array) with { LabelField = "title" };
+        var inputName = WorkflowInputFans.Items(input, ConsultInputValue.OfArray(new[] { Section(title, "narrative") }))[0]["name"];
+        var loopName = ConsultNodeValueLoops.ItemsOf(
+            new NodeRunResult($$"""{ "problems": [ { "name": "{{title}}" } ] }""", null, null, null, 6),
+            "node.find_problems.value.problems", "Problems", "name").Items[0]["name"];
+
+        Assert.Equal((120, 120), (inputName.Length, loopName.Length));
+        Assert.EndsWith("…", inputName);
+        Assert.EndsWith("…", loopName);
+    }
+
     // ---- a node-value loop's items ----------------------------------------------------------
 
     [Fact]
