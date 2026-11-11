@@ -699,7 +699,11 @@ public sealed record ConsultNodeDescriptor(
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     string? Let = null,
     [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
-    string? LetType = null)
+    string? LetType = null,
+    // v30 (#1344, design § 5): a for's labelField — the field of each element its items
+    // are named by (blank falls back to label plus position). Trailing; written only when set.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? LabelField = null)
 {
     /// <summary>
     /// v26 (#1156, record storage 8): the row as the served record carries it —

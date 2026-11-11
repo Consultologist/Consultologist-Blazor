@@ -3690,7 +3690,9 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             // v30 (#1342, design § 3.4): and a for's max and until.
             Max: flow.Kind is WorkflowFlowNodes.Kind.While or WorkflowFlowNodes.Kind.For ? flow.Node.Max : null,
             Until: flow.Kind is WorkflowFlowNodes.Kind.While or WorkflowFlowNodes.Kind.For ? flow.Node.Until : null,
-            CheckFirst: flow.Kind == WorkflowFlowNodes.Kind.While && flow.Node.CheckFirst == true ? true : null);
+            CheckFirst: flow.Kind == WorkflowFlowNodes.Kind.While && flow.Node.CheckFirst == true ? true : null,
+            // v30 (#1344, design § 5): the field a for over objects names its items by.
+            LabelField: flow.Kind == WorkflowFlowNodes.Kind.For ? flow.Node.LabelField : null);
     }
 
     /// <summary>v26 (#1154): a package at 26 — its manifest says so (26 keeps formats on its plain nodes, so <see cref="IsAt25"/> holds there too, rightly, for every 25 path).</summary>
