@@ -825,6 +825,13 @@ public static class TemplateRenderer
     /// </summary>
     private static object? NodeValue(string subject, string nodeId, TemplateNodeOutput output)
     {
+        // v30 (#1343): a number or boolean let's value is its canonical JSON — the run
+        // passes it as ValueJson, so a model node's text under such a format reads as ever.
+        if (output.Type is WorkflowInputTypes.Number or WorkflowInputTypes.Boolean && output.ValueJson is { } scalar)
+        {
+            return FromJson(JsonNode.Parse(scalar));
+        }
+
         if (output.Type is not (WorkflowInputTypes.Object or WorkflowInputTypes.Array))
         {
             return output.Text;
