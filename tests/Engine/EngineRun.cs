@@ -152,7 +152,7 @@ internal sealed class EngineRun
                     Classification: node.Format == "classification" ? text : null);
             })
             .On(ConsultGenerationActivityNames.RunComputedNode, payload =>
-                RunComputedNodeActivity.Compute((ConsultComputedNodeActivityInput)payload!))
+                RunComputedNodeActivity.Compute((ConsultComputedNodeActivityInput)payload!, package))
             .On(ConsultGenerationActivityNames.DecideFlowItem, payload =>
                 DecideFlowItemActivity.Decide(package, (ConsultDecideFlowItemInput)payload!));
 
