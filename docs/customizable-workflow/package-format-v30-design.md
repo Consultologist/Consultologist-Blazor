@@ -10,6 +10,11 @@
 > disagrees with this text, this text is the decision and names what it supersedes. The normative
 > text follows in the package-format registry as `package-format-v30.md` with the bump (§ 14).
 >
+> **Revision 3** (2026-11-11), decided with the package author while building B5 (#1344): an item
+> named by its `labelField` carries that field's text in the record, kept past the retention
+> sweep — the one exception to § 7's rule, stated in § 5 — and a name drawn from a field is capped
+> at 120 characters.
+>
 > **One-line model:** at 29 a loop is one level deep and runs each item once. 30 makes a loop's
 > **shape** something the run can decide:
 > - a loop may sit **inside a loop, to any depth**, so each item is named by a **path**, and an
@@ -223,7 +228,7 @@ never a failure. The outer item still completes; its deliverable part reads an e
 - One loop-instance row per instance, holding its path, count, settled moment and reason (§ 7).
 - Item rows keyed by path.
 - The record shows the shape the run took. As at 29, it never records the element values
-  (#369's rule).
+  (#369's rule) — except an item's name drawn from its `labelField` (§ 5, revision 3).
 
 ## 3. `while` and `for … until` (#1281)
 
@@ -402,6 +407,19 @@ A deliverable or check that reads it is attested the same way as one that reads 
   - from there it reaches the composed heading, the rail, History, the block names and the
     `block-skipped` labels with no other change (`WorkflowPackageBlocks.ItemName`, `:176`).
 - **Folder items are unchanged**: they are named by their `label` header.
+- **Capped** (revision 3): a name drawn from a field is the field's text, trimmed, then cut to
+  120 characters ending in "…". The whole text reaches only the composed note, which is produced
+  text and deleted with it.
+- **What is recorded, and for how long** (revision 3, decided 2026-11-11): an item named by its
+  field carries that text in the record — its block's name, the roster's item, item progress,
+  History's labels, and a `not run … (Name)` reason. The retention sweep (`DropText`, #368)
+  deletes produced text, concepts and held inputs, not names, so the name stays for the life of
+  the record, as a folder item's `label` does. This is the one exception to § 7's rule, and it
+  is deliberate: the name is what History shows.
+- **The authoring consequence:** `labelField` should name a field that identifies the item
+  without patient detail — a section's title, not a finding. A field that holds patient text puts
+  that text in the permanent record. The Editor's `labelField` choice (§ 11) says so, and the
+  normative `package-format-v30.md` carries the sentence (§ 14).
 - **It lands with the 30 bump** (decided), not as an optional key at 29.
 
 ## 6. The deliverable at 30
@@ -429,10 +447,12 @@ What 11 adds over 10:
   moment and reason. A top-level loop keeps its 29 row (path null);
 - **pass rows** for a `while` (§ 3.3), and the `while` row's `passes` and `stopped`;
 - **the stopped-early state** of an unrun `until` item, and the item it stopped at;
-- **the `let` row** (§ 4.2).
+- **the `let` row** (§ 4.2);
+- **item names may be element text**: an item named by its `labelField` (§ 5, revision 3).
 
 As at 29, the record holds hashes, ids, counts and reasons, **never element values** (#369's
-rule). Storage 2–10 records read exactly as today.
+rule), **except an item's name drawn from its `labelField`** (§ 5, revision 3: kept past the
+retention sweep, capped at 120 characters). Storage 2–10 records read exactly as today.
 
 ## 8. The validator's sentences
 
@@ -551,7 +571,8 @@ holds plain nodes" stand below 30; at 30 they are lifted.
 - **A `let` pane:** the expression, with the reference walker's diagnostics, and the type,
   chosen from text/number/boolean or a format.
 - **`labelField`**: a picker on an `array<object>` input and on any loop over objects, offering the
-  required text fields.
+  required text fields. Beside it (revision 3): *"The item's name is kept in the job's record after
+  its text is deleted — pick a field that names the item without patient detail."* (§ 5).
 - **The Graph pane** draws nested subgraphs (the same builder as the run diagram).
 - **The upgrade rung:** `MigrateToNewestAsync` gains 29 → 30, with the notice *"Through 30:
   nothing changes in this package; loops may now nest, repeat (while) or stop early (until), and
@@ -601,7 +622,8 @@ last.
   - **C1:** the Create page and History (§ 10).
   - **C2:** the Editor (§ 11).
 - **The bump** (#1347).
-  - **Registry PRs:** package-format and provenance, with the vectors of § 13.
+  - **Registry PRs:** package-format and provenance, with the vectors of § 13; the normative
+    `package-format-v30.md` carries § 5's retention sentence for `labelField` (revision 3).
   - **An engine PR** moving every ceiling to 30.
   - **A release, cut after a drain** (§ 9).
 - **E — content** (#1348).
@@ -629,6 +651,10 @@ last.
 - **Leaving a loop from inside its body** — `break`, `continue`, a labelled break (#1351, filed
   2026-11-09 for after v30): keeping runs repeatable means serializing part of a pass, and the
   returned node may not run in the last pass.
+
+**Settled in B5** (revision 3, 2026-11-11): a `labelField` name is recorded and kept past the
+retention sweep, capped at 120 characters (§ 5, § 7). The alternatives — names reset to label
+plus position at the sweep, or never recorded — were weighed and not taken.
 
 **Settled in layer A** (revision 2; was "open for layer A"): the spellings `item.parent`,
 `s.<inner loop>`, the pass object (`.number`, `.node`, `.previous`, `.parent`, `.history`),

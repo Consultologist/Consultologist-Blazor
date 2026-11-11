@@ -205,7 +205,10 @@ removed once the old table is empty; #558 checked on 2026-08-31 and the
 table still held pre-#557 rows for jobs not yet past retention, so the
 removal is deferred to a small follow-up once they purge). `DropText` deletes the blob
 first, then stamps the record; the 30-day lifecycle policy above is the
-backstop for anything a failure leaves behind.
+backstop for anything a failure leaves behind. `DropText` deletes produced text, concepts and
+held inputs; it keeps names and History labels. At specVersion 30 an item named by its
+`labelField` carries that field's text (capped at 120 characters) in its name, so that text stays
+for the life of the record by design (v30 design § 5, revision 3).
 
 Since M3 (#547) the **held inputs** live here too: the starter writes the
 effective input map — exactly what ran, plus each supplied value's typed
