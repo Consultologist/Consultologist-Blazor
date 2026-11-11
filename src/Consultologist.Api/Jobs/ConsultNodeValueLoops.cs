@@ -167,7 +167,7 @@ internal static class ConsultNodeValueLoops
             && field is JsonValue value
             && value.TryGetValue(out string? text)
             && !string.IsNullOrWhiteSpace(text)
-                ? text.Trim()
+                ? WorkflowItemNames.FromField(text)
                 : null;
 
     /// <summary>

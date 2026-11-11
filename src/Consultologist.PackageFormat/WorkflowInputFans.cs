@@ -68,6 +68,6 @@ public static class WorkflowInputFans
             && element.IsObject
             && element.Fields?.FirstOrDefault(entry => string.Equals(entry.Id, field, StringComparison.Ordinal))?.Value is { Text: { } text }
             && !string.IsNullOrWhiteSpace(text)
-                ? text.Trim()
+                ? WorkflowItemNames.FromField(text)
                 : $"{input.Label} {(index + 1).ToString(CultureInfo.InvariantCulture)}";
 }
