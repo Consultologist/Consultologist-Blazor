@@ -49,11 +49,25 @@ public static class WorkflowInputFans
             .Select((element, index) => (IReadOnlyDictionary<string, string>)new Dictionary<string, string>(StringComparer.Ordinal)
             {
                 ["id"] = index.ToString(CultureInfo.InvariantCulture),
-                ["name"] = $"{input.Label} {(index + 1).ToString(CultureInfo.InvariantCulture)}",
+                ["name"] = NameOf(input, element, index),
                 // A null element never reaches a fan — the starter refuses it
                 // by index — but the map is total rather than assuming so.
                 ["value"] = element.IsNull ? string.Empty : element.HasCanonical ? element.Canonical : element.AsJson()
             })
             .ToList();
     }
+
+    /// <summary>
+    /// v30 (#1344, design § 5): an element named by its input's <c>labelField</c> — the
+    /// field's text, trimmed — falling back to label plus position when the field is
+    /// blank or absent. Below 30 an input declares no labelField (refused), so every
+    /// name is label plus position, as it was.
+    /// </summary>
+    public static string NameOf(WorkflowInputSpec input, ConsultInputValue element, int index) =>
+        input.LabelField is { } field
+            && element.IsObject
+            && element.Fields?.FirstOrDefault(entry => string.Equals(entry.Id, field, StringComparison.Ordinal))?.Value is { Text: { } text }
+            && !string.IsNullOrWhiteSpace(text)
+                ? text.Trim()
+                : $"{input.Label} {(index + 1).ToString(CultureInfo.InvariantCulture)}";
 }
