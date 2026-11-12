@@ -137,6 +137,56 @@ public class ConsultsScheduledReattachTests : ClientRenderTestContext
         Assert.Contains("Consultation note", page.Find(".empty-note-state").TextContent);
     }
 
+    [Fact]
+    public void ANestedLoopsCountResolved_KeepsTheTotalAFloor_UntilEveryInstanceCanHaveSettled()
+    {
+        // v30 (#1345): two instances of a loop inside a loop settle live; the snapshot still lists
+        // the loop as unresolved, so the total stays a floor ("+"), as it would not for a 29 loop.
+        WithTwoNodePackage();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job("Running", startedAtUtc: DateTimeOffset.UtcNow) with { UnresolvedLoops = new[] { "paragraphs" } });
+        AIService.StreamConsultGenerationJobEventsAsync(JobId, Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(call => CountResolved(call.ArgAt<CancellationToken>(2), ("paragraphs", "1", 2, 4), ("paragraphs", "2", 1, 5)));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Contains("of 5+ sections complete", page.Markup), Settle);
+    }
+
+    [Fact]
+    public void ATopLevelCountResolved_EndsTheFloor_AsAt29()
+    {
+        WithTwoNodePackage();
+        AIService.GetConsultGenerationJobAsync(JobId).Returns(Job("Running", startedAtUtc: DateTimeOffset.UtcNow) with { UnresolvedLoops = new[] { "problems" } });
+        AIService.StreamConsultGenerationJobEventsAsync(JobId, Arg.Any<string>(), Arg.Any<CancellationToken>(), Arg.Any<string?>())
+            .Returns(call => CountResolved(call.ArgAt<CancellationToken>(2), ("problems", null, 3, 4)));
+
+        var page = RenderRun();
+
+        page.WaitForAssertion(() => Assert.Contains("of 4 sections complete", page.Markup), Settle);
+        Assert.DoesNotContain("of 4+ sections", page.Markup);
+    }
+
+    /// <summary>The events, then an open stream (as a live one stays) until the page lets go — a stream that ended would re-poll the snapshot.</summary>
+    private static async IAsyncEnumerable<ConsultGenerationJobSseEvent> CountResolved(CancellationToken cancellation, params (string Loop, string? Path, int Count, int Total)[] events)
+    {
+        var n = 0;
+        foreach (var (loop, path, count, total) in events)
+        {
+            await Task.Yield();
+            var pathJson = path is null ? "null" : $"\"{path}\"";
+            yield return new ConsultGenerationJobSseEvent("count-resolved",
+                $$"""{"JobId":"{{JobId}}","LoopId":"{{loop}}","Count":{{count}},"Total":{{total}},"Pending":0,"Path":{{pathJson}}}""", $"cr-{++n}");
+        }
+
+        try
+        {
+            await Task.Delay(Timeout.Infinite, cancellation);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
     private static async IAsyncEnumerable<ConsultGenerationJobSseEvent> Heartbeat(string status)
     {
         await Task.Yield();

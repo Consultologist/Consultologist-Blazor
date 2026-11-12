@@ -26,6 +26,8 @@ public class ProvenanceMirrorTests
     [InlineData(typeof(ApiModels.ConsultInputFormRef), typeof(WebAI.ConsultInputFormRef))]
     // #1144: the previous-run reference carries its position in a several input.
     [InlineData(typeof(ApiModels.ConsultInputRef), typeof(WebAI.ConsultInputRef))]
+    // v30 (#1345): a nested loop's instance rows, with a while's passes and its stop.
+    [InlineData(typeof(Consultologist.Api.Jobs.ConsultLoopInstanceRow), typeof(WebAI.ConsultLoopInstanceRow))]
     public void TheMirroredRecords_ExposeTheSameProperties(Type api, Type web)
     {
         // #551: a mirrored record may itself carry a mirrored record — the
@@ -303,6 +305,40 @@ public class ProvenanceMirrorTests
     }
 
     [Fact]
+    public void TheStorage11Record_ReachesTheClient()
+    {
+        // v30 (#1345, record storage 11): a while's bound, passes and stop; a for's labelField; a
+        // let's type; the loop-instance rows; a let row's producer.
+        var refine = new ApiModels.ConsultNodeDescriptor("refine", "Refining", Kind: "while", Expression: "node.judge.value.verdict != \"good\"", Body: new[] { "draft", "judge" }, Ret: "draft",
+            Max: 3, Passes: 3, Stopped: "bound", StopReason: "stopped at its bound of 3; the check never stopped holding");
+        var parts = new ApiModels.ConsultNodeDescriptor("parts", "Parts", Kind: "for", Collection: "node.plan.value.sections", Body: new[] { "paragraphs" }, Ret: "paragraphs", Count: 2, LabelField: "title");
+        var count = new ApiModels.ConsultNodeDescriptor("problem_count", "Counting", Producer: "computed", Op: "let", Let: "node.find_problems.value.problems | array.size", LetType: "number");
+        var response = new ApiModels.ConsultGenerationJobResponse(
+            "job-1", "user-1", "Completed", 2, 2, 0,
+            new Dictionary<string, string>(), new Dictionary<string, string>(), true,
+            Nodes: new[] { refine, parts, count },
+            NodeOutputs: new Dictionary<string, ApiModels.ConsultGenerationNodeStatusResponse>
+            {
+                ["problem_count"] = new("problem_count", "Counting", "Completed", Producer: "computed"),
+            },
+            LoopInstances: new[]
+            {
+                new Consultologist.Api.Jobs.ConsultLoopInstanceRow("paragraphs", "1", 2, new DateTimeOffset(2026, 11, 11, 0, 0, 0, TimeSpan.Zero)),
+                new Consultologist.Api.Jobs.ConsultLoopInstanceRow("paragraphs", "2", 0, new DateTimeOffset(2026, 11, 11, 0, 0, 0, TimeSpan.Zero), Reason: "no items: node.outline.value.points was empty"),
+            });
+
+        var mirrored = JsonSerializer.Deserialize<WebAI.ConsultGenerationJobResponse>(JsonSerializer.Serialize(response, Web), Web)!;
+
+        var rows = mirrored.Nodes!.ToDictionary(n => n.Id);
+        Assert.Equal((3, 3, "bound", "stopped at its bound of 3; the check never stopped holding"), (rows["refine"].Max, rows["refine"].Passes, rows["refine"].Stopped, rows["refine"].StopReason));
+        Assert.Equal("title", rows["parts"].LabelField);
+        Assert.Equal(("let", "number"), (rows["problem_count"].Op, rows["problem_count"].LetType));
+        Assert.Equal("computed", mirrored.NodeOutputs!["problem_count"].Producer);
+        Assert.Equal(new[] { ("1", 2, (string?)null), ("2", 0, "no items: node.outline.value.points was empty") },
+            mirrored.LoopInstances!.Select(r => (r.Path, r.Count ?? -1, r.Reason)));
+    }
+
+    [Fact]
     public void TheNodeDescriptorMirror_IsASubsetOfTheApis()
     {
         // The Web row mirrors the fields its pages read; every one of them must exist on the Api's with its type.
@@ -316,4 +352,19 @@ public class ProvenanceMirrorTests
             Assert.Equal(apiType, Normalize(property.PropertyType.ToString()));
         }
     }
+
+    [Fact]
+    public void TheNodeDescriptorMirror_LeavesOutOnlyTheFieldsNamedHere()
+    {
+        // #1345: a new Api descriptor field must be mirrored or named here on purpose —
+        // the v30 fields went missing once because the subset test cannot see an omission.
+        var web = typeof(WebAI.ConsultGenerationNodeDescriptor).GetProperties().Select(p => p.Name).ToHashSet();
+        var leftOut = typeof(ApiModels.ConsultNodeDescriptor).GetProperties().Select(p => p.Name).Where(name => !web.Contains(name)).Order(StringComparer.Ordinal);
+
+        Assert.Equal(NotMirrored, leftOut);
+    }
+
+    // Run-time inputs the pages never show: the concept source, the custom schema's hash,
+    // the empty-reply sentence, the macro snapshot, an enum's values, the resolved with.
+    private static readonly string[] NotMirrored = { "ConceptSource", "CustomSchemaHash", "FailIfEmpty", "Macros", "Values", "With" };
 }

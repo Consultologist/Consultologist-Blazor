@@ -35,7 +35,9 @@ public static class RunDagDiagram
         {
             ["ranNot"] = new(), ["skipped"] = new(), ["done"] = new(), ["failed"] = new(), ["running"] = new()
         };
-        var statusById = nodes.ToDictionary(node => node.Id, node => StatusOf(node, outputs, detail.Collections, nodes), StringComparer.Ordinal);
+        var instances = detail.LoopInstances;
+        var finished = detail.Status is "Completed" or "Failed" or "Cancelled";
+        var statusById = nodes.ToDictionary(node => node.Id, node => StatusOf(node, outputs, detail.Collections, nodes, instances), StringComparer.Ordinal);
 
         // v26 (#1208, record storage 8): a flow row draws its body as a subgraph — a loop as the
         // fan it is with its count, an if/case as the decided set with the branch taken and the
@@ -100,14 +102,20 @@ public static class RunDagDiagram
             var label = new StringBuilder($"{node.Id}<br/>{node.Label}");
             if (node.ForEach != null)
             {
-                var (doneItems, totalItems, skippedItems) = ItemTally(node, outputs, detail.Collections, nodes);
+                var (doneItems, totalItems, skippedItems) = ItemTally(node, outputs, detail.Collections, nodes, instances);
                 label.Append(($"<br/>per {node.ForEach} item ({TallyText(doneItems, totalItems, skippedItems)})"));
+            }
+            else if (node.In != null && RecordFlow.RepeatOf(node, nodes) is { Kind: RecordFlow.While })
+            {
+                // v30 (#1345): a while's body node — its passes, not items.
+                var passes = PassRows(node, outputs);
+                label.Append(($"<br/>({passes.Count(row => row.Status == "Completed")}/{passes.Count} passes)"));
             }
             else if (node.In != null)
             {
                 // v26 (#1208): a body node — its items' tally; the loop's subgraph names the fan.
-                var (doneItems, totalItems, skippedItems) = ItemTally(node, outputs, detail.Collections, nodes);
-                label.Append(($"<br/>({TallyText(doneItems, totalItems, skippedItems)}) items"));
+                var (doneItems, totalItems, skippedItems) = ItemTally(node, outputs, detail.Collections, nodes, instances);
+                label.Append(($"<br/>({TallyText(doneItems, totalItems, skippedItems, NotRunOf(node, outputs, nodes))}) items"));
             }
 
             if (node.Check is { } check)
@@ -120,8 +128,13 @@ public static class RunDagDiagram
                 label.Append("<br/>template");
             }
 
+            // v30 (#1345): a let — computed, no model: its type, never a prompt or an agent.
+            if (RecordFlow.IsLet(node))
+            {
+                label.Append(($"<br/>computed · let → {node.LetType ?? "—"}"));
+            }
             // B7 #1006: a 25 node's format and producer, where a contract would read.
-            if (node.Format is { Length: > 0 } format)
+            else if (node.Format is { Length: > 0 } format)
             {
                 label.Append(($"<br/>{format} · {node.Producer ?? "—"}"));
             }
@@ -137,7 +150,10 @@ public static class RunDagDiagram
                 label.Append(($"<br/>{promptPath}"));
             }
 
-            body.Append(($"{id}[\"{Label(label.ToString())}\"]\n"));
+            // v30 (#1345): a let is drawn as a subroutine — computed by the engine, no model call.
+            body.Append(RecordFlow.IsLet(node)
+                ? ($"{id}[[\"{Label(label.ToString())}\"]]\n")
+                : ($"{id}[\"{Label(label.ToString())}\"]\n"));
 
             // Edges into the node — dashed when either endpoint was skipped,
             // the rails' "dashed lines for skipped" read.
@@ -201,24 +217,22 @@ public static class RunDagDiagram
             {
                 var collection = flow.Collection ?? string.Empty;
                 var retNode = RetIdOf(flow) is { } retId && nodesById.TryGetValue(retId, out var ret) ? ret : bodies.FirstOrDefault();
-                var (doneItems, totalItems, skippedItems) = retNode is null ? (0, flow.Count ?? 0, 0) : ItemTally(retNode, outputs, detail.Collections, nodes);
-                // v29 (#1303): a node's list not yet known is said so, never "(0/0)".
-                var tally = LoopCount.IsUnknown(flow)
-                    ? LoopCount.Describe(detail.Status is "Completed" or "Failed" or "Cancelled")
-                    : TallyText(doneItems, totalItems, skippedItems);
+                var (doneItems, totalItems, skippedItems) = retNode is null ? (0, flow.Count ?? 0, 0)
+                    // v30 (#1345): a loop returning a loop — its items are the innermost returned node's, by path prefix.
+                    : RecordFlow.IsRepeat(retNode) ? LoopReturnTally(flow, nodesById, outputs, nodes, instances)
+                    : ItemTally(retNode, outputs, detail.Collections, nodes, instances);
+                var nested = RecordFlow.RepeatOf(flow, nodes) is not null;
+                var flowInstances = RecordFlow.InstancesOf(flow, instances);
+                // v29 (#1303): a node's list not yet known is said so, never "(0/0)". v30 (#1345): a
+                // loop inside a loop or a while counts per instance — its rows summed, "counting…"
+                // beside them while an outer item or pass has not settled its own.
+                var tally = nested
+                    ? NestedTally(doneItems, skippedItems, NotRunOf(flow, outputs, nodes), flowInstances, flow, nodes, finished)
+                    : LoopCount.IsUnknown(flow)
+                        ? LoopCount.Describe(finished)
+                        : TallyText(doneItems, totalItems, skippedItems, NotRunOf(flow, outputs, nodes));
                 Open($"subgraph {subgraphId}[\"{flow.Id}: per {collection} item ({tally})\"]\n");
-                foreach (var bodyNode in bodies)
-                {
-                    // v27 (#1236, record storage 9): an if/case inside the loop is a subgraph of its own, one level deeper.
-                    if (RecordFlow.IsBranching(bodyNode))
-                    {
-                        EmitFlow(bodyNode);
-                    }
-                    else
-                    {
-                        EmitNode(bodyNode);
-                    }
-                }
+                EmitBodies(bodies);
 
                 Close();
                 if (loopSource is { } sourceNode)
@@ -235,6 +249,16 @@ public static class RunDagDiagram
                 byClass[status].Add(id);
                 body.Append(($"{id}[\"{Label($"{flow.Id}<br/>{flow.Label}<br/>for item in {collection}")}\"]\n"));
             }
+            else if (RecordFlow.IsWhile(flow))
+            {
+                // v30 (#1345, design § 10): a while — its body inside a subgraph labelled with its
+                // bound and, once it stopped, its passes and why; a loop's box, never a diamond.
+                Open($"subgraph {subgraphId}[\"{Label($"{flow.Id}: while {flow.Expression} — {WhileTally(flow, bodies, outputs)}")}\"]\n");
+                EmitBodies(bodies);
+                Close();
+                byClass[status].Add(id);
+                body.Append(($"{id}[\"{Label($"{flow.Id}<br/>{flow.Label}<br/>while: {flow.Expression}<br/>at most {flow.Max?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "—"}")}\"]\n"));
+            }
             else
             {
                 // v27 (#1236): an if/case inside a loop decides per item — the branches tallied, no pruned rows.
@@ -242,10 +266,7 @@ public static class RunDagDiagram
                 var branch = inner ? BranchesTally(flow) : RecordFlow.BranchText(flow);
                 // #1247: the expression is package-authored text — its quotes would close the label.
                 Open($"subgraph {subgraphId}[\"{Label($"{flow.Id}: {kind} {flow.Expression} — {(inner ? "per item" : $"branch: {branch}")}")}\"]\n");
-                foreach (var bodyNode in bodies)
-                {
-                    EmitNode(bodyNode);
-                }
+                EmitBodies(bodies);
 
                 foreach (var prunedId in pruned.GetValueOrDefault(flow.Id) ?? Array.Empty<string>())
                 {
@@ -293,6 +314,23 @@ public static class RunDagDiagram
                 if (!string.Equals(read, loopSource, StringComparison.Ordinal))
                 {
                     AppendEdge(Edges(), statusById, read, flow.Id);
+                }
+            }
+        }
+
+        // v30 (#1345): a body draws every flow it holds as a subgraph of its own — a loop in a
+        // loop, an if in an if, a while in either — to any depth; edges wait for the outermost end.
+        void EmitBodies(IEnumerable<ConsultGenerationNodeDescriptor> bodies)
+        {
+            foreach (var bodyNode in bodies)
+            {
+                if (RecordFlow.IsFlow(bodyNode))
+                {
+                    EmitFlow(bodyNode);
+                }
+                else
+                {
+                    EmitNode(bodyNode);
                 }
             }
         }
@@ -401,8 +439,20 @@ public static class RunDagDiagram
         ConsultGenerationNodeDescriptor node,
         IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs,
         IReadOnlyList<ConsultCollectionRoster>? rosters,
-        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
+        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes,
+        IReadOnlyList<ConsultLoopInstanceRow>? instances = null)
     {
+        // v30 (#1345): a while's body node — its passes rolled up; the pass in flight is running.
+        if (!RecordFlow.IsFlow(node) && RecordFlow.RepeatOf(node, nodes) is { Kind: RecordFlow.While })
+        {
+            var passes = PassRows(node, outputs);
+            return passes.Any(row => row.Status == "Failed") ? "failed"
+                : passes.Any(row => row.Status == "Running") ? "running"
+                : passes.Count > 0 && passes.All(row => row.Status == "Completed") ? "done"
+                : passes.Count > 0 ? "running"
+                : ClassFor(outputs.GetValueOrDefault(node.Id)?.Status);
+        }
+
         // v26 (#1208): a body node fans through its loop row — the same roll-up.
         if (RecordFlow.FanOf(node, nodes) != null)
         {
@@ -417,7 +467,7 @@ public static class RunDagDiagram
                 return "running";
             }
 
-            var (done, total, skipped) = ItemTally(node, outputs, rosters, nodes);
+            var (done, total, skipped) = ItemTally(node, outputs, rosters, nodes, instances);
             if (total > 0 && done >= total)
             {
                 return "done";
@@ -454,14 +504,120 @@ public static class RunDagDiagram
     }
 
     /// <summary>#1331: "1/1", or "1/1 · 1 skipped" when the loop skipped items by condition (the rail's words, #1330).</summary>
-    private static string TallyText(int done, int total, int skipped) =>
-        skipped > 0 ? $"{done}/{total} · {skipped} skipped" : $"{done}/{total}";
+    private static string TallyText(int done, int total, int skipped, int notRun = 0) =>
+        // v30 (#1345): items an until or a max stopped short of read "not run", apart from skips.
+        (skipped - notRun, notRun) switch
+        {
+            ( > 0, > 0) => $"{done}/{total} · {skipped - notRun} skipped · {notRun} not run",
+            (_, > 0) => $"{done}/{total} · {notRun} not run",
+            ( > 0, _) => $"{done}/{total} · {skipped} skipped",
+            _ => $"{done}/{total}",
+        };
+
+    /// <summary>v30 (#1342): the items a loop stopped short of — its own rows Skipped as "not run".</summary>
+    private static int NotRunOf(ConsultGenerationNodeDescriptor node, IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs, IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
+    {
+        var loop = RecordFlow.IsLoop(node) ? node : RecordFlow.LoopOf(node, nodes);
+        return loop is null ? 0 : outputs.Count(pair =>
+            Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, loop.Id) is not null
+            && pair.Value.Status == "Skipped"
+            && pair.Value.Reason?.StartsWith("not run", StringComparison.Ordinal) == true);
+    }
+
+    /// <summary>
+    /// v30 (#1345): a loop whose returned node is a loop — the record keeps one row per loop, so
+    /// its items are read off the innermost returned node's rows: an item (a path prefix at this
+    /// loop's depth) is done when every leaf row under it completed. The total is the loop's count
+    /// at the top, its instance rows summed when it is nested.
+    /// </summary>
+    private static (int Done, int Total, int Skipped) LoopReturnTally(
+        ConsultGenerationNodeDescriptor loop,
+        IReadOnlyDictionary<string, ConsultGenerationNodeDescriptor> nodesById,
+        IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs,
+        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes,
+        IReadOnlyList<ConsultLoopInstanceRow>? instances)
+    {
+        var leaf = loop;
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        while (RecordFlow.IsRepeat(leaf) && seen.Add(leaf.Id) && RetIdOf(leaf) is { } retId && nodesById.TryGetValue(retId, out var next))
+        {
+            leaf = next;
+        }
+
+        var depth = 1;
+        for (var owner = RecordFlow.RepeatOf(loop, nodes); owner is not null && depth < 64; owner = RecordFlow.RepeatOf(owner, nodes))
+        {
+            depth++;
+        }
+
+        var byItem = outputs
+            .Select(pair => (Path: Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, leaf.Id), pair.Value.Status))
+            .Where(row => row.Path is not null && Consultologist.PackageFormat.WorkflowItemPath.Depth(row.Path) >= depth)
+            .GroupBy(row => string.Join('/', Consultologist.PackageFormat.WorkflowItemPath.Segments(row.Path!).Take(depth)), StringComparer.Ordinal)
+            .ToList();
+        var done = byItem.Count(item => item.All(row => row.Status == "Completed"));
+        var total = RecordFlow.RepeatOf(loop, nodes) is null
+            ? loop.Count ?? byItem.Count
+            : RecordFlow.InstancesOf(loop, instances).Sum(row => row.Count ?? 0);
+        return (done, Math.Max(total, byItem.Count), 0);
+    }
+
+    /// <summary>v30 (#1342): a while body node's pass rows (node:pass, node:outer/pass).</summary>
+    private static IReadOnlyList<ConsultGenerationNodeStatus> PassRows(ConsultGenerationNodeDescriptor node, IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs) =>
+        outputs.Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, node.Id) is not null).Select(pair => pair.Value).ToList();
+
+    /// <summary>
+    /// v30 (#1345, design § 10): a while's words — "at most 3", then "pass 2 of at most 3" while it
+    /// runs, and once it stopped "3 passes — stopped at its bound" / "— the check stopped holding" /
+    /// "— its until held".
+    /// </summary>
+    private static string WhileTally(ConsultGenerationNodeDescriptor flow, IReadOnlyList<ConsultGenerationNodeDescriptor> bodies, IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs)
+    {
+        var bound = flow.Max?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "—";
+        if (flow.Passes is { } passes)
+        {
+            var why = flow.Stopped switch
+            {
+                "bound" => "stopped at its bound",
+                "until" => "its until held",
+                "check" => "the check stopped holding",
+                _ => flow.StopReason ?? "stopped",
+            };
+            return $"{passes} {(passes == 1 ? "pass" : "passes")} — {why}";
+        }
+
+        var seen = bodies.SelectMany(body => outputs.Keys.Select(key => Consultologist.PackageFormat.WorkflowItemPath.PathFor(key, body.Id)))
+            .OfType<string>().Distinct(StringComparer.Ordinal).Count();
+        return seen == 0 ? $"at most {bound}" : $"pass {seen} of at most {bound}";
+    }
+
+    /// <summary>
+    /// v30 (#1345): a nested loop's tally — every instance's items summed ("3/3 · 2 instances"),
+    /// "counting…" beside it while an outer item or pass has no settled instance yet.
+    /// </summary>
+    private static string NestedTally(
+        int done, int skipped, int notRun,
+        IReadOnlyList<ConsultLoopInstanceRow> rows,
+        ConsultGenerationNodeDescriptor flow,
+        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes,
+        bool finished)
+    {
+        var counted = rows.Sum(row => row.Count ?? 0);
+        var text = TallyText(done, Math.Max(counted - skipped, done), skipped, notRun);
+        // An outer for with a settled count knows how many instances to expect; inside a while
+        // (or an outer for still counting), any instance may yet open — counting until the run ends.
+        var expected = RecordFlow.RepeatOf(flow, nodes) is { Kind: RecordFlow.Loop, Count: { } outerCount } ? outerCount : (int?)null;
+        var pending = !finished && (rows.Count == 0 || expected is null || rows.Count < expected);
+        var instancesText = $"{rows.Count} {(rows.Count == 1 ? "instance" : "instances")}";
+        return pending ? $"{text} · {instancesText}, {LoopCount.Counting}" : $"{text} · {instancesText}";
+    }
 
     private static (int Done, int Total, int Skipped) ItemTally(
         ConsultGenerationNodeDescriptor node,
         IReadOnlyDictionary<string, ConsultGenerationNodeStatus> outputs,
         IReadOnlyList<ConsultCollectionRoster>? rosters,
-        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes)
+        IReadOnlyList<ConsultGenerationNodeDescriptor> nodes,
+        IReadOnlyList<ConsultLoopInstanceRow>? instances = null)
     {
         var items = outputs.Where(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, node.Id) is not null).ToList();
         // v27 (#1236): an if/case inside a loop is done per item decided (its branches map); a branch node over the items it ran.
@@ -474,6 +630,13 @@ public static class RunDagDiagram
         if (RecordFlow.FlowOf(node, nodes) is not null)
         {
             return (items.Count(pair => pair.Value.Status == "Completed"), items.Count, 0);
+        }
+
+        // v30 (#1345): a nested loop's body node — its total is the loop's instance rows summed.
+        if (RecordFlow.LoopOf(node, nodes) is { } nestedLoop && RecordFlow.InstancesOf(nestedLoop, instances) is { Count: > 0 } rows)
+        {
+            var nestedSkipped = outputs.Count(pair => Consultologist.PackageFormat.WorkflowItemPath.PathFor(pair.Key, nestedLoop.Id) is not null && pair.Value.Status == "Skipped");
+            return (items.Count(pair => pair.Value.Status == "Completed"), Math.Max(rows.Sum(row => row.Count ?? 0), items.Count) - nestedSkipped, nestedSkipped);
         }
 
         // v26 (#1208): a body node's total is its loop row's settled count; a forEach node's the roster's, as ever.

@@ -700,7 +700,25 @@ public record ConsultGenerationJobResponse(
     // the total is a floor while any is listed. Null when none. Trailing.
     IReadOnlyList<string>? UnresolvedLoops = null,
     // v29 (#1305): the deliverables composed but not released — on a failed job too. Trailing.
-    IReadOnlyList<ConsultHeldDocumentResponse>? HeldDocuments = null);
+    IReadOnlyList<ConsultHeldDocumentResponse>? HeldDocuments = null,
+    // v30 (#1341, record storage 11): one row per instance of a loop inside a loop or a
+    // while — its outer path, count, reason, and (#1342) passes and why it stopped. Trailing.
+    IReadOnlyList<ConsultLoopInstanceRow>? LoopInstances = null);
+
+/// <summary>
+/// Mirrors Consultologist.Api.Jobs.ConsultLoopInstanceRow (v30 #1341/#1342, record storage 11):
+/// one instance of a loop that runs inside a loop or a while — never an element's value.
+/// </summary>
+public record ConsultLoopInstanceRow(
+    string LoopId,
+    string Path,
+    int? Count,
+    DateTimeOffset ResolvedAtUtc,
+    string? Reason = null,
+    string? Failure = null,
+    int? Passes = null,
+    string? Stopped = null,
+    string? StopReason = null);
 
 /// <summary>Mirrors Consultologist.Api.Workflow.TerminologySnapshot (#403).</summary>
 public record TerminologySnapshot(string? Edition, string? Version, string? ImportDate);
@@ -833,7 +851,21 @@ public record ConsultGenerationNodeDescriptor(
     // v29 (#1303): a loop over a node's value — when its count settled (Count is
     // null until then), and why it has no items when the list was empty. Trailing.
     DateTimeOffset? ResolvedAtUtc = null,
-    string? Reason = null);
+    string? Reason = null,
+    // v30 (#1342, record storage 11): a while's bound, until and checkFirst, a for's max and
+    // until; once it stops, its passes (a while) and why — check | until | bound | end — with
+    // the sentence. Trailing.
+    int? Max = null,
+    string? Until = null,
+    bool? CheckFirst = null,
+    int? Passes = null,
+    string? Stopped = null,
+    string? StopReason = null,
+    // v30 (#1343): a let's expression and its type (text, number, boolean or a format's id).
+    string? Let = null,
+    string? LetType = null,
+    // v30 (#1344): the field a for over objects names its items by.
+    string? LabelField = null);
 
 /// <summary>Mirrors Consultologist.Api.Models.ConsultNodeBindingDescriptor (#642).</summary>
 public record ConsultNodeBindingDescriptor(string From, string? As = null);

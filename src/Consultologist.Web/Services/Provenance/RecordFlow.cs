@@ -18,9 +18,21 @@ public static class RecordFlow
 {
     public const string Loop = "for";
 
+    /// <summary>v30 (#1342): a while — repeats its body pass by pass, within its bound.</summary>
+    public const string While = "while";
+
     public static bool IsFlow(ConsultGenerationNodeDescriptor node) => node.Kind is not null;
 
     public static bool IsLoop(ConsultGenerationNodeDescriptor node) => node.Kind == Loop;
+
+    /// <summary>v30 (#1342, record storage 11): a while row.</summary>
+    public static bool IsWhile(ConsultGenerationNodeDescriptor node) => node.Kind == While;
+
+    /// <summary>v30: a row whose body runs more than once — a for (per item) or a while (per pass).</summary>
+    public static bool IsRepeat(ConsultGenerationNodeDescriptor node) => node.Kind is Loop or While;
+
+    /// <summary>v30 (#1343): a let — computed, no model; its row names its type.</summary>
+    public static bool IsLet(ConsultGenerationNodeDescriptor node) => node.Op == "let";
 
     public static bool IsBranching(ConsultGenerationNodeDescriptor node) => node.Kind is "if" or "case";
 
@@ -60,9 +72,49 @@ public static class RecordFlow
         return null;
     }
 
-    /// <summary>v27 (#1236, record storage 9): an if/case inside a loop — its in names a for; decided once per item (its branches map), never a branch of its own.</summary>
+    /// <summary>
+    /// v30 (#1342): the for or while a node repeats under — the nearest one up the in
+    /// chain, through if/case rows; null at the top. (<see cref="LoopOf"/> stays the
+    /// nearest for: a collection's reader.)
+    /// </summary>
+    public static ConsultGenerationNodeDescriptor? RepeatOf(ConsultGenerationNodeDescriptor node, IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+
+        for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId); )
+        {
+            var owner = nodes?.FirstOrDefault(n => n.Id == ownerId);
+
+            if (owner is null)
+            {
+                return null;
+            }
+
+            if (IsRepeat(owner))
+            {
+                return owner;
+            }
+
+            ownerId = owner.In;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// v27 (#1236, record storage 9): an if/case inside a loop — decided once per item (its
+    /// branches map), never a branch of its own. v30: at any depth, inside a for or a while
+    /// (an if in an if in a for is inner too).
+    /// </summary>
     public static bool IsInner(ConsultGenerationNodeDescriptor node, IReadOnlyList<ConsultGenerationNodeDescriptor>? nodes) =>
-        IsBranching(node) && node.In is { } loopId && nodes?.Any(n => n.Id == loopId && n.Kind == Loop) == true;
+        IsBranching(node) && RepeatOf(node, nodes) is not null;
+
+    /// <summary>v30 (#1341, record storage 11): a loop's instance rows — one per outer path — in path order (numerically, segment by segment).</summary>
+    public static IReadOnlyList<ConsultLoopInstanceRow> InstancesOf(ConsultGenerationNodeDescriptor loop, IReadOnlyList<ConsultLoopInstanceRow>? rows) =>
+        (rows ?? Array.Empty<ConsultLoopInstanceRow>())
+            .Where(row => row.LoopId == loop.Id)
+            .OrderBy(row => row.Path, PathOrder.Instance)
+            .ToList();
 
     /// <summary>The branch an if/case row took — the record's word, "none" when it took none; v27: "per item" for one inside a loop.</summary>
     public static string BranchText(ConsultGenerationNodeDescriptor node) => BranchText(node, null);
@@ -108,5 +160,30 @@ public static class RecordFlow
         }
 
         return pruned;
+    }
+}
+
+/// <summary>v30 (#1345): item paths in run order — segment by segment, numbers as numbers (2 before 10), text ordinally.</summary>
+public sealed class PathOrder : IComparer<string>
+{
+    public static readonly PathOrder Instance = new();
+
+    public int Compare(string? x, string? y)
+    {
+        var a = Consultologist.PackageFormat.WorkflowItemPath.Segments(x ?? string.Empty);
+        var b = Consultologist.PackageFormat.WorkflowItemPath.Segments(y ?? string.Empty);
+
+        for (var i = 0; i < Math.Min(a.Count, b.Count); i++)
+        {
+            var order = long.TryParse(a[i], out var m) && long.TryParse(b[i], out var n)
+                ? m.CompareTo(n)
+                : string.CompareOrdinal(a[i], b[i]);
+            if (order != 0)
+            {
+                return order;
+            }
+        }
+
+        return a.Count.CompareTo(b.Count);
     }
 }

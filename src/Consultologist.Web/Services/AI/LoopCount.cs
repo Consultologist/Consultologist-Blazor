@@ -39,4 +39,17 @@ public static class LoopCount
         next.Remove(loopId);
         return (total, next);
     }
+
+    /// <summary>
+    /// v30 (#1345): what a count-resolved event does when it names an instance (a loop inside a
+    /// loop or a while, by its outer path): the total re-totals, but the loop stays pending —
+    /// another instance may yet open; the snapshot's unresolved loops say when it is done. A
+    /// top-level event (no path) is <see cref="Apply(IReadOnlySet{string}, string, int)"/>, as at 29.
+    /// </summary>
+    public static (int Total, IReadOnlySet<string> Pending) Apply(IReadOnlySet<string> pending, string loopId, int total, string? path) =>
+        path is null ? Apply(pending, loopId, total) : (total, pending);
+
+    /// <summary>v30 (#1345): where a settled count is kept — the loop, or the loop's instance at a path (loop:path).</summary>
+    public static string SettledKey(string loopId, string? path) =>
+        path is null ? loopId : WorkflowItemPath.Key(loopId, path);
 }
