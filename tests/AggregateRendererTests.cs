@@ -156,7 +156,7 @@ public class AssembledDocumentEntityTests
         // carries the prose ticks — neither leaks into the other's response
         // fields, and the total is the block count from the stored scalar.
         state().GetOrAddBlock("b1", "Block one").Status = ConsultGenerationBlockStatuses.Completed;
-        state().GetOrAddItemProgress("item-1", "Item one").CompletedStepCount = 2;
+        state().GetOrAddItemProgress("item-1", "item-1", "Item one").CompletedStepCount = 2;
 
         var response = state().ToResponse();
 
