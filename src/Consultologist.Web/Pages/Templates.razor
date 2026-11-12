@@ -2717,7 +2717,8 @@
                                         @if (bodyNode is { IsFlow: true } innerFlow)
                                         {
                                             @* v27 (#1236, design § 1.1): an if/case in the body — decided once per item; its branches' nodes run under this loop. *@
-                                            <span class="muted-text loop-body__flow">· @(innerFlow.IsIf ? "if" : "case") @(innerFlow.If ?? innerFlow.Case) — per item</span>
+                                            @* v30 (#1346): a loop or a while in the body runs per item too — named by its kind. *@
+                                            <span class="muted-text loop-body__flow">· @(innerFlow.IsLoop ? "for" : innerFlow.IsWhile ? "while" : innerFlow.IsIf ? "if" : "case") @(innerFlow.IsLoop ? innerFlow.Collection : innerFlow.While ?? innerFlow.If ?? innerFlow.Case) — per item</span>
                                         }
                                         @if (selectedLoop.RetNodeId == bodyId)
                                         {
