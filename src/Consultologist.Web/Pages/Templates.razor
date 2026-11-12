@@ -100,8 +100,8 @@
                     {
                         <FluentButton Appearance="Appearance.Outline"
                                       Disabled="@isPublishing"
-                                      @onclick="() => UpgradeSpecVersionTo(NewestSpecVersion)">
-                            Upgrade to specVersion @NewestSpecVersion
+                                      @onclick="() => UpgradeSpecVersionTo(AuthoredNewest)">
+                            Upgrade to specVersion @AuthoredNewest
                         </FluentButton>
                     }
                     @if (OffersRunnableUpgrade || OffersNewestUpgrade)
@@ -2717,7 +2717,8 @@
                                         @if (bodyNode is { IsFlow: true } innerFlow)
                                         {
                                             @* v27 (#1236, design § 1.1): an if/case in the body — decided once per item; its branches' nodes run under this loop. *@
-                                            <span class="muted-text loop-body__flow">· @(innerFlow.IsIf ? "if" : "case") @(innerFlow.If ?? innerFlow.Case) — per item</span>
+                                            @* v30 (#1346): a loop or a while in the body runs per item too — named by its kind. *@
+                                            <span class="muted-text loop-body__flow">· @(innerFlow.IsLoop ? "for" : innerFlow.IsWhile ? "while" : innerFlow.IsIf ? "if" : "case") @(innerFlow.IsLoop ? innerFlow.Collection : innerFlow.While ?? innerFlow.If ?? innerFlow.Case) — per item</span>
                                         }
                                         @if (selectedLoop.RetNodeId == bodyId)
                                         {
@@ -5138,6 +5139,22 @@
     /// seam this bump retired.
     internal const int NewestSpecVersion = 29;
 
+    /// <summary>
+    /// v30 (#1346, as #1306 did for 29): a test-only seam — the editor authors the
+    /// version above the accepted ceiling (30, built by #1339–#1345) before the bump
+    /// (#1347) lifts the ceiling: the manifest reads, the desk's validate and an
+    /// import accept it, and the upgrade reaches it. No banner: the API refuses 30
+    /// until the bump, so no user opens one. Retired at the bump, as #1307 retired 29's.
+    /// </summary>
+    [Parameter]
+    public bool AuthorsAboveCeiling { get; set; }
+
+    private IReadOnlyList<int> AcceptedSet =>
+        AuthorsAboveCeiling ? PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(NewestSpecVersion + 1).ToList() : PF.WorkflowPackageValidator.AcceptedSpecVersions;
+
+    /// <summary>The newest version this editor authors: the ceiling, one above it under the seam.</summary>
+    private int AuthoredNewest => AuthorsAboveCeiling ? NewestSpecVersion + 1 : NewestSpecVersion;
+
 
     /// <summary>
     /// The newest version a bump can STAGE as pending state (specVersionBump).
@@ -5408,7 +5425,7 @@
         // v27 (#1236, design § 7; chained at the bump #1237): from 26 on, the 27
         // rung is a version raise — nothing rewritten. A package below 26 arrives
         // here through the rewrite above.
-        var target = NewestSpecVersion;
+        var target = AuthoredNewest;
         PF.Migration26Result? raised = null;
         if (EffectiveSpecVersion < 27)
         {
@@ -5448,7 +5465,8 @@
         // v29 (#1306, design § 8, § 9): the 29 rung — a raise; 29 permits what 28
         // refused and rewrites nothing. The 28 rewrite's notices, if it ran, are
         // said under "Through 28:".
-        if (target >= 29)
+        // #1346: a 29 package is not raised to 29 again — the 29 rung runs only below it.
+        if (target >= 29 && EffectiveSpecVersion < 29)
         {
             through28 = EffectiveSpecVersion < 28 ? string.Join(" ", result.Notices) : null;
             var raised29 = PF.WorkflowPackageVersionRaise.To(result.ManifestJson, result.Files, 29);
@@ -5459,6 +5477,22 @@
             }
 
             result = raised29 with { Notices = new[] { "Through 29: nothing changes in this package; loops may now iterate a node's value." } };
+        }
+
+        // v30 (#1346, design § 11): the 30 rung — a raise; 30 permits what 29 refused
+        // and rewrites nothing. The 29 rung's notice, if it ran, is said first.
+        string? through29 = null;
+        if (target >= 30)
+        {
+            through29 = EffectiveSpecVersion < 29 ? string.Join(" ", result.Notices) : null;
+            var raised30 = PF.WorkflowPackageVersionRaise.To(result.ManifestJson, result.Files, 30);
+            if (!raised30.Succeeded)
+            {
+                Refuse(30, raised30.Refusals);
+                return;
+            }
+
+            result = raised30 with { Notices = new[] { "Through 30: nothing changes in this package; loops may now nest, repeat (while) or stop early (until), and a let computes a value." } };
         }
 
         var migrated = new WorkflowPackageContentResponse(
@@ -5484,6 +5518,7 @@
             + (through26 is null ? string.Empty : $"Through 26: {through26} ")
             + (through27 is null ? string.Empty : $"Through 27: {through27} ")
             + (through28 is null ? string.Empty : $"Through 28: {through28} ")
+            + (through29 is null ? string.Empty : $"{through29} ")
             + string.Join(" ", result.Notices);
         upgradeRefusal = null;
         selectedKey = GraphKey;
@@ -5546,7 +5581,7 @@
     /// <summary>A stored upgrade of the package just loaded takes its place — the stored-import idiom (#857).</summary>
     private void ApplyStoredUpgrade(UpgradeDraft draft)
     {
-        content = new WorkflowPackageContentResponse(draft.Name, draft.PackageVersion, NewestSpecVersion, JsonDocument.Parse(draft.ManifestJson).RootElement.Clone(), draft.Files);
+        content = new WorkflowPackageContentResponse(draft.Name, draft.PackageVersion, AuthoredNewest, JsonDocument.Parse(draft.ManifestJson).RootElement.Clone(), draft.Files);
         upgradedFrom = draft.FromSpecVersion;
         migrationNotice = draft.Notice;
     }
@@ -5680,7 +5715,7 @@
         // question is whether the package as published has anywhere to go up
         // to. The pending side is the specVersionBump == null clause, which is
         // what hides the buttons once one has been pressed.
-        content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= NewestSpecVersion;
+        content != null && specVersionBump == null && upgradedFrom == null && LoadedSpecVersion < target && target <= AuthoredNewest;
 
     // #1149: the rung this editor's one button reaches — the newest format it
     // can author AND the engine runs. Equal to both ceilings when they meet;
@@ -5693,7 +5728,7 @@
     // the gap: 10 is publishable, 9 is the newest that runs).
     private bool OffersRunnableUpgrade => CanUpgradeTo(UpgradeTarget);
 
-    private bool OffersNewestUpgrade => RunnableSpecVersion < NewestSpecVersion && CanUpgradeTo(NewestSpecVersion);
+    private bool OffersNewestUpgrade => RunnableSpecVersion < AuthoredNewest && CanUpgradeTo(AuthoredNewest);
 
     /// <summary>A staged bump past the runnable ceiling, or a loaded package already past it.</summary>
     private bool NotYetRunnable => EffectiveSpecVersion > RunnableSpecVersion;
@@ -5999,7 +6034,7 @@
                 IReadOnlyList<PF.TemplatePreviewGate> gates = Array.Empty<PF.TemplatePreviewGate>();
                 try
                 {
-                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+                    var manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
                     // v28 (#1285): the prompts a 28 manifest implies, as the engine reads them.
                     var previewFiles = AssembleFiles();
                     manifest = PF.WorkflowImpliedPaths.WithImpliedPrompts(manifest, previewFiles);
@@ -11455,7 +11490,7 @@
         PF.WorkflowPackageManifest manifest;
         try
         {
-            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", PF.WorkflowPackageValidator.AcceptedSpecVersions);
+            manifest = PF.WorkflowPackageManifestJson.Read(ComposeManifest().GetRawText(), content?.Ref ?? "the package", AcceptedSet);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -11467,7 +11502,9 @@
             AssembleFiles(),
             new Dictionary<string, string>(StringComparer.Ordinal),
             null,
-            EditorPackageWalk.CatalogFrom(formatsCatalog));
+            EditorPackageWalk.CatalogFrom(formatsCatalog),
+            // #1346: the seam's set — the public entry's until the bump.
+            AcceptedSet);
 
         var errors = formatsCatalog is null
             ? result.Errors.Where(e => !e.StartsWith("The format catalogue is not available", StringComparison.Ordinal)).ToList()
@@ -13354,6 +13391,9 @@
 
     private bool At29 => EffectiveSpecVersion >= 29;
 
+    /// <summary>v30 (#1346): nesting, while, until/max, let and labelField are authored.</summary>
+    private bool At30 => EffectiveSpecVersion >= 30;
+
     /// <summary>
     /// v29 (#1306, design § 2.1, § 8): what a loop may iterate besides folders and
     /// inputs — node.&lt;id&gt;.value.&lt;field&gt; for each array field of a node outside every
@@ -13533,7 +13573,11 @@
 
     /// <summary>v26: every body a plain node may be placed in, across every flow node, in node order.</summary>
     private IReadOnlyList<WorkflowManifestReader.FlowBodyView> EffectiveBodies =>
-        At26 ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).ToList() : Array.Empty<WorkflowManifestReader.FlowBodyView>();
+        At26
+            // v30 (#1346 C2a): a while's body is read (its members are placed) but not yet a
+            // target — the while pane (C2c) edits it; until then nothing moves into or out of it.
+            ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).Where(body => !body.Ref.IsWhile).ToList()
+            : Array.Empty<WorkflowManifestReader.FlowBodyView>();
 
     /// <summary>v26: the key of the body holding the node, or null.</summary>
     private string? BodyKeyOf(string nodeId) => WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId)?.Key;
@@ -13708,7 +13752,8 @@
     private void PlaceInBody(string nodeId, string? bodyKey)
     {
         var current = WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId);
-        if (current?.Key == bodyKey)
+        // v30 (#1346 C2a): a while's member stays where it is until the while pane (C2c) moves it.
+        if (current?.Key == bodyKey || current?.Ref.IsWhile == true)
         {
             return;
         }
@@ -13741,6 +13786,13 @@
         {
             var rewritten = rewrite(new FlowBody((flow.Nodes ?? Array.Empty<string>()).ToList(), flow.Ret));
             SetLoop(flow.Id, flow.Label, flow.For!, rewritten.Nodes, rewritten.Ret);
+            return;
+        }
+
+        // v30 (#1346 C2a): a while's body is written by the while pane (C2c) — never through
+        // the if/case writer, which would stamp if/case members onto it.
+        if (flow.IsWhile)
+        {
             return;
         }
 
@@ -14779,7 +14831,7 @@
         var listed = result.SourceNodeIds.ToHashSet(StringComparer.Ordinal);
         return DeliverableSourceNodes
             .Where(n => !listed.Contains(n.Id))
-            .Select(n => new OneShotChoice(n.Id, n.IsFlow ? $"{n.Label} ({n.Id}, {(n.IsLoop ? "loop" : n.IsIf ? "if" : "case")})" : $"{n.Label} ({n.Id})"))
+            .Select(n => new OneShotChoice(n.Id, n.IsFlow ? $"{n.Label} ({n.Id}, {(n.IsLoop ? "loop" : n.IsWhile ? "while" : n.IsIf ? "if" : "case")})" : $"{n.Label} ({n.Id})"))
             .ToList();
     }
 
@@ -19511,7 +19563,7 @@
             ImportedPackage built;
             try
             {
-                built = BuildImportedContent(bytes, PF.WorkflowPackageValidator.AcceptedSpecVersions);
+                built = BuildImportedContent(bytes, AcceptedSet);
             }
             catch (JsonException ex)
             {
@@ -19599,7 +19651,7 @@
     // corrupt stored import falls back to the registry rather than wedging.
     private void ApplyStoredImport(ImportDraft draft)
     {
-        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64), PF.WorkflowPackageValidator.AcceptedSpecVersions);
+        var built = BuildImportedContent(Convert.FromBase64String(draft.ZipBase64), AcceptedSet);
         content = built.Content;
         importZipBase64 = draft.ZipBase64;
         editingRef = null;
@@ -20132,6 +20184,13 @@
                         if (!string.IsNullOrEmpty(input.ExpectedContent))
                         {
                             node["expectedContent"] = input.ExpectedContent;
+                        }
+
+                        // v30 (#1346, design § 5): the field each element is named by,
+                        // carried as read — an inputs edit no longer drops it.
+                        if (!string.IsNullOrEmpty(input.LabelField))
+                        {
+                            node["labelField"] = input.LabelField;
                         }
 
                         if (input.Values is { Count: > 0 })

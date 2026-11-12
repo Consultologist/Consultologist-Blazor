@@ -1142,6 +1142,51 @@ public static class EditorFixtures
         return new(at28.Name, at28.Version, 29, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
     }
 
+    /// <summary>
+    /// v30 (#1346): the 29 package with every 30 shape — the problems loop named by each
+    /// problem's name (labelField), its body a while (refine: a bound, an until) drafting the
+    /// problem, a let counting the problems that the draft reads, and an array-of-objects input
+    /// named by its title.
+    /// </summary>
+    public static WorkflowPackageContentResponse V30()
+    {
+        var at29 = V29();
+        var root = System.Text.Json.Nodes.JsonNode.Parse(at29.Manifest.GetRawText())!.AsObject();
+        root["specVersion"] = 30;
+        var nodes = root["nodes"]!.AsArray();
+        var problems = nodes.OfType<System.Text.Json.Nodes.JsonObject>().Single(n => (string?)n["id"] == "problems");
+        problems["labelField"] = "name";
+        problems["nodes"] = new System.Text.Json.Nodes.JsonArray("refine");
+        problems["ret"] = "node.refine";
+        nodes.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "refine", ["label"] = "Refining the problem", ["while"] = "pass.number < 2", ["max"] = 2, ["until"] = "pass.number >= 2",
+            ["nodes"] = new System.Text.Json.Nodes.JsonArray("draft_problem"), ["ret"] = "node.draft_problem"
+        });
+        nodes.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "problem_count", ["label"] = "Counting the problems",
+            ["let"] = "node.find_problems.value.problems | array.size", ["type"] = "number", ["onInvalid"] = "fail"
+        });
+        var inputs = root["inputs"] as System.Text.Json.Nodes.JsonArray ?? new System.Text.Json.Nodes.JsonArray();
+        inputs.Add(new System.Text.Json.Nodes.JsonObject
+        {
+            ["id"] = "cases", ["label"] = "Cases", ["type"] = "array", ["items"] = "object", ["required"] = false,
+            ["fields"] = new System.Text.Json.Nodes.JsonArray(
+                new System.Text.Json.Nodes.JsonObject { ["id"] = "title", ["label"] = "Title", ["type"] = "text", ["required"] = true },
+                new System.Text.Json.Nodes.JsonObject { ["id"] = "aside", ["label"] = "Aside", ["type"] = "text", ["required"] = false }),
+            ["labelField"] = "title",
+        });
+        root["inputs"] = inputs;
+
+        var files = new Dictionary<string, string>(at29.Files, StringComparer.Ordinal)
+        {
+            ["prompts/draft_problem.md"] = "Problem {{ item.id }} of {{ node.problem_count.value }}: {{ item.value.name }} ({{ item.value.severity }}).",
+        };
+
+        return new(at29.Name, at29.Version, 30, JsonDocument.Parse(root.ToJsonString()).RootElement.Clone(), files);
+    }
+
     public static WorkflowPackageContentResponse V27Flow(bool inLoop = true)
     {
         var at26 = V26();

@@ -66,7 +66,17 @@ public static class WorkflowManifestReader
         BodyView? Else = null,
         IReadOnlyList<BranchView>? Branches = null,
         // v28 (#1270, design § 6a): a flow node's display-only description; null when unset and below 28.
-        string? Description = null)
+        string? Description = null,
+        // v30 (#1346, design § 3, § 4, § 5): a while — its check, bound, until and checkFirst,
+        // its body in Nodes/Ret as a loop's; a for's until and max; a let — its expression and
+        // type; a for's labelField. Null on every node below 30 and where unset.
+        string? While = null,
+        int? Max = null,
+        string? Until = null,
+        bool? CheckFirst = null,
+        string? Let = null,
+        string? LetType = null,
+        string? LabelField = null)
     {
         public bool IsClassifier => Kind == Consultologist.PackageFormat.WorkflowNodeKinds.Classifier;
 
@@ -79,8 +89,14 @@ public static class WorkflowManifestReader
         /// <summary>v26 (#1159): a flow node of kind case.</summary>
         public bool IsCase => Case is not null;
 
-        /// <summary>v26: any flow node — structural, never prompted; at 26 never placed in a body, at 27 (#1236) an if/case may sit in a loop's body.</summary>
-        public bool IsFlow => IsLoop || IsIf || IsCase;
+        /// <summary>v30 (#1346): a flow node of kind while — its body repeats pass by pass, within its max.</summary>
+        public bool IsWhile => While is not null;
+
+        /// <summary>v30 (#1346): a let — one computed value, no model; a node, not a flow.</summary>
+        public bool IsLet => Let is not null;
+
+        /// <summary>v26: any flow node — structural, never prompted; at 26 never placed in a body, at 27 (#1236) an if/case may sit in a loop's body; v30 a while, anywhere.</summary>
+        public bool IsFlow => IsLoop || IsIf || IsCase || IsWhile;
 
         /// <summary>
         /// v26 (#1159): the node's bodies, addressed — a loop's one body, an if's then and
@@ -92,6 +108,11 @@ public static class WorkflowManifestReader
             if (IsLoop)
             {
                 bodies.Add(new FlowBodyView(new FlowBodyRef(Id, FlowBodyRef.Loop), $"{Label} ({Collection ?? For})", Nodes ?? Array.Empty<string>(), Ret));
+            }
+            else if (IsWhile)
+            {
+                // v30 (#1346): a while's one body — its passes run it.
+                bodies.Add(new FlowBodyView(new FlowBodyRef(Id, FlowBodyRef.While), $"{Label} (while)", Nodes ?? Array.Empty<string>(), Ret));
             }
             else if (IsIf)
             {
@@ -212,6 +233,7 @@ public static class WorkflowManifestReader
     public sealed record FlowBodyRef(string FlowId, string Body)
     {
         public const string Loop = "loop";
+        public const string While = "while";
         public const string Then = "then";
         public const string Else = "else";
         public const string BranchPrefix = "branch:";
@@ -219,6 +241,7 @@ public static class WorkflowManifestReader
         public static string Branch(int index) => BranchPrefix + index;
 
         public bool IsLoop => Body == Loop;
+        public bool IsWhile => Body == While;
         public bool IsThen => Body == Then;
         public bool IsElse => Body == Else;
         public int? BranchIndex => Body.StartsWith(BranchPrefix, StringComparison.Ordinal) && int.TryParse(Body[BranchPrefix.Length..], out var i) ? i : null;
@@ -291,7 +314,9 @@ public static class WorkflowManifestReader
         // Types is the union arms (#729·v14) — Type stays the primary/first arm;
         // ExpectedContent is the content channel (#728·v13/#730·v16/#673·v17).
         IReadOnlyList<string>? Types = null,
-        string? ExpectedContent = null);
+        string? ExpectedContent = null,
+        // v30 (#1346, design § 5): the required text field each element is named by.
+        string? LabelField = null);
 
     /// <summary>
     /// One declared deliverable: authored id and label over an aggregator node.
@@ -562,7 +587,15 @@ public static class WorkflowManifestReader
                 ReadBody(node, "then"),
                 ReadBody(node, "else"),
                 ReadBranches(node),
-                ReadString(node, "description")));
+                ReadString(node, "description"),
+                // v30 (#1346): the while, until/max, let and labelField members.
+                ReadString(node, "while"),
+                ReadInt(node, "max"),
+                ReadString(node, "until"),
+                ReadBool(node, "checkFirst"),
+                ReadString(node, "let"),
+                ReadString(node, "type"),
+                ReadString(node, "labelField")));
         }
 
         return nodes;
@@ -940,7 +973,8 @@ public static class WorkflowManifestReader
                 items,
                 fields,
                 typeArms,
-                ReadString(input, "expectedContent")));
+                ReadString(input, "expectedContent"),
+                ReadString(input, "labelField")));
         }
 
         return inputs;
@@ -1217,6 +1251,10 @@ public static class WorkflowManifestReader
             : null;
 
     /// <summary>A boolean property; null when absent or not a JSON boolean.</summary>
+    /// <summary>v30 (#1346): a whole-number member (a while's or a for's max), or null.</summary>
+    private static int? ReadInt(JsonElement element, string property) =>
+        TryGetProperty(element, property, out var value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt32(out var number) ? number : null;
+
     private static bool? ReadBool(JsonElement element, string property) =>
         TryGetProperty(element, property, out var value) && value.ValueKind is JsonValueKind.True or JsonValueKind.False
             ? value.ValueKind == JsonValueKind.True

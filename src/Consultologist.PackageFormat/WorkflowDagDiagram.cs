@@ -53,13 +53,25 @@ public static class WorkflowDagDiagram
         var flows = nodes.Where(node => node.If != null || node.Case != null).ToList();
         var bodyIds = loops.SelectMany(loop => loop.Nodes ?? new List<string>())
             .Concat(flows.SelectMany(flow => FlowBodies(flow).SelectMany(body => body.Nodes)))
+            // v30 (#1346): a while's body too (none below 30).
+            .Concat(nodes.Where(node => node.While != null).SelectMany(node => node.Nodes ?? new List<string>()))
             .ToHashSet(StringComparer.Ordinal);
+        // v30 (#1346, design § 11): from 30 a flow sits inside its owner's subgraph, to any depth.
+        var nested = manifest.SpecVersion >= 30;
 
         IReadOnlyList<WorkflowDerivedEdges.NodeRead> ReadsOf(string nodeId) =>
             reads.GetValueOrDefault(nodeId) ?? Array.Empty<WorkflowDerivedEdges.NodeRead>();
 
-        foreach (var node in nodes.Where(node => node.ForEach is null && node.For is null && node.If is null && node.Case is null && !bodyIds.Contains(node.Id)))
+        foreach (var node in nodes.Where(node => node.ForEach is null && node.For is null && node.If is null && node.Case is null && node.While is null && !bodyIds.Contains(node.Id)))
         {
+            // v30 (#1346): a let is a computed subroutine naming its type.
+            if (nested && node.Let != null)
+            {
+                sb.Append($"    {Sanitize(node.Id)}[[\"{Label(LetLabel(node))}\"]]\n");
+                AppendReadEdges(sb, ReadsOf(node.Id), node.Id, indent: "    ", manifest.SpecVersion);
+                continue;
+            }
+
             if (node.Aggregate != null)
             {
                 // Aggregators are graph-visible by construction: their own box, one
@@ -158,9 +170,15 @@ public static class WorkflowDagDiagram
             }
         }
 
+        if (nested)
+        {
+            AppendNested(sb, nodes.Where(node => (node.For != null || node.If != null || node.Case != null || node.While != null) && !bodyIds.Contains(node.Id)).ToList(),
+                nodesById, ReadsOf, manifest.SpecVersion);
+        }
+
         // v26 (#1160): one subgraph per loop, fed by its collection, the body in
         // order, the loop node as the box the subgraph returns into through ret.
-        foreach (var loop in loops)
+        foreach (var loop in nested ? new List<WorkflowNodeSpec>() : loops)
         {
             var collection = LoopCollectionOf(loop.For!);
             var subgraphId = "for_" + Sanitize(loop.Id);
@@ -211,7 +229,7 @@ public static class WorkflowDagDiagram
         // v26 (#1159): one subgraph per body of an if/case node — then/else, each branch
         // (titled by its values) and else — returning into the flow's box through ret; a
         // case over a node's value draws a dotted edge from that node.
-        foreach (var flow in flows)
+        foreach (var flow in nested ? new List<WorkflowNodeSpec>() : flows)
         {
             var kind = flow.If != null ? "if" : "case";
             sb.Append('\n');
@@ -270,6 +288,133 @@ public static class WorkflowDagDiagram
 
         return sb.ToString();
     }
+
+    /// <summary>
+    /// v30 (#1346, design § 11): the flows drawn nested, as the run diagram draws them (#1345) —
+    /// a flow in a body is a subgraph inside its owner's, to any depth: a for's per-item box, a
+    /// while's box with its bound, an if/case's bodies. Every node is declared once, where it
+    /// belongs; every edge waits until the outermost subgraph closes (Mermaid pulls a node an
+    /// edge names into the subgraph the edge is written in).
+    /// </summary>
+    private static void AppendNested(
+        StringBuilder sb,
+        IReadOnlyList<WorkflowNodeSpec> topFlows,
+        IReadOnlyDictionary<string, WorkflowNodeSpec> nodesById,
+        Func<string, IReadOnlyList<WorkflowDerivedEdges.NodeRead>> readsOf,
+        int specVersion)
+    {
+        var edges = new StringBuilder();
+        var drawn = new HashSet<string>(StringComparer.Ordinal);
+
+        void Member(string id, string indent)
+        {
+            if (!nodesById.TryGetValue(id, out var member))
+            {
+                sb.Append($"{indent}{Sanitize(id)}[\"{Label(id)}\"]\n");
+                return;
+            }
+
+            if (member.For != null || member.If != null || member.Case != null || member.While != null)
+            {
+                Flow(member, indent);
+                return;
+            }
+
+            sb.Append(member.Let != null
+                ? $"{indent}{Sanitize(id)}[[\"{Label(LetLabel(member))}\"]]\n"
+                : $"{indent}{Sanitize(id)}[\"{Label($"{id}<br/>{member.Label}")}\"]\n");
+            AppendReadEdges(edges, readsOf(id), id, indent: "    ", specVersion);
+        }
+
+        void Flow(WorkflowNodeSpec flow, string indent)
+        {
+            if (!drawn.Add(flow.Id))
+            {
+                return;
+            }
+
+            var inner = indent + "    ";
+            if (flow.For != null || flow.While != null)
+            {
+                var isWhile = flow.While != null;
+                var collection = isWhile ? null : LoopCollectionOf(flow.For!);
+                var subgraphId = (isWhile ? "while_" : "for_") + Sanitize(flow.Id);
+                var bound = flow.Max?.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                var title = isWhile
+                    ? $"{flow.Id}: while {flow.While} — at most {bound ?? "—"}"
+                    : $"{flow.Id}: per {collection ?? flow.For} item";
+                sb.Append($"{indent}subgraph {subgraphId}[\"{Label(title)}\"]\n");
+                foreach (var id in flow.Nodes ?? new List<string>())
+                {
+                    Member(id, inner);
+                }
+
+                sb.Append($"{indent}end\n");
+                var head = isWhile ? $"while: {flow.While}<br/>at most {bound ?? "—"}" : flow.For!;
+                sb.Append($"{indent}{Sanitize(flow.Id)}[\"{Label($"{flow.Id}<br/>{flow.Label}{DescriptionLine(flow)}<br/>{head}")}\"]\n");
+
+                if (collection != null)
+                {
+                    var source = TemplateObjectReference.TryParse(collection, out var sourceObj, out var sourceId, out _) && sourceObj == TemplateObjects.Node
+                        ? sourceId
+                        : collection;
+                    edges.Append($"    {Sanitize(source)} -->|\"for\"| {subgraphId}\n");
+                }
+
+                if (TemplateObjectReference.NodeIdOf(flow.Ret ?? string.Empty) is { } retId)
+                {
+                    edges.Append($"    {Sanitize(retId)} -->|\"ret\"| {Sanitize(flow.Id)}\n");
+                }
+            }
+            else
+            {
+                var kind = flow.If != null ? "if" : "case";
+                foreach (var body in FlowBodies(flow))
+                {
+                    sb.Append($"{indent}subgraph {kind}_{Sanitize(flow.Id)}_{Sanitize(body.Key)}[\"{Label($"{flow.Id}: {body.Title}")}\"]\n");
+                    foreach (var id in body.Nodes)
+                    {
+                        Member(id, inner);
+                    }
+
+                    sb.Append($"{indent}end\n");
+                }
+
+                var head = flow.If != null ? $"if {flow.If}" : $"case {flow.Case}";
+                sb.Append($"{indent}{Sanitize(flow.Id)}[\"{Label($"{flow.Id}<br/>{flow.Label}{DescriptionLine(flow)}<br/>{head}")}\"]\n");
+                foreach (var body in FlowBodies(flow))
+                {
+                    if (TemplateObjectReference.NodeIdOf(body.Ret ?? string.Empty) is { } retId)
+                    {
+                        edges.Append($"    {Sanitize(retId)} -->|\"{Label($"ret ({body.Title})")}\"| {Sanitize(flow.Id)}\n");
+                    }
+                }
+
+                if (flow.Case is { } subject && subject.StartsWith(TemplateObjectReference.NodePrefix, StringComparison.Ordinal))
+                {
+                    var subjectId = subject[TemplateObjectReference.NodePrefix.Length..];
+                    var dot = subjectId.IndexOf('.');
+                    edges.Append($"    {Sanitize(dot < 0 ? subjectId : subjectId[..dot])} -.->|\"case\"| {Sanitize(flow.Id)}\n");
+                }
+            }
+
+            // The flow's own reads (a loop's source is its for edge, already drawn).
+            var feed = flow.For is { } forText && LoopCollectionOf(forText) is { } fed
+                && TemplateObjectReference.TryParse(fed, out var feedObj, out var feedId, out _) && feedObj == TemplateObjects.Node ? feedId : null;
+            AppendReadEdges(edges, readsOf(flow.Id).Where(read => !string.Equals(read.Id, feed, StringComparison.Ordinal)), flow.Id, indent: "    ", specVersion);
+        }
+
+        foreach (var flow in topFlows)
+        {
+            sb.Append('\n');
+            Flow(flow, "    ");
+        }
+
+        sb.Append(edges);
+    }
+
+    /// <summary>v30 (#1346): a let's box — computed, no model; its type.</summary>
+    private static string LetLabel(WorkflowNodeSpec node) => $"{node.Id}<br/>{node.Label}<br/>computed · let → {node.Type ?? "—"}";
 
     /// <summary>v26 (#1159): an if/case node's bodies in order — key (then/else/branch_n), title, nodes, ret.</summary>
     private static IReadOnlyList<(string Key, string Title, IReadOnlyList<string> Nodes, string? Ret)> FlowBodies(WorkflowNodeSpec flow)
