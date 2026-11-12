@@ -563,7 +563,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         if (input.Pass != true)
         {
-            var progress = state.GetOrAddItemProgress(input.ItemId, input.ItemName);
+            // #1366: at record storage 11 an item's progress is its loop's — keyed by the collection too.
+            var progress = state.GetOrAddItemProgress(ConsultItemProgressKeys.Of(state.SchemaVersion, state.Nodes, input.NodeId, input.ItemId), input.ItemId, input.ItemName);
             progress.Step = input.NodeId;
             progress.CompletedStepCount = input.CompletedChainCount;
             progress.TotalStepCount = input.TotalChainCount;
@@ -2180,12 +2181,12 @@ public sealed class ConsultGenerationJobState
         return block;
     }
 
-    public ConsultGenerationItemProgressState GetOrAddItemProgress(string itemId, string itemName)
+    public ConsultGenerationItemProgressState GetOrAddItemProgress(string key, string itemId, string itemName)
     {
-        if (!ItemProgress.TryGetValue(itemId, out var progress))
+        if (!ItemProgress.TryGetValue(key, out var progress))
         {
             progress = new ConsultGenerationItemProgressState { Id = itemId, Name = itemName };
-            ItemProgress[itemId] = progress;
+            ItemProgress[key] = progress;
         }
 
         return progress;
@@ -2291,15 +2292,17 @@ public sealed class ConsultGenerationJobState
             .Where(block => block.Status == ConsultGenerationBlockStatuses.Skipped)
             .ToDictionary(block => block.Id, block => block.Reason ?? "took no branch");
 
-        var itemProgress = ItemProgress.Values
+        // #1366: served under the key it is stored by — the item id up to storage 10, the
+        // collection and the item at 11 (two loops' items sharing ids never merge).
+        var itemProgress = ItemProgress
             .ToDictionary(
-                progress => progress.Id,
-                progress => new ConsultGenerationItemProgress(
-                    progress.Id,
-                    progress.Name,
-                    progress.Step,
-                    progress.CompletedStepCount,
-                    progress.TotalStepCount));
+                pair => pair.Key,
+                pair => new ConsultGenerationItemProgress(
+                    pair.Value.Id,
+                    pair.Value.Name,
+                    pair.Value.Step,
+                    pair.Value.CompletedStepCount,
+                    pair.Value.TotalStepCount));
 
         return new ConsultGenerationJobResponse(
             JobId,
@@ -2627,4 +2630,48 @@ public static class ConsultGenerationBlockStatuses
     // v27 (#1235, design § 1.4): skipped by condition — an inner if/case took no
     // branch for the item; a named state with its reason, counted as done.
     public const string Skipped = "Skipped";
+}
+
+/// <summary>
+/// #1366: the key an item's progress is kept by. Up to record storage 10 the item id alone, as
+/// those records hold it; from 11 the completing node's collection and the item, so two loops
+/// whose items share ids (two lists read off nodes, both numbered from 1) keep apart.
+/// </summary>
+public static class ConsultItemProgressKeys
+{
+    public static string Of(int schemaVersion, IReadOnlyList<ConsultNodeDescriptor>? nodes, string nodeId, string itemId) =>
+        schemaVersion >= 11 && nodes?.FirstOrDefault(node => node.Id == nodeId) is { } node && CollectionOf(node, nodes) is { Length: > 0 } collection
+            ? $"{collection}|{itemId}"
+            : itemId;
+
+    /// <summary>
+    /// The collection a node fans over — its own forEach on the stored descriptor, else its
+    /// nearest loop's (up the in chain), which is what a served record row carries (its
+    /// forEach is dropped, AsRecordRowAt8): the entity and the transport key alike.
+    /// </summary>
+    private static string? CollectionOf(ConsultNodeDescriptor node, IReadOnlyList<ConsultNodeDescriptor> nodes)
+    {
+        if (node.ForEach is { Length: > 0 } forEach)
+        {
+            return forEach;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal) { node.Id };
+        for (var ownerId = node.In; ownerId is not null && seen.Add(ownerId); )
+        {
+            if (nodes.FirstOrDefault(n => n.Id == ownerId) is not { } owner)
+            {
+                return null;
+            }
+
+            if (owner.Kind == ConsultNodeFlows.For && owner.Collection is { Length: > 0 } collection)
+            {
+                return collection;
+            }
+
+            ownerId = owner.In;
+        }
+
+        return null;
+    }
 }

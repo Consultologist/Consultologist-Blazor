@@ -2344,7 +2344,8 @@ public sealed class ConsultGenerationJobs
 
         foreach (var (nodeId, itemId) in completed)
         {
-            if (!response.ItemProgress.TryGetValue(itemId, out var progress))
+            // #1366: a storage-11 record keeps progress per loop — looked up by the node's collection too.
+            if (!response.ItemProgress.TryGetValue(ConsultItemProgressKeys.Of(response.SchemaVersion ?? 0, response.Nodes, nodeId, itemId), out var progress))
             {
                 continue;
             }
