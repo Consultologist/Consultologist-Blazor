@@ -13572,7 +13572,11 @@
 
     /// <summary>v26: every body a plain node may be placed in, across every flow node, in node order.</summary>
     private IReadOnlyList<WorkflowManifestReader.FlowBodyView> EffectiveBodies =>
-        At26 ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).ToList() : Array.Empty<WorkflowManifestReader.FlowBodyView>();
+        At26
+            // v30 (#1346 C2a): a while's body is read (its members are placed) but not yet a
+            // target — the while pane (C2c) edits it; until then nothing moves into or out of it.
+            ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).Where(body => !body.Ref.IsWhile).ToList()
+            : Array.Empty<WorkflowManifestReader.FlowBodyView>();
 
     /// <summary>v26: the key of the body holding the node, or null.</summary>
     private string? BodyKeyOf(string nodeId) => WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId)?.Key;
@@ -13747,7 +13751,8 @@
     private void PlaceInBody(string nodeId, string? bodyKey)
     {
         var current = WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId);
-        if (current?.Key == bodyKey)
+        // v30 (#1346 C2a): a while's member stays where it is until the while pane (C2c) moves it.
+        if (current?.Key == bodyKey || current?.Ref.IsWhile == true)
         {
             return;
         }
@@ -13780,6 +13785,13 @@
         {
             var rewritten = rewrite(new FlowBody((flow.Nodes ?? Array.Empty<string>()).ToList(), flow.Ret));
             SetLoop(flow.Id, flow.Label, flow.For!, rewritten.Nodes, rewritten.Ret);
+            return;
+        }
+
+        // v30 (#1346 C2a): a while's body is written by the while pane (C2c) — never through
+        // the if/case writer, which would stamp if/case members onto it.
+        if (flow.IsWhile)
+        {
             return;
         }
 
@@ -14818,7 +14830,7 @@
         var listed = result.SourceNodeIds.ToHashSet(StringComparer.Ordinal);
         return DeliverableSourceNodes
             .Where(n => !listed.Contains(n.Id))
-            .Select(n => new OneShotChoice(n.Id, n.IsFlow ? $"{n.Label} ({n.Id}, {(n.IsLoop ? "loop" : n.IsIf ? "if" : "case")})" : $"{n.Label} ({n.Id})"))
+            .Select(n => new OneShotChoice(n.Id, n.IsFlow ? $"{n.Label} ({n.Id}, {(n.IsLoop ? "loop" : n.IsWhile ? "while" : n.IsIf ? "if" : "case")})" : $"{n.Label} ({n.Id})"))
             .ToList();
     }
 
@@ -20171,6 +20183,13 @@
                         if (!string.IsNullOrEmpty(input.ExpectedContent))
                         {
                             node["expectedContent"] = input.ExpectedContent;
+                        }
+
+                        // v30 (#1346, design § 5): the field each element is named by,
+                        // carried as read — an inputs edit no longer drops it.
+                        if (!string.IsNullOrEmpty(input.LabelField))
+                        {
+                            node["labelField"] = input.LabelField;
                         }
 
                         if (input.Values is { Count: > 0 })
