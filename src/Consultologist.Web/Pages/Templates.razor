@@ -13614,8 +13614,19 @@
             return (draft, null);
         }
 
+        // v30 (#1346, design § 3.2): a condition reading the pass object (pass.number,
+        // pass.previous…) is a while's — the tree's operands are inputs and nodes, so it would
+        // read pass as an input; it stays as written, edited as text.
+        if (target.When is { } text && PassRead.IsMatch(text))
+        {
+            ConditionBuilderModel.TryFromText(null, out var empty, out _);
+            return (empty, text);
+        }
+
         return ConditionBuilderModel.TryFromText(target.When, out var root, out var verbatim) ? (root, null) : (root, verbatim);
     }
+
+    private static readonly System.Text.RegularExpressions.Regex PassRead = new(@"(^|[^\w.])pass\.", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// v18 (#822): a node's own when. A completed condition rides nodeWhenEdits
