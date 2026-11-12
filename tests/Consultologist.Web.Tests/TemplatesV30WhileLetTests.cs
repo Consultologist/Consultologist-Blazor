@@ -10,15 +10,14 @@ using NSubstitute;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// v30 (#1346 C2c, design § 3, § 4, § 11): the while pane and the let pane, under the pre-bump
-/// seam — a new while's max is chosen or publish is refused with the validator's sentence; a
+/// v30 (#1346 C2c, design § 3, § 4, § 11): the while pane and the let pane, now public (#1347) — a new while's max is chosen or publish is refused with the validator's sentence; a
 /// loaded while's check stays as written, its bound, until and body edited; a let's expression
 /// shows the validator's own sentences as it stands, its type and onInvalid chosen (never retry);
 /// and the 30 fixture with every pane opened round-trips unchanged.
 /// </summary>
 public class TemplatesV30WhileLetTests : ClientRenderTestContext
 {
-    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture, bool seam = true)
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
@@ -27,7 +26,7 @@ public class TemplatesV30WhileLetTests : ClientRenderTestContext
             .Returns(new WorkflowPublishOutcome(
                 new WorkflowPackagePublishResponse("acct-1234567890ab", "v2026.11.3", "acct-1234567890ab@v2026.11.3"),
                 Array.Empty<string>()));
-        return Render<Templates>(parameters => parameters.Add(page => page.AuthorsAboveCeiling, seam));
+        return Render<Templates>();
     }
 
     private WorkflowPackagePublishRequest? sent;

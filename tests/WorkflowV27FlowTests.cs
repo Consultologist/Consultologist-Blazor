@@ -56,17 +56,17 @@ public class WorkflowV27FlowTests
     }
 
     [Fact]
-    public void AnIfInsideAnIf_InsideAFor_IsOneLevel()
+    public void AnIfInsideAnIf_InsideAFor_RequiresThirty()
     {
         var errors = Errors(V27Package.With(Triaged, m => V26Package.WithNode(V26Package.WithNodes(m,
                 new WorkflowNodeSpec("detail", "Detail", If: "item.id == \"plan\"", Then: V27Package.Body("node.table_draft", "table_draft"))),
             "triage", n => n with { Then = V27Package.Body("node.patient_draft", "patient_draft", "detail") })));
 
-        Assert.Contains("Node 'detail' runs inside node 'triage', which runs inside loop 'sections'; at specVersion 27 a branch holds plain nodes.", errors);
+        Assert.Contains("Node 'detail' runs inside node 'triage', which requires specVersion 30.", errors);
     }
 
     [Fact]
-    public void AnIfInsideAnIf_AtTheTopLevel_StaysRefused()
+    public void AnIfInsideAnIf_AtTheTopLevel_RequiresThirty()
     {
         // § 1.1: nobody asked; the top-level case keeps its refusal, in 27's words.
         var errors = V27Package.Errors(b => V27Package.With(b, m => V26Package.WithNodes(m,
@@ -74,17 +74,17 @@ public class WorkflowV27FlowTests
             new WorkflowNodeSpec("detail", "Detail", If: "input.kind == \"new\"", Then: V27Package.Body("node.full_workup", "full_workup")),
             new WorkflowNodeSpec("triage", "Triage", If: "input.kind == \"new\"", Then: V27Package.Body("node.detail", "detail")))));
 
-        Assert.Contains("Node 'detail' runs inside node 'triage'; at specVersion 27 a branch holds plain nodes.", errors);
+        Assert.Contains("Node 'detail' runs inside node 'triage', which requires specVersion 30.", errors);
     }
 
     [Fact]
-    public void AForInsideAnInnerIf_WaitsForTheSchedulerRedesign()
+    public void AForInsideAnInnerIf_RequiresThirty()
     {
         var errors = Errors(V27Package.With(Triaged, m => V26Package.WithNode(V26Package.WithNodes(m,
                 new WorkflowNodeSpec("inner", "Inner", For: "item in snippet.sections", Nodes: new List<string> { "table_draft" }, Ret: "node.table_draft")),
             "triage", n => n with { Then = V27Package.Body("node.inner", "inner") })));
 
-        Assert.Contains("Loop 'inner' runs inside node 'triage'; nesting waits for the scheduler redesign.", errors);
+        Assert.Contains("Loop 'inner' runs inside node 'triage', which requires specVersion 30.", errors);
     }
 
     // ----- § 1.2: what the condition may read ----------------------------------------

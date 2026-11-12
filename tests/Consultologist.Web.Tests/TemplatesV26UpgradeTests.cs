@@ -14,7 +14,7 @@ namespace Consultologist.Web.Tests;
 /// session's content (the 26 panes render over it, one notice names every rewrite, publish is
 /// open as "upgraded 25 → 26"), a refusal is said in the toolbar and applies nothing; and a
 /// 26 package opens live — the #1209 interim gate, banner and seam are gone.
-/// v27 (#1237), v28 (#1286): the newest is 28 — the one button reads "Upgrade to specVersion 29", the
+/// v27 (#1237), v28 (#1286): the newest is 28 — the one button reads "Upgrade to specVersion 30", the
 /// chain runs the 26 rewrite (said under "Through 26:") and then the raise; the refusal at
 /// the 26 rung keeps its rung's name; a 26 package is offered the one button to 27
 /// (<see cref="TemplatesV27UpgradeTests"/> has the raise alone).
@@ -85,9 +85,9 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
     {
         var page = RenderEditor();
 
-        Assert.Equal(new[] { "Upgrade to specVersion 29" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 30" }, UpgradeButtons(page));
         Assert.Contains("Prompts", Groups(page));
-        Assert.Equal(29, Templates.NewestSpecVersion);
+        Assert.Equal(30, Templates.NewestSpecVersion);
     }
 
     [Fact]
@@ -104,7 +104,7 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
         Assert.Empty(UpgradeButtons(page));
 
         var notice = page.Find(".migration-notice").TextContent;
-        Assert.Contains("Migrated to specVersion 29.", notice);
+        Assert.Contains("Migrated to specVersion 30.", notice);
         // #1237: the 26 rewrite's notices are the chain's "Through 26:" part; the raise closes it.
         Assert.Contains("Through 26: Loop 'sections' over sections returns 'section_notes' with body [section_notes].", notice);
         Assert.DoesNotContain("Through 25:", notice);
@@ -113,13 +113,13 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
         Assert.Contains("Through 27: Raised to specVersion 27; nothing rewritten — 27 permits what 26 refused.", notice);
 
         var publish = PublishButton(page);
-        Assert.Contains("upgraded 25 → 29", publish.TextContent);
+        Assert.Contains("upgraded 25 → 30", publish.TextContent);
         Assert.Null(publish.GetAttribute("disabled"));
 
         publish.Click();
         Assert.True(sent != null, string.Join(" | ", Refusals(page)));
         var manifest = JsonDocument.Parse(sent!.Manifest.GetRawText()).RootElement;
-        Assert.Equal(29, manifest.GetProperty("specVersion").GetInt32());
+        Assert.Equal(30, manifest.GetProperty("specVersion").GetInt32());
         Assert.False(manifest.TryGetProperty("prompts", out _));
         Assert.StartsWith("{\n  \"label\": \"Closing\"", sent.Files["macros/closing.md"]);
         Assert.Empty(Validated().Errors);
@@ -135,7 +135,7 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
         Assert.Contains("At specVersion 26: Node 'section_notes' fans 'sections' but no aggregator sources it or a node that reads it; aggregate it or remove it, then upgrade.", page.Find(".upgrade-refusal").TextContent);
         Assert.Empty(page.FindAll(".migration-notice"));
         Assert.Contains("Prompts", Groups(page));
-        Assert.Equal(new[] { "Upgrade to specVersion 29" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 30" }, UpgradeButtons(page));
         Assert.DoesNotContain("●", page.Markup);
         Assert.NotNull(PublishButton(page).GetAttribute("disabled"));
     }
@@ -150,14 +150,14 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
             .Where(i => i.Arguments[0] is string key && key.StartsWith("workflow-editor-upgrade:", StringComparison.Ordinal))
             .Select(i => (Key: (string)i.Arguments[0]!, Json: (string)i.Arguments[1]!))
             .Last();
-        Assert.Contains("\"Version\":5", saved.Json);
+        Assert.Contains("\"Version\":6", saved.Json);
         JSInterop.Setup<string?>("localStorage.getItem", saved.Key).SetResult(saved.Json);
 
         var again = Render<Templates>();
 
         Assert.DoesNotContain("Prompts", Groups(again));
-        Assert.Contains("Migrated to specVersion 29.", again.Find(".migration-notice").TextContent);
-        Assert.Contains("upgraded 25 → 29", PublishButton(again).TextContent);
+        Assert.Contains("Migrated to specVersion 30.", again.Find(".migration-notice").TextContent);
+        Assert.Contains("upgraded 25 → 30", PublishButton(again).TextContent);
     }
 
     // ---- a 26 package opens live (the #1209 interim retired) ----------------------------
@@ -170,7 +170,7 @@ public class TemplatesV26UpgradeTests : ClientRenderTestContext
         Assert.Empty(page.FindAll(".read-only-notice"));
         Assert.False(page.Find("section.editor-pane").HasAttribute("inert"));
         // #1237: 27 is the newest — the raise is offered; nothing else about a 26 package moves.
-        Assert.Equal(new[] { "Upgrade to specVersion 29" }, UpgradeButtons(page));
+        Assert.Equal(new[] { "Upgrade to specVersion 30" }, UpgradeButtons(page));
         Assert.NotNull(PublishButton(page).GetAttribute("disabled"));
         Assert.Null(page.Find("#editor-import-trigger").GetAttribute("disabled"));
 

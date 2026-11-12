@@ -198,22 +198,22 @@ public class WorkflowV26FlowTests
     }
 
     [Fact]
-    public void AForInsideAFor_WaitsForTheSchedulerRedesign()
+    public void AForInsideAFor_RequiresThirty()
     {
         var errors = V26Package.FlowErrors(m => V26Package.WithNodes(m,
             new("paragraphs", "Paragraphs", For: "item in snippet.sections", Nodes: new List<string> { "assessment" }, Ret: "node.assessment"),
             new("outer", "Outer", For: "item in snippet.sections", Nodes: new List<string> { "paragraphs" }, Ret: "node.paragraphs")));
 
-        Assert.Contains("Loop 'paragraphs' runs inside loop 'outer'; nesting waits for the scheduler redesign.", errors);
+        Assert.Contains("Loop 'paragraphs' runs inside loop 'outer', which requires specVersion 30.", errors);
     }
 
     [Fact]
-    public void AnIfInsideAFor_RequiresTwentySeven_AndAForInsideAnIf_IsALaterIssue()
+    public void AnIfInsideAFor_RequiresTwentySeven_AndAForInsideAnIf_RequiresThirty()
     {
         // #1234: at 27 a loop's body may hold an if/case — below, the gate names the version.
         Assert.Contains("Node 'triage' runs inside loop 'sections'; a flow node inside a loop requires specVersion 27.",
             V26Package.FlowErrors(m => V26Package.WithNode(WithTriage(m), "sections", n => n with { Nodes = new List<string> { "section_notes", "triage" } })));
-        Assert.Contains("Loop 'sections' runs inside node 'triage'; nesting waits for the scheduler redesign.",
+        Assert.Contains("Loop 'sections' runs inside node 'triage', which requires specVersion 30.",
             V26Package.FlowErrors(m => WithTriage(m, then: Body("node.sections", "sections"))));
     }
 

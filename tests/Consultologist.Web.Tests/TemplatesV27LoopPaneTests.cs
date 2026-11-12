@@ -24,12 +24,12 @@ public class TemplatesV27LoopPaneTests : ClientRenderTestContext
     }
 
     /// <summary>The 27 fixture with its version raised past the ceiling — what the set refuses now.</summary>
-    private static WorkflowPackageContentResponse V27FlowAt30()
+    private static WorkflowPackageContentResponse V27FlowAt31()
     {
         var fixture = EditorFixtures.V27Flow();
         var manifest = System.Text.Json.Nodes.JsonNode.Parse(fixture.Manifest.GetRawText())!.AsObject();
-        manifest["specVersion"] = 30;
-        return fixture with { SpecVersion = 30, Manifest = System.Text.Json.JsonDocument.Parse(manifest.ToJsonString()).RootElement.Clone() };
+        manifest["specVersion"] = 31;
+        return fixture with { SpecVersion = 31, Manifest = System.Text.Json.JsonDocument.Parse(manifest.ToJsonString()).RootElement.Clone() };
     }
 
     private IRenderedComponent<Templates> ShowNode(string nodeId, WorkflowPackageContentResponse? fixture = null)
@@ -90,12 +90,12 @@ public class TemplatesV27LoopPaneTests : ClientRenderTestContext
         Assert.NotNull(sent);
 
         sent = null;
-        var beyond = RenderEditor(V27FlowAt30());
+        var beyond = RenderEditor(V27FlowAt31());
         Nudge(beyond);
         Publish(beyond);
         Assert.Null(sent);
         // The manifest read's sentence — the public accepted set, the next bump's to move.
-        Assert.Contains(Refusals(beyond), r => r.Contains("is specVersion 30; this engine runs specVersion", StringComparison.Ordinal));
+        Assert.Contains(Refusals(beyond), r => r.Contains("is specVersion 31; this engine runs specVersion", StringComparison.Ordinal));
     }
 
     [Fact]

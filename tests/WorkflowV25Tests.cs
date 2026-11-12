@@ -151,7 +151,7 @@ public class WorkflowV25Tests
         var read = WorkflowPackageManifestJson.Read(json, "test/minimal@v1", WorkflowPackageStore.SupportedSpecVersions);
         Assert.Equal(25, read.SpecVersion);
         Assert.Throws<WorkflowPackageSpecVersionException>(() =>
-            WorkflowPackageManifestJson.Read(json.Replace("\"specVersion\": 25", "\"specVersion\": 30"), "test/minimal@v1", WorkflowPackageStore.SupportedSpecVersions));
+            WorkflowPackageManifestJson.Read(json.Replace("\"specVersion\": 25", "\"specVersion\": 31"), "test/minimal@v1", WorkflowPackageStore.SupportedSpecVersions));
     }
 
     [Fact]

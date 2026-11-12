@@ -8,9 +8,9 @@ namespace Consultologist.Api.Tests;
 /// vectors — loops that nest (A1), while/until (A2, A2b), let and labelField (A3).
 /// The valid baseline is <see cref="V30Package.Minimal"/>; each invalid case
 /// breaks one sentence against it; the recorded outcome is whatever the
-/// validator says. Held back by the export while 30 is above the accepted
-/// ceiling; the bump (#1347) lifts them into `conformance/v30/`, re-exports the
-/// below-30 cases whose sentence it changes, and adds the v29/ gates. Every
+/// validator says. Held back by the export while 30 was above the accepted
+/// ceiling; the bump (#1347) lifted them into `conformance/v30/`, re-exported the
+/// below-30 cases whose sentence it changed, and added the v29/ gates. Every
 /// invalid nesting case is SHAPE_BLIND: a body is a list of ids and the for text
 /// a string to the schema, so only the validator sees what they name.
 /// </summary>
@@ -210,5 +210,28 @@ public partial class ConformanceFixtureExport
             V30Package.With(root => V30Package.Node(root, "problems")["labelField"] = "title"));
         Add("invalid-label-field-enum-at-30", "A loop naming its items by an enum field.",
             V30Package.With(root => V30Package.Node(root, "problems")["labelField"] = "severity"));
+
+        // ======================================================= the gates below 30 (filed under v29/, #1347)
+        void Gate(string id, string description, (WorkflowPackageManifest Manifest, Dictionary<string, string> Files) bundle)
+            => cases.Add(new Case(id, 29, description, bundle.Manifest, bundle.Files));
+
+        (WorkflowPackageManifest, Dictionary<string, string>) At29(Action<JsonObject>? change = null)
+        {
+            var (json, files) = V30Package.MinimalJson();
+            var root = JsonNode.Parse(json)!.AsObject();
+            root["specVersion"] = 29;
+            change?.Invoke(root);
+            return (V29Package.Read(root.ToJsonString()), files);
+        }
+
+        Gate("invalid-loop-inside-a-loop-at-29", "A loop inside a loop at 29 — it requires specVersion 30.", At29());
+        Gate("invalid-while-at-29", "A while at 29 — it requires specVersion 30.", V29Package.With(root => V29Package.Node(root, "problems")["while"] = "true"));
+        Gate("invalid-max-at-29", "A loop's max at 29 — it requires specVersion 30.", V29Package.With(root => V29Package.Node(root, "problems")["max"] = 2));
+        Gate("invalid-until-at-29", "A for's until at 29 — it requires specVersion 30.", V29Package.With(root => V29Package.Node(root, "problems")["until"] = "item.value.severity == \"high\""));
+        Gate("invalid-check-first-at-29", "checkFirst at 29 — it requires specVersion 30.", V29Package.With(root => V29Package.Node(root, "problems")["checkFirst"] = true));
+             Gate("invalid-let-at-29", "A let at 29 — it requires specVersion 30.", V29Package.With(root => V29Package.Node(root, "find_problems")["let"] = "input.notes"));
+        Gate("invalid-type-at-29", "A let's type at 29 — it requires specVersion 30.", V29Package.With(root => V29Package.Node(root, "find_problems")["type"] = "number"));
+   Gate("invalid-label-field-at-29", "A loop naming its items by a field at 29 — it requires specVersion 30.", V29Package.With(root => V29Package.Node(root, "problems")["labelField"] = "name"));
+        Gate("invalid-input-label-field-at-29", "An input naming its items by a field at 29 — it requires specVersion 30.", V29Package.With(root => root["inputs"]![0]!["labelField"] = "title"));
     }
 }

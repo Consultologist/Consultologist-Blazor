@@ -1878,7 +1878,7 @@ public sealed class ConsultGenerationJobState
     /// fact in provenance-versions.json (#400), pinned against this list by
     /// test. A new storage shape is added here and there in the same change.
     /// </summary>
-    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8, 9, 10 };
+    public static readonly IReadOnlyList<int> StorageVersions = new[] { 2, 6, 7, 8, 9, 10, 11 };
 
     /// <summary>#373: the specVersion of the package this job ran.</summary>
     public int? PackageSpecVersion { get; set; }

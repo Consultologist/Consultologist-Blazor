@@ -1,7 +1,8 @@
 # specVersion 30 — nesting, while and let: a loop's shape the run decides
 
-> **Status:** design, **revision 2** (2026-11-09): **layer A is built** (#1339: PRs #1349, #1350,
-> #1352 and A3), inert behind the ceiling. Revision 1 (2026-11-08) proposed spellings; layer A
+> **Status:** design, **revision 2** (2026-11-09): **layers A, B and C are built** (#1339–#1346),
+> and **the bump switched 30 on** (#1347 — package-format v2026.11.3, provenance v2026.11.2; § 14);
+> the content (#1348) is next. Revision 1 (2026-11-08) proposed spellings; layer A
 > settled them, and the package author widened `while` on 2026-11-09. This revision records both:
 > every spelling below is the built one, and § 8 lists the validator's sentences as built.
 > Milestone 38 (#1337). Decided with the package author on 2026-11-08: all three shapes v29 named
@@ -463,7 +464,8 @@ that pin it.
 **Below 30** (`ValidateV30Members`): *"Node 'refine' declares while, which requires specVersion
 30."* — likewise `max`, `until`, `checkFirst`, `let`, `type`, `labelField`; and *"Input 'sections'
 declares labelField, which requires specVersion 30."* The 26 nesting sentence and 27's "a branch
-holds plain nodes" stand below 30; at 30 they are lifted.
+holds plain nodes" stood below 30 until the bump, which made both the version gate (*"…, which
+requires specVersion 30."*, § 14 as landed); at 30 they are lifted.
 
 **Nesting:**
 - *"Node 'x' lists itself in its body; a body cannot hold the node that holds it."* / *"Node 'x'
@@ -626,6 +628,22 @@ last.
     `package-format-v30.md` carries § 5's retention sentence for `labelField` (revision 3).
   - **An engine PR** moving every ceiling to 30.
   - **A release, cut after a drain** (§ 9).
+
+  *As landed (2026-11-12, #1347):* `AcceptedSpecVersions` and `SupportedSpecVersions` list 30; the
+  editor's `NewestSpecVersion` and `RunnableSpecVersion` are 30 together, the #1346 seam
+  (`AuthorsAboveCeiling`) and its `InternalsVisibleTo` retired, the stored upgrade at version 6; the
+  upgrade chains through the 29 raise ("Through 29:") into the 30 raise ("Through 30: …"); a 30 job
+  stamps record storage **11** (`StorageVersions` gains 11); below 30 nesting is the version gate
+  (*"Loop 'paragraphs' runs inside loop 'parts', which requires specVersion 30."*, and a flow node
+  in a branch the same — the 26 "scheduler redesign" and 27 "a branch holds plain nodes" sentences
+  retired, decided 2026-11-12); `--to 30` raises a 29 package and validates at 30 before writing
+  (the eleven public packages dry-run clean); next-is-refused moved to 31. Registry package-format
+  **v2026.11.3**: 30 listed with `package-format-v30.md` (carrying § 5's retention sentence) and
+  the generated schema (29's with the version and the new members), `conformance/v30/` (47
+  vectors: 18 valid, 29 invalid, 28 `SHAPE_BLIND`), the ten below-30 gates under `v29/`, the v26 and
+  v27 nesting cases re-exported with the gate. Provenance **v2026.11.2**: `recordStorageVersions`
+  gains 11, and `provenance-record.md` documents it. #1366 (item progress per loop at storage 11)
+  shipped ahead of it, in the same release.
 - **E — content** (#1348).
   - An example package that nests (sections → outline → paragraphs), with a `while` refinement
     and a `let` count;

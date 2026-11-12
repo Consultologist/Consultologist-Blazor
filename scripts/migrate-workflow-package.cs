@@ -5,7 +5,7 @@
 // manifest model has no source-generated context.
 #:property JsonSerializerIsReflectionEnabledByDefault=true
 
-// Migrates a workflow package directory on disk to specVersion 25 (the default), 26, 27, 28 or 29, offline.
+// Migrates a workflow package directory on disk to specVersion 25 (the default), 26, 27, 28, 29 or 30, offline.
 //
 // Usage:
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir>                   # dry run: notices, refusals, the file plan, the 25 validation
@@ -14,6 +14,7 @@
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 27 [--write] # #1237: the 26 → 27 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 28 [--write] # #1286: the 27 → 28 rewrite (WorkflowPackageMigration27To28; every file renamed to its id)
 //   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 29 [--write] # #1307: the 28 → 29 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
+//   dotnet run -v q --file scripts/migrate-workflow-package.cs -- <package-dir> --to 30 [--write] # #1347: the 29 → 30 raise (WorkflowPackageVersionRaise; manifest.json and dag.mmd alone)
 //
 // WHY THIS EXISTS. The editor upgrades a package in the browser: below 23 it
 // turns preludes into node macros and bumps the number (formats up to 24 are
@@ -308,56 +309,58 @@ if (to == 28)
     return 0;
 }
 
-// #1307: the 29 stage — a version raise (design v29 § 9): 29 permits what 28
-// refused, so nothing is rewritten; the manifest's specVersion moves, every file
-// stays, and the raised package is validated at 29 in memory before any write.
-// The write touches manifest.json and dag.mmd.
-if (to == 29)
+// #1307: the 29 stage, and #1347 the 30 stage — a version raise (design v29 § 9,
+// v30 § 13): each permits what the version below refused, so nothing is
+// rewritten; the manifest's specVersion moves, every file stays, and the raised
+// package is validated at the new version in memory before any write. The write
+// touches manifest.json and dag.mmd.
+if (to is 29 or 30)
 {
-    if (from != 28)
+    var below = to - 1;
+    if (from != below)
     {
-        Console.Error.WriteLine($"error: {name}@{version} is at specVersion {from}; the 29 stage takes a 28 package (migrate to 28 first).");
+        Console.Error.WriteLine($"error: {name}@{version} is at specVersion {from}; the {to} stage takes a {below} package (migrate to {below} first).");
         return 1;
     }
 
-    var result29 = WorkflowPackageVersionRaise.To(staged.ToJsonString(), before, 29);
+    var raised = WorkflowPackageVersionRaise.To(staged.ToJsonString(), before, to);
 
-    foreach (var notice in result29.Notices)
+    foreach (var notice in raised.Notices)
     {
         Console.Out.WriteLine($"notice: {notice}");
     }
 
-    if (!result29.Succeeded)
+    if (!raised.Succeeded)
     {
-        foreach (var refusal in result29.Refusals)
+        foreach (var refusal in raised.Refusals)
         {
             Console.Error.WriteLine($"error: {refusal}");
         }
 
-        Console.Error.WriteLine($"{name}@{version}: specVersion 28 → 29 refused; nothing written.");
+        Console.Error.WriteLine($"{name}@{version}: specVersion {below} → {to} refused; nothing written.");
         return 1;
     }
 
-    var manifest29 = WorkflowPackageManifestJson.Read(result29.ManifestJson, $"{name}@{version}", WorkflowPackageValidator.AcceptedSpecVersions);
-    var validation29 = WorkflowPackageValidator.Validate(manifest29, result29.Files, catalogSchemas, formats: formats);
-    foreach (var warning in validation29.Warnings) Console.Out.WriteLine($"warning: {warning}");
-    foreach (var error in validation29.Errors) Console.Error.WriteLine($"error: {error}");
-    if (validation29.Errors.Count > 0)
+    var raisedManifest = WorkflowPackageManifestJson.Read(raised.ManifestJson, $"{name}@{version}", WorkflowPackageValidator.AcceptedSpecVersions);
+    var raisedValidation = WorkflowPackageValidator.Validate(raisedManifest, raised.Files, catalogSchemas, formats: formats);
+    foreach (var warning in raisedValidation.Warnings) Console.Out.WriteLine($"warning: {warning}");
+    foreach (var error in raisedValidation.Errors) Console.Error.WriteLine($"error: {error}");
+    if (raisedValidation.Errors.Count > 0)
     {
-        Console.Error.WriteLine($"{name}@{version}: the 29 package does not validate; nothing written.");
+        Console.Error.WriteLine($"{name}@{version}: the {to} package does not validate; nothing written.");
         return 1;
     }
 
-    Console.Out.WriteLine($"{name}@{version}: specVersion 28 → 29 validates ({validation29.Errors.Count} errors, {validation29.Warnings.Count} warnings).");
+    Console.Out.WriteLine($"{name}@{version}: specVersion {below} → {to} validates ({raisedValidation.Errors.Count} errors, {raisedValidation.Warnings.Count} warnings).");
 
     if (write)
     {
-        MigrationRunner.Write(root, result29.ManifestJson, before, before,
-            DiagramOf(WorkflowImpliedPaths.WithImpliedPrompts(manifest29, before), before));
+        MigrationRunner.Write(root, raised.ManifestJson, before, before,
+            DiagramOf(WorkflowImpliedPaths.WithImpliedPrompts(raisedManifest, before), before));
     }
 
     Console.Out.WriteLine(
-        $"{name}@{version}: specVersion 28 → 29, nothing added, rewritten or deleted"
+        $"{name}@{version}: specVersion {below} → {to}, nothing added, rewritten or deleted"
             + (write ? "; manifest.json and dag.mmd written" : " (dry run; pass --write to apply)"));
     return 0;
 }
