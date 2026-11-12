@@ -3111,7 +3111,7 @@
                                              FormatOptions="@FormatOptions"
                                              OnOpenFormat="OpenFormatPane"
                                              NodeOperandOptions="@NodeOperandChoices"
-                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id) || loopEdits.ContainsKey(id) || flowEdits.ContainsKey(id))"
+                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id) || loopEdits.ContainsKey(id) || flowEdits.ContainsKey(id) || v30Edits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
                                              OnBindingChanged="OnBindingChangedAsync"
@@ -5865,6 +5865,9 @@
             // v26 (#1159): an if/case node's tuple — its own dict, the whole tuple per node.
             new("flowEdits", () => flowEdits.Count, flowEdits.Clear,
                 () => $"{flowEdits.Count} {Plural(flowEdits.Count, "flow node")}", () => flowEdits.Count > 0),
+            // v30 (#1346): a while's or a let's tuple — its own dict.
+            new("v30Edits", () => v30Edits.Count, v30Edits.Clear,
+                () => $"{v30Edits.Count} {Plural(v30Edits.Count, "while or let")}", () => v30Edits.Count > 0),
             // v10 (#498): a condition with a clause not yet chosen — held, never
             // written, and named until it is.
             new("conditionDrafts", () => conditionDrafts.Count, conditionDrafts.Clear,
@@ -9338,6 +9341,14 @@
         public int? Max { get; set; }
         public string? LabelField { get; set; }
 
+        // v30 (#1346): a while — born with an empty check, no max (explicit init: the desk
+        // refuses until it is chosen) and an empty body; a let — born with an empty
+        // expression, its type and onInvalid unchosen.
+        public string? While { get; set; }
+        public bool? CheckFirst { get; set; }
+        public string? Let { get; set; }
+        public string? LetType { get; set; }
+
         // v26 (#1159): an if (born with an empty condition and an empty then) or a case
         // (born over its subject with no branches) — the pane fills them; the desk names
         // what is missing.
@@ -9353,7 +9364,11 @@
 
         public bool IsCase => Case != null;
 
-        public bool IsFlow => IsLoop || IsIf || IsCase;
+        public bool IsWhile => While != null;
+
+        public bool IsLet => Let != null;
+
+        public bool IsFlow => IsLoop || IsIf || IsCase || IsWhile;
 
         public bool IsClassifier => Kind == ClassifierKind;
 
@@ -9362,7 +9377,7 @@
         public bool IsTemplate => Kind == TemplateKind;
 
         /// <summary>Whether the node mints or names a prompt: never for an aggregator, a check or a computed format.</summary>
-        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed && !IsFlow;
+        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed && !IsFlow && !IsLet;
     }
 
     // v25 (C1 #1007): the "+ Node" form's format choice; this word is the aggregator.
@@ -10704,6 +10719,10 @@
         Until: added.Until,
         Max: added.Max,
         LabelField: added.LabelField,
+        While: added.While,
+        CheckFirst: added.CheckFirst,
+        Let: added.Let,
+        LetType: added.LetType,
         If: added.If,
         Case: added.Case,
         Then: added.Then == null ? null : new WorkflowManifestReader.BodyView(added.Then.Nodes, added.Then.Ret),
@@ -13777,6 +13796,56 @@
     // flow node (AddedNode.If/Case != null) is mutated directly instead.
     private readonly Dictionary<string, FlowChange> flowEdits = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// v30 (#1346, design § 3, § 4): a while's or a let's tuple — its own dict, the whole tuple
+    /// per node (the flowEdits idiom): a while's check, bound, until, checkFirst and body; a
+    /// let's expression, type and onInvalid. Self-removes when it equals the manifest's.
+    /// </summary>
+    private sealed record V30Change(string Label, string? While, int? Max, string? Until, bool? CheckFirst, List<string>? Nodes, string? Ret, string? Let, string? LetType, string? OnInvalid);
+
+    private readonly Dictionary<string, V30Change> v30Edits = new(StringComparer.Ordinal);
+
+    private static V30Change V30ChangeOf(WorkflowManifestReader.NodeView node) =>
+        new(node.Label, node.While, node.Max, node.Until, node.CheckFirst, node.Nodes?.ToList(), node.Ret, node.Let, node.LetType, node.OnInvalid);
+
+    private static bool SameV30(V30Change a, V30Change b) =>
+        a.Label == b.Label && a.While == b.While && a.Max == b.Max && a.Until == b.Until && a.CheckFirst == b.CheckFirst
+        && a.Ret == b.Ret && a.Let == b.Let && a.LetType == b.LetType && a.OnInvalid == b.OnInvalid
+        && (a.Nodes ?? new List<string>()).SequenceEqual(b.Nodes ?? new List<string>(), StringComparer.Ordinal);
+
+    /// <summary>v30 (#1346): record a while's or a let's tuple — a pending node is mutated, a loaded one gets a v30Edits entry.</summary>
+    private void SetV30(string nodeId, V30Change change)
+    {
+        if (addedNodes.FirstOrDefault(a => a.Id == nodeId) is { } added)
+        {
+            added.Label = change.Label;
+            added.While = change.While;
+            added.Max = change.Max;
+            added.Until = change.Until;
+            added.CheckFirst = change.CheckFirst;
+            added.Nodes = change.While is null ? added.Nodes : change.Nodes ?? new List<string>();
+            added.Ret = change.Ret;
+            added.Let = change.Let;
+            added.LetType = change.LetType;
+            added.OnInvalid = change.OnInvalid;
+            return;
+        }
+
+        if (nodes.FirstOrDefault(n => n.Id == nodeId) is not { } loaded)
+        {
+            return;
+        }
+
+        if (SameV30(change, V30ChangeOf(loaded)))
+        {
+            v30Edits.Remove(nodeId);
+        }
+        else
+        {
+            v30Edits[nodeId] = change;
+        }
+    }
+
     private sealed record FlowBody(List<string> Nodes, string? Ret);
 
     private sealed record FlowBranch(List<string> When, List<string> Nodes, string? Ret);
@@ -13792,9 +13861,8 @@
     /// <summary>v26: every body a plain node may be placed in, across every flow node, in node order.</summary>
     private IReadOnlyList<WorkflowManifestReader.FlowBodyView> EffectiveBodies =>
         At26
-            // v30 (#1346 C2a): a while's body is read (its members are placed) but not yet a
-            // target — the while pane (C2c) edits it; until then nothing moves into or out of it.
-            ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).Where(body => !body.Ref.IsWhile).ToList()
+            // v30 (#1346): a while's body too.
+            ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).ToList()
             : Array.Empty<WorkflowManifestReader.FlowBodyView>();
 
     /// <summary>v26: the key of the body holding the node, or null.</summary>
@@ -13862,6 +13930,29 @@
         node.Branches?.Select(b => new FlowBranch(b.When.ToList(), b.Nodes.ToList(), b.Ret)).ToList());
 
     /// <summary>v26 (#1159): write an if/case node's members onto its manifest object — both casings removed first.</summary>
+    /// <summary>v30 (#1346): write a while's or a let's own members onto its object — and nothing else.</summary>
+    private static void WriteV30Members(System.Text.Json.Nodes.JsonObject target, V30Change change)
+    {
+        if (change.While is not null)
+        {
+            foreach (var key in new[] { "while", "While", "max", "Max", "until", "Until", "checkFirst", "CheckFirst", "nodes", "Nodes", "ret", "Ret" }) { target.Remove(key); }
+            target["while"] = change.While;
+            if (change.Max is { } max) { target["max"] = max; }
+            if (!string.IsNullOrWhiteSpace(change.Until)) { target["until"] = change.Until; }
+            if (change.CheckFirst == true) { target["checkFirst"] = true; }
+            target["nodes"] = new System.Text.Json.Nodes.JsonArray((change.Nodes ?? new List<string>()).Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray());
+            if (change.Ret != null) { target["ret"] = change.Ret; }
+        }
+
+        if (change.Let is not null)
+        {
+            foreach (var key in new[] { "let", "Let", "type", "Type", "onInvalid", "OnInvalid" }) { target.Remove(key); }
+            target["let"] = change.Let;
+            if (!string.IsNullOrWhiteSpace(change.LetType)) { target["type"] = change.LetType; }
+            if (!string.IsNullOrWhiteSpace(change.OnInvalid)) { target["onInvalid"] = change.OnInvalid; }
+        }
+    }
+
     private static void WriteFlowMembers(System.Text.Json.Nodes.JsonObject target, FlowChange change)
     {
         foreach (var key in new[] { "if", "If", "case", "Case", "then", "Then", "else", "Else", "branches", "Branches" }) { target.Remove(key); }
@@ -13970,8 +14061,7 @@
     private void PlaceInBody(string nodeId, string? bodyKey)
     {
         var current = WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId);
-        // v30 (#1346 C2a): a while's member stays where it is until the while pane (C2c) moves it.
-        if (current?.Key == bodyKey || current?.Ref.IsWhile == true)
+        if (current?.Key == bodyKey)
         {
             return;
         }
@@ -14007,10 +14097,12 @@
             return;
         }
 
-        // v30 (#1346 C2a): a while's body is written by the while pane (C2c) — never through
-        // the if/case writer, which would stamp if/case members onto it.
+        // v30 (#1346): a while's body through its own tuple — never through the if/case
+        // writer, which would stamp if/case members onto it.
         if (flow.IsWhile)
         {
+            var rewrittenWhile = rewrite(new FlowBody((flow.Nodes ?? Array.Empty<string>()).ToList(), flow.Ret));
+            SetV30(flow.Id, V30ChangeOf(flow) with { Nodes = rewrittenWhile.Nodes, Ret = rewrittenWhile.Ret });
             return;
         }
 
@@ -15432,6 +15524,17 @@
                     }
                 }
 
+                // v30 (#1346): a while's or a let's pending tuple rides too.
+                if (v30Edits.TryGetValue(n.Id, out var v30))
+                {
+                    n = n with
+                    {
+                        Label = v30.Label, While = v30.While, Max = v30.Max, Until = v30.Until, CheckFirst = v30.CheckFirst,
+                        Nodes = v30.While is null ? n.Nodes : v30.Nodes, Ret = v30.While is null ? n.Ret : v30.Ret,
+                        Let = v30.Let, LetType = v30.LetType, OnInvalid = v30.OnInvalid,
+                    };
+                }
+
                 // v26 (#1159): an if/case node's pending tuple rides too.
                 if (flowEdits.TryGetValue(n.Id, out var flow))
                 {
@@ -15676,6 +15779,7 @@
         || aggregateEdits.ContainsKey(node.Id)
         || loopEdits.ContainsKey(node.Id)
         || flowEdits.ContainsKey(node.Id)
+        || v30Edits.ContainsKey(node.Id)
         || addedNodes.Any(a => a.Id == node.Id)
         || bindingEdits.Keys.Any(key => key.StartsWith(node.Id + "\n", StringComparison.Ordinal))
         || (node.Prompt != null && HasVariableEdits(node.Prompt))
@@ -15847,6 +15951,7 @@
             aggregateEdits.Remove(nodeId);
             loopEdits.Remove(nodeId);
             flowEdits.Remove(nodeId);
+            v30Edits.Remove(nodeId);
         }
         else
         {
@@ -16984,7 +17089,9 @@
         // v26 (#1159): a pending if/case node's tuple. Trailing.
         string? If = null, string? Case = null, FlowBody? Then = null, FlowBody? Else = null, List<FlowBranch>? Branches = null,
         // v30 (#1346): a pending for's until, max and labelField. Trailing.
-        string? Until = null, int? Max = null, string? LabelField = null);
+        string? Until = null, int? Max = null, string? LabelField = null,
+        // v30 (#1346): a pending while's check and checkFirst, a let's expression and type. Trailing.
+        string? While = null, bool? CheckFirst = null, string? Let = null, string? LetType = null);
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
@@ -17106,7 +17213,11 @@
         // v28 (#1285): pending folder labels (directory → label; empty clears). Trailing optional.
         Dictionary<string, string>? FolderLabels = null,
         // v28 (#1270): pending flow-node descriptions (node id → text; empty clears). Trailing optional.
-        Dictionary<string, string>? Descriptions = null);
+        Dictionary<string, string>? Descriptions = null,
+        // v30 (#1346): pending while and let tuples. Trailing optional.
+        List<DraftV30Edit>? V30Edits = null);
+
+    private sealed record DraftV30Edit(string NodeId, V30Change Change);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -17611,7 +17722,7 @@
                     OnInvalid = draftAddedNode.OnInvalid,
                     Computed = draftAddedNode.Computed,
                     For = draftAddedNode.For,
-                    Nodes = draftAddedNode.For == null ? null : draftAddedNode.Nodes ?? new List<string>(),
+                    Nodes = draftAddedNode.For == null && draftAddedNode.While == null ? null : draftAddedNode.Nodes ?? new List<string>(),
                     Ret = draftAddedNode.Ret,
                     If = draftAddedNode.If,
                     Case = draftAddedNode.Case,
@@ -17620,7 +17731,11 @@
                     Branches = draftAddedNode.Case == null ? null : draftAddedNode.Branches ?? new List<FlowBranch>(),
                     Until = draftAddedNode.Until,
                     Max = draftAddedNode.Max,
-                    LabelField = draftAddedNode.LabelField
+                    LabelField = draftAddedNode.LabelField,
+                    While = draftAddedNode.While,
+                    CheckFirst = draftAddedNode.CheckFirst,
+                    Let = draftAddedNode.Let,
+                    LetType = draftAddedNode.LetType
                 });
             }
         }
@@ -17760,6 +17875,15 @@
             }
         }
 
+        // v30 (#1346): rehydrate pending while and let tuples — only onto one the manifest still holds.
+        foreach (var draftV30 in payload.V30Edits ?? new List<DraftV30Edit>())
+        {
+            if (nodes.Any(n => n.Id == draftV30.NodeId && (n.IsWhile || n.IsLet)))
+            {
+                v30Edits[draftV30.NodeId] = draftV30.Change;
+            }
+        }
+
         // v26 (#1159): rehydrate pending if/case tuples — only onto a flow node the manifest still holds.
         foreach (var draftFlow in payload.FlowEdits ?? new List<DraftFlowEdit>())
         {
@@ -17862,7 +17986,7 @@
             nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith,
                 edit.Format, edit.With == null ? null : new Dictionary<string, JsonElement>(edit.With, StringComparer.Ordinal), edit.OnInvalid)).ToList(),
             addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw,
-                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret, a.If, a.Case, a.Then, a.Else, a.Branches, a.Until, a.Max, a.LabelField)).ToList(),
+                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret, a.If, a.Case, a.Then, a.Else, a.Branches, a.Until, a.Max, a.LabelField, a.While, a.CheckFirst, a.Let, a.LetType)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -17911,7 +18035,8 @@
             addedMacroCollections.ToList(),
             nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove, r.TextKind, r.Folder)).ToList(),
             folderLabelEdits.Count == 0 ? null : new Dictionary<string, string>(folderLabelEdits, StringComparer.Ordinal),
-            descriptionEdits.Count == 0 ? null : new Dictionary<string, string>(descriptionEdits, StringComparer.Ordinal));
+            descriptionEdits.Count == 0 ? null : new Dictionary<string, string>(descriptionEdits, StringComparer.Ordinal),
+            v30Edits.Count == 0 ? null : v30Edits.Select(pair => new DraftV30Edit(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -18539,6 +18664,7 @@
         // v26 (#1160): a loop's pending tuple; #1159: an if/case node's.
         loopEdits.Remove(nodeId);
         flowEdits.Remove(nodeId);
+        v30Edits.Remove(nodeId);
         conditionDrafts.Remove($"node-if:{nodeId}");
         // v23 (#955): a node's macro attachments and any in-progress macro-when
         // condition drafts.
@@ -18914,6 +19040,11 @@
         PendingMaps.Rekey(nodeMacroEdits, from, to, list => list.Select(m => m with { If = Gate(m.If), When = Gate(m.When) }).ToList());
         PendingMaps.Rekey(aggregateEdits, from, to, list => Ids(list));
         PendingMaps.Rekey(loopEdits, from, to, loop => loop with { Nodes = Ids(loop.Nodes), Ret = Bare(loop.Ret), Extras = loop.Extras is { } e ? e with { Until = Gate(e.Until) } : null });
+        PendingMaps.Rekey(v30Edits, from, to, change => change with
+        {
+            While = Gate(change.While), Until = Gate(change.Until), Let = Gate(change.Let),
+            Nodes = change.Nodes is null ? null : Ids(change.Nodes), Ret = Bare(change.Ret),
+        });
         PendingMaps.Rekey(flowEdits, from, to, flow => flow with
         {
             If = Gate(flow.If),
@@ -20338,6 +20469,17 @@
             // v25 (C1 #1007): a node with a format — prompt and bindings only when the
             // format takes a prompt; format, with, onInvalid and a top-level failIfEmpty;
             // never kind, output or values.
+            // v30 (#1346): a while or a let — its own members, a bound, a type or a policy
+            // only once chosen; never a format, never a prompt.
+            if (addedNode.IsWhile || addedNode.IsLet)
+            {
+                var v30Node = new System.Text.Json.Nodes.JsonObject { ["id"] = addedNode.Id, ["label"] = addedNode.Label };
+                WriteV30Members(v30Node, new V30Change(addedNode.Label, addedNode.While, addedNode.Max, addedNode.Until, addedNode.CheckFirst,
+                    addedNode.Nodes, addedNode.Ret, addedNode.Let, addedNode.LetType, addedNode.OnInvalid));
+                nodesArray.Add(v30Node);
+                continue;
+            }
+
             // v26 (#1160): a loop — id, label, for, nodes; ret only once chosen; never a format.
             if (addedNode.For != null)
             {
@@ -21068,6 +21210,19 @@
 
             flowObject[flowObject.ContainsKey("Label") ? "Label" : "label"] = pair.Value.Label;
             WriteFlowMembers(flowObject, pair.Value);
+        }
+
+        // v30 (#1346): a while's or a let's tuple — only the members it owns, both casings
+        // removed first (the #864 lesson); a bound, a type or a policy omitted while unchosen.
+        foreach (var pair in v30Edits)
+        {
+            if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } v30Object)
+            {
+                continue;
+            }
+
+            v30Object[v30Object.ContainsKey("Label") ? "Label" : "label"] = pair.Value.Label;
+            WriteV30Members(v30Object, pair.Value);
         }
 
         // v23 (#955): a node's macro attachments — the whole list, each a bare id
