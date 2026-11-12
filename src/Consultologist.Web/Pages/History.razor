@@ -1993,7 +1993,8 @@
         "Completed" => "✓",
         "Failed" => "✗",
         "Skipped" => "○",
-        null => "·",
+        // #1345: a step a finished record never reached — not started, as a missing row reads.
+        null or "Pending" => "·",
         _ => "●"
     };
 
@@ -2110,7 +2111,7 @@
         @<text>
             <div class="node-row node-tree node-tree--depth-@depth @(node.Row?.Status == "Skipped" ? "node-row--skipped" : "")" data-node="@node.Descriptor.Id" data-path="@node.Path">
                 <span class="node-row__chevron" aria-hidden="true"></span>
-                <span class="node-row__status @StatusCss(node.Row?.Status)">@StatusGlyph(node.Row?.Status)</span>
+                <span class="node-row__status @StatusCss(node.Status)">@StatusGlyph(node.Status)</span>
                 <span class="node-row__label">@node.Descriptor.Label</span>
                 <span class="node-row__contract muted-text">@ContractLabel(node.Descriptor, detail)</span>
                 @if (node.Row?.Validation is { Valid: false } invalid)

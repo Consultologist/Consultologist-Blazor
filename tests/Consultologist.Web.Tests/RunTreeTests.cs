@@ -215,4 +215,31 @@ public class RunTreeTests
         // A storage-11 record whose loops are one level deep keeps its flat groups.
         Assert.False(RunTree.Applies(Record(TwoLevels().Take(3).Select(n => n with { Body = n.Id == "parts" ? new[] { "outline" } : n.Body }).ToArray(), Rows())));
     }
+
+    [Fact]
+    public void AnItemNothingOfWhichRan_IsPending_NeverSkipped_AndARunningItemsFirstUnrunStep_IsInFlight()
+    {
+        // #1345 C1c: the rail reads a running record — part 2 has not started; part 1 is mid-way.
+        var rows = Rows(("outline:1", "Completed"));
+        var parts = Assert.IsType<RunTree.LoopEntry>(RunTree.Build(Record(TwoLevels(), rows, new[] { new ConsultLoopInstanceRow("paragraphs", "1", 1, At) }, Sections, status: "Running"))[1]);
+
+        Assert.Equal(RunTree.Running, parts.Items[0].Status);
+        Assert.Equal(RunTree.Pending, parts.Items[1].Status);
+        var inner = Assert.IsType<RunTree.LoopEntry>(parts.Items[0].Children[1]);
+        Assert.Equal(RunTree.Pending, inner.Items.Single().Status);
+
+        // A pass: the first step with no row is the one in flight, the rest pending.
+        var nodes = new ConsultGenerationNodeDescriptor[]
+        {
+            new("refine", "Refining", Kind: "while", Expression: "true", Body: new[] { "draft", "judge", "note" }, Max: 3),
+            new("draft", "Draft", In: "refine"), new("judge", "Judge", In: "refine"), new("note", "Note", In: "refine"),
+        };
+        var refine = Assert.IsType<RunTree.WhileEntry>(RunTree.Build(Record(nodes, Rows(("draft:1", "Completed")), status: "Running"))[0]);
+        var steps = refine.Passes.Single().Children.Cast<RunTree.NodeEntry>().Select(n => n.Status);
+        Assert.Equal(new[] { RunTree.Completed, RunTree.Running, RunTree.Pending }, steps);
+
+        // On a finished record nothing is in flight: what never ran stays pending.
+        var finished = Assert.IsType<RunTree.WhileEntry>(RunTree.Build(Record(nodes, Rows(("draft:1", "Completed")), status: "Failed"))[0]);
+        Assert.Equal(new[] { RunTree.Completed, RunTree.Pending, RunTree.Pending }, finished.Passes.Single().Children.Cast<RunTree.NodeEntry>().Select(n => n.Status));
+    }
 }
