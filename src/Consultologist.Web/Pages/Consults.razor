@@ -1075,6 +1075,17 @@
                                         </details>
                                     }
 
+                                    @* v30 (#1345 C1c, design § 10): a 30 job is drawn as the tree the run takes — the
+                                       snapshot with the live events laid over it; every other job draws as before. *@
+                                    if (latestRunResponse is { } liveSnapshot && Consultologist.Web.Services.Provenance.RunTree.Applies(liveSnapshot))
+                                    {
+                                        foreach (var entry in Consultologist.Web.Services.Provenance.RunTree.Build(LiveRecord(liveSnapshot)))
+                                        {
+                                            @RailEntry(entry, 0)
+                                        }
+                                    }
+                                    else
+                                    {
                                     @* The manifest node map, loaded at page init: every node named and every
                                        forEach group's sections listed before the first event arrives. *@
                                     for (var i = 0; i < railNodes.Count; i++)
@@ -1135,6 +1146,7 @@
                                         {
                                             <div class="node-row__caption muted-text">@aiProgressNotice</div>
                                         }
+                                    }
                                     }
                                 }
                                 else
@@ -1565,6 +1577,206 @@
   // #642: the latest full job response the run has seen — what the run
   // diagram draws from; null until the first snapshot-shaped payload.
   private ConsultGenerationJobResponse? latestRunResponse;
+
+  // ----- v30 (#1345 C1c, design § 10): the rail as the run's tree -----
+
+  /// <summary>The groups you opened or closed yourself — kept as you left them (decided: follow the run otherwise).</summary>
+  private Dictionary<string, bool> railOpen = new(StringComparer.Ordinal);
+
+  /// <summary>
+  /// The latest snapshot with the live events laid over it — items the stream has completed or
+  /// skipped since, nodes it has settled, instance counts it has resolved — so the tree moves
+  /// between snapshots. RunTree stays pure; this only assembles its input.
+  /// </summary>
+  private ConsultGenerationJobResponse LiveRecord(ConsultGenerationJobResponse snapshot)
+  {
+    var rows = new Dictionary<string, ConsultGenerationNodeStatus>(snapshot.NodeOutputs ?? new Dictionary<string, ConsultGenerationNodeStatus>(), StringComparer.Ordinal);
+    foreach (var key in completedNodeItems)
+    {
+      if (!rows.TryGetValue(key, out var known) || known.Status != "Completed")
+      {
+        rows[key] = new ConsultGenerationNodeStatus(ItemPath.NodeOf(key), key, "Completed", known?.InputHash, known?.OutputHash, null, null);
+      }
+    }
+
+    foreach (var (id, status) in nodeStatuses)
+    {
+      if (!rows.TryGetValue(id, out var known) || known.Status != status)
+      {
+        rows[id] = (known ?? new ConsultGenerationNodeStatus(id, id, status, null, null, null, null)) with { Status = status };
+      }
+    }
+
+    foreach (var key in skippedNodeItems)
+    {
+      if (!rows.ContainsKey(key))
+      {
+        rows[key] = new ConsultGenerationNodeStatus(ItemPath.NodeOf(key), key, "Skipped", null, null, null, null, Reason: skippedItemReasons.GetValueOrDefault(key));
+      }
+    }
+
+    var instances = new List<ConsultLoopInstanceRow>(snapshot.LoopInstances ?? Array.Empty<ConsultLoopInstanceRow>());
+    foreach (var (key, count) in settledLoopCounts)
+    {
+      if (ItemPath.TryParseKey(key, out var loopId, out var path) && !instances.Any(row => row.LoopId == loopId && row.Path == path))
+      {
+        instances.Add(new ConsultLoopInstanceRow(loopId, path, count, DateTimeOffset.MinValue));
+      }
+    }
+
+    return snapshot with
+    {
+      NodeOutputs = rows,
+      LoopInstances = instances,
+      Status = IsRunFinished ? runTerminalStatus ?? snapshot.Status : "Running",
+    };
+  }
+
+  private bool RailIsOpen(string key, bool follow) => railOpen.TryGetValue(key, out var chosen) ? chosen : follow;
+
+  private void ToggleRail(string key, bool wasOpen) => railOpen[key] = !wasOpen;
+
+  private static bool HasRunning(Consultologist.Web.Services.Provenance.RunTree.Entry entry) => entry switch
+  {
+    Consultologist.Web.Services.Provenance.RunTree.NodeEntry node => node.Status == "Running",
+    Consultologist.Web.Services.Provenance.RunTree.LoopEntry loop => loop.Items.Any(item => item.Status == "Running" || item.Children.Any(HasRunning)),
+    Consultologist.Web.Services.Provenance.RunTree.WhileEntry whileEntry => whileEntry.Passes.Any(pass => pass.Status == "Running" || pass.Children.Any(HasRunning)),
+    Consultologist.Web.Services.Provenance.RunTree.FlowEntry flow => flow.Children.Any(HasRunning),
+    _ => false,
+  };
+
+  /// <summary>A loop's own glyph: from its items — failed, running, done once every one settled, else not started.</summary>
+  private static string LoopStatus(Consultologist.Web.Services.Provenance.RunTree.LoopEntry loop) =>
+    loop.Items.Any(i => i.Status == "Failed") ? "Failed"
+      : loop.Items.Any(i => i.Status == "Running") ? "Running"
+      : loop.Items.Count > 0 && loop.Items.All(i => i.Status is "Completed" or "Skipped") && char.IsDigit(loop.CountText.FirstOrDefault()) ? "Completed"
+      : loop.Items.Any(i => i.Status is "Completed" or "Skipped") ? "Running"
+      : "Pending";
+
+  private RenderFragment RailEntry(Consultologist.Web.Services.Provenance.RunTree.Entry entry, int depth) => entry switch
+  {
+    Consultologist.Web.Services.Provenance.RunTree.LoopEntry loop => RailLoop(loop, depth),
+    Consultologist.Web.Services.Provenance.RunTree.WhileEntry whileEntry => RailWhile(whileEntry, depth),
+    Consultologist.Web.Services.Provenance.RunTree.FlowEntry flow => RailFlow(flow, depth),
+    Consultologist.Web.Services.Provenance.RunTree.NodeEntry node => RailNodeRow(node, depth),
+    _ => _ => { },
+  };
+
+  private RenderFragment RailNodeRow(Consultologist.Web.Services.Provenance.RunTree.NodeEntry node, int depth) =>
+    @<text>
+      <div class="node-row node-tree node-tree--depth-@depth" data-node="@node.Descriptor.Id" data-path="@node.Path" title="@node.Row?.Reason">
+        <span class="node-row__chevron" aria-hidden="true"></span>
+        <span class="node-row__status @RunStatusCss(node.Status)" aria-hidden="true">@RunStatusGlyph(node.Status)</span>
+        <span class="node-row__label">@node.Descriptor.Label</span>
+      </div>
+      @if (node.Status == "Running" && !string.IsNullOrEmpty(aiProgressNotice))
+      {
+        <div class="node-row__caption muted-text node-tree--depth-@depth">@aiProgressNotice</div>
+      }
+    </text>;
+
+  private RenderFragment RailLoop(Consultologist.Web.Services.Provenance.RunTree.LoopEntry loop, int depth)
+  {
+    var key = $"loop:{loop.Descriptor.Id}:{loop.Path}";
+    var open = RailIsOpen(key, depth == 0 || HasRunning(loop));
+    var status = LoopStatus(loop);
+    var done = loop.Items.Count(i => i.Status == "Completed");
+    var count = char.IsDigit(loop.CountText.FirstOrDefault()) ? $"{done}/{loop.CountText}" : loop.CountText;
+    return @<details class="node-group node-tree node-tree--depth-@depth" data-loop="@loop.Descriptor.Id" data-path="@loop.Path" open="@open">
+      <summary class="node-row" @onclick="() => ToggleRail(key, open)">
+        <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+        <span class="node-row__status @RunStatusCss(status)" aria-hidden="true">@RunStatusGlyph(status)</span>
+        <span class="node-row__label">@loop.Descriptor.Label</span>
+        <span class="node-row__count muted-text" data-loop-count>@count</span>
+      </summary>
+      @if (loop.StopText is { } stopped)
+      {
+        <div class="node-row__caption muted-text node-tree--depth-@(depth + 1)" data-loop-stop>@stopped</div>
+      }
+      @foreach (var item in loop.Items)
+      {
+        @RailItem(item, depth + 1, loop.Descriptor.Id)
+      }
+    </details>;
+  }
+
+  private RenderFragment RailItem(Consultologist.Web.Services.Provenance.RunTree.ItemEntry item, int depth, string loopId)
+  {
+    var key = $"item:{loopId}:{item.Path}";
+    var open = RailIsOpen(key, item.Status == "Running" || item.Children.Any(HasRunning));
+    var summary = item.Reason ?? $"{item.Done}/{item.Steps} steps";
+    if (item.Children.Count == 0)
+    {
+      return @<div class="node-row node-tree node-tree--depth-@depth" data-item data-path="@item.Path" title="@item.Reason">
+        <span class="node-row__chevron" aria-hidden="true"></span>
+        <span class="node-row__status @RunStatusCss(item.Status)" aria-hidden="true">@RunStatusGlyph(item.Status)</span>
+        <span class="node-row__label">@item.Name</span>
+        <span class="node-row__count muted-text" data-item-summary>@summary</span>
+      </div>;
+    }
+
+    return @<details class="node-group node-tree node-tree--depth-@depth" data-item data-path="@item.Path" open="@open">
+      <summary class="node-row" @onclick="() => ToggleRail(key, open)">
+        <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+        <span class="node-row__status @RunStatusCss(item.Status)" aria-hidden="true">@RunStatusGlyph(item.Status)</span>
+        <span class="node-row__label">@item.Name</span>
+        <span class="node-row__count muted-text" data-item-summary>@summary</span>
+      </summary>
+      @foreach (var child in item.Children)
+      {
+        @RailEntry(child, depth + 1)
+      }
+    </details>;
+  }
+
+  private RenderFragment RailWhile(Consultologist.Web.Services.Provenance.RunTree.WhileEntry whileEntry, int depth)
+  {
+    var key = $"while:{whileEntry.Descriptor.Id}:{whileEntry.Path}";
+    var open = RailIsOpen(key, depth == 0 || HasRunning(whileEntry));
+    var status = whileEntry.Passes.Any(p => p.Status == "Failed") ? "Failed"
+      : whileEntry.Passes.Any(p => p.Status == "Running") || (!IsRunFinished && whileEntry.Descriptor.Passes is null && whileEntry.Passes.Count > 0) ? "Running"
+      : whileEntry.Passes.Count > 0 ? "Completed"
+      : "Pending";
+    return @<details class="node-group node-tree node-tree--depth-@depth" data-while="@whileEntry.Descriptor.Id" data-path="@whileEntry.Path" open="@open">
+      <summary class="node-row" @onclick="() => ToggleRail(key, open)">
+        <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+        <span class="node-row__status @RunStatusCss(status)" aria-hidden="true">@RunStatusGlyph(status)</span>
+        <span class="node-row__label">@whileEntry.Descriptor.Label</span>
+        <span class="node-row__count muted-text" data-while-words>@whileEntry.Words</span>
+      </summary>
+      @foreach (var pass in whileEntry.Passes)
+      {
+        var passKey = $"pass:{pass.Path}:{whileEntry.Descriptor.Id}";
+        var passOpen = RailIsOpen(passKey, pass.Status == "Running" || pass.Children.Any(HasRunning));
+        <details class="node-group node-tree node-tree--depth-@(depth + 1)" data-pass="@pass.Number" data-path="@pass.Path" open="@passOpen">
+          <summary class="node-row" @onclick="() => ToggleRail(passKey, passOpen)">
+            <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+            <span class="node-row__status @RunStatusCss(pass.Status)" aria-hidden="true">@RunStatusGlyph(pass.Status)</span>
+            <span class="node-row__label">Pass @pass.Number</span>
+            <span class="node-row__count muted-text">@pass.Done/@pass.Steps steps</span>
+          </summary>
+          @foreach (var child in pass.Children)
+          {
+            @RailEntry(child, depth + 2)
+          }
+        </details>
+      }
+    </details>;
+  }
+
+  private RenderFragment RailFlow(Consultologist.Web.Services.Provenance.RunTree.FlowEntry flow, int depth) =>
+    @<text>
+      <div class="node-row node-tree node-tree--depth-@depth" data-flow="@flow.Descriptor.Id" data-path="@flow.Path">
+        <span class="node-row__chevron" aria-hidden="true"></span>
+        <span class="node-row__status @RunStatusCss(flow.Row?.Status ?? (flow.Children.Any(HasRunning) ? "Running" : null))" aria-hidden="true">@RunStatusGlyph(flow.Row?.Status ?? (flow.Children.Any(HasRunning) ? "Running" : null))</span>
+        <span class="node-row__label">@flow.Descriptor.Label</span>
+        <span class="node-row__count muted-text">@flow.BranchText</span>
+      </div>
+      @foreach (var child in flow.Children)
+      {
+        @RailEntry(child, depth + 1)
+      }
+    </text>;
 
   // #933: the run's unattested nodes (#760's custom tier) — read from the latest
   // job response, so the result panel says, up front, that a block came from a
@@ -2064,6 +2276,7 @@
     completedNodeItems = new();
     nodeStatuses = new(StringComparer.Ordinal);
     latestRunResponse = null;
+    railOpen = new(StringComparer.Ordinal);
     unattestedNodes = new Dictionary<string, UnattestedNodes.Entry>(StringComparer.Ordinal);
     showRunDiagram = false;
     jobNodes = null;
