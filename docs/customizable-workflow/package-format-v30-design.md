@@ -660,7 +660,7 @@ last.
   - **consultologist-workflows#53** raised the ten others `--to 30` (v2026.11.3; `example-problem-list` v2026.11.2). Their `dag.mmd` were redrawn nested; `validate-workflow-package --dag` now resolves implied prompts before drawing the reads (#1379).
   - **Tags:** thirteen signed tags, one per push; every publish green; every `latest.json` at spec 30.
   - **Smokes (all fictional inputs, all record storage 11):**
-    - `example-nested-note` (`286c1b2e`): 4 parts named by title; 4 `loopInstances` (3, 3, 2, 3 points); rows keyed by path (`draft_paragraph:1/1` … `4/3`); item progress per loop (#1366); the `let` row `computed`, its output hash SHA-256 of `4`; the `while` stopped by its check after 1 pass.
+    - `example-nested-note` (`286c1b2e`): 4 parts named by title; 4 `loopInstances` (3, 3, 2, 3 points); rows keyed by path (`draft_paragraph:1/1` … `4/3`); item progress per loop (#1366); the `let` row `computed`, its output hash SHA-256 of `4`; the `while` stopped by its check after 1 pass. A second run (`ebb12cb3`) went the same way, so v2026.11.2 (consultologist-workflows#54) gave the judge a house style the drafter is not told; smoke `ab47e296` ran **2 passes** — the first sent back, the redraft reading the verdict through `pass.previous` (`draft_summary:2`, `judge:2`, each pass hashed), stopped by its check.
     - `example-prior-letters`:
       - `5878327b`: no letter answered, so the loop stopped at `end` after 3;
       - `c9333043`: a fictional tumour-board letter placed second, so the `until` held at item 2 and letters 3–4 were `Skipped`, *not run: stopped early at item 2 (Prior letters 2)*.
