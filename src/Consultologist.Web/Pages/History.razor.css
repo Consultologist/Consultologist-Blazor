@@ -576,3 +576,25 @@
 	text-decoration: line-through dashed;
 	opacity: 0.75;
 }
+
+/* v30 (#1345 C1b): the run's tree — each level a step in. */
+.node-tree--depth-1 { padding-left: 1.75rem; }
+.node-tree--depth-2 { padding-left: 3.5rem; }
+.node-tree--depth-3 { padding-left: 5.25rem; }
+.node-tree--depth-4 { padding-left: 7rem; }
+.node-tree--depth-5 { padding-left: 8.75rem; }
+.node-tree--depth-6 { padding-left: 10.5rem; }
+
+/* A group's own box takes no step: its summary row does, so its children step from the page edge. */
+details.node-tree { padding-left: 0; }
+details.node-tree--depth-1 > summary.node-row { padding-left: 1.75rem; }
+details.node-tree--depth-2 > summary.node-row { padding-left: 3.5rem; }
+details.node-tree--depth-3 > summary.node-row { padding-left: 5.25rem; }
+details.node-tree--depth-4 > summary.node-row { padding-left: 7rem; }
+details.node-tree--depth-5 > summary.node-row { padding-left: 8.75rem; }
+details.node-tree--depth-6 > summary.node-row { padding-left: 10.5rem; }
+
+.node-row__flag {
+	color: var(--consultologist-error);
+	font-size: 0.8125rem;
+}
