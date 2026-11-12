@@ -130,8 +130,12 @@ if (wantsDiagram)
     // (#1227), of the reads its templates make: the walk the engine runs, over
     // the files and the bundled catalogue. The engine's GET and the editor draw
     // the same picture from the same inputs.
-    var walk = manifest.SpecVersion >= 25 ? WorkflowDerivedEdges.WalkOf(manifest, files, formats) : null;
-    Console.Out.Write(WorkflowDagDiagram.Generate(manifest, walk));
+    // #1348: from 28 a node's prompt is implied (prompts/<id>.md, #1286) — resolved before
+    // the walk, as migrate-workflow-package's DiagramOf and the engine do, or the walk sees
+    // no prompt and the diagram draws none of the reads a prompt makes.
+    var drawn = WorkflowImpliedPaths.WithImpliedPrompts(manifest, files);
+    var walk = drawn.SpecVersion >= 25 ? WorkflowDerivedEdges.WalkOf(drawn, files, formats) : null;
+    Console.Out.Write(WorkflowDagDiagram.Generate(drawn, walk));
     return 0;
 }
 var catalogSchemas = catalog.Entries.Values
