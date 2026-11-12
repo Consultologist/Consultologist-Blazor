@@ -399,7 +399,8 @@ internal static class WorkflowFlowNodes
                     {
                         if (inner.Kind == Kind.For && !at30)
                         {
-                            errors.Add($"Loop '{id}' runs inside {flow.Inside}; nesting waits for the scheduler redesign.");
+                            // v30 (#1347): below 30, nesting is the version gate.
+                            errors.Add($"Loop '{id}' runs inside {flow.Inside}, which requires specVersion 30.");
                             continue;
                         }
 
@@ -409,9 +410,8 @@ internal static class WorkflowFlowNodes
                             // naming the chain; at the top level the 26 sentence below 27.
                             errors.Add(!at27
                                 ? $"Node '{id}' runs inside {flow.Inside}; at specVersion 26 a body holds plain nodes — a flow node inside a body is a later issue."
-                                : loopListing.TryGetValue(flow.Node.Id, out var loopId)
-                                    ? $"Node '{id}' runs inside {flow.Inside}, which runs inside loop '{loopId}'; at specVersion {manifest.SpecVersion} a branch holds plain nodes."
-                                    : $"Node '{id}' runs inside {flow.Inside}; at specVersion {manifest.SpecVersion} a branch holds plain nodes.");
+                                // v30 (#1347): at 27–29 a flow node inside a branch is the version gate.
+                                : $"Node '{id}' runs inside {flow.Inside}, which requires specVersion 30.");
                             continue;
                         }
 
