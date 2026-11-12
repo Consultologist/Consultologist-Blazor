@@ -2477,6 +2477,12 @@
                                             @* v26 (#1159): the other two flow nodes. *@
                                             <FluentOption TOption="string" Value="@IfChoice">if — a condition: its then body runs when it holds, else its else body</FluentOption>
                                             <FluentOption TOption="string" Value="@CaseChoice">case — a switch over an enum: one branch per set of values</FluentOption>
+                                            @if (At30)
+                                            {
+                                                @* v30 (#1346): a while and a let. *@
+                                                <FluentOption TOption="string" Value="@WhileChoice">while — repeats its body by passes while its check holds, at most its bound</FluentOption>
+                                                <FluentOption TOption="string" Value="@LetChoice">let — computes one typed value from an expression, no model</FluentOption>
+                                            }
                                         }
                                         else
                                         {
@@ -2668,6 +2674,151 @@
                             <FluentButton Appearance="Appearance.Accent" @onclick="AddNodeAsync">
                                 Create node
                             </FluentButton>
+                        </div>
+                    }
+                    else if (At30 && SelectedNode() is { IsWhile: true } selectedWhile)
+                    {
+                        @* v30 (#1346, design § 3, § 11): a while's pane — its check (the condition
+                           builder; a check the tree cannot hold, such as one on pass.number, as text),
+                           its bound (choose… until chosen — explicit init: the desk refuses publish with
+                           the validator's sentence), its until and checkFirst, its body and its ret. *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@selectedWhile.Label</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedWhile.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedWhile)</span>
+                                </p>
+                                @NodeRenameRow(selectedWhile)
+                            </div>
+                            <div class="pane-header__actions">
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveNodeAsync(selectedWhile.Id)">Remove while</FluentButton>
+                                @PaneDiscardButton(NodeKeyFor(selectedWhile.Id), NodeCanDiscard(selectedWhile), () => RevertNodeEdits(selectedWhile.Id, null))
+                            </div>
+                        </div>
+                        @SourcedByRows(selectedWhile.Id)
+                        <div class="node-section">
+                            <span class="node-section__head">Identity</span>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>label</span>
+                                    <FluentTextField Value="@selectedWhile.Label" ValueChanged="@(v => OnV30LabelChangedAsync(selectedWhile, v))" aria-label="While label" />
+                                </label>
+                                @FlowDescriptionField(selectedWhile)
+                            </div>
+                        </div>
+                        <div class="node-section while-section">
+                            <span class="node-section__head">Check and bound</span>
+                            <p class="muted-text">Runs its body once, then again while the check holds — at most its bound. A pass reads itself as <code>pass</code> (<code>pass.number</code>, <code>pass.previous</code>).</p>
+                            <div class="node-fields">
+                                <div class="node-field while-check">
+                                    <span>while</span>
+                                    @ConditionField(("", WhileCheckTarget(selectedWhile), "choose…"))
+                                </div>
+                                <label class="node-field">
+                                    <span>max</span>
+                                    <FluentSelect TOption="string" class="binding-row__select while-max"
+                                                  Value="@(selectedWhile.Max?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)"
+                                                  ValueChanged="@(v => OnWhileMaxChangedAsync(selectedWhile, v))"
+                                                  aria-label="While max">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        @for (var bound = 1; bound <= 10; bound++)
+                                        {
+                                            var text = bound.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                            <FluentOption TOption="string" Value="@text">@text</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                                <div class="node-field while-until">
+                                    <span>until</span>
+                                    @ConditionField(("", WhileUntilTarget(selectedWhile), "no until"))
+                                    @if (!string.IsNullOrWhiteSpace(selectedWhile.Until))
+                                    {
+                                        <FluentButton Appearance="Appearance.Stealth" Class="while-until-clear" @onclick="() => OnWhileUntilClearedAsync(selectedWhile)">Clear until</FluentButton>
+                                    }
+                                </div>
+                                <label class="node-field while-check-first">
+                                    <input type="checkbox" checked="@(selectedWhile.CheckFirst == true)" aria-label="Check before each pass"
+                                           @onchange="@(e => OnWhileCheckFirstChangedAsync(selectedWhile, e.Value is true))" />
+                                    <span>Check before each pass — it may run none</span>
+                                </label>
+                            </div>
+                        </div>
+                        @BodySection(selectedWhile.Bodies()[0], "Body", "Each pass runs these, in order.")
+                    }
+                    else if (At30 && SelectedNode() is { IsLet: true } selectedLet)
+                    {
+                        @* v30 (#1346, design § 4, § 11): a let's pane — its expression, with the
+                           validator's own sentences for it shown as they stand; its type and its
+                           onInvalid, each choose… until chosen (no default; retry is never offered —
+                           there is no model to repair). *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@selectedLet.Label</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedLet.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedLet)</span>
+                                </p>
+                                @NodeRenameRow(selectedLet)
+                            </div>
+                            <div class="pane-header__actions">
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveNodeAsync(selectedLet.Id)">Remove let</FluentButton>
+                                @PaneDiscardButton(NodeKeyFor(selectedLet.Id), NodeCanDiscard(selectedLet), () => RevertNodeEdits(selectedLet.Id, null))
+                            </div>
+                        </div>
+                        @SourcedByRows(selectedLet.Id)
+                        <div class="node-section">
+                            <span class="node-section__head">Identity</span>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>label</span>
+                                    <FluentTextField Value="@selectedLet.Label" ValueChanged="@(v => OnV30LabelChangedAsync(selectedLet, v))" aria-label="Let label" />
+                                </label>
+                            </div>
+                        </div>
+                        <div class="node-section let-section">
+                            <span class="node-section__head">Value</span>
+                            <p class="muted-text">One expression over what a template here reads — no model call. Pure functions only, so a run gives the same value again.</p>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>let</span>
+                                    <FluentTextField class="let-expression" Value="@selectedLet.Let" ValueChanged="@(v => OnLetExpressionChangedAsync(selectedLet, v))" aria-label="Let expression" />
+                                </label>
+                                <label class="node-field">
+                                    <span>type</span>
+                                    <FluentSelect TOption="string" class="binding-row__select let-type"
+                                                  Value="@(selectedLet.LetType ?? string.Empty)"
+                                                  ValueChanged="@(v => OnLetTypeChangedAsync(selectedLet, v))"
+                                                  aria-label="Let type">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        @foreach (var letType in LetTypeOptions)
+                                        {
+                                            <FluentOption TOption="string" Value="@letType">@letType</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                                <label class="node-field">
+                                    <span>onInvalid</span>
+                                    <FluentSelect TOption="string" class="binding-row__select let-on-invalid"
+                                                  Value="@(selectedLet.OnInvalid ?? string.Empty)"
+                                                  ValueChanged="@(v => OnLetOnInvalidChangedAsync(selectedLet, v))"
+                                                  aria-label="Let onInvalid">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        <FluentOption TOption="string" Value="fail">fail — the node fails, naming the mismatch</FluentOption>
+                                        <FluentOption TOption="string" Value="flag">flag — the value is kept, marked invalid</FluentOption>
+                                    </FluentSelect>
+                                </label>
+                            </div>
+                            @foreach (var problem in LetProblems(selectedLet))
+                            {
+                                <p class="field-error let-problem">@problem</p>
+                            }
                         </div>
                     }
                     else if (At26 && SelectedNode() is { IsLoop: true } selectedLoop)
@@ -3111,7 +3262,7 @@
                                              FormatOptions="@FormatOptions"
                                              OnOpenFormat="OpenFormatPane"
                                              NodeOperandOptions="@NodeOperandChoices"
-                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id) || loopEdits.ContainsKey(id) || flowEdits.ContainsKey(id))"
+                                             NodeModified="@(id => nodeEdits.ContainsKey(id) || nodeWhenEdits.ContainsKey(id) || aggregateEdits.ContainsKey(id) || loopEdits.ContainsKey(id) || flowEdits.ContainsKey(id) || v30Edits.ContainsKey(id))"
                                              RowsFor="@RowsFor"
                                              ValidateVariableName="@ValidateVariableNameForNode"
                                              OnBindingChanged="OnBindingChangedAsync"
@@ -5865,6 +6016,9 @@
             // v26 (#1159): an if/case node's tuple — its own dict, the whole tuple per node.
             new("flowEdits", () => flowEdits.Count, flowEdits.Clear,
                 () => $"{flowEdits.Count} {Plural(flowEdits.Count, "flow node")}", () => flowEdits.Count > 0),
+            // v30 (#1346): a while's or a let's tuple — its own dict.
+            new("v30Edits", () => v30Edits.Count, v30Edits.Clear,
+                () => $"{v30Edits.Count} {Plural(v30Edits.Count, "while or let")}", () => v30Edits.Count > 0),
             // v10 (#498): a condition with a clause not yet chosen — held, never
             // written, and named until it is.
             new("conditionDrafts", () => conditionDrafts.Count, conditionDrafts.Clear,
@@ -9338,6 +9492,14 @@
         public int? Max { get; set; }
         public string? LabelField { get; set; }
 
+        // v30 (#1346): a while — born with an empty check, no max (explicit init: the desk
+        // refuses until it is chosen) and an empty body; a let — born with an empty
+        // expression, its type and onInvalid unchosen.
+        public string? While { get; set; }
+        public bool? CheckFirst { get; set; }
+        public string? Let { get; set; }
+        public string? LetType { get; set; }
+
         // v26 (#1159): an if (born with an empty condition and an empty then) or a case
         // (born over its subject with no branches) — the pane fills them; the desk names
         // what is missing.
@@ -9353,7 +9515,11 @@
 
         public bool IsCase => Case != null;
 
-        public bool IsFlow => IsLoop || IsIf || IsCase;
+        public bool IsWhile => While != null;
+
+        public bool IsLet => Let != null;
+
+        public bool IsFlow => IsLoop || IsIf || IsCase || IsWhile;
 
         public bool IsClassifier => Kind == ClassifierKind;
 
@@ -9362,7 +9528,7 @@
         public bool IsTemplate => Kind == TemplateKind;
 
         /// <summary>Whether the node mints or names a prompt: never for an aggregator, a check or a computed format.</summary>
-        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed && !IsFlow;
+        public bool HasPrompt => Aggregate == null && !IsCheck && !Computed && !IsFlow && !IsLet;
     }
 
     // v25 (C1 #1007): the "+ Node" form's format choice; this word is the aggregator.
@@ -9382,6 +9548,7 @@
 
     private bool NewNodeTakesPrompt =>
         newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice && newNodeFormat != LoopChoice && newNodeFormat != IfChoice && newNodeFormat != CaseChoice
+        && newNodeFormat != WhileChoice && newNodeFormat != LetChoice
         && FormatOptions.FirstOrDefault(f => f.Id == newNodeFormat)?.Computed != true;
 
     /// <summary>The one node kind a manifest spells (v10): prompt is the default and aggregator a property.</summary>
@@ -10704,6 +10871,10 @@
         Until: added.Until,
         Max: added.Max,
         LabelField: added.LabelField,
+        While: added.While,
+        CheckFirst: added.CheckFirst,
+        Let: added.Let,
+        LetType: added.LetType,
         If: added.If,
         Case: added.Case,
         Then: added.Then == null ? null : new WorkflowManifestReader.BodyView(added.Then.Nodes, added.Then.Ret),
@@ -13443,8 +13614,19 @@
             return (draft, null);
         }
 
+        // v30 (#1346, design § 3.2): a condition reading the pass object (pass.number,
+        // pass.previous…) is a while's — the tree's operands are inputs and nodes, so it would
+        // read pass as an input; it stays as written, edited as text.
+        if (target.When is { } text && PassRead.IsMatch(text))
+        {
+            ConditionBuilderModel.TryFromText(null, out var empty, out _);
+            return (empty, text);
+        }
+
         return ConditionBuilderModel.TryFromText(target.When, out var root, out var verbatim) ? (root, null) : (root, verbatim);
     }
+
+    private static readonly System.Text.RegularExpressions.Regex PassRead = new(@"(^|[^\w.])pass\.", System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// v18 (#822): a node's own when. A completed condition rides nodeWhenEdits
@@ -13777,6 +13959,56 @@
     // flow node (AddedNode.If/Case != null) is mutated directly instead.
     private readonly Dictionary<string, FlowChange> flowEdits = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// v30 (#1346, design § 3, § 4): a while's or a let's tuple — its own dict, the whole tuple
+    /// per node (the flowEdits idiom): a while's check, bound, until, checkFirst and body; a
+    /// let's expression, type and onInvalid. Self-removes when it equals the manifest's.
+    /// </summary>
+    private sealed record V30Change(string Label, string? While, int? Max, string? Until, bool? CheckFirst, List<string>? Nodes, string? Ret, string? Let, string? LetType, string? OnInvalid);
+
+    private readonly Dictionary<string, V30Change> v30Edits = new(StringComparer.Ordinal);
+
+    private static V30Change V30ChangeOf(WorkflowManifestReader.NodeView node) =>
+        new(node.Label, node.While, node.Max, node.Until, node.CheckFirst, node.Nodes?.ToList(), node.Ret, node.Let, node.LetType, node.OnInvalid);
+
+    private static bool SameV30(V30Change a, V30Change b) =>
+        a.Label == b.Label && a.While == b.While && a.Max == b.Max && a.Until == b.Until && a.CheckFirst == b.CheckFirst
+        && a.Ret == b.Ret && a.Let == b.Let && a.LetType == b.LetType && a.OnInvalid == b.OnInvalid
+        && (a.Nodes ?? new List<string>()).SequenceEqual(b.Nodes ?? new List<string>(), StringComparer.Ordinal);
+
+    /// <summary>v30 (#1346): record a while's or a let's tuple — a pending node is mutated, a loaded one gets a v30Edits entry.</summary>
+    private void SetV30(string nodeId, V30Change change)
+    {
+        if (addedNodes.FirstOrDefault(a => a.Id == nodeId) is { } added)
+        {
+            added.Label = change.Label;
+            added.While = change.While;
+            added.Max = change.Max;
+            added.Until = change.Until;
+            added.CheckFirst = change.CheckFirst;
+            added.Nodes = change.While is null ? added.Nodes : change.Nodes ?? new List<string>();
+            added.Ret = change.Ret;
+            added.Let = change.Let;
+            added.LetType = change.LetType;
+            added.OnInvalid = change.OnInvalid;
+            return;
+        }
+
+        if (nodes.FirstOrDefault(n => n.Id == nodeId) is not { } loaded)
+        {
+            return;
+        }
+
+        if (SameV30(change, V30ChangeOf(loaded)))
+        {
+            v30Edits.Remove(nodeId);
+        }
+        else
+        {
+            v30Edits[nodeId] = change;
+        }
+    }
+
     private sealed record FlowBody(List<string> Nodes, string? Ret);
 
     private sealed record FlowBranch(List<string> When, List<string> Nodes, string? Ret);
@@ -13786,15 +14018,18 @@
     private const string IfChoice = "if";
     private const string CaseChoice = "case";
 
+    // v30 (#1346, design § 3, § 4): a while (a loop whose body repeats by passes) and a let.
+    private const string WhileChoice = "while";
+    private const string LetChoice = "let";
+
     /// <summary>v26 (#1159): the "+ Node" form's case subject (input.&lt;id&gt; or node.&lt;id&gt;.value; "" = unchosen).</summary>
     private string newNodeCase = string.Empty;
 
     /// <summary>v26: every body a plain node may be placed in, across every flow node, in node order.</summary>
     private IReadOnlyList<WorkflowManifestReader.FlowBodyView> EffectiveBodies =>
         At26
-            // v30 (#1346 C2a): a while's body is read (its members are placed) but not yet a
-            // target — the while pane (C2c) edits it; until then nothing moves into or out of it.
-            ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).Where(body => !body.Ref.IsWhile).ToList()
+            // v30 (#1346): a while's body too.
+            ? EffectiveNodes.Where(n => n.IsFlow).SelectMany(n => n.Bodies()).ToList()
             : Array.Empty<WorkflowManifestReader.FlowBodyView>();
 
     /// <summary>v26: the key of the body holding the node, or null.</summary>
@@ -13862,6 +14097,29 @@
         node.Branches?.Select(b => new FlowBranch(b.When.ToList(), b.Nodes.ToList(), b.Ret)).ToList());
 
     /// <summary>v26 (#1159): write an if/case node's members onto its manifest object — both casings removed first.</summary>
+    /// <summary>v30 (#1346): write a while's or a let's own members onto its object — and nothing else.</summary>
+    private static void WriteV30Members(System.Text.Json.Nodes.JsonObject target, V30Change change)
+    {
+        if (change.While is not null)
+        {
+            foreach (var key in new[] { "while", "While", "max", "Max", "until", "Until", "checkFirst", "CheckFirst", "nodes", "Nodes", "ret", "Ret" }) { target.Remove(key); }
+            target["while"] = change.While;
+            if (change.Max is { } max) { target["max"] = max; }
+            if (!string.IsNullOrWhiteSpace(change.Until)) { target["until"] = change.Until; }
+            if (change.CheckFirst == true) { target["checkFirst"] = true; }
+            target["nodes"] = new System.Text.Json.Nodes.JsonArray((change.Nodes ?? new List<string>()).Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray());
+            if (change.Ret != null) { target["ret"] = change.Ret; }
+        }
+
+        if (change.Let is not null)
+        {
+            foreach (var key in new[] { "let", "Let", "type", "Type", "onInvalid", "OnInvalid" }) { target.Remove(key); }
+            target["let"] = change.Let;
+            if (!string.IsNullOrWhiteSpace(change.LetType)) { target["type"] = change.LetType; }
+            if (!string.IsNullOrWhiteSpace(change.OnInvalid)) { target["onInvalid"] = change.OnInvalid; }
+        }
+    }
+
     private static void WriteFlowMembers(System.Text.Json.Nodes.JsonObject target, FlowChange change)
     {
         foreach (var key in new[] { "if", "If", "case", "Case", "then", "Then", "else", "Else", "branches", "Branches" }) { target.Remove(key); }
@@ -13970,8 +14228,7 @@
     private void PlaceInBody(string nodeId, string? bodyKey)
     {
         var current = WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, nodeId);
-        // v30 (#1346 C2a): a while's member stays where it is until the while pane (C2c) moves it.
-        if (current?.Key == bodyKey || current?.Ref.IsWhile == true)
+        if (current?.Key == bodyKey)
         {
             return;
         }
@@ -14007,10 +14264,12 @@
             return;
         }
 
-        // v30 (#1346 C2a): a while's body is written by the while pane (C2c) — never through
-        // the if/case writer, which would stamp if/case members onto it.
+        // v30 (#1346): a while's body through its own tuple — never through the if/case
+        // writer, which would stamp if/case members onto it.
         if (flow.IsWhile)
         {
+            var rewrittenWhile = rewrite(new FlowBody((flow.Nodes ?? Array.Empty<string>()).ToList(), flow.Ret));
+            SetV30(flow.Id, V30ChangeOf(flow) with { Nodes = rewrittenWhile.Nodes, Ret = rewrittenWhile.Ret });
             return;
         }
 
@@ -14033,6 +14292,97 @@
     }
 
     /// <summary>v26 (#1159): the if node's condition — the 25 node-when builder, writing the node's if.</summary>
+    // ----- v30 (#1346): the while pane and the let pane -----
+
+    private async Task OnV30LabelChangedAsync(WorkflowManifestReader.NodeView node, string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label)) { return; }
+        SetV30(node.Id, V30ChangeOf(node) with { Label = label.Trim() });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v30 (#1346, design § 3.1): a while's check — the if's builder; a pass's reads beyond it are written as text.</summary>
+    private ConditionTarget WhileCheckTarget(WorkflowManifestReader.NodeView node) =>
+        new($"while-check:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.While) ? null : node.While,
+            text => SetV30(node.Id, V30ChangeOf(EffectiveNodes.First(n => n.Id == node.Id)) with { While = text ?? string.Empty }),
+            NodeFilter: id => id != node.Id);
+
+    private ConditionTarget WhileUntilTarget(WorkflowManifestReader.NodeView node) =>
+        new($"while-until:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.Until) ? null : node.Until,
+            text => SetV30(node.Id, V30ChangeOf(EffectiveNodes.First(n => n.Id == node.Id)) with { Until = string.IsNullOrWhiteSpace(text) ? null : text }),
+            NodeFilter: id => id != node.Id);
+
+    private async Task OnWhileUntilClearedAsync(WorkflowManifestReader.NodeView node)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { Until = null });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnWhileMaxChangedAsync(WorkflowManifestReader.NodeView node, string? value)
+    {
+        int? max = int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var bound) && bound is >= 1 and <= 10 ? bound : null;
+        SetV30(node.Id, V30ChangeOf(node) with { Max = max });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnWhileCheckFirstChangedAsync(WorkflowManifestReader.NodeView node, bool checkFirst)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { CheckFirst = checkFirst ? true : null });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLetExpressionChangedAsync(WorkflowManifestReader.NodeView node, string? expression)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { Let = expression?.Trim() ?? string.Empty });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLetTypeChangedAsync(WorkflowManifestReader.NodeView node, string? type)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { LetType = string.IsNullOrWhiteSpace(type) ? null : type });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLetOnInvalidChangedAsync(WorkflowManifestReader.NodeView node, string? policy)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { OnInvalid = policy is "fail" or "flag" ? policy : null });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v30 (#1346, design § 4.1): what a let may be typed by — text, number, boolean, or a declared object format (no bare list).</summary>
+    private IReadOnlyList<string> LetTypeOptions =>
+        new[] { "text", "number", "boolean" }
+            .Concat(FormatOptions.Where(format => format.Type == WorkflowInputTypes.Object).Select(format => format.Id).OrderBy(id => id, StringComparer.Ordinal))
+            .ToList();
+
+    private (string Key, IReadOnlyList<string> Errors)? letDesk;
+
+    /// <summary>
+    /// v30 (#1346): the validator's own sentences for this let, as the package now stands —
+    /// the desk's run, kept while the composed manifest is unchanged (so the pane does not
+    /// validate on every render).
+    /// </summary>
+    private IReadOnlyList<string> LetProblems(WorkflowManifestReader.NodeView node)
+    {
+        var key = ComposeManifest().GetRawText();
+        if (letDesk is not { } cached || cached.Key != key)
+        {
+            List<string> errors;
+            try
+            {
+                errors = RegistryDesk25().Errors;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                errors = new List<string>();
+            }
+
+            letDesk = cached = (key, errors);
+        }
+
+        return cached.Errors.Where(error => error.StartsWith($"Let '{node.Id}'", StringComparison.Ordinal)).ToList();
+    }
+
     /// <summary>v30 (#1346, design § 5, revision 3): said beside every labelField picker.</summary>
     private const string LabelFieldNote = "The item's name is kept in the job's record after its text is deleted — pick a field that names the item without patient detail.";
 
@@ -14345,6 +14695,9 @@
         At26 && node.IsLoop ? $"loop over {node.Collection ?? node.For}"
         : At26 && node.IsIf ? $"if · {(string.IsNullOrWhiteSpace(node.If) ? "no condition yet" : node.If)}"
         : At26 && node.IsCase ? $"case · over {(string.IsNullOrWhiteSpace(node.Case) ? "nothing yet" : node.Case)}"
+        // v30 (#1346): a while by its check and bound, a let by its type.
+        : node.IsWhile ? $"while · {(string.IsNullOrWhiteSpace(node.While) ? "no check yet" : node.While)} · {(node.Max is { } bound ? $"at most {bound}" : "no bound yet")}"
+        : node.IsLet ? $"let → {node.LetType ?? "no type yet"} · computed"
         : EffectiveSpecVersion >= 25 && node.Aggregate == null
             ? node.Format == null ? "no format yet"
                 : FormatOptions.FirstOrDefault(f => f.Id == node.Format) is { } format ? $"{format.Id} · {format.Producer}" : node.Format
@@ -15432,6 +15785,17 @@
                     }
                 }
 
+                // v30 (#1346): a while's or a let's pending tuple rides too.
+                if (v30Edits.TryGetValue(n.Id, out var v30))
+                {
+                    n = n with
+                    {
+                        Label = v30.Label, While = v30.While, Max = v30.Max, Until = v30.Until, CheckFirst = v30.CheckFirst,
+                        Nodes = v30.While is null ? n.Nodes : v30.Nodes, Ret = v30.While is null ? n.Ret : v30.Ret,
+                        Let = v30.Let, LetType = v30.LetType, OnInvalid = v30.OnInvalid,
+                    };
+                }
+
                 // v26 (#1159): an if/case node's pending tuple rides too.
                 if (flowEdits.TryGetValue(n.Id, out var flow))
                 {
@@ -15676,6 +16040,7 @@
         || aggregateEdits.ContainsKey(node.Id)
         || loopEdits.ContainsKey(node.Id)
         || flowEdits.ContainsKey(node.Id)
+        || v30Edits.ContainsKey(node.Id)
         || addedNodes.Any(a => a.Id == node.Id)
         || bindingEdits.Keys.Any(key => key.StartsWith(node.Id + "\n", StringComparison.Ordinal))
         || (node.Prompt != null && HasVariableEdits(node.Prompt))
@@ -15696,7 +16061,10 @@
         var loop = At26 && newNodeFormat == LoopChoice;
         var ifNode = At26 && newNodeFormat == IfChoice;
         var caseNode = At26 && newNodeFormat == CaseChoice;
-        var flow = loop || ifNode || caseNode;
+        // v30 (#1346): a while is a flow; a let is computed — neither takes a prompt or a format.
+        var whileNode = At30 && newNodeFormat == WhileChoice;
+        var letNode = At30 && newNodeFormat == LetChoice;
+        var flow = loop || ifNode || caseNode || whileNode || letNode;
         var aggregator = at25 ? !At26 && newNodeFormat == AggregatorChoice : newNodeKind == "aggregator";
         var classifier = !at25 && newNodeKind == ClassifierKind;
         var check = !at25 && newNodeKind == CheckKind;
@@ -15794,8 +16162,16 @@
             If = ifNode ? string.Empty : null,
             Then = ifNode ? new FlowBody(new List<string>(), null) : null,
             Case = caseNode ? newNodeCase : null,
-            Branches = caseNode ? new List<FlowBranch>() : null
+            Branches = caseNode ? new List<FlowBranch>() : null,
+            // v30 (#1346): a while's empty check, no bound and an empty body; a let's empty
+            // expression with its type and policy unchosen (explicit init — the desk names each).
+            While = whileNode ? string.Empty : null,
+            Let = letNode ? string.Empty : null,
         });
+        if (whileNode)
+        {
+            addedNodes[^1].Nodes = new List<string>();
+        }
         // v26: a plain node born "in" a body joins it (#1159: any body); v27 (#1236): an if/case born in a loop too.
         // v30 (#1346): a loop born in a body too.
         if (At26 && (!loop || At30) && newNodeLoop.Length > 0)
@@ -15847,6 +16223,7 @@
             aggregateEdits.Remove(nodeId);
             loopEdits.Remove(nodeId);
             flowEdits.Remove(nodeId);
+            v30Edits.Remove(nodeId);
         }
         else
         {
@@ -16984,7 +17361,9 @@
         // v26 (#1159): a pending if/case node's tuple. Trailing.
         string? If = null, string? Case = null, FlowBody? Then = null, FlowBody? Else = null, List<FlowBranch>? Branches = null,
         // v30 (#1346): a pending for's until, max and labelField. Trailing.
-        string? Until = null, int? Max = null, string? LabelField = null);
+        string? Until = null, int? Max = null, string? LabelField = null,
+        // v30 (#1346): a pending while's check and checkFirst, a let's expression and type. Trailing.
+        string? While = null, bool? CheckFirst = null, string? Let = null, string? LetType = null);
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
@@ -17106,7 +17485,11 @@
         // v28 (#1285): pending folder labels (directory → label; empty clears). Trailing optional.
         Dictionary<string, string>? FolderLabels = null,
         // v28 (#1270): pending flow-node descriptions (node id → text; empty clears). Trailing optional.
-        Dictionary<string, string>? Descriptions = null);
+        Dictionary<string, string>? Descriptions = null,
+        // v30 (#1346): pending while and let tuples. Trailing optional.
+        List<DraftV30Edit>? V30Edits = null);
+
+    private sealed record DraftV30Edit(string NodeId, V30Change Change);
 
     private sealed record DraftAddedFormat(string Id, string Body);
 
@@ -17611,7 +17994,7 @@
                     OnInvalid = draftAddedNode.OnInvalid,
                     Computed = draftAddedNode.Computed,
                     For = draftAddedNode.For,
-                    Nodes = draftAddedNode.For == null ? null : draftAddedNode.Nodes ?? new List<string>(),
+                    Nodes = draftAddedNode.For == null && draftAddedNode.While == null ? null : draftAddedNode.Nodes ?? new List<string>(),
                     Ret = draftAddedNode.Ret,
                     If = draftAddedNode.If,
                     Case = draftAddedNode.Case,
@@ -17620,7 +18003,11 @@
                     Branches = draftAddedNode.Case == null ? null : draftAddedNode.Branches ?? new List<FlowBranch>(),
                     Until = draftAddedNode.Until,
                     Max = draftAddedNode.Max,
-                    LabelField = draftAddedNode.LabelField
+                    LabelField = draftAddedNode.LabelField,
+                    While = draftAddedNode.While,
+                    CheckFirst = draftAddedNode.CheckFirst,
+                    Let = draftAddedNode.Let,
+                    LetType = draftAddedNode.LetType
                 });
             }
         }
@@ -17760,6 +18147,15 @@
             }
         }
 
+        // v30 (#1346): rehydrate pending while and let tuples — only onto one the manifest still holds.
+        foreach (var draftV30 in payload.V30Edits ?? new List<DraftV30Edit>())
+        {
+            if (nodes.Any(n => n.Id == draftV30.NodeId && (n.IsWhile || n.IsLet)))
+            {
+                v30Edits[draftV30.NodeId] = draftV30.Change;
+            }
+        }
+
         // v26 (#1159): rehydrate pending if/case tuples — only onto a flow node the manifest still holds.
         foreach (var draftFlow in payload.FlowEdits ?? new List<DraftFlowEdit>())
         {
@@ -17862,7 +18258,7 @@
             nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith,
                 edit.Format, edit.With == null ? null : new Dictionary<string, JsonElement>(edit.With, StringComparer.Ordinal), edit.OnInvalid)).ToList(),
             addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw,
-                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret, a.If, a.Case, a.Then, a.Else, a.Branches, a.Until, a.Max, a.LabelField)).ToList(),
+                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret, a.If, a.Case, a.Then, a.Else, a.Branches, a.Until, a.Max, a.LabelField, a.While, a.CheckFirst, a.Let, a.LetType)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -17911,7 +18307,8 @@
             addedMacroCollections.ToList(),
             nodeRenames.Select(r => new DraftNodeRename(r.From, r.To, r.PromptFrom, r.PromptTo, r.FileMove, r.TextKind, r.Folder)).ToList(),
             folderLabelEdits.Count == 0 ? null : new Dictionary<string, string>(folderLabelEdits, StringComparer.Ordinal),
-            descriptionEdits.Count == 0 ? null : new Dictionary<string, string>(descriptionEdits, StringComparer.Ordinal));
+            descriptionEdits.Count == 0 ? null : new Dictionary<string, string>(descriptionEdits, StringComparer.Ordinal),
+            v30Edits.Count == 0 ? null : v30Edits.Select(pair => new DraftV30Edit(pair.Key, pair.Value)).ToList());
 
     // #815: undo/redo history — snapshots (serialized DraftPayloads; null = the
     // clean state) of the pending state, persisted with the draft so the history
@@ -18539,6 +18936,7 @@
         // v26 (#1160): a loop's pending tuple; #1159: an if/case node's.
         loopEdits.Remove(nodeId);
         flowEdits.Remove(nodeId);
+        v30Edits.Remove(nodeId);
         conditionDrafts.Remove($"node-if:{nodeId}");
         // v23 (#955): a node's macro attachments and any in-progress macro-when
         // condition drafts.
@@ -18914,6 +19312,11 @@
         PendingMaps.Rekey(nodeMacroEdits, from, to, list => list.Select(m => m with { If = Gate(m.If), When = Gate(m.When) }).ToList());
         PendingMaps.Rekey(aggregateEdits, from, to, list => Ids(list));
         PendingMaps.Rekey(loopEdits, from, to, loop => loop with { Nodes = Ids(loop.Nodes), Ret = Bare(loop.Ret), Extras = loop.Extras is { } e ? e with { Until = Gate(e.Until) } : null });
+        PendingMaps.Rekey(v30Edits, from, to, change => change with
+        {
+            While = Gate(change.While), Until = Gate(change.Until), Let = Gate(change.Let),
+            Nodes = change.Nodes is null ? null : Ids(change.Nodes), Ret = Bare(change.Ret),
+        });
         PendingMaps.Rekey(flowEdits, from, to, flow => flow with
         {
             If = Gate(flow.If),
@@ -20338,6 +20741,17 @@
             // v25 (C1 #1007): a node with a format — prompt and bindings only when the
             // format takes a prompt; format, with, onInvalid and a top-level failIfEmpty;
             // never kind, output or values.
+            // v30 (#1346): a while or a let — its own members, a bound, a type or a policy
+            // only once chosen; never a format, never a prompt.
+            if (addedNode.IsWhile || addedNode.IsLet)
+            {
+                var v30Node = new System.Text.Json.Nodes.JsonObject { ["id"] = addedNode.Id, ["label"] = addedNode.Label };
+                WriteV30Members(v30Node, new V30Change(addedNode.Label, addedNode.While, addedNode.Max, addedNode.Until, addedNode.CheckFirst,
+                    addedNode.Nodes, addedNode.Ret, addedNode.Let, addedNode.LetType, addedNode.OnInvalid));
+                nodesArray.Add(v30Node);
+                continue;
+            }
+
             // v26 (#1160): a loop — id, label, for, nodes; ret only once chosen; never a format.
             if (addedNode.For != null)
             {
@@ -21068,6 +21482,19 @@
 
             flowObject[flowObject.ContainsKey("Label") ? "Label" : "label"] = pair.Value.Label;
             WriteFlowMembers(flowObject, pair.Value);
+        }
+
+        // v30 (#1346): a while's or a let's tuple — only the members it owns, both casings
+        // removed first (the #864 lesson); a bound, a type or a policy omitted while unchosen.
+        foreach (var pair in v30Edits)
+        {
+            if (removedNodeIds.Contains(pair.Key) || NodeFor(pair.Key) is not { } v30Object)
+            {
+                continue;
+            }
+
+            v30Object[v30Object.ContainsKey("Label") ? "Label" : "label"] = pair.Value.Label;
+            WriteV30Members(v30Object, pair.Value);
         }
 
         // v23 (#955): a node's macro attachments — the whole list, each a bare id
