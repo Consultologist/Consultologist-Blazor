@@ -810,6 +810,16 @@
                                                         <span title="@detail.EffectiveInputHash">in @HashPrefix(detail.EffectiveInputHash)</span>
                                                     </span>
                                                 </div>
+                                                @* v30 (#1345 C1b, design § 10): a 30 record is drawn as the tree the run took; every other record keeps its groups. *@
+                                                @if (Consultologist.Web.Services.Provenance.RunTree.Applies(detail))
+                                                {
+                                                    @foreach (var entry in Consultologist.Web.Services.Provenance.RunTree.Build(detail))
+                                                    {
+                                                        @TreeEntry(entry, detail, 0)
+                                                    }
+                                                }
+                                                else
+                                                {
                                                 @foreach (var group in nodeGroups)
                                                 {
                                                         @if (group.Items.Count == 0)
@@ -901,6 +911,7 @@
                                                                 }
                                                             </details>
                                                         }
+                                                }
                                                 }
                                                 <div class="node-row">
                                                     <span class="node-row__chevron" aria-hidden="true"></span>
@@ -2049,6 +2060,12 @@
 
     private string ContractLabel(ConsultGenerationNodeDescriptor descriptor, ConsultGenerationJobResponse detail)
     {
+        // v30 (#1343, #1345): a let is computed — its type, never a model's format line.
+        if (Consultologist.Web.Services.Provenance.RecordFlow.IsLet(descriptor))
+        {
+            return $"computed · let → {descriptor.LetType ?? "—"}";
+        }
+
         // B7 #1006: a 25 node names its format and producer, and the agent or
         // operation behind it, from the descriptor — nothing to resolve.
         if (descriptor.Format is { Length: > 0 } format)
@@ -2076,6 +2093,150 @@
             _ => contract
         };
     }
+
+    // ----- v30 (#1345 C1b, design § 10): a 30 record as a tree -----
+
+    /// <summary>One entry of the run's tree: a node's row, a loop's items, a while's passes, an if/case and what it took.</summary>
+    private RenderFragment TreeEntry(Consultologist.Web.Services.Provenance.RunTree.Entry entry, ConsultGenerationJobResponse detail, int depth) => entry switch
+    {
+        Consultologist.Web.Services.Provenance.RunTree.LoopEntry loop => TreeLoop(loop, detail, depth),
+        Consultologist.Web.Services.Provenance.RunTree.WhileEntry whileEntry => TreeWhile(whileEntry, detail, depth),
+        Consultologist.Web.Services.Provenance.RunTree.FlowEntry flow => TreeFlow(flow, detail, depth),
+        Consultologist.Web.Services.Provenance.RunTree.NodeEntry node => TreeNode(node, detail, depth),
+        _ => _ => { },
+    };
+
+    private RenderFragment TreeNode(Consultologist.Web.Services.Provenance.RunTree.NodeEntry node, ConsultGenerationJobResponse detail, int depth) =>
+        @<text>
+            <div class="node-row node-tree node-tree--depth-@depth @(node.Row?.Status == "Skipped" ? "node-row--skipped" : "")" data-node="@node.Descriptor.Id" data-path="@node.Path">
+                <span class="node-row__chevron" aria-hidden="true"></span>
+                <span class="node-row__status @StatusCss(node.Row?.Status)">@StatusGlyph(node.Row?.Status)</span>
+                <span class="node-row__label">@node.Descriptor.Label</span>
+                <span class="node-row__contract muted-text">@ContractLabel(node.Descriptor, detail)</span>
+                @if (node.Row?.Validation is { Valid: false } invalid)
+                {
+                    <span class="node-row__flag" title="@string.Join(" ", invalid.Errors)">flagged</span>
+                }
+                @if (node.Row is { Status: "Skipped", Reason: { } skippedWhy })
+                {
+                    <span class="node-row__flow muted-text">· @skippedWhy</span>
+                }
+                @PromptPathSpan(node.Descriptor)
+                @UnattestedBadge(node.Descriptor, node.Row)
+                @TokensSpan(node.Row?.Tokens, node.Descriptor.PromptId != null || node.Descriptor.Prompt != null)
+                @DurationSpan(node.Row?.DurationMs)
+                <span class="node-row__hashes hash-text">
+                    <span title="@node.Row?.InputHash">in @HashPrefix(node.Row?.InputHash)</span>
+                    <span title="@node.Row?.OutputHash">out @HashPrefix(node.Row?.OutputHash)</span>
+                    @NodeHashRef(detail, node.Row)
+                    @CompletionSpan(node.Row)
+                </span>
+            </div>
+            @if (node.Row?.ErrorStack is { } stack)
+            {
+                <details class="node-stack node-tree--depth-@depth">
+                    <summary class="muted-text">@(node.Row.ErrorType ?? "stack trace")</summary>
+                    <pre class="node-stack__frames">@stack</pre>
+                </details>
+            }
+        </text>;
+
+    private RenderFragment TreeLoop(Consultologist.Web.Services.Provenance.RunTree.LoopEntry loop, ConsultGenerationJobResponse detail, int depth) =>
+        @<details class="node-group node-tree node-tree--depth-@depth" data-loop="@loop.Descriptor.Id" data-path="@loop.Path" open="@(depth == 0)">
+            <summary class="node-row">
+                <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+                <span class="node-row__status @StatusCss(loop.Row?.Status)">@StatusGlyph(loop.Row?.Status)</span>
+                <span class="node-row__label">@loop.Descriptor.Label</span>
+                <span class="node-row__contract muted-text" data-loop-count>for item in @loop.Descriptor.Collection (@loop.CountText)</span>
+                @if (loop.StopText is { } stopped)
+                {
+                    <span class="node-row__flow muted-text" data-loop-stop>· @stopped</span>
+                }
+            </summary>
+            @foreach (var item in loop.Items)
+            {
+                @TreeItem(item, detail, depth + 1)
+            }
+        </details>;
+
+    private RenderFragment TreeItem(Consultologist.Web.Services.Provenance.RunTree.ItemEntry item, ConsultGenerationJobResponse detail, int depth) =>
+        @<text>
+            @if (item.Children.Count == 0)
+            {
+                <div class="node-row node-tree node-tree--depth-@depth @(item.Status == "Skipped" ? "node-row--skipped" : "")" data-path="@item.Path" data-item>
+                    <span class="node-row__chevron" aria-hidden="true"></span>
+                    <span class="node-row__status @StatusCss(item.Status)">@StatusGlyph(item.Status)</span>
+                    <span class="node-row__label">@item.Name</span>
+                    <span class="node-row__contract muted-text" data-item-summary>@(item.Reason ?? $"{item.Done}/{item.Steps} steps")</span>
+                </div>
+            }
+            else
+            {
+                <details class="node-group node-group--item node-tree node-tree--depth-@depth" data-path="@item.Path" data-item>
+                    <summary class="node-row">
+                        <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+                        <span class="node-row__status @StatusCss(item.Status)">@StatusGlyph(item.Status)</span>
+                        <span class="node-row__label">@item.Name</span>
+                        <span class="node-row__contract muted-text" data-item-summary>@(item.Reason ?? $"{item.Done}/{item.Steps} steps")</span>
+                    </summary>
+                    @foreach (var child in item.Children)
+                    {
+                        @TreeEntry(child, detail, depth + 1)
+                    }
+                </details>
+            }
+        </text>;
+
+    private RenderFragment TreeWhile(Consultologist.Web.Services.Provenance.RunTree.WhileEntry whileEntry, ConsultGenerationJobResponse detail, int depth) =>
+        @<details class="node-group node-tree node-tree--depth-@depth" data-while="@whileEntry.Descriptor.Id" data-path="@whileEntry.Path" open="@(depth == 0)">
+            <summary class="node-row">
+                <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+                <span class="node-row__status @StatusCss(whileEntry.Row?.Status)">@StatusGlyph(whileEntry.Row?.Status)</span>
+                <span class="node-row__label">@whileEntry.Descriptor.Label</span>
+                <span class="node-row__contract muted-text" data-while-words>while @whileEntry.Descriptor.Expression · @whileEntry.Words</span>
+            </summary>
+            @foreach (var pass in whileEntry.Passes)
+            {
+                <details class="node-group node-group--item node-tree node-tree--depth-@(depth + 1)" data-pass="@pass.Number" data-path="@pass.Path">
+                    <summary class="node-row">
+                        <span class="node-row__chevron" aria-hidden="true">&#x203A;</span>
+                        <span class="node-row__status @StatusCss(pass.Status)">@StatusGlyph(pass.Status)</span>
+                        <span class="node-row__label">Pass @pass.Number</span>
+                        <span class="node-row__contract muted-text">@pass.Done/@pass.Steps steps</span>
+                    </summary>
+                    @foreach (var child in pass.Children)
+                    {
+                        @TreeEntry(child, detail, depth + 2)
+                    }
+                </details>
+            }
+        </details>;
+
+    private RenderFragment TreeFlow(Consultologist.Web.Services.Provenance.RunTree.FlowEntry flow, ConsultGenerationJobResponse detail, int depth) =>
+        @<text>
+            <div class="node-row node-tree node-tree--depth-@depth" data-flow="@flow.Descriptor.Id" data-path="@flow.Path">
+                <span class="node-row__chevron" aria-hidden="true"></span>
+                <span class="node-row__status @StatusCss(flow.Row?.Status)">@StatusGlyph(flow.Row?.Status)</span>
+                <span class="node-row__label">@flow.Descriptor.Label</span>
+                <span class="node-row__contract muted-text" data-item-branch="@flow.BranchText">@flow.Descriptor.Kind @flow.Descriptor.Expression · @flow.BranchText</span>
+            </div>
+            @if (flow.Path is null)
+            {
+                @foreach (var prunedId in PrunedUnder(flow.Descriptor, detail))
+                {
+                    <div class="node-row node-row--pruned node-tree node-tree--depth-@(depth + 1)" data-pruned-by="@flow.Descriptor.Id">
+                        <span class="node-row__chevron" aria-hidden="true"></span>
+                        <span class="node-row__status node-status--muted">○</span>
+                        <span class="node-row__label">@prunedId</span>
+                        <span class="node-row__contract muted-text">pruned by @flow.Descriptor.Id</span>
+                    </div>
+                }
+            }
+            @foreach (var child in flow.Children)
+            {
+                @TreeEntry(child, detail, depth + 1)
+            }
+        </text>;
 
     // ----- v26 (#1208, record storage 8): the flow rows on History's rows -----
 
