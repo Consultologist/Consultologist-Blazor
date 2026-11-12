@@ -605,3 +605,19 @@ fluent-select.node-field__input {
 .deciding-caption {
     padding-left: 2.25rem;
 }
+
+/* v30 (#1345 C1c): the run's tree on the rail — each level a step in. A group's own box takes
+   no step: its summary row does, so its children step from the rail's edge. */
+.node-tree--depth-1 { padding-left: 1.25rem; }
+.node-tree--depth-2 { padding-left: 2.5rem; }
+.node-tree--depth-3 { padding-left: 3.75rem; }
+.node-tree--depth-4 { padding-left: 5rem; }
+.node-tree--depth-5 { padding-left: 6.25rem; }
+.node-tree--depth-6 { padding-left: 7.5rem; }
+details.node-tree { padding-left: 0; }
+details.node-tree--depth-1 > summary.node-row { padding-left: 1.25rem; }
+details.node-tree--depth-2 > summary.node-row { padding-left: 2.5rem; }
+details.node-tree--depth-3 > summary.node-row { padding-left: 3.75rem; }
+details.node-tree--depth-4 > summary.node-row { padding-left: 5rem; }
+details.node-tree--depth-5 > summary.node-row { padding-left: 6.25rem; }
+details.node-tree--depth-6 > summary.node-row { padding-left: 7.5rem; }

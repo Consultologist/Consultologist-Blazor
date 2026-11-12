@@ -16,13 +16,19 @@ public static class RunTree
     public const string Running = "Running";
     public const string Skipped = "Skipped";
 
+    /// <summary>#1345 C1c: nothing of it has run yet — never "skipped" (it may still run).</summary>
+    public const string Pending = "Pending";
+
     /// <summary>A node of the tree.</summary>
     public abstract record Entry(ConsultGenerationNodeDescriptor Descriptor);
 
     /// <summary>A plain node (or a let), at a path when it runs in a body; its row when it has one.</summary>
-    public sealed record NodeEntry(ConsultGenerationNodeDescriptor Descriptor, string? Path, ConsultGenerationNodeStatus? Row) : Entry(Descriptor)
+    public sealed record NodeEntry(ConsultGenerationNodeDescriptor Descriptor, string? Path, ConsultGenerationNodeStatus? Row, bool InFlight = false) : Entry(Descriptor)
     {
         public bool IsLet => RecordFlow.IsLet(Descriptor);
+
+        /// <summary>Its row's status; Running when it is the step in flight; Pending when it has no row yet.</summary>
+        public string Status => Row?.Status ?? (InFlight ? Running : Pending);
     }
 
     /// <summary>A for — at the top (Path null) or one instance at its outer item's path — with its count's words and its items.</summary>
@@ -153,8 +159,20 @@ public static class RunTree
                 }
             }
 
-            var items = paths.OrderBy(p => p, PathOrder.Instance).Select(path => Item(loop, path, names.GetValueOrDefault(path))).ToList();
             var count = outer is null ? loop.Count : instance?.Count;
+
+            // #1345 C1c: a list read off a node's value or an outer item's field numbers its items
+            // 1..n — a settled count names every item, the ones nothing has run for yet included.
+            if (count is > 0 and var settledCount && Positional(loop.Collection))
+            {
+                for (var position = 1; position <= settledCount; position++)
+                {
+                    var id = position.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                    paths.Add(outer is null ? id : WorkflowItemPath.Of(new[] { outer, id }));
+                }
+            }
+
+            var items = paths.OrderBy(p => p, PathOrder.Instance).Select(path => Item(loop, path, names.GetValueOrDefault(path))).ToList();
             var reason = outer is null ? loop.Reason : instance?.Reason ?? instance?.Failure;
             var countText = count is { } known
                 ? reason is { } why ? $"{known} — {why}" : known.ToString(System.Globalization.CultureInfo.InvariantCulture)
@@ -176,7 +194,7 @@ public static class RunTree
 
             var children = BodyOf(loop).Select(body => EntryOf(body, path)).ToList();
             var (status, done, steps) = RollUp(children);
-            return new ItemEntry(path, label, status, null, children, done, steps);
+            return new ItemEntry(path, label, status, null, MarkInFlight(children, status), done, steps);
         }
 
         // ---- a while -----------------------------------------------------------------------
@@ -200,7 +218,7 @@ public static class RunTree
                 var children = BodyOf(whileNode).Select(body => EntryOf(body, passPath)).ToList();
                 var (status, done, steps) = RollUp(children);
                 var number = int.TryParse(WorkflowItemPath.Last(passPath), out var n) ? n : 0;
-                return new PassEntry(number, passPath, status, children, done, steps);
+                return new PassEntry(number, passPath, status, MarkInFlight(children, status), done, steps);
             }).ToList();
 
             var row = outer is null ? RowAt(whileNode.Id, null) : null;
@@ -264,6 +282,26 @@ public static class RunTree
 
         // ---- shared ------------------------------------------------------------------------
 
+        /// <summary>
+        /// #1345 C1c: on a run still going, the first step of a running item or pass that has no
+        /// row yet is the one in flight — drawn running, as the rail's earliest unsettled node is.
+        /// </summary>
+        private IReadOnlyList<Entry> MarkInFlight(List<Entry> children, string status)
+        {
+            if (_finished || status != Running || children.Any(child => child is NodeEntry { Row.Status: Running }))
+            {
+                return children;
+            }
+
+            var index = children.FindIndex(child => child is NodeEntry { Row: null });
+            if (index >= 0)
+            {
+                children[index] = ((NodeEntry)children[index]) with { InFlight = true };
+            }
+
+            return children;
+        }
+
         /// <summary>Every non-flow id under a flow, to any depth — the ids whose rows carry its items' paths.</summary>
         private IEnumerable<string> Leaves(ConsultGenerationNodeDescriptor flow)
         {
@@ -292,6 +330,10 @@ public static class RunTree
             }
         }
 
+        /// <summary>A loop whose items are numbered by position: over a node's value, or an outer item's field.</summary>
+        private static bool Positional(string? collection) =>
+            LoopCount.IsNodeValue(collection) || collection?.StartsWith("item.value.", StringComparison.Ordinal) == true;
+
         /// <summary>A path's first <paramref name="depth"/> segments, or null when it is shorter.</summary>
         private static string? Prefix(string path, int depth)
         {
@@ -305,18 +347,19 @@ public static class RunTree
 
         /// <summary>
         /// An item's or a pass's status from its body: any failed → failed; any running → running;
-        /// every step done → done; something done → running; nothing → not run (skipped). Steps
-        /// count leaf rows, nested instances included.
+        /// every step done or skipped → done (skipped when all were); something settled → running;
+        /// nothing → pending. Steps count leaf rows, nested instances included.
         /// </summary>
         private static (string Status, int Done, int Steps) RollUp(IReadOnlyList<Entry> children)
         {
             var leaves = LeafStatuses(children).ToList();
             var done = leaves.Count(s => s == Completed);
+            // #1345 C1c: nothing started is pending (it may yet run), never skipped.
             var status = leaves.Any(s => s == Failed) ? Failed
                 : leaves.Any(s => s == Running) ? Running
                 : leaves.Count > 0 && leaves.All(s => s is Completed or Skipped) ? (done > 0 ? Completed : Skipped)
-                : done > 0 ? Running
-                : Skipped;
+                : done > 0 || leaves.Any(s => s == Skipped) ? Running
+                : Pending;
             return (status, done, leaves.Count);
         }
 
@@ -327,9 +370,15 @@ public static class RunTree
                 switch (entry)
                 {
                     case NodeEntry node:
-                        yield return node.Row?.Status ?? "Pending";
+                        yield return node.Row?.Status ?? Pending;
                         break;
                     case LoopEntry loop:
+                        // #1345 C1c: an instance still counting is a step not yet taken — its item is not done.
+                        if (loop.Items.Count == 0 && !char.IsDigit(loop.CountText.FirstOrDefault()))
+                        {
+                            yield return Pending;
+                        }
+
                         foreach (var item in loop.Items)
                         {
                             foreach (var s in item.Children.Count == 0 ? new[] { item.Status } : LeafStatuses(item.Children))
