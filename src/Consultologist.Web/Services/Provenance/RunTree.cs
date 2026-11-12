@@ -373,6 +373,12 @@ public static class RunTree
                         yield return node.Row?.Status ?? Pending;
                         break;
                     case LoopEntry loop:
+                        // #1345 C1c: an instance still counting is a step not yet taken — its item is not done.
+                        if (loop.Items.Count == 0 && !char.IsDigit(loop.CountText.FirstOrDefault()))
+                        {
+                            yield return Pending;
+                        }
+
                         foreach (var item in loop.Items)
                         {
                             foreach (var s in item.Children.Count == 0 ? new[] { item.Status } : LeafStatuses(item.Children))
