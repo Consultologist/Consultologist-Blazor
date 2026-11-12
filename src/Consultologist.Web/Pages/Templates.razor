@@ -2477,6 +2477,12 @@
                                             @* v26 (#1159): the other two flow nodes. *@
                                             <FluentOption TOption="string" Value="@IfChoice">if — a condition: its then body runs when it holds, else its else body</FluentOption>
                                             <FluentOption TOption="string" Value="@CaseChoice">case — a switch over an enum: one branch per set of values</FluentOption>
+                                            @if (At30)
+                                            {
+                                                @* v30 (#1346): a while and a let. *@
+                                                <FluentOption TOption="string" Value="@WhileChoice">while — repeats its body by passes while its check holds, at most its bound</FluentOption>
+                                                <FluentOption TOption="string" Value="@LetChoice">let — computes one typed value from an expression, no model</FluentOption>
+                                            }
                                         }
                                         else
                                         {
@@ -2668,6 +2674,151 @@
                             <FluentButton Appearance="Appearance.Accent" @onclick="AddNodeAsync">
                                 Create node
                             </FluentButton>
+                        </div>
+                    }
+                    else if (At30 && SelectedNode() is { IsWhile: true } selectedWhile)
+                    {
+                        @* v30 (#1346, design § 3, § 11): a while's pane — its check (the condition
+                           builder; a check the tree cannot hold, such as one on pass.number, as text),
+                           its bound (choose… until chosen — explicit init: the desk refuses publish with
+                           the validator's sentence), its until and checkFirst, its body and its ret. *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@selectedWhile.Label</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedWhile.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedWhile)</span>
+                                </p>
+                                @NodeRenameRow(selectedWhile)
+                            </div>
+                            <div class="pane-header__actions">
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveNodeAsync(selectedWhile.Id)">Remove while</FluentButton>
+                                @PaneDiscardButton(NodeKeyFor(selectedWhile.Id), NodeCanDiscard(selectedWhile), () => RevertNodeEdits(selectedWhile.Id, null))
+                            </div>
+                        </div>
+                        @SourcedByRows(selectedWhile.Id)
+                        <div class="node-section">
+                            <span class="node-section__head">Identity</span>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>label</span>
+                                    <FluentTextField Value="@selectedWhile.Label" ValueChanged="@(v => OnV30LabelChangedAsync(selectedWhile, v))" aria-label="While label" />
+                                </label>
+                                @FlowDescriptionField(selectedWhile)
+                            </div>
+                        </div>
+                        <div class="node-section while-section">
+                            <span class="node-section__head">Check and bound</span>
+                            <p class="muted-text">Runs its body once, then again while the check holds — at most its bound. A pass reads itself as <code>pass</code> (<code>pass.number</code>, <code>pass.previous</code>).</p>
+                            <div class="node-fields">
+                                <div class="node-field while-check">
+                                    <span>while</span>
+                                    @ConditionField(("", WhileCheckTarget(selectedWhile), "choose…"))
+                                </div>
+                                <label class="node-field">
+                                    <span>max</span>
+                                    <FluentSelect TOption="string" class="binding-row__select while-max"
+                                                  Value="@(selectedWhile.Max?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)"
+                                                  ValueChanged="@(v => OnWhileMaxChangedAsync(selectedWhile, v))"
+                                                  aria-label="While max">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        @for (var bound = 1; bound <= 10; bound++)
+                                        {
+                                            var text = bound.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                            <FluentOption TOption="string" Value="@text">@text</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                                <div class="node-field while-until">
+                                    <span>until</span>
+                                    @ConditionField(("", WhileUntilTarget(selectedWhile), "no until"))
+                                    @if (!string.IsNullOrWhiteSpace(selectedWhile.Until))
+                                    {
+                                        <FluentButton Appearance="Appearance.Stealth" Class="while-until-clear" @onclick="() => OnWhileUntilClearedAsync(selectedWhile)">Clear until</FluentButton>
+                                    }
+                                </div>
+                                <label class="node-field while-check-first">
+                                    <input type="checkbox" checked="@(selectedWhile.CheckFirst == true)" aria-label="Check before each pass"
+                                           @onchange="@(e => OnWhileCheckFirstChangedAsync(selectedWhile, e.Value is true))" />
+                                    <span>Check before each pass — it may run none</span>
+                                </label>
+                            </div>
+                        </div>
+                        @BodySection(selectedWhile.Bodies()[0], "Body", "Each pass runs these, in order.")
+                    }
+                    else if (At30 && SelectedNode() is { IsLet: true } selectedLet)
+                    {
+                        @* v30 (#1346, design § 4, § 11): a let's pane — its expression, with the
+                           validator's own sentences for it shown as they stand; its type and its
+                           onInvalid, each choose… until chosen (no default; retry is never offered —
+                           there is no model to repair). *@
+                        <div class="pane-header">
+                            <div>
+                                <h3 class="panel-title">@selectedLet.Label</h3>
+                                <p class="pane-identity muted-text">
+                                    <span class="pane-identity__item">id <code>@selectedLet.Id</code></span>
+                                    <span class="pane-identity__sep"> · </span>
+                                    <span class="pane-identity__item">@NodeKindLabel(selectedLet)</span>
+                                </p>
+                                @NodeRenameRow(selectedLet)
+                            </div>
+                            <div class="pane-header__actions">
+                                <FluentButton Appearance="Appearance.Stealth" Class="add-variable__submit"
+                                              IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                                              @onclick="() => RemoveNodeAsync(selectedLet.Id)">Remove let</FluentButton>
+                                @PaneDiscardButton(NodeKeyFor(selectedLet.Id), NodeCanDiscard(selectedLet), () => RevertNodeEdits(selectedLet.Id, null))
+                            </div>
+                        </div>
+                        @SourcedByRows(selectedLet.Id)
+                        <div class="node-section">
+                            <span class="node-section__head">Identity</span>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>label</span>
+                                    <FluentTextField Value="@selectedLet.Label" ValueChanged="@(v => OnV30LabelChangedAsync(selectedLet, v))" aria-label="Let label" />
+                                </label>
+                            </div>
+                        </div>
+                        <div class="node-section let-section">
+                            <span class="node-section__head">Value</span>
+                            <p class="muted-text">One expression over what a template here reads — no model call. Pure functions only, so a run gives the same value again.</p>
+                            <div class="node-fields">
+                                <label class="node-field">
+                                    <span>let</span>
+                                    <FluentTextField class="let-expression" Value="@selectedLet.Let" ValueChanged="@(v => OnLetExpressionChangedAsync(selectedLet, v))" aria-label="Let expression" />
+                                </label>
+                                <label class="node-field">
+                                    <span>type</span>
+                                    <FluentSelect TOption="string" class="binding-row__select let-type"
+                                                  Value="@(selectedLet.LetType ?? string.Empty)"
+                                                  ValueChanged="@(v => OnLetTypeChangedAsync(selectedLet, v))"
+                                                  aria-label="Let type">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        @foreach (var letType in LetTypeOptions)
+                                        {
+                                            <FluentOption TOption="string" Value="@letType">@letType</FluentOption>
+                                        }
+                                    </FluentSelect>
+                                </label>
+                                <label class="node-field">
+                                    <span>onInvalid</span>
+                                    <FluentSelect TOption="string" class="binding-row__select let-on-invalid"
+                                                  Value="@(selectedLet.OnInvalid ?? string.Empty)"
+                                                  ValueChanged="@(v => OnLetOnInvalidChangedAsync(selectedLet, v))"
+                                                  aria-label="Let onInvalid">
+                                        <FluentOption TOption="string" Value="">choose…</FluentOption>
+                                        <FluentOption TOption="string" Value="fail">fail — the node fails, naming the mismatch</FluentOption>
+                                        <FluentOption TOption="string" Value="flag">flag — the value is kept, marked invalid</FluentOption>
+                                    </FluentSelect>
+                                </label>
+                            </div>
+                            @foreach (var problem in LetProblems(selectedLet))
+                            {
+                                <p class="field-error let-problem">@problem</p>
+                            }
                         </div>
                     }
                     else if (At26 && SelectedNode() is { IsLoop: true } selectedLoop)
@@ -9397,6 +9548,7 @@
 
     private bool NewNodeTakesPrompt =>
         newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice && newNodeFormat != LoopChoice && newNodeFormat != IfChoice && newNodeFormat != CaseChoice
+        && newNodeFormat != WhileChoice && newNodeFormat != LetChoice
         && FormatOptions.FirstOrDefault(f => f.Id == newNodeFormat)?.Computed != true;
 
     /// <summary>The one node kind a manifest spells (v10): prompt is the default and aggregator a property.</summary>
@@ -13855,6 +14007,10 @@
     private const string IfChoice = "if";
     private const string CaseChoice = "case";
 
+    // v30 (#1346, design § 3, § 4): a while (a loop whose body repeats by passes) and a let.
+    private const string WhileChoice = "while";
+    private const string LetChoice = "let";
+
     /// <summary>v26 (#1159): the "+ Node" form's case subject (input.&lt;id&gt; or node.&lt;id&gt;.value; "" = unchosen).</summary>
     private string newNodeCase = string.Empty;
 
@@ -14125,6 +14281,97 @@
     }
 
     /// <summary>v26 (#1159): the if node's condition — the 25 node-when builder, writing the node's if.</summary>
+    // ----- v30 (#1346): the while pane and the let pane -----
+
+    private async Task OnV30LabelChangedAsync(WorkflowManifestReader.NodeView node, string? label)
+    {
+        if (string.IsNullOrWhiteSpace(label)) { return; }
+        SetV30(node.Id, V30ChangeOf(node) with { Label = label.Trim() });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v30 (#1346, design § 3.1): a while's check — the if's builder; a pass's reads beyond it are written as text.</summary>
+    private ConditionTarget WhileCheckTarget(WorkflowManifestReader.NodeView node) =>
+        new($"while-check:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.While) ? null : node.While,
+            text => SetV30(node.Id, V30ChangeOf(EffectiveNodes.First(n => n.Id == node.Id)) with { While = text ?? string.Empty }),
+            NodeFilter: id => id != node.Id);
+
+    private ConditionTarget WhileUntilTarget(WorkflowManifestReader.NodeView node) =>
+        new($"while-until:{node.Id}", node.Id, string.IsNullOrWhiteSpace(node.Until) ? null : node.Until,
+            text => SetV30(node.Id, V30ChangeOf(EffectiveNodes.First(n => n.Id == node.Id)) with { Until = string.IsNullOrWhiteSpace(text) ? null : text }),
+            NodeFilter: id => id != node.Id);
+
+    private async Task OnWhileUntilClearedAsync(WorkflowManifestReader.NodeView node)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { Until = null });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnWhileMaxChangedAsync(WorkflowManifestReader.NodeView node, string? value)
+    {
+        int? max = int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var bound) && bound is >= 1 and <= 10 ? bound : null;
+        SetV30(node.Id, V30ChangeOf(node) with { Max = max });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnWhileCheckFirstChangedAsync(WorkflowManifestReader.NodeView node, bool checkFirst)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { CheckFirst = checkFirst ? true : null });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLetExpressionChangedAsync(WorkflowManifestReader.NodeView node, string? expression)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { Let = expression?.Trim() ?? string.Empty });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLetTypeChangedAsync(WorkflowManifestReader.NodeView node, string? type)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { LetType = string.IsNullOrWhiteSpace(type) ? null : type });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLetOnInvalidChangedAsync(WorkflowManifestReader.NodeView node, string? policy)
+    {
+        SetV30(node.Id, V30ChangeOf(node) with { OnInvalid = policy is "fail" or "flag" ? policy : null });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v30 (#1346, design § 4.1): what a let may be typed by — text, number, boolean, or a declared object format (no bare list).</summary>
+    private IReadOnlyList<string> LetTypeOptions =>
+        new[] { "text", "number", "boolean" }
+            .Concat(FormatOptions.Where(format => format.Type == WorkflowInputTypes.Object).Select(format => format.Id).OrderBy(id => id, StringComparer.Ordinal))
+            .ToList();
+
+    private (string Key, IReadOnlyList<string> Errors)? letDesk;
+
+    /// <summary>
+    /// v30 (#1346): the validator's own sentences for this let, as the package now stands —
+    /// the desk's run, kept while the composed manifest is unchanged (so the pane does not
+    /// validate on every render).
+    /// </summary>
+    private IReadOnlyList<string> LetProblems(WorkflowManifestReader.NodeView node)
+    {
+        var key = ComposeManifest().GetRawText();
+        if (letDesk is not { } cached || cached.Key != key)
+        {
+            List<string> errors;
+            try
+            {
+                errors = RegistryDesk25().Errors;
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                errors = new List<string>();
+            }
+
+            letDesk = cached = (key, errors);
+        }
+
+        return cached.Errors.Where(error => error.StartsWith($"Let '{node.Id}'", StringComparison.Ordinal)).ToList();
+    }
+
     /// <summary>v30 (#1346, design § 5, revision 3): said beside every labelField picker.</summary>
     private const string LabelFieldNote = "The item's name is kept in the job's record after its text is deleted — pick a field that names the item without patient detail.";
 
@@ -14437,6 +14684,9 @@
         At26 && node.IsLoop ? $"loop over {node.Collection ?? node.For}"
         : At26 && node.IsIf ? $"if · {(string.IsNullOrWhiteSpace(node.If) ? "no condition yet" : node.If)}"
         : At26 && node.IsCase ? $"case · over {(string.IsNullOrWhiteSpace(node.Case) ? "nothing yet" : node.Case)}"
+        // v30 (#1346): a while by its check and bound, a let by its type.
+        : node.IsWhile ? $"while · {(string.IsNullOrWhiteSpace(node.While) ? "no check yet" : node.While)} · {(node.Max is { } bound ? $"at most {bound}" : "no bound yet")}"
+        : node.IsLet ? $"let → {node.LetType ?? "no type yet"} · computed"
         : EffectiveSpecVersion >= 25 && node.Aggregate == null
             ? node.Format == null ? "no format yet"
                 : FormatOptions.FirstOrDefault(f => f.Id == node.Format) is { } format ? $"{format.Id} · {format.Producer}" : node.Format
@@ -15800,7 +16050,10 @@
         var loop = At26 && newNodeFormat == LoopChoice;
         var ifNode = At26 && newNodeFormat == IfChoice;
         var caseNode = At26 && newNodeFormat == CaseChoice;
-        var flow = loop || ifNode || caseNode;
+        // v30 (#1346): a while is a flow; a let is computed — neither takes a prompt or a format.
+        var whileNode = At30 && newNodeFormat == WhileChoice;
+        var letNode = At30 && newNodeFormat == LetChoice;
+        var flow = loop || ifNode || caseNode || whileNode || letNode;
         var aggregator = at25 ? !At26 && newNodeFormat == AggregatorChoice : newNodeKind == "aggregator";
         var classifier = !at25 && newNodeKind == ClassifierKind;
         var check = !at25 && newNodeKind == CheckKind;
@@ -15898,8 +16151,16 @@
             If = ifNode ? string.Empty : null,
             Then = ifNode ? new FlowBody(new List<string>(), null) : null,
             Case = caseNode ? newNodeCase : null,
-            Branches = caseNode ? new List<FlowBranch>() : null
+            Branches = caseNode ? new List<FlowBranch>() : null,
+            // v30 (#1346): a while's empty check, no bound and an empty body; a let's empty
+            // expression with its type and policy unchosen (explicit init — the desk names each).
+            While = whileNode ? string.Empty : null,
+            Let = letNode ? string.Empty : null,
         });
+        if (whileNode)
+        {
+            addedNodes[^1].Nodes = new List<string>();
+        }
         // v26: a plain node born "in" a body joins it (#1159: any body); v27 (#1236): an if/case born in a loop too.
         // v30 (#1346): a loop born in a body too.
         if (At26 && (!loop || At30) && newNodeLoop.Length > 0)
