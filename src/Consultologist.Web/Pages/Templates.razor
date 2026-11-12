@@ -1699,6 +1699,26 @@
                                             }
                                         </FluentSelect>
                                     }
+                                    @* v30 (#1346, design § 5, revision 3): an array of objects may name its items by a required text field. *@
+                                    @if (At30 && WorkflowInputTypes.Of(declared) == WorkflowInputTypes.Array && WorkflowInputTypes.DeclaresObject(declared))
+                                    {
+                                        var nameFields = InputLabelFieldChoices(declared);
+                                        <FluentSelect TOption="string" class="node-field__input input-label-field"
+                                                Value="@(declared.LabelField ?? string.Empty)"
+                                                ValueChanged="@(v => SetInputLabelFieldAsync(declared, v))"
+                                                aria-label="@($"Item name field for input {declared.Id}")">
+                                            <FluentOption TOption="string" Value="">not named (label + position)</FluentOption>
+                                            @if (!string.IsNullOrEmpty(declared.LabelField) && !nameFields.Contains(declared.LabelField))
+                                            {
+                                                <FluentOption TOption="string" Value="@declared.LabelField">@declared.LabelField</FluentOption>
+                                            }
+                                            @foreach (var field in nameFields)
+                                            {
+                                                <FluentOption TOption="string" Value="@field">named by @field</FluentOption>
+                                            }
+                                        </FluentSelect>
+                                        <p class="muted-text label-field-note">@LabelFieldNote</p>
+                                    }
                                     @* #1103: the input's place among the inputs — inputs[] order, the Create page's form order. *@
                                     <FluentButton Appearance="Appearance.Stealth" Class="aggregate-row__button declared-row__up" Title="Move up"
                                                   aria-label="@($"Move input {declared.Id} up")"
@@ -2522,18 +2542,19 @@
                                     <span>over — what the case switches on</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-case-subject" @bind-Value="newNodeCase" aria-label="New case subject">
                                         <FluentOption TOption="string" Value="">choose…</FluentOption>
-                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptionsFor(newNodeLoop.Length > 0 ? newNodeLoop : null))
+                                        @foreach (var (subject, subjectLabel) in CaseSubjectOptionsFor(NewNodeLoopId))
                                         {
                                             <FluentOption TOption="string" Value="@subject">@subjectLabel</FluentOption>
                                         }
                                     </FluentSelect>
                                 </label>
                             }
-                            @if (At26 && newNodeFormat != LoopChoice && (At27 || (newNodeFormat != IfChoice && newNodeFormat != CaseChoice)))
+                            @if (At26 && (newNodeFormat != LoopChoice || At30) && (At27 || (newNodeFormat != IfChoice && newNodeFormat != CaseChoice)))
                             {
                                 @* v26: a plain node is placed in a body, not given a fan key (#1159: any body).
                                    v27 (#1236, design § 1.1): an if/case may be born in a loop's body — loops only. *@
-                                var flowBorn = newNodeFormat == IfChoice || newNodeFormat == CaseChoice;
+                                // v30 (#1346): at 30 a flow is born in any body, as a plain node is.
+                                var flowBorn = !At30 && (newNodeFormat == IfChoice || newNodeFormat == CaseChoice);
                                 <label class="input-field">
                                     <span>in</span>
                                     <FluentSelect TOption="string" class="binding-row__select new-node-loop" @bind-Value="newNodeLoop" aria-label="New node loop">
@@ -2689,11 +2710,11 @@
                                                   Value="@(selectedLoop.Collection ?? string.Empty)"
                                                   ValueChanged="@(v => OnLoopCollectionChangedAsync(selectedLoop, v))"
                                                   aria-label="Loop collection">
-                                        @if (selectedLoop.Collection is not { } authoredCollection || !LoopCollectionOptions.Contains(authoredCollection))
+                                        @if (selectedLoop.Collection is not { } authoredCollection || !LoopCollectionOptionsFor(selectedLoop).Contains(authoredCollection))
                                         {
                                             <FluentOption TOption="string" Value="@(selectedLoop.Collection ?? string.Empty)">@(selectedLoop.Collection ?? selectedLoop.For)</FluentOption>
                                         }
-                                        @foreach (var option in LoopCollectionOptions)
+                                        @foreach (var option in LoopCollectionOptionsFor(selectedLoop))
                                         {
                                             <FluentOption TOption="string" Value="@option">@option</FluentOption>
                                         }
@@ -2701,6 +2722,63 @@
                                 </label>
                             </div>
                         </div>
+                        @if (At30)
+                        {
+                            @* v30 (#1346, design § 3.4, § 5): where the loop stops, and what names its items. *@
+                            <div class="node-section loop-stop">
+                                <span class="node-section__head">Stop and names</span>
+                                <div class="node-fields">
+                                    <div class="node-field loop-until">
+                                        <span>until</span>
+                                        @ConditionField(("", LoopUntilTarget(selectedLoop), "no until"))
+                                        @if (!string.IsNullOrWhiteSpace(selectedLoop.Until))
+                                        {
+                                            <FluentButton Appearance="Appearance.Stealth" Class="loop-until-clear" @onclick="() => OnLoopUntilClearedAsync(selectedLoop)">Clear until</FluentButton>
+                                        }
+                                    </div>
+                                    <p class="muted-text loop-until-note">Runs the items one at a time, in order, stopping after the item where this holds.</p>
+                                    <label class="node-field">
+                                        <span>max</span>
+                                        <FluentSelect TOption="string" class="binding-row__select loop-max"
+                                                      Value="@(selectedLoop.Max?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? string.Empty)"
+                                                      ValueChanged="@(v => OnLoopMaxChangedAsync(selectedLoop, v))"
+                                                      aria-label="Loop max">
+                                            <FluentOption TOption="string" Value="">no bound</FluentOption>
+                                            @for (var bound = 1; bound <= 10; bound++)
+                                            {
+                                                var text = bound.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                                                <FluentOption TOption="string" Value="@text">@text</FluentOption>
+                                            }
+                                        </FluentSelect>
+                                    </label>
+                                    @if (LoopInputOf(selectedLoop) is { } namingInput)
+                                    {
+                                        <p class="muted-text loop-label-field-input">@(namingInput.LabelField is { } inputField ? $"Named by the input's labelField ({inputField})." : "Named by the input's labelField — the input names none.")</p>
+                                    }
+                                    else if (LoopLabelFieldChoices(selectedLoop) is { } loopNameFields)
+                                    {
+                                        <label class="node-field">
+                                            <span>names</span>
+                                            <FluentSelect TOption="string" class="binding-row__select loop-label-field"
+                                                          Value="@(selectedLoop.LabelField ?? string.Empty)"
+                                                          ValueChanged="@(v => OnLoopLabelFieldChangedAsync(selectedLoop, v))"
+                                                          aria-label="Loop item name field">
+                                                <FluentOption TOption="string" Value="">not named (label + position)</FluentOption>
+                                                @if (!string.IsNullOrEmpty(selectedLoop.LabelField) && !loopNameFields.Contains(selectedLoop.LabelField))
+                                                {
+                                                    <FluentOption TOption="string" Value="@selectedLoop.LabelField">@selectedLoop.LabelField</FluentOption>
+                                                }
+                                                @foreach (var field in loopNameFields)
+                                                {
+                                                    <FluentOption TOption="string" Value="@field">named by @field</FluentOption>
+                                                }
+                                            </FluentSelect>
+                                        </label>
+                                        <p class="muted-text label-field-note">@LabelFieldNote</p>
+                                    }
+                                </div>
+                            </div>
+                        }
                         <div class="node-section">
                             <span class="node-section__head">Body</span>
                             <p class="muted-text">Runs once per item of <code>@(selectedLoop.Collection ?? selectedLoop.For)</code>, in this order; each body node reads the item as <code>item</code>. A node joins or leaves a body from its own pane's "in" picker too.</p>
@@ -9255,6 +9333,11 @@
         public List<string>? Nodes { get; set; }
         public string? Ret { get; set; }
 
+        // v30 (#1346): a for's until, max and labelField — none until the pane sets them.
+        public string? Until { get; set; }
+        public int? Max { get; set; }
+        public string? LabelField { get; set; }
+
         // v26 (#1159): an if (born with an empty condition and an empty then) or a case
         // (born over its subject with no branches) — the pane fills them; the desk names
         // what is missing.
@@ -9290,6 +9373,12 @@
     // loop a plain node is born into (its id; "" = none).
     private const string LoopChoice = "for";
     private string newNodeLoop = string.Empty;
+
+    /// <summary>v30 (#1346): the loop the "+ Node" form's chosen body runs under — the body's own loop, or the loop above its flow; null when none.</summary>
+    private string? NewNodeLoopId =>
+        newNodeLoop.Length == 0 ? null
+        : WorkflowManifestReader.FlowBodyRef.Parse(newNodeLoop) is { IsLoop: true } loopBody ? loopBody.FlowId
+        : LoopIdOf(WorkflowManifestReader.FlowBodyRef.Parse(newNodeLoop).FlowId);
 
     private bool NewNodeTakesPrompt =>
         newNodeFormat.Length > 0 && newNodeFormat != AggregatorChoice && newNodeFormat != LoopChoice && newNodeFormat != IfChoice && newNodeFormat != CaseChoice
@@ -10612,6 +10701,9 @@
         For: added.For,
         Nodes: added.Nodes,
         Ret: added.Ret,
+        Until: added.Until,
+        Max: added.Max,
+        LabelField: added.LabelField,
         If: added.If,
         Case: added.Case,
         Then: added.Then == null ? null : new WorkflowManifestReader.BodyView(added.Then.Nodes, added.Then.Ret),
@@ -13368,7 +13460,13 @@
     // loop (AddedNode.For != null) is mutated directly instead.
     private readonly Dictionary<string, LoopChange> loopEdits = new(StringComparer.Ordinal);
 
-    private sealed record LoopChange(string Label, string For, List<string> Nodes, string? Ret);
+    private sealed record LoopChange(string Label, string For, List<string> Nodes, string? Ret,
+        // v30 (#1346): until, max and labelField as authored — null when the pane never touched
+        // them, so the writer leaves the loaded keys as they were. Trailing.
+        LoopExtras? Extras = null);
+
+    /// <summary>v30 (#1346, design § 3.4, § 5): a for's until (an optional condition), max (1–10, or none) and labelField.</summary>
+    private sealed record LoopExtras(string? Until, int? Max, string? LabelField);
 
     private bool At26 => EffectiveSpecVersion >= 26;
 
@@ -13388,6 +13486,52 @@
     /// <summary>v26: what a loop may iterate — every folder and array input in the 25 fan spelling.</summary>
     private IReadOnlyList<string> LoopCollectionOptions =>
         WorkflowNodeSummary.ForEachOptions(CollectionIds, ArrayInputIds, at25: true).Concat(NodeValueLoopSources()).ToList();
+
+    /// <summary>
+    /// v30 (#1346, design § 2.2): what a loop may iterate where it sits — at 30 a loop inside a
+    /// loop is offered its outer item's lists (item.value.&lt;field&gt;) and its earlier body
+    /// siblings' lists (node.&lt;sibling&gt;.value.&lt;field&gt;), first; then everything a top-level loop is.
+    /// </summary>
+    private IReadOnlyList<string> LoopCollectionOptionsFor(WorkflowManifestReader.NodeView loop) =>
+        InnerLoopSources(loop).Concat(LoopCollectionOptions).Distinct(StringComparer.Ordinal).ToList();
+
+    private IReadOnlyList<string> InnerLoopSources(WorkflowManifestReader.NodeView loop)
+    {
+        if (!At30)
+        {
+            return Array.Empty<string>();
+        }
+
+        var sources = new List<string>();
+        if (WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, loop.Id) is { } outer)
+        {
+            if (LoopInputOf(outer) is { } input)
+            {
+                sources.AddRange((input.Items?.Fields ?? input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+                    .Where(field => WorkflowInputTypes.Of(field) == WorkflowInputTypes.Array)
+                    .Select(field => $"item.value.{field.Id}"));
+            }
+            else if (NodeLoopElement(outer) is { Fields: { } elementFields })
+            {
+                sources.AddRange(elementFields.Where(field => field.Value.IsArray).OrderBy(field => field.Key, StringComparer.Ordinal).Select(field => $"item.value.{field.Key}"));
+            }
+        }
+
+        if (WorkflowManifestReader.NodeView.BodyOf(EffectiveNodes, loop.Id) is { } body)
+        {
+            foreach (var siblingId in body.Nodes.TakeWhile(id => id != loop.Id))
+            {
+                if (EffectiveNodes.FirstOrDefault(n => n.Id == siblingId) is { IsFlow: false, Format: { } format }
+                    && FormatSchemaOf(format) is { } schema
+                    && PF.TemplateValueShape.FromSchema(schema) is { IsObject: true, Fields: { } fields })
+                {
+                    sources.AddRange(fields.Where(field => field.Value.IsArray).OrderBy(field => field.Key, StringComparer.Ordinal).Select(field => $"node.{siblingId}.value.{field.Key}"));
+                }
+            }
+        }
+
+        return sources;
+    }
 
     private bool At29 => EffectiveSpecVersion >= 29;
 
@@ -13450,11 +13594,52 @@
     /// <summary>v26: the plain nodes a loop's body may take — the same set any body takes (#1159).</summary>
     /// <summary>v27 (#1236, design § 1.1): a loop's body takes the plain nodes any body takes, and an unplaced if/case — decided once per item (a flow holding a flow the desk refuses by sentence).</summary>
     private IReadOnlyList<OneShotChoice> LoopBodyChoices(WorkflowManifestReader.NodeView loop) =>
-        BodyChoices()
+        At30
+            ? BodyChoices().Concat(FlowChoices(loop.Id)).ToList()
+            : BodyChoices()
             .Concat(EffectiveNodes
                 .Where(n => At27 && n.IsFlow && !n.IsLoop && BodyKeyOf(n.Id) == null)
                 .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id}, {(n.IsIf ? "if" : "case")})")))
             .ToList();
+
+    /// <summary>v30 (#1346, design § 2): a flow's kind as a body row and a choice name it.</summary>
+    private static string FlowKindOf(WorkflowManifestReader.NodeView node) =>
+        node.IsLoop ? "for" : node.IsWhile ? "while" : node.IsIf ? "if" : "case";
+
+    /// <summary>
+    /// v30 (#1346, design § 2.1): the flows a body may take at 30 — every unplaced for, while,
+    /// if and case, never the body's own flow nor one that holds it (a flow cannot sit inside
+    /// itself, at any depth).
+    /// </summary>
+    private IEnumerable<OneShotChoice> FlowChoices(string ownerId) =>
+        EffectiveNodes
+            .Where(n => n.IsFlow && BodyKeyOf(n.Id) == null && n.Id != ownerId && !Holds(n, ownerId))
+            .Select(n => new OneShotChoice(n.Id, $"{n.Label} ({n.Id}, {FlowKindOf(n)})"));
+
+    /// <summary>v30 (#1346): whether a flow holds the node anywhere beneath it — its bodies, their flows' bodies, to any depth.</summary>
+    private bool Holds(WorkflowManifestReader.NodeView flow, string nodeId)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal) { flow.Id };
+        var pending = new Stack<WorkflowManifestReader.NodeView>();
+        pending.Push(flow);
+        while (pending.Count > 0)
+        {
+            foreach (var id in pending.Pop().Bodies().SelectMany(body => body.Nodes))
+            {
+                if (id == nodeId)
+                {
+                    return true;
+                }
+
+                if (seen.Add(id) && EffectiveNodes.FirstOrDefault(n => n.Id == id) is { IsFlow: true } inner)
+                {
+                    pending.Push(inner);
+                }
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// v26: the nav's Nodes rows — every flow node with its bodies nested beneath in body
@@ -13522,14 +13707,47 @@
             return;
         }
 
+        var extras = loopEdits.TryGetValue(loopId, out var prior) ? prior.Extras : null;
         if (loaded.Label == label && loaded.For == forText && loaded.Ret == ret
-            && (loaded.Nodes ?? Array.Empty<string>()).SequenceEqual(body, StringComparer.Ordinal))
+            && (loaded.Nodes ?? Array.Empty<string>()).SequenceEqual(body, StringComparer.Ordinal)
+            && (extras is null || extras == new LoopExtras(loaded.Until, loaded.Max, loaded.LabelField)))
         {
             loopEdits.Remove(loopId);
         }
         else
         {
-            loopEdits[loopId] = new LoopChange(label, forText, body, ret);
+            loopEdits[loopId] = new LoopChange(label, forText, body, ret, extras);
+        }
+    }
+
+    /// <summary>v30 (#1346): a for's until, max or labelField — an added loop's own members, a loaded one's through its loopEdits entry (gone again when it equals the manifest's).</summary>
+    private void SetLoopExtras(WorkflowManifestReader.NodeView loop, Func<LoopExtras, LoopExtras> change)
+    {
+        var current = new LoopExtras(loop.Until, loop.Max, loop.LabelField);
+        var next = change(current);
+        if (addedNodes.FirstOrDefault(a => a.Id == loop.Id) is { } added)
+        {
+            (added.Until, added.Max, added.LabelField) = (next.Until, next.Max, next.LabelField);
+            return;
+        }
+
+        if (nodes.FirstOrDefault(n => n.Id == loop.Id) is not { } loaded)
+        {
+            return;
+        }
+
+        var edit = loopEdits.TryGetValue(loop.Id, out var prior)
+            ? prior with { Extras = next }
+            : new LoopChange(loaded.Label, loaded.For!, (loaded.Nodes ?? Array.Empty<string>()).ToList(), loaded.Ret, next);
+        if (edit.Label == loaded.Label && edit.For == loaded.For && edit.Ret == loaded.Ret
+            && (loaded.Nodes ?? Array.Empty<string>()).SequenceEqual(edit.Nodes, StringComparer.Ordinal)
+            && next == new LoopExtras(loaded.Until, loaded.Max, loaded.LabelField))
+        {
+            loopEdits.Remove(loop.Id);
+        }
+        else
+        {
+            loopEdits[loop.Id] = edit;
         }
     }
 
@@ -13815,6 +14033,114 @@
     }
 
     /// <summary>v26 (#1159): the if node's condition — the 25 node-when builder, writing the node's if.</summary>
+    /// <summary>v30 (#1346, design § 5, revision 3): said beside every labelField picker.</summary>
+    private const string LabelFieldNote = "The item's name is kept in the job's record after its text is deleted — pick a field that names the item without patient detail.";
+
+    /// <summary>v30 (#1346, design § 3.4): a for's until — the if's builder over the item, the inputs and the loop's earlier body nodes.</summary>
+    private ConditionTarget LoopUntilTarget(WorkflowManifestReader.NodeView loop)
+    {
+        var own = new HashSet<string>(loop.Nodes ?? Array.Empty<string>(), StringComparer.Ordinal);
+        return new($"loop-until:{loop.Id}", loop.Id, string.IsNullOrWhiteSpace(loop.Until) ? null : loop.Until,
+            text => SetLoopExtras(loop, extras => extras with { Until = string.IsNullOrWhiteSpace(text) ? null : text }),
+            Extra: LoopItemOperands(loop),
+            NodeFilter: id => id != loop.Id && (own.Contains(id) || BodyKeyOf(id) == null));
+    }
+
+    private async Task OnLoopUntilClearedAsync(WorkflowManifestReader.NodeView loop)
+    {
+        SetLoopExtras(loop, extras => extras with { Until = null });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLoopMaxChangedAsync(WorkflowManifestReader.NodeView loop, string? value)
+    {
+        int? max = int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var bound) && bound is >= 1 and <= 10 ? bound : null;
+        SetLoopExtras(loop, extras => extras with { Max = max });
+        await PendingChangedAsync();
+    }
+
+    private async Task OnLoopLabelFieldChangedAsync(WorkflowManifestReader.NodeView loop, string? value)
+    {
+        SetLoopExtras(loop, extras => extras with { LabelField = string.IsNullOrWhiteSpace(value) ? null : value });
+        await PendingChangedAsync();
+    }
+
+    /// <summary>v30 (#1346, design § 5): an array-of-objects input's required text fields — what may name its items.</summary>
+    private static IReadOnlyList<string> InputLabelFieldChoices(WorkflowManifestReader.InputView input) =>
+        (input.Items?.Fields ?? input.Fields ?? Array.Empty<WorkflowManifestReader.FieldView>())
+            .Where(field => field.Required && WorkflowInputTypes.Of(field) == WorkflowInputTypes.Text)
+            .Select(field => field.Id)
+            .ToList();
+
+    private async Task SetInputLabelFieldAsync(WorkflowManifestReader.InputView input, string? value)
+    {
+        var field = string.IsNullOrWhiteSpace(value) ? null : value!.Trim();
+        if (field == input.LabelField)
+        {
+            return;
+        }
+
+        var inputs = MutableInputs();
+        var index = inputs.FindIndex(existing => existing.Id == input.Id);
+        if (index >= 0)
+        {
+            inputs[index] = inputs[index] with { LabelField = field };
+            declaredError = null;
+        }
+
+        await CommitDeclarationAsync();
+    }
+
+    /// <summary>
+    /// v30 (#1346, design § 5): the required text fields of the element a loop over a node's
+    /// value or an outer item's field yields — what may name its items; null for a loop whose
+    /// items are not objects of a known shape (a folder's keep their label header).
+    /// </summary>
+    private IReadOnlyList<string>? LoopLabelFieldChoices(WorkflowManifestReader.NodeView loop)
+    {
+        var element = NodeLoopElement(loop) ?? OuterItemFieldElement(loop);
+        if (element is not { IsObject: true, Fields: { } fields })
+        {
+            return null;
+        }
+
+        return fields
+            .Where(field => field.Value.Kind == WorkflowInputTypes.Text && (element.Required is null || element.Required.Contains(field.Key)))
+            .Select(field => field.Key)
+            .OrderBy(field => field, StringComparer.Ordinal)
+            .ToList();
+    }
+
+    /// <summary>v30 (#1346, design § 2.2): the element of a loop over its outer item's list field (item.value.&lt;field&gt;), typed by the outer element; null otherwise.</summary>
+    private PF.TemplateValueShape? OuterItemFieldElement(WorkflowManifestReader.NodeView loop)
+    {
+        const string prefix = "item.value.";
+        if (loop.Collection is not { } collection || !collection.StartsWith(prefix, StringComparison.Ordinal)
+            || WorkflowManifestReader.NodeView.LoopOf(EffectiveNodes, loop.Id) is not { } outer)
+        {
+            return null;
+        }
+
+        var field = collection[prefix.Length..];
+        if (NodeLoopElement(outer) is { Fields: { } outerFields } && outerFields.GetValueOrDefault(field) is { IsArray: true } list)
+        {
+            return list.Items;
+        }
+
+        if (LoopInputOf(outer) is { } input
+            && (input.Items?.Fields ?? input.Fields)?.FirstOrDefault(f => f.Id == field) is { Items: { Fields: { } elementFields } })
+        {
+            return new PF.TemplateValueShape(
+                WorkflowInputTypes.Object,
+                elementFields.ToDictionary(f => f.Id, f => new PF.TemplateValueShape(WorkflowInputTypes.Of(f), null, null, null, null), StringComparer.Ordinal),
+                null,
+                null,
+                elementFields.Where(f => f.Required).Select(f => f.Id).ToHashSet(StringComparer.Ordinal));
+        }
+
+        return null;
+    }
+
     private ConditionTarget IfConditionTarget(WorkflowManifestReader.NodeView node)
     {
         // v27 (#1236, design § 1.2): inside a loop the condition reads the item (a
@@ -13990,7 +14316,7 @@
             <OneShotSelect Class="binding-row__select loop-body-add"
                            AriaLabel="@($"Add a node to {body.Label}")"
                            Resting="add a node to the body…"
-                           Choices="@BodyChoices()"
+                           Choices="@(At30 ? BodyChoices().Concat(FlowChoices(body.Ref.FlowId)).ToList() : BodyChoices())"
                            OnPick="@(v => OnPlacementChangedAsync(new WorkflowNodeSummary.BodyPlacement(v, body.Key)))" />
             <div class="node-fields">
                 <label class="node-field">
@@ -15100,6 +15426,10 @@
                 if (loopEdits.TryGetValue(n.Id, out var loop))
                 {
                     n = n with { Label = loop.Label, For = loop.For, Nodes = loop.Nodes, Ret = loop.Ret };
+                    if (loop.Extras is { } extras)
+                    {
+                        n = n with { Until = extras.Until, Max = extras.Max, LabelField = extras.LabelField };
+                    }
                 }
 
                 // v26 (#1159): an if/case node's pending tuple rides too.
@@ -15467,7 +15797,8 @@
             Branches = caseNode ? new List<FlowBranch>() : null
         });
         // v26: a plain node born "in" a body joins it (#1159: any body); v27 (#1236): an if/case born in a loop too.
-        if (At26 && !loop && newNodeLoop.Length > 0)
+        // v30 (#1346): a loop born in a body too.
+        if (At26 && (!loop || At30) && newNodeLoop.Length > 0)
         {
             PlaceInBody(id, newNodeLoop);
         }
@@ -16651,7 +16982,9 @@
         // v26 (#1160): a pending loop's tuple. Trailing.
         string? For = null, List<string>? Nodes = null, string? Ret = null,
         // v26 (#1159): a pending if/case node's tuple. Trailing.
-        string? If = null, string? Case = null, FlowBody? Then = null, FlowBody? Else = null, List<FlowBranch>? Branches = null);
+        string? If = null, string? Case = null, FlowBody? Then = null, FlowBody? Else = null, List<FlowBranch>? Branches = null,
+        // v30 (#1346): a pending for's until, max and labelField. Trailing.
+        string? Until = null, int? Max = null, string? LabelField = null);
 
     private sealed record DraftAddedPrompt(string Id, string Text, bool Raw = false);
 
@@ -16673,7 +17006,9 @@
     private sealed record DraftNodeWhen(string NodeId, string? When);
 
     // v26 (#1160): a loop's pending tuple.
-    private sealed record DraftLoopEdit(string LoopId, string Label, string For, List<string> Nodes, string? Ret);
+    private sealed record DraftLoopEdit(string LoopId, string Label, string For, List<string> Nodes, string? Ret,
+        // v30 (#1346): until, max and labelField as authored. Trailing.
+        LoopExtras? Extras = null);
 
     // v26 (#1159): an if/case node's pending tuple.
     private sealed record DraftFlowEdit(string NodeId, string Label, string? If, string? Case, FlowBody? Then, FlowBody? Else, List<FlowBranch>? Branches);
@@ -17282,7 +17617,10 @@
                     Case = draftAddedNode.Case,
                     Then = draftAddedNode.If == null ? null : draftAddedNode.Then ?? new FlowBody(new List<string>(), null),
                     Else = draftAddedNode.Else,
-                    Branches = draftAddedNode.Case == null ? null : draftAddedNode.Branches ?? new List<FlowBranch>()
+                    Branches = draftAddedNode.Case == null ? null : draftAddedNode.Branches ?? new List<FlowBranch>(),
+                    Until = draftAddedNode.Until,
+                    Max = draftAddedNode.Max,
+                    LabelField = draftAddedNode.LabelField
                 });
             }
         }
@@ -17418,7 +17756,7 @@
         {
             if (nodes.Any(n => n.Id == draftLoop.LoopId && n.IsLoop) && !string.IsNullOrWhiteSpace(draftLoop.For))
             {
-                loopEdits[draftLoop.LoopId] = new LoopChange(draftLoop.Label, draftLoop.For, draftLoop.Nodes ?? new List<string>(), draftLoop.Ret);
+                loopEdits[draftLoop.LoopId] = new LoopChange(draftLoop.Label, draftLoop.For, draftLoop.Nodes ?? new List<string>(), draftLoop.Ret, draftLoop.Extras);
             }
         }
 
@@ -17524,7 +17862,7 @@
             nodeEdits.Values.Select(edit => new DraftNodeEdit(edit.NodeId, edit.Label, edit.ForEach, edit.OutputSchema, edit.FailIfEmpty, edit.Prompt, edit.Values?.ToList(), edit.Reproducible, edit.Of, edit.In, edit.FailWith,
                 edit.Format, edit.With == null ? null : new Dictionary<string, JsonElement>(edit.With, StringComparer.Ordinal), edit.OnInvalid)).ToList(),
             addedNodes.Select(a => new DraftAddedNode(a.Id, a.Label, a.ForEach, a.OutputSchema, a.FailIfEmpty, a.PromptText, a.Aggregate, a.PromptRef, a.Kind, a.Values, a.Reproducible, a.Op, a.Of, a.In, a.FailWith, a.Raw,
-                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret, a.If, a.Case, a.Then, a.Else, a.Branches)).ToList(),
+                a.Format, a.With, a.OnInvalid, a.Computed, a.For, a.Nodes, a.Ret, a.If, a.Case, a.Then, a.Else, a.Branches, a.Until, a.Max, a.LabelField)).ToList(),
             removedNodeIds.ToList(),
             aggregateEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList()),
             resultEdit,
@@ -17567,7 +17905,7 @@
             itemWhenEdits.Select(pair => new DraftItemWhen(pair.Key, pair.Value)).ToList(),
             macroInstructionEdits.Select(pair => new DraftMacroInstruction(pair.Key, pair.Value)).ToList(),
             itemOrderEdits.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal),
-            loopEdits.Select(pair => new DraftLoopEdit(pair.Key, pair.Value.Label, pair.Value.For, pair.Value.Nodes.ToList(), pair.Value.Ret)).ToList(),
+            loopEdits.Select(pair => new DraftLoopEdit(pair.Key, pair.Value.Label, pair.Value.For, pair.Value.Nodes.ToList(), pair.Value.Ret, pair.Value.Extras)).ToList(),
             flowEdits.Select(pair => new DraftFlowEdit(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Case, pair.Value.Then, pair.Value.Else, pair.Value.Branches)).ToList(),
             headerEdits.Select(pair => new DraftHeader(pair.Key, pair.Value.Label, pair.Value.If, pair.Value.Instruction, pair.Value.Optional, pair.Value.Default)).ToList(),
             addedMacroCollections.ToList(),
@@ -18575,7 +18913,7 @@
         PendingMaps.Rekey(descriptionEdits, from, to, text => text);
         PendingMaps.Rekey(nodeMacroEdits, from, to, list => list.Select(m => m with { If = Gate(m.If), When = Gate(m.When) }).ToList());
         PendingMaps.Rekey(aggregateEdits, from, to, list => Ids(list));
-        PendingMaps.Rekey(loopEdits, from, to, loop => loop with { Nodes = Ids(loop.Nodes), Ret = Bare(loop.Ret) });
+        PendingMaps.Rekey(loopEdits, from, to, loop => loop with { Nodes = Ids(loop.Nodes), Ret = Bare(loop.Ret), Extras = loop.Extras is { } e ? e with { Until = Gate(e.Until) } : null });
         PendingMaps.Rekey(flowEdits, from, to, flow => flow with
         {
             If = Gate(flow.If),
@@ -20011,6 +20349,10 @@
                     ["nodes"] = new System.Text.Json.Nodes.JsonArray((addedNode.Nodes ?? new List<string>()).Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray())
                 };
                 if (addedNode.Ret != null) { loop26["ret"] = addedNode.Ret; }
+                // v30 (#1346): until, max and labelField once set.
+                if (!string.IsNullOrWhiteSpace(addedNode.Until)) { loop26["until"] = addedNode.Until; }
+                if (addedNode.Max is { } max) { loop26["max"] = max; }
+                if (!string.IsNullOrWhiteSpace(addedNode.LabelField)) { loop26["labelField"] = addedNode.LabelField; }
                 nodesArray.Add(loop26);
                 continue;
             }
@@ -20704,6 +21046,15 @@
             loopObject["for"] = pair.Value.For;
             loopObject["nodes"] = new System.Text.Json.Nodes.JsonArray(pair.Value.Nodes.Select(id => (System.Text.Json.Nodes.JsonNode?)System.Text.Json.Nodes.JsonValue.Create(id)).ToArray());
             if (pair.Value.Ret != null) { loopObject["ret"] = pair.Value.Ret; }
+
+            // v30 (#1346): until, max and labelField, written only once the pane set them.
+            if (pair.Value.Extras is { } extras)
+            {
+                foreach (var key in new[] { "until", "Until", "max", "Max", "labelField", "LabelField" }) { loopObject.Remove(key); }
+                if (!string.IsNullOrWhiteSpace(extras.Until)) { loopObject["until"] = extras.Until; }
+                if (extras.Max is { } max) { loopObject["max"] = max; }
+                if (!string.IsNullOrWhiteSpace(extras.LabelField)) { loopObject["labelField"] = extras.LabelField; }
+            }
         }
 
         // v26 (#1159): an if/case node's tuple — label, if/case, then/else/branches written
