@@ -9,7 +9,7 @@ using NSubstitute;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// v30 (#1346 C2b, design § 2, § 3.4, § 5, § 11): the loop pane at 30, under the pre-bump seam —
+/// v30 (#1346 C2b, design § 2, § 3.4, § 5, § 11): the loop pane at 30, now public since the bump (#1347) —
 /// a body takes a for, while, if or case (never one that holds it), an inner loop is offered its
 /// outer item's lists, a for's until and max, and labelField pickers on an input and on a loop,
 /// each beside revision 3's sentence. Below 30 none of it shows.
@@ -23,7 +23,7 @@ public class TemplatesV30LoopPaneTests : ClientRenderTestContext
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
         WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
-        return Render<Templates>(parameters => parameters.Add(page => page.AuthorsAboveCeiling, true));
+        return Render<Templates>();
     }
 
     private void Select(IRenderedComponent<Templates> page, string key)

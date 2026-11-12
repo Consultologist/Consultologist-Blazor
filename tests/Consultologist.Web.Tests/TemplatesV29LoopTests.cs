@@ -97,11 +97,11 @@ public class TemplatesV29LoopTests : ClientRenderTestContext
     {
         var page = RenderEditor(EditorFixtures.V28());
 
-        await page.InvokeAsync(() => page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Upgrade to specVersion 29").Click());
+        await page.InvokeAsync(() => page.FindAll("fluent-button").First(b => b.TextContent.Trim() == "Upgrade to specVersion 30").Click());
         page.Render();
 
         var notice = System.Text.RegularExpressions.Regex.Replace(page.Find(".migration-notice").TextContent, @"\s+", " ").Trim();
-        Assert.Contains("Migrated to specVersion 29.", notice);
+        Assert.Contains("Migrated to specVersion 30.", notice);
         Assert.Contains("Through 29: nothing changes in this package; loops may now iterate a node's value.", notice);
         Assert.DoesNotContain("Through 28", notice);
     }

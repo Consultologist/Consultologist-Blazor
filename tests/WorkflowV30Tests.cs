@@ -120,30 +120,33 @@ public class WorkflowV30Tests
     }
 
     [Fact]
-    public void ThePublicEntry_Refuses30_UntilTheBump()
+    public void ThePublicEntry_Accepts30_SinceTheBump_AndRefuses31()
     {
-        Assert.DoesNotContain(30, WorkflowPackageValidator.AcceptedSpecVersions);
-        Assert.DoesNotContain(30, WorkflowPackageStore.SupportedSpecVersions);
+        // #1347: both sets carry 30; the seam is a harmless duplicate since.
+        Assert.Contains(30, WorkflowPackageValidator.AcceptedSpecVersions);
+        Assert.Contains(30, WorkflowPackageStore.SupportedSpecVersions);
         var (manifest, files) = V30Package.Minimal();
 
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-        Assert.Contains(result.Errors, e => e.StartsWith("specVersion 30 is not supported", StringComparison.Ordinal));
+        Assert.True(result.Errors.Count == 0, string.Join("\n", result.Errors));
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 31 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 31 is not supported", StringComparison.Ordinal));
     }
 
     [Fact]
-    public void At29_ALoopInsideALoop_KeepsThe26Sentence()
+    public void At29_ALoopInsideALoop_IsTheVersionGate()
     {
-        // The published v26 vector pins it; the bump rewords it as the gate.
+        // #1347: below 30, nesting is the version gate (the v26 vectors re-exported with it).
         var (json, files) = V30Package.MinimalJson();
         var root = JsonNode.Parse(json)!.AsObject();
         root["specVersion"] = 29;
         var errors = V29Package.Errors((V29Package.Read(root.ToJsonString()), files));
 
-        Says("Loop 'paragraphs' runs inside loop 'parts'; nesting waits for the scheduler redesign.", errors);
+        Says("Loop 'paragraphs' runs inside loop 'parts', which requires specVersion 30.", errors);
     }
 
     [Fact]
-    public void At29_ALoopInABranch_KeepsThe26Sentence()
+    public void At29_ALoopInABranch_IsTheVersionGate()
     {
         var (json, files) = V30Package.MinimalJson();
         var root = JsonNode.Parse(json)!.AsObject();
@@ -151,7 +154,7 @@ public class WorkflowV30Tests
         GateParagraphsOnAnIf(root);
         var errors = V29Package.Errors((V29Package.Read(root.ToJsonString()), files));
 
-        Says("Loop 'paragraphs' runs inside node 'gate'; nesting waits for the scheduler redesign.", errors);
+        Says("Loop 'paragraphs' runs inside node 'gate', which requires specVersion 30.", errors);
     }
 
     /// <summary>The parts' body runs its paragraphs only for a history section — a loop inside a branch inside a loop.</summary>

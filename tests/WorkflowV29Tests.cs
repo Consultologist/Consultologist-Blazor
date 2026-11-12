@@ -94,7 +94,7 @@ public class WorkflowV29Tests
     }
 
     [Fact]
-    public void ThePublicEntry_Accepts29_SinceTheBump_AndRefuses30()
+    public void ThePublicEntry_Accepts29_SinceTheBump_AndRefuses31()
     {
         // #1307: both sets carry 29; the seam is a harmless duplicate since.
         Assert.Contains(29, WorkflowPackageValidator.AcceptedSpecVersions);
@@ -102,8 +102,8 @@ public class WorkflowV29Tests
         var (manifest, files) = V29Package.Minimal();
         Assert.Empty(WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog()).Errors);
 
-        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 30 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 30 is not supported", StringComparison.Ordinal));
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 31 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 31 is not supported", StringComparison.Ordinal));
     }
 
     [Fact]

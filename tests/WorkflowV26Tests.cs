@@ -120,7 +120,7 @@ public class WorkflowV26Tests
     }
 
     [Fact]
-    public void ThePublicEntry_Accepts26_SinceTheBump_AndRefuses30()
+    public void ThePublicEntry_Accepts26_SinceTheBump_AndRefuses31()
     {
         // #1149: the accepted set carries 26 (with the store's set; the editor's
         // authoring mirror lags by name until #1164). The seam and the public
@@ -132,8 +132,8 @@ public class WorkflowV26Tests
         var result = WorkflowPackageValidator.Validate(manifest, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
         Assert.Empty(result.Errors);
 
-        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 30 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
-        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 30 is not supported", StringComparison.Ordinal));
+        var next = WorkflowPackageValidator.Validate(manifest with { SpecVersion = 31 }, files, TestOutputContracts.CatalogSchemas, null, V25Package.Catalog());
+        Assert.Contains(next.Errors, e => e.StartsWith("specVersion 31 is not supported", StringComparison.Ordinal));
     }
 
     [Fact]

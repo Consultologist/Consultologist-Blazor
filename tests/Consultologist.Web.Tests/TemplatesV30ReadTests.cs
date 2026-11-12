@@ -11,23 +11,22 @@ using PF = Consultologist.PackageFormat;
 namespace Consultologist.Web.Tests;
 
 /// <summary>
-/// v30 (#1346 C2a, design § 11): the Editor reads and keeps a 30 package — under the pre-bump
-/// seam (AuthorsAboveCeiling, retired by #1347): a while's members are placed and never offered
-/// elsewhere, an unrelated edit leaves every 30 member as it was, a 29 package upgrades to 30
-/// with only its version changing, and the Graph pane draws it nested. Without the seam,
-/// nothing moves.
+/// v30 (#1346 C2a, design § 11; public since the bump, #1347): the Editor reads and keeps a 30
+/// package — a while's members are placed and never offered elsewhere, an unrelated edit leaves
+/// every 30 member as it was, a 29 package upgrades to 30 with only its version changing, and
+/// the Graph pane draws it nested.
 /// </summary>
 public class TemplatesV30ReadTests : ClientRenderTestContext
 {
-    internal static readonly IReadOnlyCollection<int> Accepting30 = PF.WorkflowPackageValidator.AcceptedSpecVersions.Append(30).ToList();
+    internal static readonly IReadOnlyCollection<int> Accepting30 = PF.WorkflowPackageValidator.AcceptedSpecVersions.ToList();
 
-    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture, bool seam = true)
+    private IRenderedComponent<Templates> RenderEditor(WorkflowPackageContentResponse fixture)
     {
         WorkflowService.GetCurrentPackageContentAsync().Returns(fixture);
         WorkflowService.GetFormatsAsync().Returns(EditorFormatsCatalog.View());
         WorkflowService.GetCatalogSchemasAsync().Returns(EditorCatalogSchemas.CatalogSchemas);
         WorkflowService.GetCurrentDiagramAsync(Arg.Any<string?>()).Returns("graph TD; engine");
-        return Render<Templates>(parameters => parameters.Add(page => page.AuthorsAboveCeiling, seam));
+        return Render<Templates>();
     }
 
     private void Select(IRenderedComponent<Templates> page, string key)
@@ -48,7 +47,7 @@ public class TemplatesV30ReadTests : ClientRenderTestContext
     {
         var manifest = PF.WorkflowPackageManifestJson.Read(request.Manifest.GetRawText(), "sent", Accepting30.ToList());
         return PF.WorkflowPackageValidator.Validate(manifest, request.Files.ToDictionary(p => p.Key, p => p.Value, StringComparer.Ordinal),
-            new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog, Accepting30);
+            new Dictionary<string, string>(StringComparer.Ordinal), null, EditorFormatsCatalog.Catalog);
     }
 
     [Fact]
@@ -56,7 +55,7 @@ public class TemplatesV30ReadTests : ClientRenderTestContext
     {
         var fixture = EditorFixtures.V30();
         var manifest = PF.WorkflowPackageManifestJson.Read(fixture.Manifest.GetRawText(), "fixture", Accepting30.ToList());
-        var result = PF.WorkflowPackageValidator.Validate(manifest, fixture.Files, new Dictionary<string, string>(), null, EditorFormatsCatalog.Catalog, Accepting30);
+        var result = PF.WorkflowPackageValidator.Validate(manifest, fixture.Files, new Dictionary<string, string>(), null, EditorFormatsCatalog.Catalog);
         Assert.True(result.Errors.Count == 0, string.Join("\n", result.Errors));
     }
 
@@ -111,11 +110,11 @@ public class TemplatesV30ReadTests : ClientRenderTestContext
     }
 
     [Fact]
-    public void WithoutTheSeam_No30UpgradeIsOffered()
+    public void A30Package_IsOfferedNoUpgrade()
     {
-        var page = RenderEditor(EditorFixtures.V29(), seam: false);
+        var page = RenderEditor(EditorFixtures.V30());
 
-        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Trim() == "Upgrade to specVersion 30");
+        Assert.DoesNotContain(page.FindAll("fluent-button"), b => b.TextContent.Trim().StartsWith("Upgrade to specVersion", StringComparison.Ordinal));
     }
 
     [Fact]
