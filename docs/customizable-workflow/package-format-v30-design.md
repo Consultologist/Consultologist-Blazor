@@ -1,8 +1,9 @@
 # specVersion 30 — nesting, while and let: a loop's shape the run decides
 
 > **Status:** design, **revision 2** (2026-11-09): **layers A, B and C are built** (#1339–#1346),
-> and **the bump switched 30 on** (#1347 — package-format v2026.11.3, provenance v2026.11.2; § 14);
-> the content (#1348) is next. Revision 1 (2026-11-08) proposed spellings; layer A
+> **the bump switched 30 on** (#1347 — package-format v2026.11.3, provenance v2026.11.2; § 14),
+> and **the content landed** (#1348: every public package at 30, the pins at test/general@v2026.11.3).
+> Milestone 38 is complete. Revision 1 (2026-11-08) proposed spellings; layer A
 > settled them, and the package author widened `while` on 2026-11-09. This revision records both:
 > every spelling below is the built one, and § 8 lists the validator's sentences as built.
 > Milestone 38 (#1337). Decided with the package author on 2026-11-08: all three shapes v29 named
@@ -650,6 +651,21 @@ last.
   - `labelField` in `example-conditional-sections`;
   - the ten public packages raised to 30 (`--to 30`);
   - a 30 smoke, then the pins moved, only on the word.
+
+  *As landed (2026-11-12, #1348):* two packages PRs (decided).
+  - **consultologist-workflows#52** added two new packages and raised a third:
+    - `example-nested-note` v2026.11.1: a section plan; per section (named by its title, `labelField`) an outline and an inner loop over the outline's points; a `let` counting the sections; a `while` redrafting the summary until a judge calls it good, `max` 3;
+    - `example-prior-letters` v2026.11.1: the `for … until` over prior letters, in its own package (decided);
+    - `example-conditional-sections` v2026.11.3, raised to 30 with `labelField: "title"` on its `sections` input (#1252).
+  - **consultologist-workflows#53** raised the ten others `--to 30` (v2026.11.3; `example-problem-list` v2026.11.2). Their `dag.mmd` were redrawn nested; `validate-workflow-package --dag` now resolves implied prompts before drawing the reads (#1379).
+  - **Tags:** thirteen signed tags, one per push; every publish green; every `latest.json` at spec 30.
+  - **Smokes (all fictional inputs, all record storage 11):**
+    - `example-nested-note` (`286c1b2e`): 4 parts named by title; 4 `loopInstances` (3, 3, 2, 3 points); rows keyed by path (`draft_paragraph:1/1` … `4/3`); item progress per loop (#1366); the `let` row `computed`, its output hash SHA-256 of `4`; the `while` stopped by its check after 1 pass.
+    - `example-prior-letters`:
+      - `5878327b`: no letter answered, so the loop stopped at `end` after 3;
+      - `c9333043`: a fictional tumour-board letter placed second, so the `until` held at item 2 and letters 3–4 were `Skipped`, *not run: stopped early at item 2 (Prior letters 2)*.
+    - `example-conditional-sections` (`2fb6469e`): headings, rail and History named by title.
+  - **Pins:** `WorkflowPackages__Default` and the operator account pin moved to `test/general@v2026.11.3` (spec 30). The pinned smoke `c5e2731f` completed 8/8 at storage 11 on v2026.11.5.
 
 ## 15. Deferred and open
 
