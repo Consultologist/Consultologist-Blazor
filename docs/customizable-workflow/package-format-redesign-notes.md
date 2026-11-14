@@ -38,6 +38,9 @@ This milestone revisits the structure with what has been learned since.
 - **`index.json` for every folder** (snippet folders, macro folders, flow nodes): one shape, plain
   data. This keeps v28's choice over a folder `_.md` (#1269), extended to flow nodes. Every listed
   id is a child of the folder, and every child is listed exactly once.
+- **A loop's source is a plain reference:** `"in": "node.plan.value.sections"`, not
+  `"for": "item in …"`, since the loop's item is always `item`. A `case` subject is a plain
+  reference too. This is Option A's tidy (§ 4), adopted on its own.
 - **The manifest keeps a top-level `"nodes": [ids]` list,** in order, like `macros` and `snippets`.
 - **Ids stay unique and `node.x` is unchanged** at any depth, never `node.folder.x`. A path in the
   reference would tie templates to the file layout and clash with member access (`node.x.value`).
@@ -174,7 +177,7 @@ every option. The choice is about **how much structure outside tools can see**.
 - Header and body share one expression language: the same `node.scope.value == "in_scope"` in a
   header's `if` and a template's `{{ if }}`.
 - Pure references become plain fields (`"in": "node.plan.value.sections"` for a `for`), checkable by
-  a schema pattern.
+  a schema pattern. **This part was adopted into #1383 (§ 1) regardless of the condition choice.**
 
 **Option B: conditions as JSON Logic, displayed as strings.** JSON Logic (jsonlogic.com) is a
 standard with evaluators in many languages.
@@ -205,7 +208,7 @@ and the record's `reads` already do. The package author chose to file **B** as i
 - the operation set and each operation's typing and absence rules;
 - a byte-stable printer (record reasons are recorded);
 - the walker over `var` paths;
-- the `for` source and `case` subject;
+- whether the `for` source and `case` subject, already plain references (§ 1), become `var`s;
 - the migration;
 - one evaluator or two;
 - the Editor's builder writing the tree.
