@@ -1,245 +1,240 @@
 # The package format, redesigned: working notes (Milestone 39)
 
-> **Status:** working notes, not yet a design. These notes record the decisions made with the
-> package author on 2026-11-13 while reviewing the package's structure as a whole, and the
-> questions still open. Each decision is filed as a Milestone 39 issue, which is where it is
-> argued:
-> - #1383, nodes as files;
-> - #1384, namespaces;
-> - #1385, kind and format;
-> - #1386, conditions as JSON Logic.
->
-> The inputs carried in are #1382 (nested headings), #1184 (macros as a map) and #1061 (enum
-> value labels). A design document (with a version number) follows once the review is done; where
-> it and these notes disagree, the design will say which decision it supersedes.
+> **Status:** working notes, not yet a design. They record the decisions made with the package
+> author on 2026-11-13 and 2026-11-14 while reviewing the package's structure as a whole, and the
+> questions still open. Each decision is filed as a Milestone 39 issue, which is where it is argued
+> in full; these notes summarise them. The versioned design document (#1388) brings them together.
+> Where it and these notes disagree, the design says which decision it supersedes.
 
 **Why.** The format grew version by version from v5 to v30. Each version was a reasonable step, but
 together they left:
 - a node split between a manifest entry and a prompt file;
 - a `format` field that mixes how a node runs with what it returns;
 - headers no tool recognises;
-- one flat list holding both the package's nodes and its structure.
+- one flat list holding both the package's nodes and its structure;
+- logic spread over Scriban strings that only our code understands.
 
-This milestone revisits the structure with what has been learned since.
+The format is, in effect, a small, bounded, typed, recorded programming language for durable
+clinical workflows. This milestone treats it as one: files and folders for its structure, a type
+system for its values, a standard expression language for its conditions, and a resolved document
+the engine runs.
 
-## 1. Nodes become files (#1383)
+## Issues
 
-- **A leaf node is `nodes/<id>.md`:** a JSON header (what the manifest's `nodes` entry holds
-  today), then a body. `prompts/` is retired. A prompt could not be shared by two nodes since 28
-  anyway, and reused text lives in `snippets/`.
-- **A leaf's body holds the Scriban that produces it:** an agent node's prompt (a template), a
-  `let`'s expression (a bare Scriban expression, not a template; a body wrapped in `{{ }}` is
-  refused). A computed node's and a check's body is empty.
-- **A flow node is a folder:** `for`, `while`, `if` and `case` are each `nodes/<id>/`, described by
-  an `index.json`. Its members sit inside it, at any depth, so the tree on disk is the package's
-  shape. A folder has no body, so a flow node's expressions live in its `index.json`.
-- **`if`/`case` branches sit flat in their folder.** `index.json` names which ids belong to which
-  branch: `"then"` / `"else"`, or a case's `"branches": [ { "when": [values], "nodes", "ret" } ]`.
-- **`index.json` for every folder** (snippet folders, macro folders, flow nodes): one shape, plain
-  data. This keeps v28's choice over a folder `_.md` (#1269), extended to flow nodes. Every listed
-  id is a child of the folder, and every child is listed exactly once.
-- **A loop's source is a plain reference:** `"in": "node.plan.value.sections"`, not
-  `"for": "item in …"`, since the loop's item is always `item`. A `case` subject is a plain
-  reference too. This is Option A's tidy (§ 4), adopted on its own.
-- **The manifest keeps a top-level `"nodes": [ids]` list,** in order, like `macros` and `snippets`.
-- **Ids stay unique and `node.x` is unchanged** at any depth, never `node.folder.x`. A path in the
-  reference would tie templates to the file layout and clash with member access (`node.x.value`).
-- **Hashes:** a node's `inputHash` stays the SHA-256 of its rendered prompt. The record's prompt
-  path moves (`nodes/…/x.md`), which is a record-storage and provenance change.
-
-### Front matter
-
-Every Markdown file with a header (nodes, macros, snippets, folder items) uses **JSON between `---`
-lines**:
-
-```
----
-{ "label": "Identifying primary problem", "kind": "agent", "format": "concept_list", "onInvalid": "fail" }
----
-{{ snippet.snomed_tool_guidance.content }}
-Identify the primary disease or problem concept …
-```
-
-- **Why JSON between `---` lines.** JSON is valid YAML (from YAML 1.2), so Markdig and GitHub
-  recognise the block as front matter, and we parse it with our own JSON parser. The bare JSON
-  object used today is recognised by no tool.
-- **Both lines are needed.** Front-matter tools require the file to *start* with `---`, and a lone
-  closing `---` under text is a Markdown heading underline.
-- **Rejected: Scriban's `+++` front matter.** It is code that runs. In a test with Scriban 7.2.5, a
-  bare object between `+++` lines was printed into the output, and its values could be read only
-  by executing assignments.
-- **Rejected: full YAML.** It would add a YAML dependency and YAML's quirks.
-- **Rejected: Scriban assignments as the header.** The header must be known without running
-  anything: the validator, registry, Editor and diagram all read it before a run. It would also
-  mean executing author code in the registry, and the Editor could not write it back.
-- **The rules:**
-  - exactly `---` on the first line and on the closing line;
-  - no byte-order mark;
-  - one JSON object, with no duplicate keys;
-  - a file may end right after the closing `---` (header-only);
-  - **a body that is only whitespace is empty**;
-  - a body with content is kept byte for byte, since it becomes the rendered prompt.
-
-## 2. Namespaces (#1384, built after #1383 in this milestone)
-
-- **Disjoint scopes only, no shadowing.** An id may repeat only where the two nodes are never both
-  visible from the same place (two sibling loops each holding a `draft`). A body node may not
-  reuse an id its enclosing bodies or the top level make visible. Every `node.x` has exactly one
-  candidate.
-- **No new syntax: `node.x` resolves outward.** The format's visibility rules (siblings, enclosing
-  bodies aligned by path, the top level) are already lexical scope, and reading into another
-  loop's body is already refused. So nothing a valid template reads ever needs qualifying.
-- **Qualified keys in the record,** with `.` as the separator: `parts.paragraphs.draft_paragraph:2/1`.
-  Item paths already use `/` and the row key uses `:`. This touches record keys, events, checks'
-  `with`, classifier gates, macro placements, `pass.….node.<id>`, the engine and the pages.
-- **Compatible:** a package with unique ids is already valid and unchanged.
-
-## 3. Kind and format (#1385)
-
-- **Every node declares its `kind`** (what it is): `agent`, `rendered`, `computed`, `let`, `for`,
-  `while`, `if` or `case`. It is not called `type`, because `type` already means an input's type.
-- **Every node declares its `format`** (what it returns, like a function's return type). `producer`
-  leaves the format files.
-  - **Built-ins complete JSON's primitives:** `string`, `number`, `boolean`.
-  - **`prose`** is model-written text, which may vary between runs.
-  - **Object formats** are marked model-written (`x-generated`) or not.
-  - **Inputs' `text` becomes `string`.**
-- **Which formats each kind returns:**
-  - **`agent`:** `prose`, or a generated object;
-  - **`rendered`:** `string`;
-  - **`let`:** `string`, `number`, `boolean` or a non-generated object (this replaces v30's `type`);
-  - **`computed`:** written and checked against its operation.
-- **Operations are named apart from their formats:** `op: terms_subset` returns
-  `format: check_result`, so future checks share a return type, and `with` holds the operation's
-  parameters.
-- **Flow formats:**
-  - **`while`:** its `ret`'s format;
-  - **`if`/`case`:** a union of its branches' formats, readable only through what every member
-    shares;
-  - **`for`:** a list of its `ret`'s format.
-- **`reproducible`:** implied `true` for `rendered`, `let` and `computed` (`false` is refused); an
-  author's claim for `agent`; derived for flow nodes.
-
-### The notation: JSON Schema in the file, type strings for display
-
-A node's `format` is written in **JSON Schema's own vocabulary**, so standard tools can read every
-node's return type. People see it as a type string.
-
-| Meaning | In the file | Displayed as |
+| Issue | Subject | Status |
 |---|---|---|
-| a primitive | `{ "type": "number" }` | `number` |
-| a named format | `{ "$ref": "#/$defs/prose" }` | `prose` |
-| a list (a `for`) | `{ "type": "array", "items": { "$ref": "#/$defs/prose" } }` | `list<prose>` |
-| nested loops | `{ "type": "array", "items": { "type": "array", "items": { "$ref": "#/$defs/prose" } } }` | `list<list<prose>>` |
-| a union (an `if`/`case`) | `{ "anyOf": [ { "$ref": "#/$defs/prose" }, { "$ref": "#/$defs/classification" } ] }` | `prose \| classification` |
+| #1383 | nodes as files; flow nodes as folders; front matter | decided |
+| #1384 | namespaces in disjoint scopes | decided; built after #1383 |
+| #1385 | `kind`, and `format` as the return type; the JSON Schema dialect; data and text types | decided |
+| #1386 | conditions as JSON Logic | leaning, with a variant |
+| #1389 | `resolve.json`, the resolved, validated package document | decided direction |
+| #1390 | `lock.json`, the toolchain lock | decided, with a lean on mismatches |
+| #1391 | standard workflow languages reviewed | decided: keep our structure |
+| #1392 | a loop's `parallel` and `maxParallel` | decided |
+| #1393 | nested concurrency caps and a job ceiling | open |
+| #1394 | every declaration member required; `null` means "deliberately none" | decided |
+| #1395 | checks in `checks/`, read as `check.x` | decided |
+| #1396 | checks per item, as loops in `checks/` | follow-up |
+| #1397 | renderers as typed Scriban templates in `renderers/` | decided |
+| #1398 | drawing renderers in the diagram | decided for now |
+| #1399 | an interactive graph (later, no milestone) | later |
+| #1400 | `matches`, regular-expression search | follow-up |
+| #1388 | the design document | next |
+| carried in | #1061 (enum labels), #1382 (nested headings), #1184 (macros as a map) | open |
 
-- **Named formats are `$defs`** in a per-package bundle the registry publishes, with a stable `$id`.
-- **Model-written is an annotation** (`"x-generated": true`). Standard validators keep it and
-  ignore it while checking shape; our validator enforces the kind rules from it.
-- **A declared 2020-12 dialect.** Today's subset (`type`, `properties`, `required`,
-  `additionalProperties: false`, `items`, `enum`, `title`, `description`, `$schema`) plus `$ref`,
-  `$defs`, `anyOf` and `x-generated`, published as a meta-schema. Anything else is refused at
-  publish.
-- **The display:** the Editor's pickers and panes, the validator's sentences and the docs render
-  the schema as type strings.
-- **Considered and set aside:**
-  - type strings in the file (`"list<prose>"`): a second grammar, invisible to JSON Schema;
-  - our own JSON keys (`{ "list": … }`, `{ "union": … }`): readable, but not a standard.
-- **Open:** whether the model provider's strict mode accepts `$ref`, `$defs` and `anyOf` in an
-  agent's format (node return types are never sent to a model).
+## 1. Files and folders (#1383)
 
-## 4. Conditions: Scriban strings or JSON Logic (#1386)
+```
+manifest.json      identity, inputs, deliverables, and id lists
+nodes/             production: agents, rendered, computed, let, flow
+  plan.md
+  parts/           a flow node is a folder
+    index.json
+    outline.md
+checks/            verification (#1395)
+renderers/         presentation (#1397)
+formats/           package-local formats
+macros/  snippets/
+dag.mmd            derived: the diagram
+resolve.json       derived: the package as checked (#1389)
+lock.json          derived: the toolchain that checked it (#1390)
+```
 
-The question: should the header's **expressions** follow formats into structured JSON, displayed as
-strings, so the whole front matter is data?
+- **A leaf is a file** (`nodes/<id>.md`): a JSON header, then a body. `prompts/` is retired.
+- **A leaf's body holds the Scriban that produces it:** an agent's prompt (a template), a rendered
+  node's template, a `let`'s expression (a bare expression, not a template). A computed node's body
+  is empty.
+- **A flow node is a folder** (`for`, `while`, `if`, `case`) described by its `index.json`; its
+  members sit inside it, to any depth. `if`/`case` branch nodes sit flat in the folder, named per
+  branch in `index.json` (`then`/`else`; a case's `branches[].when`).
+- **Every folder has an `index.json`:** snippet folders, macro folders, flow nodes.
+- **A loop's source is a plain reference:** `"in": "node.plan.value.sections"`, not
+  `"for": "item in …"`.
+- **The manifest keeps id lists** (`nodes`, `macros`, `snippets`, `formats`) in order. The file
+  name is the id everywhere.
+- **Ids stay unique** (until #1384), and `node.x` reads a node at any depth, never `node.folder.x`.
+- **Hashes:** a node's `inputHash` is still the rendered prompt; the record's prompt path moves.
 
-**What the strings hold today.**
-- **Conditions:**
-  - which: an `if`; a `while` check; an `until`; a node's or deliverable's `when`; a macro's `if`;
-    a folder item's `if`;
-  - what: since 25, each is a full Scriban boolean expression: comparisons, `&&`, `||`, `!`,
-    literals, references, and pipes and builtins such as `(input.docs | array.size) > 0`;
-  - how they're checked: walked by `WorkflowConditionAt25`, with reads becoming edges and
-    comparisons typed;
-  - in the record: a condition that does not hold gives its own text as the reason.
-- **A `for` source and a `case` subject** are references.
-- **A `let`'s expression** is its body, so it is out of scope here.
+**Front matter is JSON between `---` lines.** JSON is valid YAML, so Markdig and GitHub recognise
+it, and we parse it with our own JSON parser. Both lines are required: the first line of the file,
+and a closing line. A file may end right after the closing `---`. A body that is only whitespace is
+empty, and a body with content is kept byte for byte. Scriban's `+++` front matter (code that runs)
+and full YAML were rejected.
 
-**The caveat that frames the choice.** The header is already fully JSON-Schema-validatable with
-expressions as strings. What JSON Schema can't see is *inside* an expression: whether `node.scope`
-exists, whether a comparison is well-typed, whether a read is allowed from here. A JSON tree
-doesn't change that: `{ "==": [ { "var": "node.scope.value" }, "in_scope" ] }` is structurally
-valid whether or not `node.scope` exists. Those checks are semantics and remain the validator's in
-every option. The choice is about **how much structure outside tools can see**.
+## 2. Every member required (#1394)
 
-**Option A: Scriban strings, references tidied.**
-- Conditions stay Scriban text, checked by the walker.
-- Header and body share one expression language: the same `node.scope.value == "in_scope"` in a
-  header's `if` and a template's `{{ if }}`.
-- Pure references become plain fields (`"in": "node.plan.value.sections"` for a `for`), checkable by
-  a schema pattern. **This part was adopted into #1383 (§ 1) regardless of the condition choice.**
+- **In our declarations** (the manifest, node headers, every `index.json`, inputs, deliverables,
+  macro/snippet/item headers, `resolve.json`, `lock.json`): **every member is present; `null` means
+  "deliberately none"; a missing key is always an error.** Empty values (`""`, `[]`) are values.
+- **Inside formats** (JSON Schema), every keyword, our `x-` annotations included, follows JSON
+  Schema's convention: **present where it applies, omitted otherwise, never `null`.** The
+  validator enforces presence where an annotation applies, and absence where it doesn't.
+- **JSON Logic in `resolve.json` has no optional operands:** one fixed form per operator.
+  Variadic operators keep their lists; `if` chains become nested three-operand `if`s; `null`
+  replaces a missing operand only where it provably means the same (safe for `var` and `if`, not
+  for `substr`).
 
-**Option B: conditions as JSON Logic, displayed as strings.** JSON Logic (jsonlogic.com) is a
-standard with evaluators in many languages.
+## 3. Kind, format and types (#1385)
 
-| In the file | Displayed as |
+**Every node declares its `kind` (how it runs) and its `format` (what it returns).**
+
+| Kind | Runs | Body |
+|---|---|---|
+| `agent` | a model call | its prompt |
+| `rendered` | a template, no model | its template |
+| `computed` | a built-in operation (`op`), with parameters (`with`) | empty |
+| `let` | one expression, no model | its expression |
+| `for`, `while`, `if`, `case` | flow; a folder | (none) |
+
+**Data and text are separate types.**
+
+| Format | Is | `contentMediaType` | `x-markdown` | `x-agent` |
+|---|---|---|---|---|
+| `string` | data | (omitted) | (omitted) | `false` |
+| `number`, `boolean` | data | (omitted) | (omitted) | `false` |
+| `plaintext` | text, computed | `text/plain` | (omitted) | `false` |
+| `markdown_block` | text, computed | `text/markdown` | `block` | `false` |
+| `markdown_inline` | text, computed | `text/markdown` | `inline` | `false` |
+| `agent_plaintext` | text, written by an agent | `text/plain` | (omitted) | `true` |
+| `agent_markdown_block` | text, written by an agent | `text/markdown` | `block` | `true` |
+| `agent_markdown_inline` | text, written by an agent | `text/markdown` | `inline` | `true` |
+| object formats | structured data | (omitted) | (omitted) | `true` or `false` |
+
+- **`agent` returns only `agent_*` text or objects with `x-agent: true`;** every other kind returns
+  formats with `x-agent: false`. A computed node's format is written and checked against its
+  operation; operations are named apart from their formats (`terms_subset` returns
+  `check_result`).
+- **Flow formats:** a `while` returns its `ret`'s format; an `if`/`case` returns the union of its
+  branches; a `for` returns a list of its `ret`'s format.
+- **`reproducible`** is implied `true` for every kind but `agent`.
+- **Dates** are `{ "type": "string", "format": "date" }`.
+- **There is no bare `prose`:** today's `prose` becomes `agent_plaintext`.
+- **What can't be enforced:** a model asked for plain text may still emit Markdown; the media type
+  is the format's declared intent, and composers act on it.
+
+**The notation is JSON Schema in the file, type strings for display.** Named formats are `$defs`
+in a per-package bundle, referenced with `$ref`; a list is `{ "type": "array", "items": … }`, a union
+`anyOf`. The Editor and the validator's sentences show `list<agent_plaintext>`,
+`agent_plaintext | classification`. The dialect is a declared JSON Schema 2020-12 vocabulary:
+today's strict subset plus `$ref`, `$defs`, `anyOf`, `contentMediaType`, `x-agent` and
+`x-markdown`. Azure OpenAI's strict mode accepts `$ref`, `$defs` and `anyOf` (not `anyOf` at the
+root; at most 100 properties and 5 levels), and our annotations are stripped before a schema is sent.
+We keep our own validator; the json-everything libraries carry a maintenance-fee licence, and
+Corvus (Apache-2.0) can't enforce a keyword allow-list.
+
+**Inputs use the same types, and the type picks the Create page widget.**
+
+| Input type | Widget |
 |---|---|
-| `{ "==": [ { "var": "item.value.kind" }, "narrative" ] }` | `item.value.kind == "narrative"` |
-| `{ "!=": [ { "var": "node.judge.value.verdict" }, "good" ] }` | `node.judge.value.verdict != "good"` |
-| `{ ">": [ { "count": { "var": "input.docs" } }, 0 ] }` | `(input.docs \| array.size) > 0` |
+| `string` (with `enum`, a select) | a single-line field |
+| `number`, `boolean` | a number field, a checkbox |
+| `string` with `format: date` | a date picker |
+| `plaintext` | a text area |
+| `markdown_block` | a rich-text editor, stored as Markdown |
 
-- **For:**
-  - every read is an explicit `var`, so tools find dependencies without parsing Scriban;
-  - standard evaluators exist, so a third party could evaluate when a deliverable fires;
-  - the header holds no code;
-  - it is consistent with the format notation.
-- **Against:**
-  - **two condition languages,** because template bodies keep Scriban's `{{ if }}`;
-  - **coverage:** JSON Logic has no Scriban builtins (`array.size`, string functions, pipes), so
-    the format defines custom operations, a dialect again;
-  - **the widest churn yet:** every condition in every package, a second evaluator, a printer for
-    the record's reasons, rewritten conformance cases;
-  - **heavy to write by hand.**
+**Migration:** today's text inputs become `markdown_block`; documents uploaded to a Markdown input are
+converted to Markdown; enums become `string` plus `enum` (labels are data, #1061).
 
-**Where it stands.** A was recommended: the standard's real gain for formats is validating
-*outputs*, while for conditions it mainly makes *reads* visible, which `dag.mmd`, the derived edges
-and the record's `reads` already do. The package author chose to file **B** as its own issue,
-#1386, as the way to let outside tools read and evaluate a package's conditions. Open in #1386:
-- the operation set and each operation's typing and absence rules;
-- a byte-stable printer (record reasons are recorded);
-- the walker over `var` paths;
-- whether the `for` source and `case` subject, already plain references (§ 1), become `var`s;
-- the migration;
-- one evaluator or two;
-- the Editor's builder writing the tree.
+## 4. Conditions (#1386)
 
-**The comparison, 2026-11-13.** Types (#1385) and conditions (#1386) are separate decisions; the
-dialect works with Scriban conditions too.
-- **Today** is cheap, consistent for authors and fully built. Only our code understands it.
-- **Dialect + JSON Logic** is fully data-driven, standards-based throughout and has one complete
-  type system. It costs a second language for authors and the largest migration of any option.
-- **Dialect + Scriban** gets most of the type-system benefit at much lower cost, and leaves
-  conditions as they are.
+**Leaning: JSON Logic, checked against the dialect,** to revisit at #1386's design. Today's
+conditions are Scriban strings checked by our walker; JSON Logic makes them data that any JSON
+Logic library can run. **A variant:** authors keep writing expression strings, and the resolver
+writes JSON Logic into `resolve.json`, giving one expression language for authors and a standard,
+data-only runnable document. CEL, FHIRPath, JSONPath (RFC 9535) and CQL/ELM were researched and
+compared (in #1386's comments); no JSON Logic checker exists, so the checker is ours, reading the
+dialect directly.
 
-**The package author leans towards dialect + JSON Logic**, to be looked at again when #1386 is
-designed. #1386's comments hold the research behind it:
-- CEL, FHIRPath, JSONPath (RFC 9535) and CQL/ELM;
-- that no JSON Logic checker exists;
-- that a JSON Logic checker reads the dialect directly, with no translation.
+**Typed operations.**
 
-## Carried in
+| On | Allowed | Refused |
+|---|---|---|
+| data (`string`, `number`, `boolean`) | `==`, `!=`, `in` (list membership), `<`, `>` | — |
+| text | `in` (standard JSON Logic: an exact, case-sensitive search, with no semantic meaning), `missing`, `cat` (in a `let`) | `==`, `!=`, `<`, `>`, `substr`, `!`/`!!` as a blank test |
 
-- **#1382:** a nested loop's items compose as `## Paragraphs N`. `labelField` would name them but
-  would keep clinical text in the record, and nothing lets an item go unheaded.
-- **#1184:** macros as a map in memory too.
-- **#1061:** enum value labels, `{ value, label }`, including #1014's points (closed as its
-  duplicate). The open question there is whether classification answers take labels.
+**Our custom operations,** each with a fixed arity and precise types: `size` (Unicode code points),
+`blank`, `words`, `lines`, `lower` (for a case-insensitive search: `"x" in lower(text)`), `trim`,
+`starts_with`, `ends_with`, `plain` (Markdown to plain text). `matches` (regular expressions) is
+held for #1400.
 
-## Still to decide (across the milestone)
+## 5. Loops (#1392, #1393)
 
-- The spec version(s) these land in, and whether #1383, #1385 and #1386 share one.
-- The exact validator sentences, and whether a stray child file is refused or warned.
-- Whether a blank line right after the closing `---` belongs to the body.
-- Whether an inline schema may be a `let`'s or computed node's format.
-- The name of the model-written annotation and the `$defs` bundle's `$id` scheme.
-- The provider's strict-mode support for `$ref` and `anyOf` in agent formats.
+- **`parallel: true | false` is required on every `for`;** `until` is a condition or `null`, and a
+  non-null `until` requires `parallel: false`. A `while` is sequential by definition.
+- **`maxParallel` is a number or `null`;** with `parallel: false` it must be `null`; a cap of 1 with
+  `parallel: true` is refused, pointing to `parallel: false`.
+- **Nested caps multiply** (#1393): whether a whole-job or per-deployment concurrency ceiling is
+  needed is open.
+
+## 6. Checks (#1395, #1396)
+
+Checks live in **`checks/`**, read as **`check.x`**; a deliverable's `check` can only name a check.
+The folder gives the role, `kind` the mechanism (`computed` today), and `format` is `check_result`.
+Nodes may read checks. Checks get their own section in the record and History. Top-level only for
+now; loops inside `checks/`, aligned item for item with a production loop, are #1396.
+
+## 7. Renderers (#1397, #1398, #1399)
+
+- **Renderers become Scriban templates** in **`renderers/`**: `kind: rendered`, pure (they read only
+  their piped value), returning a computed text format. Their `input` may be any format.
+- **Called by a pipe with a qualified root:** `{{ node.extract.value | renderer.concept_bullets }}`,
+  type-checked at publish. **This settles Scriban over Liquid for bodies,** since Liquid filter names
+  can't contain a dot. The "Consultologist Scriban" dialect is to be formalised as a published spec.
+- **A pipe takes the value** (`.value`), which answers #1189.
+- **The Editor's pane shows the real template.** Today's C# renderers are retired only once a test
+  proves the templates byte-identical.
+- **In the record and History:** a `renders` list on the consuming node's row, shown as expandable
+  sub-rows below the node, with input and output (text while retained; hashes and sizes always).
+- **In the diagram:** renderers drawn inside the consuming node's frame (a Mermaid subgraph with ELK
+  layout), with a toggle falling back to compact labels (#1398). An interactive Cytoscape.js graph
+  from `resolve.json` is a later improvement (#1399).
+
+## 8. The resolved document and the lock (#1389, #1390)
+
+- **`resolve.json`:** the package as checked, produced at publish, in canonical JSON (RFC 8785).
+  Nodes are flattened into one id-keyed map, with `in`, `nodes` and `ret` explicit. It embeds all
+  package and catalogue content (prompts, macros, snippets, formats) and declares the engine
+  capabilities it needs in `requires`. **The engine is to load only this document;** the source is
+  the edit surface and the means to verify it.
+- **`lock.json`:** the exact toolchain that resolved and validated it (Scriban, the evaluator,
+  renderers, operations, the dialect, the catalogues). Written at publish only; a library change is
+  a package upgrade. **Leaning:** lock exactly, refuse outside a compatible range declared in
+  `requires`, with any output change a major version.
+
+## 9. Workflow languages reviewed (#1391)
+
+CNCF Serverless Workflow, Microsoft Agent Framework, Elsa, Workflow Core, Amazon States Language,
+Logic Apps, Dapr and Temporal were compared. **None replaces our structure:** each brings its own
+runtime, and none offers our record, dataflow scheduling, typing or bounded `while`. **Keep our
+structure and engine;** export `resolve.json` to Serverless Workflow for a standard view; watch
+Microsoft Agent Framework's durable declarative workflows.
+
+## Still to decide
+
+- The spec version(s), and the one-version plan for #1383, #1385 and #1394 (with #1386 in or out).
+- #1386's choice between JSON Logic in the source and the expression-string variant.
+- #1390's mismatch rule, and its seven open questions.
+- #1393's concurrency ceiling.
+- #1061's labels in the dialect (`const` and `title`), and labels on classification answers.
+- #1382's nested headings.
+- The validator's sentences throughout.
