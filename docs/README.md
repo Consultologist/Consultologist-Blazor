@@ -131,7 +131,12 @@ would otherwise have carried it (#397).
   node in the outer body); a `while` repeats within a required bound (1–10), a row per pass; a
   `for … until` runs in order and stops early, unrun items kept as rows; a `let` computes a typed
   value with no model call; `labelField` names an item by its field; record storage 11; enum labels
-  and #1189 not in 30
+  and #1189 not in 30,
+  [the package format, redesigned](customizable-workflow/package-format-redesign-notes.md) — working
+  notes (Milestone 39, 2026-11-13; not yet a design): nodes as files with JSON front matter between
+  `---` lines and flow nodes as folders (#1383); namespaces in disjoint scopes (#1384); every node's
+  `kind` and its `format` as a return type, written as a JSON Schema dialect and shown as type
+  strings (#1385); conditions as JSON Logic (#1386)
 
 ## Research
 
