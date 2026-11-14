@@ -213,6 +213,20 @@ and the record's `reads` already do. The package author chose to file **B** as i
 - one evaluator or two;
 - the Editor's builder writing the tree.
 
+**The comparison, 2026-11-13.** Types (#1385) and conditions (#1386) are separate decisions; the
+dialect works with Scriban conditions too.
+- **Today** is cheap, consistent for authors and fully built. Only our code understands it.
+- **Dialect + JSON Logic** is fully data-driven, standards-based throughout and has one complete
+  type system. It costs a second language for authors and the largest migration of any option.
+- **Dialect + Scriban** gets most of the type-system benefit at much lower cost, and leaves
+  conditions as they are.
+
+**The package author leans towards dialect + JSON Logic**, to be looked at again when #1386 is
+designed. #1386's comments hold the research behind it:
+- CEL, FHIRPath, JSONPath (RFC 9535) and CQL/ELM;
+- that no JSON Logic checker exists;
+- that a JSON Logic checker reads the dialect directly, with no translation.
+
 ## Carried in
 
 - **#1382:** a nested loop's items compose as `## Paragraphs N`. `labelField` would name them but
