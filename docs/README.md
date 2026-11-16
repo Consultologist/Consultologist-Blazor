@@ -133,10 +133,10 @@ would otherwise have carried it (#397).
   value with no model call; `labelField` names an item by its field; record storage 11; enum labels
   and #1189 not in 30,
   [the package format, redesigned](customizable-workflow/package-format-redesign-notes.md) — working
-  notes (Milestone 39, 2026-11-13 and 14; not yet a design): files and folders (#1383), every member
-  required (#1394), `kind` and `format` with data and text types in a JSON Schema dialect (#1385),
-  conditions as JSON Logic (#1386), loops' `parallel` (#1392), checks (#1395), renderers as Scriban
-  templates (#1397), `resolve.json` and `lock.json` (#1389, #1390), workflow languages reviewed (#1391)
+  notes (Milestone 39, 2026-11-13 to 15; to be replaced by the design, #1388): files and folders,
+  namespaces, `FormatBounds`, kind and format with data and text types, JSON Logic to decide and
+  compute with Scriban to present, snippets, parts and macros, loops, functions, checks, renderers,
+  deliverables, the profile, `resolve.json` and `lock.json`, the Serverless Workflow export
 
 ## Research
 
