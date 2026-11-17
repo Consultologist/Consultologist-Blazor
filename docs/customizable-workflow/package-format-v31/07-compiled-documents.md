@@ -38,8 +38,8 @@ The rules common to both ([decided](https://github.com/Consultologist/Consultolo
 
 **How they point at each other.** `lock.json` names the hash of the `resolve.json` it belongs to
 (`resolve.hash`). `resolve.json` names its lock **by file name** (`lock: "lock.json"`), not by hash,
-because each hash would otherwise have to contain the other. **Proposed.** The record pins both
-hashes (part 08), which ties the pair for every job.
+because each hash would otherwise have to contain the other. Every job's record pins both hashes
+(part 08), which ties the pair for every job ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6959887217), [#1390](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6959887636)).
 
 ## 2. `resolve.json`
 
@@ -322,7 +322,8 @@ through the versions of what uses them (the evaluator, `plain`, the Markdown esc
 tests guard (§ 4.3). **Proposed.**
 
 **The engine checks `requires` before the job starts,** when the Create page asks, and again when
-the job starts. Anything missing or out of range refuses with the sentences of § 10.
+the job starts, and compares `lock.json`'s exact versions with its break points (§ 4.4).
+Anything missing, out of range or locked before a break point refuses with the sentences of § 10.
 
 ### 3.2 `needs`: what the account must provide
 
@@ -406,11 +407,15 @@ our purposes, whatever the library calls it, and packages locked to the old vers
 until republished ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632)).
 
 **How "counts as major" reaches the engine** when the library's own version stays inside the caret
-range: the package-format registry publishes, per locked component, a **floor**, the first version
-adopted with a byte difference. The engine refuses a package whose locked version is below the
-floor, with the same sentence as an out-of-range version. For a library behind our interfaces
-(the Corvus libraries, Markdig), the floor is expressed instead as a major bump of the evaluator,
-operation or machinery whose output changed. **Proposed.**
+range ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6959887217), [#1390](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6959887636)). `requires` has no per-component floor: the caret range's lower bound is already
+the package's floor, and a published document never changes. Instead:
+- **The engine keeps a list of break points per locked component,** each the version at which
+  output changed (for example *"Scriban output changed at 7.3.0"*).
+- **At job start it compares them with the exact versions in the package's `lock.json`,** and
+  refuses a package locked before a break point with #1390's sentence (§ 10), as for a version
+  outside the range.
+- **The list is engine configuration,** changed only by an upgrade that went through the corpus
+  re-render above.
 
 Swapping either Corvus library for json-everything (#1458, #1459) follows the same rule: byte-identical
 golden tests and corpus re-render, or it counts as major
@@ -549,7 +554,7 @@ expectation in the order of the table above, then by key.
 
 - Test files count against `SourceBounds` like any source file. **At publish, all tests together
   have 60 seconds;** past it, publish stops with a sentence. **Proposed.**
-- **The migration writes one snapshot test per package,** `tests/migrated.json`
+- **The migration writes one snapshot test per package,** `tests/migration_snapshot.json`
   (**Proposed** name), from its migrated run: fictional inputs, stubs from the formats, and the
   resulting prompts and deliverables as expectations, so every migrated package starts with one test
   pinning its behaviour (#1447, [part 10](10-migration-and-tools.md)).
@@ -613,11 +618,12 @@ and it says nothing about a job. **Proposed:** file name `publish-report.json`, 
 
 ## 10. Refusals
 
-**At start** (the Create page, then the engine), from `requires` and `needs`:
+**At start** (the Create page, then the engine), from `requires`, `needs` and the engine's break
+points (§ 4.4):
 - *"This workflow (<package>@<version>) needs <component> <range>; this engine runs <component> <engine version>. Publish a new version of the workflow to run it on this engine."*
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632);
   `<component>` is `Scriban`, `the evaluator` or an operation's name). The same sentence covers a
-  locked version below a published floor (§ 4.4).
+  package locked before one of the engine's break points (§ 4.4).
 - *"This workflow (<package>@<version>) needs <kind or feature> '<name>', which this engine doesn't support. Publish a new version of the workflow to run it on this engine."* **Proposed.**
 - *"This workflow (<package>@<version>) needs agent <agent name> version <version>, which this engine doesn't have. Publish a new version of the workflow to run it on this engine."* **Proposed.**
 - *"This workflow needs your signature. Choose one in Profile."*
@@ -644,7 +650,6 @@ and it says nothing about a job. **Proposed:** file name `publish-report.json`, 
 
 ## Proposed in this part
 
-- **`resolve.json` names its lock by file name, not hash** (`lock: "lock.json"`): mutual hashes are impossible, and the record pins both.
 - **`package` as `{ name, version }`**, and `title`, `description`, `tags` carried at the top level: two members are easier to read than a joined string.
 - **Member names `formatHashes`, `run`, `places`, `renders`, `runSpots`, `id` and `parent` on every entry** (`parent`, not #1389's `in`, which a loop header uses for its source), and the shapes of `renders` and `runSpots` entries: the issues decide the content, not the names.
 - **`bindings` entries gain `via`** (`format` or `producer`): the record must name the binding that chose the agent (part 08).
@@ -655,8 +660,7 @@ and it says nothing about a job. **Proposed:** file name `publish-report.json`, 
 - **`features` gains `run-spots` and `check-loops`:** both are engine behaviours a package can depend on.
 - **`lock.json` has `documentVersion`, `resolver { packageFormat, dialect }`, `builtins` and nullable `catalogues.outputContracts`:** mirrors `resolve.json` and names the built-in machinery #1390 versions.
 - **No time stamp in either document:** re-derivation must give the same bytes.
-- **A published floor per locked component** makes "adopted with a byte difference counts as major" enforceable inside a caret range.
 - **`resolve.json` is written last** at publish, so a version is loadable only when complete.
 - **The publish report:** its file name, media type, Release-asset copy and every member name.
-- **Test grammar details:** every input listed, exactly the profile fields and run facts read, `run.date` as `{ value, timeZone }`, the `expect` member names, first-mismatch order, a 60-second total at publish, and the snapshot test named `tests/migrated.json`.
+- **Test grammar details:** every input listed, exactly the profile fields and run facts read, `run.date` as `{ value, timeZone }`, the `expect` member names, first-mismatch order, a 60-second total at publish, and the snapshot test named `tests/migration_snapshot.json`.
 - **Every refusal and warning sentence marked Proposed above:** only the Scriban, signature and time-zone sentences are decided word for word.

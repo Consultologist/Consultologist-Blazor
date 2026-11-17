@@ -38,6 +38,11 @@ and the record's shape in [08](08-record.md).
 4. **Check `requires`** against this engine: `spec`, `evaluator`, `scriban`, each operation's range,
    `kinds`, `features` and `agents`. Ranges are caret ranges set by the registry (#1390); the
    engine refuses only outside a range. An unknown kind or feature is outside every range.
+   Then **compare `lock.json`'s exact versions with the engine's break points:** the engine keeps,
+   per locked component, the versions at which output changed (*"Scriban output changed at
+   7.3.0"*), as configuration changed only by an upgrade that went through the corpus re-render,
+   and refuses a package locked before a break point with #1390's sentence (part 07 § 4.4,
+   [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6959887217), [#1390](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6959887636)).
 5. **Build the in-memory plan:** the parsed graph, the compiled JSON Logic, the parsed Scriban
    templates and the resolved formats. **The plan is never stored;** it is derived
    deterministically from `resolve.json` and cached in memory per `name@version`, keyed also by
@@ -281,6 +286,10 @@ in written order, each with its `label` and its `description` as help text:
 | an object | a field group, one field per property, by the same table, to any depth |
 | an array | repeating rows of its `items` |
 
+- **Required and blank** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)): an input with `"required": true` must be supplied; one with
+  `"required": false` left blank is sent as `null`. Inside an object input, every field is in the
+  format's `required` list: a field with a nullable type is optional, and left blank is sent as
+  `null`; a field whose type is not nullable must be filled in before Start is enabled.
 - **Documents need no member.** Any text-format input takes typed text or a document; an array of
   text takes typed rows, documents and earlier runs' deliverables in the order sent (#872, #874,
   #1144), as today. A document sent to a Markdown input is converted to Markdown, and the
@@ -306,7 +315,8 @@ in written order, each with its `label` and its `description` as help text:
 Before the clinician can start a job, the page checks what `resolve.json` declares, and shows
 each failing sentence above the Start button, which stays disabled until all pass:
 
-1. **`requires`** against the engine: #1390's sentence (§ 9).
+1. **`requires`** against the engine, and `lock.json` against its break points: #1390's
+   sentence (§ 9).
 2. **`needs.profile`:** each field the package reads must be set on the account. The signature's
    sentence is decided; the others follow the same form (§ 9).
 3. **The time zone:** every job needs the account's time zone set ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)).
@@ -490,7 +500,8 @@ already requires).
 
 Sentences the engine and the pages show. Grammar refusals at publish are in parts 01 to 07.
 
-- Requires, at load and on the Create page (#1390's sentence, written with placeholders):
+- Requires, and a package locked before a break point, at load and on the Create page (#1390's
+  sentence, written with placeholders):
   *"This workflow (<package>@<version>) needs <component> <range>; this engine runs <component>
   <engine version>. Publish a new version of the workflow to run it on this engine."*
   Example: *"This workflow (example-nested-note@v2026.11.2) needs Scriban ^7.2; this engine runs
