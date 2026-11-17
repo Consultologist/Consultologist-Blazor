@@ -107,7 +107,7 @@ Fixed arity, versioned like the other built-in operations (in `requires` and `lo
 | Operation | Arguments | Returns | Passes when |
 |---|---|---|---|
 | `terms_subset` | `of` (concept_list), `in` (concept_list), `failWith` (string literal) | `check_result` | every concept of `of` appears in `in`, as at version 30 |
-| `all_pass` | `list` (of `check_result`), `failWith` (string literal) | `check_result` | every judged element passed (an empty list: open, below) |
+| `all_pass` | `list` (of `check_result`), `failWith` (string literal) | `check_result` | every judged element passed; a `null` or empty list fails (below) |
 | `count_pass` | `list` (of `check_result`), `min` (number), `failWith` (string literal) | `check_result` | at least `min` judged elements passed |
 
 - **`failWith` must be a literal string,** checked at publish: a failed check speaks the
@@ -122,9 +122,9 @@ Fixed arity, versioned like the other built-in operations (in `requires` and `lo
   `failWith`. Part 03 types it as a `number` and proposes that a null `min` gives a failed result;
   with a literal, `min` is never null.
 - **Null and empty lists** are [Part 03](03-expressions.md)'s (the operations' null behaviour).
-  **Proposed, in both parts:** a null or empty list **fails** `all_pass`, since a gate that judged
-  nothing hasn't passed (JSON Logic's `all` is false on an empty array); a package that accepts
-  nothing judged writes `count_pass(list, 0, …)`. `terms_subset` reads a null list as empty.
+  **A null or empty list fails `all_pass`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810)): a gate that judged nothing hasn't
+  passed (JSON Logic's `all` is false on an empty array); a package that accepts nothing judged
+  writes `count_pass(list, 0, …)`. The cases are revisited in #1461 (Milestone 40). `terms_subset` reads a null list as empty.
 - Whatever the arguments, an operation returns a `check_result`, never `null`, so a gate always
   has a result to read. **Proposed.**
 
@@ -191,7 +191,7 @@ deliverables/note.md
 { "kind": "for", "label": "Section coverage", "description": null,
   "in": "node.parts.items", "itemLabel": "title",
   "parallel": true, "maxParallel": null, "until": null,
-  "nodes": [ "coverage" ], "ret": "coverage" }
+  "nodes": [ "coverage" ], "ret": "check.part_coverage.coverage" }
 ```
 
 ```

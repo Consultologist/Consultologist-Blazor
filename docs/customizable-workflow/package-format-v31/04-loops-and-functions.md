@@ -28,11 +28,18 @@ nowhere is a stray and is refused (part 01).
 
 Each kind adds its own members, below. A member of another kind is refused (§ 10).
 
-**`ret` (Proposed form).** A body's `ret` names **one of that body's own children by its bare
-id** (`"ret": "paragraphs"`). v30 wrote `node.<id>`, and the issues' examples use three spellings
-(`"letter_summary"`, `"node.apply_instructions"`, `"check.part_coverage.coverage"`); a body's
-children are local ids, so the bare id is enough and works the same in `nodes/`, `checks/` and
-`functions/`.
+**`ret` is the child's full name** ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6958687389)): the root and the
+qualified key of one of that body's **own** children, as the record keys it (part 01):
+`"ret": "node.parts.paragraphs"` in `nodes/parts/index.json`,
+`"ret": "node.parts.paragraphs.draft_paragraph"` in `nodes/parts/paragraphs/index.json`,
+`"ret": "check.part_coverage.coverage"` in `checks/part_coverage/index.json` (as #1396 decided).
+Inside a function the key is counted from the function's root (`"ret": "node.apply_instructions"`).
+The root says which namespace the child is in (`node.` or `check.`), and the whole name can be
+read without knowing which folder the file sits in. The resolver checks that `ret` names a direct
+child of that body and refuses anything else (§ 10). `ret` is the only member that takes this
+qualified form: references elsewhere still resolve outward by bare id (part 01, #1384), and a
+node's fields are always reached through `.value` or `.items`, so `node.parts.paragraphs` is never
+read as a field path. The Editor may show only the bare id; that's Milestone 41.
 
 ## 2. `for`
 
@@ -112,7 +119,7 @@ Example, fictional: reading prior letters in order until one answers the referra
   "parallel": false, "maxParallel": null,
   "until": { "===": [ { "var": "node.read_letter.value.answers_question" }, true ] },
   "max": null, "itemLabel": null,
-  "nodes": ["read_letter", "letter_summary"], "ret": "letter_summary" }
+  "nodes": ["read_letter", "letter_summary"], "ret": "node.letters.letter_summary" }
 ```
 
 ### 2.5 Reading a loop from outside
@@ -200,7 +207,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
   "in": "node.plan.value.sections",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
-  "nodes": ["outline", "paragraphs"], "ret": "paragraphs" }
+  "nodes": ["outline", "paragraphs"], "ret": "node.parts.paragraphs" }
 ```
 
 ```json
@@ -209,7 +216,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
   "in": "node.outline.value.points",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": null,
-  "nodes": ["draft_paragraph"], "ret": "draft_paragraph" }
+  "nodes": ["draft_paragraph"], "ret": "node.parts.paragraphs.draft_paragraph" }
 ```
 
 `example-conditional-sections`, `nodes/sections_draft/index.json` (the input's `labelField`
@@ -221,7 +228,7 @@ moved to the loop):
   "in": "input.sections",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
-  "nodes": ["route"], "ret": "route" }
+  "nodes": ["route"], "ret": "node.sections_draft.route" }
 ```
 
 `test/general`, `nodes/standards/index.json`:
@@ -233,7 +240,7 @@ moved to the loop):
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
   "nodes": ["section_instructions", "patient_section_draft", "standard_section_draft"],
-  "ret": "section_instructions" }
+  "ret": "node.standards.section_instructions" }
 ```
 
 Every migrated loop gets `"parallel": true, "until": null` (or `"parallel": false` where it had
@@ -296,7 +303,7 @@ refused, part 03 § 2.2); templates iterate it (part 05).
   "format": "agent_plaintext",
   "while": { "!==": [ { "var": "node.judge.value.verdict" }, "good" ] },
   "max": 3, "until": null, "checkFirst": false,
-  "nodes": ["draft_summary", "judge"], "ret": "draft_summary" }
+  "nodes": ["draft_summary", "judge"], "ret": "node.refine.draft_summary" }
 ```
 
 Printed: `node.judge.value.verdict ≠ "good"`. `verdict` is a `string` with an enum, so it is data
@@ -370,8 +377,8 @@ enum is `narrative`, `table`, `omit`; `omit` has no branch, so those sections ar
   "format": "agent_plaintext",
   "case": "item.value.kind",
   "branches": [
-    { "when": ["narrative"], "nodes": ["narrative_draft"], "ret": "narrative_draft" },
-    { "when": ["table"],     "nodes": ["table_draft"],     "ret": "table_draft" } ],
+    { "when": ["narrative"], "nodes": ["narrative_draft"], "ret": "node.sections_draft.route.narrative_draft" },
+    { "when": ["table"],     "nodes": ["table_draft"],     "ret": "node.sections_draft.route.table_draft" } ],
   "else": null }
 ```
 
@@ -381,7 +388,7 @@ enum is `narrative`, `table`, `omit`; `omit` has no branch, so those sections ar
 { "kind": "if", "label": "Narrative sections only", "description": null,
   "format": "agent_plaintext",
   "if": { "===": [ { "var": "item.value.kind" }, "narrative" ] },
-  "then": { "nodes": ["patient_summary"], "ret": "patient_summary" },
+  "then": { "nodes": ["patient_summary"], "ret": "node.patient_summaries.narrative_only.patient_summary" },
   "else": null }
 ```
 
@@ -392,7 +399,7 @@ enum is `narrative`, `table`, `omit`; `omit` has no branch, so those sections ar
   "format": "agent_plaintext",
   "if": { "or": [ { "!==": [ { "var": "item.id" }, "billing" ] },
                   { "===": [ { "var": "input.include_billing" }, true ] } ] },
-  "then": { "nodes": ["standing_draft"], "ret": "standing_draft" },
+  "then": { "nodes": ["standing_draft"], "ret": "node.standing_sections.applies.standing_draft" },
   "else": null }
 ```
 
@@ -591,7 +598,7 @@ Inside a loop, one call per item:
   "in": "snippet.standards",
   "parallel": true, "maxParallel": 4, "until": null, "max": null,
   "itemLabel": "title",
-  "nodes": ["section"], "ret": "section" }
+  "nodes": ["section"], "ret": "node.standards.section" }
 ```
 
 ```jsonc
@@ -706,7 +713,7 @@ example-functions/
     "draft":    { "label": "Consult draft", "description": null, "format": "markdown_block" } },
   "uses": { "snippets": [], "macros": [], "formats": ["standard_section"], "renderers": [] },
   "nodes": ["standard_draft", "patient_draft", "apply_instructions"],
-  "ret": "apply_instructions",
+  "ret": "node.apply_instructions",
   "format": "agent_plaintext" }
 ```
 
@@ -718,7 +725,7 @@ example-functions/
   "in": "node.standards.items",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "label",
-  "nodes": ["coverage"], "ret": "coverage" }
+  "nodes": ["coverage"], "ret": "check.section_coverage.coverage" }
 ```
 
 Its `coverage` check's `if` skips sections that didn't complete:
@@ -774,7 +781,7 @@ is v30's built sentence, kept; **Proposed** wording is new.
 | *"Loop '\<id\>' declares label null; a loop's or branch's label is what the rail, History and the diagram show: write one."* (also `While`, `If`, `Case`) | rule decided ([#1383](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6957670672)); wording **Proposed** |
 | *"\<Kind\> '\<id\>' declares \<member\>, which belongs to \<a for \| a while \| an if \| a case\>."* | v30's form, adapted to `kind`; **Proposed** |
 | *"\<subject\> returns nothing; name the body node the outside reads with ret."* (`ret` null) | v30 |
-| *"\<subject\> returns \<id\>, which is not in its body (nodes: \<ids\>)."* | v30, adapted to bare ids |
+| *"\<subject\> returns \<ret\>, which is not one of its own children (\<full names\>): write the child's full name, for example node.parts.paragraphs."* | v30, adapted to full names; **Proposed** wording |
 | *"\<subject\> lists node '\<id\>' twice; a body is a set."* | v30 |
 | *"\<Kind\> '\<id\>' declares format \<format\>; its ret makes it \<format\>."* | **Proposed** |
 
@@ -869,7 +876,6 @@ is v30's built sentence, kept; **Proposed** wording is new.
 
 - **Flow nodes write `format`** (§ 1), checked against their `ret`: #1385 says every node declares
   its format, and no decision exempts flow nodes.
-- **`ret` is a bare child id** (§ 1): the issues use three spellings; a body's children are local.
 - **A production loop may iterate `.items`** (§ 2.2): decided only for check loops.
 - **`max` beyond the first N items records `not_run` with "not run: beyond max N"** (§ 2.4).
 - **A loop's `.value` holds the completed items only** (§ 2.5): contradicts #1385 decision 5's
