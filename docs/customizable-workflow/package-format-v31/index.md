@@ -12,6 +12,10 @@
 > `all_pass`, and every job is refused until the account's time zone is set (§ 7); all three were
 > Proposed in revision 1.
 >
+> **Revision 3** (2026-11-17): the eight cross-part points of § 7 decided — a loop's `.value`,
+> `if` for a node's condition, every property in `required`, profile values in functions, the
+> lock's pointer, renderer sub-row ids, built-in `$id`s and break points instead of a floor.
+>
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
 
@@ -66,6 +70,8 @@ and links to each deciding comment instead of repeating it.
 | optional members with implied defaults | every member written; `null` means deliberately none; a missing key is an error | 01 |
 | node ids unique across the package | ids may repeat in disjoint scopes; the record uses qualified keys (`parts.paragraphs.draft_paragraph`) | 01 |
 | `type` and output contracts, `prose` | `kind` and `format` on every node; formats in a JSON Schema dialect; `agent_plaintext` and the other text formats | 02 |
+| a node's `when` gate | `if`; a `case` branch keeps `when` for its values | 01, 03 |
+| object formats list some properties in `required` | every property in `required`, optional ones nullable; only agent formats refuse a root `anyOf` | 02 |
 | string conditions parsed by the engine; `let` and operations with `op`/`with` | JSON Logic for every condition and every `computed` value, with typed custom operations; equality is `===`/`!==` only | 03 |
 | `labelField` names an item | the loop's `itemLabel`; `label` is always the display name | 04 |
 | (none) | functions: named, typed sub-flows called by a `call` node | 04 |
@@ -116,8 +122,8 @@ The whole version ships at once ([decided](https://github.com/Consultologist/Con
 in this order:
 
 1. **Release the contracts first:** the package-format spec (`package-format-v31.md`, its schemas,
-   the conformance suite and `SourceBounds`), the agents catalogue (new attested agent versions and
-   `bindings.json`) and the provenance contract (record storage 12).
+   the conformance suite and `SourceBounds`), the agents catalogue (new attested agent versions,
+   `bindings.json`, and its formats rewritten with every property in `required`) and the provenance contract (record storage 12).
 1. **Build, in thirteen areas,** each a sub-issue of one build parent issue filed from this design:
    1. byte-equivalence fixtures (today's prompts and notes, captured first);
    2. parser and file model;
@@ -165,39 +171,37 @@ parent issue and its thirteen sub-issues are filed from it.
 Each part ends with "Proposed in this part": the points this design had to state that no issue
 has decided yet. They are gathered here for the package author to confirm or change.
 
-There are **182** such points. Most are a member's exact name, a refusal sentence's wording or a
-small rule no issue reached. These eight cut across parts or reinterpret an issue, so they need the
-package author's eye first:
-
-1. **A loop's `.value` holds only the items that completed** ([04](04-loops-and-functions.md));
-   items that didn't run are seen through `.items`.
-2. **A production node's own gate is spelled `if`**, replacing 30's `when`
-   ([04](04-loops-and-functions.md), [03](03-expressions.md)).
-3. **Strict mode's rules (every property required, no root `anyOf`) apply to agent formats only**
-   (`x-agent: true`); inputs keep a partial `required` list, and `if`/`case` unions stay `anyOf`
-   ([02](02-types-and-inputs.md)).
-4. **A profile value passed into a function keeps the profile's restriction** inside it
-   ([04 § 7.7](04-loops-and-functions.md), [06 § 10.2](06-checks-deliverables-profile.md)).
-5. **`lock.json` carries `resolve.json`'s hash, and `resolve.json` names its lock by file name**
-   ([07](07-compiled-documents.md)): two documents can't each hold the other's hash.
-6. **Renderer sub-rows inside loops are keyed after the item path**
-   (`draft_paragraph:2/1/render:1`, [08](08-record.md)).
-7. **Built-in formats' `$id`s are `urn:consultologist:spec:31:format:<name>`**; only catalogue and
-   package URNs were decided ([02](02-types-and-inputs.md)).
-8. **A per-component "floor" in `requires`**, so a library change adopted despite a byte
-   difference can still refuse older packages inside a caret range ([07](07-compiled-documents.md)).
+There are **173** such points: a member's exact name, a refusal sentence's wording or a small rule
+no issue reached, each a detail of its own part. The eight points that cut across parts are all
+decided (2026-11-17): **a loop's `.value` holds only the items that completed**
+([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6959884271), [#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6959884701)); **a
+node's own condition is spelled `if`**, while a `case` branch keeps `when`
+([#1383](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064), [#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6959885428)); **every
+property of every format is listed in `required`, an optional one nullable, and only agent formats
+refuse a root `anyOf`** ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)), with top-level inputs keeping
+`required: true | false` and the migration rewriting today's formats
+([#1447](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6959888494)); **a profile value passed into a function keeps the
+profile's restriction** ([#1408](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6959886233),
+[#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6959886713)); **`lock.json` holds `resolve.json`'s hash, and
+`resolve.json` names its lock by file name** ([#1389](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6959887217),
+[#1390](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6959887636)); **renderer sub-rows inside loops are keyed after the
+item path** (`draft_paragraph:2/1/render:1`, [#1397](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6959888097));
+**built-in formats' `$id`s are `urn:consultologist:spec:31:format:<name>`**
+([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)); and **there is no per-component floor in
+`requires`:** the engine keeps break points per locked component and refuses a package locked
+before one ([#1389](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6959887217), [#1390](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6959887636)).
 
 The full lists:
 
 | Part | Points |
 |---|---|
 | [01 Files and scopes](01-files-and-scopes.md#proposed-in-this-part) | 24 |
-| [02 Types and inputs](02-types-and-inputs.md#proposed-in-this-part) | 25 |
-| [03 Expressions](03-expressions.md#proposed-in-this-part) | 19 |
-| [04 Loops and functions](04-loops-and-functions.md#proposed-in-this-part) | 16 |
+| [02 Types and inputs](02-types-and-inputs.md#proposed-in-this-part) | 23 |
+| [03 Expressions](03-expressions.md#proposed-in-this-part) | 18 |
+| [04 Loops and functions](04-loops-and-functions.md#proposed-in-this-part) | 14 |
 | [05 Templates and macros](05-templates-and-macros.md#proposed-in-this-part) | 19 |
-| [06 Checks, deliverables and the profile](06-checks-deliverables-profile.md#proposed-in-this-part) | 17 |
-| [07 The compiled documents](07-compiled-documents.md#proposed-in-this-part) | 16 |
+| [06 Checks, deliverables and the profile](06-checks-deliverables-profile.md#proposed-in-this-part) | 15 |
+| [07 The compiled documents](07-compiled-documents.md#proposed-in-this-part) | 14 |
 | [08 The record](08-record.md#proposed-in-this-part) | 11 |
 | [09 The engine and the pages](09-engine-and-pages.md#proposed-in-this-part) | 21 |
 | [10 Migration and tools](10-migration-and-tools.md#proposed-in-this-part) | 14 |
