@@ -91,7 +91,7 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing = true`.
 | a part (a node's `parts`) | `if` (or `null`) | part 05 | condition |
 | a macro, and a macro folder | `if` (or `null`) | part 05 | condition |
 | a snippet folder item | `if` (or `null`) | part 05 | condition |
-| a production leaf (`agent`, `rendered`, `computed`, `call`) | `if` (or `null`) | part 01 | condition (**Proposed**, see below) |
+| a production leaf (`agent`, `rendered`, `computed`, `call`) | `if` (or `null`) | part 01 | condition ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064), see below) |
 | a `computed` node | `expression` | part 01; § 5 here | the node's declared `format` |
 
 - **A condition** must type as `boolean` (or `boolean | null`), or as the list `missing`
@@ -102,10 +102,11 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing = true`.
   stay **reference strings** (part 04). Whether they become `{ "var": … }` was left open on
   #1386; **Proposed:** they stay plain references, because each names one readable thing and is
   never computed.
-- **A production leaf's own condition (Proposed).** At 30 a node may carry a `when` gate (v18).
-  No Milestone 39 decision names its fate. **Proposed:** it is spelled `if`, as a folder item's
-  `when` became `if` at 26, a required member that is a condition or `null`, so every header
-  gate has one name. This must agree with part 01's leaf header.
+- **A production leaf's own condition is spelled `if`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064),
+  [#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6959885428)). At 30 a node may carry a `when` gate (v18); at 31 it
+  is `if`, as a folder item's `when` became `if` at 26, a required member that is a condition or
+  `null`, so every header gate has one name. A `case` branch keeps `when` for its list of values
+  (part 04 § 5.2). The migration rewrites a node's `when` to `if` (part 10).
 
 ## 4. What each site may read
 
@@ -312,7 +313,8 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 - **`object` builds objects.** Lists are native arrays; a JSON object in a rule is read as an
   operation, so `object` is the one way to build one. Its operand is one map; each field may use
   any allowed operation, including a nested `object`. Fields are checked at publish against the
-  computed node's `format`, field by field: every required property present, no other field.
+  computed node's `format`, field by field: every property present (every property is in
+  `required`, part 02 § 3.3; a nullable one may be `null`), no other field.
 - **`failWith` is a literal string,** checked at publish: a failed check speaks the package's
   own sentence, never a computed one.
 - **`terms_subset`** passes when every codable concept in `of` (an active SNOMED CT concept with
@@ -593,8 +595,6 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
   stored" literal.
 - **`in`, `case` and `with` stay reference strings** (§ 3): each names one readable thing; #1386
   left it open.
-- **A production leaf's condition is spelled `if`** (§ 3), replacing v30's node `when`, so every
-  header gate has one name. Must agree with part 01.
 - **`run.package` is `<name>@<version>` and `run.engine` the release version** (§ 4.3): no issue
   fixes their form.
 - **Snippet folder item `if` reads `input` and `run` only** (§ 4.2): v26's rule, so a folder's size

@@ -584,8 +584,8 @@ it's recorded ([decided](https://github.com/Consultologist/Consultologist-Blazor
 | conditions and `computed` expressions, the deliverable header `if` included | **no** ([confirmed](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6924498184)) |
 | inside a function | only as a parameter passed in through the call's `with`, and then only to macro bodies |
 
-**Proposed:** a parameter bound to a `profile.*` value carries the same restriction through the
-function: reading it in a prompt, a part or a condition is refused (R-F3), just as reading
+**A parameter bound to a `profile.*` value carries the same restriction through the function**
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6959886233), [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6959886713)): reading it in a prompt, a part or a condition is refused (R-F3), just as reading
 `profile.*` there would be.
 
 ### 10.3 The signature
@@ -674,7 +674,7 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 **Profile**
 - R-F1: *"<Subject> reads profile.<field>, which isn't a profile field; the fields are name, credentials, organisation, signature and closing."*
 - R-F2: *"<Condition owner> reads profile.<field> in a condition; the profile is read only in deliverables and macro bodies."*
-- R-F3 (**Proposed**, § 10.2): *"Function '<id>' reads param.<name>, which carries profile.<field>, in <a prompt | a part | a condition>; the profile is read only in deliverables and macro bodies."*
+- R-F3 *(decided: [#1408](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6959886233), [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6959886713); § 10.2)*: *"Function '<id>' reads param.<name>, which carries profile.<field>, in <a prompt | a part | a condition>; the profile is read only in deliverables and macro bodies."*
 - R-F4 (Part 05 R-R2, for prompts): *"Node '<id>' reads profile.<field>; the clinician's profile is never sent to a model. Read it in a deliverable or a macro body."*
 
 **Refused at job start** (Create page)
@@ -690,7 +690,7 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 ## Proposed in this part
 
 - **`check_result` as one shape** (`pass`, `message`, `uncovered`, `untested`, `passed`, `total`): three operations now return it; the issues don't define the shape. If Part 02 defines it, Part 02 wins.
-- **`.items` elements judged only when `completed`; a check operation never returns `null`:** a gate must always have a result. (Empty and null lists: open against Part 03, § 2.2.)
+- **`.items` elements judged only when `completed`; a check operation never returns `null`:** a gate must always have a result.
 - **`min` a non-negative integer literal:** the gate's rule is the package's own, like `failWith`.
 - **A `check_result` computed in `nodes/` is data and gates nothing:** reconciles #1395's refusal with #1419.
 - **In a check loop, `item.id` is the production item's id, and `itemLabel` names the production element's field:** check items then match their production items by key and name.
@@ -701,8 +701,6 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 - **`reason` is `null` for `completed` items.**
 - **A deliverable whose gate was skipped is released:** the issues don't cover a skipped gate.
 - **A bundle holds released deliverables only.**
-- **A profile-bound parameter carries the profile's restriction through a function (R-F3):** otherwise `with` would leak the profile into prompts.
 - **An empty or whitespace-only profile value counts as not set.**
-- **The time-zone refusal applies to packages reading `run.date`:** the 2026-11-17 wording is broader than the 2026-11-16 decision.
 - **The examples' `whenEmpty` values** (`hold` for `test/general`, `fail` for `example-nested-note`): the migration's choice is Part 10's.
 - **The refusal and job-start wordings not marked decided:** the issues give the rule, not the sentence.

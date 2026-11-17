@@ -91,10 +91,14 @@ As at 30 ([#1383](https://github.com/Consultologist/Consultologist-Blazor/issues
 - **A union** is `{ "anyOf": [ A, B ] }`. Each branch's `ret` must be a member, and every member
   must be returned by some branch. An untaken `if` with no `else` reads as skipped through
   `.skipped`, so it is not a union member.
+- **The union is the result itself,** a top-level `anyOf` with no wrapper object: only agent
+  formats are sent to a model (§ 3.3), and the condition's row in the record says which branch ran
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)).
 - **Reading a union:** `.content` always; `.value` only if every member has a value;
   `.value.<field>` only if every member declares that field compatibly.
-- **Nested loops nest:** `list<list<agent_plaintext>>`. Items an `until` didn't run remain elements
-  marked `.skipped`.
+- **Nested loops nest:** `list<list<agent_plaintext>>`. A loop's value holds only the items that
+  completed, in order; items that didn't run are absent, never `null`, and are seen with their
+  state and reason through `.items` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6959884271), part 04 § 2.5).
 - **A macro's `format`** is `plaintext`, `markdown_block` or `markdown_inline`
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6887873980)).
 - **Proposed: flow nodes write `format`** in their `index.json`, and the checker refuses one that
@@ -146,7 +150,7 @@ formats.
 | Keyword | Allowed | Rule |
 |---|---|---|
 | `type` | anywhere | `string`, `number`, `integer`, `boolean`, `object`, `array` or `null`; or an array of exactly one of those plus `"null"` (§ 3.2) |
-| `properties`, `required` | on an object | `required` names declared properties only |
+| `properties`, `required` | on an object | `required` lists **every** declared property, and nothing else (§ 3.3) |
 | `additionalProperties` | on every object | must be `false` |
 | `items` | on an array | one schema |
 | `enum` | on a string | the plain enum (§ 9) |
@@ -181,19 +185,23 @@ Decided on [#1385](https://github.com/Consultologist/Consultologist-Blazor/issue
 - **Refused:** an `anyOf` with a `null` branch around a plain scalar, and a type array holding
   anything other than one type plus `"null"`.
 
-### 3.3 `required`, `additionalProperties` and `anyOf` by audience
+### 3.3 `required`, `additionalProperties` and the root
 
 Strict mode requires every property in `required`, `additionalProperties: false` on every object,
-and no `anyOf` at the root. These rules exist so a schema can be sent to a model; inputs and node
-return types never are
-([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385), "Open"). **Proposed:**
-- **in an `x-agent: true` format** (sent to a model): every property is in `required`, optional
-  fields are nullable (§ 3.2), and the root is not an `anyOf`;
-- **in every other schema** (an input's format, a computed object, `check_result`, a flow node's
-  union): `required` lists the properties a value must have, as the input grammar's example does
-  ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6919612460)),
-  and a root `anyOf` is allowed, as an `if`'s union needs;
-- **in every schema:** `additionalProperties: false` on every object.
+and an object, not an `anyOf`, at the root
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)):
+- **in every format,** not only agent formats: every property of every object is listed in
+  `required`, and an optional property has a nullable type (§ 3.2), for example
+  `"type": ["integer", "null"]`. Every value then carries every key, with `null` when there is
+  none, as every declaration does (#1394). A format whose object leaves a property out of
+  `required` is refused (Refusals);
+- **in every format:** `additionalProperties: false` on every object;
+- **in an `x-agent: true` format only** (sent to a model): the root is not an `anyOf`. Its root
+  need not be an object: the engine's envelope supplies the top-level object strict mode needs
+  when it sends the format (§ 3.5);
+- **in every other format** (an input's, a computed value's, a flow node's): the root may be a
+  string, a list or an `anyOf`. An `if` or `case` whose branches return different formats keeps
+  the `anyOf` as its result, with no wrapper (§ 2.2).
 
 ### 3.4 Validating values
 
@@ -219,7 +227,10 @@ keeps the original
 4. a labelled enum (`oneOf` of `const`/`title`) becomes a plain `enum` of the `const`s
    ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6879459060));
 5. **Proposed:** `title`, `$id` and `format: "date"` are stripped too (strict mode doesn't accept
-   `format`; the reply is still validated against the original, § 3.4).
+   `format`; the reply is still validated against the original, § 3.4);
+6. the result is sent inside the engine's envelope, which supplies the top-level object strict
+   mode requires, so a text or list format can be sent too
+   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)).
 
 The prepared schema is recorded by hash (the request's schema hash), so what the model received
 stays provable.
@@ -318,7 +329,8 @@ list. Flavours (CommonMark, GFM) are #1451.
 
 ### 5.3 Object schemas are fully typed; nested text references a text format
 
-Every nested field has its complete type, a `required` list and `additionalProperties: false`,
+Every nested field has its complete type, a `required` list naming every property (§ 3.3) and
+`additionalProperties: false`,
 defined inline or by `$ref` to a definition. **A nested field is data unless it references a text
 format**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6878928645)).
@@ -383,7 +395,7 @@ Every published format has a `$id`, a URN that doesn't depend on where anything 
 |---|---|---|
 | the formats catalogue | `urn:consultologist:format:<name>@<catalogue-version>` | `urn:consultologist:format:concept_list@v2026.12.1` |
 | a package | `urn:consultologist:package:<package>@<version>:format:<id>` | `urn:consultologist:package:example-nested-note@v2026.12.1:format:verdict` |
-| **Proposed:** the registry's built-ins | `urn:consultologist:spec:<specVersion>:format:<name>` | `urn:consultologist:spec:31:format:markdown_block` |
+| the registry's built-ins ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)) | `urn:consultologist:spec:<specVersion>:format:<name>` | `urn:consultologist:spec:31:format:markdown_block` |
 
 - **A package format's `$id` is derived at publish** from the package's name and version
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6879459060)).
@@ -460,15 +472,19 @@ order. Every member is present
 | `label` | string | no | the Create page label |
 | `description` | array of strings | yes | help text on the Create page; lines joined with `"\n"`, at most 500 characters |
 | `format` | a format name or an inline schema | no | the input's type, which picks the widget |
-| `required` | boolean | no | whether a job can start without it |
+| `required` | boolean | no | whether the user must supply it; one that isn't required reads `null` when left blank |
 | `channel` | string | yes | the content channel (§ 8.3); replaces `expectedContent` |
 
 - **There is no `default` member;** an explicit default is #1456 (Milestone 40)
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6957666238)).
 - **There is no `labelField`:** a loop over the input names its items with `itemLabel` (part 04).
 - **Input ids** follow part 01's id rules.
-- **An unsupplied optional input reads `null`,** in JSON Logic and in templates, and the null rules
-  of part 03 apply.
+- **A top-level input keeps `required: true | false`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)): it says whether the
+  user must supply it, not what the format's `required` list says. An optional input left blank
+  reads `null`, in JSON Logic and in templates, and the null rules of part 03 apply.
+- **Fields inside an object input follow the format rule** (§ 3.3): every field is listed in
+  `required`, an optional field has a nullable type, and a field whose type is not nullable must
+  be filled in ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)).
 - **Order matters:** the object's member order is the Create page's. **Proposed:** `resolve.json`
   keeps it explicitly, since canonical JSON (RFC 8785) sorts members (part 07).
 - **Function inputs** keep #1419's shorter `{ "format", "description" }`; every parameter is required,
@@ -490,8 +506,8 @@ order. Every member is present
 
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6878562886))
 
-- **Object fields are JSON Schema `properties`:** a field's label is its `title`, required fields are
-  in the `required` list, and fields nest to any depth. 30's `fields`/`items`/`values` grammar goes.
+- **Object fields are JSON Schema `properties`:** a field's label is its `title`, every field is
+  in the `required` list, an optional field is nullable (§ 8), and fields nest to any depth. 30's `fields`/`items`/`values` grammar goes.
   **Proposed:** `title` is required on every property of an input's schema, so no field is shown by
   its bare id.
 - **Proposed: refused as an input's format:** any `x-agent: true` format (a clinician writes
@@ -542,7 +558,7 @@ Revisiting the name is #1427 (Milestone 40).
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["title", "kind"],
+        "required": ["title", "kind", "notes"],
         "properties": {
           "title": { "type": "string", "title": "Title" },
           "kind": {
@@ -554,7 +570,10 @@ Revisiting the name is #1427 (Milestone 40).
               { "const": "omit",      "title": "Leave out" }
             ]
           },
-          "notes": { "$ref": "markdown_block", "title": "Notes for this section" }
+          "notes": {
+            "anyOf": [ { "$ref": "markdown_block" }, { "type": "null" } ],
+            "title": "Notes for this section"
+          }
         }
       }
     },
@@ -572,7 +591,8 @@ Revisiting the name is #1427 (Milestone 40).
 ```
 
 The migration writes 30's `text` field `title` as `markdown_block` and the enum's titles equal to
-its values (§ 11); this example shows the author's later edits (`title` narrowed to `string`, labels
+its values (§ 11); `notes` is optional, so it is nullable and a blank one is sent as `null`. This
+example shows the author's later edits (`title` narrowed to `string`, labels
 written). The loops over `input.sections` say `"itemLabel": "title"` (part 04). A condition reads
 `{ "===": [ { "var": "item.value.kind" }, "narrative" ] }`, displayed `item.value.kind = "narrative"`.
 
@@ -650,7 +670,8 @@ Mechanical, in `WorkflowPackageMigration30To31` ([part 10](10-migration-and-tool
 | `type: text` (inputs and fields) | `markdown_block` |
 | `type: enum` + `values` | `string` + `oneOf`; **Proposed:** each `title` equal to its value, so the select shows what it shows at 30 |
 | `type: date` | `"date"` |
-| `fields` | `properties` + `required` (+ `title` from each field's `label`) |
+| `fields` | `properties` + `required` listing every field, an optional field made nullable (+ `title` from each field's `label`) |
+| an object format's partial `required` (catalogue and package) | every property listed in `required`, the optional ones made nullable ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810); part 10 § 1.8) |
 | `expectedContent` | `channel` |
 | `labelField` | `itemLabel` on each loop over the input |
 | (no description) | `description: null` |
@@ -685,7 +706,7 @@ The satellites are updated before the cutover, so they work with 30 and 31 alike
 | `Type` | derived from `format` (below) |
 | `Values` | the `enum` values, or the labelled `oneOf`'s `const`s, in order; `null` otherwise |
 | `Items` | for an array, its `items` mapped by the same rules |
-| `Fields` | for an object, one `WorkflowPackageFieldResponse` per property: `Id` the property name, `Label` its `title`, `Required` whether `required` lists it, and `Type`, `Values`, `Items`, `Fields` by the same rules |
+| `Fields` | for an object, one `WorkflowPackageFieldResponse` per property: `Id` the property name, `Label` its `title`, `Required` whether its type is not nullable (every field is listed in `required`, § 8), and `Type`, `Values`, `Items`, `Fields` by the same rules |
 | `ExpectedContent` | `channel` |
 | `Types` | `null` (31 has no union inputs) |
 | **`Format`** (new) | the input's format as a JSON schema (below) |
@@ -738,7 +759,7 @@ is marked Proposed too.
 - *"<Format | Input '<id>'> uses keyword '<keyword>' at <path>, which is outside the formats dialect."*
 - *"<Format> at <path> declares additionalProperties <value>; every object declares additionalProperties: false."*
 - *"<Format> at <path> lists '<property>' in required but declares no such property."*
-- *"Agent format '<name>' at <path> leaves '<property>' out of required; a model must return every property, so write an optional one as nullable."*
+- *"<Format> at <path> leaves '<property>' out of required; every property is listed in required, and an optional one is written as nullable."*
 - *"Agent format '<name>' is an anyOf at its root, which strict mode can't send; wrap it in an object."*
 - *"<Format> at <path> writes a nullable <type> with anyOf; write it as \"type\": [\"<type>\", \"null\"]."* (decided rule: [#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6879459060))
 - *"<Format> at <path> declares type <list>; a type array is one type plus \"null\"."*
@@ -790,12 +811,10 @@ is marked Proposed too.
 - **Display of nullables, inline objects and enums** (`x | null`, `{ title: string }`, `string {a, b}`): the printer was decided only for lists, unions and primitives.
 - **`$schema` not written in package sources:** `specVersion` implies the dialect.
 - **Recursive formats refused:** the comparison and printer are defined for finite shapes; nothing needs recursion.
-- **Strict mode's every-property-required and no-root-`anyOf` apply to `x-agent: true` formats only; `additionalProperties: false` everywhere:** the input grammar's decided example lists a partial `required`, and an `if`'s union is a root `anyOf`, while the 2026-11-17 dialect decision aims at sending agent formats.
 - **`format: "date"` asserted by Corvus and stripped before sending:** strict mode rejects `format`, and the value must still be a real date.
 - **`title`, `$id` and `format` stripped from what a model receives:** strict mode doesn't need them.
 - **`titled_section` is not a built-in at 31:** nothing needs it shared yet; adding it later is compatible.
 - **Packages define object and array formats only:** text and data scalars are the registry's and catalogue's, and agent text needs an attested agent.
-- **Built-in `$id`s as `urn:consultologist:spec:31:format:<name>`:** only catalogue and package URNs were decided.
 - **A package format's `$id` is not written in source:** it is derived at publish and would change every version.
 - **`formats/index.json`'s `description` is a JSON Schema string or omitted:** the file is a schema, where `description` can't be lines or `null`.
 - **`resolve.json` keeps input order explicitly:** canonical JSON sorts members, and the order is the Create page's.

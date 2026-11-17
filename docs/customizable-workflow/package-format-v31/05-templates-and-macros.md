@@ -378,7 +378,9 @@ piped inside a line
 A renderer use is not a node: it isn't scheduled, waits on nothing and can't fail on its own.
 It's a **sub-row of the node (or deliverable) that uses it**, one per pipe use, in source order,
 per instance, **keyed by the use's position** (`identify_problem/render:1`)
-([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)).
+([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)); inside a loop, the item path comes
+first, then the render site (`draft_paragraph:2/1/render:1`,
+[decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6959888097)).
 Each holds the renderer's id, its template hash, the source read, the input hash and size, and
 the output hash and length
 ([refined](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6877988508)).

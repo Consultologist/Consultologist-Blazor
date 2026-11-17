@@ -126,7 +126,7 @@ Example, fictional: reading prior letters in order until one answers the referra
 
 | Member | Type | Means |
 |---|---|---|
-| `.value` | `list<T>`, `T` its `ret`'s format | **Proposed:** the values of the items that **completed**, in item order |
+| `.value` | `list<T>`, `T` its `ret`'s format | the values of the items that **completed**, in item order ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6959884271)) |
 | `.items` | a list of the element of § 2.6 | every item, in item order, each paired with its outputs by identity |
 | `.content` | `markdown_block` | the standard rendering (`## <item name>`, then the item's text, joined by blank lines), so today's readers keep their bytes (#1406; part 05) |
 | `.state` | `"completed"` \| `"skipped"` \| `"not_run"` | the loop node's own state (inside an untaken branch, a loop is `skipped`) |
@@ -134,10 +134,11 @@ Example, fictional: reading prior letters in order until one answers the referra
 
 - **A loop's `format`** is `list<T>`, in JSON Schema `{ "type": "array", "items": T }`;
   nested loops nest (`list<list<agent_plaintext>>`).
-- **`.value` holds completed items only (Proposed).** #1385 (decision 5) said items an `until`
-  didn't run remain as elements marked skipped, which predates `.items`. With `.items` carrying
-  every item's `state` and `reason`, `.value` stays a clean `list<T>` that templates and
-  `all_pass` can read without a `null` test (part 03 § 5.4).
+- **`.value` holds completed items only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6959884271),
+  [#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6959884701)). Items that didn't run are absent, never `null`
+  placeholders; they are seen, with their `state` and `reason`, through `.items`. This replaces
+  #1385 decision 5's "elements marked skipped", which predates `.items`. `.value` stays a clean
+  `list<T>` that templates and `all_pass` can read without a `null` test (part 03 § 5.4).
 - **No zipping by position.** Pairing two lists by index isn't offered: an `if`, an `until` or a
   reordered `index.json` would put a heading over the wrong text. `.items` pairs by identity
   (#1406).
@@ -355,7 +356,9 @@ With § 1's members, seven members. A body object has exactly `nodes` (at least 
 - **The format of an `if` or `case` is the union of what its bodies return**
   (`agent_plaintext | classification`; in JSON Schema `anyOf`). Each body's `ret` must be a
   member, and each member returned by some body (#1385 decision 5). When every body returns one
-  format, the union is that format.
+  format, the union is that format. The `anyOf` is the result itself, with no wrapper object,
+  and the condition's row records which branch ran
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810), part 02 § 3.3).
 - **A reader of a union:** `.content` always; `.value` only if every member has a value;
   `.value.<field>` only if every member declares it compatibly.
 - **An untaken `if` with no `else`, or a `case` with no matching branch and no `else`,** has
@@ -563,7 +566,8 @@ through `uses`. A function's result depends only on its arguments, which makes i
 ### 7.7 The `call` node
 
 A `call` is a leaf, `<id>.md`, **header only** (its body must be empty). Its members, besides
-part 01's leaf members (`kind`, `label`, `description`, `format`, and the leaf condition):
+part 01's leaf members (`kind`, `label`, `description`, `format`, and the node's own condition,
+`if`):
 
 | Member | Type | Null | Meaning |
 |---|---|---|---|
@@ -582,7 +586,8 @@ part 01's leaf members (`kind`, `label`, `description`, `format`, and the leaf c
   and then only to reach deliverables and macro bodies ([#1408, decision 7](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)). The parameter
   **carries the profile's restriction** through the function: reading it in a prompt, a part or a
   condition is refused (part 06 § 10.2, R-F3), and it may be read in a macro body or passed on
-  through `with`. **Proposed:** that a profile-bound parameter is tracked this way.
+  through `with` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6959886233),
+  [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6959886713)).
 - **`run.*` may be passed in:** `"with": { "today": "run.date" }`. The parameter is then
   run-dependent (part 03 § 4.4).
 - **Its value is the function's `ret`,** read like any node (`node.hpi_section.value`,
@@ -860,7 +865,7 @@ is v30's built sentence, kept; **Proposed** wording is new.
 | *"Call '\<id\>' passes no \<param\>; function '\<f\>' takes \<params\>."* | **Proposed** |
 | *"Call '\<id\>' passes \<param\>, which function '\<f\>' doesn't take (\<params\>)."* | **Proposed** |
 | *"Call '\<id\>' passes \<reference\> (\<format\>) as \<param\>; function '\<f\>' takes \<format\>."* | rule decided; wording **Proposed** |
-| *"Function '\<id\>' reads param.\<name\>, which carries profile.\<field\>, in \<a prompt \| a part \| a condition\>; the profile is read only in deliverables and macro bodies."* (part 06 R-F3) | **Proposed** (§ 7.7) |
+| *"Function '\<id\>' reads param.\<name\>, which carries profile.\<field\>, in \<a prompt \| a part \| a condition\>; the profile is read only in deliverables and macro bodies."* (part 06 R-F3) | decided ([#1408](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6959886233), [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6959886713)) |
 | *"Call '\<id\>' declares format \<format\>; function '\<f\>' returns \<format\>."* | **Proposed** |
 | *"Call '\<id\>' has a body; a call is a header only."* | **Proposed** |
 
@@ -878,8 +883,6 @@ is v30's built sentence, kept; **Proposed** wording is new.
   its format, and no decision exempts flow nodes.
 - **A production loop may iterate `.items`** (§ 2.2): decided only for check loops.
 - **`max` beyond the first N items records `not_run` with "not run: beyond max N"** (§ 2.4).
-- **A loop's `.value` holds the completed items only** (§ 2.5): contradicts #1385 decision 5's
-  "elements marked skipped", which predates `.items`.
 - **The `.items` element has `content` beside #1406's list, and an item's `state` is its `ret`'s**
   (§ 2.6).
 - **A loop over `.items` names items with `"itemLabel": "label"`; position names use the loop's
@@ -891,9 +894,6 @@ is v30's built sentence, kept; **Proposed** wording is new.
 - **`snippets`, `formats`, `renderers`, `macros` are reserved names inside a function folder**
   (§ 7.1).
 - **`call` writes `format`; `with` values are reference strings, no literals** (§ 7.7).
-- **A profile-bound parameter carries the profile's restriction through the function** (§ 7.7,
-  part 06 R-F3), as #1408 decision 7 allows `profile.*` through `with` only towards deliverables
-  and macro bodies.
 - **Call depth counts a top-level call as 0** (§ 7.8).
 - **A pass-through computed node may keep an agent format** (§ 7.10): otherwise #1385's kind rule
   refuses #1419's pattern B.

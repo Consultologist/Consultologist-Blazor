@@ -39,7 +39,9 @@ and owners told before and after.**
 | one `manifest.json` with every node, prompts as files | files and folders: `nodes/`, flow folders with `index.json`, `checks/`, `deliverables/`, `renderers/`, `snippets/`, `macros/`, `formats/`, `tests/` | [01](01-files-and-scopes.md) |
 | optional members omitted | every member written, `null` for none | [01](01-files-and-scopes.md) |
 | `format` with `producer` | `kind` and `format` on every node; `prose` → `agent_plaintext`; `x-generated` → `x-agent` | [02](02-types-and-inputs.md) |
-| inputs as an array with `type`, `values`, `fields`, `items`, `expectedContent` | an object keyed by id: `text` → `markdown_block`; `enum` + `values` → `oneOf`; `date` → `"date"`; `fields` → `properties` + `required`; `expectedContent` → `channel`; `description: null` added ([grammar](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6919612460)) | [02](02-types-and-inputs.md) |
+| an object format (catalogue or package) whose `required` lists only some properties | every property listed in `required`, the optional ones made nullable (§ 1.8) | [02](02-types-and-inputs.md) |
+| a node's `when` gate | `if` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064)); a `case` branch keeps `when` | [03](03-expressions.md) |
+| inputs as an array with `type`, `values`, `fields`, `items`, `expectedContent` | an object keyed by id: `text` → `markdown_block`; `enum` + `values` → `oneOf`; `date` → `"date"`; `fields` → `properties` + `required` listing every field, optional ones made nullable; `expectedContent` → `channel`; `description: null` added ([grammar](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6919612460)) | [02](02-types-and-inputs.md) |
 | `labelField` on an input | `itemLabel` on **each loop** that iterates the input (several loops get the same value) | [04](04-loops-and-functions.md) |
 | string conditions (Scriban) | JSON Logic, by the converter (§ 2); `==`/`!=` written `===`/`!==` | [03](03-expressions.md) |
 | `let` (a Scriban expression) | `kind: computed` with JSON Logic in `expression`, by the converter | [03](03-expressions.md) |
@@ -119,7 +121,9 @@ Index [§ 5](index.md#5-phasing) gives the whole rollout. The migration's part o
    - `consultologist-package-format`: the spec text, its schemas (including `resolve.json`'s and
      `lock.json`'s) and the conformance suite (§ 5);
    - `consultologist-agents`: the migrated formats catalogue (`prose.json` → `agent_plaintext.json`,
-     `formats/index.json`, `agents/bindings.json`, a `$id` on every format, `producer` removed),
+     `formats/index.json`, `agents/bindings.json`, a `$id` on every format, `producer` removed,
+     every property listed in `required` with the optional ones nullable, each rewritten format
+     released as a new version, § 1.8),
      and **new Foundry versions of every attested agent whose embedded schema changes**, with the
      catalogue pins moved;
    - `consultologist-provenance`: the new record contract (storage 12).
@@ -145,6 +149,18 @@ Until old specs retire (#1450), the 30 load path stays, so **the operator can mo
 production pins back** to the pre-migration versions if the new release misbehaves. Each move is
 recorded and announced to owners. The engine keeps running 30 throughout
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6924497114)).
+
+### 1.8 Every property required
+
+At 31 every property of every format is listed in `required`, and an optional one is nullable
+(part 02 § 3.3). The migration rewrites today's formats to match ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810), [#1447](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6959888494)):
+- **package formats and inputs' object fields** in each migrated package;
+- **the catalogue's formats,** released as new versions in the contracts release (index § 5,
+  step 1; § 1.6, step 0).
+
+Agents then return explicit `null`s for optional fields where they used to leave the key out.
+**The record and History treat an explicit `null` as absent,** and the byte-equivalence report
+(§ 3.2) notes the difference rather than failing on it.
 
 ## 2. The converter
 
@@ -249,7 +265,8 @@ turns into a hand edit (§ 1.4). In particular:
 
 - **Reported, never a gate.** Each difference is listed with its file, its site and both texts'
   hashes, and marked **expected** where the rewrite declares and explains it (for example a
-  whitespace form #1412 refuses). The report **never blocks publish**, for public or account
+  whitespace form #1412 refuses). An optional field that 30 left out and 31 sends as `null`
+  (§ 1.8) is noted, never counted as a failure. The report **never blocks publish**, for public or account
   packages ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447)).
 - **Where it goes:** attached to the publish record of each migrated account version, and shown by
   the Editor and History; for the public packages, attached to the migration PR.
