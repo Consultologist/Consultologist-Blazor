@@ -132,8 +132,14 @@ would otherwise have carried it (#397).
   `for … until` runs in order and stops early, unrun items kept as rows; a `let` computes a typed
   value with no model call; `labelField` names an item by its field; record storage 11; enum labels
   and #1189 not in 30,
+  [the package format, redesigned](customizable-workflow/package-format-v31/index.md) — specVersion 31
+  (Milestone 39, design #1388, 2026-11-17): one version, all at once; nodes as files and flows as
+  folders, qualified keys, kind and format in a JSON Schema dialect, JSON Logic to decide and compute
+  (`===`/`!==` only), the Consultologist Scriban dialect to present, renderers, snippets, parts and
+  macros, loops and functions, checks and check loops, deliverables as files, the profile,
+  `resolve.json` and `lock.json`, in-package tests, record storage 12, the migration from 30,
   [the package format, redesigned](customizable-workflow/package-format-redesign-notes.md) — working
-  notes (Milestone 39, 2026-11-13 to 15; to be replaced by the design, #1388): files and folders,
+  notes (Milestone 39, 2026-11-13 to 15; superseded by the v31 design, kept unchanged): files and folders,
   namespaces, `FormatBounds`, kind and format with data and text types, JSON Logic to decide and
   compute with Scriban to present, snippets, parts and macros, loops, functions, checks, renderers,
   deliverables, the profile, `resolve.json` and `lock.json`, the Serverless Workflow export
