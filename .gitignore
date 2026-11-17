@@ -372,3 +372,6 @@ Old/
 old/
 .Old/
 .old/
+
+# Obsidian vault settings (any folder opened as a vault)
+.obsidian/
