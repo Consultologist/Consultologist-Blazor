@@ -107,7 +107,7 @@ Fixed arity, versioned like the other built-in operations (in `requires` and `lo
 | Operation | Arguments | Returns | Passes when |
 |---|---|---|---|
 | `terms_subset` | `of` (concept_list), `in` (concept_list), `failWith` (string literal) | `check_result` | every concept of `of` appears in `in`, as at version 30 |
-| `all_pass` | `list` (of `check_result`), `failWith` (string literal) | `check_result` | every judged element passed (an empty list: open, below) |
+| `all_pass` | `list` (of `check_result`), `failWith` (string literal) | `check_result` | every judged element passed; a `null` or empty list fails (below) |
 | `count_pass` | `list` (of `check_result`), `min` (number), `failWith` (string literal) | `check_result` | at least `min` judged elements passed |
 
 - **`failWith` must be a literal string,** checked at publish: a failed check speaks the
@@ -122,9 +122,9 @@ Fixed arity, versioned like the other built-in operations (in `requires` and `lo
   `failWith`. Part 03 types it as a `number` and proposes that a null `min` gives a failed result;
   with a literal, `min` is never null.
 - **Null and empty lists** are [Part 03](03-expressions.md)'s (the operations' null behaviour).
-  **Proposed, in both parts:** a null or empty list **fails** `all_pass`, since a gate that judged
-  nothing hasn't passed (JSON Logic's `all` is false on an empty array); a package that accepts
-  nothing judged writes `count_pass(list, 0, …)`. `terms_subset` reads a null list as empty.
+  **A null or empty list fails `all_pass`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810)): a gate that judged nothing hasn't
+  passed (JSON Logic's `all` is false on an empty array); a package that accepts nothing judged
+  writes `count_pass(list, 0, …)`. The cases are revisited in #1461 (Milestone 40). `terms_subset` reads a null list as empty.
 - Whatever the arguments, an operation returns a `check_result`, never `null`, so a gate always
   has a result to read. **Proposed.**
 
@@ -191,7 +191,7 @@ deliverables/note.md
 { "kind": "for", "label": "Section coverage", "description": null,
   "in": "node.parts.items", "itemLabel": "title",
   "parallel": true, "maxParallel": null, "until": null,
-  "nodes": [ "coverage" ], "ret": "coverage" }
+  "nodes": [ "coverage" ], "ret": "check.part_coverage.coverage" }
 ```
 
 ```
@@ -624,12 +624,8 @@ registry** (the table in § 10.1), never the author's own profile.
 - **The account time zone** (an IANA name, for `run.date`) is an **account setting, not a profile
   field:** it's never read as `profile.*`. It's a select list that starts empty, with a "Use this
   browser's zone" button that fills it only when clicked. The zone is recorded beside
-  `run.date`. Jobs are refused until it's set: *"This workflow prints the date. Set your time
-  zone in your account settings."*
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6920512477)).
-  **Proposed reading:** the refusal applies to jobs whose package reads `run.date`, as the
-  sentence and the 2026-11-16 decision say; the 2026-11-17 "Jobs are refused until it's set" is
-  read as the same rule. The pages themselves are [Part 09](09-engine-and-pages.md)'s.
+  `run.date`. **Every job is refused until it's set**, whether or not the package reads
+  `run.date` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)): *"Set your time zone in your account settings before running a workflow."* (**Proposed** wording). The pages themselves are [Part 09](09-engine-and-pages.md)'s.
 
 ## 11. What changes from version 30
 
@@ -684,7 +680,7 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 **Refused at job start** (Create page)
 - J-1 *(decided)*: *"This workflow needs your signature. Choose one in Profile."*
 - J-2 (**Proposed**, the other fields): *"This workflow needs your <name | credentials | organisation | closing>. Set it in Profile."*
-- J-3 *(decided)*: *"This workflow prints the date. Set your time zone in your account settings."*
+- J-3 *(rule decided, [every job](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); wording **Proposed**)*: *"Set your time zone in your account settings before running a workflow."*
 
 **Shown in History** (not refusals)
 - H-1 *(decided)*: *"<Deliverable label> was not sent: check '<id>' failed (<detail>)."*
