@@ -83,7 +83,7 @@ always a sub-row, since item ids never contain `:`.
 
 | Sub-row | Id | Status |
 |---|---|---|
-| a renderer use | `<row key>/render:<n>`, `n` its 1-based position in the body: `identify_problem/render:1`, `parts.paragraphs.draft_paragraph:2/1/render:1` | the top-level form is [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891); inside a loop, **Proposed** |
+| a renderer use | `<row key>/render:<n>`, `n` its 1-based position in the body: `identify_problem/render:1`, `parts.paragraphs.draft_paragraph:2/1/render:1` | the top-level form is [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891); inside a loop, the item path then the render site, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6959888097) |
 | a macro row | `<row key>/macro:<qualified macro id>`: `assessment/macro:letrozole_prescription_text` | **Proposed** |
 | a run spot | `<row key>/spot:<site>` | **Proposed** |
 | a decision | `<owner key>/if:<site>` (§ 5.2) | **Proposed** |
@@ -494,7 +494,7 @@ The record refuses nothing itself; the refusals at start and load are in
 
 ## Proposed in this part
 
-- **Sub-row ids** `<row key>/render:<n>` inside loops, `/macro:<id>`, `/spot:<site>` and `/if:<site>`: one form for every sub-row, unambiguous since item ids never hold `:`.
+- **Sub-row ids** `/macro:<id>`, `/spot:<site>` and `/if:<site>`: the renderer's form (decided), used for every sub-row, unambiguous since item ids never hold `:`.
 - **`versionsRan`** as the name and shape of the exact versions that ran: mirrors `lock.json`, so the two compare member by member.
 - **`signatureChosen`:** the Create page's per-job choice is a recorded fact.
 - **Retiring `macroChoices`, `excludedMacros` and `classifications` at 12:** their content is now inputs, decisions and agent rows.

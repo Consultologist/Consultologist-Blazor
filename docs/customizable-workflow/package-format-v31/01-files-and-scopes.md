@@ -361,6 +361,7 @@ is an error**
 | `label` | string | no | every node, check, flow node, function, renderer, macro, deliverable and input. It is the display name everywhere |
 | `description` | array of strings | yes | every `index.json` (decided); every header (Proposed, § 2.3) |
 | `format` | a format name or an inline schema ([part 02 § 2](02-types-and-inputs.md#2-format)) | no | every node, check, function, renderer, deliverable, macro and input; a snippet folder's `index.json` |
+| `if` | a JSON Logic condition ([part 03](03-expressions.md)) | yes: always | every production leaf (`agent`, `rendered`, `computed`, `call`), check, snippet, macro, macro folder and deliverable. A node's own condition is spelled `if`, replacing 30's `when` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064)); a `case` branch keeps `when` for its values (part 04) |
 
 **Proposed:** `label` is non-empty after trimming. A loop's item naming is `itemLabel`, never
 `label` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6924320332));
@@ -372,10 +373,10 @@ The table names each file's members; the owning part gives their types, null rul
 
 | File | Members | Part |
 |---|---|---|
-| `agent` node | `kind`, `label`, `description`, `format`, and the prompt members (`onInvalid`, `parts`, …) | [05](05-templates-and-macros.md) |
-| `rendered` node | `kind`, `label`, `description`, `format` | [05](05-templates-and-macros.md) |
-| `computed` node, check | `kind`, `label`, `description`, `format`, `expression` | [03](03-expressions.md), [06](06-checks-deliverables-profile.md) |
-| `call` node | `kind`, `label`, `description`, `function`, `with`, `format` | [04](04-loops-and-functions.md) |
+| `agent` node | `kind`, `label`, `description`, `format`, `if`, and the prompt members (`onInvalid`, `parts`, …) | [05](05-templates-and-macros.md) |
+| `rendered` node | `kind`, `label`, `description`, `format`, `if` | [05](05-templates-and-macros.md) |
+| `computed` node, check | `kind`, `label`, `description`, `format`, `if`, `expression` | [03](03-expressions.md), [06](06-checks-deliverables-profile.md) |
+| `call` node | `kind`, `label`, `description`, `if`, `function`, `with`, `format` | [04](04-loops-and-functions.md) |
 | `for` / `while` / `if` / `case` `index.json` | `kind`, `label`, `description`, `format`, the flow members, `nodes`, `ret` | [04](04-loops-and-functions.md) |
 | function `index.json` | `label`, `description`, `inputs`, `uses`, `nodes`, `ret`, `format` | [04](04-loops-and-functions.md) |
 | renderer | `kind`, `label`, `description`, `input`, `format` | [05](05-templates-and-macros.md) |
