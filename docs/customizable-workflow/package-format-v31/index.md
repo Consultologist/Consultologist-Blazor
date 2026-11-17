@@ -8,8 +8,9 @@
 > gathered in [§ 7](#7-proposed-points). The normative text follows in the package-format registry
 > as `package-format-v31.md` with the release (§ 5, step 1).
 >
-> **Revision 2** (2026-11-17): `ret` is the child's full name, and an empty or null list fails
-> `all_pass` (§ 7); both were Proposed in revision 1.
+> **Revision 2** (2026-11-17): `ret` is the child's full name, an empty or null list fails
+> `all_pass`, and every job is refused until the account's time zone is set (§ 7); all three were
+> Proposed in revision 1.
 >
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
@@ -117,7 +118,7 @@ in this order:
 1. **Release the contracts first:** the package-format spec (`package-format-v31.md`, its schemas,
    the conformance suite and `SourceBounds`), the agents catalogue (new attested agent versions and
    `bindings.json`) and the provenance contract (record storage 12).
-2. **Build, in thirteen areas,** each a sub-issue of one build parent issue filed from this design:
+1. **Build, in thirteen areas,** each a sub-issue of one build parent issue filed from this design:
    1. byte-equivalence fixtures (today's prompts and notes, captured first);
    2. parser and file model;
    3. types;
@@ -136,13 +137,13 @@ in this order:
    (`canada-east-ai-function-dev`), through `WorkflowPackages__PreviewSpecVersions=31`, against
    **dev's own package registry**, so production's registry never sees a 31 package before the
    bump. The smoke runs and a dry run of the migration happen there, with fictional inputs.
-3. **Update the satellites** (the Copilot agent and the Zoom app) against the additive
+2. **Update the satellites** (the Copilot agent and the Zoom app) against the additive
    `WorkflowPackages/Current` contract, so they work on 30 and 31 alike, before the cutover.
-4. **Bump the engine**, with a drain: 31 joins the compiled-in accepted versions and the preview
+3. **Bump the engine**, with a drain: 31 joins the compiled-in accepted versions and the preview
    setting is removed.
-5. **Publish the example packages** at 31.
-6. **The operator bulk-migrates every account package,** notifying owners before and after.
-7. **Move the pins.**
+4. **Publish the example packages** at 31.
+5. **The operator bulk-migrates every account package,** notifying owners before and after.
+6. **Move the pins.**
 
 The migration's step-by-step detail is on #1447 and summarised in
 [part 10](10-migration-and-tools.md). Early and independent of all this, the client moves to
@@ -164,31 +165,27 @@ parent issue and its thirteen sub-issues are filed from it.
 Each part ends with "Proposed in this part": the points this design had to state that no issue
 has decided yet. They are gathered here for the package author to confirm or change.
 
-There are **184** such points. Most are a member's exact name, a refusal sentence's wording or a
-small rule no issue reached. These nine cut across parts or reinterpret an issue, so they need the
+There are **182** such points. Most are a member's exact name, a refusal sentence's wording or a
+small rule no issue reached. These eight cut across parts or reinterpret an issue, so they need the
 package author's eye first:
 
-1. **When a missing time zone refuses a job** ([06 § 10.7](06-checks-deliverables-profile.md),
-   [09 § 7.2](09-engine-and-pages.md)): written as *only jobs whose package reads `run.date`*, as
-   [#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6920512477)
-   decided; the 2026-11-17 summary said "jobs are refused until it's set", which may be read as every job.
-2. **A loop's `.value` holds only the items that completed** ([04](04-loops-and-functions.md));
+1. **A loop's `.value` holds only the items that completed** ([04](04-loops-and-functions.md));
    items that didn't run are seen through `.items`.
-3. **A production node's own gate is spelled `if`**, replacing 30's `when`
+2. **A production node's own gate is spelled `if`**, replacing 30's `when`
    ([04](04-loops-and-functions.md), [03](03-expressions.md)).
-4. **Strict mode's rules (every property required, no root `anyOf`) apply to agent formats only**
+3. **Strict mode's rules (every property required, no root `anyOf`) apply to agent formats only**
    (`x-agent: true`); inputs keep a partial `required` list, and `if`/`case` unions stay `anyOf`
    ([02](02-types-and-inputs.md)).
-5. **A profile value passed into a function keeps the profile's restriction** inside it
+4. **A profile value passed into a function keeps the profile's restriction** inside it
    ([04 § 7.7](04-loops-and-functions.md), [06 § 10.2](06-checks-deliverables-profile.md)).
-6. **`lock.json` carries `resolve.json`'s hash, and `resolve.json` names its lock by file name**
+5. **`lock.json` carries `resolve.json`'s hash, and `resolve.json` names its lock by file name**
    ([07](07-compiled-documents.md)): two documents can't each hold the other's hash.
-7. **Renderer sub-rows inside loops are keyed after the item path**
+6. **Renderer sub-rows inside loops are keyed after the item path**
    (`draft_paragraph:2/1/render:1`, [08](08-record.md)).
-8. **Built-in formats' `$id`s are `urn:consultologist:spec:31:format:<name>`**; only catalogue and
+7. **Built-in formats' `$id`s are `urn:consultologist:spec:31:format:<name>`**; only catalogue and
    package URNs were decided ([02](02-types-and-inputs.md)).
-9. **A per-component "floor" in `requires`**, so a library change adopted despite a byte
-    difference can still refuse older packages inside a caret range ([07](07-compiled-documents.md)).
+8. **A per-component "floor" in `requires`**, so a library change adopted despite a byte
+   difference can still refuse older packages inside a caret range ([07](07-compiled-documents.md)).
 
 The full lists:
 
@@ -200,14 +197,15 @@ The full lists:
 | [04 Loops and functions](04-loops-and-functions.md#proposed-in-this-part) | 16 |
 | [05 Templates and macros](05-templates-and-macros.md#proposed-in-this-part) | 19 |
 | [06 Checks, deliverables and the profile](06-checks-deliverables-profile.md#proposed-in-this-part) | 17 |
-| [07 The compiled documents](07-compiled-documents.md#proposed-in-this-part) | 17 |
+| [07 The compiled documents](07-compiled-documents.md#proposed-in-this-part) | 16 |
 | [08 The record](08-record.md#proposed-in-this-part) | 11 |
-| [09 The engine and the pages](09-engine-and-pages.md#proposed-in-this-part) | 22 |
+| [09 The engine and the pages](09-engine-and-pages.md#proposed-in-this-part) | 21 |
 | [10 Migration and tools](10-migration-and-tools.md#proposed-in-this-part) | 14 |
 
 Decided since the design merged (2026-11-17): **`ret` is the child's full name**
 (`"ret": "node.parts.paragraphs"`, [#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6958687389)), and **an empty or null list fails `all_pass`**
-([#1396](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810); revisited in #1461).
+([#1396](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810); revisited in #1461), and **every job is refused until the
+account's time zone is set** ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)), whether or not the package reads `run.date`.
 
 Most refusal sentences are written here for the first time: the issues decide that each rule
 gets a sentence, and give the exact words for only a few. Each part's "Refusals" section marks

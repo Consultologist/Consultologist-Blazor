@@ -222,7 +222,7 @@ per-job ceiling note (#1393) and conversion hints are all here.
     "features": [],
     "agents": { "consult-prose": "4", "custom-json": "1" }
   },
-  "needs": { "profile": [], "timeZone": false },
+  "needs": { "profile": [] },
   "inputs": {
     "consult_draft": { "label": "Consult draft", "description": null,
                        "format": { "$ref": "#/$defs/markdown_block" }, "required": true, "channel": null }
@@ -329,7 +329,6 @@ the job starts. Anything missing or out of range refuses with the sentences of ย
 | Member | Type | Null | Lists |
 |---|---|---|---|
 | `profile` | array of string | never | the `profile.*` fields any template reads, from `name`, `credentials`, `organisation`, `signature`, `closing` ([part 06](06-checks-deliverables-profile.md)), sorted; `[]` for none ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6904925306)) |
-| `timeZone` | boolean | never | `true` when anything reads `run.date`, which needs the account's time zone ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6920512477)). **Proposed** member |
 
 The Create page reads `needs` before submission and refuses, naming the field, when the account
 hasn't set it (ยง 10).
@@ -624,8 +623,8 @@ and it says nothing about a job. **Proposed:** file name `publish-report.json`, 
 - *"This workflow needs your signature. Choose one in Profile."*
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)); for other fields,
   *"This workflow needs your <field label>. Set it in Profile."* **Proposed.**
-- *"This workflow prints the date. Set your time zone in your account settings."*
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6920512477)).
+- *"Set your time zone in your account settings before running a workflow."* Every job, until the account's time zone is set ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)); wording
+  **Proposed**. No `needs` member is required, since every job needs the zone.
 
 **At load** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175): the engine refuses a document whose bytes don't match):
 - *"Workflow <package>@<version> can't run: its compiled document doesn't match the hash published for it."* **Proposed** wording.
@@ -654,7 +653,6 @@ and it says nothing about a job. **Proposed:** file name `publish-report.json`, 
 - **The `warnings` shape** `{ sentence, at }`: the same shape as the publish report's refusals.
 - **`evaluator` in `requires` is our evaluator's version,** not Corvus's; Markdig and Corvus.JsonSchema are locked but not in `requires`: libraries behind our interfaces reach packages through our versioned components.
 - **`features` gains `run-spots` and `check-loops`:** both are engine behaviours a package can depend on.
-- **`needs.timeZone`:** `run.date` needs the account's zone, and the Create page must know before submission.
 - **`lock.json` has `documentVersion`, `resolver { packageFormat, dialect }`, `builtins` and nullable `catalogues.outputContracts`:** mirrors `resolve.json` and names the built-in machinery #1390 versions.
 - **No time stamp in either document:** re-derivation must give the same bytes.
 - **A published floor per locked component** makes "adopted with a byte difference counts as major" enforceable inside a caret range.

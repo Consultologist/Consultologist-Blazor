@@ -624,12 +624,8 @@ registry** (the table in § 10.1), never the author's own profile.
 - **The account time zone** (an IANA name, for `run.date`) is an **account setting, not a profile
   field:** it's never read as `profile.*`. It's a select list that starts empty, with a "Use this
   browser's zone" button that fills it only when clicked. The zone is recorded beside
-  `run.date`. Jobs are refused until it's set: *"This workflow prints the date. Set your time
-  zone in your account settings."*
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6920512477)).
-  **Proposed reading:** the refusal applies to jobs whose package reads `run.date`, as the
-  sentence and the 2026-11-16 decision say; the 2026-11-17 "Jobs are refused until it's set" is
-  read as the same rule. The pages themselves are [Part 09](09-engine-and-pages.md)'s.
+  `run.date`. **Every job is refused until it's set**, whether or not the package reads
+  `run.date` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)): *"Set your time zone in your account settings before running a workflow."* (**Proposed** wording). The pages themselves are [Part 09](09-engine-and-pages.md)'s.
 
 ## 11. What changes from version 30
 
@@ -684,7 +680,7 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 **Refused at job start** (Create page)
 - J-1 *(decided)*: *"This workflow needs your signature. Choose one in Profile."*
 - J-2 (**Proposed**, the other fields): *"This workflow needs your <name | credentials | organisation | closing>. Set it in Profile."*
-- J-3 *(decided)*: *"This workflow prints the date. Set your time zone in your account settings."*
+- J-3 *(rule decided, [every job](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); wording **Proposed**)*: *"Set your time zone in your account settings before running a workflow."*
 
 **Shown in History** (not refusals)
 - H-1 *(decided)*: *"<Deliverable label> was not sent: check '<id>' failed (<detail>)."*

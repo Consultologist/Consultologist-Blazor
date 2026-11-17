@@ -167,8 +167,8 @@ JSON Logic may read the same `run.*` set as bodies (#1425): `run.date`, `run.id`
 
 - **Recorded like any read:** the raw value of each run fact the package reads is recorded once
   per run ([part 08](08-record.md)).
-- **No time zone, no job:** a package that reads `run.date` is refused at start when the account
-  has no time zone set (part 09).
+- **No time zone, no job:** every job is refused at start until the account's time zone is set,
+  whether or not the package reads `run.date` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); part 09).
 
 ### 4.4 Run-dependence is contagious
 

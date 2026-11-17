@@ -42,8 +42,8 @@ and the record's shape in [08](08-record.md).
    templates and the resolved formats. **The plan is never stored;** it is derived
    deterministically from `resolve.json` and cached in memory per `name@version`, keyed also by
    the `resolveHash` ([stages](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175)).
-6. **At job start,** check `needs.profile` and, when the package reads `run.date`, the account's
-   time zone (§ 5.2). Then record `resolveHash` and `lockHash` beside the package name and
+6. **At job start,** check `needs.profile` and the account's time zone, which every job needs
+   (§ 5.2). Then record `resolveHash` and `lockHash` beside the package name and
    version, before any node runs.
 
 A refusal at steps 3 or 4 is a start failure: no node runs, and the job's record holds the
@@ -309,7 +309,7 @@ each failing sentence above the Start button, which stays disabled until all pas
 1. **`requires`** against the engine: #1390's sentence (§ 9).
 2. **`needs.profile`:** each field the package reads must be set on the account. The signature's
    sentence is decided; the others follow the same form (§ 9).
-3. **The time zone,** when the package reads `run.date`: the account's time zone must be set.
+3. **The time zone:** every job needs the account's time zone set ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)).
 
 The engine repeats the same checks at job start (§ 1.2, step 6), so a job sent another way (a
 satellite, the email intake) is refused with the same sentences.
@@ -439,11 +439,9 @@ A new card on the Profile page for the profile fields that have no home today:
 - **A select list of IANA zone names** (for example `America/Toronto`), which **starts empty**.
 - **A "Use this browser's zone" button** fills the select with the browser's zone, only when
   clicked. Nothing is filled in automatically.
-- **Until it is set, jobs that read `run.date` are refused** with the sentence in § 9. The zone is
-  recorded beside `run.date`'s value in the run facts.
-- **Which jobs are refused:** #1406 refuses a package that **reads** `run.date`; the 2026-11-17
-  wording on #1408 says "jobs are refused until it's set". This design follows #1406 (only
-  packages that read `run.date`), since `resolve.json` lists the read: **Proposed**.
+- **Until it is set, every job is refused** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)), whether or not the package reads
+  `run.date`, with the sentence in § 9. The zone is recorded beside `run.date`'s value in the run
+  facts.
 
 ### 7.3 Previews
 
@@ -502,8 +500,8 @@ Sentences the engine and the pages show. Grammar refusals at publish are in part
 - Missing other profile field (**Proposed**, same form):
   *"This workflow needs your <field label>. Set it in Profile, under Letter details."*, with
   `<field label>` one of `name`, `credentials`, `organisation`, `closing line`.
-- No time zone, when the package reads `run.date` (#1406):
-  *"This workflow prints the date. Set your time zone in your account settings."*
+- No time zone, for every job ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); wording **Proposed**):
+  *"Set your time zone in your account settings before running a workflow."*
 - A `resolve.json` whose hash doesn't match the version's published hash (**Proposed** wording;
   the refusal itself is decided):
   *"The compiled workflow <package>@<version> doesn't match its published hash, so it can't be
@@ -763,8 +761,6 @@ Graphviz with ports (#1454) are Milestone 40
   can't matter shouldn't be asked.
 - **Run facts section after Inputs** (§ 6.4): both come from outside the package.
 - **Letter details lengths 120 / 200 / 4,000** (§ 7.1): no limits were decided.
-- **Only packages that read `run.date` are refused without a time zone** (§ 7.2): resolves the
-  wording difference between #1406 and #1408.
 - **Read-only bar wording; new packages created at 30; imported 31 packages read-only** (§ 8.1).
 - **Content endpoint returns `resolve.json`, `lock.json` and the publish report for 31** (§ 8.2).
 - **Sentences:** the other profile fields' form, and the hash-mismatch sentence (§ 9).
