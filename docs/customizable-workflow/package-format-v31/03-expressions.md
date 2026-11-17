@@ -302,7 +302,7 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 |---|---|---|---|---|
 | `object` | `{ "object": { "<field>": rule, … } }` | each field's rule typed against the target format's property | an object | a field's rule may yield `null` only where the property is nullable (checked at publish) |
 | `terms_subset` | `terms_subset(of, in, failWith)` | `concept_list`, `concept_list`, literal `string` | `check_result` | **Proposed:** a `null` list reads as empty, as today (`ConsultCheckExecutor.TermsSubset`) |
-| `all_pass` | `all_pass(list, failWith)` | a check loop's `.value` or `.items`, literal `string` | `check_result` | **Proposed:** elements that did not complete are ignored; a `null` or empty list (nothing judged) **fails**, with `failWith` |
+| `all_pass` | `all_pass(list, failWith)` | a check loop's `.value` or `.items`, literal `string` | `check_result` | elements that did not complete are ignored; a `null` or empty list (nothing judged) **fails**, with `failWith` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810); revisited in #1461) |
 | `count_pass` | `count_pass(list, min, failWith)` | as `all_pass`; `min` a `number` | `check_result` | **Proposed:** counts passed elements only; a `null` `min` gives a failed result |
 
 ([signatures](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116),
@@ -616,7 +616,6 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 - **`has_word`'s word characters (.NET `\w`), and `word` a literal** (§ 5.3).
 - **`terms_subset` reads a `null` list as empty** (§ 5.4): today's behaviour, so migration keeps
   meaning.
-- **`all_pass` ignores items that did not complete, and a `null` or empty list fails** (§ 5.4): a gate that judged nothing hasn't passed (JSON Logic's `all` is false on an empty array); `count_pass(list, 0, …)` is how a package accepts nothing judged. Part 06 agrees.
 - **29 February reached on 1 March; negative `years_between`; `add_days` with a non-integer or
   out-of-range result gives `null`; a malformed date gives `null`** (§ 5.5).
 - **A node that didn't complete reads `null`** for `.value` and `.content` (§ 6.1).

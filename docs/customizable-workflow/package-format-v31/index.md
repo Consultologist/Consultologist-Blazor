@@ -8,6 +8,9 @@
 > gathered in [§ 7](#7-proposed-points). The normative text follows in the package-format registry
 > as `package-format-v31.md` with the release (§ 5, step 1).
 >
+> **Revision 2** (2026-11-17): `ret` is the child's full name, and an empty or null list fails
+> `all_pass` (§ 7); both were Proposed in revision 1.
+>
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
 
@@ -161,33 +164,30 @@ parent issue and its thirteen sub-issues are filed from it.
 Each part ends with "Proposed in this part": the points this design had to state that no issue
 has decided yet. They are gathered here for the package author to confirm or change.
 
-There are **186** such points. Most are a member's exact name, a refusal sentence's wording or a
-small rule no issue reached. These ones cut across parts or reinterpret an issue, so they need the
+There are **184** such points. Most are a member's exact name, a refusal sentence's wording or a
+small rule no issue reached. These nine cut across parts or reinterpret an issue, so they need the
 package author's eye first:
 
 1. **When a missing time zone refuses a job** ([06 § 10.7](06-checks-deliverables-profile.md),
    [09 § 7.2](09-engine-and-pages.md)): written as *only jobs whose package reads `run.date`*, as
    [#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6920512477)
    decided; the 2026-11-17 summary said "jobs are refused until it's set", which may be read as every job.
-2. **An empty or null list fails `all_pass`** ([03 § 5.4](03-expressions.md),
-   [06 § 2.2](06-checks-deliverables-profile.md)): a gate that judged nothing hasn't passed;
-   `count_pass(list, 0, …)` accepts nothing judged.
-3. **A loop's `.value` holds only the items that completed** ([04](04-loops-and-functions.md));
+2. **A loop's `.value` holds only the items that completed** ([04](04-loops-and-functions.md));
    items that didn't run are seen through `.items`.
-4. **`ret` is a bare child id** (`"ret": "paragraphs"`), and **a production node's own gate is
-   spelled `if`**, replacing 30's `when` ([04](04-loops-and-functions.md), [03](03-expressions.md)).
-5. **Strict mode's rules (every property required, no root `anyOf`) apply to agent formats only**
+3. **A production node's own gate is spelled `if`**, replacing 30's `when`
+   ([04](04-loops-and-functions.md), [03](03-expressions.md)).
+4. **Strict mode's rules (every property required, no root `anyOf`) apply to agent formats only**
    (`x-agent: true`); inputs keep a partial `required` list, and `if`/`case` unions stay `anyOf`
    ([02](02-types-and-inputs.md)).
-6. **A profile value passed into a function keeps the profile's restriction** inside it
+5. **A profile value passed into a function keeps the profile's restriction** inside it
    ([04 § 7.7](04-loops-and-functions.md), [06 § 10.2](06-checks-deliverables-profile.md)).
-7. **`lock.json` carries `resolve.json`'s hash, and `resolve.json` names its lock by file name**
+6. **`lock.json` carries `resolve.json`'s hash, and `resolve.json` names its lock by file name**
    ([07](07-compiled-documents.md)): two documents can't each hold the other's hash.
-8. **Renderer sub-rows inside loops are keyed after the item path**
+7. **Renderer sub-rows inside loops are keyed after the item path**
    (`draft_paragraph:2/1/render:1`, [08](08-record.md)).
-9. **Built-in formats' `$id`s are `urn:consultologist:spec:31:format:<name>`**; only catalogue and
+8. **Built-in formats' `$id`s are `urn:consultologist:spec:31:format:<name>`**; only catalogue and
    package URNs were decided ([02](02-types-and-inputs.md)).
-10. **A per-component "floor" in `requires`**, so a library change adopted despite a byte
+9. **A per-component "floor" in `requires`**, so a library change adopted despite a byte
     difference can still refuse older packages inside a caret range ([07](07-compiled-documents.md)).
 
 The full lists:
@@ -196,14 +196,18 @@ The full lists:
 |---|---|
 | [01 Files and scopes](01-files-and-scopes.md#proposed-in-this-part) | 24 |
 | [02 Types and inputs](02-types-and-inputs.md#proposed-in-this-part) | 25 |
-| [03 Expressions](03-expressions.md#proposed-in-this-part) | 20 |
-| [04 Loops and functions](04-loops-and-functions.md#proposed-in-this-part) | 17 |
+| [03 Expressions](03-expressions.md#proposed-in-this-part) | 19 |
+| [04 Loops and functions](04-loops-and-functions.md#proposed-in-this-part) | 16 |
 | [05 Templates and macros](05-templates-and-macros.md#proposed-in-this-part) | 19 |
 | [06 Checks, deliverables and the profile](06-checks-deliverables-profile.md#proposed-in-this-part) | 17 |
 | [07 The compiled documents](07-compiled-documents.md#proposed-in-this-part) | 17 |
 | [08 The record](08-record.md#proposed-in-this-part) | 11 |
 | [09 The engine and the pages](09-engine-and-pages.md#proposed-in-this-part) | 22 |
 | [10 Migration and tools](10-migration-and-tools.md#proposed-in-this-part) | 14 |
+
+Decided since the design merged (2026-11-17): **`ret` is the child's full name**
+(`"ret": "node.parts.paragraphs"`, [#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6958687389)), and **an empty or null list fails `all_pass`**
+([#1396](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810); revisited in #1461).
 
 Most refusal sentences are written here for the first time: the issues decide that each rule
 gets a sentence, and give the exact words for only a few. Each part's "Refusals" section marks
