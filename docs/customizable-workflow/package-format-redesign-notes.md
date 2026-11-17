@@ -1,5 +1,10 @@
 # The package format, redesigned: working notes (Milestone 39)
 
+> **Superseded (2026-11-17):** the design for specVersion 31,
+> [package-format-v31/](package-format-v31/index.md), replaces these notes as the consolidated source
+> (#1388). These notes are kept as they were on 2026-11-16 and are no longer updated; where they
+> disagree with the design or with an issue's "Current state" block, the design and the issue win.
+
 > **Status:** working notes, not yet a design. They summarise the decisions made with the package
 > author from 2026-11-13 to 2026-11-15. Each decision is argued in full on its issue; the
 > **"Current state"** block at the top of each issue lists what its earlier text no longer says.
