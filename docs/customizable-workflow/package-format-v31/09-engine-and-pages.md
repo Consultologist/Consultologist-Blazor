@@ -545,7 +545,7 @@ for History ([decided](https://github.com/Consultologist/Consultologist-Blazor/i
 ## 9. Refusals and notes
 
 Sentences the engine and the pages show. Grammar refusals at publish are in parts 01 to 07.
-The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 - Requires, and a package locked before a break point, at load and on the Create page (#1390's
   sentence, written with placeholders):
@@ -803,4 +803,4 @@ Graphviz with ports (#1454) are Milestone 40
 
 ## Proposed in this part
 
-Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

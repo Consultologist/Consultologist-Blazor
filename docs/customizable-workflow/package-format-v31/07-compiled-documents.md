@@ -723,7 +723,7 @@ normalisation, the warnings, and the per-job ceiling note
 
 ## 10. Refusals
 
-The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 **At start** (the Create page, then the engine), from `requires`, `needs` and the engine's break
 points (§ 4.4):
@@ -757,4 +757,4 @@ points (§ 4.4):
 
 ## Proposed in this part
 
-Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

@@ -889,7 +889,7 @@ The record is part 08's. For flow and functions (storage 12 adds to 11, with qua
 
 ## 10. Refusals and notes
 
-The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 ### 10.1 Refusals at publish
 
@@ -1004,4 +1004,4 @@ is v30's built sentence, kept; the rest is new. Every rule below is decided
 
 ## Proposed in this part
 
-Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

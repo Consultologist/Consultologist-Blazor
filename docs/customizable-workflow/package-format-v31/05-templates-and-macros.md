@@ -749,7 +749,7 @@ text is recorded by hash under the node that placed it.
 
 ## Refusals
 
-The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 `<…>` are placeholders. Sentences marked *(decided)* are quoted from the deciding comment; the
 rest are this part's wording.
@@ -836,4 +836,4 @@ rest are this part's wording.
 
 ## Proposed in this part
 
-Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

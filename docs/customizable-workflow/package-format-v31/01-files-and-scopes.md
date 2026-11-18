@@ -711,7 +711,7 @@ function's name
 
 ## Refusals
 
-Every rule below is decided. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+Every rule below is decided. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 **Decided wording:**
 - Duplicate in an overlapping scope ([#1384](https://github.com/Consultologist/Consultologist-Blazor/issues/1384#issuecomment-6904190578)):
@@ -768,4 +768,4 @@ Every rule below is decided. The wording below is the starting text. It follows 
 
 ## Proposed in this part
 
-Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

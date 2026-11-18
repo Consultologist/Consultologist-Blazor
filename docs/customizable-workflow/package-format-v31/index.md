@@ -29,7 +29,8 @@
 > **Revision 6** (2026-11-18): every remaining Proposed point decided — the engine's retry and job
 > limits, `Channel` for satellites, the evaluator's run-time guards, and the names and shapes of
 > `resolve.json`, `lock.json`, the record and the reports; refusal sentences follow seven style
-> rules and are settled in the conformance suite's pull request.
+> rules, are used as written in Milestone 39, and are listed in
+> [refusal-sentences.md](refusal-sentences.md) for review in #1483 (Milestone 40).
 >
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
@@ -79,6 +80,7 @@ and links to each deciding comment instead of repeating it.
 | [08 The record](08-record.md) | record storage 12 and the provenance contract | #1384, #1389, #1395–#1397, #1412, #1419 |
 | [09 The engine and the pages](09-engine-and-pages.md) | loading and scheduling, the per-job ceiling, the satellites' contract, Create, History, Profile, the Editor, the diagram | #1393, #1398, #1406, #1408 |
 | [10 Migration and tools](10-migration-and-tools.md) | the migration from 30, the converter, byte-equivalence, the conformance suite, author documentation, what moved to later milestones | #1447, #1423, #1449 |
+| [Refusal sentences](refusal-sentences.md) | every refusal, warning, job-start and History sentence, in one table for review (#1483) | #1388 |
 
 ## 2. What changes from 30
 
@@ -210,10 +212,12 @@ Every sentence follows these style rules:
 7. **Sentences clinicians see** (the Create page, job start, History) **avoid format terms
    entirely:** *"This workflow needs your signature. Choose one in Profile."*
 
-The sentences written in the parts (about 300) are the starting text. During the build, the
-conformance suite pins every sentence to a valid and an invalid test package, and **that pull
-request presents all of them in one table** (rule, sentence, where it's shown) for the package
-author to review and change before the contracts release (§ 5, step 1).
+**Milestone 39 uses the sentences as written** in the parts, with no manual review, so the build
+is never held up by wording; the conformance suite pins each one to a valid and an invalid test
+package. **All 340 are listed in [refusal-sentences.md](refusal-sentences.md)**, each with its part,
+section and audience (author or clinician), and **reviewed in #1483 (Milestone 40)**, concurrently
+with the build. Changing a sentence's words needs no new spec version
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6985257872)).
 
 **Issues filed while deciding them,** for later milestones unless noted:
 
@@ -234,6 +238,7 @@ author to review and change before the contracts release (§ 5, step 1).
 | #1477 | `requires.evaluator` and off-the-shelf components throughout |
 | #1478 | requiring model-derived or run-dependent values in reads |
 | #1479 | `via: "producer"` |
+| #1483 | reviewing every refusal sentence ([refusal-sentences.md](refusal-sentences.md)) |
 
 Earlier: #1453 (null semantics), #1455 (a `semantics` block), #1456 (an input `default`), #1457
 (a macro placed twice), #1458 and #1459 (json-everything), #1461 (an empty `all_pass`).

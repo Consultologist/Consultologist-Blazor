@@ -511,7 +511,7 @@ Either swap must leave golden tests and a corpus re-render byte-identical.
 ## Refusals
 
 Sentences this part's tools write. The grammar's sentences are in parts 01 to 07; the engine's
-and the pages' in part 09. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+and the pages' in part 09. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 - The script, when hand edits remain (#1447): *"written; hand edits remain"*
 - A hand-edit notice: *"Hand edit needed in <file>, <member>: <reason>."*
@@ -523,4 +523,4 @@ and the pages' in part 09. The wording below is the starting text. It follows th
 
 ## Proposed in this part
 
-Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

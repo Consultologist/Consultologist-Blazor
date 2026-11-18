@@ -542,7 +542,7 @@ one renderer use:
 ## Refusals and recorded sentences
 
 The record refuses nothing itself; the refusals at start and load are in
-[part 07](07-compiled-documents.md) § 10. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request. The sentences it **records**:
+[part 07](07-compiled-documents.md) § 10. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md). The sentences it **records**:
 
 - *skipped: <printed condition> is false* (a decision's reason, § 5)
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)).
@@ -573,4 +573,4 @@ The record refuses nothing itself; the refusals at start and load are in
 
 ## Proposed in this part
 
-Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).
