@@ -212,6 +212,7 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 | `ret` | string | allowed | `for`, `while`, branches, functions | the returned node's rooted key |
 | `reads` | array of string | never | every entry | every path the entry reads (header and body), canonical and sorted: `node.plan.value`, `input.consult_draft.content`, `item.value.point`, `run.date`, `profile.signature`, … Snippet and macro body reads count as the placing node's ([part 05](05-templates-and-macros.md)) |
 | `runDependent` | boolean | never | every entry | `true` when anything the entry reads is a `run.*` fact or a run-dependent value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
+| `profileCarrying` | boolean | never | every entry | `true` when the entry's value carries text a profile-reading macro body was substituted into, transitively ([part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); derived only, not written on headers. A condition passes none of the three flags on |
 | `modelDerived` | boolean | never | every entry | `true` when the entry's value is computed from a model's output, directly or through other values: every agent node, and anything that reads a model-derived value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
 | `body` | string | allowed | templated kinds | the Scriban body inline (`\n` line endings); `null` for kinds with no body (`computed`, `for`, `while`, `if`, `case`, `call`) |
 | `bodyHash` | string | allowed | templated kinds | `sha256:` over the body's UTF-8 bytes; `null` when `body` is `null` |
@@ -438,9 +439,12 @@ hasn't set it (§ 10). An empty or whitespace-only profile value counts as not s
 | `operations` | object, operation name → exact version | never | each built-in operation the package uses (the same names as `requires.operations`), exact; `{}` for none |
 | `builtins` | object, name → exact version | never | the built-in machinery that isn't an operation: `markdown_escape` (escaping plain text into Markdown), `plain_conversion` (Markdown to plain text), `formats` (the built-in format definitions), `printer` (the condition printer, [part 03](03-expressions.md)), and each built-in renderer the package uses (`concept_bullets`, `concept_context`, [part 05](05-templates-and-macros.md)). Key names [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) |
 | `culture` | string | never | `"invariant"`: every render and operation runs in the invariant culture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425)) |
+| `runtime` | object `{ dotnet: string, unicode: string }` | never | the exact .NET runtime that published the package (`"10.0.3"`) and the Unicode version its text handling follows (`"16.0"`) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). `lower`, `trim`, `words` and `has_word` depend on both; the conformance suite carries vectors for each (part 10 § 5) |
 | `catalogues` | object | never | `formats` (the formats catalogue, `formats@v…`: types), `agents` (the agents catalogue, `agents@v…`: bindings and attested agent definitions), `outputContracts` (`output-contracts@v…`, or `null` when the package uses none), as **separate entries** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6879413591)) |
 
-**Not locked:** .NET, the JSON and HTTP libraries, Durable Functions, the Azure SDKs. The engine's
+**Recorded, not locked as a range:** the .NET runtime and its Unicode version (`runtime`), so a
+change in case mapping or word characters is visible between two records. **Not locked:** the
+JSON and HTTP libraries, Durable Functions, the Azure SDKs. The engine's
 commit and release stay on the job's record ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632)).
 **No time stamp** is written (§ 1).
 
@@ -457,6 +461,7 @@ commit and release stay on the job's record ([decided](https://github.com/Consul
   "builtins": { "formats": "1.0.0", "markdown_escape": "1.0.0", "plain_conversion": "1.0.0",
                 "printer": "1.0.0" },
   "culture": "invariant",
+  "runtime": { "dotnet": "10.0.3", "unicode": "16.0" },
   "catalogues": { "agents": "agents@v2026.12.1", "formats": "formats@v2026.12.1", "outputContracts": null }
 }
 ```
@@ -524,7 +529,7 @@ In order:
    `SourceBounds` bound is checked. A version that already exists is refused, as today.
 1. **Resolve.** Read the file model; compute **`sourceHash`** (§ 2.6); flatten the tree into
    rooted keys; resolve every `$ref` against the built-ins and the pinned catalogues, rewriting
-   bare ids; embed every body; derive `reads`, `runDependent`, `modelDerived`, `renders`,
+   bare ids; embed every body; derive `reads`, `runDependent`, `modelDerived`, `profileCarrying`, `renders`,
    `runSpots`, the graph, `requires` and `needs`; compile `resolve.json` **in memory**.
 2. **Validate.** Every rule of parts [01](01-files-and-scopes.md) to
    [06](06-checks-deliverables-profile.md): the file model, types, JSON Logic typing, the Scriban
@@ -542,8 +547,14 @@ In order:
    5. write into the registry's `{name}/{version}/`: the source files and the regenerated `dag.mmd`,
       then `lock.json`, then the publish report, then **`resolve.json` last**.
 
-   Every hash is taken from final bytes, and a version is loadable only once complete. The
-   version's stamp records `resolveHash` and `lockHash`.
+   6. write the version's **"published" stamp last**, recording `resolveHash` and `lockHash`
+      ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+
+   Every hash is taken from final bytes. **A version exists only once stamped:** the engine and
+   the registry ignore a folder without the stamp, so a publish that dies partway can be retried
+   from step 0, overwriting the unstamped folder. **A stamped version folder is immutable**;
+   nothing writes to it again. At load the engine checks `resolve.json`'s hash, `lock.json`'s
+   hash and `lock.json`'s `resolve.hash` against the stamp (part 09 § 1.2).
 
 Validation and tests run against `resolve.json`, the document the engine will run, never against the
 source a second time. The Editor's "Run tests" and CI run steps 0–3 without writing.
@@ -646,7 +657,7 @@ members, each optional:
 | `values` | object, row key → JSON value | `computed` values, compared as canonical JSON |
 | `prompts` | object, row key → `{ "text": string }` or `{ "hash": string }` | the sent text of an agent node's prompt, exactly or by its sent-text hash |
 | `checks` | object, check row key → `{ "pass": boolean }` | check results, named as `check_result`'s `pass` |
-| `deliverables` | object, deliverable key → `{ "state": string, "text": string }` or `{ "state": string, "hash": string }` | each deliverable's state (`released`, `held`, `failed`, `skipped`) and its composed text or hash |
+| `deliverables` | object, deliverable key → `{ "state": string, "text": string }` or `{ "state": string, "hash": string }` | each deliverable's state (`released`, `held`, `failed`, `skipped`, `blocked`, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) and its composed text or hash |
 
 **A test passes** when the run completes (or fails exactly where `expect` says, through a
 deliverable's `fail`) and every listed expectation holds. Only the **first mismatch** is reported:
@@ -736,11 +747,12 @@ points (§ 4.4):
 - *"This workflow needs your signature. Choose one in Profile."*
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)); for other fields,
   *"This workflow needs your <field label>. Set it in Profile, under Letter details."*
-- *"Set your time zone in your account settings before running a workflow."* Every job, until the account's time zone is set ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)); wording
-  new. No `needs` member is required, since every job needs the zone.
+- *"Set your time zone in your account settings before running a workflow."* Every 31 job, until the account's time zone is set ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); 31 jobs only, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); wording
+  new. No `needs` member is required, since every 31 job needs the zone.
 
 **At load** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175): the engine refuses a document whose bytes don't match):
 - *"Workflow <package>@<version> can't run: its compiled document doesn't match the hash published for it."*
+- *"Workflow <package>@<version> can't run: its lock doesn't match the hash published for it, or doesn't belong to its compiled document."* ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660))
 
 **At publish, from tests** (§ 8):
 - *"Test '<test id>' failed: <expectation> for <key> expected <expected>, got <actual>. Publish stopped."* The content (the test's name and its first mismatch) is decided.

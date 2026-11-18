@@ -26,7 +26,7 @@ JSON Logic's typed operations are [part 03](03-expressions.md); where each kind'
 | `agent` | a model call, through the attested agent bound to its format (§ 7) | `<id>.md` | its prompt | [part 05](05-templates-and-macros.md) |
 | `rendered` | a template, no model | `<id>.md` | its template | [part 05](05-templates-and-macros.md) |
 | `computed` | one JSON Logic expression (member `expression`), no model | `<id>.md`, header only | empty | [part 03](03-expressions.md) |
-| `call` | a function, as a sub-orchestration | `<id>.md`, header only | empty | [part 04](04-loops-and-functions.md) |
+| `call` | a function, its body run inline in the caller's orchestration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) | `<id>.md`, header only | empty | [part 04](04-loops-and-functions.md) |
 | `for`, `while` | a body per item, or per pass | `<id>/index.json` | — | [part 04](04-loops-and-functions.md) |
 | `if`, `case` | one branch | `<id>/index.json` | — | [part 04](04-loops-and-functions.md) |
 
@@ -60,7 +60,8 @@ refused
 
 ### 1.2 The contagious flags: run-dependent and model-derived
 
-Two flags spread through the graph. The resolver works out both from `resolve.json`'s edges
+Three flags spread through the graph: run-dependent, model-derived and, since revision 7,
+profile-carrying ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). The resolver works out all three from `resolve.json`'s edges
 before any run, records them on each row as `runDependent` and `modelDerived`
 ([part 08](08-record.md)), and History, the diagram and the Editor show them
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
@@ -76,6 +77,12 @@ before any run, records them on each row as `runDependent` and `modelDerived`
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)).
   It spreads through `computed` and `rendered` nodes, `call` results, flow nodes' `ret` and loop
   items. History shows it as, for example, *"computed from model text: node.draft"*.
+- **Profile-carrying:** the value's text had a profile-reading macro substituted into it
+  (part 03 § 4.6). It spreads the same way and is recorded on each row as `profileCarrying`.
+  A prompt, a part or a condition may not read a profile-carrying value; a deliverable may.
+- **The flags describe content only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). They pass along what a value is made from, never
+  through a condition: a node chosen by a model-derived `if` isn't model-derived for that. The
+  decision has its own row.
 - **Formats are shape, never the flags.** `trim` of a model's `plaintext` returns `plaintext`,
   the same format as its operand; its node's producer is `computed`, it stays model-derived, and
   it is `reproducible: true`
@@ -194,6 +201,12 @@ There are two comparisons, each with its own hash
 | **type equality** | references compared by name (never dereferenced), `anyOf` members and `properties` sorted by name, annotations (`title`, `description`) dropped | type checks: a written `format` against the derived one (a flow node's, a `computed` node's), `with` against a function's parameters, branch results against each other, a piped value against a renderer's `input` | `typeHash` |
 | **full equality** | everything dereferenced, every keyword kept | hashes, and what a model receives | `formatHash` |
 
+- **`formatHash` leaves out `$id`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so the same shape published under two ids hashes
+  the same.
+- **A built-in format's name equals its schema** under type equality ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): `date` and
+  `{ "type": "string", "format": "date" }` are one type.
+- **`integer` is a kind of `number`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): an `integer` value fits where a `number` is
+  expected, not the reverse. Numbers are IEEE doubles; part 03 § 7 gives the rules.
 - **The record carries both hashes for each format** (`typeHash`, `formatHash`), so a change of
   wording (a `description`, which is what the model is told) is told apart from a change of shape ([part 08](08-record.md)).
 - **A text format fits where `string` is expected:** annotated strings are compatible with
@@ -263,8 +276,8 @@ adopted.
 - **Recursive formats are refused** (a `$ref` that reaches its own definition): the comparisons
   (§ 2.3) and the printer (§ 2.4) are defined for finite shapes
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
-- **Strict mode's size limits** (properties and nesting) checked at publish are Milestone 40
-  hardening ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6879459060)).
+- **Strict mode's size limits** (the property count and the nesting depth Azure OpenAI
+  documents) are checked at publish at 31 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), on every format sent to a model.
 
 ### 3.2 One way to write "nullable"
 
@@ -272,6 +285,10 @@ Decided on [#1385](https://github.com/Consultologist/Consultologist-Blazor/issue
 - **Scalars:** a type array, `"type": ["string", "null"]`.
 - **References and objects:** `"anyOf": [ { "$ref": "…" }, { "type": "null" } ]`, the only way to
   make a reference nullable.
+- **Enums** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): a nullable plain enum lists `null` among its values as well,
+  `"type": ["string", "null"], "enum": ["new_patient", "follow_up", null]`; a nullable labelled
+  enum gains a `{ "const": null }` arm in its `oneOf`, with no `title`. The `null` value and arm
+  don't count towards § 9's two values.
 - **Refused:** an `anyOf` with a `null` branch around a plain scalar, and a type array holding
   anything other than one type plus `"null"`.
 
@@ -631,6 +648,17 @@ order. Every member is present
 - **A top-level input keeps `required: true | false`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)): it says whether the
   user must supply it, not what the format's `required` list says. An optional input left blank
   reads `null`, in JSON Logic and in templates, and the null rules of part 03 apply.
+- **What a blank optional input reads** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): one rule for every format.
+
+  | Read | Supplied | Left blank |
+  |---|---|---|
+  | `input.<id>.value` | its value | `null` |
+  | `input.<id>.content` (text formats) | its text | `null` |
+  | `input.<id>.title` (labelled choices) | the chosen arm's title | `null` |
+  | in a template, any of the three | the value, text or title | nothing |
+  | in JSON Logic | the value | `null`, under part 03 § 6.2's null rules |
+
+  A blank text input is `null`, not `""`; v25's `""` for an absent text is retired.
 - **Fields inside an object input follow the format rule** (§ 3.3): every field is listed in
   `required`, an optional field has a nullable type, and a field whose type is not nullable must
   be filled in ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)).
@@ -982,6 +1010,12 @@ Every rule below is decided. The wording below is the starting text. It follows 
 - *"<Subject> gives two values the title '<title>'."*
 - *"<Subject> writes oneOf branch <n> as <shape>; each branch is exactly { \"const\": <value>, \"title\": <label> }."*
 - *"<Subject> declares both enum and oneOf; write one."*
+- *"<Subject> is nullable but its enum doesn't list null; a nullable enum lists null among its values."*
+- *"<Subject> is nullable but its oneOf has no { \"const\": null } arm; a nullable labelled enum adds one."*
+
+**Strict mode's size limits:**
+- *"Format '<name>' declares <n> properties; a format sent to a model declares at most <limit>."*
+- *"Format '<name>' nests <n> levels deep at <path>; a format sent to a model nests at most <limit>."*
 
 ## Proposed in this part
 

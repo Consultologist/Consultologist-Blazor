@@ -541,6 +541,8 @@ A spec-level object of limits on a package's source, decided on
 | `totalBytes` | 2 MiB (2,097,152 bytes) in all | 15.7 KB |
 | `pathLength` | 200 characters, counted from the package root | — |
 | `idLength` | 64 characters | — |
+| `jsonDepth` | 32 levels of nesting in any JSON value (a file, a header, an inline schema) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) | — |
+| `expressionNodes` | 1,000 nodes (operations, `var`s and literals) in one JSON Logic expression ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) | — |
 
 - **Published in the format-spec release as `bounds.json`.** The library, the Editor, publish,
   import and CI all read them from there. **They are not deployment settings:** a package's
@@ -562,12 +564,17 @@ A spec-level object of limits on a package's source, decided on
 - **Before counting** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)): ignored `resolve.json` and `lock.json` copies are dropped first;
   `totalBytes` is measured uncompressed; the bounds are checked before anything is parsed, in the
   order of the table, and every exceeded bound is reported.
+- **`jsonDepth` and `expressionNodes` are checked before any other parsing** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): the JSON
+  reader stops at depth 32, and each expression's nodes are counted as it is read, before the
+  file model, the types or the evaluator see it. A hostile or mistaken file can't exhaust the
+  parser or the evaluator.
 - **`bounds.json`'s shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)):
   ```json
   {
     "specVersion": 31,
     "sourceBounds": { "files": 512, "fileBytes": 262144, "totalBytes": 2097152,
-                      "pathLength": 200, "idLength": 64 },
+                      "pathLength": 200, "idLength": 64, "jsonDepth": 32,
+                      "expressionNodes": 1000 },
     "formatBounds": { "passes": 15, "depth": 15, "parallel": 15 },
     "windowsReservedIds": ["con", "prn", "aux", "nul",
                            "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8", "com9",
@@ -765,6 +772,8 @@ Every rule below is decided. The wording below is the starting text. It follows 
 - *"File '<path>' is <n> KiB; the most is SourceBounds.fileBytes (256 KiB)."*
 - *"The package is <n> MiB; the most is SourceBounds.totalBytes (2 MiB)."*
 - *"Path '<path>' is <n> characters; the most is SourceBounds.pathLength (200), counted from the package root."*
+- *"File '<path>' nests JSON more than 32 levels deep at <JSON pointer>; the most is SourceBounds.jsonDepth (32)."*
+- *"<Site> in '<path>' has <n> expression nodes; the most is SourceBounds.expressionNodes (1,000)."*
 
 ## Proposed in this part
 

@@ -73,7 +73,7 @@ The engine renders with **Scriban 7.2.5**, pinned exactly. The dialect's version
 | Construct | Written | Notes |
 |---|---|---|
 | output | `{{ x }}` | `x` is an access path, optionally piped (§ 2.2, § 5) |
-| member and index access | `node.plan.value.sections`, `list[0]` | an index is an integer literal |
+| member access | `node.plan.value.sections` | index access (`list[0]`) is refused (below) |
 | literals | `"text"`, `12`, `true`, `false`, `null` | as arguments to built-ins and in `if` comparisons |
 | `for` | `{{ for x in list }} … {{ end }}` | over a list only; position variables `for.first`, `for.last`, `for.index`, `for.even`, `for.odd` |
 | `if` | `{{ if … }} … {{ else if … }} … {{ else }} … {{ end }}` | restricted to recorded facts (§ 2.5) |
@@ -91,7 +91,10 @@ The engine renders with **Scriban 7.2.5**, pinned exactly. The dialect's version
   `1.` list itself, and a computed value belongs in a `computed` node.
 - a `for` over anything but a list (a range `1..3`, an object), and the `for` options `limit:`,
   `offset:` and `reversed`: they choose which elements appear, which is a decision;
-- `for.rindex`, `for.length` and `for.changed`.
+- `for.rindex`, `for.length` and `for.changed`;
+- **index access** (`list[0]`, `node.plan.value.sections[2]`) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): a list is read whole, by
+  a `for`, or by identity through `.items`, as in JSON Logic (part 03 § 2.2). Pairing by position
+  across the format is #1485.
 
   These `for` forms are refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)); no published package uses them. Revisiting
   them is #1475 (Milestone 40).
@@ -136,6 +139,7 @@ The limits are dialect constants, separate from `FormatBounds`
 | iterations per `for` | 1,000 | the render fails with a sentence (§ Refusals, R-L1) |
 | `if` and `for` nesting | 15 deep | refused at publish (R-L2) |
 | rendered output | 1 MiB (1,048,576 bytes, UTF-8) | the render fails with a sentence (R-L3) |
+| steps per render | an engine setting ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 09 § 3.4) | the render fails with a sentence (R-L4) |
 | recursion | none possible | there's no `func` or `include`; snippet cycles are refused at publish (§ 3.2) |
 
 A render failure fails the node (or the deliverable) as a definition error: no retry. A prompt
@@ -292,13 +296,25 @@ transitively, [Part 03](03-expressions.md)) is a run spot too, under the same ru
    defined to the byte.
 2. Hash that text: the **run-neutral hash**. With the same inputs, package and libraries it's
    identical across runs, whatever the date or job.
-3. Replace each marker **literally** with its spot's output, and hash the result: the
-   **sent-text hash**, which stays the body's main hash.
+3. Put each spot's output at the **position recorded while rendering** step 1, and hash the
+   result: the **sent-text hash**, which stays the body's main hash. The engine never searches
+   the text for `{{run:<n>}}`: a value that happens to hold those characters is left as it is
+   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 
 **Downstream text.** When a template reads a `rendered` or `computed` node, its run-neutral
 render uses that node's run-neutral text (a `rendered` node) or treats the read as a run spot
 (a run-dependent `computed` value). An agent's output has no neutral form: the model saw the
 real values, so a template reading it is run-specific through that read.
+
+**What a read of a run-dependent value does, by producer** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)):
+
+| The value read | In the run-neutral render | Kept permanently in the record |
+|---|---|---|
+| a raw `run.*` fact (`run.date`) | a run spot | the spot's output |
+| a run-dependent `computed` value | a run spot | its output only if it reads nothing but `run.*`; otherwise it follows 7-day retention (part 08) |
+| a run-dependent `rendered` node | that node's run-neutral text, its own spots kept as spots | as for that node's spots |
+| a run-dependent `agent` node's output | the output itself: the model saw the real values | nothing extra; it follows 7-day retention |
+| a run-dependent flow node's `ret` or call result | as its `ret`'s producer, by this table | as its `ret`'s producer |
 
 **A body with no run spot** has one hash. The record's `runNeutralHash` is written only when the
 body has a run spot, and is `null` otherwise ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523), [Part 08](08-record.md)).
@@ -463,6 +479,8 @@ Chronological prose narrative. Open with a one-sentence orientation to the patie
   folder's size is its number of files, and conditional inclusion of a folder item is an `if`
   branch in the loop body, as `example-conditional-sections` does with `applies`. Dynamic folder
   sizes are #1468.
+- **A folder item's body may be empty** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): its `item.content` is then `""`, and its header
+  still carries the value. Revisiting this is #1484.
 
 ### 6.3 Placing a snippet
 
@@ -471,6 +489,9 @@ Chronological prose narrative. Open with a one-sentence orientation to the patie
   `{{ snippet.<id>.content }}` inside a line (§ 2.6). A bare `snippet.<id>` is refused (R-S3). A
   folder item outside a loop is `snippet.<folder>.<id>.content`. Version 30's 25 uses are
   already written this way and need no rewrite.
+- **Its `if` is evaluated at each placement** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), under that place's read rules (§ 3.1): a
+  snippet placed in two prompts is decided twice, and its `if` must be readable at every place
+  that places it (R-R3).
 - When its `if` holds, its rendered body is spliced in. When it doesn't, nothing is, and the
   decision is recorded with its reason.
 - **Placed in:** prompts, `rendered` nodes, other snippets, macro bodies, deliverables, **a
@@ -690,7 +711,9 @@ Trailing spaces after a block marker are removed, never a failure: in Markdown t
 hard line break, and in plain text they'd still be in the hashed bytes.
 
 **4. The body** is rendered by the engine, in the placing scope, **before** substitution
-(§ 3.2). It's the package's own text, checked at publish.
+(§ 3.2). It's the package's own text, checked at publish. **A body that reads `profile.*`
+makes the node's value profile-carrying** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 03 § 4.6): a prompt, a part or a
+condition that reads that value afterwards is refused at publish (R-R6); a deliverable may read it.
 
 **A retry message never quotes the reply** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): a `retry` sends fixed engine text
 naming each macro and what was wrong, since the reply may hold patient text.
@@ -765,11 +788,13 @@ rest are this part's wording.
 - R-D8 *(decided)*: *"Deliverable 'consult' branches on part.state and handles completed and skipped, but not not_run: add it or an else."*, generalised as *"<Subject> branches on <expr> and handles <states>, but not <missing>: add it or an else."*
 - R-D9: *"<Subject> compares <expr> with "<value>" at line <n>; a state is completed, skipped or not_run."*
 - R-D10: *"<Subject> reads <path> at line <n>, which <format or root> doesn't have."*
+- R-D11: *"<Subject> reads <path>[<n>] at line <n>, a position in a list; lists are read whole, with a for, or by identity through .items."*
 
 **Limits**
 - R-L1: *"<Subject> stopped rendering: the for at line <n> reached 1,000 iterations."*
 - R-L2: *"<Subject> nests if and for <n> deep at line <m>; the limit is 15."*
 - R-L3: *"<Subject> stopped rendering: its output passed 1 MiB."*
+- R-L4: *"<Subject> stopped rendering: it took more than <limit> steps."*
 
 **Placements**
 - R-W1: *"<Subject> places <unit> with ~}} at line <n>; it removes the line's newline, joining two lines. Use {{~ <unit> }} alone on a line."*
@@ -783,6 +808,7 @@ rest are this part's wording.
 - R-R2: *"Node '<id>' reads profile.<field>; the clinician's profile is never sent to a model. Read it in a deliverable or a macro body."*
 - R-R3: *"Snippet '<id>' reads <path>, which isn't available where <subject> places it at line <n>."*
 - R-R4: *"<Kind> '<id>' reaches itself: <chain>."*
+- R-R6: *"<Subject> reads <path> at line <n>, which carries profile text through macro '<id>'; a prompt or a part doesn't read profile text. Read it in a deliverable."*
 - R-R5: *"<Subject> reads <path> and run.<fact> in one output at line <n>; an output that reads a run fact reads nothing else."* (also for a run-dependent value: *"… reads <path> and the run-dependent <value> in one output …"*)
 
 **Renderers**

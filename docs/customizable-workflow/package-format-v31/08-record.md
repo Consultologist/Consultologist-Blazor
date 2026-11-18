@@ -40,6 +40,25 @@ twins.
   with the exceptions storage 11 made (an item name drawn from a field) and the ones this part adds:
   run facts and run spot outputs (§ 8), and printed conditions (§ 5), which are package text.
 
+### 1.1 Where the record is stored
+
+At storage 11 the record lives in the job's Durable entity state, with no size guard. **At 12 it
+moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)):
+
+- **Each record row is one table row,** written once when the row finishes and never rewritten.
+  The partition key is the job id; the row key is the rooted row key (§ 2.1) escaped for Azure
+  Tables, with the true key kept as a property (`key`). Node, check, call, deliverable and decision
+  rows are all stored this way; sub-rows (§ 2.3) stay inside their row.
+- **At job end, a canonical record document** is assembled from the rows into a blob: the job
+  header (§ 3) and every row, in key order, as RFC 8785 JSON. It is what History's download and the
+  export serve, and **one hash over the whole record** (`recordHash`) is taken over its bytes and
+  written on the header.
+- **The Durable entity keeps only the job header and progress** (counts, the current step), never
+  row contents. **Events carry keys, not row contents:** a browser following a job fetches a row by
+  its key once the event says it finished.
+- **Rows don't record a build.** Every deploy is preceded by a drain (part 09 § 3.6), so no job
+  spans two builds; the header's `engineCommit` and `engineRelease` hold for every row.
+
 ## 2. Keys
 
 ### 2.1 Every key with its root
@@ -110,12 +129,14 @@ version, and shown in History's job header:
 |---|---|---|---|
 | `resolveHash` | string (`sha256:…`) | null below 31 | the SHA-256 of the canonical `resolve.json` bytes the job ran ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175)) |
 | `lockHash` | string (`sha256:…`) | null below 31 | the SHA-256 of the canonical `lock.json` bytes ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6898433402)) |
-| `versionsRan` | object | null below 31 | **the exact versions that actually ran,** which under option c can differ from the lock within its range ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632)). It has `lock.json`'s members, so the two compare member by member: `packageFormat`, `dialect`, `libraries` (`Scriban`, `Markdig`, `Corvus.Text.Json.JsonLogic`, `Corvus.JsonSchema`), `evaluator`, `operations` (those the package uses), `builtins`, `culture` (`"invariant"`) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
+| `versionsRan` | object | null below 31 | **the exact versions that actually ran,** which under option c can differ from the lock within its range ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632)). It takes **exactly `lock.json`'s shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so the two compare member by member: `packageFormat`, `dialect`, `libraries` (`Scriban`, `Markdig`, `Corvus.Text.Json.JsonLogic`, `Corvus.JsonSchema`), `evaluator`, `operations` (those the package uses), `builtins`, `culture` (`"invariant"`), `runtime` (the .NET runtime) and `unicode` (its Unicode version) ([part 07](07-compiled-documents.md); [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
+| `recordHash` | string (`sha256:…`) | allowed | the hash of the canonical record document assembled at job end (§ 1.1); `null` until the job ends, and below 31 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `runFacts` | object | null below 31 | the raw value of each run fact the package reads, once per run (§ 8.1); `{}` when it reads none |
-| `limits` | object `{ maxAgentCalls, capacityWaitMinutes, serviceAttempts, jobMinutes }`, each an integer | null below 31 | every engine limit in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): the per-job ceiling on agent calls, the minutes a node may wait on 429s in all, the attempts allowed for another service failure, and the minutes a job may run ([part 09](09-engine-and-pages.md) § 3) |
+| `limits` | object `{ maxAgentCalls, capacityWaitMinutes, serviceAttempts, jobMinutes, loopItems, jobAgentCalls, renderSteps }`, each an integer | null below 31 | every engine limit in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): the per-job ceiling on agent calls in flight, the minutes a node may wait on 429s in all, the attempts allowed for another service failure, the minutes a job may run from orchestration start, and the total-work limits: items per loop instance, agent calls per job, and steps per render ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); [part 09](09-engine-and-pages.md) § 3) |
+| `startedAtUtc` | string | never | when the job's orchestration started; the job limit is timed from here, not from creation or scheduling, so time queued or waiting behind a drain doesn't count ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `signatureBlockId` | string | allowed | the profile signature block the job used, by **id**, never its text; `null` when the package doesn't read `profile.signature` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)) |
 | `signatureChosen` | `"default"` or `"job"` | allowed | whether the block was the account's chosen block (`ChosenId`) or picked on the Create page for this job; `null` with `signatureBlockId` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
-| `decisions` | array of decision | never | every condition decision of the job (§ 5); `[]` for none |
+| `decisions` | array of decision | never | every condition decision of the job (§ 5); `[]` for none. Each decision is stored as its own table row and gathered here in the canonical record document (§ 1.1) |
 
 **Unchanged and still recorded:** `packageSpecVersion` (31), `workflowPackage`, `packageFormatRef`,
 `provenanceRef`, `formatsRef`, `catalogRef`, `engineCommit`, `engineRelease`, `apiHost`, the
@@ -168,9 +189,10 @@ gains the members below. Their names are
 | `sentFormatHash` | string | allowed | on agent rows, the hash of the format as sent to the model: `title`, `$id` and the keywords strict mode rejects removed, by the attested agent definition's list; `null` on other rows ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)) |
 | `notSent` | array of string | never | on agent rows, the removed keywords as JSON pointers into the format (`/properties/onset/format`); `[]` for none. History shows *"Not sent to the model: …"*, and the reply is still validated against the full format ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)) |
 | `agent` | object | allowed | on agent rows only (§ 4.1); `null` otherwise |
-| `itemName` | string | allowed | the item's name from the loop's `itemLabel`, capped at 120 characters, kept for the life of the record (storage 11's rule, renamed from `labelField`); `null` on rows outside a loop |
+| `itemName` | string | allowed | the item's name from the loop's `itemLabel`, capped at 120 characters (storage 11's rule, renamed from `labelField`); kept for the life of the record **only when the label comes from package text** (a snippet folder's header); otherwise it follows 7-day retention ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660), § 11). `null` on rows outside a loop. Reasons name items by position (*Sections 3*), never by `itemName` |
 | `runDependent` | boolean | never | `true` when the row's value depends on `run.*`, transitively ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6925165983)): the node's `runDependent` as written and checked ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `modelDerived` | boolean | never | `true` when the row's value is computed from a model's output, directly or through other values ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)). Every agent row is `true`. History, the diagram and the Editor show it (*"computed from model text: node.draft"*). The node's `modelDerived` as written and checked ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); requiring either flag in a read is #1478 (Milestone 40) |
+| `profileCarrying` | boolean | never | `true` when the row's value carries text a profile-reading macro body was substituted into, directly or through other values ([part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). Derived, not written on node headers |
 | `runNeutralHash` | string | allowed | for a body with run spots, the hash of the body rendered with each run spot left as its marker; `null` when the body has none, so `inputHash` alone is the hash (§ 8.2) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)) |
 | `runSpots` | array of run spot | never | § 8.2; `[]` for none |
 | `renders` | array of renderer sub-row | never | § 4.2; `[]` for none |
@@ -178,7 +200,10 @@ gains the members below. Their names are
 | `invalid` | object | allowed | the node's `onInvalid` outcome when a reply failed validation or the macro marker check: `{ reason: string, action: "retry" \| "fail", attempts: integer }`, where `reason` names what failed, for example `macro letrozole_prescription_text: missing`. `null` when the reply was valid. That the outcome sits on the node's row is [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6957666676); the object's own members are [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) too. A retry message never quotes the reply; it names only what was wrong ([part 05](05-templates-and-macros.md)) |
 | `retries` | array of `{ atUtc: string, waitMs: integer, kind: "capacity" \| "service", error: string \| null }` | never | each retry the call needed, with its back-off ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): `kind` is `"capacity"` for a 429 and `"service"` for another service failure; `error` is that failure's kind (`"timeout"`, `"5xx"`, `"connection"`), never its content, and `null` for capacity. `[]` for none |
 | `profileReads` | array of `{ field: string, hash: string }` | never | each `profile.*` read by a macro body placed in this node's prompt, by hash (§ 9); `[]` for none |
-| `stateReason` | string | allowed | the sentence for a row that didn't complete: *skipped: …* (§ 5), *not run: beyond max <n>* ([part 04](04-loops-and-functions.md)), or a failure's reason (a `matches` time-out, [part 03](03-expressions.md); the model service's limits, [part 09](09-engine-and-pages.md) § 3.4); `null` when completed |
+| `stateReason` | string | allowed | the sentence for a row that didn't complete: *skipped: …* (§ 5), *not run: beyond max <n>* ([part 04](04-loops-and-functions.md)), or a failure's reason (a `matches` text over 1 MiB, [part 03](03-expressions.md); the model service's limits or a total-work limit, [part 09](09-engine-and-pages.md) § 3.4); for a row still running when the job limit passed, `cancelled` with *cancelled: the job didn't finish within <n> minutes* ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); `null` when completed |
+
+**`cancelled`** is a row state at 12 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): an activity still running when the job limit passes
+is recorded `cancelled`, and its late result, if one arrives, is ignored and never written.
 
 A node that didn't complete reads `null` for `.value` and `.content`; `.state` says why
 ([part 03](03-expressions.md)).
@@ -267,7 +292,8 @@ decision can concern something that never got a row (a skipped node)
 | `result` | boolean or string | never | `true` or `false`; for a `case`, the id of the branch taken, or `"else"` |
 | `reads` | array of `{ path: string, hash: string }` | never | each value it read, by hash; never the value itself |
 | `runDependent` | boolean | never | `true` when it read `run.*` or a run-dependent value |
-| `decidedAtUtc` | string | never | when the engine evaluated it |
+| `modelDerived` | boolean | never | `true` when it read a model-derived value. A decision's flags describe the decision only: they don't pass to what it chooses ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| `decidedAtUtc` | string | never | when the engine evaluated it, from the orchestration's replay-safe clock ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 
 **Reasons read as sentences** built from the printed condition: *skipped: input.kind.value =
 "table" is false*. A row skipped by a decision has this sentence as its `stateReason`, and the
@@ -313,7 +339,7 @@ The record holds a check's result once; a deliverable refers to it. Member names
 | `reads` | array of `{ path: string, hash: string }` | never | its other inputs, by hash |
 | `inputHash`, `outputHash` | string | allowed | as on a `computed` row |
 | `producer` | string | never | `computed`, as on node rows |
-| `modelDerived`, `runDependent` | boolean | never | as on node rows |
+| `modelDerived`, `runDependent`, `profileCarrying` | boolean | never | as on node rows |
 | `pass` | boolean | allowed | the `check_result`'s verdict, under the same name; kept for the life of the record, as today's `checkPassed`; `null` while running or when skipped. `passed` only ever means a count ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | `failWith` | string | allowed | the `check_result`'s `message`, the operation's literal `failWith` sentence, when it failed (package text, kept); `null` when it passed |
 | `effect` | string | allowed | what it caused: `released`, `held`, `not sent`, or `read by <ref>`; `null` until known |
@@ -377,11 +403,12 @@ the whole pipeline.
 | `site` | integer | never | the spot's position in the body (`resolve.json`'s `runSpots`) |
 | `reads` | string | never | what it reads (`run.date`, or a run-dependent value's path) |
 | `valueHash` | string | never | the hash of the value read |
-| `output` | string | never | the formatted output (`"16 November 2026"`), **kept permanently** |
+| `output` | string | never | the formatted output (`"16 November 2026"`). **Kept permanently only when the spot reads raw `run.*` facts**; a spot that is also input- or model-derived (a run-dependent `computed` value that reads an input) follows 7-day retention ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `outputHash` | string | never | the output's hash |
 
-- **The sent text is rebuilt exactly** from the run-neutral text and the spot outputs, by literal
-  substitution, so the main hash stays provable.
+- **The sent text is rebuilt exactly** from the run-neutral text and the spot outputs, each put
+  at the position recorded while rendering, never found by searching the text ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so the main
+  hash stays provable.
 - **Runs are compared on the run-neutral hash.** Beside any body whose two hashes differ, History says
   the difference is due to run facts.
 - **A body with no run spots has one hash;** its `runNeutralHash` is `null`.
@@ -409,14 +436,15 @@ template's provenance ([decided](https://github.com/Consultologist/Consultologis
 | `key` | string | never | the deliverable key, its path: `deliverable.emr.note` |
 | `templateHash` | string | never | the template's `bodyHash` in `resolve.json`; the text is shown from the pinned version, never copied |
 | `format` | string | never | the deliverable's format (`markdown_block`, `plaintext` or an object format; never `markdown_inline`, [part 06](06-checks-deliverables-profile.md)) |
-| `state` | string | never | `released`, `held`, `failed`, `skipped` (its header `if`) or `not sent` |
-| `stateReason` | string | allowed | the sentence: *held: empty*, *skipped: <condition> is false*, *not sent: EMR isn't set up for this account*, *released: check '<id>' didn't apply (its if was false)*; `null` when released through a passing check or none |
+| `state` | string | never | `released`, `held`, `failed`, `skipped` (its header `if`) or `blocked` (its gate check failed or errored, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| `stateReason` | string | allowed | the sentence: *held: empty*, *skipped: <condition> is false*, *blocked: check '<id>' failed (<detail>)*, *blocked: check '<id>' could not run (<error>)*, *released: check '<id>' didn't apply (its if was false)*; `null` when released through a passing check or none |
+| `delivery` | array of `{ kind: string, result: "sent" \| "not sent", reason: string \| null, atUtc: string \| null }` | never | one result per destination of a released deliverable, written at the end of a job that succeeded ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): *not sent: EMR isn't set up for this account*, *not sent: the job failed*; `[]` for a deliverable that wasn't released |
 | `check` | string | allowed | the check row key that gated it, linking to the check's row; `null` when ungated |
 | `sites` | array of `{ site: integer, at: string, expr: string, loop: string \| null }` | never | each expression in the template, in source order, with its line and column. Package text, kept |
 | `substitutions` | array of substitution | never | each evaluation: `{ site, pass: integer[] \| null, reads: string, hash: string, size: integer, renders: string \| null }`; `pass` holds one number per enclosing template loop |
 | `renders` | array of renderer sub-row | never | as on node rows (§ 4.2) |
 | `runNeutralHash`, `runSpots` | | | as on node rows (§ 8.2) |
-| `modelDerived`, `runDependent` | boolean | never | as on node rows |
+| `modelDerived`, `runDependent`, `profileCarrying` | boolean | never | as on node rows |
 
 **Replay:** substituting the recorded values into the template, in site and pass order, must
 reproduce `composedHash`. A deliverable row shows only a one-line check status; the check's row
@@ -432,12 +460,12 @@ only;** History lists what was left out and why
 | Kept for the life of the record | Deleted 7 days after completion (#368) |
 |---|---|
 | every hash, key, id, status, count, clock and token figure | produced text: replies, prompts as sent, composed deliverables |
-| labels, item names (from `itemLabel`, capped at 120) | concepts |
+| labels, item names whose label comes from package text (capped at 120) | concepts |
 | printed conditions, `failWith` sentences (a `check_result`'s `message`), template sites (package text) | input text and held inputs |
 | decision results, check verdicts (`pass`), states and reasons | renderer inputs and outputs |
-| run facts and run spot outputs | a `check_result`'s `uncovered` and `untested` lists |
-| `resolveHash`, `lockHash`, `versionsRan`, extraction versions | the text behind profile reads |
-| the `modelDerived` and `runDependent` flags, the removed-keyword pointers | |
+| run facts, and the outputs of run spots that read raw `run.*` facts only | a `check_result`'s `uncovered` and `untested` lists |
+| `resolveHash`, `lockHash`, `versionsRan`, `recordHash`, extraction versions | the text behind profile reads, and profile-carrying text |
+| the `modelDerived`, `runDependent` and `profileCarrying` flags, the removed-keyword pointers | item names drawn from inputs or model output; run spot outputs that are also input- or model-derived |
 | the signature block's id | |
 
 Retention goes by where text came from, not what it says, and holds for every package, medical or
@@ -445,6 +473,11 @@ not ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/13
 The sweep (`DropText`) deletes what the right-hand column names and stamps `textDroppedAtUtc`, as
 today. Every hash stays, so a sub-row or substitution keeps its reference, format, size and hash and
 says the text was deleted under retention.
+
+**Hashes of short values** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660), option c): every hash stays, short values' included. A hash of a
+short value (a name, a credentials line, a yes or no) can be reversed by hashing likely candidates,
+and `provenance-record.md` says so beside the hash definitions. Long texts keep their hash for
+verification as before.
 
 ## 12. What the record never holds
 
@@ -557,9 +590,14 @@ The record refuses nothing itself; the refusals at start and load are in
 - *not sent: <kind> isn't set up for this account* (an unconfigured delivery kind), for example
   *not sent: EMR isn't set up for this account*
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6881816664)).
-- History's banner, built from the record: *<deliverable label> was not sent: check '<check id>' failed (<detail>).*,
-  for example *Consultation note was not sent: check 'coverage' failed (10 of 12 terms present).*
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311)).
+- *not sent: the job failed* (each destination of a released deliverable in a job that failed;
+  nothing is delivered until the job has succeeded, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- *blocked: check '<id>' failed (<detail>)* and *blocked: check '<id>' could not run (<error>)*
+  (a deliverable whose gate check failed or errored, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- *cancelled: the job didn't finish within <n> minutes* (a row still running at the job limit, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- History's banner, built from the record: *<deliverable label> was blocked: check '<check id>' failed (<detail>).*,
+  for example *Consultation note was blocked: check 'coverage' failed (10 of 12 terms present).*
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311), revised by [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 - History, for a sent format with keywords removed: *Not sent to the model: <pointers>*
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
 - A node's `invalid.reason` for the macro check: *macro <id>: missing*, *macro <id>: repeated*,

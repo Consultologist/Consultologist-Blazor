@@ -26,17 +26,23 @@ was [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/139
 - **The engine never reads a 31 package's source tree** at job time. Bodies are inline in
   `resolve.json`, so one document and one hash cover everything
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6957667030)).
-- **`lock.json` is not needed to run.** The engine reads its hash (to record it) and nothing else;
-  the exact versions it holds are for provenance and for the library-upgrade rule (#1390).
+- **`lock.json` is not needed to run,** but it is checked at load ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): its hash, and its link
+  to `resolve.json` (§ 1.2, step 3). The exact versions it holds are for provenance, for the
+  break points of step 4, and for the library-upgrade rule (#1390).
 
 ### 1.2 The load, step by step (31)
 
 1. **Resolve the pin** to a `name@version`, as today (`WorkflowPackagePinResolver`).
 2. **Read `resolve.json`** and **`lock.json`** from the version's folder.
-3. **Check the hash.** The SHA-256 of `resolve.json`'s bytes (canonical, RFC 8785) must equal
-   the hash published for that version. A mismatch refuses the load
-   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175)).
-   Where the published hash is kept is part 07's (the version's stamp).
+3. **Check integrity** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). The SHA-256 of `resolve.json`'s bytes (canonical, RFC 8785) must
+   equal the hash published for that version
+   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175));
+   `lock.json`'s hash must equal its published hash; and the link between them must hold
+   (`resolve.json`'s pointer to its lock names that `lockHash`, part 07). A mismatch of any of
+   the three refuses the load. The published hashes are in the version's stamp (part 07), and
+   **a version without the "published" stamp doesn't exist** for the engine: publish writes the
+   stamp last, so a publish that died partway is never loaded, and stamped folders are never
+   changed.
 4. **Check `requires`** against this engine: `spec`, `evaluator`, `scriban`, each operation's range,
    `kinds`, `features` and `agents`. Ranges are caret ranges set by the registry (#1390); the
    engine refuses only outside a range. An unknown kind or feature is outside every range.
@@ -49,7 +55,7 @@ was [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/139
    templates and the resolved formats. **The plan is never stored;** it is derived
    deterministically from `resolve.json` and cached in memory per `name@version`, keyed also by
    the `resolveHash` ([stages](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175)).
-6. **At job start,** check `needs.profile` and the account's time zone, which every job needs
+6. **At job start,** check `needs.profile` and the account's time zone, which every 31 job needs
    (§ 5.2). Then record `resolveHash` and `lockHash` beside the package name and
    version, before any node runs.
 
@@ -119,7 +125,13 @@ What changes at 31:
   evaluator (part 03), with no activity and no model call. They are evaluated inline
   in the orchestrator ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)), as a deterministic function of recorded values, so replay reproduces them;
   `rendered` nodes and deliverables render in an activity, as templates do today.
-- **A `call`** runs as a Durable sub-orchestration per call (#1419), with its own rows (part 08).
+- **A `call`'s function body runs inline** in the job's orchestration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), never as a
+  Durable sub-orchestration: its nodes are scheduled by the same loop as every other node, so the
+  per-job ceiling, the total-work limits and the dispatch order of § 3.2 hold inside functions.
+  Its rows are keyed under the call (part 08).
+- **`matches` reads no clock** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): there is no wall-clock time-out; the bounds that keep it
+  linear are part 03 § 5.3's. Every time the orchestrator records (a decision's `decidedAtUtc`)
+  comes from the orchestration's replay-safe clock.
 - **Check loops** are scheduled per item, as soon as their production item settles (#1396), not
   after the whole production loop.
 
@@ -184,10 +196,19 @@ alone: a throttled job is slower, but it isn't kept waiting without end.
   back-off, **5 attempts** in all; then the node fails. The record keeps the last error's kind,
   never its content. This replaces the activity's three attempts today
   (`AgentActivityRetryOptions`) for agent calls at 31.
-- **A job fails if it hasn't finished 30 minutes after it started.**
-- **All three are engine settings,** not part of the format, recorded in the job header's `limits`
-  at job start (part 08): `capacityWaitMinutes` (10), `serviceAttempts` (5) and `jobMinutes` (30),
-  beside `maxAgentCalls` (§ 3.2).
+- **A job fails if it hasn't finished 30 minutes after its orchestration started**
+  (`startedAtUtc`), not after its creation or scheduling, so time spent queued or waiting behind a
+  drain doesn't count ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). Real jobs took about 2 minutes at the median and 12 at the longest
+  (22 jobs over 30 days). **Activities still running at the limit** are recorded with the row
+  state `cancelled`, and their late results are ignored.
+- **Total-work limits** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), starting at: **200 items per loop instance**, **500 agent calls
+  per job** (a retry is part of its call), and a **step budget per render**. Each is checked at
+  run time and fails the node or the job with a sentence (§ 9), and is noted at publish when the
+  package's worst case can exceed it (§ 3.5).
+- **All of these are engine settings,** not part of the format, recorded in the job header's
+  `limits` at job start (part 08): `capacityWaitMinutes` (10), `serviceAttempts` (5),
+  `jobMinutes` (30), `loopItems` (200), `jobAgentCalls` (500) and `renderSteps`, beside
+  `maxAgentCalls` (§ 3.2).
 - **Every retry is recorded on the node's row** (part 08): its time, the wait applied, whether it
   was for capacity or a service failure, and the error's kind. No model text is involved.
 - **A failed node fails its job;** nothing is half-delivered. The sentences are in § 9.
@@ -212,6 +233,37 @@ For an unbounded worst case:
 
 The ceiling quoted is the publishing engine's setting. A package valid on one deployment is
 valid on every deployment; only the note's numbers differ.
+
+**The total-work limits and the job limit are noted the same way** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): when a loop's list
+could be longer than the items limit, when the package's worst case could make more agent calls
+than the job allows, and when its estimated worst case passes the job limit. Each is a note,
+never a refusal (part 04 § 10.2).
+
+### 3.6 Every deploy is preceded by a drain
+
+**No job spans two builds** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). Before any deploy of the Function App, new jobs are held and
+running jobs finish; the deploy goes ahead once none is running, and held jobs then start on the
+new build. So rows don't record a build: the job header's `engineCommit` and `engineRelease` hold
+for every row, and `versionsRan` takes exactly `lock.json`'s shape (part 08 § 3). Time a job
+spends held behind a drain doesn't count towards its job limit (§ 3.4).
+
+### 3.7 Where the record is written
+
+The record moves out of the Durable entity ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 08 § 1.1):
+
+- **Each record row is written once, to a table, when it finishes,** keyed by the job id and the
+  escaped rooted key, and never rewritten.
+- **The entity keeps only the job header and progress.** Events carry keys, not row contents;
+  the browser fetches a finished row by its key.
+- **At job end** the engine assembles the canonical record document from the rows into a blob and
+  writes its hash, `recordHash`, on the header. History's download and the export serve that blob.
+
+### 3.8 Delivery at the end
+
+**Nothing is delivered until every deliverable's outcome is final and the job has succeeded**
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 06 § 8). Delivery then runs once per destination of each released deliverable, and
+each destination's result is recorded on the deliverable's row. A job that fails delivers
+nothing.
 
 ## 4. The satellites' contract: `WorkflowPackages/Current`
 
@@ -379,12 +431,13 @@ As today, plus:
 ### 6.3 Banners
 
 A deliverable that wasn't sent is never something to dig for. At the top of the job, one banner
-per deliverable that was held, failed or not sent
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311)):
+per deliverable that was held, failed or blocked, and per destination not sent
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311), revised by [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)):
 
-> *"<deliverable label> was not sent: check '<check id>' failed (<check detail>)."*
+> *"<deliverable label> was blocked: check '<check id>' failed (<check detail>)."*
 
-The same banner covers a destination the account hasn't set up (*"not sent: EMR isn't set up for
+A gate check that errored gives *"<deliverable label> was blocked: check '<check id>' could not
+run (<error>)."* The same banner covers a destination the account hasn't set up (*"not sent: EMR isn't set up for
 this account"*, #1408) and a deliverable held by `whenEmpty: hold` (*held: empty*, #1406).
 
 ### 6.4 The sections, in the order the job runs
@@ -395,7 +448,7 @@ this account"*, #1408) and a deliverable held by `whenEmpty: hold` (*held: empty
  ├ Run facts
  ├ Nodes            (production: what was made)
  ├ Checks           (verification: what was tested)
- └ Deliverables     (outputs: what was released, held or not sent)
+ └ Deliverables     (outputs: what was released, held or blocked, and where it was sent)
 ```
 
 Inputs, Nodes, Checks and Deliverables are #1395's order. **Run facts** is #1389's new section;
@@ -408,15 +461,18 @@ document, the extraction versions (converter, parser, OCR service and model).
 **Run facts** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6920512005)).
 Each fact the package read and its raw value (`run.date: 2026-11-16`, with the zone
 `America/Toronto`), and every run spot that read it: the body, the site and the formatted output
-(*"16 November 2026"*). Run facts are kept permanently. Beside any body whose run-neutral hash and
+(*"16 November 2026"*). Run facts are kept permanently; a spot's output is kept permanently only
+when the spot reads raw `run.*` facts, and otherwise shows its hash after the 7-day drop ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). Beside any body whose run-neutral hash and
 sent-text hash differ, History says so.
 
 **Nodes.** One row per node, by its key with root (`node.sections.paragraphs.draft_paragraph`,
 #1384, [roots](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)):
-- **loops** expand per item, each named by the loop's `itemLabel`; `while` expands per pass; an
+- **loops** expand per item, each named by the loop's `itemLabel` (after the 7-day drop, by
+  position, *Sections 3*, unless the label comes from package text, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); `while` expands per pass; an
   item that didn't run shows its state and reason;
 - **a condition decision** shows the printed condition and its result, with the reason sentence
-  for a skip: *"skipped: input.kind.value = "table" is false"*; a run-dependent decision is marked so;
+  for a skip: *"skipped: input.kind.value = "table" is false"*; a run-dependent decision is marked so,
+  and the mark stays on the decision: what it chose isn't marked for it ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660));
 - **renderer sub-rows** under the node that used them, keyed by the use's position
   (`node.identify_problem/render:1`), one per step of a chain: the renderer's id, the input hash
   and the output hash (#1397);
@@ -441,17 +497,17 @@ Each check row has four lines:
 | checks | what it ran on (a deliverable or a node), with that output's hash |
 | reads | its other inputs, each linking to its row |
 | result | the `check_result`: pass or fail, with its `message`; `uncovered` and `untested` until the 7-day drop, then their hashes and sizes (#368, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
-| effect | what happened because of it: released, held, not sent, or read by something else |
+| effect | what happened because of it: released, held, blocked, or read by something else |
 
 A check loop expands per item, beside the production item it is aligned with and named by the
 same `itemLabel`; an aggregate (`all_pass`, `count_pass`) shows its result and its `failWith`
 sentence (#1396).
 
 **Deliverables** ([layout](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6881577331)).
-Each deliverable row shows its state (released, held, failed, not sent), its format and its
+Each deliverable row shows its state (released, held, failed, skipped, blocked), its format and its
 composed hash; its template, shown from the pinned version (from `resolve.json` at 31); its reads
 grouped by template line, expandable per pass, each with size and hash; one line for its check
-(`Check: coverage  passed →`, linking to the check's row); and, per delivery kind, sent or not
+(`Check: coverage  passed →`, linking to the check's row); and, per destination, sent or not
 sent with the sentence. A deliverable whose gating check was skipped by its own `if` shows
 *"released: check '<id>' didn't apply (its if was false)"*; a bundle lists what it left out and why
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)). Profile reads show the field and its hash, never its text after the
@@ -558,8 +614,13 @@ The wording below is the starting text. It follows the style rules in [index § 
 - Missing other profile field (same form):
   *"This workflow needs your <field label>. Set it in Profile, under Letter details."*, with
   `<field label>` one of `name`, `credentials`, `organisation`, `closing line`.
-- No time zone, for every job ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)):
-  *"Set your time zone in your account settings before running a workflow."*
+- No time zone, for every 31 job ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); 31 only, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)):
+  *"Set your time zone in your account settings before running a workflow."* This and the
+  profile sentences above are also the email intake's reply when it refuses a job for the same
+  reason ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- A `lock.json` whose hash, or whose link to `resolve.json`, doesn't match ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)):
+  *"The compiled workflow <package>@<version> doesn't match its lock, so it can't be run. Tell the
+  operator."*
 - A compiled package whose hash doesn't match the version's published hash (the refusal itself
   is decided):
   *"The compiled workflow <package>@<version> doesn't match its published hash, so it can't be
@@ -575,8 +636,13 @@ The wording below is the starting text. It follows the style rules in [index § 
   node's row with the error's kind and shown in History:
   *"The model service <timed out | returned an error | couldn't be reached> <n> times in a row.
   Run the workflow again later."*
-- A job not finished `jobMinutes` (30) after it started (§ 3.4), shown in History:
-  *"The job didn't finish within <n> minutes. Run the workflow again later."*
+- A job not finished `jobMinutes` (30) after its orchestration started (§ 3.4), shown in History:
+  *"The job didn't finish within <n> minutes. Run the workflow again later."* Each row still
+  running is recorded *"cancelled: the job didn't finish within <n> minutes"*.
+- The total-work limits (§ 3.4), recorded and shown in History:
+  *"Loop '<id>' was given <n> items; this engine runs at most <limit> per loop."*,
+  *"The job reached <limit> agent calls, the most this engine runs for one job."* and
+  *"<Subject> stopped rendering: it took more than <limit> steps."*
 - The publish note, never a refusal (#1393):
   *"Up to <n> agent calls could run at once; this engine runs at most <ceiling> per job, so the
   rest wait their turn."*
@@ -789,7 +855,7 @@ The run diagram draws the **same graph model** and overlays the record (storage 
 | Call box | that call's status and hashes; clicking it opens that call's rows in History. The shared function frame shows no per-call status |
 | Check | pass or fail; per item for a check loop, beside its production item |
 | Aggregate check | its result and its `failWith` sentence |
-| Deliverable | released, held, failed or not sent |
+| Deliverable | released, held, failed, skipped or blocked |
 
 A storage 2–11 record keeps today's run diagram.
 
