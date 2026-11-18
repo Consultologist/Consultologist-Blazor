@@ -44,6 +44,8 @@ checks/    verification: what gates a deliverable
 | `format` | `"check_result"` | no | always; any other value is refused (R-C2) |
 | `reproducible` | `true` | no | as on every node header, checked against the derived value ([Part 01](01-files-and-scopes.md)) |
 | `producer` | `"computed"` | no | as on every node header, checked against the kind ([Part 02 § 1.3](02-types-and-inputs.md#13-producer), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
+| `modelDerived` | boolean | no | as on every node header, checked against the derived value: `true` when the check reads model output, directly or through other values ([Part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| `runDependent` | boolean | no | as on every node header, checked against the derived value: `true` when the check reads `run.*` or a run-dependent value ([Part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `if` | JSON Logic | yes: always | whether the check runs; in a check loop, typically skips unrun items |
 | `expression` | JSON Logic | no | an expression returning `check_result` (§ 2) |
 
@@ -51,7 +53,7 @@ checks/    verification: what gates a deliverable
 checks/coverage.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Terms covered", "description": null, "format": "check_result",
-  "reproducible": true, "if": null,
+  "reproducible": true, "modelDerived": true, "runDependent": false, "if": null,
   "expression": { "terms_subset": [ { "var": "node.extract_input_terms.value" },
                                     { "var": "node.extract_note_terms.value" },
                                     "The note does not cover every clinical term found in the referral." ] } }
@@ -202,6 +204,7 @@ deliverables/note.md
 // checks/part_coverage/index.json
 { "kind": "for", "producer": "computed", "label": "Section coverage", "description": null,
   "format": { "type": "array", "items": { "$ref": "check_result" } }, "reproducible": true,
+  "modelDerived": true, "runDependent": false,
   "in": "node.sections.items", "itemLabel": "label",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "nodes": [ "coverage" ], "ret": "check.part_coverage.coverage" }
@@ -211,7 +214,7 @@ deliverables/note.md
 checks/part_coverage/coverage.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Section covers its planned terms", "description": null,
-  "format": "check_result", "reproducible": true,
+  "format": "check_result", "reproducible": true, "modelDerived": true, "runDependent": false,
   "if": { "===": [ { "var": "item.state" }, "completed" ] },
   "expression": { "terms_subset": [ { "var": "item.nodes.planned_terms.value" },
                                     { "var": "item.nodes.section_terms.value" },
@@ -230,7 +233,7 @@ implied. There's **no "partly released" state**
 checks/all_sections_covered.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Every section covers its planned terms", "description": null,
-  "format": "check_result", "reproducible": true, "if": null,
+  "format": "check_result", "reproducible": true, "modelDerived": true, "runDependent": false, "if": null,
   "expression": { "all_pass": [ { "var": "check.part_coverage.items" },
                                 "Not every section covers its planned terms." ] } }
 ---
@@ -402,7 +405,7 @@ loop's `ret`. With the format `titled_section`:
 nodes/standards/section.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Section", "description": null, "format": "titled_section",
-  "reproducible": true, "if": null,
+  "reproducible": true, "modelDerived": true, "runDependent": false, "if": null,
   "expression": { "object": { "title":   { "var": "item.value.title" },
                               "content": { "var": "node.section_instructions.content" } } } }
 ---

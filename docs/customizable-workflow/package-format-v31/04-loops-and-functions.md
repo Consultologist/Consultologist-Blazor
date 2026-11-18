@@ -29,9 +29,12 @@ nowhere is a stray and is refused (part 01).
 | `format` | a format name or an inline schema (part 02) | never | the node's return type, written, and checked against the type its `ret` gives it (§§ 2.5, 3.4, 5.3) by type equality; a mismatch is refused ([decided in part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)) |
 | `reproducible` | boolean | never | written, and checked against the derived value: `true` only if everything in its body that its result depends on is `true`; a mismatch is refused ([decided in part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910); revisiting it is #1466) |
 | `producer` | `"computed"` | never | written, and checked against the kind: a flow node is `computed` even when its body holds agent nodes; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868), part 02 § 1.3) |
+| `modelDerived` | boolean | never | written, and checked against the derived value: `true` when its `ret`, or anything its result is made from, is model-derived, as when its body holds an agent node; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861); part 03 § 4.5) |
+| `runDependent` | boolean | never | written, and checked against the derived value: `true` when its source, its condition or its `ret` is run-dependent; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861); part 03 § 4.4) |
 
 Each kind adds its own members, below. A member of another kind is refused (§ 10).
-Run-dependence and the model-derived flag are worked out, never written (part 03 §§ 4.4–4.5).
+Run-dependence and the model-derived flag are worked out from the body (part 03 §§ 4.4–4.5), and
+written as `runDependent` and `modelDerived`, checked against those values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)).
 
 **`ret` is the child's full name** ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6958687389)): the root and the
 qualified key of one of that body's **own** children, as the record keys it (part 01):
@@ -125,7 +128,7 @@ Example, fictional: reading prior letters in order until one answers the referra
 ```json
 { "kind": "for", "producer": "computed", "label": "Prior letters", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "in": "input.prior_letters.value",
   "parallel": false, "maxParallel": null,
   "until": { "===": [ { "var": "node.read_letter.value.answers_question" }, true ] },
@@ -225,7 +228,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 ```json
 { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
   "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "plaintext" } } },
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "in": "node.plan.value.sections",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
@@ -235,7 +238,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 ```json
 { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "in": "node.outline.value.points",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": null,
@@ -248,7 +251,7 @@ moved to the loop):
 ```json
 { "kind": "for", "producer": "computed", "label": "Sections — drafting each requested section by its kind", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "in": "input.sections.value",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
@@ -260,7 +263,7 @@ moved to the loop):
 ```json
 { "kind": "for", "producer": "computed", "label": "Standards", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "in": "snippet.standards",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
@@ -328,7 +331,7 @@ positional reads are refused, part 03 § 2.2).
 ```json
 { "kind": "while", "producer": "computed", "label": "Refining the summary", "description": null,
   "format": "plaintext",
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "while": { "!==": [ { "var": "node.judge.value.verdict" }, "good" ] },
   "max": 3, "until": null, "checkFirst": false,
   "nodes": ["draft_summary", "judge"], "ret": "node.refine.draft_summary" }
@@ -435,7 +438,7 @@ sections were skipped. At 31 `route` keeps its shape and keys, and the migration
 ```json
 { "kind": "case", "producer": "computed", "label": "Routing a section by its kind", "description": null,
   "format": "plaintext",
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "case": "item.value.kind",
   "branches": [
     { "when": ["narrative"], "nodes": ["narrative_draft"], "ret": "node.sections_draft.route.narrative_draft" },
@@ -452,7 +455,7 @@ nothing"*.
 ```json
 { "kind": "if", "producer": "computed", "label": "Narrative sections only", "description": null,
   "format": "plaintext",
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "if": { "===": [ { "var": "item.value.kind" }, "narrative" ] },
   "then": { "nodes": ["patient_summary"], "ret": "node.patient_summaries.narrative_only.patient_summary" },
   "else": null }
@@ -463,7 +466,7 @@ nothing"*.
 ```json
 { "kind": "if", "producer": "computed", "label": "Holding the billing section back unless asked", "description": null,
   "format": "plaintext",
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "if": { "or": [ { "!==": [ { "var": "item.id" }, "billing" ] },
                   { "===": [ { "var": "input.include_billing.value" }, true ] } ] },
   "then": { "nodes": ["standing_draft"], "ret": "node.standing_sections.applies.standing_draft" },
@@ -623,7 +626,8 @@ through `uses`. A function's result depends only on its arguments, which makes i
 
   ```
   ---
-  { "kind": "computed", "producer": "computed", "label": "Result", "format": "drafted_section", "onInvalid": "fail",
+  { "kind": "computed", "producer": "computed", "label": "Result", "format": "drafted_section",
+    "modelDerived": true, "runDependent": false, "onInvalid": "fail",
     "expression": { "object": {
         "title":    { "var": "param.standard.value.title" },
         "text":     { "var": "node.apply_instructions.content" },
@@ -639,14 +643,16 @@ through `uses`. A function's result depends only on its arguments, which makes i
 ### 7.7 The `call` node
 
 A `call` is a leaf, `<id>.md`, **header only** (its body must be empty). Its members, besides
-part 01's leaf members (`kind`, `label`, `description`, `format`, `reproducible`, and the node's
-own condition, `if`):
+part 01's leaf members (`kind`, `label`, `description`, `format`, `reproducible`, `modelDerived`,
+`runDependent`, and the node's own condition, `if`):
 
 | Member | Type | Null | Meaning |
 |---|---|---|---|
 | `kind` | `"call"` | never | |
 | `format` | a format name or inline schema | never | written, as on every node, and equal to the function's `format` by type equality |
 | `reproducible` | boolean | never | written, and checked against the function's `ret`'s value; a mismatch is refused ([decided in part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)) |
+| `modelDerived` | boolean | never | written, and checked against the derived value: `true` when the function's `ret` is model-derived, or an argument is; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| `runDependent` | boolean | never | written, and checked against the derived value: `true` when the function's `ret` is run-dependent, or an argument is; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `function` | a function id | never | the function to run |
 | `with` | an object keyed by parameter id; each value a reference string, or the literal `null` | never (`{}` for a function with no parameters) | the arguments |
 
@@ -678,7 +684,7 @@ Inside a loop, one call per item:
 ```json
 { "kind": "for", "producer": "computed", "label": "Standards", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false,
   "in": "snippet.standards",
   "parallel": true, "maxParallel": 4, "until": null, "max": null,
   "itemLabel": "title",
@@ -689,7 +695,7 @@ Inside a loop, one call per item:
 // nodes/standards/section.md (header only)
 ---
 { "kind": "call", "producer": "computed", "label": "Drafting the section", "description": null,
-  "format": "plaintext", "reproducible": false,
+  "format": "plaintext", "reproducible": false, "modelDerived": true, "runDependent": false,
   "function": "draft_section",
   "with": { "standard": "item", "draft": "input.consult_draft.content" } }
   // plus part 01's remaining leaf members
@@ -747,7 +753,7 @@ the one way to run it, at the top level, in a loop body or inside another functi
   ```
   ---
   { "kind": "computed", "producer": "computed", "label": "Prescribes letrozole (passed in)", "format": "judgement",
-    "reproducible": true,
+    "reproducible": true, "modelDerived": true, "runDependent": false,
     "onInvalid": "fail", "expression": { "var": "param.letrozole.value" } }
   ---
   ```
@@ -825,7 +831,7 @@ definition folders likewise, empty ones included (part 01).
 ```json
 { "kind": "for", "producer": "computed", "label": "Section coverage", "description": null,
   "format": { "type": "array", "items": { "$ref": "check_result" } },
-  "reproducible": true,
+  "reproducible": true, "modelDerived": true, "runDependent": false,
   "in": "node.standards.items",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "label",
@@ -899,6 +905,7 @@ sentence wording is left to the build
 | *"\<subject\> lists node '\<id\>' twice; a body is a set."* | v30 |
 | *"\<Kind\> '\<id\>' declares format \<format\>; its ret makes it \<format\>."* | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)); wording **Proposed** |
 | *"\<Kind\> '\<id\>' declares reproducible \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)); wording **Proposed** |
+| *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent\> \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); wording **Proposed** |
 | *"\<Kind\> '\<id\>' \<in \| case \| with \<param\>\> is an expression; it names one readable thing: compute the value in a computed node and name that."* | rule decided ([part 03](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)); wording **Proposed** |
 
 `<subject>` is `Loop 'x'`, `While 'x'`, `If 'x' then`, `If 'x' else`, `Case 'x' branch <n>`,
