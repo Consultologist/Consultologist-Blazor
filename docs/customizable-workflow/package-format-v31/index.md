@@ -39,6 +39,11 @@
 > deliverables and delivery at the end, and grammar details (nullable enums, null subjects and
 > sources, blank inputs, numbers) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 >
+> **Revision 8** (2026-11-18): from an architecture evaluation, a go/no-go gate before the bump
+> (smoke runs, the byte-equivalence report, a rehearsed rollback, and an estimate of the record's
+> size and storage cost per job), and the cutover risk stated: the only live accounts are the
+> author's own.
+>
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
 
@@ -184,6 +189,20 @@ in this order:
 
 Every deploy in these steps, not only the bump, is preceded by a drain, so no job spans two
 builds ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 09 § 3.6).
+
+**Before the bump (step 4), a go/no-go gate.** The bump goes ahead only when all of these hold
+on dev ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993324671)):
+- **every smoke run is green,** one per construct (§ 6), with fictional inputs;
+- **the byte-equivalence report has been reviewed,** every difference either expected and
+  explained, or fixed ([part 10](10-migration-and-tools.md) § 3);
+- **the rollback has been rehearsed and timed:** migrate, move the pins back, run a 30 job, and
+  move them forward again ([part 10](10-migration-and-tools.md) § 1.7);
+- **the record's size and storage cost per job are estimated** from the dry run's jobs (rows per
+  job, bytes per row, the canonical record blob), and found acceptable.
+
+**Cutover risk.** The only live accounts are the package author's own, so the cutover puts no
+outside user at risk. If a real user arrives before the cutover, the choice to ship all at once is
+re-weighed (#1487).
 
 The migration's step-by-step detail is on #1447 and summarised in
 [part 10](10-migration-and-tools.md). Early and independent of all this, the client moves to
