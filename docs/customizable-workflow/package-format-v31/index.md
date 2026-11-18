@@ -23,6 +23,9 @@
 > (`.value`, `.content`, `.title`); `reproducible` is written and checked; model-derived values are
 > tracked. What stays Proposed is left to the build (§ 7).
 >
+> **Revision 5** (2026-11-18): `modelDerived` and `runDependent` written on every node header and
+> checked (moved forward from #1478), and `via: "producer"` reserved.
+>
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
 
@@ -37,7 +40,7 @@ record proves both.
   JSON Schema dialect that Azure OpenAI's strict mode accepts) and its `producer` (what makes its
   output: `computed`, or `generated` by a model).
 - **Lineage:** whether a value came from a model's output, or depends on a run fact, is worked out
-  before any run and recorded on every row.
+  before any run, written on every node header and checked, and recorded on every row.
 - **Decisions:** every condition and computed value is JSON Logic, written directly, checked against
   those types, and shown to people as ordinary text (`input.kind = "narrative"`).
 - **Text:** every prompt, renderer, snippet, part, macro and deliverable is a template in one
@@ -83,7 +86,7 @@ and links to each deciding comment instead of repeating it.
 | `input.x` reads the value | inputs read like nodes: `input.x.value`, `input.x.content`, `input.x.title` (a `oneOf` label); a bare `input.x` is refused | 02 |
 | a node's `when` gate | `if`; a `case` arm keeps `when` for its values, and every `case` is exhaustive | 01, 04 |
 | object formats list some properties in `required` | every property in `required`, optional ones nullable; strict mode's other rules apply to a model's output | 02 |
-| (none) | **model-derived** and **run-dependent** values, worked out before a run and recorded | 03 |
+| (none) | **model-derived** and **run-dependent** values, worked out before a run, written on every node header as `modelDerived` and `runDependent` and checked against the derived values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)), and recorded | 02, 03 |
 | string conditions parsed by the engine; `let` and operations with `op`/`with` | JSON Logic for every condition and every `computed` value, with typed custom operations; equality is `===`/`!==` only | 03 |
 | `labelField` names an item | the loop's `itemLabel`; `label` is always the display name | 04 |
 | (none) | functions: named, typed sub-flows called by a `call` node | 04 |
@@ -218,7 +221,7 @@ confirmed before the contracts release** (§ 5, step 1).
 | #1475 | the `for` forms refused in templates |
 | #1476 | narrowing the snippet guard to refuse only recursion |
 | #1477 | `requires.evaluator` and off-the-shelf components throughout |
-| #1478 | making model-derived and run-dependent explicit |
+| #1478 | requiring model-derived or run-dependent values in reads |
 | #1479 | `via: "producer"` |
 
 Earlier: #1453 (null semantics), #1455 (a `semantics` block), #1456 (an input `default`), #1457
