@@ -46,6 +46,8 @@
 >
 > **Revision 9** (2026-11-18): the operational layer — a record blob for every job that ends, idempotent row writes, minimal monitoring and alerts, retried deliveries, and a gate on the orchestration history's size and replay time.
 >
+> **Revision 10** (2026-11-18): a final review — a `delivering` state inside the one sealed record, the drain defined, function bodies inline with sub-orchestrations deferred (#1493), the converter's library in #1447, and build owners for the operational work (#1490–#1492).
+>
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
 
@@ -93,7 +95,7 @@ and links to each deciding comment instead of repeating it.
 | [07 The compiled documents](07-compiled-documents.md) | `resolve.json`, `lock.json`, evidence and views, in-package tests, the publish report | #1389, #1390, #1449 |
 | [08 The record](08-record.md) | record storage 12 and the provenance contract | #1384, #1389, #1395–#1397, #1412, #1419 |
 | [09 The engine and the pages](09-engine-and-pages.md) | loading and scheduling, the per-job ceiling, the satellites' contract, Create, History, Profile, the Editor, the diagram | #1393, #1398, #1406, #1408 |
-| [10 Migration and tools](10-migration-and-tools.md) | the migration from 30, the converter, byte-equivalence, the conformance suite, author documentation, what moved to later milestones | #1447, #1423, #1449 |
+| [10 Migration and tools](10-migration-and-tools.md) | the migration from 30, the converter, byte-equivalence, the conformance suite, author documentation, what moved to later milestones | #1447, #1449, #1423 (the screen) |
 | [Refusal sentences](refusal-sentences.md) | every refusal, warning, job-start and History sentence, in one table for review (#1483) | #1388 |
 
 ## 2. What changes from 30
@@ -132,7 +134,8 @@ follow without a new spec version.
 | **The grammar** (what a valid package is) | #1383, #1384, #1385, #1386, #1392, #1394, #1395, #1396, #1397, #1400, #1406, #1408, #1409, #1412, #1419, #1061 |
 | **The compiled documents** | #1389 (`resolve.json`), #1390 (`lock.json`), #1449 (tests) |
 | **Engine and deployment**, shipping in the same release | #1393 (the per-job ceiling, retries and job limits) |
-| **Tools and views**, shipping in the same release | #1398 (the diagram), #1425 (the dialect's published spec), #1447 (the migration) |
+| **Tools and views**, shipping in the same release | #1398 (the diagram), #1425 (the dialect's published spec), #1447 (the migration and the converter's library), #1473 (author documentation) |
+| **Build owners for operational work** | #1490 (record storage 12), #1491 (deploys and integrity, the drain), #1492 (delivery and monitoring) |
 | **Closes through another issue** | #1382 (when #1406 is verified) |
 | **The design itself** | #1388 |
 
@@ -203,8 +206,7 @@ on dev ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues
   job, bytes per row, the canonical record blob), and found acceptable;
 - **the orchestration history's size and replay time are measured** on the largest example
   package ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): the history stays under 10 MB and no step's replay takes over 2 seconds.
-  If either is exceeded, large function bodies move back to sub-orchestrations with a shared
-  ceiling (part 09 § 3.1).
+  If either is exceeded, if it's exceeded, the bump waits and #1493 (sub-orchestrations with a shared ceiling, Milestone 40) is pulled forward.
 
 **Cutover risk.** The only live accounts are the package author's own, so the cutover puts no
 outside user at risk. If a real user arrives before the cutover, the choice to ship all at once is

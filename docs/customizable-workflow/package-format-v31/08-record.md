@@ -51,7 +51,13 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
   rows are all stored this way; sub-rows (§ 2.3) stay inside their row.
 - **A row write is insert-if-absent,** keyed by job and rooted key ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical second
   write (a Durable replay) is a no-op; a differing one is refused and recorded as an engine fault.
-- **At every terminal state** (completed, failed, cancelled or timed out; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)), **a canonical
+- **A job that has finished producing and has deliveries to make is `delivering`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)),
+  shown as *"Delivering…"*, between producing and its terminal state. The document is viewable
+  throughout. Each delivery attempt is a row in the same record, keyed
+  `delivery:<deliverable>/<destination>` (§ 10), so nothing is recorded on a deliverable's row
+  after the job completes.
+- **The record is sealed when delivery ends,** not before. At every terminal state (completed,
+  failed, cancelled or timed out; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)), **a canonical
   record document** is assembled from the rows into a blob: the job
   header (§ 3), noting the end state, and every row, in key order, as RFC 8785 JSON. It is what History's download and the
   export serve, and **one hash over the whole record** (`recordHash`) is taken over its bytes and
@@ -61,6 +67,7 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
   its key once the event says it finished.
 - **Rows don't record a build.** Every deploy is preceded by a drain (part 09 § 3.6), so no job
   spans two builds; the header's `engineCommit` and `engineRelease` hold for every row.
+- **Built under #1490** (record storage 12).
 
 ## 2. Keys
 
@@ -133,9 +140,9 @@ version, and shown in History's job header:
 | `resolveHash` | string (`sha256:…`) | null below 31 | the SHA-256 of the canonical `resolve.json` bytes the job ran ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175)) |
 | `lockHash` | string (`sha256:…`) | null below 31 | the SHA-256 of the canonical `lock.json` bytes ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6898433402)) |
 | `versionsRan` | object | null below 31 | **the exact versions that actually ran,** which under option c can differ from the lock within its range ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632)). It takes **exactly `lock.json`'s shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so the two compare member by member: `packageFormat`, `dialect`, `libraries` (`Scriban`, `Markdig`, `Corvus.Text.Json.JsonLogic`, `Corvus.JsonSchema`), `evaluator`, `operations` (those the package uses), `builtins`, `culture` (`"invariant"`), `runtime` (the .NET runtime) and `unicode` (its Unicode version) ([part 07](07-compiled-documents.md); [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
-| `recordHash` | string (`sha256:…`) | allowed | the hash of the canonical record document assembled at job end (§ 1.1); `null` until the job ends, and below 31 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| `recordHash` | string (`sha256:…`) | allowed | the hash of the canonical record document, sealed when delivery ends (§ 1.1); `null` until then, and below 31 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `runFacts` | object | null below 31 | the raw value of each run fact the package reads, once per run (§ 8.1); `{}` when it reads none |
-| `limits` | object `{ maxAgentCalls, capacityWaitMinutes, serviceAttempts, jobMinutes, loopItems, jobAgentCalls, renderSteps }`, each an integer | null below 31 | every engine limit in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): the per-job ceiling on agent calls in flight, the minutes a node may wait on 429s in all, the attempts allowed for another service failure, the minutes a job may run from orchestration start, and the total-work limits: items per loop instance, agent calls per job, and steps per render ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); [part 09](09-engine-and-pages.md) § 3) |
+| `limits` | object `{ maxAgentCalls, capacityWaitMinutes, serviceAttempts, jobMinutes, deliveryMinutes, deliveryAttempts, loopItems, jobAgentCalls, renderSteps }`, each an integer | null below 31 | every engine limit in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): the per-job ceiling on agent calls in flight, the minutes a node may wait on 429s in all, the attempts allowed for another service failure, the minutes a job may run from orchestration start, the minutes delivery may take and the attempts each destination gets, and the total-work limits: items per loop instance, agent calls per job, and steps per render ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); [part 09](09-engine-and-pages.md) § 3) |
 | `startedAtUtc` | string | never | when the job's orchestration started; the job limit is timed from here, not from creation or scheduling, so time queued or waiting behind a drain doesn't count ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `signatureBlockId` | string | allowed | the profile signature block the job used, by **id**, never its text; `null` when the package doesn't read `profile.signature` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)) |
 | `signatureChosen` | `"default"` or `"job"` | allowed | whether the block was the account's chosen block (`ChosenId`) or picked on the Create page for this job; `null` with `signatureBlockId` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
@@ -441,13 +448,21 @@ template's provenance ([decided](https://github.com/Consultologist/Consultologis
 | `format` | string | never | the deliverable's format (`markdown_block`, `plaintext` or an object format; never `markdown_inline`, [part 06](06-checks-deliverables-profile.md)) |
 | `state` | string | never | `released`, `held`, `failed`, `skipped` (its header `if`) or `blocked` (its gate check failed or errored, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `stateReason` | string | allowed | the sentence: *held: empty*, *skipped: <condition> is false*, *blocked: check '<id>' failed (<detail>)*, *blocked: check '<id>' could not run (<error>)*, *released: check '<id>' didn't apply (its if was false)*; `null` when released through a passing check or none |
-| `delivery` | array of `{ kind: string, result: "sent" \| "not sent" \| "failed", reason: string \| null, atUtc: string \| null, attempts: array of { atUtc: string, outcome: string } }` | never | one result per destination of a released deliverable, written at the end of a job that succeeded ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): *not sent: EMR isn't set up for this account*, *not sent: the job failed*; `failed` after the retries ran out ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677), part 09 § 3.8), each attempt in `attempts`; `[]` for a deliverable that wasn't released |
+| `delivery` | array of delivery row key | never | the delivery rows of a released deliverable, one per destination (below); `[]` for a deliverable that wasn't released. The results are on those rows, not on this one |
 | `check` | string | allowed | the check row key that gated it, linking to the check's row; `null` when ungated |
 | `sites` | array of `{ site: integer, at: string, expr: string, loop: string \| null }` | never | each expression in the template, in source order, with its line and column. Package text, kept |
 | `substitutions` | array of substitution | never | each evaluation: `{ site, pass: integer[] \| null, reads: string, hash: string, size: integer, renders: string \| null }`; `pass` holds one number per enclosing template loop |
 | `renders` | array of renderer sub-row | never | as on node rows (§ 4.2) |
 | `runNeutralHash`, `runSpots` | | | as on node rows (§ 8.2) |
 | `modelDerived`, `runDependent`, `profileCarrying` | boolean | never | as on node rows |
+
+**A delivery row** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)) is written for each destination of a released deliverable, keyed
+`delivery:<deliverable>/<destination>`, and is the one place a result is recorded. Its members are
+`{ kind: string, result: "sent" \| "not sent" \| "failed", reason: string \| null, atUtc: string \| null, attempts: array of { atUtc: string, outcome: string } }`.
+The results are written once the job has succeeded: *not sent: EMR isn't set up for this account*,
+*not sent: the job failed*; `failed` after the attempts ran out or the delivery window closed
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677), part 09 § 3.8), each attempt in `attempts`. The canonical record gathers the
+delivery rows under their deliverable.
 
 **Replay:** substituting the recorded values into the template, in site and pass order, must
 reproduce `composedHash`. A deliverable row shows only a one-line check status; the check's row

@@ -2,7 +2,7 @@
 
 This part covers how every package reaches 31 and the tools that ship with the version: the
 migration from 30 (#1447), summarised here with its step-by-step detail kept on the issue; the
-condition converter's logic, which ships in the Milestone 39 library (#1423); the byte-equivalence
+condition converter's logic, which ships in the Milestone 39 library built in #1447; the byte-equivalence
 harness and its fixtures; the snapshot test the migration writes (#1449); the conformance suite;
 the author documentation to rewrite; the satellites' work; and what moved to Milestones 40 and 41.
 The engine's preview setting and dev registry are in [part 09](09-engine-and-pages.md#2-the-dev-preview-setting-and-devs-registry).
@@ -203,12 +203,10 @@ recorded and announced to owners. The engine keeps running 30 throughout
   pins forward again, and records how long each move took. A rollback that hasn't been
   rehearsed doesn't count towards the go/no-go gate (index § 5).
 - **The dry run also estimates the record's size and storage cost per job:** rows per job, bytes
-  per row and the canonical record blob, from the dry run's jobs, reported before the contracts
-  release. It's one of the gate's conditions.
+  per row and the canonical record blob, from the dry run's jobs, reported before the bump (index § 5, step 4). It's one of the gate's conditions.
 - **The dry run also measures the orchestration history's size and replay time** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)) for the
   largest example package. The history must stay under 10 MB and no step's replay may take over
-  2 seconds; if exceeded, large function bodies move back to sub-orchestrations with a shared
-  ceiling (part 09 § 3.1). It's one of the gate's conditions.
+  2 seconds; if it's exceeded, the bump waits and #1493 (sub-orchestrations with a shared ceiling, Milestone 40) is pulled forward. (part 09 § 3.1). It's one of the gate's conditions.
 - **A 30 version published after a rollback is migrated again before pins move** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so a
   fix made at 30 while pins were back isn't lost when they move forward.
 - **Library break points:** when an engine upgrade adds a break point (part 07 § 4.4), the
@@ -540,7 +538,7 @@ Either swap must leave golden tests and a corpus re-render byte-identical.
 
 | Issue | What |
 |---|---|
-| #1423 (UI) | The condition converter's page and its place in every condition builder, with the pattern tester; the logic is in Milestone 39 |
+| #1423 (UI) | The condition converter's page and its place in every condition builder, with the pattern tester; the logic is the Milestone 39 library built in #1447 |
 | #1410 | Deliverables as tree items with their own panes, built from blocks; its byte-identical round trip |
 | #1411 | The three-column deliverable builder |
 | #1413 | The step-by-step debugger |
