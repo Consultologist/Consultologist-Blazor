@@ -559,10 +559,10 @@ A spec-level object of limits on a package's source, decided on
   - `fileBytes` and `totalBytes` count bytes after line-ending normalisation (§ 2.4);
   - `pathLength` counts characters from the package root, with `/` separators and the extension
     (`nodes/sections/paragraphs/draft_paragraph.md` is 44).
-- **Proposed:** ignored `resolve.json` and `lock.json` copies are dropped before counting;
-  `totalBytes` is uncompressed; the bounds are checked before anything is parsed, in the order of
-  the table, and every exceeded bound is reported.
-- **`bounds.json`.** **Proposed** shape:
+- **Before counting** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)): ignored `resolve.json` and `lock.json` copies are dropped first;
+  `totalBytes` is measured uncompressed; the bounds are checked before anything is parsed, in the
+  order of the table, and every exceeded bound is reported.
+- **`bounds.json`'s shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)):
   ```json
   {
     "specVersion": 31,
@@ -711,7 +711,7 @@ function's name
 
 ## Refusals
 
-Every rule below is decided; the wording of a sentence marked **Proposed** is left to the build.
+Every rule below is decided. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 **Decided wording:**
 - Duplicate in an overlapping scope ([#1384](https://github.com/Consultologist/Consultologist-Blazor/issues/1384#issuecomment-6904190578)):
@@ -721,7 +721,7 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
   - *"Call '<id>' reaches depth <n>; calls nest at most FormatBounds.depth (15) deep."*
   - *"Loop '<id>' declares maxParallel <n>; the most is FormatBounds.parallel (15)."*
 
-**Proposed: files and folders.**
+**Files and folders.**
 - *"File '<path>' is not listed: every file in <folder> is named once in its index.json, or is index.json or README.md."*
 - *"<folder> has no index.json; every folder lists its members, even when it has none (\"items\": [])."*
 - *"The package has no <folder>/ folder; all nine top-level folders are always present."*
@@ -733,14 +733,14 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"File '<path>' starts with a byte-order mark; save it as UTF-8 without one."*
 - *"File '<path>' contains a carriage return on line <n> that doesn't end the line; lines end with \n."*
 
-**Proposed: front matter.**
+**Front matter.**
 - *"File '<path>' must start with a line of exactly ---, then one JSON object, then a line of exactly ---."*
 - *"The header of '<path>' is not valid JSON: <parser message>."*
 - *"The header of '<path>' declares '<member>' twice."*
 - *"<Kind> '<id>' has an empty body; its <prompt | template | text> is the body."*
 - *"<Kind> '<id>' has a body; a <computed node | call | check> keeps everything in its header."*
 
-**Proposed: members.**
+**Members.**
 - *"<Declaration> is missing '<member>'; every member is written, and null means none."*
 - *"<Declaration> sets '<member>' to null, which it can never be."*
 - *"<Declaration> in '<path>' declares unknown member '<member>'. Did you mean '<closest>'?"*
@@ -751,7 +751,7 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"<Node> '<key>' is kind <kind> and declares producer '<value>'; a <kind> node's producer is <generated | computed>."*
 - *"<Node> '<key>' declares <modelDerived | runDependent> <value>, but its reads make it <derived>: <the read that does, or none>."*
 
-**Proposed: ids.**
+**Ids.**
 - *"'<id>' is not a valid id: a lowercase letter, then lowercase letters, digits or underscores."*
 - *"Id '<id>' is <n> characters; the most is SourceBounds.idLength (64)."*
 - *"Id '<id>' is reserved on Windows (con, prn, aux, nul, com1–com9, lpt1–lpt9) and can't name a file: rename it."*
@@ -760,7 +760,7 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"Renderer '<id>' reuses the name of a built-in renderer: rename it."*
 - *"Node '<id>' appears twice inside while '<while>' (<path> and <path>): pass.….node.<id> must name one node."*
 
-**Proposed: `SourceBounds`.**
+**`SourceBounds`.**
 - *"The package has <n> files; the most is SourceBounds.files (512)."*
 - *"File '<path>' is <n> KiB; the most is SourceBounds.fileBytes (256 KiB)."*
 - *"The package is <n> MiB; the most is SourceBounds.totalBytes (2 MiB)."*
@@ -768,8 +768,4 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
-
-- **`SourceBounds` details the decision didn't name:** ignored `resolve.json`/`lock.json` copies dropped before counting; `totalBytes` uncompressed; bounds checked before parsing, in table order, every exceeded bound reported.
-- **`bounds.json`'s shape** (members `sourceBounds`, `formatBounds`, `windowsReservedIds`, `reservedIds`): the decision says the values are published as `bounds.json`, not its members.
-- **Every refusal sentence above marked Proposed:** the decisions settled the rules, and left the wording to the build.
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

@@ -8,7 +8,8 @@ the author documentation to rewrite; the satellites' work; and what moved to Mil
 The engine's preview setting and dev registry are in [part 09](09-engine-and-pages.md#2-the-dev-preview-setting-and-devs-registry).
 The points this part left open were
 [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)
-on 2026-11-18; what the decision left to the build stays **Proposed** below.
+on 2026-11-18, and what that decision left to the build was [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609) the same day, with
+`migration-report.json`'s shape [decided too](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967).
 
 ## 1. The migration in summary
 
@@ -30,7 +31,8 @@ and owners told before and after.**
   - the byte-equivalence harness (§ 3).
 
   #1447 also names the Editor as a caller. The Editor can't show or edit 31 packages as editable
-  until Milestone 41, so **the Editor's "upgrade to 31" arrives with Milestone 41: Proposed.**
+  until Milestone 41, so **the Editor's "upgrade to 31" arrives with Milestone 41** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609));
+  the operator's bulk migration does it in Milestone 39.
 - **Output:** the migrated package as a folder (part 01's layout), a list of notices, a migration
   report, and a snapshot test (§ 4). The shape of the result matches the earlier rewriters', so
   every caller treats every rung alike.
@@ -115,11 +117,12 @@ validation fails with sentences until each is made, as the 25 migration did. The
 Notices that need no edit (a renamed id, a `!x` converted to `blank(x)`, a suggested text format)
 are listed in the migration report and block nothing.
 
-The script exits **1** with *"written; hand edits remain"*. **Proposed:** it exits 0 when the
-package validates, and 2 when it can't write a package at all (unreadable input, or a version
-below 5).
+The script exits **0** when the package migrated cleanly, **1** with *"written; hand edits remain"*
+(as #1447 decided), and **2** when it refused, writing no package (unreadable input, or a version
+below 5)
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6985122999)).
 
-Each notice reads (**Proposed** wording):
+Each notice reads:
 > *"Hand edit needed in <file>, <member>: <reason>."*
 
 ### 1.5 Account packages, by the operator
@@ -162,8 +165,9 @@ Index [§ 5](index.md#5-phasing) gives the whole rollout. The migration's part o
    packages migrated and smoke-run there, and the bulk migration run over copies of account
    packages, all with fictional inputs
    ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6957669427)).
-   **Proposed:** the copies are the account packages' sources only (they hold no patient text),
-   published to dev's registry under the same owners' ids, and deleted after the dry run.
+   The copies are the account packages' sources only (they hold no patient text), published to
+   dev's registry under the same owners' ids, readable only by the operator, and deleted when the
+   dry run ends ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)).
 2. **The satellites** are released and verified against migrated public packages (§ 7).
 3. **The engine accepts 31 beside 30,** released after a drain, as with 29 and 30.
 4. **The public example packages** migrate in one PR in `consultologist-workflows`, tagged one per
@@ -228,7 +232,7 @@ condition builder) waits for Milestone 41
 The tool and the migration therefore never disagree. The converter isn't part of the format: the
 format and the checker only ever see JSON Logic.
 
-**Its surface: Proposed.**
+**Its surface** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)).
 
 ```csharp
 public static class WorkflowConditionConverter
@@ -303,10 +307,10 @@ counts it as blank), so **the migration report lists every such conversion**.
 ### 2.4 How it's tested
 
 - **Fixtures for every row** of § 2.2 and every refusal of § 2.3, with the expected bytes.
-- **Semantic equivalence: Proposed.** For every condition in the public packages and the fixture
-  set, 30's evaluator on the Scriban string and 31's evaluator on the converted JSON Logic give the
-  same decision over a set of fictional scopes, including `null` and absent values. Where 31's
-  null rules (part 03) give a different answer from 30's, the case is listed as an expected
+- **Semantic equivalence** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)). For every condition in the public packages and the
+  fixture set, 30's evaluator on the Scriban string and 31's evaluator on the converted JSON Logic
+  are run on generated fictional inputs, including `null` and absent values, and **must agree,**
+  except the documented `blank(x)` whitespace case (§ 2.3), which is listed as an expected
   difference in the byte-equivalence report (§ 3), never silently accepted.
 - **The Editor's round trip** (expression → JSON Logic → expression, over a fixture set covering
   every operation) is Milestone 41's, with its screen (#1423).
@@ -339,8 +343,8 @@ counts it as blank), so **the migration report lists every such conversion**.
   converted to `blank(x)` (§ 2.3), and every suggestion made.
 - **Where it goes:** attached to the publish record of each migrated account version, and shown by
   the Editor and History; for the public packages, attached to the migration PR.
-- **Its shape: Proposed.** One JSON document (`migration-report.json`) beside the publish report
-  in the version's folder: the old and new versions, the hand edits made, and one entry per
+- **Its shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)). One JSON document (`migration-report.json`) beside the publish
+  report in the version's folder: the old and new versions, the hand edits made, and one entry per
   compared text with `{ "site", "oldHash", "newHash", "equal", "expected", "explanation" }`, with
   `explanation` `null` unless `expected` is true. Like the other derived files, it never lives in
   source.
@@ -400,7 +404,7 @@ library's generators as for every spec bump
   [part 01](01-files-and-scopes.md)), the reserved ids, the producer values (with those reserved
   for Milestone 40), and the Markdig extension list
   for the pinned Markdig version.
-- **Migration vectors: Proposed.** 30 packages with their expected 31 output and notices, so an
+- **Migration vectors** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)). 30 packages with their expected 31 output and notices, so an
   outside implementation of the migration can be checked too.
 
 ## 6. Author documentation
@@ -413,7 +417,7 @@ with JSON Logic throughout and `===`/`!==` in every example:
 - the app's Help page;
 - the spec's own examples (`package-format-v31.md` in the package-format registry);
 - the pattern of computing a list, subject or argument in a `computed` node and naming it (#1473);
-- **Proposed:** the recipes in `docs/customizable-workflow/` that teach a 30 construct
+- the recipes in `docs/customizable-workflow/` that teach a 30 construct ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609))
   (for example `macro-classifier-gating.md`, whose `when: node:<id> == yes` becomes a macro `if`
   in JSON Logic), each updated or marked as applying to 30, and the 31 migration documented for
   authors of the public repository (`migrate-workflow-package.cs --to 31`, the notices, the
@@ -507,28 +511,16 @@ Either swap must leave golden tests and a corpus re-render byte-identical.
 ## Refusals
 
 Sentences this part's tools write. The grammar's sentences are in parts 01 to 07; the engine's
-and the pages' in part 09. Notice wording is left to the build
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
+and the pages' in part 09. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 - The script, when hand edits remain (#1447): *"written; hand edits remain"*
-- A hand-edit notice (**Proposed** wording): *"Hand edit needed in <file>, <member>: <reason>."*
+- A hand-edit notice: *"Hand edit needed in <file>, <member>: <reason>."*
 - The publish record of a migrated version (#1447): *"migrated by the operator from <old
   version>"*
 - A converter refusal on type: the 31 checker's own sentence (part 03), unchanged.
-- A converter refusal for anything else (**Proposed**): *"The condition '<expression>' uses
+- A converter refusal for anything else: *"The condition '<expression>' uses
   <construct>, which has no JSON Logic form at 31: rewrite it by hand."*
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
-
-- **The Editor's "upgrade to 31" waits for Milestone 41** (§ 1.1).
-- **Script exit codes 0 and 2** (§ 1.4): #1447 fixes only exit 1.
-- **Hand-edit notice wording** (§ 1.4) and **the converter's general refusal wording** (Refusals).
-- **Dry run on copies of account packages' sources, deleted afterwards** (§ 1.6): the dry run
-  needs real shapes; sources hold no patient text.
-- **The converter's surface** (`WorkflowConditionConverter`, `ConversionResult`, § 2.1).
-- **Semantic-equivalence tests for the converter** (§ 2.4).
-- **`migration-report.json` and its shape** (§ 3.2).
-- **Migration vectors in the conformance suite** (§ 5).
-- **Recipes in `docs/customizable-workflow/` updated or marked as 30** (§ 6).
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

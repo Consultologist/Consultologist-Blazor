@@ -91,10 +91,10 @@ parts, macro bodies and instructions, deliverables) are Scriban text in the dial
 | `requires` | object | never | engine capabilities (§ 3.1) |
 | `needs` | object | never | what the account must provide (§ 3.2) |
 | `inputs` | object keyed by input id | never | the package's inputs (§ 2.3); `{}` for none |
-| `inputOrder` | array of string | never | the input ids in written order, the Create page's order (§ 2.3); `[]` for none. **Proposed** name |
+| `inputOrder` | array of string | never | the input ids in written order, the Create page's order (§ 2.3); `[]` for none ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)) |
 | `formats` | object (a JSON Schema with `$defs`) | never | the formats bundle (§ 2.4) |
 | `formatHashes` | object, format id → `sha256:…` | never | each bundled format's **full** hash (§ 2.4) |
-| `typeHashes` | object, format id → `sha256:…` | never | each bundled format's **type** hash (§ 2.4). **Proposed** name |
+| `typeHashes` | object, format id → `sha256:…` | never | each bundled format's **type** hash (§ 2.4), beside `formatHashes` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)) |
 | `bindings` | object, format id → producer → binding | never | the attested agent serving each format and producer an agent node uses (§ 2.4); `{}` when the package has no agent node |
 | `nodes` | object keyed by rooted key | never | every production node, flat (§ 2.5) |
 | `checks` | object keyed by rooted key | never | every check and check loop, flat; `{}` for none |
@@ -217,8 +217,8 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 | `bodyHash` | string | allowed | templated kinds | `sha256:` over the body's UTF-8 bytes; `null` when `body` is `null` |
 | `parts` | object keyed by part id | never | agent nodes | the node's parts, each with its `if` and its text (an array of lines, #1412); `{}` for none |
 | `places` | array of string | never | agent nodes | the rooted ids of the macros its prompt places, its parts' text included, in order of appearance; `[]` for none |
-| `renders` | array of render site | never | templated kinds | each pipe step into a `renderer.*`, in order of appearance: `{ "n": <1-based position>, "source": "<path>", "renderer": "<renderer id>" }`; a chain gives one entry per step, and a later step's `source` is the step before it. `[]` for none. Its position `n` is the record's `render:<n>` (part 08). Entry shape **Proposed** |
-| `runSpots` | array of run spot | never | templated kinds | each run spot in the body ([part 05](05-templates-and-macros.md)), the `{{run:<n>}}` marker's `n`: `{ "site": <1-based position>, "at": "<line>:<column>", "reads": "<path>" }`; `[]` for none. A run spot whose read pipes into renderers covers the whole pipeline. Entry shape **Proposed** |
+| `renders` | array of render site | never | templated kinds | each pipe step into a `renderer.*`, in order of appearance: `{ "n": <1-based position>, "source": "<path>", "renderer": "<renderer id>" }`; a chain gives one entry per step, and a later step's `source` is the step before it. `[]` for none. Its position `n` is the record's `render:<n>` (part 08). Entry shape [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) |
+| `runSpots` | array of run spot | never | templated kinds | each run spot in the body ([part 05](05-templates-and-macros.md)), the `{{run:<n>}}` marker's `n`: `{ "site": <1-based position>, "at": "<line>:<column>", "reads": "<path>" }`; `[]` for none. A run spot whose read pipes into renderers covers the whole pipeline. Entry shape [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) |
 | `formatHash` | string | allowed | entries with a `format` | the resolved format's full hash, as in `formatHashes`; `null` for flow kinds that have none |
 | `typeHash` | string | allowed | entries with a `format` | its type hash, as in `typeHashes`; `null` with `formatHash` |
 
@@ -436,7 +436,7 @@ hasn't set it (§ 10). An empty or whitespace-only profile value counts as not s
 | `libraries` | object, package id → exact version | never | the third-party libraries whose change could alter a rendered prompt, a validation verdict, a composed document or a hash, each **exact**: `Scriban`, `Markdig`, `Corvus.Text.Json.JsonLogic`, `Corvus.JsonSchema` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6957667429)) |
 | `evaluator` | string | never | our evaluator's exact version (`"1.0.0"`) |
 | `operations` | object, operation name → exact version | never | each built-in operation the package uses (the same names as `requires.operations`), exact; `{}` for none |
-| `builtins` | object, name → exact version | never | the built-in machinery that isn't an operation: `markdown_escape` (escaping plain text into Markdown), `plain_conversion` (Markdown to plain text), `formats` (the built-in format definitions), `printer` (the condition printer, [part 03](03-expressions.md)), and each built-in renderer the package uses (`concept_bullets`, `concept_context`, [part 05](05-templates-and-macros.md)). Key names **Proposed** |
+| `builtins` | object, name → exact version | never | the built-in machinery that isn't an operation: `markdown_escape` (escaping plain text into Markdown), `plain_conversion` (Markdown to plain text), `formats` (the built-in format definitions), `printer` (the condition printer, [part 03](03-expressions.md)), and each built-in renderer the package uses (`concept_bullets`, `concept_context`, [part 05](05-templates-and-macros.md)). Key names [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) |
 | `culture` | string | never | `"invariant"`: every render and operation runs in the invariant culture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425)) |
 | `catalogues` | object | never | `formats` (the formats catalogue, `formats@v…`: types), `agents` (the agents catalogue, `agents@v…`: bindings and attested agent definitions), `outputContracts` (`output-contracts@v…`, or `null` when the package uses none), as **separate entries** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6879413591)) |
 
@@ -705,7 +705,7 @@ normalisation, the warnings, and the per-job ceiling note
 | `sourceHash` | string | never | as in `resolve.json` |
 | `resolveHash` | string | allowed | `null` when publish stopped before step 4 |
 | `lockHash` | string | allowed | `null` when publish stopped before step 4 |
-| `normalised` | array of string | never | the paths whose line endings were normalised at step 0; `[]` for none. **Proposed** name |
+| `normalised` | array of string | never | the paths whose line endings were normalised at step 0; `[]` for none ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)) |
 | `refusals` | array of `{ sentence, at }` | never | every refusal sentence, with its file path; `[]` when published |
 | `warnings` | array of `{ sentence, at }` | never | as `resolve.json`'s `warnings`, the per-job ceiling note included |
 | `tests` | array of test result | never | one per test, in id order; `[]` for none |
@@ -723,9 +723,7 @@ normalisation, the warnings, and the per-job ceiling note
 
 ## 10. Refusals
 
-Refusal sentence wording is left to the build
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979256096)):
-every sentence marked **Proposed** below is settled by the build PR that writes it.
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
 
 **At start** (the Create page, then the engine), from `requires`, `needs` and the engine's break
 points (§ 4.4):
@@ -733,36 +731,30 @@ points (§ 4.4):
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632);
   `<component>` is `Scriban`, `the evaluator` or an operation's name). The same sentence covers a
   package locked before one of the engine's break points (§ 4.4).
-- *"This workflow (<package>@<version>) needs <kind or feature> '<name>', which this engine doesn't support. Publish a new version of the workflow to run it on this engine."* **Proposed.**
-- *"This workflow (<package>@<version>) needs agent <agent name> version <version>, which this engine doesn't have. Publish a new version of the workflow to run it on this engine."* **Proposed.**
+- *"This workflow (<package>@<version>) needs <kind or feature> '<name>', which this engine doesn't support. Publish a new version of the workflow to run it on this engine."*
+- *"This workflow (<package>@<version>) needs agent <agent name> version <version>, which this engine doesn't have. Publish a new version of the workflow to run it on this engine."*
 - *"This workflow needs your signature. Choose one in Profile."*
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)); for other fields,
-  *"This workflow needs your <field label>. Set it in Profile, under Letter details."* **Proposed.**
+  *"This workflow needs your <field label>. Set it in Profile, under Letter details."*
 - *"Set your time zone in your account settings before running a workflow."* Every job, until the account's time zone is set ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)); wording
-  **Proposed**. No `needs` member is required, since every job needs the zone.
+  new. No `needs` member is required, since every job needs the zone.
 
 **At load** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175): the engine refuses a document whose bytes don't match):
-- *"Workflow <package>@<version> can't run: its compiled document doesn't match the hash published for it."* **Proposed** wording.
+- *"Workflow <package>@<version> can't run: its compiled document doesn't match the hash published for it."*
 
 **At publish, from tests** (§ 8):
-- *"Test '<test id>' failed: <expectation> for <key> expected <expected>, got <actual>. Publish stopped."* **Proposed** wording; the content (the test's name and its first mismatch) is decided.
-- *"Test '<test id>' has no stub for <row key>, which runs. Add it to outputs."* **Proposed.**
-- *"Test '<test id>' stubs <row key> with a value that isn't <format>: <first validation error>."* **Proposed.**
-- *"Test '<test id>' gives no value for input '<input id>'. List every input; use null for an optional input left unset."* **Proposed.**
-- *"Test '<test id>' must give exactly the profile fields the workflow reads: <fields>."* and *"Test '<test id>' must give exactly the run facts the workflow reads: <facts>."* **Proposed.**
-- *"Tests took longer than 60 seconds in all. Publish stopped."* **Proposed.**
+- *"Test '<test id>' failed: <expectation> for <key> expected <expected>, got <actual>. Publish stopped."* The content (the test's name and its first mismatch) is decided.
+- *"Test '<test id>' has no stub for <row key>, which runs. Add it to outputs."*
+- *"Test '<test id>' stubs <row key> with a value that isn't <format>: <first validation error>."*
+- *"Test '<test id>' gives no value for input '<input id>'. List every input; use null for an optional input left unset."*
+- *"Test '<test id>' must give exactly the profile fields the workflow reads: <fields>."* and *"Test '<test id>' must give exactly the run facts the workflow reads: <facts>."*
+- *"Tests took longer than 60 seconds in all. Publish stopped."*
 
 **Warnings** (never blocking):
-- *"Test '<test id>' stubs <row key>, which doesn't run."* **Proposed.**
-- CI, in the examples repository: *"<path> is evidence written only by publish; it is ignored and shouldn't be committed."* **Proposed.**
-- The Editor, on import: *"This package's resolve.json and lock.json were ignored; publishing writes new ones."* **Proposed.**
+- *"Test '<test id>' stubs <row key>, which doesn't run."*
+- CI, in the examples repository: *"<path> is evidence written only by publish; it is ignored and shouldn't be committed."*
+- The Editor, on import: *"This package's resolve.json and lock.json were ignored; publishing writes new ones."*
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
-
-- **Member names `inputOrder` and `typeHashes`** (§ 2.2): the decisions settle the content (an explicit input order; a type hash beside the full hash), not the names.
-- **The shapes of `renders` and `runSpots` entries** (§ 2.5): the member names are decided, the entries' own members aren't.
-- **`builtins` key names in `lock.json`** (§ 4.1), including `printer` and the built-in renderers' entries.
-- **The publish report's `normalised` member** (§ 9): the report must note normalising; the name isn't decided.
-- **Every refusal and warning sentence marked Proposed in § 10:** only the Scriban, signature and time-zone sentences are decided word for word.
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).

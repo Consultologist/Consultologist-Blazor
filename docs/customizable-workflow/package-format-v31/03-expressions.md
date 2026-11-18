@@ -9,7 +9,7 @@ operations, null semantics, strict equality, the printer, and the evaluator. Iss
 language), #1400 (`matches`, `has_word`), with #1453, #1471, #1472 and #1478 (Milestone 40) as
 context only. Scriban, the presentation language, is [part 05](05-templates-and-macros.md).
 Part 03's Proposed points were [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)
-on 2026-11-17; the ones left are build items, listed at the end.
+on 2026-11-17, and the evaluator's points left to the build were [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609) on 2026-11-18.
 
 ## 1. The rule: JSON Logic decides and computes; Scriban presents
 
@@ -597,23 +597,23 @@ parentheses only where needed, so the printed text parses back to exactly the tr
   ([decided in part 07](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979256096)).
   Moving towards standard components, possibly including the evaluator, is #1477
   (Milestone 40).
-- **Behind our own interface** in `Consultologist.PackageFormat`. **Proposed name:**
-  `IJsonLogicEvaluator`, with one implementation, `CorvusJsonLogicEvaluator`. The engine, the
+- **Behind our own interface** in `Consultologist.PackageFormat`
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)): `IJsonLogicEvaluator`, with one implementation, `CorvusJsonLogicEvaluator`. The engine, the
   validator's probe, the Editor and the in-package tests (#1449) all evaluate through it.
 - **Our custom operations** (§§ 5.2–5.5) are registered through Corvus's `IOperatorCompiler`.
 - **Our null rules override Corvus's defaults** wherever they differ, by registering our own
   compilers for the affected built-ins (custom operators are checked before built-ins):
   `<`, `>`, `<=`, `>=`, the arithmetic, `min`, `max`, `in` and `cat`, per § 5.1's null column.
   Strict `===`/`!==` is standard and needs no override.
-- **Refused operations are refused twice:** at publish by the checker, and by the evaluator
-  (**Proposed**), which declines a rule naming any operation outside § 5, so a hand-edited
-  `resolve.json` can't reach Corvus's defaults.
+- **Refused operations are refused twice:** at publish by the checker, and at run time by the
+  evaluator ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)), which declines a rule naming any operation outside § 5, so a hand-edited
+  or corrupted `resolve.json` can never fall through to Corvus's defaults.
 - **Invariant culture**, always.
 - **Compiled once:** each rule in a `resolve.json` is compiled to Corvus's cached delegate tree
-  once per package version (**Proposed**).
-- **A condition that yields no boolean at run time (Proposed):** impossible after the checker,
-  except through data that escaped validation; the node that owns the condition fails with
-  § 11.3's sentence.
+  once per package version and cached ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)).
+- **A condition that yields no boolean at run time fails its node** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)), with the
+  reason recorded: impossible after the checker, except through data that escaped validation; the
+  node that owns the condition fails with § 11.3's sentence.
 - **Eventually** json-everything's `JsonLogic`, paying its maintenance fee, is #1458 (no
   milestone); a swap must give byte-identical golden tests and corpus re-render.
 
@@ -639,10 +639,11 @@ The record's shape is [part 08](08-record.md)'s. For expressions:
 
 ## 11. Refusals and warnings
 
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is used as written in Milestone 39 and reviewed in #1483 (Milestone 40); every sentence is listed in [refusal-sentences.md](refusal-sentences.md).
+
 ### 11.1 Refusals at publish
 
-Every rule below is decided (linked, or in [part 03's decision](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698));
-refusal sentence wording is left to the build, so every sentence is **Proposed** wording.
+Every rule below is decided (linked, or in [part 03's decision](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
 
 Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Node 'x'`,
 `Loop 'x'`, `While 'x'`, `Check 'x'`, `Deliverable 'x'`, `Macro 'x'`, `Part 'p' of node 'x'`,
@@ -652,73 +653,63 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 
 | Sentence | Status |
 |---|---|
-| *"\<site\> compares \<path\> (\<format\>) with a literal; text is tested by whether it is blank, its size, or in."* | rule decided ([rule](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878621423), [revised](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878673101)); wording **Proposed** |
+| *"\<site\> compares \<path\> (\<format\>) with a literal; text is tested by whether it is blank, its size, or in."* | rule decided ([rule](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878621423), [revised](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878673101)) |
 | *"\<site\> compares \<path\> (\<format\>) with \<path\> (\<format\>); text is tested by whether it is blank, its size, or in."* | as above |
-| *"\<site\> uses ==; equality is written === (shown as =)."* | rule decided; wording **Proposed** |
+| *"\<site\> uses ==; equality is written === (shown as =)."* | rule decided |
 | *"\<site\> uses !=; inequality is written !== (shown as ≠)."* | as above |
-| *"\<site\> uses \<operation\>, which is not a JSON Logic operation of this format (\<the allowed list\>)."* | rule decided (§ 5.1); wording **Proposed** |
-| *"\<site\> uses substr; text is cut with trim or plain, and measured with size."* | rule decided; wording **Proposed** |
-| *"\<site\> orders \<path\> (\<format\>); \<, \>, ≤ and ≥ compare numbers or dates."* | rule decided; wording **Proposed** |
-| *"\<site\> tests \<path\> (\<format\>) with not; not takes a boolean — test text with blank."* | rule decided; wording **Proposed** |
-| *"\<site\> gives \<operation\> \<n\> operands; it takes \<m\>."* | rule decided (§ 5.1, three-operand comparisons included); wording **Proposed** |
-| *"\<site\> writes \<operation\> with a bare operand; operands are written as an array."* | rule decided (§ 2.2); wording **Proposed** |
-| *"\<site\> reads var with a default; every read is one path."* | rule decided (§ 2.2); wording **Proposed** |
-| *"\<site\> reads \<path\>, a position in a list; lists are read whole, or by identity through .items."* | rule decided (§ 2.2); wording **Proposed** |
-| *"\<site\> reads \<path\>, which doesn't exist here."* | rule decided; wording **Proposed** |
-| *"\<site\> reads input.\<id\>; an input is read as input.\<id\>.value, .content or .title."* | rule decided ([part 02](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)); wording **Proposed** |
-| *"\<site\> reads \<path\>.title, but \<format\> is a plain enum with no titles; read .value, or give the format oneOf with const and title."* | rule decided (part 02); wording **Proposed** |
-| *"\<site\> compares \<path\>.title with "\<text\>", which is not one of its titles (\<titles\>)."* | rule decided (part 02); wording **Proposed** |
-| *"\<site\> reads profile.\<field\>; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."* | rule decided ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)); wording **Proposed** |
-| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* (for `snippet`, `part`, `macro`, `renderer`, `deliverable`) | rule decided (§ 4.1); wording **Proposed** |
-| *"Deliverable '\<id\>' if reads node.\<id\>.content; a deliverable's if reads data (.value), not text."* | rule decided ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)); wording **Proposed** |
+| *"\<site\> uses \<operation\>, which is not a JSON Logic operation of this format (\<the allowed list\>)."* | rule decided (§ 5.1) |
+| *"\<site\> uses substr; text is cut with trim or plain, and measured with size."* | rule decided |
+| *"\<site\> orders \<path\> (\<format\>); \<, \>, ≤ and ≥ compare numbers or dates."* | rule decided |
+| *"\<site\> tests \<path\> (\<format\>) with not; not takes a boolean — test text with blank."* | rule decided |
+| *"\<site\> gives \<operation\> \<n\> operands; it takes \<m\>."* | rule decided (§ 5.1, three-operand comparisons included) |
+| *"\<site\> writes \<operation\> with a bare operand; operands are written as an array."* | rule decided (§ 2.2) |
+| *"\<site\> reads var with a default; every read is one path."* | rule decided (§ 2.2) |
+| *"\<site\> reads \<path\>, a position in a list; lists are read whole, or by identity through .items."* | rule decided (§ 2.2) |
+| *"\<site\> reads \<path\>, which doesn't exist here."* | rule decided |
+| *"\<site\> reads input.\<id\>; an input is read as input.\<id\>.value, .content or .title."* | rule decided ([part 02](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)) |
+| *"\<site\> reads \<path\>.title, but \<format\> is a plain enum with no titles; read .value, or give the format oneOf with const and title."* | rule decided (part 02) |
+| *"\<site\> compares \<path\>.title with "\<text\>", which is not one of its titles (\<titles\>)."* | rule decided (part 02) |
+| *"\<site\> reads profile.\<field\>; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."* | rule decided ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)) |
+| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* (for `snippet`, `part`, `macro`, `renderer`, `deliverable`) | rule decided (§ 4.1) |
+| *"Deliverable '\<id\>' if reads node.\<id\>.content; a deliverable's if reads data (.value), not text."* | rule decided ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)) |
 | *"Deliverable '\<id\>' if reads check.\<id\>; a deliverable's existence can't depend on a check."* | as above |
-| *"Macro '\<id\>' if reads param.\<name\>; a macro's if is shared, so it can't depend on one function's parameter."* | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)); wording **Proposed** |
-| *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | rule decided (v25's enum rule); wording **Proposed** |
-| *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | rule decided (#1385 decision 5); wording **Proposed** |
-| *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | rule decided (§ 3); wording **Proposed** |
-| *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | rule decided; wording **Proposed** (v30's let sentence, adapted) |
-| *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | rule decided (§ 5.4); wording **Proposed** |
+| *"Macro '\<id\>' if reads param.\<name\>; a macro's if is shared, so it can't depend on one function's parameter."* | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)) |
+| *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | rule decided (v25's enum rule) |
+| *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | rule decided (#1385 decision 5) |
+| *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | rule decided (§ 3) |
+| *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | rule decided (v30's let sentence, adapted) |
+| *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | rule decided (§ 5.4) |
 | *"Computed node '\<id\>' builds \<format\> with \<field\>, which the format doesn't declare."* | as above |
-| *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal."* | rule decided ([#1400](https://github.com/Consultologist/Consultologist-Blazor/issues/1400#issuecomment-6905611896), [failWith](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116), [min](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); wording **Proposed**; `<operand>` is `pattern`, `word`, `failWith` or `count_pass`'s `min` |
-| *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | rule decided ([part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); wording **Proposed** |
-| *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | rule decided; wording **Proposed** |
-| *"\<site\> pattern "\<pattern\>" is \<n\> characters long; the most is 200."* | rule decided (200, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)); wording **Proposed** |
-| *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | rule decided; wording **Proposed** |
-| *"\<site\> uses if without an else; write the else."* | rule decided; wording **Proposed** |
-| *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | rule decided; wording **Proposed** |
-| *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); wording **Proposed** |
+| *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal."* | rule decided ([#1400](https://github.com/Consultologist/Consultologist-Blazor/issues/1400#issuecomment-6905611896), [failWith](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116), [min](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); `<operand>` is `pattern`, `word`, `failWith` or `count_pass`'s `min` |
+| *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | rule decided ([part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
+| *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | rule decided |
+| *"\<site\> pattern "\<pattern\>" is \<n\> characters long; the most is 200."* | rule decided (200, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
+| *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | rule decided |
+| *"\<site\> uses if without an else; write the else."* | rule decided |
+| *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | rule decided |
+| *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 
 ### 11.2 Warnings at publish and in the Editor
 
 - **Run-dependence**
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6925165013)),
-  one line per value or decision; wording **Proposed**:
+  one line per value or decision:
   *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."*
   and *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."*
 - **Model-derived** is shown, not warned: History, the diagram and the Editor mark each
-  model-derived value and decision (§ 4.5); the Editor's wording is **Proposed**:
+  model-derived value and decision (§ 4.5); the Editor shows:
   *"computed from model text: node.\<id\>"*.
 
 ### 11.3 Failures at run time
 
 The rules are decided (§ 5.3: a `matches` time-out fails the node; § 6.2: evaluation never
-throws); the sentences are **Proposed** wording.
+throws; § 9: a condition that yields no boolean fails its node).
 
 - *"\<site\> \<member\> could not be decided: matches timed out on its pattern."* The node that
   owns the condition fails, recorded with this reason.
 - *"\<site\> \<member\> yields \<a value kind\>; a condition yields a boolean."* The node that owns
-  the condition fails (**Proposed**, § 9).
+  the condition fails (§ 9).
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed
-before the contracts release.
-
-- **`IJsonLogicEvaluator` as the interface name, with one implementation,
-  `CorvusJsonLogicEvaluator`, and compile-once caching** (§ 9), left to the build by
-  [the decision](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698).
-- **The evaluator declines a rule naming a refused operation** (§ 9), so a hand-edited
-  `resolve.json` can't reach Corvus's defaults.
-- **A condition that yields no boolean at run time fails its node** (§ 9, § 11.3).
-- **Every refusal sentence's wording** in § 11.1, and the warnings and run-time failures of
-  §§ 11.2–11.3.
+Nothing. Every point is decided; refusal sentences are used as written and reviewed in #1483 ([refusal-sentences.md](refusal-sentences.md)).
