@@ -198,6 +198,13 @@ production pins back** to the pre-migration versions if the new release misbehav
 recorded and announced to owners. The engine keeps running 30 throughout
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6924497114)).
 
+- **The rollback is rehearsed on dev before the bump** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993324671)): after the
+  dry-run migration, the operator moves the pins back, runs a 30 job to completion, moves the
+  pins forward again, and records how long each move took. A rollback that hasn't been
+  rehearsed doesn't count towards the go/no-go gate (index § 5).
+- **The dry run also estimates the record's size and storage cost per job:** rows per job, bytes
+  per row and the canonical record blob, from the dry run's jobs, reported before the contracts
+  release. It's one of the gate's conditions.
 - **A 30 version published after a rollback is migrated again before pins move** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so a
   fix made at 30 while pins were back isn't lost when they move forward.
 - **Library break points:** when an engine upgrade adds a break point (part 07 § 4.4), the
