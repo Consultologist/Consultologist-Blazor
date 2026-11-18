@@ -22,7 +22,7 @@ on 2026-11-17, and the evaluator's points left to the build were [decided](https
 
 - **Authors write JSON Logic directly.** What is written in the header is what `resolve.json`
   stores and what the engine runs. There is no expression-string syntax in the spec. The
-  converter (#1423, part 10) turns expressions into JSON Logic and back as a tool, not as the
+  converter (#1447, part 10) turns expressions into JSON Logic and back as a tool, not as the
   format ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6898726017)).
 - **Decisions live in headers; bodies only present.** Whether a node runs, an item is included, a
   part or macro is used or a loop stops is a header condition, evaluated and recorded by the
@@ -611,7 +611,7 @@ parentheses only where needed, so the printed text parses back to exactly the tr
   brackets.
 - **Byte-stable and versioned:** printed text is recorded (reasons, decisions), so the printer is
   versioned like a custom operation (any change to its output is a major version) and locked in
-  `lock.json`'s `builtins` (part 07). The converter (#1423) parses its output back to the
+  `lock.json`'s `builtins` (part 07). The converter (#1447) parses its output back to the
   identical tree, and the conformance suite tests the round trip.
 - **`.title` reads** print as written (`input.specialty.title = "Medical oncology"`); the record
   shows the raw value beside the title (§ 10).

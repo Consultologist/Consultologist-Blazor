@@ -14,9 +14,9 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | [06 Checks, deliverables and the profile](#06-checks-deliverables-and-the-profile) | 38 |
 | [07 The compiled documents](#07-the-compiled-documents) | 17 |
 | [08 The record](#08-the-record) | 9 |
-| [09 The engine and the pages](#09-the-engine-and-the-pages) | 16 |
+| [09 The engine and the pages](#09-the-engine-and-the-pages) | 18 |
 | [10 Migration and tools](#10-migration-and-tools) | 6 |
-| **Total** | **372** |
+| **Total** | **374** |
 
 ## 01 Files and scopes
 
@@ -421,6 +421,8 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S09-015 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job reached \<limit\> agent calls, the most this engine runs for one job."* | clinician | |
 | S09-016 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"\<package\> could run for about \<n\> minutes in the worst case; this engine stops a job after \<limit\> minutes."* | author | |
 | S09-017 | [3.8 Delivery at the end](09-engine-and-pages.md#38-delivery-at-the-end) | *"Couldn't send to \<destination\>. Copy the note instead."* | clinician | |
+| S09-018 | [3.6 Every deploy is preceded by a drain](09-engine-and-pages.md#36-every-deploy-is-preceded-by-a-drain) | *"Waiting for an update to finish"* | clinician | |
+| S09-019 | [3.8 Delivery at the end](09-engine-and-pages.md#38-delivery-at-the-end) | *"Delivering…"* | clinician | |
 ## 10 Migration and tools
 
 | Id | Section | Sentence | Audience | Review |

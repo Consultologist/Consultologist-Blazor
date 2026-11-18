@@ -865,7 +865,7 @@ Mechanical, in `WorkflowPackageMigration30To31` ([part 10](10-migration-and-tool
 | `"format": "prose"`, `agent_*` | the plain format of the same shape: `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | a package or catalogue object format | keeps its name |
 | a `rendered` format | `kind: rendered`, a text format |
-| a `let` with `type` | `kind: computed`, `format` from `type`, `expression` in JSON Logic (#1423) |
+| a `let` with `type` | `kind: computed`, `format` from `type`, `expression` in JSON Logic (#1447) |
 | a `terms_subset` check | `checks/<id>.md`, `kind: computed`, `format: check_result` |
 | `x-generated` | dropped: the node's `producer` says it (§ 1.3) |
 | a format file's wrapper | the schema alone, with `$schema` written; `producer` and `outputMacros` gone |

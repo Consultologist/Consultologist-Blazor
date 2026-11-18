@@ -526,7 +526,7 @@ everything it reads, and release waits for it
 
 - **`blocked` is an outcome; `not sent` is a delivery result** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). A deliverable is
   released, held, failed, skipped or blocked; each destination of a released deliverable is then
-  sent or not sent (§ 8).
+  sent, not sent or failed (§ 8).
 - A deliverable that's blocked or held is **never something to dig for:** History shows the
   banner (§ 5).
 - **A deliverable whose gating check was skipped by its own `if` is released**
@@ -573,6 +573,9 @@ deliverables/
 - **Delivery happens at the end, and only then** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): nothing is delivered until every
   deliverable's outcome is final and the job has succeeded. A job that fails delivers nothing,
   and its released deliverables stay in History, recorded as *"not sent: the job failed"*.
+- **A job that has succeeded in production enters `delivering`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)), shown as
+  *"Delivering…"*, with the document viewable throughout. Each attempt is a row in the one record
+  (part 08 § 10), and the record is sealed when delivery ends (part 09 § 3.8).
 - **A result per destination** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): each kind a released deliverable goes to gets its own
   result, `sent`, `not sent` with a reason, or `failed`, so an email that went out beside an EMR that
   isn't set up reads as one of each.

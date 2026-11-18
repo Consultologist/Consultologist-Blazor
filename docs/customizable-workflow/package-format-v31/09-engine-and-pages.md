@@ -130,8 +130,7 @@ What changes at 31:
   per-job ceiling, the total-work limits and the dispatch order of § 3.2 hold inside functions.
   Its rows are keyed under the call (part 08). **The dev dry run measures the orchestration
   history's size and replay time** for the largest example package ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677); part 10 § 1.7); if the
-  history passes 10 MB or a step's replay takes over 2 seconds, large function bodies move back
-  to sub-orchestrations with a shared ceiling.
+  history passes 10 MB or a step's replay takes over 2 seconds, if it's exceeded, the bump waits and #1493 (sub-orchestrations with a shared ceiling, Milestone 40) is pulled forward.
 - **`matches` reads no clock** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): there is no wall-clock time-out; the bounds that keep it
   linear are part 03 § 5.3's. Every time the orchestrator records (a decision's `decidedAtUtc`)
   comes from the orchestration's replay-safe clock.
@@ -208,9 +207,12 @@ alone: a throttled job is slower, but it isn't kept waiting without end.
   per job** (a retry is part of its call), and **100,000 steps per render**. Each is checked at
   run time and fails the node or the job with a sentence (§ 9), and is noted at publish when the
   package's worst case can exceed it (§ 3.5).
+- **Delivering has its own window** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)): **`deliveryMinutes` (15)**, outside the
+  30-minute production limit. Production's 30 minutes ends when the last node finishes; the job
+  then enters `delivering` (§ 3.8), so slow deliveries never fail the job for time.
 - **All of these are engine settings,** not part of the format, recorded in the job header's
   `limits` at job start (part 08): `capacityWaitMinutes` (10), `serviceAttempts` (5),
-  `jobMinutes` (30), `loopItems` (200), `jobAgentCalls` (500) and `renderSteps` (100,000), beside
+  `jobMinutes` (30), `deliveryMinutes` (15), `deliveryAttempts` (3), `loopItems` (200), `jobAgentCalls` (500) and `renderSteps` (100,000), beside
   `maxAgentCalls` (§ 3.2).
 - **Every retry is recorded on the node's row** (part 08): its time, the wait applied, whether it
   was for capacity or a service failure, and the error's kind. No model text is involved.
@@ -244,11 +246,21 @@ never a refusal (part 04 § 10.2).
 
 ### 3.6 Every deploy is preceded by a drain
 
-**No job spans two builds** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). Before any deploy of the Function App, new jobs are held and
-running jobs finish; the deploy goes ahead once none is running, and held jobs then start on the
-new build. So rows don't record a build: the job header's `engineCommit` and `engineRelease` hold
-for every row, and `versionsRan` takes exactly `lock.json`'s shape (part 08 § 3). Time a job
-spends held behind a drain doesn't count towards its job limit (§ 3.4).
+**No job spans two builds** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); built under #1491). The drain is defined as follows ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)):
+
+- **The release workflow calls `POST Admin/Drain` before deploying and `POST Admin/Resume` after.**
+- **New jobs are accepted and queued.** The HTTP starter answers `202` with a job id and holds the
+  job, shown as *"Waiting for an update to finish"*; it starts after resume. **Scheduled and email
+  jobs wait the same way.**
+- **Running jobs finish.** The deploy proceeds once no orchestration is producing or delivering,
+  so a job in `delivering` (§ 3.8) is waited for too.
+- **The hard cap is 60 minutes:** a job can legitimately take 45 (the 30-minute production limit,
+  then the 15-minute delivery window), and the rest is margin
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727); cap set to 60 by the package author). After it the deploy fails and stays undeployed; the operator investigates.
+
+So rows don't record a build: the job header's `engineCommit` and `engineRelease` hold for every
+row, and `versionsRan` takes exactly `lock.json`'s shape (part 08 § 3). Time a job spends waiting
+behind a drain doesn't count towards its job limit (§ 3.4).
 
 ### 3.7 Where the record is written
 
@@ -260,24 +272,32 @@ The record moves out of the Durable entity ([decided](https://github.com/Consult
   engine fault.
 - **The entity keeps only the job header and progress.** Events carry keys, not row contents;
   the browser fetches a finished row by its key.
-- **On every terminal state** (completed, failed, cancelled or timed out; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)) the engine assembles
+- **A job that finishes producing and has deliveries to make is `delivering`** (§ 3.8); its
+  delivery attempts are rows too (part 08 § 10).
+- **The record is sealed when delivery ends.** On every terminal state (completed, failed, cancelled or timed out; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)) the engine assembles
   the canonical record document from the rows into a blob, noting the end state, and writes its hash, `recordHash`, on the header. History's download and the export serve that blob.
 
 ### 3.8 Delivery at the end
 
-**Nothing is delivered until every deliverable's outcome is final and the job has succeeded**
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 06 § 8). Delivery then runs once per destination of each released deliverable, and
-each destination's result is recorded on the deliverable's row. A job that fails delivers
-nothing.
+Built under #1492. **Nothing is delivered until every deliverable's outcome is final and the job has succeeded**
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 06 § 8). The job then enters **`delivering`**, shown as *"Delivering…"*
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)), with the document viewable throughout. Delivery runs once per destination of each
+released deliverable, and each attempt is written to **a delivery row in the one record**,
+`delivery:<deliverable>/<destination>` (part 08 § 10). **The record, its blob and `recordHash`, is
+sealed when delivery ends,** not before. A job that fails delivers nothing and goes straight to its
+terminal state.
 
-**A failed delivery is retried** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): **3 times, with back-off over about 15 minutes** (engine
-settings), each attempt recorded on the destination's result. After the last, the result is marked
+**Delivering has its own 15-minute window** (`deliveryMinutes`, § 3.4), outside the 30-minute
+production limit; a destination still unsent when it closes is `failed`.
+
+**A failed delivery is retried** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): **3 times** (`deliveryAttempts`), **with back-off inside the 15-minute window** (engine
+settings, § 3.4), each attempt recorded on the destination's result. After the last, the result is marked
 `failed`, the operator is alerted (§ 3.9), and History shows *"Couldn't send to <destination>.
 Copy the note instead."* The job stays completed.
 
 ### 3.9 Monitoring and alerts
 
-Minimal, on Application Insights, **lengths and hashes only, never text** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)). Alerts are
+Built under #1492. Minimal, on Application Insights, **lengths and hashes only, never text** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)). Alerts are
 emailed to the operator:
 
 - **Any failed job.**
