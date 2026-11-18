@@ -62,12 +62,12 @@ refused
 
 Three flags spread through the graph: run-dependent, model-derived and, since revision 7,
 profile-carrying ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). The resolver works out all three from `resolve.json`'s edges
-before any run, records them on each row as `runDependent` and `modelDerived`
+before any run, records them on each row as `runDependent`, `modelDerived` and `profileCarrying`
 ([part 08](08-record.md)), and History, the diagram and the Editor show them
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
-**Every node header also writes both, `modelDerived: true | false` and
-`runDependent: true | false`, checked against the derived values** as `reproducible` and
-`producer` are; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)). The flags are node members, never formats.
+**Every node header also writes all three, `modelDerived: true | false`,
+`runDependent: true | false` and `profileCarrying: true | false`, checked against the derived values** as `reproducible` and
+`producer` are; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)). The flags are node members, never formats; `profileCarrying` is written since revision 7 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 
 - **Run-dependent:** the value depends on a `run.*` fact, directly or through anything it is made
   from (part 03).
@@ -78,7 +78,8 @@ before any run, records them on each row as `runDependent` and `modelDerived`
   It spreads through `computed` and `rendered` nodes, `call` results, flow nodes' `ret` and loop
   items. History shows it as, for example, *"computed from model text: node.draft"*.
 - **Profile-carrying:** the value's text had a profile-reading macro substituted into it
-  (part 03 § 4.6). It spreads the same way and is recorded on each row as `profileCarrying`.
+  (part 03 § 4.6). It spreads the same way, is written on every node header as `profileCarrying` and checked,
+  and is recorded on each row.
   A prompt, a part or a condition may not read a profile-carrying value; a deliverable may.
 - **The flags describe content only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). They pass along what a value is made from, never
   through a condition: a node chosen by a model-derived `if` isn't model-derived for that. The
@@ -860,7 +861,7 @@ Mechanical, in `WorkflowPackageMigration30To31` ([part 10](10-migration-and-tool
 
 | At 30 | At 31 |
 |---|---|
-| every node | gains `kind`; `format` becomes its return type; `reproducible` written with the derived value (§ 1.1); `producer` written from its kind (§ 1.3); `modelDerived` and `runDependent` written with the derived values (§ 1.2, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| every node | gains `kind`; `format` becomes its return type; `reproducible` written with the derived value (§ 1.1); `producer` written from its kind (§ 1.3); `modelDerived`, `runDependent` and `profileCarrying` written with the derived values (§ 1.2, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `"format": "prose"`, `agent_*` | the plain format of the same shape: `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | a package or catalogue object format | keeps its name |
 | a `rendered` format | `kind: rendered`, a text format |
@@ -956,7 +957,7 @@ Every rule below is decided. The wording below is the starting text. It follows 
 - *"Node '<id>' declares kind let; a let is now kind computed, with its JSON Logic in expression."*
 - *"Node '<id>' is kind <kind> and declares producer '<value>'; a <kind> node's producer is <generated | computed>."*
 - *"Node '<id>' declares producer '<value>', which is reserved for a later version (accepted at 31: generated, computed)."*
-- *"Node '<id>' declares <modelDerived | runDependent> <value>, but its reads make it <derived>: <the read that does, or none>."*
+- *"Node '<id>' declares <modelDerived | runDependent | profileCarrying> <value>, but its reads make it <derived>: <the read that does, or none>."*
 - *"Node '<id>' is kind agent and returns <format>, which has no binding for producer <producer> in agents/bindings.json."*
 - *"Node '<id>' is kind rendered and returns <format>; a rendered node returns plaintext, markdown_block or markdown_inline."*
 - *"Node '<id>' is kind agent and declares an inline format; an agent's format is named, in formats/."*

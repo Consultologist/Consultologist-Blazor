@@ -42,7 +42,9 @@ member `expression`, and their body must be empty ([Part 03](03-expressions.md))
 Beside `kind`, `label`, `description`, `format`, `reproducible` (always `false` for an agent
 node, [Part 01](01-files-and-scopes.md)) and `producer` (always `"generated"`,
 [Part 02 § 1.3](02-types-and-inputs.md#13-producer)), `modelDerived` (always `true` for an agent
-node) and `runDependent` (`true` when its prompt reads `run.*` or a run-dependent value), both
+node) and `runDependent` (`true` when its prompt reads `run.*` or a run-dependent value) and
+`profileCarrying` (`true` when its prompt places a macro whose body reads `profile.*`, or reads such a
+value, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), all
 checked against the derived values ([Part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)), and its agent binding, chosen by format and
 producer ([Part 02](02-types-and-inputs.md)),
 a `kind: agent` node's header holds the members that govern its prompt and reply
@@ -139,7 +141,7 @@ The limits are dialect constants, separate from `FormatBounds`
 | iterations per `for` | 1,000 | the render fails with a sentence (§ Refusals, R-L1) |
 | `if` and `for` nesting | 15 deep | refused at publish (R-L2) |
 | rendered output | 1 MiB (1,048,576 bytes, UTF-8) | the render fails with a sentence (R-L3) |
-| steps per render | an engine setting ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 09 § 3.4) | the render fails with a sentence (R-L4) |
+| steps per render | 100,000, an engine setting ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 09 § 3.4) | the render fails with a sentence (R-L4) |
 | recursion | none possible | there's no `func` or `include`; snippet cycles are refused at publish (§ 3.2) |
 
 A render failure fails the node (or the deliverable) as a definition error: no retry. A prompt
@@ -537,7 +539,7 @@ The body places each part with `{{~ part.<id> }}` or `{{ part.<id> }}` (§ 2.6).
 nodes/standards/section_instructions.md
 ---
 { "kind": "agent", "producer": "generated", "label": "Applying section instructions", "description": null,
-  "format": "plaintext", "reproducible": false, "modelDerived": true, "runDependent": false,
+  "format": "plaintext", "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "onInvalid": "fail", "failIfEmpty": null, "ordered": false,
   "parts": {
     "no_standard": {

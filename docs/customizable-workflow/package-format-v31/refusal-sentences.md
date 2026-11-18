@@ -50,7 +50,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S01-026 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Declaration\> has an empty label."* | author | |
 | S01-027 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' declares reproducible \<value\>, but its \<kind \| body \| function\> makes it \<derived\>."* | author | |
 | S01-028 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' is kind \<kind\> and declares producer '\<value\>'; a \<kind\> node's producer is \<generated \| computed\>."* | author | |
-| S01-029 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
+| S01-029 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S01-030 | [Refusals](01-files-and-scopes.md#refusals) | *"'\<id\>' is not a valid id: a lowercase letter, then lowercase letters, digits or underscores."* | author | |
 | S01-031 | [Refusals](01-files-and-scopes.md#refusals) | *"Id '\<id\>' is \<n\> characters; the most is SourceBounds.idLength (64)."* | author | |
 | S01-032 | [Refusals](01-files-and-scopes.md#refusals) | *"Id '\<id\>' is reserved on Windows (con, prn, aux, nul, com1–com9, lpt1–lpt9) and can't name a file: rename it."* | author | |
@@ -78,7 +78,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S02-008 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares kind let; a let is now kind computed, with its JSON Logic in expression."* | author | |
 | S02-009 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind \<kind\> and declares producer '\<value\>'; a \<kind\> node's producer is \<generated \| computed\>."* | author | |
 | S02-010 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares producer '\<value\>', which is reserved for a later version (accepted at 31: generated, computed)."* | author | |
-| S02-011 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
+| S02-011 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S02-012 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind agent and returns \<format\>, which has no binding for producer \<producer\> in agents/bindings.json."* | author | |
 | S02-013 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind rendered and returns \<format\>; a rendered node returns plaintext, markdown_block or markdown_inline."* | author | |
 | S02-014 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind agent and declares an inline format; an agent's format is named, in formats/."* | author | |
@@ -163,7 +163,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S03-033 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | author | |
 | S03-034 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> uses if without an else; write the else."* | author | |
 | S03-035 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | author | |
-| S03-036 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
+| S03-036 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S03-037 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."* | author | |
 | S03-038 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."* | author | |
 | S03-039 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"computed from model text: node.\<id\>"* | author | |
@@ -191,7 +191,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S04-013 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<subject\> lists node '\<id\>' twice; a body is a set."* | author | |
 | S04-014 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares format \<format\>; its ret makes it \<format\>."* | author | |
 | S04-015 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares reproducible \<true \| false\>; its body makes it \<false \| true\>."* | author | |
-| S04-016 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent\> \<true \| false\>; its body makes it \<false \| true\>."* | author | |
+| S04-016 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<true \| false\>; its body makes it \<false \| true\>."* | author | |
 | S04-017 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' \<in \| case \| with \<param\>\> is an expression; it names one readable thing: compute the value in a computed node and name that."* | author | |
 | S04-018 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"Loop '\<id\>' has no body; name the nodes that run per item in nodes."* | author | |
 | S04-019 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"Loop '\<id\>' declares parallel true with maxParallel 1, which runs one item at a time; declare "parallel": false and "maxParallel": null instead."* | author | |

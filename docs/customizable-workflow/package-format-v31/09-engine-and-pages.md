@@ -202,12 +202,12 @@ alone: a throttled job is slower, but it isn't kept waiting without end.
   (22 jobs over 30 days). **Activities still running at the limit** are recorded with the row
   state `cancelled`, and their late results are ignored.
 - **Total-work limits** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), starting at: **200 items per loop instance**, **500 agent calls
-  per job** (a retry is part of its call), and a **step budget per render**. Each is checked at
+  per job** (a retry is part of its call), and **100,000 steps per render**. Each is checked at
   run time and fails the node or the job with a sentence (§ 9), and is noted at publish when the
   package's worst case can exceed it (§ 3.5).
 - **All of these are engine settings,** not part of the format, recorded in the job header's
   `limits` at job start (part 08): `capacityWaitMinutes` (10), `serviceAttempts` (5),
-  `jobMinutes` (30), `loopItems` (200), `jobAgentCalls` (500) and `renderSteps`, beside
+  `jobMinutes` (30), `loopItems` (200), `jobAgentCalls` (500) and `renderSteps` (100,000), beside
   `maxAgentCalls` (§ 3.2).
 - **Every retry is recorded on the node's row** (part 08): its time, the wait applied, whether it
   was for capacity or a service failure, and the error's kind. No model text is involved.

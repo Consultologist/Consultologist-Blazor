@@ -34,7 +34,8 @@
 >
 > **Revision 7** (2026-11-18): a second review's findings decided — function bodies inline, a
 > clock-free `matches`, a drain before every deploy, integrity checks at load, total-work limits,
-> the record in table rows with a canonical blob at job end, a profile-carrying flag, `blocked`
+> the record in table rows with a canonical blob at job end, a profile-carrying flag written and checked on every
+> node header as `profileCarrying`, `blocked`
 > deliverables and delivery at the end, and grammar details (nullable enums, null subjects and
 > sources, blank inputs, numbers) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 >
@@ -99,7 +100,7 @@ and links to each deciding comment instead of repeating it.
 | `input.x` reads the value | inputs read like nodes: `input.x.value`, `input.x.content`, `input.x.title` (a `oneOf` label); a bare `input.x` is refused | 02 |
 | a node's `when` gate | `if`; a `case` arm keeps `when` for its values, and every `case` is exhaustive | 01, 04 |
 | object formats list some properties in `required` | every property in `required`, optional ones nullable; strict mode's other rules apply to a model's output | 02 |
-| (none) | **model-derived** and **run-dependent** values, worked out before a run, written on every node header as `modelDerived` and `runDependent` and checked against the derived values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)), and recorded; a third flag, **profile-carrying**, is derived and recorded; the flags follow content only, never a condition ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) | 02, 03 |
+| (none) | **model-derived**, **run-dependent** and, since revision 7, **profile-carrying** values, worked out before a run, written on every node header as `modelDerived`, `runDependent` and `profileCarrying` and checked against the derived values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), and recorded; the flags follow content only, never a condition ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) | 02, 03 |
 | string conditions parsed by the engine; `let` and operations with `op`/`with` | JSON Logic for every condition and every `computed` value, with typed custom operations; equality is `===`/`!==` only | 03 |
 | `labelField` names an item | the loop's `itemLabel`; `label` is always the display name | 04 |
 | (none) | functions: named, typed sub-flows called by a `call` node, their bodies run inline in the job's orchestration | 04 |

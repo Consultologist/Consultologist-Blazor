@@ -199,8 +199,8 @@ Each entry holds **every header member as written** (parts [01](01-files-and-sco
 [06](06-checks-deliverables-profile.md) define them per kind), canonicalised: bare format ids
 rewritten to `#/$defs/<id>`, conditions and expressions in canonical JSON Logic
 ([part 03](03-expressions.md)), reference strings (`in`, `ret`, a `case` subject, `with`) written
-with their roots. The written `format`, `reproducible`, `producer`, `modelDerived` and
-`runDependent` are among them; publish has already checked each against the value it derives,
+with their roots. The written `format`, `reproducible`, `producer`, `modelDerived`,
+`runDependent` and `profileCarrying` are among them; publish has already checked each against the value it derives,
 and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)). Publish then adds the **derived members**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979256096)):
 
@@ -212,7 +212,7 @@ and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://git
 | `ret` | string | allowed | `for`, `while`, branches, functions | the returned node's rooted key |
 | `reads` | array of string | never | every entry | every path the entry reads (header and body), canonical and sorted: `node.plan.value`, `input.consult_draft.content`, `item.value.point`, `run.date`, `profile.signature`, … Snippet and macro body reads count as the placing node's ([part 05](05-templates-and-macros.md)) |
 | `runDependent` | boolean | never | every entry | `true` when anything the entry reads is a `run.*` fact or a run-dependent value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
-| `profileCarrying` | boolean | never | every entry | `true` when the entry's value carries text a profile-reading macro body was substituted into, transitively ([part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); derived only, not written on headers. A condition passes none of the three flags on |
+| `profileCarrying` | boolean | never | every entry | `true` when the entry's value carries text a profile-reading macro body was substituted into, transitively ([part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); on other entries it is derived only. A condition passes none of the three flags on |
 | `modelDerived` | boolean | never | every entry | `true` when the entry's value is computed from a model's output, directly or through other values: every agent node, and anything that reads a model-derived value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
 | `body` | string | allowed | templated kinds | the Scriban body inline (`\n` line endings); `null` for kinds with no body (`computed`, `for`, `while`, `if`, `case`, `call`) |
 | `bodyHash` | string | allowed | templated kinds | `sha256:` over the body's UTF-8 bytes; `null` when `body` is `null` |
@@ -313,7 +313,7 @@ conversion hints are all here.
     "node.plan": { "id": "plan", "label": "Planning the sections", "kind": "agent", "producer": "generated", "parent": null,
                    "format": { "$ref": "#/$defs/section_plan" }, "reproducible": false,
                    "if": null, "onInvalid": "fail",
-                   "reads": ["input.consult_draft.content"], "runDependent": false, "modelDerived": true,
+                   "reads": ["input.consult_draft.content"], "runDependent": false, "profileCarrying": false, "modelDerived": true,
                    "body": "You are planning the sections of a consultation note.\n…", "bodyHash": "sha256:…",
                    "parts": {}, "places": [], "renders": [], "runSpots": [],
                    "formatHash": "sha256:…", "typeHash": "sha256:…" },
@@ -321,7 +321,7 @@ conversion hints are all here.
                             "parent": null, "format": { "$ref": "#/$defs/number" }, "reproducible": true,
                             "if": null, "onInvalid": "fail",
                             "expression": { "size": [ { "var": "node.plan.value.sections" } ] },
-                            "reads": ["node.plan.value"], "runDependent": false, "modelDerived": true,
+                            "reads": ["node.plan.value"], "runDependent": false, "profileCarrying": false, "modelDerived": true,
                             "body": null, "bodyHash": null, "renders": [], "runSpots": [],
                             "formatHash": "sha256:…", "typeHash": "sha256:…" },
     "node.sections": { "id": "sections", "label": "Sections", "kind": "for", "producer": "computed", "parent": null,
@@ -330,22 +330,22 @@ conversion hints are all here.
                        "parallel": true, "maxParallel": null, "until": null, "if": null,
                        "nodes": ["node.sections.outline", "node.sections.paragraphs"],
                        "ret": "node.sections.paragraphs",
-                       "reads": ["node.plan.value"], "runDependent": false, "modelDerived": true,
+                       "reads": ["node.plan.value"], "runDependent": false, "profileCarrying": false, "modelDerived": true,
                        "body": null, "bodyHash": null, "renders": [], "runSpots": [], "…": "…" },
     "node.sections.outline":    { "…": "…", "parent": "node.sections" },
     "node.sections.paragraphs": { "…": "…", "kind": "for", "producer": "computed", "parent": "node.sections",
-                                  "modelDerived": true, "runDependent": false,
+                                  "modelDerived": true, "runDependent": false, "profileCarrying": false,
                                   "in": "node.sections.outline.value.points",
                                   "nodes": ["node.sections.paragraphs.draft_paragraph"],
                                   "ret": "node.sections.paragraphs.draft_paragraph" },
     "node.sections.paragraphs.draft_paragraph": { "…": "…", "kind": "agent", "producer": "generated",
                                   "parent": "node.sections.paragraphs",
                                   "format": { "$ref": "#/$defs/plaintext" }, "reproducible": false,
-                                  "modelDerived": true, "runDependent": false,
+                                  "modelDerived": true, "runDependent": false, "profileCarrying": false,
                                   "reads": ["input.consult_draft.content", "item.id",
                                             "item.parent.value.title", "item.value.point"] },
     "node.refine": { "id": "refine", "label": "Refining the summary", "kind": "while", "producer": "computed", "parent": null,
-                     "modelDerived": true, "runDependent": false,
+                     "modelDerived": true, "runDependent": false, "profileCarrying": false,
                      "while": { "!==": [ { "var": "node.refine.judge.value.verdict" }, "good" ] }, "max": 3,
                      "nodes": ["node.refine.draft_summary", "node.refine.judge"],
                      "ret": "node.refine.draft_summary", "…": "…" },
@@ -357,7 +357,7 @@ conversion hints are all here.
                           "format": { "$ref": "#/$defs/markdown_block" }, "if": null, "check": null,
                           "whenEmpty": "fail",
                           "reads": ["node.refine.content", "node.sections.items"],
-                          "runDependent": false, "modelDerived": true,
+                          "runDependent": false, "profileCarrying": false, "modelDerived": true,
                           "body": "## Summary\n\n{{ node.refine.content }}\n…", "bodyHash": "sha256:…",
                           "renders": [], "runSpots": [] }
   },
@@ -534,7 +534,7 @@ In order:
 2. **Validate.** Every rule of parts [01](01-files-and-scopes.md) to
    [06](06-checks-deliverables-profile.md): the file model, types, JSON Logic typing, the Scriban
    dialect, scopes, macros, checks, deliverables, and the written `format`, `reproducible`,
-   `producer`, `modelDerived` and `runDependent` against the derived ones. **Any refusal stops publish** with every refusal sentence found, each
+   `producer`, `modelDerived`, `runDependent` and `profileCarrying` against the derived ones. **Any refusal stops publish** with every refusal sentence found, each
    with its file path. Warnings are collected.
 3. **Test.** Run every `tests/<id>.json` offline against the in-memory `resolve.json` (§ 8). **A
    failing test stops publish** with the test's id and its first mismatch.

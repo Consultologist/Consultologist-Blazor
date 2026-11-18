@@ -282,7 +282,9 @@ flag, worked out the same way from `resolve.json`'s edges and describing content
 - **Where it may be read:** deliverables may read a profile-carrying value. A prompt, a part or
   a condition that reads one is refused at publish (§ 11.1), so a clinician's signature or
   credentials never reach a model or decide a branch.
-- **It is recorded:** each row carries `profileCarrying` (part 08), and a row that is
+- **It is written and recorded:** every node header writes `profileCarrying: true | false`,
+  checked against the derived value like `runDependent`; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+  Each row carries `profileCarrying` (part 08), and a row that is
   profile-carrying follows the profile's retention.
 
 ## 5. The operations
@@ -446,7 +448,7 @@ member present) is part 06's.
 Migrated check example (part 06 owns checks; shown for the expression):
 
 ```json
-{ "kind": "computed", "producer": "computed", "modelDerived": true, "runDependent": false,
+{ "kind": "computed", "producer": "computed", "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "format": "check_result",
   "expression": { "terms_subset": [ { "var": "node.extract_input_terms.value" },
                                     { "var": "node.extract_note_terms.value" },
@@ -722,7 +724,7 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 | *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | rule decided |
 | *"\<site\> uses if without an else; write the else."* | rule decided |
 | *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | rule decided |
-| *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 
 ### 11.2 Warnings at publish and in the Editor
 

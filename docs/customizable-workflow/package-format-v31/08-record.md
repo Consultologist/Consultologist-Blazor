@@ -192,7 +192,7 @@ gains the members below. Their names are
 | `itemName` | string | allowed | the item's name from the loop's `itemLabel`, capped at 120 characters (storage 11's rule, renamed from `labelField`); kept for the life of the record **only when the label comes from package text** (a snippet folder's header); otherwise it follows 7-day retention ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660), § 11). `null` on rows outside a loop. Reasons name items by position (*Sections 3*), never by `itemName` |
 | `runDependent` | boolean | never | `true` when the row's value depends on `run.*`, transitively ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6925165983)): the node's `runDependent` as written and checked ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `modelDerived` | boolean | never | `true` when the row's value is computed from a model's output, directly or through other values ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)). Every agent row is `true`. History, the diagram and the Editor show it (*"computed from model text: node.draft"*). The node's `modelDerived` as written and checked ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); requiring either flag in a read is #1478 (Milestone 40) |
-| `profileCarrying` | boolean | never | `true` when the row's value carries text a profile-reading macro body was substituted into, directly or through other values ([part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). Derived, not written on node headers |
+| `profileCarrying` | boolean | never | `true` when the row's value carries text a profile-reading macro body was substituted into, directly or through other values ([part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). The node's `profileCarrying` as written and checked |
 | `runNeutralHash` | string | allowed | for a body with run spots, the hash of the body rendered with each run spot left as its marker; `null` when the body has none, so `inputHash` alone is the hash (§ 8.2) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)) |
 | `runSpots` | array of run spot | never | § 8.2; `[]` for none |
 | `renders` | array of renderer sub-row | never | § 4.2; `[]` for none |
@@ -531,7 +531,8 @@ one renderer use:
                                  "plain_conversion": "1.0.0", "printer": "1.0.0" },
                    "culture": "invariant" },
   "runFacts": { "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } },
-  "limits": { "maxAgentCalls": 16, "capacityWaitMinutes": 10, "serviceAttempts": 5, "jobMinutes": 30 },
+  "limits": { "maxAgentCalls": 16, "capacityWaitMinutes": 10, "serviceAttempts": 5, "jobMinutes": 30,
+              "loopItems": 200, "jobAgentCalls": 500, "renderSteps": 100000 },
   "signatureBlockId": "sig-2", "signatureChosen": "job",
   "decisions": [
     { "id": "node.standards.assessment:7/if:macro.letrozole_prescription_text",
@@ -549,7 +550,7 @@ one renderer use:
       "formatHash": "sha256:…", "typeHash": "sha256:…", "sentFormatHash": "sha256:…", "notSent": [],
       "agent": { "name": "consult-prose", "version": 4,
                  "binding": { "format": "markdown_block", "producer": "generated", "via": "format" } },
-      "runDependent": false, "modelDerived": true, "runNeutralHash": null, "runSpots": [],
+      "runDependent": false, "profileCarrying": false, "modelDerived": true, "runNeutralHash": null, "runSpots": [],
       "renders": [ { "id": "node.standards.assessment:7/render:1", "renderer": "renderer.concept_bullets",
                      "templateHash": "sha256:b81…", "source": "node.extract.value",
                      "inputHash": "sha256:7d0…", "inputSize": "14 concepts",
@@ -567,7 +568,7 @@ one renderer use:
                         "status": "Completed", "itemName": null, "alignedWith": null,
                         "checked": { "ref": "deliverable.consult", "hash": "sha256:9a3f…" },
                         "reads": [ { "path": "node.extract_input_terms.value", "hash": "sha256:…" } ],
-                        "modelDerived": true, "runDependent": false,
+                        "modelDerived": true, "runDependent": false, "profileCarrying": false,
                         "pass": true, "failWith": null, "effect": "released", "count": null } }
 }
 ```
