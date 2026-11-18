@@ -32,6 +32,12 @@
 > rules, are used as written in Milestone 39, and are listed in
 > [refusal-sentences.md](refusal-sentences.md) for review in #1483 (Milestone 40).
 >
+> **Revision 7** (2026-11-18): a second review's findings decided — function bodies inline, a
+> clock-free `matches`, a drain before every deploy, integrity checks at load, total-work limits,
+> the record in table rows with a canonical blob at job end, a profile-carrying flag, `blocked`
+> deliverables and delivery at the end, and grammar details (nullable enums, null subjects and
+> sources, blank inputs, numbers) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+>
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
 
@@ -93,10 +99,10 @@ and links to each deciding comment instead of repeating it.
 | `input.x` reads the value | inputs read like nodes: `input.x.value`, `input.x.content`, `input.x.title` (a `oneOf` label); a bare `input.x` is refused | 02 |
 | a node's `when` gate | `if`; a `case` arm keeps `when` for its values, and every `case` is exhaustive | 01, 04 |
 | object formats list some properties in `required` | every property in `required`, optional ones nullable; strict mode's other rules apply to a model's output | 02 |
-| (none) | **model-derived** and **run-dependent** values, worked out before a run, written on every node header as `modelDerived` and `runDependent` and checked against the derived values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)), and recorded | 02, 03 |
+| (none) | **model-derived** and **run-dependent** values, worked out before a run, written on every node header as `modelDerived` and `runDependent` and checked against the derived values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)), and recorded; a third flag, **profile-carrying**, is derived and recorded; the flags follow content only, never a condition ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) | 02, 03 |
 | string conditions parsed by the engine; `let` and operations with `op`/`with` | JSON Logic for every condition and every `computed` value, with typed custom operations; equality is `===`/`!==` only | 03 |
 | `labelField` names an item | the loop's `itemLabel`; `label` is always the display name | 04 |
-| (none) | functions: named, typed sub-flows called by a `call` node | 04 |
+| (none) | functions: named, typed sub-flows called by a `call` node, their bodies run inline in the job's orchestration | 04 |
 | renderers written in C# | renderers are Scriban templates: built-in ones in the registry, a package's own in `renderers/`; renderers may be chained | 05 |
 | macro placements (`at: before/after/append`) | macros only inline in agent prompts; whether a macro is offered is a recorded decision | 05 |
 | a check is a node | checks in `checks/` with their own root `check.x`; check loops; aggregate checks gate deliverables | 06 |
@@ -104,7 +110,7 @@ and links to each deciding comment instead of repeating it.
 | `profile.name`, `profile.signature` | a closed, typed list of profile fields, read only in deliverables and macro bodies | 06 |
 | the engine reads the manifest | the engine reads only `resolve.json`; `lock.json` pins the toolchain | 07 |
 | (none) | `tests/<id>.json`, run offline at publish; a failing test blocks publish | 07 |
-| record storage 11 | record storage 12: keys with roots, check, renderer, macro, decision and call rows, `producer` and model-derived on every row, run facts and run spots | 08 |
+| record storage 11, in the job's Durable entity | record storage 12: keys with roots, check, renderer, macro, decision and call rows, `producer` and model-derived on every row, run facts and run spots; rows in a table, written once, and a canonical record blob at job end | 08 |
 | Mermaid 11, default layout | Mermaid 12 with ELK; renderers, macros, functions and checks drawn | 09 |
 
 ## 3. Scope
@@ -148,7 +154,7 @@ in this order:
    `bindings.json` keyed by format and producer and now holding each `x-instruction`, and its
    formats rewritten as pure shape with every property in `required`) and the provenance contract
    (record storage 12).
-1. **Build, in thirteen areas,** each a sub-issue of one build parent issue filed from this design:
+2. **Build, in thirteen areas,** each a sub-issue of one build parent issue filed from this design:
    1. byte-equivalence fixtures (today's prompts and notes, captured first);
    2. parser and file model;
    3. types;
@@ -167,13 +173,16 @@ in this order:
    (`canada-east-ai-function-dev`), through `WorkflowPackages__PreviewSpecVersions=31`, against
    **dev's own package registry**, so production's registry never sees a 31 package before the
    bump. The smoke runs and a dry run of the migration happen there, with fictional inputs.
-2. **Update the satellites** (the Copilot agent and the Zoom app) against the additive
+3. **Update the satellites** (the Copilot agent and the Zoom app) against the additive
    `WorkflowPackages/Current` contract, so they work on 30 and 31 alike, before the cutover.
-3. **Bump the engine**, with a drain: 31 joins the compiled-in accepted versions and the preview
+4. **Bump the engine**, with a drain: 31 joins the compiled-in accepted versions and the preview
    setting is removed.
-4. **Publish the example packages** at 31.
-5. **The operator bulk-migrates every account package,** notifying owners before and after.
-6. **Move the pins.**
+5. **Publish the example packages** at 31.
+6. **The operator bulk-migrates every account package,** notifying owners before and after.
+7. **Move the pins.**
+
+Every deploy in these steps, not only the bump, is preceded by a drain, so no job spans two
+builds ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 09 § 3.6).
 
 The migration's step-by-step detail is on #1447 and summarised in
 [part 10](10-migration-and-tools.md). Early and independent of all this, the client moves to
@@ -214,7 +223,7 @@ Every sentence follows these style rules:
 
 **Milestone 39 uses the sentences as written** in the parts, with no manual review, so the build
 is never held up by wording; the conformance suite pins each one to a valid and an invalid test
-package. **All 340 are listed in [refusal-sentences.md](refusal-sentences.md)**, each with its part,
+package. **All 372 are listed in [refusal-sentences.md](refusal-sentences.md)**, each with its part,
 section and audience (author or clinician), and **reviewed in #1483 (Milestone 40)**, concurrently
 with the build. Changing a sentence's words needs no new spec version
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6985257872)).
@@ -238,6 +247,8 @@ with the build. Changing a sentence's words needs no new spec version
 | #1477 | `requires.evaluator` and off-the-shelf components throughout |
 | #1478 | requiring model-derived or run-dependent values in reads |
 | #1479 | `via: "producer"` |
+| #1484 | revisiting empty snippet-folder item bodies |
+| #1485 | positional pairing across the format (index access is refused in templates meanwhile) |
 | #1483 | reviewing every refusal sentence ([refusal-sentences.md](refusal-sentences.md)) |
 
 Earlier: #1453 (null semantics), #1455 (a `semantics` block), #1456 (an input `default`), #1457
