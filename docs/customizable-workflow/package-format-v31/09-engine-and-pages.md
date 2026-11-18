@@ -7,7 +7,9 @@ Profile pages (#1406, #1408, #1395), the Editor, which shows 31 packages read-on
 Milestone 41 (#1447), and the diagram: `dag.mmd`, the Editor's Graph pane and the run diagram
 (#1398). The grammar these rely on is in parts [01](01-files-and-scopes.md) to
 [06](06-checks-deliverables-profile.md), the compiled documents in [07](07-compiled-documents.md),
-and the record's shape in [08](08-record.md).
+and the record's shape in [08](08-record.md). The points this part left open were
+[decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806) on 2026-11-18; what the decision left to the build stays
+**Proposed** below.
 
 ## 1. Loading a package
 
@@ -83,11 +85,11 @@ production's registry never sees a 31 package until the bump.
 | **Removed** | at the bump, when 31 joins the compiled-in list |
 
 - **A listed version this build doesn't implement** stops the host at startup, naming the
-  setting and the value: **Proposed** (a typo must not silently admit nothing, and an
-  unimplemented version must never be admitted).
+  setting and the value ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)): a typo must not silently admit nothing, and an
+  unimplemented version must never be admitted.
 - **The engine attestation** (`EngineAttestation`) lists preview versions separately, as
   `PreviewSpecVersions`, beside `AcceptedSpecVersions` and `SupportedSpecVersions`, so an
-  attestation never presents a preview version as released: **Proposed**.
+  attestation never presents a preview version as released ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)).
 
 ### 2.2 Dev's own registry
 
@@ -129,9 +131,9 @@ option D.
 - **An engine setting, not part of the format.** At most *N* agent calls are in flight for one
   job at any moment. The default is **16**.
 - **Setting name: `ConsultGeneration__MaxAgentCallsPerJob`**, an integer from 1 upward; unset means
-  16: **Proposed** (the decision names the value, not the setting).
-- **What counts:** every agent call (a node of kind `agent`, including a classifier that decides a
-  macro's `if`). Calls inside nested loops, inside function calls
+  16: **Proposed** (left to the build).
+- **What counts:** only agent calls ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)): every node of kind `agent`,
+  including a classifier that decides a macro's `if`. Calls inside nested loops, inside function calls
   ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6897233461))
   and inside check loops all count the same way. A repair retry (`onInvalid: retry`) and a 429
   retry occupy the same slot as the call they repeat. `computed`, `rendered`, conditions and
@@ -150,8 +152,7 @@ option D.
   (`ConsultGenerationEngine`'s pending-task loop); at 31 it dispatches only up to the free slots
   and waits on `Task.WhenAny` for the next free one.
 - **The record** holds the ceiling in force at job start, once, in the job header; the peak
-  concurrency actually reached goes to telemetry only: **Proposed** (#1393 question 6 was left
-  open).
+  concurrency actually reached is kept in telemetry only ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)).
 - **Applies to 31 only: Proposed.** Packages at 5–30 keep today's scheduling, so the old path is
   unchanged until it retires.
 
@@ -186,11 +187,19 @@ later, if fairness across accounts needs exact control.
 
 At publish, when a package's nested caps multiply past the engine's per-job ceiling, the publish
 report carries a **note**, never a refusal. The worst case is computed from `resolve.json`: the
-product of `maxParallel` along each nesting path (a `null` cap counts as the list's bound, and an
-unbounded list as the ceiling), summed over branches that can run at the same time.
+product of `maxParallel` along each nesting path, summed over branches that can run at the same
+time. **A `maxParallel: null` loop counts its list's length when publish knows it** (a snippet
+folder), **and otherwise counts as unbounded,** which the note says
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)). Requiring a non-null `maxParallel` is #1474 (Milestone 40).
 
 > *"Up to <n> agent calls could run at once; this engine runs at most <ceiling> per job, so the
 > rest wait their turn."*
+
+For an unbounded worst case (**Proposed** wording):
+
+> *"An unbounded number of agent calls could run at once, since <loop key> has no maxParallel and
+> reads a list of unknown length; this engine runs at most <ceiling> per job, so the rest wait
+> their turn."*
 
 The ceiling quoted is the publishing engine's setting. A package valid on one deployment is
 valid on every deployment; only the note's numbers differ.
@@ -218,10 +227,14 @@ Title)` and the input, field and element records
 | Member | At 5–30 | At 31 |
 |---|---|---|
 | `Name`, `Version`, `SpecVersion`, `Title` | as today | as today; `SpecVersion` is `31` |
-| `Blocks` | the top-level blocks | **Proposed:** one per top-level node of `resolve.json`, in `graph.order`: `Id` the node's qualified key, `Name` its `label` |
+| `Blocks` | the top-level blocks | one per **top-level** node of `resolve.json`, in the graph's order: `Id` its key with root (`node.plan`), `Name` its `label`. Nodes inside loops and `while`s aren't listed; the rail shows their items and passes under their parent |
 | `Inputs` | as today | each input mapped into today's fields (§ 4.3), **plus `Format`** |
-| `Results` | the deliverables | one per deliverable file: `Id` and `Label` from its header |
+| `Results` | the deliverables | one per deliverable: `Id` its key (`deliverable.emr.note`), `Label` from its header |
 | `Macros` | the optional macros, or `null` when none | **always `[]`**: 31 has no per-run macro choices; they migrated to optional boolean inputs (#1412, #1447) |
+
+`Blocks` and `Results` are [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806): the rail, the record and History all match rows by the
+same key. `Format`, `Macros: []` and unset optional booleans sent as `null` were decided in
+[part 02](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466).
 
 ### 4.3 Inputs at 31
 
@@ -241,16 +254,16 @@ public sealed record WorkflowPackageInputResponse(
 | `Id` | the input's key in `manifest.json`'s `inputs` object |
 | `Label` | its `label` |
 | `Required` | its `required` |
-| `Type` | its format, mapped: any text format (`plaintext`, `markdown_block`, `markdown_inline`) → `text`; `string` with `oneOf` → `enum`; `string` without → `text`; `date` → `date`; `boolean`, `number` (and `integer`) → their names; an object → `object`; an array → `array` |
-| `Values` | for an enum, the `const` of each `oneOf` entry, in order (titles are in `Format`) |
+| `Type` | its format, mapped ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)): a text format (`plaintext`, `markdown_block`) → `text`; `string` with `enum` or a labelled `oneOf` → `enum`; a plain `string` → `text`; `date` → `date`; `boolean` → `boolean`; `number` and `integer` → `number`; an object → `object`; an array → `array` |
+| `Values` | for an enum, the `enum` values, or the `const` of each `oneOf` entry, in order (titles are in `Format`) |
 | `Items` | for an array, its `items` mapped the same way, at every depth |
 | `Fields` | for an object, one per entry in `properties`, in written order: `Id` the property name, `Label` its `title` (the property name when there is none), `Required` as part 02 defines a required field, the rest mapped the same way |
-| **`Format`** (new) | the input's format as `resolve.json` holds it: a JSON Schema in the dialect, with its `$id` URN and its `$ref`s resolved within the document. `null` for every package below 31 |
+| **`Format`** (new) | the input's format as a self-contained schema: a JSON Schema in the dialect, with its `$id`s kept and its `$ref`s resolved within the document ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)). `null` for every package below 31 |
 
-- **Inputs come in written order,** which is the Create page's order (#1385).
-- **Not added: Proposed.** `description` and `channel` are not exposed in Milestone 39; the
-  decision adds `format` alone. A satellite that wants them reads `Format`'s annotations or waits
-  for a later addition.
+- **Inputs come in written order,** which is the Create page's order (#1385), from `resolve.json`'s
+  explicit order (part 07).
+- **No `description` member yet** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)). **`channel` isn't exposed either: Proposed.**
+  A satellite that wants them reads `Format`'s annotations or waits for a later addition.
 
 ### 4.4 What a satellite can't show
 
@@ -276,16 +289,17 @@ in written order, each with its `label` and its `description` as help text:
 | Format | Widget |
 |---|---|
 | `string` | a single-line field |
-| `string` with `oneOf` | a select showing each entry's `title`, sending its `const` |
+| `string` with `enum` | a select showing each value as written |
+| `string` with a labelled `oneOf` | a select showing each entry's `title`, sending its `const` |
 | `plaintext` | a text area |
 | `markdown_block` | a rich-text editor, stored as Markdown |
-| `markdown_inline` | a single-line rich-text field, stored as inline Markdown: **Proposed** |
 | `date` | a date picker |
-| `boolean` | a checkbox, unticked to start; an optional boolean left unticked is sent as `null` (not given), which `=== true` reads as false and `!== false` reads as true: **Proposed**, matching how per-run macro choices migrate (#1412) |
+| `boolean` | three states, **unset, yes and no**, starting unset; unset is sent as `null` (not given), which `=== true` reads as false and `!== false` reads as true, matching how per-run macro choices migrate (#1412) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)) |
 | `number`, `integer` | a number field |
 | an object | a field group, one field per property, by the same table, to any depth |
 | an array | repeating rows of its `items` |
 
+- **Inputs refuse `markdown_inline`** (part 02), so it has no widget.
 - **Required and blank** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810)): an input with `"required": true` must be supplied; one with
   `"required": false` left blank is sent as `null`. Inside an object input, every field is in the
   format's `required` list: a field with a nullable type is optional, and left blank is sent as
@@ -304,11 +318,12 @@ in written order, each with its `label` and its `description` as help text:
 
 - **Shown only when the account has more than one signature block**
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6957668236)),
-  and only when the package reads `profile.signature` (it is in `needs.profile`): **Proposed** for
-  the second condition.
+  **and** the package reads `profile.signature` (it is in `needs.profile`)
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)).
 - **Defaults to the account's chosen block** (`ChosenId`). The pick applies to this job only and
   never changes `ChosenId`.
-- **The record names the block's id,** never its text (#1408).
+- **The record names the block's id,** never its text (#1408), and whether it was the default or
+  this job's pick (`signatureChosen`, part 08).
 
 ### 5.3 Checks before submission
 
@@ -339,7 +354,7 @@ As today, plus:
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6898433175));
 - **for a migrated version,** the publish record's line *"migrated by the operator from <old
   version>"*, linking to the byte-equivalence report and the list of hand edits (#1447);
-- **the per-job ceiling** in force at job start: **Proposed** (§ 3.2).
+- **the per-job ceiling** in force at job start ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), § 3.2).
 
 ### 6.3 Banners
 
@@ -376,21 +391,26 @@ Each fact the package read and its raw value (`run.date: 2026-11-16`, with the z
 (*"16 November 2026"*). Run facts are kept permanently. Beside any body whose run-neutral hash and
 sent-text hash differ, History says so.
 
-**Nodes.** One row per node, by qualified key (`parts.paragraphs.draft_paragraph`, #1384):
+**Nodes.** One row per node, by its key with root (`node.sections.paragraphs.draft_paragraph`,
+#1384, [roots](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)):
 - **loops** expand per item, each named by the loop's `itemLabel`; `while` expands per pass; an
   item that didn't run shows its state and reason;
 - **a condition decision** shows the printed condition and its result, with the reason sentence
-  for a skip: *"skipped: input.kind = "table" is false"*; a run-dependent decision is marked so;
+  for a skip: *"skipped: input.kind.value = "table" is false"*; a run-dependent decision is marked so;
 - **renderer sub-rows** under the node that used them, keyed by the use's position
-  (`identify_problem/render:1`): the renderer's id, the input hash and the output hash (#1397);
+  (`node.identify_problem/render:1`), one per step of a chain: the renderer's id, the input hash
+  and the output hash (#1397);
 - **macro rows** under the node that offers them: offered or not (linking to the `if` decision),
   placed or not (the marker found exactly once), the content hash; the `onInvalid` outcome is on
   the node's own row (#1412);
 - **agent rows** name the attested agent definition (id and version) and the binding that chose
-  it (#1385);
+  it (#1385); when keywords were removed from the format sent to the model, the row says
+  *"Not sent to the model: …"* ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466));
+- **model-derived values** are marked on their rows: *"computed from model text: node.draft"*
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698));
 - **429 retries** on the node's row: how many, and the total wait (§ 3.4);
 - **a `call`** is one row that expands to its own rows, keyed under the call
-  (`hpi_section.standard_draft`, #1419); the run diagram's call box links here.
+  (`node.hpi_section.standard_draft`, #1419); the run diagram's call box links here.
 
 **Checks** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311)).
 Each check row has four lines:
@@ -399,7 +419,7 @@ Each check row has four lines:
 |---|---|
 | checks | what it ran on (a deliverable or a node), with that output's hash |
 | reads | its other inputs, each linking to its row |
-| result | the `check_result`: pass or fail, with its detail; hashes and sizes after the 7-day drop (#368) |
+| result | the `check_result`: pass or fail, with its `message`; `uncovered` and `untested` until the 7-day drop, then their hashes and sizes (#368, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
 | effect | what happened because of it: released, held, not sent, or read by something else |
 
 A check loop expands per item, beside the production item it is aligned with and named by the
@@ -411,7 +431,9 @@ Each deliverable row shows its state (released, held, failed, not sent), its for
 composed hash; its template, shown from the pinned version (from `resolve.json` at 31); its reads
 grouped by template line, expandable per pass, each with size and hash; one line for its check
 (`Check: coverage  passed →`, linking to the check's row); and, per delivery kind, sent or not
-sent with the sentence. Profile reads show the field and its hash, never its text after the
+sent with the sentence. A deliverable whose gating check was skipped by its own `if` shows
+*"released: check '<id>' didn't apply (its if was false)"*; a bundle lists what it left out and why
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)). Profile reads show the field and its hash, never its text after the
 7-day drop; the signature read names the block's id.
 
 ### 6.5 Test results
@@ -435,10 +457,11 @@ A new card on the Profile page for the profile fields that have no home today:
 
 - `profile.name` keeps its place (the account's name, as today), and `profile.signature` keeps the
   signature blocks card (up to 5 blocks, `ChosenId`).
-- **A blank value is not set:** saving whitespace clears the field, so a package reading it is
+- **A blank value is not set:** an empty or whitespace-only value counts as not set
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), so saving whitespace clears the field, and a package reading it is
   refused at start rather than printing nothing (#1408: no empty substitute).
-- **Lengths: Proposed.** `credentials` at most 120 characters, `organisation` at most 200,
-  `closing` at most 4,000 (the signature block's limit).
+- **Lengths** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)): `credentials` at most 120 characters, `organisation` at most
+  200, `closing` at most 4,000 (the same as a signature block).
 - **Delivery endpoints** stay a separate account section, never readable by templates (#1408).
 
 ### 7.2 The account time zone
@@ -491,10 +514,11 @@ From the account migration until then, a 31 package opens **read-only**:
 ### 8.2 What the content endpoint returns at 31
 
 `WorkflowPackages/Current/Content` returns a 31 package's source files (every file under the
-package root, by path) so the read-only Editor can show them. **Proposed:** for 31 it also returns
-`resolve.json`, `lock.json` and the publish report of the version as separate members, and its
-`Manifest` member carries the 31 `manifest.json` as written (camelCase, no added nulls, as #1066
-already requires).
+package root, by path) so the read-only Editor can show them. For a published version 31 package it
+also returns **`resolve.json`, `lock.json` and the publish report**, for the Editor's download and
+for History ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)). **Proposed:** they come as separate members, and the `Manifest`
+member carries the 31 `manifest.json` as written (camelCase, no added nulls, as #1066 already
+requires).
 
 ## 9. Refusals and notes
 
@@ -603,11 +627,12 @@ below gives one). Every condition, loop line and `computed` expression in a labe
 ([printer](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6957665806)).
 Quotes are escaped as `#quot;`, as today.
 
-**Mermaid ids: Proposed.** A qualified key's dots become double underscores
-(`parts.paragraphs.draft_paragraph` → `parts__paragraphs__draft_paragraph`); frames take today's
-prefixes (`for_`, `while_`, `if_…_then`, `case_…_branch_N`) and new ones: `uses_<node>` for a
-node's frame, `fn_<function>` for a function's body, `checks` for the Checks frame, and
-`result_<deliverable>` for deliverables, as today.
+**Mermaid ids.** A box's id is its key with root, with every `.` replaced by `__`
+(`node.sections.paragraphs.draft_paragraph` → `node__sections__paragraphs__draft_paragraph`,
+`input.consult_draft` → `input__consult_draft`, `deliverable.consult_note` →
+`deliverable__consult_note`) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)). **Proposed:** frames take today's prefixes before
+the box id (`for_`, `while_`, `if_…_then`, `case_…_branch_N`) and new ones: `uses_<box id>` for a
+node's frame, `fn_<function>` for a function's body, and `checks` for the Checks frame.
 
 | Construct | Rule |
 |---|---|
@@ -615,10 +640,11 @@ node's frame, `fn_<function>` for a function's body, `checks` for the Checks fra
 | `computed` | `[[id<br/>label<br/>computed → <format>]]`, with an edge from each value its expression reads |
 | `rendered` node | a rectangle like an agent node, third line `rendered → <format>`: **Proposed** (the shapes table has no row for it; it is a production node) |
 | Renderer use | **one box per use**, inside a frame around the node that uses it, labelled `renderer.<id><br/><input format> → <output format>`. The source's edge enters the renderer box, and the renderer box feeds the node. **Only nodes that use a renderer or a macro are wrapped.** A direct read keeps a plain edge, so the diagram shows which reads are transformed. Inside a loop, the frame sits within the loop's subgraph |
-| Macro | a `doc` box inside the frame of the agent node that places it, labelled `macro.<id><br/><format> · placed verbatim`, with `-->\|placed\|` to the node. The macro's `if` reads (usually a classifier node, `agent_boolean`, or a boolean input) are `-.->\|if\|` edges into the **macro box**, never into the node ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1398#issuecomment-6950180745)) |
+| Macro | a `doc` box inside the frame of the agent node that places it, labelled `macro.<id><br/><format> · placed verbatim`, with `-->\|placed\|` to the node. The macro's `if` reads (usually a classifier node returning `judgement`, or a boolean input) are `-.->\|if\|` edges into the **macro box**, never into the node ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1398#issuecomment-6950180745)) |
 | `for`, `while`, `until` | as today: a subgraph for the body, a summary box carrying the loop line (`item in <list>`, `while <condition> — at most <n>`, `until <condition>`), `-->\|for\|` from the list, `-->\|ret\|` from the body's result, `-.->\|if\|` from what a `while` or `until` condition reads |
-| `if`, `case` | as today: a subgraph per branch, a summary box carrying the condition or subject, `-.->\|if\|` from what it reads, `-->\|ret (<branch>)\|` from each branch's result |
+| `if`, `case` | as today: a subgraph per branch, a summary box carrying the condition or subject, `-.->\|if\|` from what it reads, `-->\|ret (<branch>)\|` from each branch's result; a `case` branch that is explicitly empty draws no subgraph (**Proposed**) |
 | `call` | **one box per call**, `tag-rect`, labelled `id<br/>call <function>`. Its reads (the `with` arguments) run into it; what reads its result runs out of it. A `-.-o\|calls\|` edge runs from the call box to the function's frame ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1398#issuecomment-6950053048)) |
+| Model-derived | a value computed from model text is marked in its box (#1386); the marking is **Proposed** |
 | Function | its body **drawn once**, in a frame labelled `function <id> (<inputs>) → <result format>`, holding the body's nodes, its `param.*` pills and the `ret` edge to its result. The diagram doesn't grow with each call |
 | Checks | a **Checks** frame of its own, apart from production, holding every check, check loop and aggregate, with a heavier border (`style checks stroke-width:3px`: **Proposed**). A check's reads are ordinary data edges ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1398#issuecomment-6950081672)) |
 | Check loop | a frame inside Checks, labelled `<id>: per <list> (aligned)`, with `-.-o\|aligned\|` to the production loop it lines up with |
@@ -640,38 +666,38 @@ config:
   layout: elk
 ---
 flowchart TD
-    input_sections(["input.sections"])
-    input_consult_draft(["input.consult_draft"])
-    run_date(["run.date"])
+    input__sections(["input.sections"])
+    input__consult_draft(["input.consult_draft"])
+    run__date(["run.date"])
 
-    subgraph for_sections_draft["sections_draft: per input.sections item"]
-        subgraph case_route_branch_1["route: narrative"]
-            narrative_draft["narrative_draft<br/>Drafting a narrative section<br/>agent → agent_markdown_block"]
+    subgraph for_node__sections_draft["sections_draft: per input.sections.value item"]
+        subgraph case_node__sections_draft__route_branch_1["route: narrative"]
+            node__sections_draft__route__narrative_draft["narrative_draft<br/>Drafting a narrative section<br/>agent → markdown_block"]
         end
-        subgraph case_route_branch_2["route: table"]
-            table_draft["table_draft<br/>Drafting a table section<br/>agent → agent_markdown_block"]
+        subgraph case_node__sections_draft__route_branch_2["route: table"]
+            node__sections_draft__route__table_draft["table_draft<br/>Drafting a table section<br/>agent → markdown_block"]
         end
-        route["route<br/>Routing a section by its kind<br/>case item.value.kind"]
+        node__sections_draft__route["route<br/>Routing a section by its kind<br/>case item.value.kind"]
     end
-    sections_draft["sections_draft<br/>Sections — drafting each requested section by its kind<br/>item in input.sections"]
+    node__sections_draft["sections_draft<br/>Sections — drafting each requested section by its kind<br/>item in input.sections.value"]
 
     subgraph checks["Checks"]
-        coverage[["coverage<br/>Every requested section is present<br/>computed → check_result"]]
+        check__coverage[["coverage<br/>Every requested section is present<br/>computed → check_result"]]
     end
 
-    result_consult_note{{"consult_note<br/>Consult note"}}
+    deliverable__consult_note{{"consult_note<br/>Consult note"}}
 
-    input_consult_draft --> narrative_draft
-    input_consult_draft --> table_draft
-    narrative_draft -->|"ret (narrative)"| route
-    table_draft -->|"ret (table)"| route
-    input_sections -->|"for"| for_sections_draft
-    route -->|"ret"| sections_draft
-    sections_draft -->|"items"| result_consult_note
-    run_date --> result_consult_note
-    result_consult_note -->|"content"| coverage
-    input_sections -->|"value"| coverage
-    coverage ==>|"gates"| result_consult_note
+    input__consult_draft -->|"content"| node__sections_draft__route__narrative_draft
+    input__consult_draft -->|"content"| node__sections_draft__route__table_draft
+    node__sections_draft__route__narrative_draft -->|"ret (narrative)"| node__sections_draft__route
+    node__sections_draft__route__table_draft -->|"ret (table)"| node__sections_draft__route
+    input__sections -->|"for"| for_node__sections_draft
+    node__sections_draft__route -->|"ret"| node__sections_draft
+    node__sections_draft -->|"items"| deliverable__consult_note
+    run__date --> deliverable__consult_note
+    deliverable__consult_note -->|"content"| check__coverage
+    input__sections -->|"value"| check__coverage
+    check__coverage ==>|"gates"| deliverable__consult_note
     style checks stroke-width:3px
 ```
 
@@ -679,36 +705,36 @@ A renderer and a macro inside one node's frame (from `test/general`'s shape; fic
 
 ```mermaid
 flowchart TD
-    extract["extract_patient_concepts<br/>Extracting clinical concepts<br/>agent → concept_list"]
-    classify["mentions_letrozole<br/>Does the draft prescribe letrozole?<br/>agent → agent_boolean"]
-    subgraph uses_identify_problem["identify_problem · Identifying the primary problem"]
-        identify_problem__render_1[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
-        identify_problem__macro_letrozole@{ shape: doc, label: "macro.letrozole_monitoring<br/>markdown_block · placed verbatim" }
-        identify_problem["identify_problem<br/>Identifying the primary problem<br/>agent → agent_markdown_block"]
-        identify_problem__render_1 --> identify_problem
-        identify_problem__macro_letrozole -->|"placed"| identify_problem
+    node__extract_patient_concepts["extract_patient_concepts<br/>Extracting clinical concepts<br/>agent → concept_list"]
+    node__mentions_letrozole["mentions_letrozole<br/>Does the draft prescribe letrozole?<br/>agent → judgement"]
+    subgraph uses_node__identify_problem["identify_problem · Identifying the primary problem"]
+        node__identify_problem__render_1[/"renderer.concept_bullets<br/>concept_list → markdown_block"/]
+        node__identify_problem__macro_letrozole_monitoring@{ shape: doc, label: "macro.letrozole_monitoring<br/>markdown_block · placed verbatim" }
+        node__identify_problem["identify_problem<br/>Identifying the primary problem<br/>agent → markdown_block"]
+        node__identify_problem__render_1 --> node__identify_problem
+        node__identify_problem__macro_letrozole_monitoring -->|"placed"| node__identify_problem
     end
-    extract -->|"value"| identify_problem__render_1
-    classify -.->|"if"| identify_problem__macro_letrozole
+    node__extract_patient_concepts -->|"value"| node__identify_problem__render_1
+    node__mentions_letrozole -.->|"if"| node__identify_problem__macro_letrozole_monitoring
 ```
 
 A call and its function (made up):
 
 ```mermaid
 flowchart TD
-    input_consult_draft(["input.consult_draft"])
-    hpi_section@{ shape: tag-rect, label: "hpi_section<br/>call standard_section" }
+    input__consult_draft(["input.consult_draft"])
+    node__hpi_section@{ shape: tag-rect, label: "hpi_section<br/>call standard_section" }
     subgraph fn_standard_section["function standard_section (standard, draft) → titled_section"]
-        param_standard(["param.standard"])
-        param_draft(["param.draft"])
-        standard_draft["standard_draft<br/>Drafting the section<br/>agent → agent_markdown_block"]
-        section[["section<br/>The titled section<br/>computed → titled_section"]]
-        param_standard --> standard_draft
-        param_draft --> standard_draft
-        standard_draft -->|"content"| section
+        param__standard(["param.standard"])
+        param__draft(["param.draft"])
+        fn_standard_section__node__standard_draft["standard_draft<br/>Drafting the section<br/>agent → markdown_block"]
+        fn_standard_section__node__section[["section<br/>The titled section<br/>computed → titled_section"]]
+        param__standard --> fn_standard_section__node__standard_draft
+        param__draft --> fn_standard_section__node__standard_draft
+        fn_standard_section__node__standard_draft -->|"content"| fn_standard_section__node__section
     end
-    input_consult_draft --> hpi_section
-    hpi_section -.-o|"calls"| fn_standard_section
+    input__consult_draft -->|"content"| node__hpi_section
+    node__hpi_section -.-o|"calls"| fn_standard_section
 ```
 
 The `@{ shape: … }` names (`doc`, `tag-rect`) are to be checked against Mermaid 12's
@@ -721,7 +747,7 @@ The run diagram draws the **same graph model** and overlays the record (storage 
 
 | Element | Shows |
 |---|---|
-| Node | status (completed, skipped, not run, failed), its output hash, its 429 retries (**Proposed**) |
+| Node | status (completed, skipped, not run, failed), its output hash, its 429 retries (**Proposed**), and whether it's model-derived |
 | Loop | per item: status, named by `itemLabel`; per pass for `while` |
 | Renderer box | that use's input and output hashes, matching History's sub-rows |
 | Macro box | offered or not, placed or not, and its content hash |
@@ -744,37 +770,24 @@ Graphviz with ports (#1454) are Milestone 40
 
 ## Proposed in this part
 
-- **Unknown preview version stops the host** (§ 2.1): a typo must never silently admit nothing,
-  nor admit an unimplemented version.
-- **Attestation lists `PreviewSpecVersions` separately** (§ 2.1): an attestation must never present
-  a preview version as released.
+These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
+
 - **Dev registry seeding** (§ 2.2): catalogues copied from production's release tags; example
   packages published to dev through `WorkflowPackages/Publish`, since tag CI targets production.
 - **`computed` nodes, conditions and checks evaluated inline in the orchestrator** (§ 3.1): they are
   deterministic over recorded values, so replay reproduces them without an activity.
-- **Setting name `ConsultGeneration__MaxAgentCallsPerJob`, default 16** (§ 3.2): the decision gives
-  the value, not the name.
+- **Setting name `ConsultGeneration__MaxAgentCallsPerJob`, default 16** (§ 3.2).
 - **Dispatch order when the ceiling is reached** (§ 3.2): graph order, then item path, then pass,
-  so dispatch is deterministic (#1393 question 4 was not answered).
-- **Ceiling recorded once in the job header; peak concurrency in telemetry only** (§ 3.2, § 6.2):
-  #1393 question 6 was not answered.
+  so dispatch is deterministic.
 - **The ceiling applies to 31 only** (§ 3.2): the old path stays unchanged until it retires.
-- **429 back-off: `retry-after` first, else 5 s doubling to 60 s with jitter, no 429 limit** (§ 3.4):
-  the decision says only "retried with back-off".
-- **The publish note's worst-case computation** (§ 3.5): needed to produce the decided note.
-- **`Blocks` at 31 from top-level nodes** (§ 4.2): the decision covers inputs and macros only.
-- **`Format` is the resolved schema from `resolve.json`; `description` and `channel` not added**
-  (§ 4.3): the decision adds `format` alone.
-- **`markdown_inline` input widget** (§ 5.1): #1385 names widgets for the other text formats only.
-- **An unticked optional boolean is sent as `null`** (§ 5.1): matches the migrated macro choices'
-  `=== true` / `!== false` reads.
-- **Signature choice also requires the package to read `profile.signature`** (§ 5.2): a choice that
-  can't matter shouldn't be asked.
+- **429 back-off: `retry-after` first, else 5 s doubling to 60 s with jitter, no 429 limit** (§ 3.4).
+- **The unbounded publish note's wording** (§ 3.5).
+- **`channel` not exposed by `WorkflowPackages/Current`** (§ 4.3).
 - **Run facts section after Inputs** (§ 6.4): both come from outside the package.
-- **Letter details lengths 120 / 200 / 4,000** (§ 7.1): no limits were decided.
 - **Read-only bar wording; new packages created at 30; imported 31 packages read-only** (§ 8.1).
-- **Content endpoint returns `resolve.json`, `lock.json` and the publish report for 31** (§ 8.2).
+- **The content endpoint's member shape** for `resolve.json`, `lock.json` and the publish report (§ 8.2).
 - **Sentences:** the other profile fields' form, and the hash-mismatch sentence (§ 9).
-- **Diagram details** (§ 10): `param.*` pills, the agent and `rendered` third line, Mermaid id
-  mapping and frame prefixes, the Checks style rule, pill placement, and 429 retries in the run
+- **Diagram details** (§ 10): `param.*` pills, the agent and `rendered` third line, frame prefixes,
+  no subgraph for an empty `case` branch,
+  the model-derived marking, the Checks style rule, pill placement, and 429 retries in the run
   diagram.

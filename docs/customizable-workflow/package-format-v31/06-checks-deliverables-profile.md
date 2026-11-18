@@ -42,13 +42,16 @@ checks/    verification: what gates a deliverable
 | `description` | array of strings | yes: none | for people only |
 | `kind` | `"computed"` | no | the mechanism |
 | `format` | `"check_result"` | no | always; any other value is refused (R-C2) |
+| `reproducible` | `true` | no | as on every node header, checked against the derived value ([Part 01](01-files-and-scopes.md)) |
+| `producer` | `"computed"` | no | as on every node header, checked against the kind ([Part 02 § 1.3](02-types-and-inputs.md#13-producer), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | `if` | JSON Logic | yes: always | whether the check runs; in a check loop, typically skips unrun items |
 | `expression` | JSON Logic | no | an expression returning `check_result` (§ 2) |
 
 ```
 checks/coverage.md
 ---
-{ "kind": "computed", "label": "Terms covered", "description": null, "format": "check_result", "if": null,
+{ "kind": "computed", "producer": "computed", "label": "Terms covered", "description": null, "format": "check_result",
+  "reproducible": true, "if": null,
   "expression": { "terms_subset": [ { "var": "node.extract_input_terms.value" },
                                     { "var": "node.extract_note_terms.value" },
                                     "The note does not cover every clinical term found in the referral." ] } }
@@ -64,9 +67,9 @@ checks/coverage.md
   how a document is proofread before release, § 7). A deliverable is readable by checks only.
 - **A deliverable's `check` names only a `check.*`,** never a production node.
 - **`check_result` as data:** a `computed` node in `nodes/` (or inside a function) may return a
-  `check_result` as data. It gates nothing, because a deliverable's `check` can't name it.
-  **Proposed** reading of #1395's "a check placed in `nodes/`" refusal, made consistent with
-  [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6905675034).
+  `check_result` as data only. It gates nothing: **only a `check.*` can gate a deliverable**
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)). That's how #1395's "a check placed in `nodes/`" refusal is read, consistent
+  with [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6905675034).
 - **Scheduling is unchanged:** a check sits in the dependency graph after what it reads, and is
   recorded with its hashes. A failing check never stops production; its effect comes only
   through what reads it.
@@ -75,13 +78,14 @@ checks/coverage.md
 
 ### 2.1 The format
 
-`check_result` is a computed object format in the package-format registry's built-ins,
-`"x-agent": false` ([Part 02](02-types-and-inputs.md)). Version 30's `terms_subset` output is
-`{ pass, uncovered, untested }`. Version 31 has two more operations returning it, so
-**Proposed:** one shape for all three, every member present (#1394):
+`check_result` is an object format in the package-format registry's built-ins
+([Part 02](02-types-and-inputs.md)); a check that returns it has `producer: "computed"`. Version 30's `terms_subset`
+output is `{ pass, uncovered, untested }`. Version 31 has two more operations returning it, so
+there's **one shape for all three, every member present** (#1394,
+[decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)):
 
 ```jsonc
-{ "type": "object", "x-agent": false, "additionalProperties": false,
+{ "type": "object", "additionalProperties": false,
   "required": [ "pass", "message", "uncovered", "untested", "passed", "total" ],
   "properties": {
     "pass":      { "type": "boolean" },
@@ -99,6 +103,13 @@ checks/coverage.md
 | `uncovered`, `untested` | `terms_subset`'s lists, as version 30 computes them; `null` from the aggregates |
 | `passed`, `total` | the aggregates' counts; `null` from `terms_subset` |
 
+**Retention goes by where text came from, not what it says** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)):
+- **`uncovered` and `untested`** come from inputs, so they follow the text retention rule: kept
+  7 days, then deleted, with their hash kept for good (#368). This holds for every package,
+  medical or not.
+- **`message`** is package text (the author's `failWith`), so it's kept, as are `pass` and the
+  counts.
+
 ### 2.2 Signatures
 
 Fixed arity, versioned like the other built-in operations (in `requires` and `lock.json`)
@@ -108,25 +119,25 @@ Fixed arity, versioned like the other built-in operations (in `requires` and `lo
 |---|---|---|---|
 | `terms_subset` | `of` (concept_list), `in` (concept_list), `failWith` (string literal) | `check_result` | every concept of `of` appears in `in`, as at version 30 |
 | `all_pass` | `list` (of `check_result`), `failWith` (string literal) | `check_result` | every judged element passed; a `null` or empty list fails (below) |
-| `count_pass` | `list` (of `check_result`), `min` (number), `failWith` (string literal) | `check_result` | at least `min` judged elements passed |
+| `count_pass` | `list` (of `check_result`), `min` (non-negative integer literal), `failWith` (string literal) | `check_result` | at least `min` judged elements passed |
 
 - **`failWith` must be a literal string,** checked at publish: a failed check speaks the
   package's own sentence, never a computed one.
 - **`list` may be a check loop's `.items`,** as the decided examples write it
   (`{ "var": "check.part_coverage.items" }`,
   [#1396](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6919284053)).
-  **Proposed:** an element is *judged* when its `state` is `completed`, and its `value` is the
-  `check_result`; `skipped` and `not_run` elements are left out of `passed` and `total`. A plain
-  `list<check_result>` (a loop's `.value`) judges every element.
-- **`min`:** **Proposed** a non-negative integer literal, since it's the package's own rule, like
-  `failWith`. Part 03 types it as a `number` and proposes that a null `min` gives a failed result;
-  with a literal, `min` is never null.
+  **Check operations judge only `completed` items** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): an element is *judged*
+  when its `state` is `completed`, and its `value` is the `check_result`; `skipped` and
+  `not_run` elements are left out of `passed` and `total`. A plain `list<check_result>` (a
+  loop's `.value`) judges every element.
+- **`min` is a non-negative integer literal** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), since it's the package's own
+  rule, like `failWith`. With a literal, `min` is never null.
 - **Null and empty lists** are [Part 03](03-expressions.md)'s (the operations' null behaviour).
   **A null or empty list fails `all_pass`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810)): a gate that judged nothing hasn't
   passed (JSON Logic's `all` is false on an empty array); a package that accepts nothing judged
   writes `count_pass(list, 0, …)`. The cases are revisited in #1461 (Milestone 40). `terms_subset` reads a null list as empty.
-- Whatever the arguments, an operation returns a `check_result`, never `null`, so a gate always
-  has a result to read. **Proposed.**
+- **Whatever the arguments, an operation returns a `check_result`, never `null`,** so a gate
+  always has a result to read ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)).
 
 ## 3. Check loops
 
@@ -143,18 +154,19 @@ another loop's body.
 
 - In the check loop, `item` is the `.items` element: `item.value` (the production item's
   returned value), `item.nodes.<id>.value` (its body nodes' outputs), `item.state` and
-  `item.reason`. **Proposed:** `item.id` is the production item's id, so the check item's key
-  matches it.
+  `item.reason`. **Check items share the production items' ids** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)):
+  `check.part_coverage.coverage:2` lines up with `node.sections:2`.
 - **Unrun items** keep their `state` (`skipped`, `not_run`). The check's header `if` skips them:
   `{ "===": [ { "var": "item.state" }, "completed" ] }`.
 - The loop's `index.json` has every member of a `for` ([Part 04](04-loops-and-functions.md)):
-  `parallel`, `maxParallel` and `until` apply, within `FormatBounds`. **Proposed:** `itemLabel`
-  names a field of the production item's element, so check items carry the production items'
-  names.
+  `parallel`, `maxParallel`, `until` and `max` apply, within `FormatBounds`. **Check items are
+  named with `"itemLabel": "label"`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): the `.items` element's own `label`,
+  which carries the production item's name ([Part 04](04-loops-and-functions.md)).
 - **A check loop returns `list<check_result>`;** its `ret` names the check in its body.
 - A check loop's body holds checks only (`kind: computed`, `format: check_result`).
-  **Proposed:** branches and nested loops inside `checks/` follow the same rule, and are
-  otherwise as in `nodes/`.
+  **Branches and nested loops in `checks/` follow `nodes/`'s rules** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), and hold
+  checks only, like a check loop's body. A `case` there is exhaustive, as everywhere
+  ([Part 04](04-loops-and-functions.md)).
 
 ### 3.2 Scheduling
 
@@ -174,11 +186,11 @@ section and extracts its terms:
 
 ```
 nodes/plan.md                    kind agent, format section_plan
-nodes/parts/index.json           for over node.plan.value.sections, itemLabel "title"
-nodes/parts/planned_terms.md     kind agent, format concept_list   (the terms the plan names)
-nodes/parts/draft.md             kind agent, format agent_plaintext
-nodes/parts/section_terms.md     kind agent, format concept_list   (the terms the draft covers)
-nodes/parts/section.md           kind computed, format titled_section (the loop's ret, § 6.5)
+nodes/sections/index.json           for over node.plan.value.sections, itemLabel "title"
+nodes/sections/planned_terms.md     kind agent, format concept_list   (the terms the plan names)
+nodes/sections/draft.md             kind agent, format plaintext
+nodes/sections/section_terms.md     kind agent, format concept_list   (the terms the draft covers)
+nodes/sections/section.md           kind computed, format titled_section (the loop's ret, § 6.5)
 checks/part_coverage/index.json
 checks/part_coverage/coverage.md
 checks/all_sections_covered.md
@@ -188,17 +200,19 @@ deliverables/note.md
 
 ```jsonc
 // checks/part_coverage/index.json
-{ "kind": "for", "label": "Section coverage", "description": null,
-  "in": "node.parts.items", "itemLabel": "title",
-  "parallel": true, "maxParallel": null, "until": null,
+{ "kind": "for", "producer": "computed", "label": "Section coverage", "description": null,
+  "format": { "type": "array", "items": { "$ref": "check_result" } }, "reproducible": true,
+  "in": "node.sections.items", "itemLabel": "label",
+  "parallel": true, "maxParallel": null, "until": null, "max": null,
   "nodes": [ "coverage" ], "ret": "check.part_coverage.coverage" }
 ```
 
 ```
 checks/part_coverage/coverage.md
 ---
-{ "kind": "computed", "label": "Section covers its planned terms", "description": null,
-  "format": "check_result", "if": { "===": [ { "var": "item.state" }, "completed" ] },
+{ "kind": "computed", "producer": "computed", "label": "Section covers its planned terms", "description": null,
+  "format": "check_result", "reproducible": true,
+  "if": { "===": [ { "var": "item.state" }, "completed" ] },
   "expression": { "terms_subset": [ { "var": "item.nodes.planned_terms.value" },
                                     { "var": "item.nodes.section_terms.value" },
                                     "The section does not cover every term its plan names." ] } }
@@ -215,8 +229,8 @@ implied. There's **no "partly released" state**
 ```
 checks/all_sections_covered.md
 ---
-{ "kind": "computed", "label": "Every section covers its planned terms", "description": null,
-  "format": "check_result", "if": null,
+{ "kind": "computed", "producer": "computed", "label": "Every section covers its planned terms", "description": null,
+  "format": "check_result", "reproducible": true, "if": null,
   "expression": { "all_pass": [ { "var": "check.part_coverage.items" },
                                 "Not every section covers its planned terms." ] } }
 ---
@@ -231,10 +245,11 @@ own (§ 6.3), so its template chooses how a failing section appears, by a body `
 ## 5. Checks in the record and History
 
 **The record** has a checks section apart from nodes. A top-level check's key is `check.<id>`;
-a check loop's items are `check.part_coverage.coverage:2`, named by the loop's `itemLabel`, each
-linking to its production item. The row holds the check's reads and their hashes, its result
-(the `check_result`, retained 7 days, then hashes and sizes, #368), and its effect. The shape
-is [Part 08](08-record.md)'s.
+a check loop's items are `check.part_coverage.coverage:2`, with the production item's id and
+named by the loop's `itemLabel`, each linking to its production item (`node.sections:2`). The
+row holds the check's reads and their hashes, its result (the `check_result`, with `uncovered`
+and `untested` retained 7 days, then their hashes and sizes, § 2.1, #368), and its effect. The
+shape is [Part 08](08-record.md)'s.
 
 **History** has four sections in the order the job runs
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311)):
@@ -249,7 +264,7 @@ Inputs, Nodes, Checks, Deliverables. Each check row says:
 
 ```
  ┌ Checks ─────────────────────────────────────────────────────────────────────┐
- │ ▾ part_coverage     7 of 9 passed   for over node.parts.items               │
+ │ ▾ part_coverage     7 of 9 passed   for over node.sections.items            │
  │     ▸ Oncologic History           passed                                    │
  │     ▸ Surgery and Pathology       failed   2 planned terms missing          │
  │ ▾ all_sections_covered   failed   all_pass → check_result     b19e…         │
@@ -279,6 +294,13 @@ the folder gives its role. There's no implicit template: the Editor and the comm
 generate the file, and the migration writes one per deliverable
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6881577331)).
 
+**A deliverable's id is its path, like a node's** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)): `deliverables/consult.md`
+is `deliverable.consult`, and `deliverables/emr/note.md` is `deliverable.emr.note`. The
+destination folder is part of the id, so the same file name may repeat in different folders
+(`emr/note.md`, `email/note.md`), and moving a deliverable changes its key. The key, with its
+root, is what the record, History and `WorkflowPackages/Current`'s `Results` use
+([Part 09](09-engine-and-pages.md)).
+
 | Member | Type | Null | Meaning |
 |---|---|---|---|
 | `label` | string | no | the display name |
@@ -294,8 +316,8 @@ generate the file, and the migration writes one per deliverable
   ([Part 07](07-compiled-documents.md)).
 - **`macros` and `signature` are removed:** deliverables don't call macros (#1409), and the
   signature is a profile field (§ 10).
-- **Proposed:** `markdown_inline` isn't a deliverable format; a document stands on its own
-  lines.
+- **`markdown_inline` is refused as a deliverable format** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): a document stands
+  on its own lines.
 
 ### 6.2 Item states
 
@@ -304,7 +326,7 @@ A template reads each loop item's `state` and `reason` through `.items`
 
 | `state` | Meaning | `reason` |
 |---|---|---|
-| `completed` | the item ran | `null` (**Proposed**) |
+| `completed` | the item ran | `null` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
 | `skipped` | its `if` didn't hold | the condition's printed text |
 | `not_run` | stopped early by `until` | *"stopped early at <item name>"*, the name following `itemLabel`'s rules |
 
@@ -342,15 +364,15 @@ node with `plain`, or a renderer); the only automatic step is escaping
 
 | Deliverable `format` | May read | Refused |
 |---|---|---|
-| `markdown_block` | `markdown_block` and `agent_markdown_block`; `markdown_inline` and `agent_markdown_inline` inside a line; plain-text formats (escaped); `string` and `number` data (escaped) | objects (use a renderer or a node) |
+| `markdown_block` | `markdown_block`; `markdown_inline` inside a line; plain-text formats (escaped); `string` and `number` data (escaped) | objects (use a renderer or a node) |
 | `plaintext` | plain-text formats; `string` and `number` data | any Markdown (convert in a node) |
 | an object format | exactly that format, as `{{ node.x.value }}` and nothing else | everything else |
 
 - **Escaping:** plain text and data read into Markdown are escaped, protecting only the
   characters Markdown would misread (`*`, `#`, `_`, `[`, …), so the displayed text is exactly
-  the plain text. The substitution's hash is taken **after** escaping. **Proposed:** the escape
-  set is CommonMark's ASCII punctuation escapes, applied where the character would otherwise
-  start or delimit Markdown, and published in the dialect spec with conformance vectors.
+  the plain text. The substitution's hash is taken **after** escaping. **The escape set is
+  CommonMark's backslash escapes for ASCII punctuation,** published with test vectors in the
+  conformance suite ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)).
 - **The template's own literal text is typed too:** a `plaintext` deliverable may not write
   Markdown syntax (a line starting `#`, `-`, `*` or `>`, or a `**` pair). A Markdown
   deliverable's literal text is the author's Markdown. An object deliverable allows nothing
@@ -370,23 +392,30 @@ node with `plain`, or a renderer); the only automatic step is escaping
 loop's `ret`. With the format `titled_section`:
 
 ```jsonc
-// formats/titled_section.json (declared by the package; not a built-in at 31, part 02)
-{ "type": "object", "x-agent": false, "required": [ "heading", "content" ], "additionalProperties": false,
-  "properties": { "heading": { "type": "string" }, "content": { "$ref": "agent_plaintext" } } }
+// formats/titled_section.json (declared by the package; not a built-in at 31)
+{ "$schema": "urn:consultologist:spec:31:dialect",
+  "type": "object", "required": [ "title", "content" ], "additionalProperties": false,
+  "properties": { "title": { "type": "string" }, "content": { "$ref": "plaintext" } } }
 ```
 
 ```
 nodes/standards/section.md
 ---
-{ "kind": "computed", "label": "Section", "description": null, "format": "titled_section", "if": null,
-  "expression": { "object": { "heading": { "var": "item.value.title" },
+{ "kind": "computed", "producer": "computed", "label": "Section", "description": null, "format": "titled_section",
+  "reproducible": true, "if": null,
+  "expression": { "object": { "title":   { "var": "item.value.title" },
                               "content": { "var": "node.section_instructions.content" } } } }
 ---
 ```
 
-- The loop returns `list<titled_section>`. `content` keeps its agent marker (`x-agent`) through
-  the nested-text rule ([Part 02](02-types-and-inputs.md)).
-- The node's row hashes prove which heading went with which text.
+- `titled_section` is **declared by the package, not a built-in at 31** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)).
+- The loop returns `list<titled_section>`. **Formats are shape only:** `content` is `plaintext`,
+  the same format the agent's text has; the node's producer is `computed`, and `reproducible`
+  stays `true` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)). Where the text came from is the **model-derived** flag instead:
+  the row is marked model-derived, and History, the diagram and the Editor say *"computed from
+  model text: node.standards.section_instructions"* ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698),
+  [Part 03](03-expressions.md)).
+- The node's row hashes prove which title went with which text.
 - **`.items` is always available too,** for reaching a skipped item's `state` and `reason`.
   Zipping two lists by position is not offered.
 - **A loop's `.content`** keeps version 30's bytes as a standard rendering
@@ -403,12 +432,12 @@ deliverables/consult.md
   "if": null, "check": null, "whenEmpty": "hold" }
 ---
 {{~ for s in node.standards.value ~}}
-## {{ s.heading }}
+## {{ s.title }}
 
 {{ s.content }}
 
 {{~ end ~}}
-{{~ snippet.test }}
+{{~ snippet.test.content }}
 ```
 
 Version 30's `test` macro (`at: append`, "the last line of the note") becomes `snippets/test.md`,
@@ -416,8 +445,10 @@ read verbatim at the end
 ([#1409](https://github.com/Consultologist/Consultologist-Blazor/issues/1409)).
 
 **`example-nested-note`, with headings the author chose.** The inner paragraphs get no heading.
-A closing node in `parts/` builds `{ heading, paragraphs }` (a package format `titled_paragraphs`,
-`paragraphs` a list of `agent_plaintext`), and the template reads:
+Its loop `parts` is renamed `sections`, since `parts` is a reserved id
+([Part 01](01-files-and-scopes.md)). A closing node in `sections/` builds
+`{ title, paragraphs }` (a package format `titled_paragraphs`, `paragraphs` a list of
+`plaintext`, model-derived), and the template reads:
 
 ```
 deliverables/note.md
@@ -428,9 +459,9 @@ deliverables/note.md
 ## Summary
 
 {{ node.refine.content }}
-{{~ for s in node.parts.value ~}}
+{{~ for s in node.sections.value ~}}
 
-## {{ s.heading }}
+## {{ s.title }}
 {{~ for p in s.paragraphs ~}}
 
 {{ p }}
@@ -438,7 +469,13 @@ deliverables/note.md
 {{~ end ~}}
 ```
 
-Each paragraph is `agent_plaintext`, so it's escaped into the Markdown note.
+Each paragraph is `plaintext`, so it's escaped into the Markdown note.
+
+**The `whenEmpty` values above are the migration's** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765),
+[Part 10](10-migration-and-tools.md)): the example packages are hand-chosen, `"hold"` for
+`test/general`, `"fail"` for `example-nested-note` and `"release"` for the rest. Account packages
+migrate with `"release"`, which keeps version 30's behaviour of producing an empty deliverable as
+is.
 
 ### 6.6 When a deliverable comes out empty
 
@@ -452,8 +489,8 @@ sections puts the heading inside a loop or a recorded-fact `if`.
 | `hold` | not released, recorded as *held: empty*; the other deliverables go on |
 | `fail` | the job fails, naming the deliverable |
 
-**Proposed:** an object deliverable is never empty (its canonical JSON is never blank), so
-`whenEmpty` has no effect there, but is still written (#1394).
+**An object-format deliverable is never empty** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): its canonical JSON is never
+blank, so `whenEmpty` has no effect there, but is still written (#1394).
 
 ### 6.7 Deliverables are terminal
 
@@ -465,7 +502,8 @@ sections puts the heading inside a loop or a recorded-fact `if`.
 ## 7. Gating and outcomes
 
 **A deliverable's check is its final proofread before sending.** The check named in `check` may
-read the composed deliverable (`deliverable.<id>.content`) or only nodes. It runs after
+read the composed deliverable (`deliverable.<id>.content`, for example
+`deliverable.emr.note.content`) or only nodes. It runs after
 everything it reads, and release waits for it
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6881816481)).
 
@@ -477,12 +515,14 @@ everything it reads, and release waits for it
 | failed | composed empty with `whenEmpty: fail`, or the render failed | the deliverable's failure | fails, naming the deliverable |
 | held | composed empty with `whenEmpty: hold` | *held: empty* | goes on |
 | not sent | its check returned `pass: false` | composed, failed its check, not delivered | goes on |
-| released | composed, and its check passed or it has none | composed, released, then a delivery result per kind (§ 8) | goes on |
+| released | composed, and its check passed, its check was skipped by its own `if`, or it has none | composed, released, then a delivery result per kind (§ 8) | goes on |
 
 - A deliverable that's not sent or held is **never something to dig for:** History shows the
   banner (§ 5).
-- **Proposed:** a deliverable whose check was itself skipped (its `if` didn't hold) is released,
-  and History says the check didn't run. A skipped gate gives no `check_result` to fail on.
+- **A deliverable whose gating check was skipped by its own `if` is released**
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), recorded and shown in History as *"released: check '<id>' didn't apply (its
+  if was false)"* (H-4). A skipped gate gives no `check_result` to fail on. **An empty
+  `all_pass`, by contrast, fails** (§ 2.2): that check ran and judged nothing.
 - The record holds the outcome as the deliverable row's `state` (`released`, `held`, `failed`,
   `skipped` or `not sent`) with its reason sentence ([Part 08](08-record.md)).
 
@@ -491,6 +531,9 @@ everything it reads, and release waits for it
 **Delivery is declared on folders only.** The root `deliverables/index.json` is required;
 routing a deliverable differently means putting it in a sub-folder
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6881816481)).
+**Delivery folders are one level deep** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)), and the folder is part of each
+deliverable's id (§ 6.1): `deliverables/patient/patient_letter.md` is
+`deliverable.patient.patient_letter`.
 
 ```
 deliverables/
@@ -519,12 +562,15 @@ deliverables/
 - **A kind the account hasn't configured:** the job still runs, and the deliverable is produced
   and recorded as **not sent**: *"not sent: EMR isn't set up for this account"*. The job doesn't
   fail, and the document stays in History.
-- **Proposed:** a bundle holds the folder's released deliverables only; a held, skipped or
-  not-sent one is left out and named in History.
+- **A bundle holds released deliverables only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): a held, skipped or not-sent
+  one is left out, and History lists what was left out and why.
 - `description` and `items` follow every folder's `index.json` ([Part 01](01-files-and-scopes.md));
   #1406's examples show only `delivery` and `bundle`.
 
 ## 9. Deliverables in the record and History
+
+**The row's key** is the deliverable's id with its root (`deliverable.emr.note`), and a renderer
+use under it is `deliverable.emr.note/render:1` ([Part 08](08-record.md)).
 
 **Hashes:** the template's hash before substitution, one hash per substitution, and the hash of
 the final text (`composedHash`)
@@ -592,10 +638,15 @@ it's recorded ([decided](https://github.com/Consultologist/Consultologist-Blazor
 
 - `profile.signature` is the account's **chosen block** (`ChosenId`; an account holds up to 5
   named blocks, each up to 4,000 characters).
-- **The Create page shows a signature choice only when the account has more than one block,**
-  defaulting to the chosen block
-  ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6957668236)).
-- **The record names the block's id,** never its text. Packages never name blocks.
+- **The Create page shows a signature choice only when the account has more than one block and
+  the package reads `profile.signature`,** defaulting to the chosen block
+  ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6957668236),
+  [refined](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)).
+- **The record names the block's id,** never its text: `signatureBlockId`, beside
+  `signatureChosen`, which is `"default"` (the account's chosen block) or `"job"` (picked on the
+  Create page) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)). Packages never name blocks. There's no signature snapshot at
+  31: the signature is a profile read, recorded by hash, and its text lives in the deliverable,
+  under text retention.
 
 ### 10.4 A missing field refuses the job
 
@@ -604,7 +655,8 @@ on the Create page. There's no empty substitute. The package's needs are known i
 `resolve.json`'s derived `needs.profile` (for example `["name", "signature"]`,
 [Part 07](07-compiled-documents.md)).
 
-**Proposed:** an empty or whitespace-only value counts as not set.
+**An empty or whitespace-only value counts as not set** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), so a job that reads
+it is refused at the start.
 
 ### 10.5 Recording and retention
 
@@ -620,7 +672,9 @@ registry** (the table in § 10.1), never the author's own profile.
 ### 10.7 The Profile page and the time zone
 
 - **Profile gains a "Letter details" card** for `credentials`, `organisation` and `closing`
-  ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6957668236)).
+  ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6957668236)),
+  with limits of 120, 200 and 4,000 characters (the last the same as a signature block,
+  [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806)).
 - **The account time zone** (an IANA name, for `run.date`) is an **account setting, not a profile
   field:** it's never read as `profile.*`. It's a select list that starts empty, with a "Use this
   browser's zone" button that fills it only when clicked. The zone is recorded beside
@@ -633,7 +687,7 @@ registry** (the table in § 10.1), never the author's own profile.
 |---|---|
 | a check is a node in `nodes`, `op: terms_subset` with `with: { of, in, failWith }`, read as `node.coverage` | `checks/<id>.md`, `kind: computed`, `expression` with `terms_subset`, read as `check.coverage` |
 | checks are top-level only | check loops over a production loop's `.items`, gated by `all_pass` or `count_pass` |
-| a deliverable is a manifest entry with `sources`, `macros` and a `check` naming a node | `deliverables/<id>.md` with a composition template; sources derived; `check` names a `check.*`; `whenEmpty` |
+| a deliverable is a manifest entry with `sources`, `macros` and a `check` naming a node | `deliverables/<id>.md` with a composition template, its id its path (`deliverable.emr.note`); sources derived; `check` names a `check.*`; `whenEmpty` |
 | the composer writes `## {item name}` over every loop item, at every depth (#1382) | the template writes the headings; `.content` keeps the old bytes as a standard rendering |
 | deliverable macros at `before`, `after`, `append` | snippets read in the template |
 | one delivery address per account | delivery kinds per folder, mapped to endpoints by the account |
@@ -679,28 +733,17 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 
 **Refused at job start** (Create page)
 - J-1 *(decided)*: *"This workflow needs your signature. Choose one in Profile."*
-- J-2 (**Proposed**, the other fields): *"This workflow needs your <name | credentials | organisation | closing>. Set it in Profile."*
+- J-2 (**Proposed**, the other fields): *"This workflow needs your <field label>. Set it in Profile, under Letter details."*
 - J-3 *(rule decided, [every job](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); wording **Proposed**)*: *"Set your time zone in your account settings before running a workflow."*
 
 **Shown in History** (not refusals)
 - H-1 *(decided)*: *"<Deliverable label> was not sent: check '<id>' failed (<detail>)."*
 - H-2 *(decided)*: *"not sent: <Kind> isn't set up for this account"*
 - H-3 *(decided)*: *"stopped early at <item name>"* (an item's `reason` for `not_run`)
+- H-4 *(decided, [part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251))*: *"released: check '<id>' didn't apply (its if was false)"*
 
 ## Proposed in this part
 
-- **`check_result` as one shape** (`pass`, `message`, `uncovered`, `untested`, `passed`, `total`): three operations now return it; the issues don't define the shape. If Part 02 defines it, Part 02 wins.
-- **`.items` elements judged only when `completed`; a check operation never returns `null`:** a gate must always have a result.
-- **`min` a non-negative integer literal:** the gate's rule is the package's own, like `failWith`.
-- **A `check_result` computed in `nodes/` is data and gates nothing:** reconciles #1395's refusal with #1419.
-- **In a check loop, `item.id` is the production item's id, and `itemLabel` names the production element's field:** check items then match their production items by key and name.
-- **Branches and nested loops in `checks/` follow `nodes/`'s rules:** #1396 shows only a flat check loop.
-- **`markdown_inline` isn't a deliverable format; object deliverables are never empty:** a document stands on its own lines; canonical JSON is never blank.
-- **The escape set is CommonMark's ASCII punctuation escapes, published with vectors:** #1406 names the characters but not the set.
-- **`titled_section` is declared by the package, not a built-in at 31** (part 02 agrees): nothing needs it shared yet.
-- **`reason` is `null` for `completed` items.**
-- **A deliverable whose gate was skipped is released:** the issues don't cover a skipped gate.
-- **A bundle holds released deliverables only.**
-- **An empty or whitespace-only profile value counts as not set.**
-- **The examples' `whenEmpty` values** (`hold` for `test/general`, `fail` for `example-nested-note`): the migration's choice is Part 10's.
-- **The refusal and job-start wordings not marked decided:** the issues give the rule, not the sentence.
+These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
+
+- **The refusal and job-start wordings not marked decided** (§ Refusals, including J-2 and J-3's wording): the decisions give the rule, not the sentence. Every other point this part proposed was decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); the examples' `whenEmpty` values were decided with part 10 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
