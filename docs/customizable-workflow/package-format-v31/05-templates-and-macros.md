@@ -39,16 +39,19 @@ member `expression`, and their body must be empty ([Part 03](03-expressions.md))
 
 ### 1.2 An agent node's prompt members
 
-Beside `kind`, `label`, `description` and `format` ([Part 01](01-files-and-scopes.md)) and its
-agent binding ([Part 02](02-types-and-inputs.md)), a `kind: agent` node's header holds the
-members that govern its prompt and reply:
+Beside `kind`, `label`, `description`, `format`, `reproducible` (always `false` for an agent
+node, [Part 01](01-files-and-scopes.md)) and `producer` (always `"generated"`,
+[Part 02 § 1.3](02-types-and-inputs.md#13-producer)), and its agent binding, chosen by format and
+producer ([Part 02](02-types-and-inputs.md)),
+a `kind: agent` node's header holds the members that govern its prompt and reply
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)):
 
 | Member | Type | Null | Meaning |
 |---|---|---|---|
 | `onInvalid` | `"retry"` or `"fail"` | no | what an invalid reply does: a reply that fails its format, or a macro marker check (§ 8.6). `retry` asks once more; `fail` fails the job. As at version 30. |
-| `failIfEmpty` | string | yes: an empty value doesn't fail | the sentence the job fails with when the reply's value is empty. **Proposed:** carried over from version 30 unchanged. |
+| `failIfEmpty` | string | yes: an empty value doesn't fail | the sentence the job fails with when the reply's value is empty. Carried over from version 30 unchanged, and always written (`null` when unused). |
 | `parts` | object | yes: none | the node's conditional prompt text (§ 7) |
-| `ordered` | boolean | no | **Proposed** (§ 8.5): whether triggered macro markers must come back in order |
+| `ordered` | boolean | no | whether triggered macro markers must come back in order (§ 8.5) |
 
 ## 2. The dialect
 
@@ -84,11 +87,12 @@ The engine renders with **Scriban 7.2.5**, pinned exactly. The dialect's version
 - `tablerow`;
 - arithmetic (`+`, `-`, `*`, `/`, `%`, `//`) and string concatenation by `+`. Markdown numbers a
   `1.` list itself, and a computed value belongs in a `computed` node.
-- **Proposed:** a `for` over anything but a list (a range `1..3`, an object), and the `for`
-  options `limit:`, `offset:` and `reversed`. They choose which elements appear, which is a
-  decision.
-- **Proposed:** `for.rindex`, `for.length` and `for.changed`, since they aren't in the decided
-  list.
+- a `for` over anything but a list (a range `1..3`, an object), and the `for` options `limit:`,
+  `offset:` and `reversed`: they choose which elements appear, which is a decision;
+- `for.rindex`, `for.length` and `for.changed`.
+
+  These `for` forms are refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)); no published package uses them. Revisiting
+  them is #1475 (Milestone 40).
 
 **Equality in bodies.** Scriban has no `===`. A body `if` compares with Scriban's `==` and
 `!=`, only within § 2.5's recorded facts. The `===`/`!==`-only rule is JSON Logic's
@@ -102,22 +106,23 @@ with a caret range and in `lock.json` at its exact version
 
 | Built-in | Signature | Result | Null in |
 |---|---|---|---|
-| `string.upcase` | `(text: string \| text format) → same format` | invariant upper case | null (renders as nothing) — **Proposed** |
-| `string.downcase` | `(text: string \| text format) → same format` | invariant lower case | null — **Proposed** |
-| `string.capitalize` | `(text: string \| text format) → same format` | first character upper case, invariant | null — **Proposed** |
-| `string.strip` | `(text: string \| text format) → same format` | leading and trailing whitespace removed | null — **Proposed** |
-| `array.join` | `(list: list<string> \| list<text format>, separator: string literal) → string`, or the elements' text format | the elements joined by `separator` | null list gives null; a null element is refused at render — **Proposed** |
-| `array.size` | `(list: list<any>) → number` | the element count | null — **Proposed** |
-| `date.to_string` | `(date: date, pattern: string literal) → string` | the date formatted by `pattern` | null — **Proposed** |
+| `string.upcase` | `(text: string \| text format) → same format` | invariant upper case | null (renders as nothing) |
+| `string.downcase` | `(text: string \| text format) → same format` | invariant lower case | null |
+| `string.capitalize` | `(text: string \| text format) → same format` | first character upper case, invariant | null |
+| `string.strip` | `(text: string \| text format) → same format` | leading and trailing whitespace removed | null |
+| `array.join` | `(list: list<string> \| list<text format>, separator: string literal) → string`, or the elements' text format | the elements joined by `separator` | null list gives null; a null element fails the node |
+| `array.size` | `(list: list<any>) → number` | the element count | null |
+| `date.to_string` | `(date: date, pattern: string literal) → string` | the date formatted by `pattern` | null |
 
 - **`date.to_string` requires an explicit pattern,** a string literal (Scriban's `%` patterns,
   for example `"%d %B %Y"`). A date output without it renders as ISO `%Y-%m-%d`.
 - **Refused:** `date.now`, random numbers and environment access (they break reproducibility);
   `truncate` (it cuts clinical text); `object.default` (it chooses text, which is a decision);
   every other built-in.
-- **Null:** a null value output directly renders as nothing. **Proposed:** a built-in given
-  null returns null, matching JSON Logic's rule that operations on null give null
-  ([Part 03](03-expressions.md)).
+- **Null:** a null value output directly renders as nothing, and **a built-in given null returns
+  null**, matching JSON Logic's rule that operations on null give null
+  ([Part 03](03-expressions.md)). The one exception is `array.join`: a list holding a `null`
+  element fails the node ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
 
 ### 2.3 Limits and carried-over behaviour
 
@@ -132,8 +137,8 @@ The limits are dialect constants, separate from `FormatBounds`
 | recursion | none possible | there's no `func` or `include`; snippet cycles are refused at publish (§ 3.2) |
 
 A render failure fails the node (or the deliverable) as a definition error: no retry. A prompt
-that fails to render is never sent. **Proposed:** the failure follows the node's failure path,
-not `onInvalid`, which is about replies.
+that fails to render is never sent. The failure follows the node's normal failure path, not
+`onInvalid`, which is about replies ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
 
 **Carried over from version 30:**
 - **strict variables:** reading a member that doesn't exist is refused at publish, and a render
@@ -165,6 +170,7 @@ engine has already decided and recorded
 - The tests combine with `!`, `&&`, `||` and parentheses.
 - A `state` is compared only with a literal from the closed set.
 - **Testing anything else is refused:** a data value, an input, a node's text, a run fact. The
+  one exception is a renderer's body, which may test its own `value` (§ 5.1). The
   sentence points to the header forms: a part (§ 7), a snippet's `if` (§ 6) or a macro's `if`
   (§ 8). The revisit of this rule is #1428 (Milestone 40).
 - **Completeness:** an `if` that branches on a `state` must handle every state or end with an
@@ -173,7 +179,7 @@ engine has already decided and recorded
   An `else` keeps the template safe when a state is added later.
 
 ```scriban
-{{~ for s in node.parts.items ~}}
+{{~ for s in node.sections.items ~}}
 {{~ if s.state == "completed" ~}}
 {{ s.value }}
 {{~ else if s.state == "skipped" ~}}
@@ -185,8 +191,10 @@ _{{ s.reason }}_
 
 ### 2.6 Placement forms and whitespace
 
-A **placement** is an output tag whose expression is a unit: `snippet.<id>`, `part.<id>` or
-`macro.<id>` (each possibly qualified, `snippet.<folder>.<id>`, #1384). Its text is entirely the
+A **placement** is an output tag whose expression is a unit: `snippet.<id>.content`,
+`part.<id>` or `macro.<id>` (each possibly qualified, `snippet.<folder>.<id>.content`, #1384).
+A snippet's text is read as `.content`, like a node's or an input's (§ 6.3); it's a placement
+because, like a part or a macro, it may be absent. Its text is entirely the
 author's: no rule on how it starts or ends
 ([final](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6905945705)).
 
@@ -206,8 +214,8 @@ included ([tests](https://github.com/Consultologist/Consultologist-Blazor/issues
 
 **Statements and ordinary outputs** (`if`, `for`, `else`, `end`, `{{ node.x.content }}`) may
 use `~` on either side, as the renderer templates need for byte-exact output (§ 5.5).
-**Proposed:** `-` is refused on every tag, not only placements, because it removes blank lines
-no preview explains.
+**`-` is refused on every tag,** not only placements, because it removes blank lines no preview
+explains ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
 
 **The Editor** previews each placement with and without its unit, side by side. That's
 information, not a warning.
@@ -220,22 +228,24 @@ information, not a warning.
 |---|---|---|
 | prompt | `node.*`, `input.*`, `check.*`, `item`, `pass`, `param` (in functions), `snippet.*`, `part.*` (its own node's), `macro.*`, the `renderer.` pipe, `run.*` | `profile.*`, `deliverable.*` |
 | `rendered` node | `node.*`, `input.*`, `check.*`, `item`, `pass`, `param`, `snippet.*`, the `renderer.` pipe, `run.*` | `profile.*`, `part.*`, `macro.*`, `deliverable.*` |
-| renderer | its piped `value` only | everything else |
-| snippet body | what the template that places it reads (§ 3.2) | what that template may not read; and, placed in a macro body, `macro.*` and `part.*` |
-| part text | what its node's prompt reads, except `part.*` and `macro.*`; no `if` of its own | `profile.*` |
-| macro instruction | what the placing prompt reads, except `macro.*` and `part.*`; its own marker (§ 8.4) | `profile.*` |
+| renderer | its piped `value` only | everything else, the `renderer.` pipe included |
+| snippet body | what the template that places it reads (§ 3.2) | what that template may not read; and, placed in a macro body, a part's text or a macro instruction, `macro.*` and `part.*` (the guard, § 6.3) |
+| part text | what its node's prompt reads, `macro.*` (§ 8.3) and `snippet.*` (under the guard) included; no `if` of its own | `profile.*`, `part.*` |
+| macro instruction | what the placing prompt reads, `snippet.*` (under the guard) included, except `macro.*` and `part.*`; its own marker (§ 8.4) | `profile.*` |
 | macro body | `node.*`, `input.*`, `check.*`, `item`, `pass`, `param`, `snippet.*`, the `renderer.` pipe, `run.*`, **plus `profile.*`** | `macro.*`, `part.*`, `deliverable.*` |
 | deliverable | `node.*`, `input.*`, `snippet.*`, `check.*` (not its own), `profile.*`, `run.*`, the `renderer.` pipe | `item`/`pass` outside its own `for`, `part.*`, `macro.*`, `deliverable.*` |
 
 Sources: [the dialect](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6920252420),
 [macros never place macros or parts](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6920620508),
 [profile reads](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222).
-**Proposed** (not stated in the issues): a part's text places no `macro.*` (a macro's offer is
-decided by its own `if`, not by a part's); a renderer body pipes into no renderer (chaining
-happens at the use site, so renderers form no graph of their own).
+Decided with part 05 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): a part's text may place a macro, which is then offered
+only when both the part's `if` and the macro's own `if` hold (§ 8.3); snippets may be placed in
+a part's text and in a macro's instruction, under the guard (§ 6.3); a renderer's body pipes
+into no renderer, so chaining happens only at a use site (§ 5.2) and renderers form no graph
+of their own.
 
 - **`run.*`** is the set `run.date`, `run.id`, `run.package`, `run.engine`, read under § 4's run
-  spot rule ([Part 03](03-expressions.md) defines the values). Inside a function, whether
+  spot rule, piped to built-ins or renderers ([Part 03](03-expressions.md) defines the values). Inside a function, whether
   `run.*` is read directly or only as a parameter is [Part 04](04-loops-and-functions.md)'s.
 - **`profile.*`** is never sent to a model, never read by a condition, and inside a function
   arrives only as a parameter that reaches macro bodies
@@ -253,7 +263,8 @@ happens at the use site, so renderers form no graph of their own).
   (`item` outside a loop, `profile.*` in a prompt), that placement is refused with a sentence
   naming both the snippet and the place.
 - **Cycles are refused at publish:** a snippet or macro that, through its reads and
-  placements, reaches itself.
+  placements, reaches itself. A snippet placed in a part's text or a macro's instruction places
+  no `part.*` or `macro.*` at all (the guard, § 6.3).
 - **A macro body is rendered before literal substitution.** The model's reply is never rendered
   (§ 8.6).
 
@@ -266,15 +277,17 @@ A body's read of a **run-dependent** value (a `computed` value or decision deriv
 transitively, [Part 03](03-expressions.md)) is a run spot too, under the same rule
 ([extended](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6925165442)).
 
-- A run spot may pipe to built-ins only. **Proposed:** not to renderers.
+- **A run spot may pipe to built-ins and to renderers** (`{{ run.date | renderer.long_date }}`).
+  The spot covers the whole pipeline: the marker stands for its final output, and each
+  renderer's sub-row is marked run-dependent ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
 - Run facts can't be tested in a body `if` (§ 2.5), can't feed a `for`, and can't be combined
   arithmetically (§ 2.1).
 
 **Rendering, in three steps:**
 1. Render the body with every read substituted **except the run spots**. Each spot becomes a
-   marker naming its site. **Proposed:** the marker is the literal text `{{run:<n>}}`, where
-   `<n>` is the spot's 1-based position in the body's source order. It's fixed text, so the
-   hash below is defined.
+   marker naming its site: the literal text `{{run:<n>}}`, where `<n>` is the spot's 1-based
+   position in the body's source order ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)). It's fixed text, so the hash below is
+   defined to the byte.
 2. Hash that text: the **run-neutral hash**. With the same inputs, package and libraries it's
    identical across runs, whatever the date or job.
 3. Replace each marker **literally** with its spot's output, and hash the result: the
@@ -285,8 +298,8 @@ render uses that node's run-neutral text (a `rendered` node) or treats the read 
 (a run-dependent `computed` value). An agent's output has no neutral form: the model saw the
 real values, so a template reading it is run-specific through that read.
 
-**A body with no run spot** has one hash, and its run-neutral hash equals it. **Proposed:** the
-record writes the run-neutral hash only when the body has a run spot.
+**A body with no run spot** has one hash. The record's `runNeutralHash` is written only when the
+body has a run spot, and is `null` otherwise ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523), [Part 08](08-record.md)).
 
 **The advance warning.** The Editor and publish say when a package reads `run.*` or a
 run-dependent value, naming each spot. The warning text is W-1 (§ Refusals). The record side
@@ -307,13 +320,14 @@ embedded in `resolve.json` ([decided](https://github.com/Consultologist/Consulto
 | `kind` | `"rendered"` | no | the mechanism; the folder gives the role |
 | `description` | array of strings (lines) | yes: none | for people only, never sent to a model |
 | `input` | a format name, or an inline schema | no | the format it accepts: any format, including `string` and text formats |
-| `format` | `"plaintext"`, `"markdown_block"` or `"markdown_inline"` | no | what it returns: always a computed text format ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6878563370)) |
+| `format` | `"plaintext"`, `"markdown_block"` or `"markdown_inline"` | no | what it returns: always a text format ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6878563370)) |
 
-`description` is on every header ([Part 01](01-files-and-scopes.md)). **Proposed:** `input` is
-written like a node's `format` (a name, or an inline schema).
+`description` is on every header ([Part 01](01-files-and-scopes.md)). **`input` is written like a
+node's `format`:** a name, or an inline schema ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
 
 The body is a non-empty template that reads **only `value`**, the piped value (§ 3.1). A
-renderer is reproducible by construction: the same value always gives the same bytes.
+renderer is reproducible by construction: the same value always gives the same bytes. Its body
+pipes into no renderer (R-N7); chaining happens at a use site (§ 5.2).
 
 ```
 renderers/concept_bullets.md
@@ -327,10 +341,10 @@ renderers/concept_bullets.md
 …
 ```
 
-(The `if` above tests a list's size, which § 2.5 refuses in other bodies. **Proposed:** a
-renderer body may test its own `value` freely, since a renderer decides nothing that's recorded:
-its whole output is a function of `value`, hashed as one sub-row. Without this, the two
-built-in renderers can't be written.)
+(The `if` above tests a list's size, which § 2.5 refuses in other bodies. **A renderer's body
+may test its own `value` in an `if`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): a renderer decides nothing that's
+recorded, since its whole output is a function of `value`, hashed as one sub-row. Without this,
+the two built-in renderers can't be written.)
 
 ### 5.2 The call: a pipe to the root `renderer.`
 
@@ -341,11 +355,16 @@ built-in renderers can't be written.)
 - **`.value` is the input,** the typed object. Version 30's `node.x | concept_bullets` (the
   node) and `node.x.content | …` become `node.x.value | renderer.concept_bullets` (#1189).
 - **Typed at publish:** the piped value's format must match the renderer's `input`. The
-  result's format is the renderer's `format`, so chains are checked step by step:
-  `{{ node.x.value | renderer.concept_bullets | renderer.indent }}`, where `indent` takes and
-  returns a text format.
+  result's format is the renderer's `format`.
+- **Chaining is allowed where a template uses renderers**
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): `{{ node.extract.value | renderer.concept_list | renderer.bullets }}`.
+  Each step's output type is checked against the next renderer's `input` at publish, and each
+  step is its own sub-row (`…/render:1`, `…/render:2`, § 5.5).
+- **`run.*` may pipe to renderers** (`{{ run.date | renderer.long_date }}`): the run spot covers
+  the whole pipeline (§ 4).
 - **Allowed in:** prompts, `rendered` nodes, snippet bodies, part text, macro instructions,
-  macro bodies and deliverables. Not in renderer bodies (**Proposed**, § 3.1).
+  macro bodies and deliverables. **Not in renderer bodies:** a renderer's own body may not pipe
+  into another renderer (R-N7).
 
 ### 5.3 Built-in renderers
 
@@ -359,9 +378,12 @@ byte-equivalence reference** and are removed in Milestone 40 (#1404,
   on the Editor's fixture and every edge case (empty, not SNOMED, inactive, with and without
   `support`). The pitfalls are booleans (`True`/`False`), line endings (no trailing newline) and
   `concept_context`'s `source` and blank `support`.
-- **Proposed:** the built-in templates are published in the package-format registry, read-only,
-  versioned like the operations (in `requires` and `lock.json`) and embedded in `resolve.json`.
-  A package renderer may not take a built-in's id.
+- **The built-in renderers are Scriban templates in the package-format registry**
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): read-only, versioned and locked like the operations (in `requires`, and in
+  `lock.json`'s `builtins`, [Part 07](07-compiled-documents.md)), and embedded in
+  `resolve.json`. **Their ids are reserved:** a package renderer may not take one (R-N6,
+  [Part 01](01-files-and-scopes.md)). Scoping between built-in, catalogue and package ids is
+  #1469.
 - **A loop's `.content`** keeps version 30's bytes (`## label`, then the text, joined by blank
   lines) as a standard rendering typed `markdown_block`
   ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)).
@@ -377,13 +399,15 @@ piped inside a line
 
 A renderer use is not a node: it isn't scheduled, waits on nothing and can't fail on its own.
 It's a **sub-row of the node (or deliverable) that uses it**, one per pipe use, in source order,
-per instance, **keyed by the use's position** (`identify_problem/render:1`)
+per instance, **keyed by the use's position** (`node.identify_problem/render:1`)
 ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)); inside a loop, the item path comes
-first, then the render site (`draft_paragraph:2/1/render:1`,
+first, then the render site (`node.sections.paragraphs.draft_paragraph:2/1/render:1`,
 [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6959888097)).
 Each holds the renderer's id, its template hash, the source read, the input hash and size, and
 the output hash and length
 ([refined](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6877988508)).
+A chain gives one sub-row per step, in pipe order. Every key is written with its root
+([Part 01](01-files-and-scopes.md)).
 The text itself follows the 7-day retention sweep. History shows the sub-rows under the node
 when it's expanded. The diagram draws them inside the node's frame (#1398,
 [Part 09](09-engine-and-pages.md)).
@@ -405,10 +429,10 @@ template (§ 3.2).
 | `if` | JSON Logic | yes: always | whether the snippet's text is placed ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6887473994)) |
 | `format` | `"plaintext"`, `"markdown_block"` or `"markdown_inline"` | no | the body's text format, so a deliverable's strict reads ([Part 06](06-checks-deliverables-profile.md#64-strict-formats)) can check it |
 
-The body must be non-empty and suit `format`. **Proposed:** these four members, as
-[Part 01](01-files-and-scopes.md) lists them. Version 30's snippet header carries only `label`;
-the `if` comes from #1412's one contract for snippets, parts and macro instructions, and
-`format` from #1406's strict reads.
+The body must be non-empty and suit `format`. **A snippet's header is these four members,** with
+a text format ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910), [Part 01](01-files-and-scopes.md)). Version 30's snippet header
+carries only `label`; the `if` comes from #1412's one contract for snippets, parts and macro
+instructions, and `format` from #1406's strict reads. Data types for snippets are #1467.
 
 ### 6.2 Snippet folders
 
@@ -433,21 +457,26 @@ Chronological prose narrative. Open with a one-sentence orientation to the patie
 
 - A folder is read by a loop (`"in": "snippet.standards"`), where `item.value.title` is the
   header and `item.content` the body, rendered in the loop's scope.
-- **Proposed:** folder items carry no `if`: a folder item's header is data, so conditional
-  inclusion of a folder item is an `if` branch in the loop body, as `example-conditional-sections`
-  does with `applies`.
+- **Folder items carry no `if`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)): a folder item's header is data, so a
+  folder's size is its number of files, and conditional inclusion of a folder item is an `if`
+  branch in the loop body, as `example-conditional-sections` does with `applies`. Dynamic folder
+  sizes are #1468.
 
 ### 6.3 Placing a snippet
 
-- `{{~ snippet.<id> }}` alone on a line, or `{{ snippet.<id> }}` inside a line (§ 2.6). A folder
-  item outside a loop is `snippet.<folder>.<id>`.
+- **A snippet is read as `snippet.<id>.content`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)), the same member rule as
+  `input.<id>.content` and `node.<id>.content`: `{{~ snippet.<id>.content }}` alone on a line, or
+  `{{ snippet.<id>.content }}` inside a line (§ 2.6). A bare `snippet.<id>` is refused (R-S3). A
+  folder item outside a loop is `snippet.<folder>.<id>.content`. Version 30's 25 uses are
+  already written this way and need no rewrite.
 - When its `if` holds, its rendered body is spliced in. When it doesn't, nothing is, and the
   decision is recorded with its reason.
-- **Proposed:** the placement is written `snippet.<id>`, the unit form shared with `part.<id>`
-  and `macro.<id>`. Version 30's `snippet.<id>.content` is refused with R-S3, and the migration
-  rewrites it.
-- **Placed in:** prompts, `rendered` nodes, other snippets, macro bodies and deliverables.
-  **Proposed:** not in part text or macro instructions (they're short, single-node text).
+- **Placed in:** prompts, `rendered` nodes, other snippets, macro bodies, deliverables, **a
+  part's text and a macro's instruction** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
+- **The guard:** a snippet placed in a part's text or a macro's instruction may not place
+  `part.*` or `macro.*`, directly or through a snippet it places (R-S4). Otherwise it reads what
+  its host reads. This rules out a part inside a part and a macro inside an instruction.
+  Narrowing the guard to refuse only an actual cycle is #1476 (Milestone 40).
 
 ## 7. Parts
 
@@ -465,9 +494,12 @@ Longer or shared conditional text is a snippet with an `if`.
 | `parts.<id>.if` | JSON Logic | yes: always | whether the part's text is placed |
 | `parts.<id>.text` | array of strings | no | the lines, joined with `\n`; a blank line is `""` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6887344692)) |
 
-- A part id follows the id rule (`^[a-z][a-z0-9_]*`, at most 64 characters).
+- A part id follows the one id rule (`^[a-z][a-z0-9_]*`, at most 64 characters) and the reserved
+  list ([Part 01](01-files-and-scopes.md)). The member `parts` and the root `part.<id>` keep their
+  names.
 - `text` is always an array, never a single string. No newline is added after the last line.
-- The text may use presentation templating (§ 3.1), but no `if`, no `part.*` and no `macro.*`.
+- The text may use presentation templating (§ 3.1), may place a macro (§ 8.3) and snippets
+  (under the guard, § 6.3), but has no `if` and places no `part.*`.
 - Parts are allowed on `kind: agent` nodes only.
 
 ### 7.2 Placing a part
@@ -475,14 +507,15 @@ Longer or shared conditional text is a snippet with an `if`.
 The body places each part with `{{~ part.<id> }}` or `{{ part.<id> }}` (§ 2.6).
 - A placement naming no declared part is refused (R-P1).
 - A declared part the body never places is refused (R-P2).
-- **Proposed:** each part is placed exactly once (R-P3): a part placed twice would record one
-  decision for two texts.
+- **Each part is placed exactly once** (R-P3, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): a part placed twice would
+  record one decision for two texts.
 
 ```
 nodes/standards/section_instructions.md
 ---
-{ "kind": "agent", "label": "Applying section instructions", "description": null,
-  "format": "agent_plaintext", "onInvalid": "fail", "failIfEmpty": null, "ordered": false,
+{ "kind": "agent", "producer": "generated", "label": "Applying section instructions", "description": null,
+  "format": "plaintext", "reproducible": false,
+  "onInvalid": "fail", "failIfEmpty": null, "ordered": false,
   "parts": {
     "no_standard": {
       "if": { "blank": [ { "var": "item.content" } ] },
@@ -538,17 +571,23 @@ record shows which was false. The folder is a namespace: `macro.<folder>.<id>`
 ### 8.2 Whether: the header `if`
 
 - The `if` may read anything a condition reads ([Part 03](03-expressions.md)), typically a
-  **classifier node**: an ordinary `kind: agent` node with format `agent_boolean`
-  (`{ answer: boolean, reason: agent_plaintext }`), read as `node.<id>.value.answer`.
+  **classifier node**: an ordinary `kind: agent` node (`producer: "generated"`) with the built-in
+  format `judgement` (`{ answer: boolean, reason: plaintext }`), read as
+  `node.<id>.value.answer`; the record and History show its `reason` beside the answer
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6982429387)).
 - **It's evaluated in the scope where the macro is placed:** per item when it reads a node in
   the loop body, once when it reads a node outside. Inside a function it's the function's
   sealed scope, and the `if` may not name a `param`
   ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6897801397)).
 - **Per-run choices are optional boolean inputs** the `if` reads
   ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6957666676)):
-  a choice that defaults off is `{ "===": [ { "var": "input.x" }, true ] }`; one that defaults
-  on is `{ "!==": [ { "var": "input.x" }, false ] }`, which holds while the input is unset. An
-  explicit `default` is #1456 (Milestone 40).
+  a choice that defaults off is `{ "===": [ { "var": "input.x.value" }, true ] }`; one that
+  defaults on is `{ "!==": [ { "var": "input.x.value" }, false ] }`, which holds while the input
+  is unset. An explicit `default` is #1456 (Milestone 40).
+- **A per-run choice input takes the macro's id and label** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)), and is joined
+  with `and` to any existing `if`. The Create page shows three states (unset, yes, no), and unset
+  is sent as `null`. A migrated choice whose id is already an input's id gets the suffix
+  `_macro` (`letrozole` → `letrozole_macro`), reported by the migration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
 - One classifier per macro, per node, per item. A classifier answering several questions is
   #1416 (Milestone 40).
 
@@ -558,20 +597,23 @@ record shows which was false. The folder is a namespace: `macro.<folder>.<id>`
 - **Only triggered macros reach the prompt.** A triggered placement renders the instruction; an
   untriggered one renders nothing.
 - The instruction says only where: never "if …, otherwise nothing".
-- **Only `kind: agent` nodes place macros**, directly or through a snippet placed in the
-  prompt. A `rendered` or `computed` node, a deliverable, a part, a macro instruction and a
-  macro body place none.
-- **Proposed:** the node's `format` is a text format written by an agent
-  (`agent_plaintext`, `agent_markdown_block`, `agent_markdown_inline`). A marker has no place in
-  an object reply.
-- **Format match:** Markdown content into an `agent_plaintext` node is refused (R-M5).
-  **Proposed** for the rest: a `markdown_block` macro is refused in an `agent_markdown_inline`
-  node; a `plaintext` macro in a Markdown node is escaped as plain text is in deliverables
+- **Only `kind: agent` nodes place macros**: in the prompt, in one of the node's parts' text, or
+  through a snippet placed in the prompt. A `rendered` or `computed` node, a deliverable, a macro
+  instruction, a macro body, and a snippet placed in a part's text or a macro's instruction place
+  none.
+- **A part's text may place a macro** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)). The macro is then offered only when
+  both the part's `if` and the macro's own `if` hold, and its row links both decisions (§ 8.8).
+- **The node's `producer` is `generated` and its `format` a text format** (`plaintext`,
+  `markdown_block`, `markdown_inline`) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523);
+  [producer](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)). A marker has no place in an object reply.
+- **Format match** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): Markdown content into a `plaintext` node is refused
+  (R-M5); a `markdown_block` macro is refused in a `markdown_inline` node; a `plaintext`
+  macro in a Markdown node is escaped as plain text is in deliverables
   ([Part 06](06-checks-deliverables-profile.md#64-strict-formats)), and the content hash is
   taken after escaping.
-- **Two nodes may place the same macro;** if both trigger it, the text appears twice. **The same
-  macro twice in one template** is #1457 (Milestone 40); **Proposed:** refused in version 31
-  (R-M7).
+- **Two nodes may place the same macro;** if both trigger it, the text appears twice. **A macro
+  is placed once per template,** counting the text of the node's parts (R-M7,
+  [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)). The same macro twice in one template is #1457 (Milestone 40).
 
 ### 8.4 The marker
 
@@ -584,9 +626,9 @@ macro's marker:
 | `{{~ macro.<id>.content }}` alone on a line of the instruction | the marker alone on its own line (a block) |
 | `{{ macro.<id>.content }}` inside a line | the marker inside a sentence (inline) |
 
-When the instruction is rendered, its marker renders as its own literal source text, so the
-model sees exactly the marker to write. **Proposed:** that's the mechanism (the dialect treats
-the marker as literal inside an instruction).
+When the instruction is rendered, **its marker renders as its own literal source text**
+(`macro.<id>.content` between its braces), so the model sees exactly the marker to write. The
+dialect treats the marker as literal inside an instruction ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
 
 ```
 macros/letrozole_prescription_text.md
@@ -604,13 +646,13 @@ and bone thinning. Advised to monitor side effects.
 ```
 
 The classifier is an ordinary node file, for example `nodes/standards/prescribes_letrozole.md`
-(`kind: agent`, format `agent_boolean`), and shows in the graph and the record like any node.
+(`kind: agent`, `producer: "generated"`, format `judgement`), and shows in the graph and the record like any node.
 
 ### 8.5 Order
 
-**Proposed:** `ordered`, a required boolean on every `kind: agent` node header. `true` requires
-the triggered markers in the reply in the order their placements appear in the prompt; `false`
-accepts any order. #1412 requires the member but doesn't name its home.
+**`ordered`, `true` or `false`, is a required member of every `kind: agent` node header**
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)). `true` requires the triggered markers in the reply in the order their
+placements appear in the prompt; `false` accepts any order.
 
 ### 8.6 Processing the reply
 
@@ -648,22 +690,27 @@ hard line break, and in plain text they'd still be in the hashed bytes.
 **4. The body** is rendered by the engine, in the placing scope, **before** substitution
 (§ 3.2). It's the package's own text, checked at publish.
 
-**Proposed:** a `retry` sends the reply's failure as fixed engine text naming each macro and
-what was wrong, never quoting the reply.
+**A retry message never quotes the reply** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)): a `retry` sends fixed engine text
+naming each macro and what was wrong, since the reply may hold patient text.
 
 ### 8.7 What publish checks
 
 - **Each instruction:** its own marker exactly once, in an allowed form; no other macro's
-  marker; no `macro.*` or `part.*` placement; no `profile.*`.
+  marker; no `macro.*` or `part.*` placement; snippets only under the guard (§ 6.3); no
+  `profile.*`.
+- **Each template:** a macro placed at most once, counting its parts' text.
 - **Each body:** it suits `format` (no Markdown in a `plaintext` macro); no markers; no
   placement of `macro.*` or `part.*`; its reads within § 3.1's macro-body column; no cycles.
 
 ### 8.8 In the record
 
 A **macro row per macro per node instance**
-([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)):
-- whether it was **offered**, linking to its `if` decision (and the folder's) and to the
-  classifier's row;
+([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)),
+a sub-row keyed `…/macro:<id>`, with its decision at `…/if:<site>`
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)), for example `node.standards.assessment:7/macro:letrozole_prescription_text`
+and `node.standards.assessment:7/if:macro.letrozole_prescription_text`:
+- whether it was **offered**, linking to its `if` decision (and the folder's, and the part's when
+  a part's text placed it) and to the classifier's row;
 - whether it was **placed**: its marker found exactly once;
 - its **content hash** (the rendered body);
 - when the marker was missing, repeated or altered, the node's `onInvalid` outcome, on the
@@ -674,9 +721,11 @@ item. The shape of the rows is [Part 08](08-record.md)'s.
 
 ## 9. Decisions recorded for snippets and parts
 
-Every header `if` decision (a snippet's, a part's, a macro's, a macro folder's) gets a row:
-the printed condition, its result, a hash of each value it read, and whether it was
-run-dependent. Reasons read, for example, *"skipped: input.kind = "table" is false"*; the
+Every header `if` decision (a snippet's, a part's, a macro's, a macro folder's) is an entry in
+the job's one `decisions` list ([Part 08](08-record.md), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)): its site, the printed
+condition, its result, a hash of each value it read, whether it was run-dependent, and an
+`expressionHash` of its canonical JSON Logic. Rows link to their decisions by id. Reasons read,
+for example, *"skipped: input.kind.value = "table" is false"*; the
 printer shows `=` and `≠` ([Part 03](03-expressions.md), [Part 08](08-record.md)). A placed unit's
 text is recorded by hash under the node that placed it.
 
@@ -688,8 +737,9 @@ text is recorded by hash under the node that placed it.
 | any Scriban built-in the walker accepts, arithmetic, assignment | the dialect's closed list (§ 2) |
 | the host's culture | the invariant culture |
 | `concept_bullets`, `concept_context` are C#, piped the node: `node.x \| concept_bullets` | renderers are templates in `renderers/`, piped `.value`: `node.x.value \| renderer.concept_bullets` |
-| a snippet header holds `label`, which names folder items | a single snippet has `label` and `if`; a folder item's header is typed data; `itemLabel` names items |
-| `{{ snippet.x.content }}` | `{{~ snippet.x }}` or `{{ snippet.x }}` (**Proposed**) |
+| a snippet header holds `label`, which names folder items | a single snippet has `label`, `description`, `if` and `format`; a folder item's header is typed data, with no `if`; `itemLabel` names items |
+| `{{ snippet.x.content }}`, placed in prompts and deliverables | unchanged, now a placement (§ 2.6); also placed in parts' text and macro instructions, under the guard |
+| `prose`, and the `agent_*` formats | the plain format of the same shape (`plaintext`, `markdown_block`, `markdown_inline`); the node's `producer` says a model wrote it ([Part 02](02-types-and-inputs.md#13-producer)) |
 | a macro's `instruction` is one string, often "if …, otherwise nothing"; the prompt places `{{ macro.x.prompt }}` | `instruction` is lines saying only where, with the marker; `if` decides whether; `{{ macro.x }}` |
 | `at: before`, `after`, `append`, item-level placements, deliverable macros | removed: fixed text is a snippet read in the deliverable template |
 | optional at most once, required exactly once | triggered exactly once, untriggered never |
@@ -723,7 +773,7 @@ last section).
 - R-W2: *"<Subject> places <unit> with - at line <n>; it removes blank lines between paragraphs."*
 - R-W3: *"<Subject> places {{~ <unit> }} inside a line at line <n>; it removes the space before it. Use {{ <unit> }}."*
 - R-W4: *"<Subject> has text after {{~ <unit> }} at line <n>; a block placement stands alone on its line."*
-- R-W5 (**Proposed**, § 2.6): *"<Subject> uses - at line <n>; it removes blank lines between paragraphs. Use ~."*
+- R-W5 (§ 2.6): *"<Subject> uses - at line <n>; it removes blank lines between paragraphs. Use ~."*
 
 **Reads**
 - R-R1: *"<Subject> reads <root> at line <n>; <site> reads <allowed roots>."*
@@ -739,18 +789,21 @@ last section).
 - R-N4: *"<Subject> calls renderer.<id> at line <n>; pipe into it: <value> | renderer.<id>."*
 - R-N5: *"<Subject> pipes into renderer.<id>, which this package doesn't define."*
 - R-N6: *"Renderer '<id>' takes the id of a built-in renderer."*
+- R-N7: *"Renderer '<id>' pipes into renderer.<other> at line <n>; chain renderers where they're used, not inside a renderer."*
+- R-N8: *"<Subject> pipes renderer.<id> (<format>) into renderer.<next>, which renders <input format>."*
 
 **Snippets**
 - R-S1: *"<Subject> places snippet.<id>, which this package doesn't define."*
 - R-S2: *"Snippet '<folder>/<id>' has a header that doesn't match format <format>: <schema error>."*
-- R-S3 (**Proposed**, § 6.3): *"<Subject> reads snippet.<id>.content at line <n>; place it as {{ snippet.<id> }}."*
+- R-S3 (§ 6.3): *"<Subject> reads snippet.<id> at line <n>; read its text as snippet.<id>.content."*
+- R-S4 (§ 6.3): *"Snippet '<id>' places <part.* or macro.*>, and <subject> places it in <a part's text | a macro's instruction>; a snippet placed there doesn't place parts or macros."*
 
 **Parts**
 - R-P1: *"Node '<id>' places part.<name>, which its header doesn't declare."*
 - R-P2: *"Node '<id>' declares part '<name>' but never places it."*
-- R-P3 (**Proposed**): *"Node '<id>' places part.<name> <n> times; place a part once."*
+- R-P3: *"Node '<id>' places part.<name> <n> times; place a part once."*
 - R-P4: *"Node '<id>' declares parts, and only agent nodes have parts."*
-- R-P5: *"Part '<name>' of node '<id>' uses <if, part.* or macro.*>; a part's text only presents."*
+- R-P5: *"Part '<name>' of node '<id>' uses <if or part.*>; a part's text only presents."*
 
 **Macros**
 - R-M1 *(decided)*: *"Macro '<id>' places macro.<other> in its body; a macro body is output text, written after the model replies. Put shared text in a snippet and place it in both."* (and for `part.*`: *"Macro '<id>' places part.<name> in its body; …"*, the rest unchanged)
@@ -758,8 +811,9 @@ last section).
 - R-M3: *"Macro '<id>' has <n> markers in its instruction; it must hold {{~ macro.<id>.content }} or {{ macro.<id>.content }} exactly once."*
 - R-M4: *"Macro '<id>' has the marker of macro '<other>' in its instruction."*
 - R-M5: *"Node '<id>' places macro.<macro>, whose format is <format>; an <node format> node takes <allowed>."*
-- R-M6: *"<Subject> places macro.<id>; only agent nodes place macros."*
-- R-M7 (**Proposed**): *"<Subject> places macro.<id> twice; place a macro once in a template."*
+- R-M6: *"<Subject> places macro.<id>; only agent nodes place macros, in their prompt or a part's text."*
+- R-M7: *"<Subject> places macro.<id> twice, counting its parts' text; place a macro once in a template."*
+- R-M11: *"Node '<id>' places macro.<macro>, and returns <format>; macros are placed only in agent nodes returning a text format."*
 - R-M8: *"Macro '<id>' has format <format>, and its body <reason, e.g. writes Markdown at line 2>."*
 - R-M9: *"Macro '<id>' has a marker in its body; a body is the text that replaces the marker."*
 - R-M10: *"Macro '<id>' reads param.<name> in its if; decide outside the function and pass the answer in, or classify inside it."*
@@ -779,22 +833,6 @@ last section).
 
 ## Proposed in this part
 
-- **Refused `for` forms** (ranges, objects, `limit:`/`offset:`/`reversed`) and `for.rindex`/`length`/`changed`: they select elements or aren't in the decided list.
-- **Built-ins on null return null:** matches JSON Logic's null rule; `array.join` refuses a null element.
-- **Render failures follow the node's failure path,** not `onInvalid`: they're definition errors, not reply errors.
-- **`-` refused on every tag:** it removes blank lines invisibly, as on placements.
-- **A part's text places no `macro.*`; a renderer body pipes into no renderer; a run spot pipes to built-ins only:** keep each decision in one header and renderers out of the graph.
-- **The run-spot marker `{{run:<n>}}`, and the run-neutral hash written only when there's a spot:** the hash must be defined to the byte.
-- **A renderer's `input` written like a node's `format`:** consistency with nodes.
-- **`failIfEmpty` carried over from version 30 unchanged:** no issue discusses it.
-- **A renderer body may test its own `value` in an `if`:** the built-in renderers can't be written otherwise, and a renderer decides nothing recorded.
-- **Built-in renderers as registry templates, ids reserved:** #1397 leaves their home open.
-- **A single snippet's header is `label`, `description`, `if` and a text `format` (as Part 01); folder items carry no `if`:** the issues give snippets an `if` but don't list the header.
-- **A snippet is placed as `snippet.<id>`; `.content` refused and migrated:** one unit form with parts and macros.
-- **Snippets not placed in part text or macro instructions:** both are short, single-node text.
-- **Each part placed exactly once; the same macro once per template (#1457 later):** one decision, one text.
-- **Macros only in agent nodes with an agent text format; `plaintext` macros escaped in Markdown nodes; `markdown_block` refused in inline nodes:** #1409 decides only the `agent_plaintext` case.
-- **The instruction's marker renders as its literal text:** the mechanism isn't stated.
-- **`ordered` on the agent node header:** #1412 requires it but doesn't name its home.
-- **The `retry` message never quotes the reply:** the reply may hold patient text.
-- **The refusal, invalid-reply and warning wordings not marked decided:** the issues give the rule, not the sentence.
+These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
+
+- **The refusal, invalid-reply and warning wordings not marked decided** (§ Refusals): the decisions give the rule, not the sentence. Every other point this part proposed was decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
