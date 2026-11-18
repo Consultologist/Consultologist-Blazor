@@ -205,6 +205,10 @@ recorded and announced to owners. The engine keeps running 30 throughout
 - **The dry run also estimates the record's size and storage cost per job:** rows per job, bytes
   per row and the canonical record blob, from the dry run's jobs, reported before the contracts
   release. It's one of the gate's conditions.
+- **The dry run also measures the orchestration history's size and replay time** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)) for the
+  largest example package. The history must stay under 10 MB and no step's replay may take over
+  2 seconds; if exceeded, large function bodies move back to sub-orchestrations with a shared
+  ceiling (part 09 § 3.1). It's one of the gate's conditions.
 - **A 30 version published after a rollback is migrated again before pins move** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so a
   fix made at 30 while pins were back isn't lost when they move forward.
 - **Library break points:** when an engine upgrade adds a break point (part 07 § 4.4), the

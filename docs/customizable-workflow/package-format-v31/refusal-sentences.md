@@ -420,6 +420,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S09-014 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The compiled workflow \<package\>@\<version\> doesn't match its lock, so it can't be run. Tell the operator."* | clinician | |
 | S09-015 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job reached \<limit\> agent calls, the most this engine runs for one job."* | clinician | |
 | S09-016 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"\<package\> could run for about \<n\> minutes in the worst case; this engine stops a job after \<limit\> minutes."* | author | |
+| S09-017 | [3.8 Delivery at the end](09-engine-and-pages.md#38-delivery-at-the-end) | *"Couldn't send to \<destination\>. Copy the note instead."* | clinician | |
 ## 10 Migration and tools
 
 | Id | Section | Sentence | Audience | Review |

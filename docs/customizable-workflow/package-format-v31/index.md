@@ -44,6 +44,8 @@
 > size and storage cost per job), and the cutover risk stated: the only live accounts are the
 > author's own.
 >
+> **Revision 9** (2026-11-18): the operational layer — a record blob for every job that ends, idempotent row writes, minimal monitoring and alerts, retried deliveries, and a gate on the orchestration history's size and replay time.
+>
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
 
@@ -198,7 +200,11 @@ on dev ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues
 - **the rollback has been rehearsed and timed:** migrate, move the pins back, run a 30 job, and
   move them forward again ([part 10](10-migration-and-tools.md) § 1.7);
 - **the record's size and storage cost per job are estimated** from the dry run's jobs (rows per
-  job, bytes per row, the canonical record blob), and found acceptable.
+  job, bytes per row, the canonical record blob), and found acceptable;
+- **the orchestration history's size and replay time are measured** on the largest example
+  package ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): the history stays under 10 MB and no step's replay takes over 2 seconds.
+  If either is exceeded, large function bodies move back to sub-orchestrations with a shared
+  ceiling (part 09 § 3.1).
 
 **Cutover risk.** The only live accounts are the package author's own, so the cutover puts no
 outside user at risk. If a real user arrives before the cutover, the choice to ship all at once is

@@ -49,8 +49,11 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
   The partition key is the job id; the row key is the rooted row key (§ 2.1) escaped for Azure
   Tables, with the true key kept as a property (`key`). Node, check, call, deliverable and decision
   rows are all stored this way; sub-rows (§ 2.3) stay inside their row.
-- **At job end, a canonical record document** is assembled from the rows into a blob: the job
-  header (§ 3) and every row, in key order, as RFC 8785 JSON. It is what History's download and the
+- **A row write is insert-if-absent,** keyed by job and rooted key ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical second
+  write (a Durable replay) is a no-op; a differing one is refused and recorded as an engine fault.
+- **At every terminal state** (completed, failed, cancelled or timed out; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)), **a canonical
+  record document** is assembled from the rows into a blob: the job
+  header (§ 3), noting the end state, and every row, in key order, as RFC 8785 JSON. It is what History's download and the
   export serve, and **one hash over the whole record** (`recordHash`) is taken over its bytes and
   written on the header.
 - **The Durable entity keeps only the job header and progress** (counts, the current step), never
@@ -438,7 +441,7 @@ template's provenance ([decided](https://github.com/Consultologist/Consultologis
 | `format` | string | never | the deliverable's format (`markdown_block`, `plaintext` or an object format; never `markdown_inline`, [part 06](06-checks-deliverables-profile.md)) |
 | `state` | string | never | `released`, `held`, `failed`, `skipped` (its header `if`) or `blocked` (its gate check failed or errored, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `stateReason` | string | allowed | the sentence: *held: empty*, *skipped: <condition> is false*, *blocked: check '<id>' failed (<detail>)*, *blocked: check '<id>' could not run (<error>)*, *released: check '<id>' didn't apply (its if was false)*; `null` when released through a passing check or none |
-| `delivery` | array of `{ kind: string, result: "sent" \| "not sent", reason: string \| null, atUtc: string \| null }` | never | one result per destination of a released deliverable, written at the end of a job that succeeded ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): *not sent: EMR isn't set up for this account*, *not sent: the job failed*; `[]` for a deliverable that wasn't released |
+| `delivery` | array of `{ kind: string, result: "sent" \| "not sent" \| "failed", reason: string \| null, atUtc: string \| null, attempts: array of { atUtc: string, outcome: string } }` | never | one result per destination of a released deliverable, written at the end of a job that succeeded ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): *not sent: EMR isn't set up for this account*, *not sent: the job failed*; `failed` after the retries ran out ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677), part 09 § 3.8), each attempt in `attempts`; `[]` for a deliverable that wasn't released |
 | `check` | string | allowed | the check row key that gated it, linking to the check's row; `null` when ungated |
 | `sites` | array of `{ site: integer, at: string, expr: string, loop: string \| null }` | never | each expression in the template, in source order, with its line and column. Package text, kept |
 | `substitutions` | array of substitution | never | each evaluation: `{ site, pass: integer[] \| null, reads: string, hash: string, size: integer, renders: string \| null }`; `pass` holds one number per enclosing template loop |
@@ -593,6 +596,8 @@ The record refuses nothing itself; the refusals at start and load are in
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6881816664)).
 - *not sent: the job failed* (each destination of a released deliverable in a job that failed;
   nothing is delivered until the job has succeeded, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- *failed: <kind>* (a destination whose delivery was retried and still didn't go, with each
+  attempt on the result; the job stays completed, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)).
 - *blocked: check '<id>' failed (<detail>)* and *blocked: check '<id>' could not run (<error>)*
   (a deliverable whose gate check failed or errored, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 - *cancelled: the job didn't finish within <n> minutes* (a row still running at the job limit, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
