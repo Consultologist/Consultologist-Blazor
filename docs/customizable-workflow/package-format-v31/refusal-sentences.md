@@ -6,17 +6,17 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 
 | Part | Sentences |
 |---|---|
-| [01 Files and scopes](#01-files-and-scopes) | 40 |
-| [02 Types and inputs](#02-types-and-inputs) | 52 |
-| [03 Expressions](#03-expressions) | 41 |
-| [04 Loops and functions](#04-loops-and-functions) | 74 |
-| [05 Templates and macros](#05-templates-and-macros) | 61 |
-| [06 Checks, deliverables and the profile](#06-checks-deliverables-and-the-profile) | 34 |
-| [07 The compiled documents](#07-the-compiled-documents) | 16 |
-| [08 The record](#08-the-record) | 6 |
-| [09 The engine and the pages](#09-the-engine-and-the-pages) | 13 |
-| [10 Migration and tools](#10-migration-and-tools) | 3 |
-| **Total** | **340** |
+| [01 Files and scopes](#01-files-and-scopes) | 42 |
+| [02 Types and inputs](#02-types-and-inputs) | 56 |
+| [03 Expressions](#03-expressions) | 44 |
+| [04 Loops and functions](#04-loops-and-functions) | 80 |
+| [05 Templates and macros](#05-templates-and-macros) | 64 |
+| [06 Checks, deliverables and the profile](#06-checks-deliverables-and-the-profile) | 38 |
+| [07 The compiled documents](#07-the-compiled-documents) | 17 |
+| [08 The record](#08-the-record) | 9 |
+| [09 The engine and the pages](#09-the-engine-and-the-pages) | 16 |
+| [10 Migration and tools](#10-migration-and-tools) | 6 |
+| **Total** | **372** |
 
 ## 01 Files and scopes
 
@@ -50,7 +50,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S01-026 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Declaration\> has an empty label."* | author | |
 | S01-027 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' declares reproducible \<value\>, but its \<kind \| body \| function\> makes it \<derived\>."* | author | |
 | S01-028 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' is kind \<kind\> and declares producer '\<value\>'; a \<kind\> node's producer is \<generated \| computed\>."* | author | |
-| S01-029 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
+| S01-029 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Node\> '\<key\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S01-030 | [Refusals](01-files-and-scopes.md#refusals) | *"'\<id\>' is not a valid id: a lowercase letter, then lowercase letters, digits or underscores."* | author | |
 | S01-031 | [Refusals](01-files-and-scopes.md#refusals) | *"Id '\<id\>' is \<n\> characters; the most is SourceBounds.idLength (64)."* | author | |
 | S01-032 | [Refusals](01-files-and-scopes.md#refusals) | *"Id '\<id\>' is reserved on Windows (con, prn, aux, nul, com1–com9, lpt1–lpt9) and can't name a file: rename it."* | author | |
@@ -62,6 +62,8 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S01-038 | [Refusals](01-files-and-scopes.md#refusals) | *"File '\<path\>' is \<n\> KiB; the most is SourceBounds.fileBytes (256 KiB)."* | author | |
 | S01-039 | [Refusals](01-files-and-scopes.md#refusals) | *"The package is \<n\> MiB; the most is SourceBounds.totalBytes (2 MiB)."* | author | |
 | S01-040 | [Refusals](01-files-and-scopes.md#refusals) | *"Path '\<path\>' is \<n\> characters; the most is SourceBounds.pathLength (200), counted from the package root."* | author | |
+| S01-041 | [Refusals](01-files-and-scopes.md#refusals) | *"File '\<path\>' nests JSON more than 32 levels deep at \<JSON pointer\>; the most is SourceBounds.jsonDepth (32)."* | author | |
+| S01-042 | [Refusals](01-files-and-scopes.md#refusals) | *"\<Site\> in '\<path\>' has \<n\> expression nodes; the most is SourceBounds.expressionNodes (1,000)."* | author | |
 ## 02 Types and inputs
 
 | Id | Section | Sentence | Audience | Review |
@@ -76,7 +78,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S02-008 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares kind let; a let is now kind computed, with its JSON Logic in expression."* | author | |
 | S02-009 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind \<kind\> and declares producer '\<value\>'; a \<kind\> node's producer is \<generated \| computed\>."* | author | |
 | S02-010 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares producer '\<value\>', which is reserved for a later version (accepted at 31: generated, computed)."* | author | |
-| S02-011 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
+| S02-011 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S02-012 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind agent and returns \<format\>, which has no binding for producer \<producer\> in agents/bindings.json."* | author | |
 | S02-013 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind rendered and returns \<format\>; a rendered node returns plaintext, markdown_block or markdown_inline."* | author | |
 | S02-014 | [Refusals](02-types-and-inputs.md#refusals) | *"Node '\<id\>' is kind agent and declares an inline format; an agent's format is named, in formats/."* | author | |
@@ -118,6 +120,10 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S02-050 | [Refusals](02-types-and-inputs.md#refusals) | *"\<Subject\> gives two values the title '\<title\>'."* | author | |
 | S02-051 | [Refusals](02-types-and-inputs.md#refusals) | *"\<Subject\> writes oneOf branch \<n\> as \<shape\>; each branch is exactly { \"const\": \<value\>, \"title\": \<label\> }."* | author | |
 | S02-052 | [Refusals](02-types-and-inputs.md#refusals) | *"\<Subject\> declares both enum and oneOf; write one."* | author | |
+| S02-053 | [Refusals](02-types-and-inputs.md#refusals) | *"\<Subject\> is nullable but its enum doesn't list null; a nullable enum lists null among its values."* | author | |
+| S02-054 | [Refusals](02-types-and-inputs.md#refusals) | *"\<Subject\> is nullable but its oneOf has no { "const": null } arm; a nullable labelled enum adds one."* | author | |
+| S02-055 | [Refusals](02-types-and-inputs.md#refusals) | *"Format '\<name\>' declares \<n\> properties; a format sent to a model declares at most \<limit\>."* | author | |
+| S02-056 | [Refusals](02-types-and-inputs.md#refusals) | *"Format '\<name\>' nests \<n\> levels deep at \<path\>; a format sent to a model nests at most \<limit\>."* | author | |
 ## 03 Expressions
 
 | Id | Section | Sentence | Audience | Review |
@@ -157,17 +163,20 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S03-033 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | author | |
 | S03-034 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> uses if without an else; write the else."* | author | |
 | S03-035 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | author | |
-| S03-036 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
+| S03-036 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | author | |
 | S03-037 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."* | author | |
 | S03-038 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."* | author | |
 | S03-039 | [11.2 Warnings at publish and in the Editor](03-expressions.md#112-warnings-at-publish-and-in-the-editor) | *"computed from model text: node.\<id\>"* | author | |
-| S03-040 | [11.3 Failures at run time](03-expressions.md#113-failures-at-run-time) | *"\<site\> \<member\> could not be decided: matches timed out on its pattern."* | author | |
+| S03-040 | [11.3 Failures at run time](03-expressions.md#113-failures-at-run-time) | *"\<site\> \<member\> could not be decided: matches was given \<n\> MiB of text; the most is 1 MiB."* | author | |
 | S03-041 | [11.3 Failures at run time](03-expressions.md#113-failures-at-run-time) | *"\<site\> \<member\> yields \<a value kind\>; a condition yields a boolean."* | author | |
+| S03-042 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> pattern "\<pattern\>" repeats \<n\> times; a counted repetition is at most 100."* | author | |
+| S03-043 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> pattern "\<pattern\>" doesn't compile with the engine's options: \<reason\>."* | author | |
+| S03-044 | [11.1 Refusals at publish](03-expressions.md#111-refusals-at-publish) | *"\<site\> reads \<path\>, which carries profile text; prompts, parts and conditions don't read profile text."* | author | |
 ## 04 Loops and functions
 
 | Id | Section | Sentence | Audience | Review |
 |---|---|---|---|---|
-| S04-001 | [2.4 `until`, `max` and `.stopped`](04-loops-and-functions.md#24-until-max-and-stopped) | *"stopped early at \<item name\>"* | clinician | |
+| S04-001 | [2.4 `until`, `max` and `.stopped`](04-loops-and-functions.md#24-until-max-and-stopped) | *"stopped early at \<position name\>"* | clinician | |
 | S04-002 | [2.4 `until`, `max` and `.stopped`](04-loops-and-functions.md#24-until-max-and-stopped) | *"not run: beyond max \<n\>"* | clinician | |
 | S04-003 | [2.6 `item` and the `.items` element](04-loops-and-functions.md#26-item-and-the-items-element) | *"skipped: item.value.kind = "narrative" is false"* | clinician | |
 | S04-004 | [2.7 `itemLabel`: naming items](04-loops-and-functions.md#27-itemlabel-naming-items) | *"Sections 2"* | author | |
@@ -182,7 +191,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S04-013 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<subject\> lists node '\<id\>' twice; a body is a set."* | author | |
 | S04-014 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares format \<format\>; its ret makes it \<format\>."* | author | |
 | S04-015 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares reproducible \<true \| false\>; its body makes it \<false \| true\>."* | author | |
-| S04-016 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent\> \<true \| false\>; its body makes it \<false \| true\>."* | author | |
+| S04-016 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<true \| false\>; its body makes it \<false \| true\>."* | author | |
 | S04-017 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"\<Kind\> '\<id\>' \<in \| case \| with \<param\>\> is an expression; it names one readable thing: compute the value in a computed node and name that."* | author | |
 | S04-018 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"Loop '\<id\>' has no body; name the nodes that run per item in nodes."* | author | |
 | S04-019 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"Loop '\<id\>' declares parallel true with maxParallel 1, which runs one item at a time; declare "parallel": false and "maxParallel": null instead."* | author | |
@@ -241,6 +250,12 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S04-072 | [10.2 Notes and warnings at publish](04-loops-and-functions.md#102-notes-and-warnings-at-publish) | *"Up to \<n\> agent calls could run at once; this engine runs at most \<N\> per job, so the rest wait their turn."* | author | |
 | S04-073 | [10.2 Notes and warnings at publish](04-loops-and-functions.md#102-notes-and-warnings-at-publish) | *"An unbounded number of agent calls could run at once (loop '\<id\>' has no cap over a list known only at run time); this engine runs at most \<N\> per job, so the rest wait their turn."* | author | |
 | S04-074 | [10.2 Notes and warnings at publish](04-loops-and-functions.md#102-notes-and-warnings-at-publish) | *"Function '\<f\>' lists \<snippet \| macro \| format \| renderer\> '\<id\>' in uses but never uses it."* | author | |
+| S04-075 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"Case '\<id\>' switches on \<reference\>, which can be null, and has no else; a null subject goes to the else: add one."* | author | |
+| S04-076 | [10.1 Refusals at publish](04-loops-and-functions.md#101-refusals-at-publish) | *"Case '\<id\>' branch \<n\> lists null; a null subject goes to the else."* | author | |
+| S04-077 | [2.4 `until`, `max` and `.stopped`](04-loops-and-functions.md#24-until-max-and-stopped) | *"0 items: \<reference\> is null"* | clinician | |
+| S04-078 | [2.4 `until`, `max` and `.stopped`](04-loops-and-functions.md#24-until-max-and-stopped) | *"Loop '\<id\>' was given \<n\> items; this engine runs at most \<limit\> per loop."* | clinician | |
+| S04-079 | [10.2 Notes and warnings at publish](04-loops-and-functions.md#102-notes-and-warnings-at-publish) | *"Loop '\<id\>' iterates \<reference\>, which could hold more than \<limit\> items; this engine runs at most \<limit\> per loop, and fails the loop beyond that."* | author | |
+| S04-080 | [10.2 Notes and warnings at publish](04-loops-and-functions.md#102-notes-and-warnings-at-publish) | *"Up to \<n\> agent calls could run in one job; this engine runs at most \<limit\> per job, and fails the job beyond that."* | author | |
 ## 05 Templates and macros
 
 | Id | Section | Sentence | Audience | Review |
@@ -306,14 +321,17 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S05-059 | [Refusals](05-templates-and-macros.md#refusals) | *"The reply has the markers out of order: '\<id\>' before '\<other\>'."* | author | |
 | S05-060 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<run.fact or run-dependent value\> at line \<n\>. Its main hash differs between runs; runs are compared on the run-neutral hash."* | author | |
 | S05-061 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> pipes renderer.\<id\>, a markdown_block, inside a line at line \<n\>."* | author | |
+| S05-062 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> stopped rendering: it took more than \<limit\> steps."* | author | |
+| S05-063 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\>[\<n\>] at line \<n\>, a position in a list; lists are read whole, with a for, or by identity through .items."* | author | |
+| S05-064 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\> at line \<n\>, which carries profile text through macro '\<id\>'; a prompt or a part doesn't read profile text. Read it in a deliverable."* | author | |
 ## 06 Checks, deliverables and the profile
 
 | Id | Section | Sentence | Audience | Review |
 |---|---|---|---|---|
 | S06-001 | [5. Checks in the record and History](06-checks-deliverables-profile.md#5-checks-in-the-record-and-history) | *"12 of 12 terms present"* | author | |
 | S06-002 | [5. Checks in the record and History](06-checks-deliverables-profile.md#5-checks-in-the-record-and-history) | *"7 of 9 sections passed"* | author | |
-| S06-003 | [5. Checks in the record and History](06-checks-deliverables-profile.md#5-checks-in-the-record-and-history) | *"Consultation note was not sent: check 'coverage' failed (10 of 12 terms present)."* | clinician | |
-| S06-004 | [6.2 Item states](06-checks-deliverables-profile.md#62-item-states) | *"stopped early at \<item name\>"* | clinician | |
+| S06-003 | [5. Checks in the record and History](06-checks-deliverables-profile.md#5-checks-in-the-record-and-history) | *"Consultation note was blocked: check 'coverage' failed (10 of 12 terms present)."* | clinician | |
+| S06-004 | [6.2 Item states](06-checks-deliverables-profile.md#62-item-states) | *"stopped early at \<position name\>"* | clinician | |
 | S06-005 | [6.5 Headings are the author's](06-checks-deliverables-profile.md#65-headings-are-the-authors) | *"computed from model text: node.standards.section_instructions"* | author | |
 | S06-006 | [7. Gating and outcomes](06-checks-deliverables-profile.md#7-gating-and-outcomes) | *"released: check '\<id\>' didn't apply (its if was false)"* | clinician | |
 | S06-007 | [8. Delivery](06-checks-deliverables-profile.md#8-delivery) | *"not sent: EMR isn't set up for this account"* | clinician | |
@@ -342,8 +360,12 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S06-030 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"Function '\<id\>' reads param.\<name\>, which carries profile.\<field\>, in \<a prompt \| a part \| a condition\>; the profile is read only in deliverables and macro bodies."* | author | |
 | S06-031 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"This workflow needs your signature. Choose one in Profile."* | clinician | |
 | S06-032 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"This workflow needs your \<field label\>. Set it in Profile, under Letter details."* | clinician | |
-| S06-033 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"\<Deliverable label\> was not sent: check '\<id\>' failed (\<detail\>)."* | author | |
+| S06-033 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"\<Deliverable label\> was blocked: check '\<id\>' failed (\<detail\>)."* | author | |
 | S06-034 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"not sent: \<Kind\> isn't set up for this account"* | clinician | |
+| S06-035 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"Check '\<id\>' gates deliverable '\<deliverable\>', and its if reads \<path\>, which can be null; a gate check's if reads values that are always set."* | author | |
+| S06-036 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"\<Subject\> reads \<path\>, which carries profile text; prompts, parts and conditions don't read profile text. Read it in a deliverable."* | author | |
+| S06-037 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"\<Deliverable label\> was blocked: check '\<id\>' could not run (\<error\>)."* | clinician | |
+| S06-038 | [Refusals](06-checks-deliverables-profile.md#refusals) | *"not sent: the job failed"* | clinician | |
 ## 07 The compiled documents
 
 | Id | Section | Sentence | Audience | Review |
@@ -364,6 +386,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S07-014 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"Test '\<test id\>' stubs \<row key\>, which doesn't run."* | author | |
 | S07-015 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"\<path\> is evidence written only by publish; it is ignored and shouldn't be committed."* | author | |
 | S07-016 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"This package's resolve.json and lock.json were ignored; publishing writes new ones."* | author | |
+| S07-017 | [10. Refusals](07-compiled-documents.md#10-refusals) | *"Workflow \<package\>@\<version\> can't run: its lock doesn't match the hash published for it, or doesn't belong to its compiled document."* | clinician | |
 ## 08 The record
 
 | Id | Section | Sentence | Audience | Review |
@@ -374,6 +397,9 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S08-004 | [10. Deliverable rows](08-record.md#10-deliverable-rows) | *"skipped: \<condition\> is false"* | clinician | |
 | S08-005 | [Refusals and recorded sentences](08-record.md#refusals-and-recorded-sentences) | *"skipped: \<printed condition\> is false"* | clinician | |
 | S08-006 | [Refusals and recorded sentences](08-record.md#refusals-and-recorded-sentences) | *"not sent: \<kind\> isn't set up for this account"* | clinician | |
+| S08-007 | [Refusals and recorded sentences](08-record.md#refusals-and-recorded-sentences) | *"blocked: check '\<id\>' failed (\<detail\>)"* | clinician | |
+| S08-008 | [Refusals and recorded sentences](08-record.md#refusals-and-recorded-sentences) | *"blocked: check '\<id\>' could not run (\<error\>)"* | clinician | |
+| S08-009 | [Refusals and recorded sentences](08-record.md#refusals-and-recorded-sentences) | *"cancelled: the job didn't finish within \<n\> minutes"* | clinician | |
 ## 09 The engine and the pages
 
 | Id | Section | Sentence | Audience | Review |
@@ -382,7 +408,7 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S09-002 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"Up to \<n\> agent calls could run at once; this engine runs at most \<ceiling\> per job, so the \> rest wait their turn."* | author | |
 | S09-003 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"An unbounded number of agent calls could run at once, since \<loop key\> has no maxParallel and \> reads a list of unknown length; this engine runs at most \<ceiling\> per job, so the rest wait \> their turn."* | author | |
 | S09-004 | [6.2 The job header](09-engine-and-pages.md#62-the-job-header) | *"migrated by the operator from \<old version\>"* | author | |
-| S09-005 | [6.3 Banners](09-engine-and-pages.md#63-banners) | *"\<deliverable label\> was not sent: check '\<check id\>' failed (\<check detail\>)."* | author | |
+| S09-005 | [6.3 Banners](09-engine-and-pages.md#63-banners) | *"\<deliverable label\> was blocked: check '\<check id\>' failed (\<check detail\>)."* | author | |
 | S09-006 | [6.4 The sections, in the order the job runs](09-engine-and-pages.md#64-the-sections-in-the-order-the-job-runs) | *"16 November 2026"* | author | |
 | S09-007 | [8.1 31 packages are view-only until Milestone 41](09-engine-and-pages.md#81-31-packages-are-view-only-until-milestone-41) | *"This package uses the new format. You can view and download it; editing returns in a later release."* | author | |
 | S09-008 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"This workflow (example-nested-note@v2026.11.2) needs Scriban ^7.2; this engine runs Scriban 8.0.1. Publish a new version of the workflow to run it on this engine."* | clinician | |
@@ -391,6 +417,9 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S09-011 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The model service \<timed out \| returned an error \| couldn't be reached\> \<n\> times in a row. Run the workflow again later."* | clinician | |
 | S09-012 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job didn't finish within \<n\> minutes. Run the workflow again later."* | clinician | |
 | S09-013 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"Up to \<n\> agent calls could run at once; this engine runs at most \<ceiling\> per job, so the rest wait their turn."* | author | |
+| S09-014 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The compiled workflow \<package\>@\<version\> doesn't match its lock, so it can't be run. Tell the operator."* | clinician | |
+| S09-015 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job reached \<limit\> agent calls, the most this engine runs for one job."* | clinician | |
+| S09-016 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"\<package\> could run for about \<n\> minutes in the worst case; this engine stops a job after \<limit\> minutes."* | author | |
 ## 10 Migration and tools
 
 | Id | Section | Sentence | Audience | Review |
@@ -398,3 +427,6 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S10-001 | [1.4 Hand edits, with notices](10-migration-and-tools.md#14-hand-edits-with-notices) | *"written; hand edits remain"* | author | |
 | S10-002 | [1.4 Hand edits, with notices](10-migration-and-tools.md#14-hand-edits-with-notices) | *"Hand edit needed in \<file\>, \<member\>: \<reason\>."* | author | |
 | S10-003 | [Refusals](10-migration-and-tools.md#refusals) | *"The condition '\<expression\>' uses \<construct\>, which has no JSON Logic form at 31: rewrite it by hand."* | author | |
+| S10-004 | [Refusals](10-migration-and-tools.md#refusals) | *"the prompt reads profile.\<field\>, which a 31 prompt doesn't read; move it to a deliverable or a macro body."* | author | |
+| S10-005 | [Refusals](10-migration-and-tools.md#refusals) | *"\<package\> stays at version 30 for now: \<reason\>. Its pin is unchanged; you can migrate it in the Editor when Milestone 41 arrives."* | clinician | |
+| S10-006 | [Refusals](10-migration-and-tools.md#refusals) | *"Renamed '\<id\>' to '\<new id\>'; '\<id\>_\<kind\>' was already taken."* | author | |

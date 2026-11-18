@@ -192,11 +192,14 @@ JSON Logic may read the same `run.*` set as bodies (#1425): `run.date`, `run.id`
   that is itself run-dependent.
 - **A decision is run-dependent** when its condition reads `run.*` or a run-dependent value. The
   record marks it so, and History can say a branch differed because a run fact differed.
+- **A decision doesn't pass the flag on** to what it chooses: the flags describe content only.
+  A node that runs because a run-dependent `if` was true isn't run-dependent for that; the
+  decision has its own row ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 - **The run-neutral hash of a run-dependent computed value** covers its recipe (the expression
   and its other reads), not the value, so two runs with the same inputs share it even when the
   dates differ.
 - **A body's read of a run-dependent value is a run spot** (#1425, part 05): a marker in the
-  run-neutral render, substituted literally afterwards.
+  run-neutral render, filled afterwards at the position recorded while rendering (part 05 § 4).
 - **The advance warning** (Editor and publish) names every run-dependent value and decision,
   not only direct `run.*` reads (§ 11.2).
 
@@ -210,6 +213,9 @@ Run-dependence passes through everything a value is made from:
   run-dependent inside the function);
 - a flow node whose `ret` is run-dependent;
 - a loop's items when its source is.
+
+It never passes through a condition: a branch's `if`, a `case` subject or a `while` condition
+decides which content exists, not what it is made from ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 
 It is worked out from `resolve.json`'s edges before any run, so the warning can name each value
 before a job starts. Each row records it as `runDependent` (part 08). **Every node header
@@ -236,7 +242,8 @@ way. It says a value came from a model's output somewhere upstream.
   producers reserved for Milestone 40 (`extracted`, #1438; part 02 § 1.3).
 - **How it spreads:** exactly as run-dependence does (§ 4.4): through `computed` and `rendered`
   nodes, `agent` prompts, `call` arguments and results, a flow node's `ret`, and a loop's items.
-  A decision whose condition reads a model-derived value is model-derived.
+  A decision whose condition reads a model-derived value is model-derived; as with
+  run-dependence, the decision doesn't pass the flag on to what it chooses ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 - **Formats are shape only.** `lower`, `trim` and any other `computed` expression return their
   operand's format unchanged, so `trim` of an agent's `plaintext` is `plaintext`; the node's
   producer is `computed` and its `reproducible` stays `true`. The value keeps its lineage through
@@ -259,6 +266,26 @@ It returns `boolean`, its producer is `computed`, it is reproducible, and it is 
 because `node.draft` is an `agent` node's output: its header writes `modelDerived: true` and
 `runDependent: false`. A macro's `if` that reads it is a model-derived
 decision.
+
+### 4.6 Profile-carrying is contagious
+
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660))
+
+**Profile-carrying** is a third contagious flag, beside run-dependence and the model-derived
+flag, worked out the same way from `resolve.json`'s edges and describing content only.
+
+- **Where it starts:** any value whose text had a profile-reading macro substituted into it
+  (part 05 § 8). No JSON Logic expression reads `profile.*` (§ 4.1), so it starts only in text.
+- **How it spreads:** as the other two do (§ 4.4): through `computed` and `rendered` nodes,
+  `agent` prompts, `call` arguments and results, a flow node's `ret`, and a loop's items. A
+  condition doesn't pass it on.
+- **Where it may be read:** deliverables may read a profile-carrying value. A prompt, a part or
+  a condition that reads one is refused at publish (§ 11.1), so a clinician's signature or
+  credentials never reach a model or decide a branch.
+- **It is written and recorded:** every node header writes `profileCarrying: true | false`,
+  checked against the derived value like `runDependent`; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+  Each row carries `profileCarrying` (part 08), and a row that is
+  profile-carrying follows the profile's retention.
 
 ## 5. The operations
 
@@ -357,10 +384,13 @@ definitions and null behaviour)
   pattern in lower case: `matches(lower(x), "letrozole|femara")`.
 - **Typing:** `x` is a text format or `string` data. On Markdown it searches the source.
 - **Engine:** the I-Regexp pattern is translated to .NET per RFC 9485 § 5 (for example `.`
-  becomes `[^\n\r]`) and run with `RegexOptions.NonBacktracking | RegexOptions.CultureInvariant`,
-  with a time-out of **100 ms** per match. A time-out fails the node that owns the condition,
-  recorded with its reason (§ 11.3), since the decision can't be made
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)). (.NET matches UTF-16
+  becomes `[^\n\r]`) and run with `RegexOptions.NonBacktracking | RegexOptions.CultureInvariant`.
+- **`matches` doesn't depend on the clock** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): there is no wall-clock time-out, so a
+  replay gives the same decision. Each pattern is compiled at publish with the engine's exact
+  options; a counted repetition (`{n,m}`) is at most **100**; the text searched is at most
+  **1 MiB** (longer text fails the node that owns the condition, § 11.3). .NET's non-backtracking
+  matching is linear in the text, so these bounds bound the work. Decision times come from the
+  orchestration's replay-safe clock. (.NET matches UTF-16
   units, so the conformance suite carries vectors with characters outside the Basic
   Multilingual Plane to prove the translation counts code points.)
 - **The record** keeps the pattern (package text, part of the printed condition) and the true or
@@ -418,7 +448,7 @@ member present) is part 06's.
 Migrated check example (part 06 owns checks; shown for the expression):
 
 ```json
-{ "kind": "computed", "producer": "computed", "modelDerived": true, "runDependent": false,
+{ "kind": "computed", "producer": "computed", "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "format": "check_result",
   "expression": { "terms_subset": [ { "var": "node.extract_input_terms.value" },
                                     { "var": "node.extract_note_terms.value" },
@@ -466,7 +496,7 @@ decision is run-dependent (§ 4.4).
 | Read | Gives |
 |---|---|
 | `input.<id>.value` (or `.content`, `.title`) of a supplied input | its raw value (its text, the chosen arm's title), typed by its format |
-| an unsupplied optional input | `""` for a text format's `.content` (v25 § 16's absence rule, kept); `null` for `string`, `number`, `boolean`, `date` and objects; `[]` for an array |
+| an unsupplied or blank optional input | `null` for `.value`, `.content` and `.title`, whatever its format; a template renders it as nothing (part 02 § 8's table; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `node.<id>.value` of a node that completed | its value |
 | `node.<id>.value`, `.content` of a node that did not complete (skipped, not run) | `null`; `.state` says why ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
 | `node.<id>.state` | `"completed"`, `"skipped"` or `"not_run"` |
@@ -523,6 +553,10 @@ The checker types every rule against the dialect (part 02), reading formats as t
     `ends_with`, `matches`, `has_word`, `lower`, `trim`, `plain` and `cat` (plain text only).
 - **Refused on text:** `===`/`!==` against a literal or another text; `<`, `>`, `<=`, `>=`;
   `substr`; `!` as a blank test.
+- **Numbers** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) are IEEE doubles. An operation whose result isn't finite (an overflow,
+  `NaN`) gives `null`. `integer` is a kind of `number`: an `integer` value may go where a
+  `number` is expected, not the reverse. A built-in format name equals its schema under type
+  equality (part 02).
 - **A nested field is data unless it `$ref`s a text format** (#1385): `verdict.verdict` (a
   `string` enum) is data; `verdict.feedback` (`$ref: plaintext`) is text.
 - **Enums:** a literal compared with an enum-typed value (a `string` with `enum`, or `oneOf` of
@@ -684,10 +718,13 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 | *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | rule decided ([part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
 | *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | rule decided |
 | *"\<site\> pattern "\<pattern\>" is \<n\> characters long; the most is 200."* | rule decided (200, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
+| *"\<site\> pattern "\<pattern\>" repeats \<n\> times; a counted repetition is at most 100."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| *"\<site\> pattern "\<pattern\>" doesn't compile with the engine's options: \<reason\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| *"\<site\> reads \<path\>, which carries profile text; prompts, parts and conditions don't read profile text."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660), § 4.6) |
 | *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | rule decided |
 | *"\<site\> uses if without an else; write the else."* | rule decided |
 | *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | rule decided |
-| *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| *"Node '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 
 ### 11.2 Warnings at publish and in the Editor
 
@@ -702,10 +739,10 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 
 ### 11.3 Failures at run time
 
-The rules are decided (§ 5.3: a `matches` time-out fails the node; § 6.2: evaluation never
+The rules are decided (§ 5.3: text over 1 MiB fails the node, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); § 6.2: evaluation never
 throws; § 9: a condition that yields no boolean fails its node).
 
-- *"\<site\> \<member\> could not be decided: matches timed out on its pattern."* The node that
+- *"\<site\> \<member\> could not be decided: matches was given \<n\> MiB of text; the most is 1 MiB."* The node that
   owns the condition fails, recorded with this reason.
 - *"\<site\> \<member\> yields \<a value kind\>; a condition yields a boolean."* The node that owns
   the condition fails (§ 9).

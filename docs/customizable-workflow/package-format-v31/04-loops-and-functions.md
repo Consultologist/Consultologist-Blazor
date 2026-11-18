@@ -30,11 +30,13 @@ nowhere is a stray and is refused (part 01).
 | `reproducible` | boolean | never | written, and checked against the derived value: `true` only if everything in its body that its result depends on is `true`; a mismatch is refused ([decided in part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910); revisiting it is #1466) |
 | `producer` | `"computed"` | never | written, and checked against the kind: a flow node is `computed` even when its body holds agent nodes; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868), part 02 § 1.3) |
 | `modelDerived` | boolean | never | written, and checked against the derived value: `true` when its `ret`, or anything its result is made from, is model-derived, as when its body holds an agent node; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861); part 03 § 4.5) |
-| `runDependent` | boolean | never | written, and checked against the derived value: `true` when its source, its condition or its `ret` is run-dependent; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861); part 03 § 4.4) |
+| `runDependent` | boolean | never | written, and checked against the derived value: `true` when its source or its `ret` is run-dependent (a condition passes no flag on, part 03 § 4.4, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861); part 03 § 4.4) |
+| `profileCarrying` | boolean | never | written, and checked against the derived value: `true` when its source or its `ret` is profile-carrying; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 03 § 4.6) |
 
 Each kind adds its own members, below. A member of another kind is refused (§ 10).
-Run-dependence and the model-derived flag are worked out from the body (part 03 §§ 4.4–4.5), and
-written as `runDependent` and `modelDerived`, checked against those values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)).
+Run-dependence, the model-derived flag and the profile-carrying flag are worked out from the body
+(part 03 §§ 4.4–4.6), and written as `runDependent`, `modelDerived` and `profileCarrying`,
+checked against those values ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 
 **`ret` is the child's full name** ([decided 2026-11-17](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6958687389)): the root and the
 qualified key of one of that body's **own** children, as the record keys it (part 01):
@@ -65,7 +67,7 @@ reserved id, so the migration renames it `sections`, part 01.) The Editor may sh
 | `nodes` | array of ids, at least one | never | the body, in order |
 | `ret` | the child's full name (§ 1) | never | the body node whose value is each item's value |
 
-Together with § 1's members, a `for`'s `index.json` has exactly thirteen members.
+Together with § 1's eight members, a `for`'s `index.json` has exactly sixteen members.
 
 ### 2.2 What a loop iterates
 
@@ -115,20 +117,27 @@ As v30 § 3.4, with the condition in JSON Logic:
   anything that runs before the loop (part 03 § 4.2). The loop stops after the item where it
   holds, so which items ran is the same on every run.
 - **The items it didn't run stay** in the loop's count and `.items`, with state `not_run` and
-  the reason *"stopped early at \<item name\>"* (§ 2.6).
+  the reason *"stopped early at \<position name\>"* (§ 2.6).
 - **`max`** runs the first `max` items in list order; the rest are `not_run`, with the reason
   *"not run: beyond max \<n\>"*, and the loop's `.stopped` is `"bound"`
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)).
 - **`.stopped`** is `"until"` (its `until` held), `"bound"` (its `max` was reached) or `"end"` (it
   ran out of items), typed by those values.
 - An empty list settles at 0 items, with `.stopped` `"end"`, never a failure (v30 § 2.5).
+- **A `null` source** (a nullable list, or a read of a node that was skipped) settles the same
+  way, at 0 items with `.stopped` `"end"`, and the loop's row records the reason
+  *"0 items: \<reference\> is null"* ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- **At most 200 items per loop instance** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): an engine setting, checked at run time. A
+  list longer than that fails the loop's node with *"Loop '\<id\>' was given \<n\> items; this
+  engine runs at most \<limit\> per loop."*, and publish notes a loop whose list could be longer
+  (§ 10.2).
 
 Example, fictional: reading prior letters in order until one answers the referral question.
 
 ```json
 { "kind": "for", "producer": "computed", "label": "Prior letters", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "input.prior_letters.value",
   "parallel": false, "maxParallel": null,
   "until": { "===": [ { "var": "node.read_letter.value.answers_question" }, true ] },
@@ -177,7 +186,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 | `item` | an item, as above | never | the source element this row came from |
 | `label` | string | never | the item's name (§ 2.7) |
 | `state` | `"completed"` \| `"skipped"` \| `"not_run"` | never | the state of the item's `ret`, so an item whose `ret` is an untaken `if` is `skipped` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)) |
-| `reason` | string | `null` when completed | package text and fixed engine sentences only, never patient text: the printed condition for `skipped` (*"skipped: item.value.kind = "narrative" is false"*), *"stopped early at \<item name\>"* or *"not run: beyond max \<n\>"* for `not_run` |
+| `reason` | string | `null` when completed | package text and fixed engine sentences only, never patient text: the printed condition for `skipped` (*"skipped: item.value.kind = "narrative" is false"*), *"stopped early at \<position name\>"* or *"not run: beyond max \<n\>"* for `not_run` |
 | `value` | `T` | `null` unless completed | the `ret`'s value |
 | `content` | text | `null` unless completed | the text of the item's `ret` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118), beside #1406's `item, value, state, reason, nodes`) |
 | `nodes` | an object keyed by body id | never | each body node for this item: `.value`, `.content`, `.state` |
@@ -214,9 +223,12 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
   `label` and the 1-based position: *"Sections 2"*
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118);
   v30 used the input's label for input loops; at 31 the loop owns naming).
-- **v30 revision 3 holds:** a name drawn from a field is kept in the record past the retention
-  sweep, trimmed and cut to 120 characters ending in "…". Authors pick a field without patient
-  detail (advice until #1448); `null` is the choice for a loop whose elements have no safe field.
+- **Retention** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660), replacing v30 revision 3's rule): a name is trimmed and cut to 120
+  characters ending in "…", and is **kept in the record past the retention sweep only when it
+  comes from package text** (a snippet folder's header). A name drawn from an input or a model's
+  output follows 7-day retention, and History then shows the position name. **Reasons always use
+  position names** (*"stopped early at Sections 3"*), never a drawn name, since a reason can land in
+  a deliverable (part 06 § 6.2).
 - **Migration** writes `labelField` (an input's or a loop's) as `itemLabel` on each loop over it
   (#1447).
 
@@ -228,7 +240,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 ```json
 { "kind": "for", "producer": "computed", "label": "Sections", "description": null,
   "format": { "type": "array", "items": { "type": "array", "items": { "$ref": "plaintext" } } },
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "node.plan.value.sections",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
@@ -238,7 +250,7 @@ loop's, outward (`item.parent.parent`), skipping any `while` between (v30 § 2.4
 ```json
 { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "node.outline.value.points",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": null,
@@ -251,7 +263,7 @@ moved to the loop):
 ```json
 { "kind": "for", "producer": "computed", "label": "Sections — drafting each requested section by its kind", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "input.sections.value",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
@@ -263,7 +275,7 @@ moved to the loop):
 ```json
 { "kind": "for", "producer": "computed", "label": "Standards", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "snippet.standards",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "title",
@@ -287,7 +299,7 @@ Every migrated loop gets `"parallel": true, "until": null` (or `"parallel": fals
 | `nodes` | array of ids, at least one | never | the body, in order |
 | `ret` | the child's full name (§ 1) | never | the body node whose last pass's value the while returns |
 
-With § 1's members, a `while`'s `index.json` has eleven members. A `while` has no `parallel`,
+With § 1's eight members, a `while`'s `index.json` has fourteen members. A `while` has no `parallel`,
 `maxParallel` or `itemLabel`: it is sequential by definition and its passes are numbered.
 `checkFirst` was optional at 30 and is required at 31 (#1394).
 
@@ -331,7 +343,7 @@ positional reads are refused, part 03 § 2.2).
 ```json
 { "kind": "while", "producer": "computed", "label": "Refining the summary", "description": null,
   "format": "plaintext",
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "while": { "!==": [ { "var": "node.judge.value.verdict" }, "good" ] },
   "max": 3, "until": null, "checkFirst": false,
   "nodes": ["draft_summary", "judge"], "ret": "node.refine.draft_summary" }
@@ -354,8 +366,10 @@ and strict equality applies; `"good"` is checked against the enum.
 
 **The contagious flags cross levels too**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118);
-part 03 §§ 4.4–4.5). Run-dependence and the model-derived flag pass into a loop's items when its
-source has them, out through a flow node's `ret`, and through a call's arguments and result.
+part 03 §§ 4.4–4.6). Run-dependence, the model-derived flag and the profile-carrying flag pass
+into a loop's items when its source has them, out through a flow node's `ret`, and through a
+call's arguments and result. A condition (an `if`, a `case` subject, a `while`, an `until`)
+passes none of them on to what it chooses ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 
 - **The output of every node whose `producer` isn't `computed` is model-derived,** so every
   agent node's output is; the reverse doesn't hold (§ 7.10's pattern B is a computed
@@ -375,7 +389,7 @@ source has them, out through a flow node's `ret`, and through a call's arguments
 | `then` | a body: `{ "nodes": [ids], "ret": full name }` | never | runs when the condition holds |
 | `else` | a body | `null` = no else | runs when it doesn't |
 
-With § 1's members, eight members. A body object has exactly `nodes` (at least one id) and
+With § 1's eight members, eleven members. A body object has exactly `nodes` (at least one id) and
 `ret`.
 
 ### 5.2 `case`
@@ -384,9 +398,9 @@ With § 1's members, eight members. A body object has exactly `nodes` (at least 
 |---|---|---|---|
 | `case` | a reference string | never | the subject |
 | `branches` | array, at least one, of `{ "when": [values], "nodes": [ids], "ret": full name }`; an empty branch writes `"nodes": []` and `"ret": null` | never | one branch per set of values |
-| `else` | a body | `null` only when the branches list every value | runs when no branch's values match |
+| `else` | a body | `null` only when the branches list every value and the subject can't be `null` | runs when no branch's values match, and when the subject is `null` |
 
-With § 1's members, eight members.
+With § 1's eight members, eleven members.
 
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118))
 
@@ -399,6 +413,8 @@ With § 1's members, eight members.
 - **Every `case` is exhaustive:** if the branches don't list every value, an `else` is required,
   and publish refuses a `case` that could match nothing. A `case` therefore always runs a
   branch for every value.
+- **A subject that can be `null`** (a nullable enum, part 02 § 3.2, or a read of a node that may
+  be skipped) **requires an `else`**, and `null` goes there ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). A `when` never lists `null`.
 - **A branch may be explicitly empty:** `{ "when": ["omit"], "nodes": [], "ret": null }`, the one
   body whose `nodes` is empty and whose `ret` is `null`, both together. For those values the `case`
   reads as skipped, with the reason *"case '<id>': arm for <value> does nothing"*
@@ -438,7 +454,7 @@ sections were skipped. At 31 `route` keeps its shape and keys, and the migration
 ```json
 { "kind": "case", "producer": "computed", "label": "Routing a section by its kind", "description": null,
   "format": "plaintext",
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "case": "item.value.kind",
   "branches": [
     { "when": ["narrative"], "nodes": ["narrative_draft"], "ret": "node.sections_draft.route.narrative_draft" },
@@ -455,7 +471,7 @@ nothing"*.
 ```json
 { "kind": "if", "producer": "computed", "label": "Narrative sections only", "description": null,
   "format": "plaintext",
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "if": { "===": [ { "var": "item.value.kind" }, "narrative" ] },
   "then": { "nodes": ["patient_summary"], "ret": "node.patient_summaries.narrative_only.patient_summary" },
   "else": null }
@@ -466,7 +482,7 @@ nothing"*.
 ```json
 { "kind": "if", "producer": "computed", "label": "Holding the billing section back unless asked", "description": null,
   "format": "plaintext",
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "if": { "or": [ { "!==": [ { "var": "item.id" }, "billing" ] },
                   { "===": [ { "var": "input.include_billing.value" }, true ] } ] },
   "then": { "nodes": ["standing_draft"], "ret": "node.standing_sections.applies.standing_draft" },
@@ -627,7 +643,7 @@ through `uses`. A function's result depends only on its arguments, which makes i
   ```
   ---
   { "kind": "computed", "producer": "computed", "label": "Result", "format": "drafted_section",
-    "modelDerived": true, "runDependent": false, "onInvalid": "fail",
+    "modelDerived": true, "runDependent": false, "profileCarrying": false,
     "expression": { "object": {
         "title":    { "var": "param.standard.value.title" },
         "text":     { "var": "node.apply_instructions.content" },
@@ -644,7 +660,7 @@ through `uses`. A function's result depends only on its arguments, which makes i
 
 A `call` is a leaf, `<id>.md`, **header only** (its body must be empty). Its members, besides
 part 01's leaf members (`kind`, `label`, `description`, `format`, `reproducible`, `modelDerived`,
-`runDependent`, and the node's own condition, `if`):
+`runDependent`, `profileCarrying`, and the node's own condition, `if`):
 
 | Member | Type | Null | Meaning |
 |---|---|---|---|
@@ -653,6 +669,7 @@ part 01's leaf members (`kind`, `label`, `description`, `format`, `reproducible`
 | `reproducible` | boolean | never | written, and checked against the function's `ret`'s value; a mismatch is refused ([decided in part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)) |
 | `modelDerived` | boolean | never | written, and checked against the derived value: `true` when the function's `ret` is model-derived, or an argument is; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `runDependent` | boolean | never | written, and checked against the derived value: `true` when the function's `ret` is run-dependent, or an argument is; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| `profileCarrying` | boolean | never | written, and checked against the derived value: `true` when the function's `ret` is profile-carrying, or an argument is; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `function` | a function id | never | the function to run |
 | `with` | an object keyed by parameter id; each value a reference string, or the literal `null` | never (`{}` for a function with no parameters) | the arguments |
 
@@ -676,6 +693,12 @@ part 01's leaf members (`kind`, `label`, `description`, `format`, `reproducible`
   is model-derived (part 03 § 4.5).
 - **Its value is the function's `ret`,** read like any node (`node.hpi_section.value`,
   `.content`).
+- **A whole reference passed to `with`** (`node.<id>`, `item`, `check.<id>`) gives the function
+  only its `.value` and `.content`, typed against the parameter's format ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); the function
+  reads `param.<id>.value` and `.content`, never the caller's `.state` or `.items`.
+- **Its body runs inline** in the caller's orchestration, never as a sub-orchestration
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): the call's inner nodes are scheduled by the same orchestrator as its siblings, so the
+  per-job ceiling, the call limit and the start order hold inside functions (§ 8; part 09 § 3).
 - **Its dependency edges are its arguments.** A call's input hashes are exactly its arguments'
   hashes.
 
@@ -684,7 +707,7 @@ Inside a loop, one call per item:
 ```json
 { "kind": "for", "producer": "computed", "label": "Standards", "description": null,
   "format": { "type": "array", "items": { "$ref": "plaintext" } },
-  "reproducible": false, "modelDerived": true, "runDependent": false,
+  "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "snippet.standards",
   "parallel": true, "maxParallel": 4, "until": null, "max": null,
   "itemLabel": "title",
@@ -695,7 +718,7 @@ Inside a loop, one call per item:
 // nodes/standards/section.md (header only)
 ---
 { "kind": "call", "producer": "computed", "label": "Drafting the section", "description": null,
-  "format": "plaintext", "reproducible": false, "modelDerived": true, "runDependent": false,
+  "format": "plaintext", "reproducible": false, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "function": "draft_section",
   "with": { "standard": "item", "draft": "input.consult_draft.content" } }
   // plus part 01's remaining leaf members
@@ -753,8 +776,8 @@ the one way to run it, at the top level, in a loop body or inside another functi
   ```
   ---
   { "kind": "computed", "producer": "computed", "label": "Prescribes letrozole (passed in)", "format": "judgement",
-    "reproducible": true, "modelDerived": true, "runDependent": false,
-    "onInvalid": "fail", "expression": { "var": "param.letrozole.value" } }
+    "reproducible": true, "modelDerived": true, "runDependent": false, "profileCarrying": false,
+    "expression": { "var": "param.letrozole.value" } }
   ---
   ```
 
@@ -831,7 +854,7 @@ definition folders likewise, empty ones included (part 01).
 ```json
 { "kind": "for", "producer": "computed", "label": "Section coverage", "description": null,
   "format": { "type": "array", "items": { "$ref": "check_result" } },
-  "reproducible": true, "modelDerived": true, "runDependent": false,
+  "reproducible": true, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "node.standards.items",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "itemLabel": "label",
@@ -852,16 +875,23 @@ the production item's id (part 06). The deliverable is `deliverable.emr.consult`
 [counting](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118))
 
 - **The ceiling is not in the format.** The engine holds a per-job ceiling: at most *N* agent
-  calls in flight for one job (for example 16). It is part 09's.
+  calls in flight for one job (for example 16). It is part 09's. Function bodies run inline in
+  the job's orchestration, so their calls are scheduled under the same ceiling ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 - **Everything counts the same way:** agent calls in nested loops, inside function calls (at any
   depth), and in check loops ([#1396](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6905675034)).
   **Only agent calls count:** `rendered` and `computed` nodes make no model call and don't
   count.
+- **Total-work limits** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), engine settings beside the ceiling, starting at: **200 items
+  per loop instance** (§ 2.4), **500 agent calls per job** (retries included as one call), and a
+  **step budget per render**, starting at **100,000 steps** (part 05). Each is checked at run time and fails the job, or the
+  node, with a sentence (part 09 § 3.4); publish notes a package whose worst case can exceed one
+  (§ 10.2).
 - **Each loop's `maxParallel` still applies within it.** The effective concurrency at a point is
   the smaller of the ceiling and the product of the caps along its nesting path.
 - **429 responses and other service failures** are retried with back-off and recorded as retries
   on the node's row. A node fails after 10 minutes of waiting on 429s in total, or after 5
-  attempts for another failure, and a job fails if it hasn't finished 30 minutes after it started;
+  attempts for another failure, and a job fails if it hasn't finished 30 minutes after its
+  orchestration started ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660));
   all three are engine settings (part 09 § 3.4, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)). This replaces #1393's first
   rule that a job is never failed for capacity alone.
 - **At publish, a note rather than a refusal** when nested caps multiply past the engine's
@@ -885,7 +915,7 @@ The record is part 08's. For flow and functions (storage 12 adds to 11, with qua
   ([part 08](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633));
 - **a call row** with the function's id, its arguments' hashes, its result's hash and its
   `depth`, expanding to its inner rows like a loop item;
-- **`modelDerived` and `runDependent`** on every row (part 03 §§ 4.4–4.5).
+- **`modelDerived`, `runDependent` and `profileCarrying`** on every row (part 03 §§ 4.4–4.6).
 
 ## 10. Refusals and notes
 
@@ -909,7 +939,7 @@ is v30's built sentence, kept; the rest is new. Every rule below is decided
 | *"\<subject\> lists node '\<id\>' twice; a body is a set."* | v30 |
 | *"\<Kind\> '\<id\>' declares format \<format\>; its ret makes it \<format\>."* | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)) |
 | *"\<Kind\> '\<id\>' declares reproducible \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)) |
-| *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent\> \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent \| profileCarrying\> \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | *"\<Kind\> '\<id\>' \<in \| case \| with \<param\>\> is an expression; it names one readable thing: compute the value in a computed node and name that."* | rule decided ([part 03](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
 
 `<subject>` is `Loop 'x'`, `While 'x'`, `If 'x' then`, `If 'x' else`, `Case 'x' branch <n>`,
@@ -964,6 +994,8 @@ is v30's built sentence, kept; the rest is new. Every rule below is decided
 | *"Case '\<id\>' branch \<n\> lists "\<value\>", which is not one of \<reference\>'s values (\<values\>)."* | rule decided |
 | *"Case '\<id\>' lists "\<value\>" in branches \<n\> and \<m\>; a value belongs to one branch."* | rule decided |
 | *"Case '\<id\>' doesn't list \<values\> and has no else; a case has a branch for every value: add a branch, an empty branch, or an else."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118), [empty branch](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
+| *"Case '\<id\>' switches on \<reference\>, which can be null, and has no else; a null subject goes to the else: add one."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| *"Case '\<id\>' branch \<n\> lists null; a null subject goes to the else."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | *"Case '\<id\>' branch \<n\> writes nodes \<[] \| ids\> with ret \<ret\>; an empty branch writes nodes [] and ret null together."* | rule decided ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | skip reason *"case '\<id\>': arm for \<value\> does nothing"* | decided ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 
@@ -1000,6 +1032,8 @@ is v30's built sentence, kept; the rest is new. Every rule below is decided
 |---|---|---|
 | *"Up to \<n\> agent calls could run at once; this engine runs at most \<N\> per job, so the rest wait their turn."* | note | decided ([#1393](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6904683179)) |
 | *"An unbounded number of agent calls could run at once (loop '\<id\>' has no cap over a list known only at run time); this engine runs at most \<N\> per job, so the rest wait their turn."* | note | rule decided (§ 8) |
+| *"Loop '\<id\>' iterates \<reference\>, which could hold more than \<limit\> items; this engine runs at most \<limit\> per loop, and fails the loop beyond that."* | note | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| *"Up to \<n\> agent calls could run in one job; this engine runs at most \<limit\> per job, and fails the job beyond that."* | note | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | *"Function '\<f\>' lists \<snippet \| macro \| format \| renderer\> '\<id\>' in uses but never uses it."* | warning | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6888253558)) |
 
 ## Proposed in this part

@@ -46,14 +46,15 @@ checks/    verification: what gates a deliverable
 | `producer` | `"computed"` | no | as on every node header, checked against the kind ([Part 02 § 1.3](02-types-and-inputs.md#13-producer), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | `modelDerived` | boolean | no | as on every node header, checked against the derived value: `true` when the check reads model output, directly or through other values ([Part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `runDependent` | boolean | no | as on every node header, checked against the derived value: `true` when the check reads `run.*` or a run-dependent value ([Part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
-| `if` | JSON Logic | yes: always | whether the check runs; in a check loop, typically skips unrun items |
+| `profileCarrying` | boolean | no | as on every node header, checked against the derived value: `true` when the check reads a profile-carrying value ([Part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| `if` | JSON Logic | yes: always | whether the check runs; in a check loop, typically skips unrun items. **A gate check's `if`** (a check a deliverable's `check` names) **may not read a value that can be `null`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); R-C10), so a gate is never skipped by a missing value |
 | `expression` | JSON Logic | no | an expression returning `check_result` (§ 2) |
 
 ```
 checks/coverage.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Terms covered", "description": null, "format": "check_result",
-  "reproducible": true, "modelDerived": true, "runDependent": false, "if": null,
+  "reproducible": true, "modelDerived": true, "runDependent": false, "profileCarrying": false, "if": null,
   "expression": { "terms_subset": [ { "var": "node.extract_input_terms.value" },
                                     { "var": "node.extract_note_terms.value" },
                                     "The note does not cover every clinical term found in the referral." ] } }
@@ -173,8 +174,10 @@ another loop's body.
 ### 3.2 Scheduling
 
 Each item's check runs **as soon as that item's outputs are ready,** so checking overlaps
-production. The per-job ceiling (#1393, [Part 09](09-engine-and-pages.md)) counts check work
-like any other.
+production. Checks are `computed` and make no model calls, so they take **no slot** under the
+per-job ceiling (#1393, [Part 09](09-engine-and-pages.md)), which counts agent calls only
+([Part 04 § 8](04-loops-and-functions.md#8-concurrency-what-counts-toward-the-per-job-ceiling)).
+An agent node inside a check loop's body counts like any other.
 
 ### 3.3 No checks inside functions
 
@@ -204,7 +207,7 @@ deliverables/note.md
 // checks/part_coverage/index.json
 { "kind": "for", "producer": "computed", "label": "Section coverage", "description": null,
   "format": { "type": "array", "items": { "$ref": "check_result" } }, "reproducible": true,
-  "modelDerived": true, "runDependent": false,
+  "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "in": "node.sections.items", "itemLabel": "label",
   "parallel": true, "maxParallel": null, "until": null, "max": null,
   "nodes": [ "coverage" ], "ret": "check.part_coverage.coverage" }
@@ -214,7 +217,7 @@ deliverables/note.md
 checks/part_coverage/coverage.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Section covers its planned terms", "description": null,
-  "format": "check_result", "reproducible": true, "modelDerived": true, "runDependent": false,
+  "format": "check_result", "reproducible": true, "modelDerived": true, "runDependent": false, "profileCarrying": false,
   "if": { "===": [ { "var": "item.state" }, "completed" ] },
   "expression": { "terms_subset": [ { "var": "item.nodes.planned_terms.value" },
                                     { "var": "item.nodes.section_terms.value" },
@@ -233,7 +236,7 @@ implied. There's **no "partly released" state**
 checks/all_sections_covered.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Every section covers its planned terms", "description": null,
-  "format": "check_result", "reproducible": true, "modelDerived": true, "runDependent": false, "if": null,
+  "format": "check_result", "reproducible": true, "modelDerived": true, "runDependent": false, "profileCarrying": false, "if": null,
   "expression": { "all_pass": [ { "var": "check.part_coverage.items" },
                                 "Not every section covers its planned terms." ] } }
 ---
@@ -263,7 +266,7 @@ Inputs, Nodes, Checks, Deliverables. Each check row says:
 | checks | what it ran on (a deliverable or a node), with that output's hash |
 | reads | its other inputs, each linking to its node's row |
 | result | pass or fail with its detail (*"12 of 12 terms present"*, *"7 of 9 sections passed"*) |
-| effect | released, held, not sent, or read by something else |
+| effect | released, held, blocked, or read by something else |
 
 ```
  ┌ Checks ─────────────────────────────────────────────────────────────────────┐
@@ -273,15 +276,16 @@ Inputs, Nodes, Checks, Deliverables. Each check row says:
  │ ▾ all_sections_covered   failed   all_pass → check_result     b19e…         │
  │     reads           check.part_coverage (9 items, 7 passed)                 │
  │     result          Not every section covers its planned terms.             │
- │     effect          note not sent                                           │
+ │     effect          note blocked                                            │
  └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **No duplication:** a deliverable row shows a one-line `Check: <id>  <passed|failed> →`
   linking to the check's row. A node a check reads gets no extra row.
 - **A failed check that stops a deliverable is a banner at the top of the job:** *"Consultation
-  note was not sent: check 'coverage' failed (10 of 12 terms present)."* The same banner covers
-  a destination the account hasn't set up (§ 8).
+  note was blocked: check 'coverage' failed (10 of 12 terms present)."* A gate check that
+  errored gives *"Consultation note was blocked: check 'coverage' could not run (\<error\>)."*
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). A destination the account hasn't set up has its own banner line (§ 8).
 - **The diagram** draws a Checks frame, a thick `gates` edge into the deliverable, and a check
   loop as a frame inside it with a dotted `aligned` edge to its production loop
   ([#1398](https://github.com/Consultologist/Consultologist-Blazor/issues/1398#issuecomment-6950081672),
@@ -331,7 +335,7 @@ A template reads each loop item's `state` and `reason` through `.items`
 |---|---|---|
 | `completed` | the item ran | `null` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) |
 | `skipped` | its `if` didn't hold | the condition's printed text |
-| `not_run` | stopped early by `until` | *"stopped early at <item name>"*, the name following `itemLabel`'s rules |
+| `not_run` | stopped early by `until` | *"stopped early at <position name>"*, for example *"stopped early at Sections 3"*: reasons name items by position, never by a drawn name ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 
 - The set is closed and checked at publish. A failed item fails the job (`onInvalid` is `fail`
   or `retry`), so it never reaches a template.
@@ -405,7 +409,7 @@ loop's `ret`. With the format `titled_section`:
 nodes/standards/section.md
 ---
 { "kind": "computed", "producer": "computed", "label": "Section", "description": null, "format": "titled_section",
-  "reproducible": true, "modelDerived": true, "runDependent": false, "if": null,
+  "reproducible": true, "modelDerived": true, "runDependent": false, "profileCarrying": false, "if": null,
   "expression": { "object": { "title":   { "var": "item.value.title" },
                               "content": { "var": "node.section_instructions.content" } } } }
 ---
@@ -517,17 +521,21 @@ everything it reads, and release waits for it
 | skipped | the header `if` didn't hold | skipped by condition, with the printed condition | goes on |
 | failed | composed empty with `whenEmpty: fail`, or the render failed | the deliverable's failure | fails, naming the deliverable |
 | held | composed empty with `whenEmpty: hold` | *held: empty* | goes on |
-| not sent | its check returned `pass: false` | composed, failed its check, not delivered | goes on |
-| released | composed, and its check passed, its check was skipped by its own `if`, or it has none | composed, released, then a delivery result per kind (§ 8) | goes on |
+| blocked | its gate check returned `pass: false`, or **errored** (failed to run) | composed, blocked: fails closed, with the check's result or error recorded, never delivered ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) | goes on |
+| released | composed, and its check passed, its check was skipped by its own `if`, or it has none | composed, released, then a delivery result per destination (§ 8) | goes on |
 
-- A deliverable that's not sent or held is **never something to dig for:** History shows the
+- **`blocked` is an outcome; `not sent` is a delivery result** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). A deliverable is
+  released, held, failed, skipped or blocked; each destination of a released deliverable is then
+  sent or not sent (§ 8).
+- A deliverable that's blocked or held is **never something to dig for:** History shows the
   banner (§ 5).
 - **A deliverable whose gating check was skipped by its own `if` is released**
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), recorded and shown in History as *"released: check '<id>' didn't apply (its
   if was false)"* (H-4). A skipped gate gives no `check_result` to fail on. **An empty
   `all_pass`, by contrast, fails** (§ 2.2): that check ran and judged nothing.
 - The record holds the outcome as the deliverable row's `state` (`released`, `held`, `failed`,
-  `skipped` or `not sent`) with its reason sentence ([Part 08](08-record.md)).
+  `skipped` or `blocked`) with its reason sentence, and each destination's result in
+  `delivery` ([Part 08](08-record.md)).
 
 ## 8. Delivery
 
@@ -562,11 +570,17 @@ deliverables/
 - **The package declares kinds, never addresses** (packages are public). **The account maps
   kinds to endpoints** in a separate account section, beside today's delivery address; templates
   never read it ([#1408](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)).
-- **A kind the account hasn't configured:** the job still runs, and the deliverable is produced
-  and recorded as **not sent**: *"not sent: EMR isn't set up for this account"*. The job doesn't
-  fail, and the document stays in History.
-- **A bundle holds released deliverables only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): a held, skipped or not-sent
-  one is left out, and History lists what was left out and why.
+- **Delivery happens at the end, and only then** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): nothing is delivered until every
+  deliverable's outcome is final and the job has succeeded. A job that fails delivers nothing,
+  and its released deliverables stay in History, recorded as *"not sent: the job failed"*.
+- **A result per destination** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): each kind a released deliverable goes to gets its own
+  result, `sent` or `not sent` with a reason, so an email that went out beside an EMR that
+  isn't set up reads as one of each.
+- **A kind the account hasn't configured:** the job still runs, and the deliverable is produced;
+  that destination is recorded as **not sent**: *"not sent: EMR isn't set up for this account"*.
+  The job doesn't fail, and the document stays in History.
+- **A bundle holds released deliverables only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)): a held, skipped, failed or
+  blocked one is left out, and History lists what was left out and why.
 - `description` and `items` follow every folder's `index.json` ([Part 01](01-files-and-scopes.md));
   #1406's examples show only `delivery` and `bundle`.
 
@@ -592,7 +606,7 @@ the final text (`composedHash`)
   personal.
 - **Run spots** add the run-neutral hash beside `composedHash`
   ([Part 05](05-templates-and-macros.md#4-run-spots-and-the-two-hashes)).
-- **The outcome** (§ 7, the row's `state`) and each delivery kind's result.
+- **The outcome** (§ 7, the row's `state`) and each destination's delivery result (§ 8).
 
 The record's shape and field names are [Part 08](08-record.md)'s. **History** shows the
 template with its reads grouped by site, looped sites collapsed to "× N passes" and expandable
@@ -631,6 +645,7 @@ it's recorded ([decided](https://github.com/Consultologist/Consultologist-Blazor
 | snippet bodies placed in either of those | yes |
 | prompts, `rendered` nodes, parts, macro instructions, snippets placed in prompts | **no:** the clinician's details aren't sent to a model |
 | conditions and `computed` expressions, the deliverable header `if` included | **no** ([confirmed](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6924498184)) |
+| a **profile-carrying** value (text a profile-reading macro body was substituted into, and anything made from it; [Part 03 § 4.6](03-expressions.md#46-profile-carrying-is-contagious)) | deliverables only: a prompt, a part or a condition that reads one is refused (R-F5, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | inside a function | only as a parameter passed in through the call's `with`, and then only to macro bodies |
 
 **A parameter bound to a `profile.*` value carries the same restriction through the function**
@@ -658,6 +673,10 @@ on the Create page. There's no empty substitute. The package's needs are known i
 `resolve.json`'s derived `needs.profile` (for example `["name", "signature"]`,
 [Part 07](07-compiled-documents.md)).
 
+**This refusal applies to 31 jobs only** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): a job on a package still at 30 keeps 30's
+behaviour until its package moves. The owners' notice before the cutover says so (Part 10). When
+the email intake refuses a job for this reason, its reply carries the same sentence (J-1, J-2).
+
 **An empty or whitespace-only value counts as not set** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)), so a job that reads
 it is refused at the start.
 
@@ -665,7 +684,12 @@ it is refused at the start.
 
 - Each `profile.*` read is a substitution recorded by hash (§ 9).
 - The record names the signature block's id.
-- The text follows produced text's retention: deleted after 7 days (#368).
+- The text follows produced text's retention: deleted after 7 days (#368). A value that is
+  profile-carrying (§ 10.2) follows the same retention.
+- **A short value's hash is kept,** as every substitution's is, and the record's documentation
+  says it can be reversed by guessing: a name or credentials line is short enough to test
+  candidates against its hash ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660), option c). Long texts keep their hash for verification as
+  before.
 
 ### 10.6 Previews
 
@@ -682,7 +706,9 @@ registry** (the table in § 10.1), never the author's own profile.
   field:** it's never read as `profile.*`. It's a select list that starts empty, with a "Use this
   browser's zone" button that fills it only when clicked. The zone is recorded beside
   `run.date`. **Every job is refused until it's set**, whether or not the package reads
-  `run.date` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)): *"Set your time zone in your account settings before running a workflow."* The pages themselves are [Part 09](09-engine-and-pages.md)'s.
+  `run.date` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)): *"Set your time zone in your account settings before running a workflow."* Like § 10.4's
+refusal, it applies to 31 jobs only, is announced in the owners' notice, and is the email
+intake's reply when it refuses ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)). The pages themselves are [Part 09](09-engine-and-pages.md)'s.
 
 ## 11. What changes from version 30
 
@@ -714,6 +740,7 @@ rest are this part's wording.
 - R-C7: *"Check loop '<id>' runs over <source>; a check loop runs over a production loop's .items."*
 - R-C8: *"Function '<id>' holds check '<check>'; functions hold no checks. Return a check_result as data and check the calls' .items."*
 - R-C9: *"Node '<id>' reads deliverable.<deliverable>; only checks read deliverables."*
+- R-C10: *"Check '<id>' gates deliverable '<deliverable>', and its if reads <path>, which can be null; a gate check's if reads values that are always set."*
 
 **Deliverables**
 - R-D1 *(decided)*: *"Node '<id>' reads deliverable.<deliverable>; deliverables are the job's outputs: read the nodes it is composed from."*
@@ -734,6 +761,7 @@ rest are this part's wording.
 - R-F1: *"<Subject> reads profile.<field>, which isn't a profile field; the fields are name, credentials, organisation, signature and closing."*
 - R-F2: *"<Condition owner> reads profile.<field> in a condition; the profile is read only in deliverables and macro bodies."*
 - R-F3 *(decided: [#1408](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6959886233), [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6959886713); § 10.2)*: *"Function '<id>' reads param.<name>, which carries profile.<field>, in <a prompt | a part | a condition>; the profile is read only in deliverables and macro bodies."*
+- R-F5: *"<Subject> reads <path>, which carries profile text; prompts, parts and conditions don't read profile text. Read it in a deliverable."*
 - R-F4 (Part 05 R-R2, for prompts): *"Node '<id>' reads profile.<field>; the clinician's profile is never sent to a model. Read it in a deliverable or a macro body."*
 
 **Refused at job start** (Create page)
@@ -742,9 +770,11 @@ rest are this part's wording.
 - J-3 *(rule decided, [every job](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); wording new)*: *"Set your time zone in your account settings before running a workflow."*
 
 **Shown in History** (not refusals)
-- H-1 *(decided)*: *"<Deliverable label> was not sent: check '<id>' failed (<detail>)."*
+- H-1 *(decided, revised by [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660))*: *"<Deliverable label> was blocked: check '<id>' failed (<detail>)."*
 - H-2 *(decided)*: *"not sent: <Kind> isn't set up for this account"*
-- H-3 *(decided)*: *"stopped early at <item name>"* (an item's `reason` for `not_run`)
+- H-5: *"<Deliverable label> was blocked: check '<id>' could not run (<error>)."*
+- H-6: *"not sent: the job failed"* (each destination of a released deliverable in a job that failed)
+- H-3 *(decided)*: *"stopped early at <position name>"* (an item's `reason` for `not_run`)
 - H-4 *(decided, [part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251))*: *"released: check '<id>' didn't apply (its if was false)"*
 
 ## Proposed in this part

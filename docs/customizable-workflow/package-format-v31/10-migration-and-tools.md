@@ -49,7 +49,7 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | `templating` in the manifest | dropped; `lock.json` and `requires` record the Scriban version | [01](01-files-and-scopes.md) |
 | optional members omitted | every member written, `null` for none | [01](01-files-and-scopes.md) |
 | `\r\n` line endings | normalised to `\n`, as import and publish do | [01](01-files-and-scopes.md) |
-| node headers | **`reproducible` written on every node**, from the derived value (`rendered` and `computed` `true`, `agent` `false`, a flow node from its body, a `call` from its function), and the migration report lists each node whose 30 claim differed ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6982429387)); **`producer` written on every node and check**, from its kind (`"generated"` for `agent`, `"computed"` for every other, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)); **`modelDerived` and `runDependent` written on every node and check**, from the values the resolver derives ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); `format` written on flow nodes, from `ret` | [01](01-files-and-scopes.md), [02](02-types-and-inputs.md) |
+| node headers | **`reproducible` written on every node**, from the derived value (`rendered` and `computed` `true`, `agent` `false`, a flow node from its body, a `call` from its function), and the migration report lists each node whose 30 claim differed ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6982429387)); **`producer` written on every node and check**, from its kind (`"generated"` for `agent`, `"computed"` for every other, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)); **`modelDerived`, `runDependent` and `profileCarrying` written on every node and check**, from the values the resolver derives ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); `format` written on flow nodes, from `ret` | [01](01-files-and-scopes.md), [02](02-types-and-inputs.md) |
 | an id now reserved (`parts`, `items`, `value`, …) | renamed, with every reference rewritten (§ 1.9) | [01](01-files-and-scopes.md) |
 | `format` with `producer` | `kind` and `format` on every node | [02](02-types-and-inputs.md) |
 | `prose` and `agent_*` formats; `x-generated` | **the plain format of the same shape:** `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline`; object formats keep their names. `x-generated` is dropped: the node's `producer` says who wrote the value ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) | [02](02-types-and-inputs.md), [07](07-compiled-documents.md) |
@@ -112,7 +112,10 @@ When the rewrite can't decide, it still writes the package, with **one notice pe
 validation fails with sentences until each is made, as the 25 migration did. The cases:
 - a body `if` too complex to lift into a part;
 - macros placed on deliverables with conditions or model judgement (#1406);
-- a condition or `let` the converter can't map (§ 2.3).
+- a condition or `let` the converter can't map (§ 2.3);
+- **a 30 prompt that reads `profile.*`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): at 31 a prompt never reads the profile
+  (part 05), so the read is a hand edit, and the owner is told about it in the after-notice
+  (§ 1.5), with what replaced it.
 
 Notices that need no edit (a renamed id, a `!x` converted to `blank(x)`, a suggested text format)
 are listed in the migration report and block nothing.
@@ -136,46 +139,57 @@ Each notice reads:
   Editor and History show it ([part 09](09-engine-and-pages.md#62-the-job-header)).
 - **Owners are told** (the standing "tell the user early" rule): before the bulk run, a visible
   notice says their packages will be migrated, their pins moved, and that editing returns with
-  Milestone 41; after it, each owner sees what changed, the report and the hand edits.
+  Milestone 41; after it, each owner sees what changed, the report and the hand edits. **The
+  notice also says that 31 jobs are refused until the account's time zone is set, and when a
+  profile field the package reads is missing** (part 06 §§ 10.4, 10.7); those refusals apply to
+  31 jobs only ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- **A package that can't be migrated faithfully may stay at 30** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): its pin is unchanged,
+  and its owner is told why, until the Milestone 41 Editor lets them migrate it themselves. It
+  keeps 30's load path until retirement (#1450).
 - **No backfill:** old versions stay readable and old records keep their meaning; old specs keep
   their load path until retirement (#1450).
 
 ### 1.6 The order
 
-Index [§ 5](index.md#5-phasing) gives the whole rollout. The migration's part of it:
+The order is index [§ 5](index.md#5-phasing)'s, and its step numbers are used here; this section
+only adds the migration's detail to the steps that concern it. Every deploy is preceded by a
+drain, so no job spans two builds ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 
-0. **The content repositories release first**
-   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6924905094)),
-   each one PR and its tags, with the engine's submodule pins moved to them:
-   - `consultologist-package-format`: the spec text, its schemas (including `resolve.json`'s and
-     `lock.json`'s), `bounds.json`, the built-in renderers and the conformance suite (§ 5);
-   - `consultologist-agents`: the migrated formats catalogue (`prose.json` and the `agent_*.json`
-     text formats retired in favour of the registry's plain formats, each format pure
-     shape, `$schema` in every format file, `formats/index.json`, `agents/bindings.json` keyed by
-     format and producer with no instructions (each format's instruction is its `description`,
-     part 02 § 5.1), a `$id` on every format,
-     `producer` removed,
-     every property listed in `required` with the optional ones nullable, each rewritten format
-     released as a new version, § 1.8),
-     and **new Foundry versions of every attested agent whose embedded schema changes**, with the
-     catalogue pins moved;
-   - `consultologist-provenance`: the new record contract (storage 12).
-1. **Dry run on dev:** the build behind `WorkflowPackages__PreviewSpecVersions=31` on
-   `canada-east-ai-function-dev`, with dev's own registry in `consultdevcaeast`: the example
-   packages migrated and smoke-run there, and the bulk migration run over copies of account
-   packages, all with fictional inputs
-   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6957669427)).
-   The copies are the account packages' sources only (they hold no patient text), published to
-   dev's registry under the same owners' ids, readable only by the operator, and deleted when the
-   dry run ends ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)).
-2. **The satellites** are released and verified against migrated public packages (§ 7).
-3. **The engine accepts 31 beside 30,** released after a drain, as with 29 and 30.
-4. **The public example packages** migrate in one PR in `consultologist-workflows`, tagged one per
-   push, with a live smoke run each.
-5. **The production and operator pins move,** on the package author's word.
-6. **Account packages:** the notice to owners, the operator's bulk run (migrate, hand edits,
-   publish, pins moved), then each owner's report.
-7. **Retirement of old specs** is #1450 (Milestone 40).
+- **Index step 1, the contracts:** the content repositories release first
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6924905094)),
+  each one PR and its tags, with the engine's submodule pins moved to them:
+  - `consultologist-package-format`: the spec text, its schemas (including `resolve.json`'s and
+    `lock.json`'s), `bounds.json`, the built-in renderers and the conformance suite (§ 5);
+  - `consultologist-agents`: the migrated formats catalogue (`prose.json` and the `agent_*.json`
+    text formats retired in favour of the registry's plain formats, each format pure
+    shape, `$schema` in every format file, `formats/index.json`, `agents/bindings.json` keyed by
+    format and producer with no instructions (each format's instruction is its `description`,
+    part 02 § 5.1), a `$id` on every format,
+    `producer` removed,
+    every property listed in `required` with the optional ones nullable, each rewritten format
+    released as a new version, § 1.8),
+    and **new Foundry versions of every attested agent whose embedded schema changes**, with the
+    catalogue pins moved;
+  - `consultologist-provenance`: the new record contract (storage 12).
+- **Index step 2, the build, ends with a dry run on dev:** the build behind
+  `WorkflowPackages__PreviewSpecVersions=31` on `canada-east-ai-function-dev`, with dev's own
+  registry in `consultdevcaeast`: the example packages migrated and smoke-run there, and the bulk
+  migration run over copies of account packages, all with fictional inputs
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6957669427)).
+  The copies are the account packages' sources only (they hold no patient text), published to
+  dev's registry under the same owners' ids, readable only by the operator, and deleted when the
+  dry run ends ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)).
+  The dry run measures real durations against the 30-minute job limit (part 09 § 3.4; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
+- **Index step 3, the satellites,** are released and verified against migrated public packages
+  (§ 7).
+- **Index step 4, the bump:** the engine accepts 31 beside 30, released after a drain, as with 29
+  and 30.
+- **Index step 5, the public example packages,** migrate in one PR in `consultologist-workflows`,
+  tagged one per push, with a live smoke run each.
+- **Index step 6, account packages:** the notice to owners, the operator's bulk run (migrate, hand
+  edits, publish, pins moved), then each owner's report (§§ 1.5, 1.11).
+- **Index step 7, the production and operator pins move,** on the package author's word.
+- **Afterwards, retirement of old specs** is #1450 (Milestone 40).
 
 ### 1.7 Rollback: pins back
 
@@ -184,13 +198,20 @@ production pins back** to the pre-migration versions if the new release misbehav
 recorded and announced to owners. The engine keeps running 30 throughout
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6924497114)).
 
+- **A 30 version published after a rollback is migrated again before pins move** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so a
+  fix made at 30 while pins were back isn't lost when they move forward.
+- **Library break points:** when an engine upgrade adds a break point (part 07 § 4.4), the
+  operator has a republish path ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): the affected 31 versions are republished, their
+  `lock.json` taken at the new versions after the corpus re-render, and their pins moved, with
+  the owners told as for the migration.
+
 ### 1.8 Every property required
 
 At 31 every property of every format is listed in `required`, and an optional one is nullable
 (part 02 § 3.3). The migration rewrites today's formats to match ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6959885810), [#1447](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6959888494)):
 - **package formats and inputs' object fields** in each migrated package;
 - **the catalogue's formats,** released as new versions in the contracts release (index § 5,
-  step 1; § 1.6, step 0).
+  step 1; § 1.6).
 
 Agents then return explicit `null`s for optional fields where they used to leave the key out.
 **The record and History treat an explicit `null` as absent,** and the byte-equivalence report
@@ -210,6 +231,8 @@ after `.value`, so 30's `title` fields keep their name
   **`sections`**, so `nodes/parts/…` becomes `nodes/sections/…` and `node.parts.…` becomes
   `node.sections.…` everywhere, `ret` values included.
 - **In account packages the kind is added as a suffix:** a `for` loop `parts` becomes `parts_for`.
+- **A rename that collides** with an existing id gets a numeric suffix (`_2`, `_3`, …), the id
+  shortened first so the whole stays within 64 characters, and is listed in the report ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)).
 - **Every rename is reported,** and every reference to it is rewritten: reads, `ret`, `in`,
   conditions, templates, test keys.
 
@@ -341,6 +364,9 @@ counts it as blank), so **the migration report lists every such conversion**.
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447)).
 - **What it also lists:** every renamed id (§ 1.9), every `_macro` suffix (§ 1.3), every `!x`
   converted to `blank(x)` (§ 2.3), and every suggestion made.
+- **It notes a package whose estimated worst case passes the job limit** (30 minutes, or a
+  total-work limit, part 09 § 3.4) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), with the estimate. The dry run on dev measures real
+  durations (§ 1.6).
 - **Where it goes:** attached to the publish record of each migrated account version, and shown by
   the Editor and History; for the public packages, attached to the migration PR.
 - **Its shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)). One JSON document (`migration-report.json`) beside the publish
@@ -381,7 +407,7 @@ the same bytes ([decided](https://github.com/Consultologist/Consultologist-Blazo
 
 ## 5. The conformance suite
 
-Released with the spec in `consultologist-package-format` (§ 1.6, step 0), exported by the
+Released with the spec in `consultologist-package-format` (index § 5, step 1; § 1.6), exported by the
 library's generators as for every spec bump
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)):
 
@@ -391,6 +417,11 @@ library's generators as for every spec bump
   version, #1390); the printer's text for every operation, with `=`/`≠`; the built-in renderers;
   Scriban dialect features (#1425).
 - **Null and absence vectors** for every JSON Logic operation, one per rule in part 03's table.
+- **Text-handling vectors** for `lower`, `trim`, `words` and `has_word` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), pinned to the
+  .NET runtime and Unicode version `lock.json` records (part 07 § 4.1), so a runtime change that
+  moves case mapping or word characters is caught.
+- **Number vectors:** IEEE doubles, non-finite results giving `null`, and `integer` as a kind of
+  `number` (part 03 § 7).
 - **Markdown escape vectors:** CommonMark's backslash escapes for ASCII punctuation
   ([part 06](06-checks-deliverables-profile.md)).
 - **Fixtures for the compiled documents:** fixture packages with their expected `resolve.json` and
@@ -515,6 +546,10 @@ and the pages' in part 09. The wording below is the starting text. It follows th
 
 - The script, when hand edits remain (#1447): *"written; hand edits remain"*
 - A hand-edit notice: *"Hand edit needed in <file>, <member>: <reason>."*
+- The hand-edit reason for a prompt reading the profile: *"the prompt reads profile.<field>, which a 31 prompt doesn't read; move it to a deliverable or a macro body."*
+- A package left at 30, in the owner's notice: *"<package> stays at version 30 for now: <reason>. Its pin is unchanged; you can migrate it in the Editor when Milestone 41 arrives."*
+- A colliding rename, in the report: *"Renamed '<id>' to '<new id>'; '<id>_<kind>' was already taken."*
+- The worst-case note: *"<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes."*
 - The publish record of a migrated version (#1447): *"migrated by the operator from <old
   version>"*
 - A converter refusal on type: the 31 checker's own sentence (part 03), unchanged.
