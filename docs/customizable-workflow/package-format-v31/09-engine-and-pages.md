@@ -128,7 +128,10 @@ What changes at 31:
 - **A `call`'s function body runs inline** in the job's orchestration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), never as a
   Durable sub-orchestration: its nodes are scheduled by the same loop as every other node, so the
   per-job ceiling, the total-work limits and the dispatch order of § 3.2 hold inside functions.
-  Its rows are keyed under the call (part 08).
+  Its rows are keyed under the call (part 08). **The dev dry run measures the orchestration
+  history's size and replay time** for the largest example package ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677); part 10 § 1.7); if the
+  history passes 10 MB or a step's replay takes over 2 seconds, large function bodies move back
+  to sub-orchestrations with a shared ceiling.
 - **`matches` reads no clock** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): there is no wall-clock time-out; the bounds that keep it
   linear are part 03 § 5.3's. Every time the orchestrator records (a decision's `decidedAtUtc`)
   comes from the orchestration's replay-safe clock.
@@ -252,11 +255,13 @@ spends held behind a drain doesn't count towards its job limit (§ 3.4).
 The record moves out of the Durable entity ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 08 § 1.1):
 
 - **Each record row is written once, to a table, when it finishes,** keyed by the job id and the
-  escaped rooted key, and never rewritten.
+  escaped rooted key, and never rewritten. **The write is insert-if-absent** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical
+  second write (a Durable replay) is a no-op; a differing one is refused and recorded as an
+  engine fault.
 - **The entity keeps only the job header and progress.** Events carry keys, not row contents;
   the browser fetches a finished row by its key.
-- **At job end** the engine assembles the canonical record document from the rows into a blob and
-  writes its hash, `recordHash`, on the header. History's download and the export serve that blob.
+- **On every terminal state** (completed, failed, cancelled or timed out; [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)) the engine assembles
+  the canonical record document from the rows into a blob, noting the end state, and writes its hash, `recordHash`, on the header. History's download and the export serve that blob.
 
 ### 3.8 Delivery at the end
 
@@ -264,6 +269,25 @@ The record moves out of the Durable entity ([decided](https://github.com/Consult
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); part 06 § 8). Delivery then runs once per destination of each released deliverable, and
 each destination's result is recorded on the deliverable's row. A job that fails delivers
 nothing.
+
+**A failed delivery is retried** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): **3 times, with back-off over about 15 minutes** (engine
+settings), each attempt recorded on the destination's result. After the last, the result is marked
+`failed`, the operator is alerted (§ 3.9), and History shows *"Couldn't send to <destination>.
+Copy the note instead."* The job stays completed.
+
+### 3.9 Monitoring and alerts
+
+Minimal, on Application Insights, **lengths and hashes only, never text** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)). Alerts are
+emailed to the operator:
+
+- **Any failed job.**
+- **429 waiting** passing 5 minutes in one job (§ 3.4).
+- **A job reaching 80% of the 30-minute limit** (24 minutes).
+- **A failed publish or an exporter warning** (part 10).
+- **A delivery marked `failed`** (§ 3.8).
+
+**A weekly summary** is emailed too: jobs, failures, p50 and p90 duration, the largest record, and
+outstanding migration hand edits.
 
 ## 4. The satellites' contract: `WorkflowPackages/Current`
 
@@ -431,7 +455,7 @@ As today, plus:
 ### 6.3 Banners
 
 A deliverable that wasn't sent is never something to dig for. At the top of the job, one banner
-per deliverable that was held, failed or blocked, and per destination not sent
+per deliverable that was held, failed or blocked, and per destination not sent or failed
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6881869311), revised by [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)):
 
 > *"<deliverable label> was blocked: check '<check id>' failed (<check detail>)."*
@@ -643,6 +667,8 @@ The wording below is the starting text. It follows the style rules in [index § 
   *"Loop '<id>' was given <n> items; this engine runs at most <limit> per loop."*,
   *"The job reached <limit> agent calls, the most this engine runs for one job."* and
   *"<Subject> stopped rendering: it took more than <limit> steps."*
+- A destination whose delivery failed after its retries (§ 3.8), shown in History; the job stays completed:
+  *"Couldn't send to <destination>. Copy the note instead."*
 - The publish note, never a refusal (#1393):
   *"Up to <n> agent calls could run at once; this engine runs at most <ceiling> per job, so the
   rest wait their turn."*

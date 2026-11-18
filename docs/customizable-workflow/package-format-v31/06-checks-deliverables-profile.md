@@ -574,8 +574,12 @@ deliverables/
   deliverable's outcome is final and the job has succeeded. A job that fails delivers nothing,
   and its released deliverables stay in History, recorded as *"not sent: the job failed"*.
 - **A result per destination** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): each kind a released deliverable goes to gets its own
-  result, `sent` or `not sent` with a reason, so an email that went out beside an EMR that
+  result, `sent`, `not sent` with a reason, or `failed`, so an email that went out beside an EMR that
   isn't set up reads as one of each.
+- **A failed delivery is retried** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): 3 times with back-off over about 15 minutes (engine
+  settings, part 09 § 3.8), each attempt recorded on the destination's result. If the last also
+  fails, the result is `failed`, the operator is alerted, and History shows *"Couldn't send to
+  <destination>. Copy the note instead."* The job stays completed.
 - **A kind the account hasn't configured:** the job still runs, and the deliverable is produced;
   that destination is recorded as **not sent**: *"not sent: EMR isn't set up for this account"*.
   The job doesn't fail, and the document stays in History.
@@ -773,6 +777,7 @@ rest are this part's wording.
 - H-1 *(decided, revised by [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660))*: *"<Deliverable label> was blocked: check '<id>' failed (<detail>)."*
 - H-2 *(decided)*: *"not sent: <Kind> isn't set up for this account"*
 - H-5: *"<Deliverable label> was blocked: check '<id>' could not run (<error>)."*
+- H-7 *(decided)*: *"Couldn't send to <destination>. Copy the note instead."* (a destination whose retries ran out)
 - H-6: *"not sent: the job failed"* (each destination of a released deliverable in a job that failed)
 - H-3 *(decided)*: *"stopped early at <position name>"* (an item's `reason` for `not_run`)
 - H-4 *(decided, [part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251))*: *"released: check '<id>' didn't apply (its if was false)"*
