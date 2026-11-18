@@ -749,9 +749,10 @@ text is recorded by hash under the node that placed it.
 
 ## Refusals
 
-Each sentence is word for word. `<…>` are placeholders. Sentences marked *(decided)* are quoted
-from the deciding comment; the rest are this part's wording, **Proposed** as a group (see the
-last section).
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+
+`<…>` are placeholders. Sentences marked *(decided)* are quoted from the deciding comment; the
+rest are this part's wording.
 
 **The dialect**
 - R-D1: *"<Subject> uses <construct> at line <n>; templates present text and may not use assignment, capture, func, include, import, with, wrap, while, break, continue, case, tablerow or arithmetic."*
@@ -785,7 +786,7 @@ last section).
 - R-R5: *"<Subject> reads <path> and run.<fact> in one output at line <n>; an output that reads a run fact reads nothing else."* (also for a run-dependent value: *"… reads <path> and the run-dependent <value> in one output …"*)
 
 **Renderers**
-- R-N1 *(decided, prefix Proposed)*: *"<Subject> pipes <source> (<format>) into renderer.<id>, which renders <input format>."*, for example *"Node 'identify_problem' pipes node.plan.value (section_plan) into renderer.concept_bullets, which renders concept_list."*
+- R-N1 *(decided; the prefix is new)*: *"<Subject> pipes <source> (<format>) into renderer.<id>, which renders <input format>."*, for example *"Node 'identify_problem' pipes node.plan.value (section_plan) into renderer.concept_bullets, which renders concept_list."*
 - R-N2 *(adapted from the decided "a renderer returns string")*: *"Renderer '<id>' declares format <format>; a renderer returns plaintext, markdown_block or markdown_inline."*
 - R-N3: *"Renderer '<id>' reads <root>; a renderer reads only the value piped into it."*
 - R-N4: *"<Subject> calls renderer.<id> at line <n>; pipe into it: <value> | renderer.<id>."*
@@ -820,7 +821,7 @@ last section).
 - R-M9: *"Macro '<id>' has a marker in its body; a body is the text that replaces the marker."*
 - R-M10: *"Macro '<id>' reads param.<name> in its if; decide outside the function and pass the answer in, or classify inside it."*
 
-**Invalid replies** (sent to `onInvalid`, recorded on the node's row; **Proposed** wording)
+**Invalid replies** (sent to `onInvalid`, recorded on the node's row)
 - V-1: *"The reply has no marker for macro '<id>'."*
 - V-2: *"The reply has the marker for macro '<id>' <n> times."*
 - V-3: *"The reply has a marker for macro '<id>', which wasn't offered."*
@@ -835,6 +836,4 @@ last section).
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
-
-- **The refusal, invalid-reply and warning wordings not marked decided** (§ Refusals): the decisions give the rule, not the sentence. Every other point this part proposed was decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)).
+Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).

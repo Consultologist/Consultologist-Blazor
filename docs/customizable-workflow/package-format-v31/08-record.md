@@ -112,7 +112,7 @@ version, and shown in History's job header:
 | `lockHash` | string (`sha256:…`) | null below 31 | the SHA-256 of the canonical `lock.json` bytes ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6898433402)) |
 | `versionsRan` | object | null below 31 | **the exact versions that actually ran,** which under option c can differ from the lock within its range ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632)). It has `lock.json`'s members, so the two compare member by member: `packageFormat`, `dialect`, `libraries` (`Scriban`, `Markdig`, `Corvus.Text.Json.JsonLogic`, `Corvus.JsonSchema`), `evaluator`, `operations` (those the package uses), `builtins`, `culture` (`"invariant"`) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
 | `runFacts` | object | null below 31 | the raw value of each run fact the package reads, once per run (§ 8.1); `{}` when it reads none |
-| `maxAgentCalls` | integer | null below 31 | the per-job ceiling in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), part 09). Member name **Proposed** |
+| `limits` | object `{ maxAgentCalls, capacityWaitMinutes, serviceAttempts, jobMinutes }`, each an integer | null below 31 | every engine limit in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): the per-job ceiling on agent calls, the minutes a node may wait on 429s in all, the attempts allowed for another service failure, and the minutes a job may run ([part 09](09-engine-and-pages.md) § 3) |
 | `signatureBlockId` | string | allowed | the profile signature block the job used, by **id**, never its text; `null` when the package doesn't read `profile.signature` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)) |
 | `signatureChosen` | `"default"` or `"job"` | allowed | whether the block was the account's chosen block (`ChosenId`) or picked on the Create page for this job; `null` with `signatureBlockId` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
 | `decisions` | array of decision | never | every condition decision of the job (§ 5); `[]` for none |
@@ -166,7 +166,7 @@ gains the members below. Their names are
 | `formatHash` | string | allowed | the **full** hash of the node's resolved format (`resolve.json`'s `formatHashes`); `null` for flow kinds. With `agent`, it lets History say "the same type, served by a different agent" or the reverse ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6879413099)) |
 | `typeHash` | string | allowed | the format's **type** hash (`resolve.json`'s `typeHashes`); `null` with `formatHash` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)) |
 | `sentFormatHash` | string | allowed | on agent rows, the hash of the format as sent to the model: `title`, `$id` and the keywords strict mode rejects removed, by the attested agent definition's list; `null` on other rows ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)) |
-| `notSent` | array of string | never | on agent rows, the removed keywords as JSON pointers into the format (`/properties/onset/format`); `[]` for none. History shows *"Not sent to the model: …"*, and the reply is still validated against the full format. Member name **Proposed** |
+| `notSent` | array of string | never | on agent rows, the removed keywords as JSON pointers into the format (`/properties/onset/format`); `[]` for none. History shows *"Not sent to the model: …"*, and the reply is still validated against the full format ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)) |
 | `agent` | object | allowed | on agent rows only (§ 4.1); `null` otherwise |
 | `itemName` | string | allowed | the item's name from the loop's `itemLabel`, capped at 120 characters, kept for the life of the record (storage 11's rule, renamed from `labelField`); `null` on rows outside a loop |
 | `runDependent` | boolean | never | `true` when the row's value depends on `run.*`, transitively ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6925165983)): the node's `runDependent` as written and checked ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
@@ -175,10 +175,10 @@ gains the members below. Their names are
 | `runSpots` | array of run spot | never | § 8.2; `[]` for none |
 | `renders` | array of renderer sub-row | never | § 4.2; `[]` for none |
 | `macros` | array of macro row | never | § 4.3; `[]` for none; agent rows only |
-| `invalid` | object | allowed | the node's `onInvalid` outcome when a reply failed validation or the macro marker check: `{ reason: string, action: "retry" \| "fail", attempts: integer }`, where `reason` names what failed, for example `macro letrozole_prescription_text: missing`. `null` when the reply was valid. That the outcome sits on the node's row is [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6957666676); the object's own members are **Proposed**. A retry message never quotes the reply; it names only what was wrong ([part 05](05-templates-and-macros.md)) |
-| `retries` | array of `{ atUtc: string, waitMs: integer }` | never | each 429 (capacity) retry the call needed, with its back-off ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393)); `[]` for none. The entry's members are **Proposed** |
+| `invalid` | object | allowed | the node's `onInvalid` outcome when a reply failed validation or the macro marker check: `{ reason: string, action: "retry" \| "fail", attempts: integer }`, where `reason` names what failed, for example `macro letrozole_prescription_text: missing`. `null` when the reply was valid. That the outcome sits on the node's row is [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1412#issuecomment-6957666676); the object's own members are [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967) too. A retry message never quotes the reply; it names only what was wrong ([part 05](05-templates-and-macros.md)) |
+| `retries` | array of `{ atUtc: string, waitMs: integer, kind: "capacity" \| "service", error: string \| null }` | never | each retry the call needed, with its back-off ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): `kind` is `"capacity"` for a 429 and `"service"` for another service failure; `error` is that failure's kind (`"timeout"`, `"5xx"`, `"connection"`), never its content, and `null` for capacity. `[]` for none |
 | `profileReads` | array of `{ field: string, hash: string }` | never | each `profile.*` read by a macro body placed in this node's prompt, by hash (§ 9); `[]` for none |
-| `stateReason` | string | allowed | the sentence for a row that didn't complete: *skipped: …* (§ 5), *not run: beyond max <n>* ([part 04](04-loops-and-functions.md)), or a failure's reason (a `matches` time-out, [part 03](03-expressions.md)); `null` when completed |
+| `stateReason` | string | allowed | the sentence for a row that didn't complete: *skipped: …* (§ 5), *not run: beyond max <n>* ([part 04](04-loops-and-functions.md)), or a failure's reason (a `matches` time-out, [part 03](03-expressions.md); the model service's limits, [part 09](09-engine-and-pages.md) § 3.4); `null` when completed |
 
 A node that didn't complete reads `null` for `.value` and `.content`; `.state` says why
 ([part 03](03-expressions.md)).
@@ -498,7 +498,7 @@ one renderer use:
                                  "plain_conversion": "1.0.0", "printer": "1.0.0" },
                    "culture": "invariant" },
   "runFacts": { "date": { "value": "2026-11-16", "timeZone": "America/Toronto" } },
-  "maxAgentCalls": 16,
+  "limits": { "maxAgentCalls": 16, "capacityWaitMinutes": 10, "serviceAttempts": 5, "jobMinutes": 30 },
   "signatureBlockId": "sig-2", "signatureChosen": "job",
   "decisions": [
     { "id": "node.standards.assessment:7/if:macro.letrozole_prescription_text",
@@ -542,9 +542,7 @@ one renderer use:
 ## Refusals and recorded sentences
 
 The record refuses nothing itself; the refusals at start and load are in
-[part 07](07-compiled-documents.md) § 10. Refusal and failure sentence wording is left to the build
-([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)).
-The sentences it **records**, word for word:
+[part 07](07-compiled-documents.md) § 10. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request. The sentences it **records**:
 
 - *skipped: <printed condition> is false* (a decision's reason, § 5)
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)).
@@ -566,13 +564,13 @@ The sentences it **records**, word for word:
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
 - A node's `invalid.reason` for the macro check: *macro <id>: missing*, *macro <id>: repeated*,
   *macro <id>: altered*; and the failure when `onInvalid` is `fail`:
-  *Node '<row key>' failed: macro '<id>' was <missing | repeated | altered> in the reply.* **Proposed.**
-- A deliverable failed by `whenEmpty: fail`: *Deliverable '<id>' was empty, and the workflow fails an empty <label>.* **Proposed.**
+  *Node '<row key>' failed: macro '<id>' was <missing | repeated | altered> in the reply.*
+- A deliverable failed by `whenEmpty: fail`: *Deliverable '<id>' was empty, and the workflow fails an empty <label>.*
+- A node failed by the model service's limits ([part 09](09-engine-and-pages.md) § 3.4, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)):
+  *The model service stayed busy for <n> minutes.*, or *The model service <timed out | returned an
+  error | couldn't be reached> <n> times in a row.*; and a job past its time limit: *The job didn't
+  finish within <n> minutes.* History adds *Run the workflow again later.* ([part 09](09-engine-and-pages.md) § 9).
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
-
-- **Member names `notSent` and `maxAgentCalls`** (§ 3, § 4): the content is decided (the removed keywords as JSON pointers; the ceiling recorded once in the header), the names aren't.
-- **The members of `invalid` and of a `retries` entry** (§ 4): the member names are decided, their objects' own members aren't.
-- **The `onInvalid` macro failure and `whenEmpty: fail` sentences.**
+Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).

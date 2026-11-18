@@ -682,7 +682,7 @@ registry** (the table in § 10.1), never the author's own profile.
   field:** it's never read as `profile.*`. It's a select list that starts empty, with a "Use this
   browser's zone" button that fills it only when clicked. The zone is recorded beside
   `run.date`. **Every job is refused until it's set**, whether or not the package reads
-  `run.date` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)): *"Set your time zone in your account settings before running a workflow."* (**Proposed** wording). The pages themselves are [Part 09](09-engine-and-pages.md)'s.
+  `run.date` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620)): *"Set your time zone in your account settings before running a workflow."* The pages themselves are [Part 09](09-engine-and-pages.md)'s.
 
 ## 11. What changes from version 30
 
@@ -699,8 +699,10 @@ registry** (the table in § 10.1), never the author's own profile.
 
 ## Refusals
 
-Each sentence is word for word. `<…>` are placeholders. Sentences marked *(decided)* are quoted
-from the deciding comment; the rest are this part's wording, **Proposed** as a group.
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+
+`<…>` are placeholders. Sentences marked *(decided)* are quoted from the deciding comment; the
+rest are this part's wording.
 
 **Checks**
 - R-C1: *"Deliverable '<id>' is checked by <reference>; a deliverable's check names a check.*."*
@@ -736,8 +738,8 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 
 **Refused at job start** (Create page)
 - J-1 *(decided)*: *"This workflow needs your signature. Choose one in Profile."*
-- J-2 (**Proposed**, the other fields): *"This workflow needs your <field label>. Set it in Profile, under Letter details."*
-- J-3 *(rule decided, [every job](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); wording **Proposed**)*: *"Set your time zone in your account settings before running a workflow."*
+- J-2 (the other fields): *"This workflow needs your <field label>. Set it in Profile, under Letter details."*
+- J-3 *(rule decided, [every job](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6958802620); wording new)*: *"Set your time zone in your account settings before running a workflow."*
 
 **Shown in History** (not refusals)
 - H-1 *(decided)*: *"<Deliverable label> was not sent: check '<id>' failed (<detail>)."*
@@ -747,6 +749,4 @@ from the deciding comment; the rest are this part's wording, **Proposed** as a g
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
-
-- **The refusal and job-start wordings not marked decided** (§ Refusals, including J-2 and J-3's wording): the decisions give the rule, not the sentence. Every other point this part proposed was decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); the examples' `whenEmpty` values were decided with part 10 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
+Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).

@@ -10,7 +10,7 @@ per-job ceiling (the engine side is [part 09](09-engine-and-pages.md)). Conditio
 declarations are JSON Logic, defined in [part 03](03-expressions.md); folders, ids and scopes are
 [part 01](01-files-and-scopes.md); formats are [part 02](02-types-and-inputs.md). Part 04's
 Proposed points were [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)
-on 2026-11-17; the ones left are build items, listed at the end.
+on 2026-11-17.
 
 ## 1. Flow nodes are folders
 
@@ -859,8 +859,11 @@ the production item's id (part 06). The deliverable is `deliverable.emr.consult`
   count.
 - **Each loop's `maxParallel` still applies within it.** The effective concurrency at a point is
   the smaller of the ceiling and the product of the caps along its nesting path.
-- **429 responses** are retried with back-off and recorded as retries on the node's row; a job
-  is never failed for capacity alone (part 09).
+- **429 responses and other service failures** are retried with back-off and recorded as retries
+  on the node's row. A node fails after 10 minutes of waiting on 429s in total, or after 5
+  attempts for another failure, and a job fails if it hasn't finished 30 minutes after it started;
+  all three are engine settings (part 09 § 3.4, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)). This replaces #1393's first
+  rule that a job is never failed for capacity alone.
 - **At publish, a note rather than a refusal** when nested caps multiply past the engine's
   ceiling (§ 10.2). The product is taken along each nesting path of loops and calls. For the
   note's worst case, a `maxParallel: null` loop over a list whose length publish knows (a
@@ -886,27 +889,28 @@ The record is part 08's. For flow and functions (storage 12 adds to 11, with qua
 
 ## 10. Refusals and notes
 
+The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
+
 ### 10.1 Refusals at publish
 
 Placeholders: `<id>` a node, loop, function or call id; `<n>`, `<m>` numbers; `<format>` a type
 string (part 02). "decided" means the sentence is quoted from the linked decision; "v30" means it
-is v30's built sentence, kept; **Proposed** wording is new. Every rule below is decided; refusal
-sentence wording is left to the build
+is v30's built sentence, kept; the rest is new. Every rule below is decided
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)).
 
 **Every flow node**
 
 | Sentence | Status |
 |---|---|
-| *"Loop '\<id\>' declares label null; a loop's or branch's label is what the rail, History and the diagram show: write one."* (also `While`, `If`, `Case`) | rule decided ([#1383](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6957670672)); wording **Proposed** |
-| *"\<Kind\> '\<id\>' declares \<member\>, which belongs to \<a for \| a while \| an if \| a case\>."* | v30's form, adapted to `kind`; wording **Proposed** |
+| *"Loop '\<id\>' declares label null; a loop's or branch's label is what the rail, History and the diagram show: write one."* (also `While`, `If`, `Case`) | rule decided ([#1383](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6957670672)) |
+| *"\<Kind\> '\<id\>' declares \<member\>, which belongs to \<a for \| a while \| an if \| a case\>."* | v30's form, adapted to `kind` |
 | *"\<subject\> returns nothing; name the body node the outside reads with ret."* (`ret` null) | v30 |
-| *"\<subject\> returns \<ret\>, which is not one of its own children (\<full names\>): write the child's full name, for example node.sections.paragraphs."* | v30, adapted to full names; **Proposed** wording |
+| *"\<subject\> returns \<ret\>, which is not one of its own children (\<full names\>): write the child's full name, for example node.sections.paragraphs."* | v30, adapted to full names |
 | *"\<subject\> lists node '\<id\>' twice; a body is a set."* | v30 |
-| *"\<Kind\> '\<id\>' declares format \<format\>; its ret makes it \<format\>."* | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)); wording **Proposed** |
-| *"\<Kind\> '\<id\>' declares reproducible \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)); wording **Proposed** |
-| *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent\> \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); wording **Proposed** |
-| *"\<Kind\> '\<id\>' \<in \| case \| with \<param\>\> is an expression; it names one readable thing: compute the value in a computed node and name that."* | rule decided ([part 03](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)); wording **Proposed** |
+| *"\<Kind\> '\<id\>' declares format \<format\>; its ret makes it \<format\>."* | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)) |
+| *"\<Kind\> '\<id\>' declares reproducible \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)) |
+| *"\<Kind\> '\<id\>' declares \<modelDerived \| runDependent\> \<true \| false\>; its body makes it \<false \| true\>."* (also `Call`) | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| *"\<Kind\> '\<id\>' \<in \| case \| with \<param\>\> is an expression; it names one readable thing: compute the value in a computed node and name that."* | rule decided ([part 03](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
 
 `<subject>` is `Loop 'x'`, `While 'x'`, `If 'x' then`, `If 'x' else`, `Case 'x' branch <n>`,
 `Case 'x' else`, or `Function 'x'`.
@@ -918,22 +922,22 @@ sentence wording is left to the build
 | *"Loop '\<id\>' has no body; name the nodes that run per item in nodes."* | v30 |
 | *"Loop '\<id\>' declares parallel true with maxParallel 1, which runs one item at a time; declare "parallel": false and "maxParallel": null instead."* | decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6877395680)) |
 | *"Loop '\<id\>' declares maxParallel \<n\>; the most is FormatBounds.parallel (15)."* | decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6904683449)) |
-| *"Loop '\<id\>' declares maxParallel \<n\>; the least is 2, or null for no cap of its own."* (0, negative, not an integer) | rule decided; wording **Proposed** |
-| *"Loop '\<id\>' declares maxParallel \<n\> with parallel false; a sequential loop runs one item at a time: write "maxParallel": null."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6877359197)); wording **Proposed** |
-| *"Loop '\<id\>' declares until with parallel true; until stops after the item where it holds, which needs items in order: declare "parallel": false and "maxParallel": null."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6877352714)); wording **Proposed** |
+| *"Loop '\<id\>' declares maxParallel \<n\>; the least is 2, or null for no cap of its own."* (0, negative, not an integer) | rule decided |
+| *"Loop '\<id\>' declares maxParallel \<n\> with parallel false; a sequential loop runs one item at a time: write "maxParallel": null."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6877359197)) |
+| *"Loop '\<id\>' declares until with parallel true; until stops after the item where it holds, which needs items in order: declare "parallel": false and "maxParallel": null."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6877352714)) |
 | *"Loop '\<id\>' declares max 0; the least is 1."* | v30 |
-| *"Loop '\<id\>' iterates \<reference\>, which is \<format\>; only a list can be iterated."* | v30's input sentence, generalised; wording **Proposed** |
+| *"Loop '\<id\>' iterates \<reference\>, which is \<format\>; only a list can be iterated."* | v30's input sentence, generalised |
 | *"Loop '\<id\>' iterates item.value.\<field\>, but it runs inside no loop; item.value names the enclosing loop's item."* | v30 |
 | *"Loop '\<id\>' iterates node.\<y\>.value.\<z\>; \<y\> runs inside loop '\<l\>' — a loop iterates a node outside it, or in an enclosing loop's body."* | v30 |
 | *"Loop '\<id\>' itemLabel '\<field\>' is not a field of the elements of \<reference\> (fields: \<fields\>)."* | v30's `labelField` sentence, renamed |
-| *"Loop '\<id\>' itemLabel '\<field\>' may be missing or null; itemLabel names a field every element has as a string."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6880614681)); wording **Proposed** |
-| *"Loop '\<id\>' itemLabel '\<field\>' is \<format\>; itemLabel names a string field."* | rule decided; wording **Proposed** |
+| *"Loop '\<id\>' itemLabel '\<field\>' may be missing or null; itemLabel names a field every element has as a string."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6880614681)) |
+| *"Loop '\<id\>' itemLabel '\<field\>' is \<format\>; itemLabel names a string field."* | rule decided |
 
 **`while`**
 
 | Sentence | Status |
 |---|---|
-| *"While '\<id\>' declares max null; a while must declare its bound (1 to 15)."* | decided wording "…a while must declare its bound (1 to 15)" ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6897363567)); `null` case **Proposed** |
+| *"While '\<id\>' declares max null; a while must declare its bound (1 to 15)."* | decided wording "…a while must declare its bound (1 to 15)" ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6897363567)); the `null` case added |
 | *"While '\<id\>' declares max \<n\>; a while runs at most FormatBounds.passes (15) passes."* | decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6904683449)) |
 | *"While '\<id\>' declares max \<n\>; the least is 1."* | v30 |
 | *"While '\<id\>' has no body; name the nodes that run per pass in nodes."* | v30 |
@@ -953,14 +957,14 @@ sentence wording is left to the build
 
 | Sentence | Status |
 |---|---|
-| *"If '\<id\>' declares then null; an if runs a then body."* | v30's sentence, adapted; wording **Proposed** |
-| *"Case '\<id\>' has no branches; a case runs one branch per set of values."* | v30's sentence, adapted; wording **Proposed** |
+| *"If '\<id\>' declares then null; an if runs a then body."* | v30's sentence, adapted |
+| *"Case '\<id\>' has no branches; a case runs one branch per set of values."* | v30's sentence, adapted |
 | *"Case '\<id\>' branch \<n\> lists no value; a branch's when names one or more values."* | v30, adapted |
-| *"Case '\<id\>' switches on \<reference\>, which is \<format\>; a case switches on an enumerated string."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)); wording **Proposed** |
-| *"Case '\<id\>' branch \<n\> lists "\<value\>", which is not one of \<reference\>'s values (\<values\>)."* | rule decided; wording **Proposed** |
-| *"Case '\<id\>' lists "\<value\>" in branches \<n\> and \<m\>; a value belongs to one branch."* | rule decided; wording **Proposed** |
-| *"Case '\<id\>' doesn't list \<values\> and has no else; a case has a branch for every value: add a branch, an empty branch, or an else."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118), [empty branch](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)); wording **Proposed** |
-| *"Case '\<id\>' branch \<n\> writes nodes \<[] \| ids\> with ret \<ret\>; an empty branch writes nodes [] and ret null together."* | rule decided ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)); wording **Proposed** |
+| *"Case '\<id\>' switches on \<reference\>, which is \<format\>; a case switches on an enumerated string."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)) |
+| *"Case '\<id\>' branch \<n\> lists "\<value\>", which is not one of \<reference\>'s values (\<values\>)."* | rule decided |
+| *"Case '\<id\>' lists "\<value\>" in branches \<n\> and \<m\>; a value belongs to one branch."* | rule decided |
+| *"Case '\<id\>' doesn't list \<values\> and has no else; a case has a branch for every value: add a branch, an empty branch, or an else."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118), [empty branch](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
+| *"Case '\<id\>' branch \<n\> writes nodes \<[] \| ids\> with ret \<ret\>; an empty branch writes nodes [] and ret null together."* | rule decided ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | skip reason *"case '\<id\>': arm for \<value\> does nothing"* | decided ([#1385](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 
 **Functions and calls**
@@ -968,39 +972,36 @@ sentence wording is left to the build
 | Sentence | Status |
 |---|---|
 | *"Node '\<id\>' in function '\<f\>' reads input.\<name\>; a function reads only its parameters: add a parameter and pass it in with."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6888201229)) |
-| *"Node '\<id\>' in function '\<f\>' reads \<reference\>; a function reads only its parameters: add a parameter and pass it in with."* (outer `node.*`, a caller's `item` or `pass`, `run.*`, `check.*`, `profile.*`) | the decided sentence, generalised; **Proposed** |
+| *"Node '\<id\>' in function '\<f\>' reads \<reference\>; a function reads only its parameters: add a parameter and pass it in with."* (outer `node.*`, a caller's `item` or `pass`, `run.*`, `check.*`, `profile.*`) | the decided sentence, generalised |
 | *"Function '\<f\>' uses \<snippet \| macro \| format \| renderer\> '\<id\>' but doesn't list it in uses."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6888253558)) |
 | *"Function '\<f\>' has its own \<snippet \| macro \| format \| renderer\> '\<id\>' and also uses the package's: rename one."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897717122)) |
 | *"Function '\<a\>' calls '\<b\>', which calls '\<a\>': functions may not call themselves."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897233071)); for a longer cycle the chain is named in full |
-| *"Function '\<a\>' calls '\<a\>': functions may not call themselves."* | rule decided; wording **Proposed** (the direct case) |
+| *"Function '\<a\>' calls '\<a\>': functions may not call themselves."* | rule decided (the direct case) |
 | *"Call '\<id\>' reaches depth \<n\>; calls nest at most FormatBounds.depth (15) deep."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6904683688)) |
 | *"Function '\<f\>' returns node.\<id\>, an if with no else: add an else, or return a node that always runs."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897508423)) |
-| *"Function '\<f\>' returns node.\<id\>, which runs inside if '\<b\>' and may be skipped: return a node that always runs."* | rule decided; wording **Proposed** (a non-exhaustive `case` is refused for itself, § 5.2) |
-| *"Function '\<f\>' returns node.\<id\>, a case with an empty branch for \<values\>: return a node that always runs."* | rule decided (§ 7.6); wording **Proposed** |
+| *"Function '\<f\>' returns node.\<id\>, which runs inside if '\<b\>' and may be skipped: return a node that always runs."* | rule decided (a non-exhaustive `case` is refused for itself, § 5.2) |
+| *"Function '\<f\>' returns node.\<id\>, a case with an empty branch for \<values\>: return a node that always runs."* | rule decided (§ 7.6) |
 | *"Function '\<f\>' returns node.\<id\>, whose branches return \<format\> and \<format\>: a function returns one format. Wrap them in an object format."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897508423)) |
-| *"Function '\<f\>' declares format \<format\>; its ret '\<id\>' returns \<format\>."* | rule decided; wording **Proposed** |
-| *"Function '\<f\>' holds a \<checks \| deliverables\> folder; checks and deliverables live only at the package's top level: return a check_result or a value instead."* | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897233071)); wording **Proposed** |
+| *"Function '\<f\>' declares format \<format\>; its ret '\<id\>' returns \<format\>."* | rule decided |
+| *"Function '\<f\>' holds a \<checks \| deliverables\> folder; checks and deliverables live only at the package's top level: return a check_result or a value instead."* | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897233071)) |
 | *"Macro '\<m\>' is placed in function '\<f\>', where its if reads node.\<id\>, which doesn't exist there: add a classifier with that id (pattern A), or pass the decision in and hold it in a computed node (pattern B)."* | decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)), with "a let" renamed "a computed node" (#1385) |
-| *"Call '\<id\>' names function '\<f\>', which the package doesn't define."* | rule decided; wording **Proposed** |
-| *"Call '\<id\>' passes no \<param\>; function '\<f\>' takes \<params\>."* (a parameter left out, even an optional one: pass null) | rule decided; wording **Proposed** |
-| *"Call '\<id\>' passes \<param\>, which function '\<f\>' doesn't take (\<params\>)."* | rule decided; wording **Proposed** |
-| *"Function '\<f\>' parameter '\<param\>' declares \<required \| channel\>; a parameter has label, description and format, and every one is passed."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)); wording **Proposed** |
-| *"Call '\<id\>' passes \<reference\> (\<format\>) as \<param\>; function '\<f\>' takes \<format\>."* | rule decided; wording **Proposed** |
+| *"Call '\<id\>' names function '\<f\>', which the package doesn't define."* | rule decided |
+| *"Call '\<id\>' passes no \<param\>; function '\<f\>' takes \<params\>."* (a parameter left out, even an optional one: pass null) | rule decided |
+| *"Call '\<id\>' passes \<param\>, which function '\<f\>' doesn't take (\<params\>)."* | rule decided |
+| *"Function '\<f\>' parameter '\<param\>' declares \<required \| channel\>; a parameter has label, description and format, and every one is passed."* | rule decided ([#1392](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118)) |
+| *"Call '\<id\>' passes \<reference\> (\<format\>) as \<param\>; function '\<f\>' takes \<format\>."* | rule decided |
 | *"Function '\<id\>' reads param.\<name\>, which carries profile.\<field\>, in \<a prompt \| a part \| a condition\>; the profile is read only in deliverables and macro bodies."* (part 06 R-F3) | decided ([#1408](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6959886233), [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6959886713)) |
-| *"Call '\<id\>' declares format \<format\>; function '\<f\>' returns \<format\>."* | rule decided; wording **Proposed** |
-| *"Call '\<id\>' has a body; a call is a header only."* | rule decided; wording **Proposed** |
+| *"Call '\<id\>' declares format \<format\>; function '\<f\>' returns \<format\>."* | rule decided |
+| *"Call '\<id\>' has a body; a call is a header only."* | rule decided |
 
 ### 10.2 Notes and warnings at publish
 
 | Sentence | Kind | Status |
 |---|---|---|
 | *"Up to \<n\> agent calls could run at once; this engine runs at most \<N\> per job, so the rest wait their turn."* | note | decided ([#1393](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6904683179)) |
-| *"An unbounded number of agent calls could run at once (loop '\<id\>' has no cap over a list known only at run time); this engine runs at most \<N\> per job, so the rest wait their turn."* | note | rule decided (§ 8); wording **Proposed** |
-| *"Function '\<f\>' lists \<snippet \| macro \| format \| renderer\> '\<id\>' in uses but never uses it."* | warning | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6888253558)); wording **Proposed** |
+| *"An unbounded number of agent calls could run at once (loop '\<id\>' has no cap over a list known only at run time); this engine runs at most \<N\> per job, so the rest wait their turn."* | note | rule decided (§ 8) |
+| *"Function '\<f\>' lists \<snippet \| macro \| format \| renderer\> '\<id\>' in uses but never uses it."* | warning | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6888253558)) |
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed
-before the contracts release.
-
-- **Every refusal and note wording marked Proposed** in § 10.
+Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).

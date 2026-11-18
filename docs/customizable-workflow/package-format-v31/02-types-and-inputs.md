@@ -869,7 +869,7 @@ Mechanical, in `WorkflowPackageMigration30To31` ([part 10](10-migration-and-tool
 
 The engine's `WorkflowPackages/Current` response is the Copilot agent's and the Zoom app's only
 contract, and it **changes by addition only:** version 31 inputs map into its existing fields plus
-a new `Format` member, and `Macros` comes back empty for version 31 packages
+new `Format` and `Channel` members, and `Macros` comes back empty for version 31 packages
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6957666238),
 [mapping decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
 The satellites are updated before the cutover, so they work with 30 and 31 alike
@@ -889,6 +889,7 @@ The satellites are updated before the cutover, so they work with 30 and 31 alike
 | `ExpectedContent` | `channel` |
 | `Types` | `null` (31 has no union inputs) |
 | **`Format`** (new) | the input's format as a self-contained schema (below) |
+| **`Channel`** (new) | `channel`, alongside `ExpectedContent`, so a satellite can tell an input it can't fill ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)) |
 
 **`Type`, derived from the format:**
 
@@ -912,17 +913,17 @@ The satellites are updated before the cutover, so they work with 30 and 31 alike
 - **A satellite that can't show an input** (an inline object schema, a document upload) shows
   *"This workflow needs the web app"*, with a link
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6957669427)).
-- **There is no `description` member yet** at 31; only `Format` is added.
+- **There is no `description` member yet** at 31; only `Format` and `Channel` are added.
 
 ## Refusals
 
-Every rule below is decided; the wording of a sentence marked **Proposed** is left to the build.
+Every rule below is decided. The wording below is the starting text. It follows the style rules in [index § 7](index.md#7-refusal-sentences) and is settled in the conformance suite's pull request.
 
 **Decided wording:**
 - *"This workflow needs the web app"* (a satellite, not the checker: [#1447](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6957669427)).
 - History's *"Not sent to the model: …"* (§ 3.5) and *"computed from model text: <key>"* (§ 1.2).
 
-**Kinds and formats (Proposed wording):**
+**Kinds and formats:**
 - *"Node '<id>' declares unknown kind '<kind>' (accepted: agent, rendered, computed, for, while, if, case, call)."*
 - *"Node '<id>' declares kind let; a let is now kind computed, with its JSON Logic in expression."*
 - *"Node '<id>' is kind <kind> and declares producer '<value>'; a <kind> node's producer is <generated | computed>."*
@@ -935,12 +936,12 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"Branch <n> of <if | case> '<id>' returns <format>, which is not in the declared union <union>."*
 - *"Format '<name>' is not a built-in, catalogue or package format."*
 
-**Reads (Proposed wording):**
+**Reads:**
 - *"'input.<id>' is read bare; read input.<id>.value, or input.<id>.content for text."*
 - *"'<path>.title' reads the title of a plain enum, which has none; use a labelled oneOf, or read .value."*
 - *"<Condition> compares <path>.title with '<literal>', which is not one of its titles (<titles>)."*
 
-**The dialect (Proposed wording):**
+**The dialect:**
 - *"<Format | Input '<id>'> uses keyword '<keyword>' at <path>, which is outside the formats dialect."*
 - *"Format '<name>' declares no $schema; every format file names the dialect (urn:consultologist:spec:31:dialect)."*
 - *"Format '<name>' declares $schema '<value>', but the package is specVersion <n>, whose dialect is <id>."*
@@ -956,16 +957,16 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"Package format '<id>' declares $id; a package format's $id is written at publish."*
 - *"Package format '<id>' is a <string | number | boolean>; a package defines object and array formats, and refers to built-in and catalogue formats by name."*
 
-**Annotations (Proposed wording):**
+**Annotations:**
 - *"Format '<name>' is a text format and declares no contentMediaType."*
 - *"Format '<name>' is Markdown and declares no x-markdown (block or inline)."*
 - *"<Format> declares <contentMediaType | x-markdown> at <path>, where it doesn't apply."*
 - *"<Input '<id>' | Node '<id>'>'s inline format declares <contentMediaType | x-markdown>; text inside an inline format is a $ref to a text format."*
 
-**Formats folder (Proposed wording):**
+**Formats folder:**
 - *"formats/index.json lists '<id>', but formats/ has no <id>.json."*
 
-**Inputs (Proposed wording):**
+**Inputs:**
 - *"Input '<id>' takes markdown_inline; use plaintext or markdown_block."*
 - *"Input '<id>' takes a choice of shapes (anyOf); an input has one shape."*
 - *"Input '<id>' declares channel '<channel>' (accepted: transcript, image, ambient-note, form)."*
@@ -974,7 +975,7 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"Input '<id>' field '<property>' has no title; the Create page labels each field by its title."*
 - *"Input '<id>' declares default; inputs have no default at 31."*
 
-**Enums (Proposed wording):**
+**Enums:**
 - *"<Subject> declares one value; an enum with one value is a constant, not a choice."* (30's sentence, carried over)
 - *"<Subject> declares value '<value>' twice."*
 - *"<Subject> value '<value>' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores)."* (30's sentence)
@@ -984,6 +985,4 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 
 ## Proposed in this part
 
-These are left to the build: each build PR lists the ones it settles, and all are confirmed before the contracts release.
-
-- **Every refusal sentence marked Proposed:** the decisions settled the rules, and left the wording to the build.
+Nothing. Every point is decided; refusal-sentence wording is settled in the conformance suite's pull request ([index § 7](index.md#7-refusal-sentences)).
