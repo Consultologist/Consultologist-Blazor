@@ -4,10 +4,12 @@ This part defines the one language a version 31 package uses to **decide** (ever
 and to **compute** (a `kind: computed` node's `expression`): JSON Logic, written directly in the
 header, with a fixed set of standard and custom operations, typed against the format dialect of
 [part 02](02-types-and-inputs.md). It covers where expressions appear and what each site may read,
-`run.*` reads and contagious run-dependence, the date operations, null semantics, strict equality,
-the printer, and the evaluator. Issues: #1386 (the language), #1400 (`matches`, `has_word`), with
-#1453 (Milestone 40) as context only. Scriban, the presentation language, is
-[part 05](05-templates-and-macros.md).
+`run.*` reads and the two contagious flags (run-dependent and model-derived), the date
+operations, null semantics, strict equality, the printer, and the evaluator. Issues: #1386 (the
+language), #1400 (`matches`, `has_word`), with #1453, #1471, #1472 and #1478 (Milestone 40) as
+context only. Scriban, the presentation language, is [part 05](05-templates-and-macros.md).
+Part 03's Proposed points were [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)
+on 2026-11-17; the ones left are build items, listed at the end.
 
 ## 1. The rule: JSON Logic decides and computes; Scriban presents
 
@@ -47,17 +49,18 @@ A JSON Logic **rule** is one of:
 - an **operation**: a JSON object with exactly one member, whose name is the operation and whose
   value is its operands.
 
-### 2.2 The canonical form (Proposed)
+### 2.2 The canonical form
 
-`resolve.json` holds JSON Logic "in one canonical form" (#1394). **Proposed:** the canonical form
-is also the only form an author may write, so what is written is byte-for-byte what is stored:
+`resolve.json` holds JSON Logic "in one canonical form" (#1394). The canonical form is also the
+only form an author may write, so what is written is byte-for-byte what is stored
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)):
 
-- **`var` takes one string**, the path: `{ "var": "input.kind" }`. The array form and the
+- **`var` takes one string**, the path: `{ "var": "input.kind.value" }`. The array form and the
   default second operand are refused (fixed arity, #1394). An empty path (the whole data) is
   refused.
 - **`object` takes one object**, a map from field names to rules (§ 5.4).
 - **Every other operation takes an array**, even with one operand: `{ "!": [ … ] }`,
-  `{ "size": [ { "var": "input.prior_notes" } ] }`.
+  `{ "size": [ { "var": "input.prior_notes.value" } ] }`.
 - **Paths** are dot-separated segments: a root (§ 4), then member and field names, each matching
   `^[a-z_][a-z0-9_]*$` or a format's declared property name. Numeric segments (list indexes) are
   refused: a positional read of a list is the zip #1406 rules out; a loop's `.items` pairs by
@@ -74,10 +77,10 @@ The `applies` branch of `example-conditional-sections`, migrated from
 ```json
 { "or": [
     { "!==": [ { "var": "item.id" }, "billing" ] },
-    { "===": [ { "var": "input.include_billing" }, true ] } ] }
+    { "===": [ { "var": "input.include_billing.value" }, true ] } ] }
 ```
 
-Printed (§ 8): `item.id ≠ "billing" or input.include_billing = true`.
+Printed (§ 8): `item.id ≠ "billing" or input.include_billing.value = true`.
 
 ## 3. Where expressions appear
 
@@ -90,7 +93,6 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing = true`.
 | a deliverable | `if` (or `null`) | part 06 | condition |
 | a part (a node's `parts`) | `if` (or `null`) | part 05 | condition |
 | a macro, and a macro folder | `if` (or `null`) | part 05 | condition |
-| a snippet folder item | `if` (or `null`) | part 05 | condition |
 | a production leaf (`agent`, `rendered`, `computed`, `call`) | `if` (or `null`) | part 01 | condition ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064), see below) |
 | a `computed` node | `expression` | part 01; § 5 here | the node's declared `format` |
 
@@ -99,9 +101,15 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing = true`.
 - **A `computed` expression** must type as the node's declared `format`, checked through each
   operation's typed result (§ 7).
 - **Not expressions:** a `for`'s source (`in`), a `case` subject and a `call`'s `with` arguments
-  stay **reference strings** (part 04). Whether they become `{ "var": … }` was left open on
-  #1386; **Proposed:** they stay plain references, because each names one readable thing and is
-  never computed.
+  are **reference strings** (part 04), never JSON Logic expressions
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
+  Each names one readable thing. A list, subject or argument that has to be computed is a
+  `computed` node, which the reference then names: compute, then name. Author documentation for
+  this pattern is #1473.
+- **Snippet folder items have no `if`**
+  ([decided in part 01](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6961890910)),
+  so a folder's size is its number of files and there is no folder-item condition to read
+  anything. Dynamic folder sizes are #1468 (Milestone 40).
 - **A production leaf's own condition is spelled `if`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064),
   [#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6959885428)). At 30 a node may carry a `when` gate (v18); at 31 it
   is `if`, as a folder item's `when` became `if` at 26, a required member that is a condition or
@@ -114,7 +122,7 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing = true`.
 
 | Root | Means | Typed by |
 |---|---|---|
-| `input.<id>` | a package input's value | the input's `format` (part 02) |
+| `input.<id>` | a package input, read like a node: `.value` (the raw value, every input), `.content` (a text-format input's text), `.title` (the chosen `oneOf` arm's title, at any depth); a bare `input.<id>` is refused ([decided in part 02](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)) | the input's `format` (part 02) |
 | `node.<id>` | a visible node: `.value`, `.content`, `.state`, and per kind `.items`, `.passes`, `.stopped`, `.history` (part 04) | the node's `format` |
 | `check.<id>` | a visible check: `.value` (a `check_result`), `.state`; a check loop's `.items` | part 06 |
 | `item` | the innermost loop's item: `.id`, `.value`, `.parent` (part 04 § 2.6) | the loop source's element |
@@ -126,6 +134,12 @@ Printed (§ 8): `item.id ≠ "billing" or input.include_billing = true`.
 profile, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)),
 `snippet.*`, `part.*`, `macro.*`, `renderer.*` and `deliverable.*`. A snippet folder's item data
 is read through the loop that iterates it (`item.value.title`).
+
+**`.title` may be compared** in conditions and computed expressions, as a `string`: publish
+checks that the literal is one of the format's titles, and `.title` on a plain `enum` is refused.
+The stored and recorded value is always the raw value; the record prints the condition with both
+the raw value and the title (§ 10;
+[decided in part 02](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)).
 
 Visibility (which `node.<id>` a site can see, alignment by path, reading into a loop's body) is
 #1384's rule, in [part 01](01-files-and-scopes.md), and the same for JSON Logic as for templates.
@@ -144,8 +158,7 @@ Every `var` is a dependency edge, as every template read is, except reads of ear
 | deliverable `if` | `input`, a node's **`.value`** (data), `run` | `.content` (text), `check.*` (a possible cycle), `profile`, deliverables ([corrected](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6924497456)) |
 | part `if` | what the node's prompt reads, data roots only | as above |
 | macro `if`, macro folder `if` | evaluated **where the macro is placed**: what the placing node's prompt reads, data roots only | `param.*` (a shared macro must not depend on one function's parameter, [#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)) |
-| snippet folder item `if` | `input`, `run` (**Proposed**: v26's input-only rule plus run facts, so a folder's size is known at job start) | everything else |
-| production leaf `if` (Proposed, § 3) | what a template at its place reads, data roots only | as above |
+| production leaf `if` (§ 3) | what a template at its place reads, data roots only | as above |
 | `computed` `expression` | everything visible at its place: `input`, `node`, `check`, `item`, `pass`, `param`, `run` | as above |
 
 **Inside a function** every site reads only `param.*` and the function's own nodes; `input.*`,
@@ -163,8 +176,8 @@ JSON Logic may read the same `run.*` set as bodies (#1425): `run.date`, `run.id`
 |---|---|---|
 | `run.date` | `date` (`string`, `format: date`) | the job's start date in the account's time zone, an IANA name recorded beside it ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1406#issuecomment-6920512477)) |
 | `run.id` | `string` | the job's id |
-| `run.package` | `string` | **Proposed:** `<name>@<version>` of the package version run |
-| `run.engine` | `string` | **Proposed:** the engine's release version (`v2026.11.5` form) |
+| `run.package` | `string` | `<name>@<version>` of the package version run ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
+| `run.engine` | `string` | the engine's release version, in the `v2026.11.5` form ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
 
 - **Recorded like any read:** the raw value of each run fact the package reads is recorded once
   per run ([part 08](08-record.md)).
@@ -187,47 +200,101 @@ JSON Logic may read the same `run.*` set as bodies (#1425): `run.date`, `run.id`
 - **The advance warning** (Editor and publish) names every run-dependent value and decision,
   not only direct `run.*` reads (§ 11.2).
 
-**How far it spreads (Proposed).** The decision speaks of values "derived from" run facts.
-**Proposed:** run-dependence propagates through every value a node produces from its reads:
-`computed` and `rendered` nodes, `agent` nodes whose prompt reads `run.*` or a run-dependent
-value, a `call`'s result when any argument or inner value is run-dependent, a parameter bound to
-a run-dependent argument, a flow node whose `ret` (or a taken branch's) is run-dependent, and a
-loop's items when its source is. The propagation is computed statically from `resolve.json`'s
-edges, so the warning can name each one before a run.
+**How far it spreads**
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
+Run-dependence passes through everything a value is made from:
+
+- `computed` and `rendered` nodes that read a run-dependent value;
+- `agent` nodes whose prompt reads `run.*` or a run-dependent value;
+- a `call`'s result when any argument is run-dependent (the parameter bound to it is
+  run-dependent inside the function);
+- a flow node whose `ret` is run-dependent;
+- a loop's items when its source is.
+
+It is worked out from `resolve.json`'s edges before any run, so the warning can name each value
+before a job starts. Each row records it as `runDependent` (part 08). Writing the flag in the
+format or the header, checked like `reproducible`, is #1478 (Milestone 40).
+
+### 4.5 Model-derived is contagious
+
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698),
+[sources](https://github.com/Consultologist/Consultologist-Blazor/issues/1392#issuecomment-6963556118))
+
+**Model-derived** is a second contagious flag, beside run-dependence and worked out the same
+way. It says a value came from a model's output somewhere upstream.
+
+- **Where it starts:**
+  - the output of every node whose `producer` isn't `computed` (part 02 § 1.3), so every
+    `agent` node's output is model-derived (the reverse doesn't hold: a `computed` value can be
+    model-derived too);
+  - an input element from a previous run's deliverable (#874), whose record links to the job it
+    came from (part 04 § 4).
+
+  Typed text and uploaded documents start clean. Other machine sources (OCR, transcription) are
+  producers reserved for Milestone 40 (`extracted`, #1438; part 02 § 1.3).
+- **How it spreads:** exactly as run-dependence does (§ 4.4): through `computed` and `rendered`
+  nodes, `agent` prompts, `call` arguments and results, a flow node's `ret`, and a loop's items.
+  A decision whose condition reads a model-derived value is model-derived.
+- **Formats are shape only.** `lower`, `trim` and any other `computed` expression return their
+  operand's format unchanged, so `trim` of an agent's `plaintext` is `plaintext`; the node's
+  producer is `computed` and its `reproducible` stays `true`. The value keeps its lineage through
+  the flag, never through its format
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)).
+- **It is recorded and shown:** each row carries `modelDerived` (part 08), and History, the
+  diagram and the Editor show it: *"computed from model text: node.draft"*.
+- **It is worked out, never written:** the resolver computes it from `resolve.json`'s edges
+  before any run. Making it explicit, in the format or the header, is #1478 (Milestone 40).
+
+Example, fictional: a `computed` node that checks whether a model's draft names a drug:
+
+```json
+{ "in": [ "letrozole", { "lower": [ { "var": "node.draft.content" } ] } ] }
+```
+
+It returns `boolean`, its producer is `computed`, it is reproducible, and it is model-derived,
+because `node.draft` is an `agent` node's output. A macro's `if` that reads it is a model-derived
+decision.
 
 ## 5. The operations
 
 ### 5.1 Standard JSON Logic operations
 
-Every operation not in this table is refused at publish (§ 11.1). "data" is `string`, `number`,
-`boolean` and `date`, plus `null` where the operand's type is nullable; "text" is any text format
-(`plaintext`, `markdown_block`, `markdown_inline`, `agent_*`).
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698))
+
+The allowed standard operations are `var`, `missing`; `if` (with an else); `===`, `!==`, and
+`<`, `<=`, `>`, `>=` with two operands; `and`, `or`, `!`, `in`, `cat`; `+`, `-`, `*`, `/`, `%`,
+`min`, `max`. Every operation not in this table or §§ 5.2–5.5 is refused at publish (§ 11.1).
+Reviewing the whole set is #1471 (Milestone 40).
+
+"data" is `string`, `number`, `boolean` and `date`, plus `null` where the operand's type is
+nullable; "text" is any text format (`plaintext`, `markdown_block`, `markdown_inline`).
 
 | Operation | Operands | Operand types | Result | Null behaviour | Notes |
 |---|---|---|---|---|---|
 | `var` | one path string | n/a | the path's type | absent or null reads as `null` | § 2.2 |
-| `missing` | one array of literal path strings | paths of the site's roots | `list<string>` (the absent paths) | a path is missing when its value is `null` or absent; **Proposed:** also `""`, as json-logic-js does, so an unsupplied text input counts as missing | tested by truthiness (empty list is false) |
-| `if` | 3 or more, odd count: `[c1, a1, c2, a2, …, else]` | conditions, then branches of one type | the branches' type | a `null` condition is false | lazy; **Proposed:** an even count (no else) is refused, since every member is explicit (#1394) |
+| `missing` | one array of literal path strings | paths of the site's roots | `list<string>` (the absent paths) | a path is missing when its value is `null`, absent or `""` (as json-logic-js does, so an unsupplied text input counts as missing) | tested by truthiness (empty list is false) |
+| `if` | 3 or more, odd count: `[c1, a1, c2, a2, …, else]` | conditions, then branches of one type | the branches' type | a `null` condition is false | lazy; an even count (no else) is refused, since every member is explicit (#1394) |
 | `and`, `or` | 2 or more | `boolean` (nullable allowed) | `boolean` | `null` is false | short-circuits; standard JSON Logic returns an operand, which is a boolean here because operands are typed boolean |
 | `!` | 1 | `boolean` (nullable allowed) | `boolean` | `!null` is `true` | refused on text, numbers, lists and objects (not a blank test, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878721006)) |
 | `===`, `!==` | 2 | two data values of one type, or either `null` | `boolean` | `null` is compared as a value: `null === null` is true | refused on text, lists and objects; an enum literal must be a value of the enum |
-| `<`, `>`, `<=`, `>=` | exactly 2 | two `number`s, or two `date`s | `boolean` | **false** when either operand is `null` (no coercion to 0) | dates compare chronologically; the 3-operand "between" form is refused (**Proposed**: one spelling, `and` of two comparisons) |
+| `<`, `>`, `<=`, `>=` | exactly 2 | two `number`s, or two `date`s | `boolean` | **false** when either operand is `null` (no coercion to 0) | dates compare chronologically; the 3-operand "between" form is refused (one spelling: `and` of two comparisons) |
 | `+`, `*` | 2 or more | `number` | `number` | `null` if any operand is `null` | strings are never coerced |
 | `-` | 1 (negation) or 2 | `number` | `number` | `null` if any operand is `null` | |
 | `/`, `%` | 2 | `number` | `number` | `null` if any operand is `null`; division or remainder by zero gives `null` | |
-| `min`, `max` | 1 or more | `number` | `number` | `null` if any operand is `null` | **Proposed** as part of arithmetic |
-| `in` (list) | 2: `[needle, list]` | data needle; a `list` of the same data type | `boolean` | `null` needle: true only if the list holds `null`; `null` list: false | membership: `input.note_type in ["consult", "follow_up"]` |
+| `min`, `max` | 1 or more | `number` | `number` | `null` if any operand is `null` | part of arithmetic |
+| `in` (list) | 2: `[needle, list]` | data needle; a `list` of the same data type | `boolean` | `null` needle: true only if the list holds `null`; `null` list: false | membership: `input.note_type.value in ["consult", "follow_up"]` |
 | `in` (text) | 2: `[needle, haystack]` | a `string` needle; a text or `string` haystack | `boolean` | either `null`: false | exact, case-sensitive substring search (ordinal); on Markdown it searches the source ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878673101)) |
-| `cat` | 2 or more | `string`, `number`, plain-text formats | `string` when every operand is data; `plaintext` otherwise | **Proposed:** a `null` operand contributes `""` (json-logic-js writes `"null"`) | Markdown operands refused (**Proposed**: convert with `plain` first, so one result has one media type); numbers in the invariant culture |
+| `cat` | 2 or more | `string`, `number`, plain-text formats | `string` when every operand is `string`; `plaintext` otherwise | a `null` operand contributes `""` (json-logic-js writes `"null"`) | Markdown operands refused (convert with `plain` first, so one result has one media type); numbers in the invariant culture |
 
 **Refused standard operations** (§ 11.1): `==` and `!=` (strict equality only,
 [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6957665806));
 `substr` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878721006));
-and, **Proposed**, `!!` (with `!` limited to booleans it only repeats its operand), `?:` (a
-second spelling of `if`), `missing_some`, `merge`, `map`, `filter`, `reduce`, `all`, `some`,
-`none` (they change what `var` names inside them, which the checker's typing of § 7 doesn't
-cover; none is used by today's packages), `log`, and Corvus's non-standard extras (`asDouble`,
-`asLong`, …).
+`!!` (with `!` limited to booleans it only repeats its operand) and `?:` (a second spelling of
+`if`); `missing_some`, `merge` and `log`; `map`, `filter`, `reduce`, `all`, `some` and `none`
+(they change what `var` names inside them, which the checker's typing of § 7 doesn't cover; none
+is used by today's packages); three-operand comparisons; and Corvus's non-standard extras
+(`asDouble`, `asLong`, …)
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
 
 ### 5.2 Custom text operations
 
@@ -240,12 +307,15 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 "Text-like" below means a text format or `string`. Characters are **Unicode scalar values**
 (code points), never UTF-16 units. Whitespace is Unicode `White_Space`.
 
-| Operation | Signature | Result | Meaning | Null behaviour (**Proposed** except where linked) |
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698):
+definitions and null behaviour)
+
+| Operation | Signature | Result | Meaning | Null behaviour |
 |---|---|---|---|---|
 | `size` | `size(x)` | `number` | text-like: the count of code points; a list: its element count | `null` |
 | `blank` | `blank(x)` | `boolean` | true if `x` is empty or only whitespace | `true` |
-| `words` | `words(x)` | `number` | the count of maximal runs of non-whitespace characters (**Proposed** definition) | `null` |
-| `lines` | `lines(x)` | `number` | `0` for `""`; otherwise 1 plus the count of line breaks (`\r\n`, `\n`, `\r`), not counting one at the very end (**Proposed** definition) | `null` |
+| `words` | `words(x)` | `number` | the count of maximal runs of non-whitespace characters | `null` |
+| `lines` | `lines(x)` | `number` | `0` for `""`; otherwise 1 plus the count of line breaks (`\r\n`, `\n`, `\r`), not counting one at the very end | `null` |
 | `lower` | `lower(x)` | text-like (see below) | lower-cased by the invariant culture's simple case mapping | `null` |
 | `trim` | `trim(x)` | text-like (see below) | leading and trailing whitespace removed | `null` |
 | `starts_with` | `starts_with(x, prefix)` | `boolean` | ordinal, case-sensitive prefix test; on Markdown, of the source | `false` if either is `null` |
@@ -254,14 +324,16 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 | `matches` | `matches(x, pattern)` | `boolean` | § 5.3 | `false` if `x` is `null` |
 | `has_word` | `has_word(x, word)` | `boolean` | § 5.3 | `false` if `x` is `null` |
 
-- **`lower` and `trim` keep the operand's media type and lose its agent marker (Proposed):**
-  `agent_plaintext` gives `plaintext`, `agent_markdown_block` gives `markdown_block`,
-  `markdown_inline` stays `markdown_inline`, `string` stays `string`. Only `kind: agent` returns
-  `x-agent: true` formats, so a computed node that trims an agent's text returns computed text.
+- **`lower` and `trim` return their operand's format unchanged**
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698),
+  [pure shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)): `plaintext` stays `plaintext`, `markdown_block` stays `markdown_block`,
+  `markdown_inline` stays `markdown_inline`, `string` stays `string`. A computed node that trims
+  an agent's text has producer `computed`, and its value stays **model-derived** (§ 4.5).
 - **Case-insensitive search** is written by lowering the haystack:
   `{ "in": [ "letrozole", { "lower": [ { "var": "node.draft.content" } ] } ] }`. `in` stays
   standard.
-- **Text searched as read** is written with `plain`: `"letrozole" in plain(input.consult_draft)`.
+- **Text searched as read** is written with `plain`:
+  `"letrozole" in plain(input.consult_draft.content)`.
 
 ### 5.3 `matches` and `has_word`
 
@@ -274,14 +346,16 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 - **I-Regexp has no `\b`, no `\d`/`\w`/`\s`, and no `^`/`$` anchors.** A start or end is tested
   with `starts_with`/`ends_with`; a whole word with `has_word`.
 - **`pattern` is a literal string** in the package, never computed, checked against RFC 9485's
-  grammar at publish. **Proposed:** at most **200** characters (counted in code points).
+  grammar at publish, at most **200** characters long (counted in code points,
+  [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
 - **No flags:** always case-sensitive. Case-insensitive matching lowers the text and writes the
   pattern in lower case: `matches(lower(x), "letrozole|femara")`.
 - **Typing:** `x` is a text format or `string` data. On Markdown it searches the source.
 - **Engine:** the I-Regexp pattern is translated to .NET per RFC 9485 § 5 (for example `.`
   becomes `[^\n\r]`) and run with `RegexOptions.NonBacktracking | RegexOptions.CultureInvariant`,
-  with a time-out per match. **Proposed:** 100 ms; a time-out fails the node that owns the
-  condition with § 11.3's sentence, since the decision can't be made. (.NET matches UTF-16
+  with a time-out of **100 ms** per match. A time-out fails the node that owns the condition,
+  recorded with its reason (§ 11.3), since the decision can't be made
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)). (.NET matches UTF-16
   units, so the conformance suite carries vectors with characters outside the Basic
   Multilingual Plane to prove the translation counts code points.)
 - **The record** keeps the pattern (package text, part of the printed condition) and the true or
@@ -290,21 +364,28 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 **`has_word(x, word)`**
 - True if `word` occurs in `x` (ordinal, case-sensitive) with a **word boundary** on each side:
   the character before the occurrence, if any, and the character after it, if any, are not word
-  characters. **Proposed:** word characters are Unicode letters (`L*`), marks (`M*`), decimal
-  digits (`Nd`) and connector punctuation (`Pc`), as .NET's `\w`.
-  `has_word(input.draft, "pain")` is false for "painful" and "Spain".
-- **Proposed:** `word` is a literal, non-blank string, checked at publish like a pattern, so it
-  is package text in the record. It may contain spaces (`"chest pain"`).
+  characters. Word characters are .NET's: Unicode letters (`L*`), marks (`M*`), decimal digits
+  (`Nd`) and connector punctuation (`Pc`, which includes `_`)
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
+  `has_word(input.draft.content, "pain")` is false for "painful" and "Spain".
+- **`word` is a literal, non-blank string,** checked at publish like a pattern, so it is package
+  text in the record. It may contain spaces (`"chest pain"`).
 - **Typing** as `matches`.
+- A broader `has_word` is #1472 (Milestone 40).
 
 ### 5.4 Custom structural and check operations
 
 | Operation | Signature | Operand types | Result | Null behaviour |
 |---|---|---|---|---|
 | `object` | `{ "object": { "<field>": rule, … } }` | each field's rule typed against the target format's property | an object | a field's rule may yield `null` only where the property is nullable (checked at publish) |
-| `terms_subset` | `terms_subset(of, in, failWith)` | `concept_list`, `concept_list`, literal `string` | `check_result` | **Proposed:** a `null` list reads as empty, as today (`ConsultCheckExecutor.TermsSubset`) |
+| `terms_subset` | `terms_subset(of, in, failWith)` | `concept_list`, `concept_list`, literal `string` | `check_result` | a `null` list reads as empty, as today (`ConsultCheckExecutor.TermsSubset`, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
 | `all_pass` | `all_pass(list, failWith)` | a check loop's `.value` or `.items`, literal `string` | `check_result` | elements that did not complete are ignored; a `null` or empty list (nothing judged) **fails**, with `failWith` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1396#issuecomment-6958687810); revisited in #1461) |
-| `count_pass` | `count_pass(list, min, failWith)` | as `all_pass`; `min` a `number` | `check_result` | **Proposed:** counts passed elements only; a `null` `min` gives a failed result |
+| `count_pass` | `count_pass(list, min, failWith)` | as `all_pass`; `min` a non-negative integer **literal** ([decided in part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)) | `check_result` | counts passed elements among those that completed |
+
+**Check operations judge only `completed` items, and always return a `check_result`, never
+`null`** ([decided in part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)).
+The `check_result` shape (`pass`, `message`, `uncovered`, `untested`, `passed`, `total`, every
+member present) is part 06's.
 
 ([signatures](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116),
 [object](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6898320858),
@@ -320,9 +401,10 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 - **`terms_subset`** passes when every codable concept in `of` (an active SNOMED CT concept with
   an id) has the same concept id in `in`; uncovered and untested terms are reported as today.
   The `check_result` shape is part 06's.
-- **The `list` operand of `all_pass` and `count_pass`.** The signature names a list of
-  `check_result`, and the decided example passes a check loop's `.items`
-  (`check.part_coverage.items`). **Proposed:** both are accepted. A `.value` is
+- **The `list` operand of `all_pass` and `count_pass` is a check loop's `.value` or its
+  `.items`;** both are accepted
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)), and part 06's rule that check operations judge only `completed` items reads
+  the same either way. A `.value` is
   `list<check_result>` of the items that completed (part 04 § 2.5); with `.items`, each
   element's `value` is used and an element whose `state` is not `completed` is ignored. Ignoring
   unrun items lets a check loop's `if` skip sections that weren't produced without failing the
@@ -331,7 +413,7 @@ version, pinned by golden tests and listed in `lock.json` (#1390, part 07). All 
 Migrated check example (part 06 owns checks; shown for the expression):
 
 ```json
-{ "kind": "computed", "format": "check_result",
+{ "kind": "computed", "producer": "computed", "format": "check_result",
   "expression": { "terms_subset": [ { "var": "node.extract_input_terms.value" },
                                     { "var": "node.extract_note_terms.value" },
                                     "The note does not cover every clinical term found in the referral." ] } }
@@ -348,26 +430,27 @@ in the account's zone).
 | Operation | Signature | Result | Meaning | Null behaviour |
 |---|---|---|---|---|
 | `days_between` | `days_between(a, b)` | `number` (integer) | whole days from `a` to `b`; negative if `b` is earlier | `null` if either is `null` |
-| `years_between` | `years_between(a, b)` | `number` (integer) | **completed** years from `a` to `b`: a year counts once its anniversary is reached; negative if `b` is earlier (**Proposed**: the same rule mirrored) | `null` if either is `null` |
+| `years_between` | `years_between(a, b)` | `number` (integer) | **completed** years from `a` to `b`: a year counts once its anniversary is reached; negative if `b` is earlier (the same rule mirrored) | `null` if either is `null` |
 | `add_days` | `add_days(date, n)` | `date` | `date` plus `n` days | `null` if either is `null` |
 
-- **29 February (Proposed, as the decision suggested "to be confirmed"):** in a year with no
-  29 February, an anniversary of 29 February is reached on **1 March**. Someone born on
-  2008-02-29 is 0 on 2009-02-28 and 1 on 2009-03-01.
-- **`n` in `add_days` (Proposed):** a `number`; a non-integer, or a result outside years
-  0001–9999, gives `null`.
-- **A malformed date at run time (Proposed):** gives `null`. It can only arise from data that
-  escaped validation, since date inputs and date fields are validated against `format: date`.
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698))
+
+- **29 February:** in a year with no 29 February, an anniversary of 29 February is reached on
+  **1 March**. Someone born on 2008-02-29 is 0 on 2009-02-28 and 1 on 2009-03-01.
+- **`n` in `add_days`:** a `number`; a non-integer, or a result outside years 0001–9999, gives
+  `null`.
+- **A malformed date at run time** gives `null`. It can only arise from data that escaped
+  validation, since date inputs and date fields are validated against `format: date`.
 - **Comparing dates** uses `<`, `>`, `<=`, `>=` and `===` on two `date`s (§ 5.1).
 
 Example, fictional: *a reminder about bone density screening, for patients 65 or older at the
 date of the run.*
 
 ```json
-{ ">=": [ { "years_between": [ { "var": "input.date_of_birth" }, { "var": "run.date" } ] }, 65 ] }
+{ ">=": [ { "years_between": [ { "var": "input.date_of_birth.value" }, { "var": "run.date" } ] }, 65 ] }
 ```
 
-Printed: `years_between(input.date_of_birth, run.date) ≥ 65`. It reads `run.date`, so the
+Printed: `years_between(input.date_of_birth.value, run.date) ≥ 65`. It reads `run.date`, so the
 decision is run-dependent (§ 4.4).
 
 ## 6. Values, absence and null
@@ -376,10 +459,10 @@ decision is run-dependent (§ 4.4).
 
 | Read | Gives |
 |---|---|
-| a supplied input | its value, typed by its format |
-| an unsupplied optional input | `""` for a text format (v25 § 16's absence rule, kept); `null` for `string`, `number`, `boolean`, `date` and objects; `[]` for an array |
+| `input.<id>.value` (or `.content`, `.title`) of a supplied input | its raw value (its text, the chosen arm's title), typed by its format |
+| an unsupplied optional input | `""` for a text format's `.content` (v25 § 16's absence rule, kept); `null` for `string`, `number`, `boolean`, `date` and objects; `[]` for an array |
 | `node.<id>.value` of a node that completed | its value |
-| `node.<id>.value`, `.content` of a node that did not complete (skipped, not run) | `null` (**Proposed**) |
+| `node.<id>.value`, `.content` of a node that did not complete (skipped, not run) | `null`; `.state` says why ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)) |
 | `node.<id>.state` | `"completed"`, `"skipped"` or `"not_run"` |
 | a nullable field holding `null` | `null` |
 | `pass.previous…` on the first pass | `null` |
@@ -395,13 +478,16 @@ In summary:
   coerced to `0`;
 - **`===` and `!==` compare `null` as a value;**
 - **arithmetic and the date operations give `null`** when any operand is `null`;
+- **the text operations:** `size`, `words`, `lines`, `lower`, `trim` and `plain` give `null`;
+  `blank` gives `true`; `starts_with`, `ends_with`, `matches` and `has_word` give `false`;
+- **`cat`** reads `null` as `""`; **`missing`** counts `null` and `""` as missing;
 - **truthiness:** `null` is false (§ 6.4);
 - **evaluation never throws;** division by zero gives `null`.
 
-**The pitfall stated for authors:** under these rules `{ "!": [ { ">": [ { "var": "input.age" }, 65 ] } ] }`
+**The pitfall stated for authors:** under these rules `{ "!": [ { ">": [ { "var": "input.age.value" }, 65 ] } ] }`
 is **true** when the age is missing: "not over 65" includes "unknown". An author who means
 "known and not over 65" writes the `null` test:
-`{ "and": [ { "!==": [ { "var": "input.age" }, null ] }, { "<=": [ { "var": "input.age" }, 65 ] } ] }`.
+`{ "and": [ { "!==": [ { "var": "input.age.value" }, null ] }, { "<=": [ { "var": "input.age.value" }, 65 ] } ] }`.
 
 Revisiting the rule (required guards, or a library's default behaviour) is #1453, Milestone 40.
 It doesn't change Milestone 39.
@@ -432,15 +518,18 @@ The checker types every rule against the dialect (part 02), reading formats as t
 - **Refused on text:** `===`/`!==` against a literal or another text; `<`, `>`, `<=`, `>=`;
   `substr`; `!` as a blank test.
 - **A nested field is data unless it `$ref`s a text format** (#1385): `verdict.verdict` (a
-  `string` enum) is data; `verdict.feedback` (`$ref: agent_plaintext`) is text.
+  `string` enum) is data; `verdict.feedback` (`$ref: plaintext`) is text.
 - **Enums:** a literal compared with an enum-typed value (a `string` with `enum`, or `oneOf` of
-  `const`) must be one of its values; `in` against a literal list checks each element.
+  `const`) must be one of its values; `in` against a literal list checks each element. A literal
+  compared with a `.title` must be one of the `oneOf`'s titles; `.title` on a plain `enum` is
+  refused (part 02).
 - **Unions:** a read of `.value` is allowed only if every member of the union has a value;
   `.value.<field>` only if every member declares that field compatibly (#1385 decision 5).
 - **`if`:** the branches must have one type. A `null` branch makes the result nullable.
 - **`object`:** checked field by field against the computed node's format.
-- **A computed node's result** must match its `format`. A computed node may return `x-agent:
-  false` formats only (#1385's kind rule).
+- **A computed node's result** must match its `format` (type equality, part 02). Its producer is
+  `computed`, whatever it reads; where its value came from is the model-derived flag's job
+  (§ 4.5), not its format's.
 - **Reads must exist** at the site, with the visibility rules of part 01 and the per-site rules
   of § 4.
 
@@ -450,8 +539,10 @@ The checker types every rule against the dialect (part 02), reading formats as t
 sentences, the validator's sentences and the diagram's labels
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6957665806)).
 It writes ordinary infix, functions as `name(args)`, and strict equality as **`=`** and **`≠`**.
-
-The rules below are **Proposed** except the three just stated:
+The rest of its rules were
+[decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)
+on 2026-11-17: `and`, `or` and `not` as words; `≤` and `≥`; standard precedence, with
+parentheses only where needed, so the printed text parses back to exactly the tree written.
 
 | Rule | Printed |
 |---|---|
@@ -467,24 +558,27 @@ The rules below are **Proposed** except the three just stated:
 | `!` | `not a` |
 | `+`, `-`, `*`, `/`, `%` | infix; one-operand `-` as `-a` |
 | `if` | `if c then a else b`; more pairs as `if c1 then a else if c2 then b else d` |
-| `object` | `{ heading: a, content: b }`, fields in written order |
-| every other operation | `name(a, b)`: `size(input.prior_notes)`, `missing(["input.age"])` |
+| `object` | `{ title: a, content: b }`, fields in written order |
+| every other operation | `name(a, b)`: `size(input.prior_notes.value)`, `missing(["input.age.value"])` |
 
 - **Precedence**, tightest first: function forms and literals; `not` and unary `-`;
   `*`, `/`, `%`; `+`, `-`; the comparisons and `in`; `and`; `or`; `if … then … else`.
-- **Parentheses:** a child operation is parenthesised when its precedence is lower than **or
-  equal to** its parent's (an `and` inside an `and` prints `(a and b) and c`), so the printed
-  text maps back to exactly one tree.
+- **Parentheses** only where needed to keep the tree: a child operation is parenthesised when its
+  precedence is lower than **or equal to** its parent's (an `and` inside an `and` prints
+  `(a and b) and c`, since a flat `and` of three is a different tree), so the printed text maps
+  back to exactly one tree.
 - **Spacing:** one space either side of an infix operator, `, ` between arguments, none inside
   brackets.
-- **Byte-stable and versioned (Proposed):** printed text is recorded (reasons, decision rows),
-  so the printer is versioned like a custom operation (any change to its output is a major
-  version) and listed in `lock.json`. The converter (#1423) parses its output back to the
+- **Byte-stable and versioned:** printed text is recorded (reasons, decisions), so the printer is
+  versioned like a custom operation (any change to its output is a major version) and locked in
+  `lock.json`'s `builtins` (part 07). The converter (#1423) parses its output back to the
   identical tree, and the conformance suite tests the round trip.
+- **`.title` reads** print as written (`input.specialty.title = "Medical oncology"`); the record
+  shows the raw value beside the title (§ 10).
 
 **Reason sentences** are built from the printed condition
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)):
-*"skipped: input.kind = "table" is false"*.
+*"skipped: input.kind.value = "table" is false"*.
 
 ## 9. The evaluator
 
@@ -492,6 +586,11 @@ The rules below are **Proposed** except the three just stated:
   `lock.json`
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6957665806)).
   The research found version 5.8.11; the build pins the version current when it starts.
+- **`requires.evaluator` names our evaluator's version,** not Corvus's: packages depend on our
+  behaviour (the custom operations, the null rules, `===`/`!==` only), with Corvus underneath
+  ([decided in part 07](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979256096)).
+  Moving towards standard components, possibly including the evaluator, is #1477
+  (Milestone 40).
 - **Behind our own interface** in `Consultologist.PackageFormat`. **Proposed name:**
   `IJsonLogicEvaluator`, with one implementation, `CorvusJsonLogicEvaluator`. The engine, the
   validator's probe, the Editor and the in-package tests (#1449) all evaluate through it.
@@ -516,13 +615,17 @@ The rules below are **Proposed** except the three just stated:
 
 The record's shape is [part 08](08-record.md)'s. For expressions:
 
-- **A row for every condition decision**
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)):
-  the printed condition, its result, a hash of each value it read, and whether it was
-  run-dependent.
+- **A decision for every condition**
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891)),
+  in the job's one `decisions` list
+  ([part 08](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)):
+  its site, the printed condition, its result, a hash of each value it read, whether it was
+  run-dependent and model-derived, and an `expressionHash` of its canonical JSON Logic. A
+  condition reading `.title` is printed with both the raw value and the title.
 - **A computed node's row:** the input hash (over the canonical expression and the values it
-  read), the value as canonical JSON, the output hash, `producer: computed`, `reproducible: true`,
-  and its run-dependence with the run-neutral hash of its recipe (§ 4.4).
+  read), the value as canonical JSON, the output hash (its producer is `computed`),
+  `reproducible: true`, `modelDerived` (§ 4.5), and `runDependent` with the run-neutral hash of
+  its recipe (§ 4.4).
 - **`matches`:** the pattern (in the printed condition) and the result; never the matched text.
 - **Run facts:** each one read, once per run, `run.date` with its time zone.
 - **`lock.json`'s hash** (`lockHash`) ties every decision to the evaluator and operation
@@ -532,46 +635,51 @@ The record's shape is [part 08](08-record.md)'s. For expressions:
 
 ### 11.1 Refusals at publish
 
+Every rule below is decided (linked, or in [part 03's decision](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698));
+refusal sentence wording is left to the build, so every sentence is **Proposed** wording.
+
 Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Node 'x'`,
 `Loop 'x'`, `While 'x'`, `Check 'x'`, `Deliverable 'x'`, `Macro 'x'`, `Part 'p' of node 'x'`,
-`Item 'i' of folder 'f'`, `Computed node 'x'`, and inside a function
+`Computed node 'x'`, and inside a function
 `Node 'x' in function 'f'`. `<member>` is `if`, `while`, `until` or `expression`. `<path>` is a
 `var` path; `<format>` a format's type string (part 02).
 
 | Sentence | Status |
 |---|---|
-| *"\<site\> compares \<path\> (\<format\>) with a literal; text is tested by whether it is blank, its size, or in."* | decided ([rule](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878621423), [revised](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878673101)); wording **Proposed** |
+| *"\<site\> compares \<path\> (\<format\>) with a literal; text is tested by whether it is blank, its size, or in."* | rule decided ([rule](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878621423), [revised](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6878673101)); wording **Proposed** |
 | *"\<site\> compares \<path\> (\<format\>) with \<path\> (\<format\>); text is tested by whether it is blank, its size, or in."* | as above |
 | *"\<site\> uses ==; equality is written === (shown as =)."* | rule decided; wording **Proposed** |
 | *"\<site\> uses !=; inequality is written !== (shown as ≠)."* | as above |
-| *"\<site\> uses \<operation\>, which is not a JSON Logic operation of this format (\<the allowed list\>)."* | **Proposed** |
+| *"\<site\> uses \<operation\>, which is not a JSON Logic operation of this format (\<the allowed list\>)."* | rule decided (§ 5.1); wording **Proposed** |
 | *"\<site\> uses substr; text is cut with trim or plain, and measured with size."* | rule decided; wording **Proposed** |
 | *"\<site\> orders \<path\> (\<format\>); \<, \>, ≤ and ≥ compare numbers or dates."* | rule decided; wording **Proposed** |
 | *"\<site\> tests \<path\> (\<format\>) with not; not takes a boolean — test text with blank."* | rule decided; wording **Proposed** |
-| *"\<site\> gives \<operation\> \<n\> operands; it takes \<m\>."* | **Proposed** |
-| *"\<site\> writes \<operation\> with a bare operand; operands are written as an array."* | **Proposed** (§ 2.2) |
-| *"\<site\> reads var with a default; every read is one path."* | **Proposed** |
-| *"\<site\> reads \<path\>, a position in a list; lists are read whole, or by identity through .items."* | **Proposed** |
-| *"\<site\> reads \<path\>, which doesn't exist here."* | **Proposed** |
+| *"\<site\> gives \<operation\> \<n\> operands; it takes \<m\>."* | rule decided (§ 5.1, three-operand comparisons included); wording **Proposed** |
+| *"\<site\> writes \<operation\> with a bare operand; operands are written as an array."* | rule decided (§ 2.2); wording **Proposed** |
+| *"\<site\> reads var with a default; every read is one path."* | rule decided (§ 2.2); wording **Proposed** |
+| *"\<site\> reads \<path\>, a position in a list; lists are read whole, or by identity through .items."* | rule decided (§ 2.2); wording **Proposed** |
+| *"\<site\> reads \<path\>, which doesn't exist here."* | rule decided; wording **Proposed** |
+| *"\<site\> reads input.\<id\>; an input is read as input.\<id\>.value, .content or .title."* | rule decided ([part 02](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6962669466)); wording **Proposed** |
+| *"\<site\> reads \<path\>.title, but \<format\> is a plain enum with no titles; read .value, or give the format oneOf with const and title."* | rule decided (part 02); wording **Proposed** |
+| *"\<site\> compares \<path\>.title with "\<text\>", which is not one of its titles (\<titles\>)."* | rule decided (part 02); wording **Proposed** |
 | *"\<site\> reads profile.\<field\>; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."* | rule decided ([#1386](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6924497801)); wording **Proposed** |
-| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* | **Proposed** (for `snippet`, `part`, `macro`, `renderer`, `deliverable`) |
+| *"\<site\> reads \<root\>.\<rest\>; JSON Logic reads input, node, check, item, pass, param and run."* (for `snippet`, `part`, `macro`, `renderer`, `deliverable`) | rule decided (§ 4.1); wording **Proposed** |
 | *"Deliverable '\<id\>' if reads node.\<id\>.content; a deliverable's if reads data (.value), not text."* | rule decided ([#1406](https://github.com/Consultologist/Consultologist-Blazor/issues/1406)); wording **Proposed** |
 | *"Deliverable '\<id\>' if reads check.\<id\>; a deliverable's existence can't depend on a check."* | as above |
-| *"Item '\<item\>' of folder '\<folder\>' if reads \<path\>; a folder item's if reads inputs and run facts, decided at job start."* | **Proposed** (§ 4.2) |
 | *"Macro '\<id\>' if reads param.\<name\>; a macro's if is shared, so it can't depend on one function's parameter."* | rule decided ([#1419](https://github.com/Consultologist/Consultologist-Blazor/issues/1419#issuecomment-6897801178)); wording **Proposed** |
-| *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | **Proposed** (v25's enum rule) |
-| *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | **Proposed** (#1385 decision 5) |
-| *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | **Proposed** |
-| *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | **Proposed** (v30's let sentence, adapted) |
-| *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | **Proposed** |
-| *"Computed node '\<id\>' builds \<format\> with \<field\>, which the format doesn't declare."* | **Proposed** |
-| *"Computed node '\<id\>' declares \<format\>, which an agent writes; a computed node returns formats with x-agent false."* | rule decided (#1385); wording **Proposed** |
-| *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal string."* | rule decided ([#1400](https://github.com/Consultologist/Consultologist-Blazor/issues/1400#issuecomment-6905611896), [failWith](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116)); wording **Proposed**; `<operand>` is `pattern`, `word` or `failWith` |
+| *"\<site\> compares \<path\> with "\<value\>", which is not one of its values (\<values\>)."* | rule decided (v25's enum rule); wording **Proposed** |
+| *"\<site\> reads \<path\>.value.\<field\>, which not every member of \<format\> declares."* | rule decided (#1385 decision 5); wording **Proposed** |
+| *"\<site\> \<member\> yields \<format\>; a condition yields a boolean."* | rule decided (§ 3); wording **Proposed** |
+| *"Computed node '\<id\>' yields \<format\>; it declares \<format\>."* | rule decided; wording **Proposed** (v30's let sentence, adapted) |
+| *"Computed node '\<id\>' builds \<format\> without \<field\>; object must give every property of the format."* | rule decided (§ 5.4); wording **Proposed** |
+| *"Computed node '\<id\>' builds \<format\> with \<field\>, which the format doesn't declare."* | as above |
+| *"\<site\> gives \<operation\> a computed \<operand\>; \<operand\> must be written as a literal."* | rule decided ([#1400](https://github.com/Consultologist/Consultologist-Blazor/issues/1400#issuecomment-6905611896), [failWith](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6919283116), [min](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); wording **Proposed**; `<operand>` is `pattern`, `word`, `failWith` or `count_pass`'s `min` |
+| *"\<site\> gives count_pass a min of \<n\>; min is a whole number, 0 or more."* | rule decided ([part 06](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)); wording **Proposed** |
 | *"\<site\> pattern "\<pattern\>" is not I-Regexp (RFC 9485): \<reason\>."* | rule decided; wording **Proposed** |
-| *"\<site\> pattern "\<pattern\>" is \<n\> characters long; the most is 200."* | rule decided ("about 200"); wording and number **Proposed** |
-| *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | **Proposed** |
-| *"\<site\> uses if without an else; write the else."* | **Proposed** |
-| *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | **Proposed** |
+| *"\<site\> pattern "\<pattern\>" is \<n\> characters long; the most is 200."* | rule decided (200, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)); wording **Proposed** |
+| *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | rule decided; wording **Proposed** |
+| *"\<site\> uses if without an else; write the else."* | rule decided; wording **Proposed** |
+| *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | rule decided; wording **Proposed** |
 
 ### 11.2 Warnings at publish and in the Editor
 
@@ -580,48 +688,30 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
   one line per value or decision; wording **Proposed**:
   *"\<site\> \<member\> reads run.\<fact\>; its decision can differ between runs with the same inputs."*
   and *"Computed node '\<id\>' reads \<run.fact or path\>, which is run-dependent; its value can differ between runs with the same inputs."*
+- **Model-derived** is shown, not warned: History, the diagram and the Editor mark each
+  model-derived value and decision (§ 4.5); the Editor's wording is **Proposed**:
+  *"computed from model text: node.\<id\>"*.
 
-### 11.3 Failures at run time (Proposed)
+### 11.3 Failures at run time
+
+The rules are decided (§ 5.3: a `matches` time-out fails the node; § 6.2: evaluation never
+throws); the sentences are **Proposed** wording.
 
 - *"\<site\> \<member\> could not be decided: matches timed out on its pattern."* The node that
-  owns the condition fails.
+  owns the condition fails, recorded with this reason.
 - *"\<site\> \<member\> yields \<a value kind\>; a condition yields a boolean."* The node that owns
-  the condition fails.
+  the condition fails (**Proposed**, § 9).
 
 ## Proposed in this part
 
-- **The canonical written form** (§ 2.2): `var` with one string, `object` with one map, every
-  other operation with an array; no numeric path segments. One form keeps "what is written is
-  stored" literal.
-- **`in`, `case` and `with` stay reference strings** (§ 3): each names one readable thing; #1386
-  left it open.
-- **`run.package` is `<name>@<version>` and `run.engine` the release version** (§ 4.3): no issue
-  fixes their form.
-- **Snippet folder item `if` reads `input` and `run` only** (§ 4.2): v26's rule, so a folder's size
-  stays known at job start.
-- **Run-dependence spreads through every node kind, agents included** (§ 4.4): "derived from" is
-  read as any value produced from a run-dependent read.
-- **`missing` treats `""` as missing** (§ 5.1): matches json-logic-js and today's absence rule for
-  text.
-- **`if` must have an else; `!!`, `?:`, `missing_some`, `merge`, `map`, `filter`, `reduce`,
-  `all`, `some`, `none`, `log` and between-comparisons are refused; `min`/`max` allowed**
-  (§ 5.1): the decided set plus arithmetic, with nothing that rebinds `var`.
-- **`cat`: `null` contributes `""`, Markdown operands refused, result `string` or `plaintext`**
-  (§ 5.1).
-- **Definitions of `words` and `lines`, and null behaviour of the text operations** (§ 5.2).
-- **`lower`/`trim` keep the media type and drop the agent marker** (§ 5.2): only agents return
-  agent formats.
-- **`matches` limits: 200 characters, 100 ms, a time-out fails the node** (§ 5.3): the decision
-  said "about".
-- **`has_word`'s word characters (.NET `\w`), and `word` a literal** (§ 5.3).
-- **`terms_subset` reads a `null` list as empty** (§ 5.4): today's behaviour, so migration keeps
-  meaning.
-- **29 February reached on 1 March; negative `years_between`; `add_days` with a non-integer or
-  out-of-range result gives `null`; a malformed date gives `null`** (§ 5.5).
-- **A node that didn't complete reads `null`** for `.value` and `.content` (§ 6.1).
-- **The printer's rules beyond `=`/`≠`/infix/`name(args)`** (§ 8): words for `and`/`or`/`not`,
-  `≤`/`≥`, precedence and parentheses for an exact round trip, versioned and locked.
-- **`IJsonLogicEvaluator` as the interface name, the evaluator declining refused operations, and
-  compile-once caching** (§ 9).
-- **Every refusal sentence's wording** marked Proposed in § 11.1, and the warnings and run-time
-  failures of §§ 11.2–11.3.
+These are left to the build: each build PR lists the ones it settles, and all are confirmed
+before the contracts release.
+
+- **`IJsonLogicEvaluator` as the interface name, with one implementation,
+  `CorvusJsonLogicEvaluator`, and compile-once caching** (§ 9), left to the build by
+  [the decision](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698).
+- **The evaluator declines a rule naming a refused operation** (§ 9), so a hand-edited
+  `resolve.json` can't reach Corvus's defaults.
+- **A condition that yields no boolean at run time fails its node** (§ 9, § 11.3).
+- **Every refusal sentence's wording** in § 11.1, and the warnings and run-time failures of
+  §§ 11.2–11.3.
