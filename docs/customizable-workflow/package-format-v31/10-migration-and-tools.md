@@ -47,7 +47,7 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | `templating` in the manifest | dropped; `lock.json` and `requires` record the Scriban version | [01](01-files-and-scopes.md) |
 | optional members omitted | every member written, `null` for none | [01](01-files-and-scopes.md) |
 | `\r\n` line endings | normalised to `\n`, as import and publish do | [01](01-files-and-scopes.md) |
-| node headers | **`reproducible` written on every node**, from the derived value (`rendered` and `computed` `true`, `agent` `false`, a flow node from its body, a `call` from its function), and the migration report lists each node whose 30 claim differed ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6982429387)); **`producer` written on every node and check**, from its kind (`"generated"` for `agent`, `"computed"` for every other, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)); `format` written on flow nodes, from `ret` | [01](01-files-and-scopes.md), [02](02-types-and-inputs.md) |
+| node headers | **`reproducible` written on every node**, from the derived value (`rendered` and `computed` `true`, `agent` `false`, a flow node from its body, a `call` from its function), and the migration report lists each node whose 30 claim differed ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6982429387)); **`producer` written on every node and check**, from its kind (`"generated"` for `agent`, `"computed"` for every other, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)); **`modelDerived` and `runDependent` written on every node and check**, from the values the resolver derives ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); `format` written on flow nodes, from `ret` | [01](01-files-and-scopes.md), [02](02-types-and-inputs.md) |
 | an id now reserved (`parts`, `items`, `value`, …) | renamed, with every reference rewritten (§ 1.9) | [01](01-files-and-scopes.md) |
 | `format` with `producer` | `kind` and `format` on every node | [02](02-types-and-inputs.md) |
 | `prose` and `agent_*` formats; `x-generated` | **the plain format of the same shape:** `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline`; object formats keep their names. `x-generated` is dropped: the node's `producer` says who wrote the value ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) | [02](02-types-and-inputs.md), [07](07-compiled-documents.md) |
@@ -457,7 +457,7 @@ design.
 | #1454 | Graphviz as a diagram renderer, with ports |
 | #1439 | The producer values reserved at 31 (`grounded`, model text verified against the input), and recording each value's model, agent version and settings; the node's `producer` member is already in 31 |
 | #1438, #1440, #1441 | the `extracted` and `attention` producers, a name for `adata`, and grounding |
-| #1479 | `via: "producer"`: an agent chosen by producer alone |
+| #1479 | `via: "producer"`: an agent chosen by producer alone (the value is reserved, and refused, at 31) |
 | #1445 | Recording an agent's tool calls |
 | #1448 | `x-phi`: marking which values can contain patient data |
 | #1450 | Retiring old spec versions: refuse publish, refuse new jobs, remove load paths; old records always readable |
@@ -479,7 +479,7 @@ design.
 | #1475 | Revisiting the `for` forms refused in templates |
 | #1476 | Narrowing the snippet guard to refuse only recursion |
 | #1477 | Revisiting `requires.evaluator`, towards off-the-shelf components throughout |
-| #1478 | Making the model-derived and run-dependent flags explicit in the format |
+| #1478 | Requiring model-derived or run-dependent values in reads (both flags are already written on every node header at 31) |
 
 **No milestone (eventually)**
 

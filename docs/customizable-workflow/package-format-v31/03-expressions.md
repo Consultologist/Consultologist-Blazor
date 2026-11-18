@@ -212,8 +212,10 @@ Run-dependence passes through everything a value is made from:
 - a loop's items when its source is.
 
 It is worked out from `resolve.json`'s edges before any run, so the warning can name each value
-before a job starts. Each row records it as `runDependent` (part 08). Writing the flag in the
-format or the header, checked like `reproducible`, is #1478 (Milestone 40).
+before a job starts. Each row records it as `runDependent` (part 08). **Every node header
+writes it too, as `runDependent: true | false`, checked against the derived value** like
+`reproducible`; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)). Requiring a run-dependent value in a read is #1478
+(Milestone 40).
 
 ### 4.5 Model-derived is contagious
 
@@ -242,8 +244,10 @@ way. It says a value came from a model's output somewhere upstream.
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)).
 - **It is recorded and shown:** each row carries `modelDerived` (part 08), and History, the
   diagram and the Editor show it: *"computed from model text: node.draft"*.
-- **It is worked out, never written:** the resolver computes it from `resolve.json`'s edges
-  before any run. Making it explicit, in the format or the header, is #1478 (Milestone 40).
+- **It is worked out, and written on every node header:** the resolver computes it from
+  `resolve.json`'s edges before any run, and each header declares `modelDerived: true | false`,
+  checked against that value; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)). It stays a node member, never a
+  format's. Requiring a model-derived value in a read is #1478 (Milestone 40).
 
 Example, fictional: a `computed` node that checks whether a model's draft names a drug:
 
@@ -252,7 +256,8 @@ Example, fictional: a `computed` node that checks whether a model's draft names 
 ```
 
 It returns `boolean`, its producer is `computed`, it is reproducible, and it is model-derived,
-because `node.draft` is an `agent` node's output. A macro's `if` that reads it is a model-derived
+because `node.draft` is an `agent` node's output: its header writes `modelDerived: true` and
+`runDependent: false`. A macro's `if` that reads it is a model-derived
 decision.
 
 ## 5. The operations
@@ -413,7 +418,8 @@ member present) is part 06's.
 Migrated check example (part 06 owns checks; shown for the expression):
 
 ```json
-{ "kind": "computed", "producer": "computed", "format": "check_result",
+{ "kind": "computed", "producer": "computed", "modelDerived": true, "runDependent": false,
+  "format": "check_result",
   "expression": { "terms_subset": [ { "var": "node.extract_input_terms.value" },
                                     { "var": "node.extract_note_terms.value" },
                                     "The note does not cover every clinical term found in the referral." ] } }
@@ -680,6 +686,7 @@ Placeholders: `<site>` names the declaration as its sentences do elsewhere: `Nod
 | *"\<site\> gives has_word a blank word; has_word finds one word or phrase."* | rule decided; wording **Proposed** |
 | *"\<site\> uses if without an else; write the else."* | rule decided; wording **Proposed** |
 | *"\<site\> cats \<path\> (\<format\>); convert Markdown with plain first."* | rule decided; wording **Proposed** |
+| *"Node '\<id\>' declares \<modelDerived \| runDependent\> \<value\>, but its reads make it \<derived\>: \<the read that does, or none\>."* | rule decided ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); wording **Proposed** |
 
 ### 11.2 Warnings at publish and in the Editor
 

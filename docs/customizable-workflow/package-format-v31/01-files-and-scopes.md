@@ -345,7 +345,7 @@ deliverables) has the same shape
 
 ```
 ---
-{ "kind": "agent", "producer": "generated", "label": "Planning the sections", "description": null, "format": "section_plan", … }
+{ "kind": "agent", "producer": "generated", "label": "Planning the sections", "description": null, "format": "section_plan", "modelDerived": true, "runDependent": false, … }
 ---
 Plan the sections of a consultation note for the draft below. …
 ```
@@ -407,6 +407,8 @@ is an error**
 | `format` | a format name or an inline schema ([part 02 § 2](02-types-and-inputs.md#2-format)) | no | every node, check, function, renderer, deliverable, snippet, macro and input; a snippet folder's `index.json` |
 | `reproducible` | boolean | no | every node, checked against the derived value ([part 02 § 1.1](02-types-and-inputs.md#11-reproducible)) |
 | `producer` | string: `"generated"` or `"computed"` at 31 | no | every node and check, checked against its kind ([part 02 § 1.3](02-types-and-inputs.md#13-producer)) |
+| `modelDerived` | boolean | no | every node and check, checked against the derived value ([part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived); [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
+| `runDependent` | boolean | no | every node and check, checked against the derived value ([part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived); [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `if` | a JSON Logic condition ([part 03](03-expressions.md)) | yes: always | every production leaf (`agent`, `rendered`, `computed`, `call`), check, snippet, macro, macro folder and deliverable. A node's own condition is spelled `if`, replacing 30's `when` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1383#issuecomment-6959885064)); a `case` branch keeps `when` for its values (part 04) |
 
 - **`label` may not be empty or whitespace**
@@ -425,6 +427,12 @@ is an error**
   `"generated"` for `kind: "agent"`, `"computed"` for every other kind. A mismatch, or a value
   reserved for Milestone 40 (`"grounded"`, `"extracted"`, `"attention"`), is refused
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868); the rule is [part 02 § 1.3](02-types-and-inputs.md#13-producer)).
+- **`modelDerived` and `runDependent` are written on every node and checked against the values the
+  resolver derives,** like `reproducible` and `producer`: an agent node is always
+  `modelDerived: true`, any node reading model output, directly or through other values, is
+  `true`, and a node whose reads include `run.*` or a run-dependent value is
+  `runDependent: true`. A mismatch is refused. The flags are node members; formats stay pure shape
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861); the rule is [part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived)).
 
 ### 5.2 The members by file
 
@@ -432,11 +440,11 @@ The table names each file's members; the owning part gives their types, null rul
 
 | File | Members | Part |
 |---|---|---|
-| `agent` node | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `if`, and the prompt members (`onInvalid`, `parts`, `ordered`, `failIfEmpty`, …) | [05](05-templates-and-macros.md) |
-| `rendered` node | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `if` | [05](05-templates-and-macros.md) |
-| `computed` node, check | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `if`, `expression` | [03](03-expressions.md), [06](06-checks-deliverables-profile.md) |
-| `call` node | `kind`, `producer`, `label`, `description`, `reproducible`, `if`, `function`, `with`, `format` | [04](04-loops-and-functions.md) |
-| `for` / `while` / `if` / `case` `index.json` | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, the flow members, `nodes`, `ret` | [04](04-loops-and-functions.md) |
+| `agent` node | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `modelDerived`, `runDependent`, `if`, and the prompt members (`onInvalid`, `parts`, `ordered`, `failIfEmpty`, …) | [05](05-templates-and-macros.md) |
+| `rendered` node | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `modelDerived`, `runDependent`, `if` | [05](05-templates-and-macros.md) |
+| `computed` node, check | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `modelDerived`, `runDependent`, `if`, `expression` | [03](03-expressions.md), [06](06-checks-deliverables-profile.md) |
+| `call` node | `kind`, `producer`, `label`, `description`, `reproducible`, `modelDerived`, `runDependent`, `if`, `function`, `with`, `format` | [04](04-loops-and-functions.md) |
+| `for` / `while` / `if` / `case` `index.json` | `kind`, `producer`, `label`, `description`, `format`, `reproducible`, `modelDerived`, `runDependent`, the flow members, `nodes`, `ret` | [04](04-loops-and-functions.md) |
 | function `index.json` | `label`, `description`, `inputs`, `uses`, `nodes`, `ret`, `format` | [04](04-loops-and-functions.md) |
 | renderer | `kind`, `label`, `description`, `input`, `format` | [05](05-templates-and-macros.md) |
 | snippet | `label`, `description`, `if`, `format` (a text format) | [05](05-templates-and-macros.md) |
@@ -741,6 +749,7 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"<Declaration> has an empty label."*
 - *"<Node> '<key>' declares reproducible <value>, but its <kind | body | function> makes it <derived>."*
 - *"<Node> '<key>' is kind <kind> and declares producer '<value>'; a <kind> node's producer is <generated | computed>."*
+- *"<Node> '<key>' declares <modelDerived | runDependent> <value>, but its reads make it <derived>: <the read that does, or none>."*
 
 **Proposed: ids.**
 - *"'<id>' is not a valid id: a lowercase letter, then lowercase letters, digits or underscores."*

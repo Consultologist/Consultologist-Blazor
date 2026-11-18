@@ -60,10 +60,13 @@ refused
 
 ### 1.2 The contagious flags: run-dependent and model-derived
 
-Two flags spread through the graph. **They are worked out, never written:** the resolver computes
-both from `resolve.json`'s edges before any run, records them on each row as `runDependent` and
-`modelDerived` ([part 08](08-record.md)), and History, the diagram and the Editor show them
+Two flags spread through the graph. The resolver works out both from `resolve.json`'s edges
+before any run, records them on each row as `runDependent` and `modelDerived`
+([part 08](08-record.md)), and History, the diagram and the Editor show them
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1386#issuecomment-6962982698)).
+**Every node header also writes both, `modelDerived: true | false` and
+`runDependent: true | false`, checked against the derived values** as `reproducible` and
+`producer` are; a mismatch is refused ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)). The flags are node members, never formats.
 
 - **Run-dependent:** the value depends on a `run.*` fact, directly or through anything it is made
   from (part 03).
@@ -77,7 +80,7 @@ both from `resolve.json`'s edges before any run, records them on each row as `ru
   the same format as its operand; its node's producer is `computed`, it stays model-derived, and
   it is `reproducible: true`
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)). Model-derived is a flag on values, never a format.
-- Making the two flags explicit in the format or the header is #1478 (Milestone 40).
+- Requiring a model-derived or run-dependent value in a read is #1478 (Milestone 40).
 
 ### 1.3 Producer
 
@@ -585,8 +588,9 @@ Every published format has a `$id`, a URN that doesn't depend on where anything 
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)).
 - **`resolve.json`'s bindings record the route as `via`:** `"format"` for a binding in
   `formats`, `"custom"` for a package's own format bound to the custom-format agent. `"producer"`,
-  an agent chosen by producer alone, is #1479 (Milestone 40)
-  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868); part 07).
+  an agent chosen by producer alone, is #1479 (Milestone 40): **the value is reserved at 31 and
+  refused** until then
+  ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861); part 07).
 - **Bindings hold no instructions.** What the model should write is the format's own
   `description`s (§ 5.1), so a catalogue format and a package's own format carry their
   instructions the same way, and a package format needs no binding of its own to have them
@@ -828,7 +832,7 @@ Mechanical, in `WorkflowPackageMigration30To31` ([part 10](10-migration-and-tool
 
 | At 30 | At 31 |
 |---|---|
-| every node | gains `kind`; `format` becomes its return type; `reproducible` written with the derived value (§ 1.1); `producer` written from its kind (§ 1.3) |
+| every node | gains `kind`; `format` becomes its return type; `reproducible` written with the derived value (§ 1.1); `producer` written from its kind (§ 1.3); `modelDerived` and `runDependent` written with the derived values (§ 1.2, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 | `"format": "prose"`, `agent_*` | the plain format of the same shape: `prose` and `agent_plaintext` → `plaintext`, `agent_markdown_block` → `markdown_block`, `agent_markdown_inline` → `markdown_inline` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)) |
 | a package or catalogue object format | keeps its name |
 | a `rendered` format | `kind: rendered`, a text format |
@@ -923,6 +927,7 @@ Every rule below is decided; the wording of a sentence marked **Proposed** is le
 - *"Node '<id>' declares kind let; a let is now kind computed, with its JSON Logic in expression."*
 - *"Node '<id>' is kind <kind> and declares producer '<value>'; a <kind> node's producer is <generated | computed>."*
 - *"Node '<id>' declares producer '<value>', which is reserved for a later version (accepted at 31: generated, computed)."*
+- *"Node '<id>' declares <modelDerived | runDependent> <value>, but its reads make it <derived>: <the read that does, or none>."*
 - *"Node '<id>' is kind agent and returns <format>, which has no binding for producer <producer> in agents/bindings.json."*
 - *"Node '<id>' is kind rendered and returns <format>; a rendered node returns plaintext, markdown_block or markdown_inline."*
 - *"Node '<id>' is kind agent and declares an inline format; an agent's format is named, in formats/."*

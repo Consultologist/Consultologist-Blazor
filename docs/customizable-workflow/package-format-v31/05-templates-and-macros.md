@@ -41,7 +41,9 @@ member `expression`, and their body must be empty ([Part 03](03-expressions.md))
 
 Beside `kind`, `label`, `description`, `format`, `reproducible` (always `false` for an agent
 node, [Part 01](01-files-and-scopes.md)) and `producer` (always `"generated"`,
-[Part 02 § 1.3](02-types-and-inputs.md#13-producer)), and its agent binding, chosen by format and
+[Part 02 § 1.3](02-types-and-inputs.md#13-producer)), `modelDerived` (always `true` for an agent
+node) and `runDependent` (`true` when its prompt reads `run.*` or a run-dependent value), both
+checked against the derived values ([Part 02 § 1.2](02-types-and-inputs.md#12-the-contagious-flags-run-dependent-and-model-derived), [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)), and its agent binding, chosen by format and
 producer ([Part 02](02-types-and-inputs.md)),
 a `kind: agent` node's header holds the members that govern its prompt and reply
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1425#issuecomment-6978508523)):
@@ -514,7 +516,7 @@ The body places each part with `{{~ part.<id> }}` or `{{ part.<id> }}` (§ 2.6).
 nodes/standards/section_instructions.md
 ---
 { "kind": "agent", "producer": "generated", "label": "Applying section instructions", "description": null,
-  "format": "plaintext", "reproducible": false,
+  "format": "plaintext", "reproducible": false, "modelDerived": true, "runDependent": false,
   "onInvalid": "fail", "failIfEmpty": null, "ordered": false,
   "parts": {
     "no_standard": {

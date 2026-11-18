@@ -176,7 +176,7 @@ and a change of type are distinguishable
 |---|---|---|---|
 | `agentName` | string | never | the attested agent's name in the agents catalogue |
 | `agentVersion` | integer | never | its version |
-| `via` | string | never | the binding route: `"format"` for a registry or catalogue format bound in `agents/bindings.json`, `"custom"` for a package's own format bound to the catalogue's custom-format agent ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)). `"producer"`, an agent chosen by producer alone, is #1479 (Milestone 40), added without changing the shape |
+| `via` | string | never | the binding route: `"format"` for a registry or catalogue format bound in `agents/bindings.json`, `"custom"` for a package's own format bound to the catalogue's custom-format agent ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)). `"producer"`, an agent chosen by producer alone, is #1479 (Milestone 40), added without changing the shape: **the value is reserved at 31 and refused** until then ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)) |
 
 A binding holds no instructions: what the model should write is the format's own `description`s,
 kept in the format above ([part 02 § 5.1](02-types-and-inputs.md#51-the-annotations),
@@ -199,9 +199,9 @@ Each entry holds **every header member as written** (parts [01](01-files-and-sco
 [06](06-checks-deliverables-profile.md) define them per kind), canonicalised: bare format ids
 rewritten to `#/$defs/<id>`, conditions and expressions in canonical JSON Logic
 ([part 03](03-expressions.md)), reference strings (`in`, `ret`, a `case` subject, `with`) written
-with their roots. The written `format`, `reproducible` and `producer` are among them; publish has already
-checked each against the value it derives, and refused a mismatch
-([part 01](01-files-and-scopes.md)). Publish then adds the **derived members**
+with their roots. The written `format`, `reproducible`, `producer`, `modelDerived` and
+`runDependent` are among them; publish has already checked each against the value it derives,
+and refused a mismatch ([part 01](01-files-and-scopes.md); [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)). Publish then adds the **derived members**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979256096)):
 
 | Derived member | Type | Null | On | Meaning |
@@ -211,8 +211,8 @@ checked each against the value it derives, and refused a mismatch
 | `nodes` | array of string | never | `for`, `while`, branches | the children's rooted keys, in order |
 | `ret` | string | allowed | `for`, `while`, branches, functions | the returned node's rooted key |
 | `reads` | array of string | never | every entry | every path the entry reads (header and body), canonical and sorted: `node.plan.value`, `input.consult_draft.content`, `item.value.point`, `run.date`, `profile.signature`, … Snippet and macro body reads count as the placing node's ([part 05](05-templates-and-macros.md)) |
-| `runDependent` | boolean | never | every entry | `true` when anything the entry reads is a `run.*` fact or a run-dependent value, transitively ([part 03](03-expressions.md)) |
-| `modelDerived` | boolean | never | every entry | `true` when the entry's value is computed from a model's output, directly or through other values: every agent node, and anything that reads a model-derived value, transitively ([part 03](03-expressions.md)) |
+| `runDependent` | boolean | never | every entry | `true` when anything the entry reads is a `run.*` fact or a run-dependent value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
+| `modelDerived` | boolean | never | every entry | `true` when the entry's value is computed from a model's output, directly or through other values: every agent node, and anything that reads a model-derived value, transitively ([part 03](03-expressions.md)). On a node or check entry it is the value the header declared, checked against this derivation ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1478#issuecomment-6982835861)); on other entries it is derived only |
 | `body` | string | allowed | templated kinds | the Scriban body inline (`\n` line endings); `null` for kinds with no body (`computed`, `for`, `while`, `if`, `case`, `call`) |
 | `bodyHash` | string | allowed | templated kinds | `sha256:` over the body's UTF-8 bytes; `null` when `body` is `null` |
 | `parts` | object keyed by part id | never | agent nodes | the node's parts, each with its `if` and its text (an array of lines, #1412); `{}` for none |
@@ -333,15 +333,18 @@ conversion hints are all here.
                        "body": null, "bodyHash": null, "renders": [], "runSpots": [], "…": "…" },
     "node.sections.outline":    { "…": "…", "parent": "node.sections" },
     "node.sections.paragraphs": { "…": "…", "kind": "for", "producer": "computed", "parent": "node.sections",
+                                  "modelDerived": true, "runDependent": false,
                                   "in": "node.sections.outline.value.points",
                                   "nodes": ["node.sections.paragraphs.draft_paragraph"],
                                   "ret": "node.sections.paragraphs.draft_paragraph" },
     "node.sections.paragraphs.draft_paragraph": { "…": "…", "kind": "agent", "producer": "generated",
                                   "parent": "node.sections.paragraphs",
                                   "format": { "$ref": "#/$defs/plaintext" }, "reproducible": false,
+                                  "modelDerived": true, "runDependent": false,
                                   "reads": ["input.consult_draft.content", "item.id",
                                             "item.parent.value.title", "item.value.point"] },
     "node.refine": { "id": "refine", "label": "Refining the summary", "kind": "while", "producer": "computed", "parent": null,
+                     "modelDerived": true, "runDependent": false,
                      "while": { "!==": [ { "var": "node.refine.judge.value.verdict" }, "good" ] }, "max": 3,
                      "nodes": ["node.refine.draft_summary", "node.refine.judge"],
                      "ret": "node.refine.draft_summary", "…": "…" },
@@ -525,8 +528,8 @@ In order:
    `runSpots`, the graph, `requires` and `needs`; compile `resolve.json` **in memory**.
 2. **Validate.** Every rule of parts [01](01-files-and-scopes.md) to
    [06](06-checks-deliverables-profile.md): the file model, types, JSON Logic typing, the Scriban
-   dialect, scopes, macros, checks, deliverables, and the written `format` and `reproducible`
-   against the derived ones. **Any refusal stops publish** with every refusal sentence found, each
+   dialect, scopes, macros, checks, deliverables, and the written `format`, `reproducible`,
+   `producer`, `modelDerived` and `runDependent` against the derived ones. **Any refusal stops publish** with every refusal sentence found, each
    with its file path. Warnings are collected.
 3. **Test.** Run every `tests/<id>.json` offline against the in-memory `resolve.json` (§ 8). **A
    failing test stops publish** with the test's id and its first mismatch.
