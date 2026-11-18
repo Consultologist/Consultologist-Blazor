@@ -4,8 +4,8 @@
 > author from 2026-11-13 to 2026-11-17; nothing in it is built yet. This is a design, not a
 > step-by-step plan: the Milestone 39 issues are its sections and take their decisions from it.
 > Where an issue comment disagrees with this text, the later of the two is the decision, and this
-> document is corrected. Points not yet decided are marked **Proposed** where they appear and
-> gathered in [§ 7](#7-what-stays-proposed). The normative text follows in the package-format registry
+> document is corrected. Every point is now decided (revision 6); refusal sentences follow the
+> style rules of [§ 7](#7-refusal-sentences). The normative text follows in the package-format registry
 > as `package-format-v31.md` with the release (§ 5, step 1).
 >
 > **Revision 2** (2026-11-17): `ret` is the child's full name, an empty or null list fails
@@ -21,10 +21,15 @@
 > shape** and **a node's `producer`** (`computed` or `generated`) says what made its output; every
 > folder is always present; every key is written with its root; inputs are read like nodes
 > (`.value`, `.content`, `.title`); `reproducible` is written and checked; model-derived values are
-> tracked. What stays Proposed is left to the build (§ 7).
+> tracked.
 >
 > **Revision 5** (2026-11-18): `modelDerived` and `runDependent` written on every node header and
 > checked (moved forward from #1478), and `via: "producer"` reserved.
+>
+> **Revision 6** (2026-11-18): every remaining Proposed point decided — the engine's retry and job
+> limits, `Channel` for satellites, the evaluator's run-time guards, and the names and shapes of
+> `resolve.json`, `lock.json`, the record and the reports; refusal sentences follow seven style
+> rules and are settled in the conformance suite's pull request.
 >
 > It replaces the [working notes](../package-format-redesign-notes.md) (2026-11-14), which are kept
 > unchanged.
@@ -110,7 +115,7 @@ follow without a new spec version.
 |---|---|
 | **The grammar** (what a valid package is) | #1383, #1384, #1385, #1386, #1392, #1394, #1395, #1396, #1397, #1400, #1406, #1408, #1409, #1412, #1419, #1061 |
 | **The compiled documents** | #1389 (`resolve.json`), #1390 (`lock.json`), #1449 (tests) |
-| **Engine and deployment**, shipping in the same release | #1393 (the per-job ceiling and 429 retries) |
+| **Engine and deployment**, shipping in the same release | #1393 (the per-job ceiling, retries and job limits) |
 | **Tools and views**, shipping in the same release | #1398 (the diagram), #1425 (the dialect's published spec), #1447 (the migration) |
 | **Closes through another issue** | #1382 (when #1406 is verified) |
 | **The design itself** | #1388 |
@@ -183,26 +188,32 @@ versions is Milestone 40 (#1450).
 This design is filed from #1388, which the package author closes after reviewing it; the build
 parent issue and its thirteen sub-issues are filed from it.
 
-## 7. What stays Proposed
+## 7. Refusal sentences
 
-Every contract point is decided. The package author went through all of them, part by part, on
-2026-11-17 and 18; each part cites its decision. What stays **Proposed** is **left to the build:**
-a member's exact name, an engine setting's name or default, a timing, page wording, a refusal
-sentence's words. **Each build pull request lists the Proposed items it settles, and all are
-confirmed before the contracts release** (§ 5, step 1).
+Every point of the design is decided. The package author went through all of them, part by part,
+on 2026-11-17 and 18; each part cites its decision. Refusal sentences are settled this way
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6984925237)).
+Every sentence follows these style rules:
 
-| Part | Left to the build |
-|---|---|
-| [01 Files and scopes](01-files-and-scopes.md#proposed-in-this-part) | 3 |
-| [02 Types and inputs](02-types-and-inputs.md#proposed-in-this-part) | 1 |
-| [03 Expressions](03-expressions.md#proposed-in-this-part) | 4 |
-| [04 Loops and functions](04-loops-and-functions.md#proposed-in-this-part) | 1 |
-| [05 Templates and macros](05-templates-and-macros.md#proposed-in-this-part) | 1 |
-| [06 Checks, deliverables and the profile](06-checks-deliverables-profile.md#proposed-in-this-part) | 1 |
-| [07 The compiled documents](07-compiled-documents.md#proposed-in-this-part) | 5 |
-| [08 The record](08-record.md#proposed-in-this-part) | 3 |
-| [09 The engine and the pages](09-engine-and-pages.md#proposed-in-this-part) | 13 |
-| [10 Migration and tools](10-migration-and-tools.md#proposed-in-this-part) | 9 |
+1. **It names the thing, says what's wrong, and says what to do.** For example: *"Node 'draft' in
+   sections.paragraphs reuses the id of node 'draft' at the top level, which sections.paragraphs
+   can read: rename one."*
+2. **It never contains patient text or values from inputs:** only package text, ids, paths, counts
+   and limits.
+3. **Plain words.** No internal terms where a plain one exists ("compiled package", not
+   "resolve.json"); British/Canadian spelling.
+4. **One sentence, two at most, ending with the fix as an instruction** ("Rename one.", "Set it in
+   Profile.").
+5. **Ids in single quotes** ('draft'); member names and paths without quotes.
+6. **The same rule gets the same words everywhere:** the Editor, publish, import, CI and the Create
+   page.
+7. **Sentences clinicians see** (the Create page, job start, History) **avoid format terms
+   entirely:** *"This workflow needs your signature. Choose one in Profile."*
+
+The sentences written in the parts (about 300) are the starting text. During the build, the
+conformance suite pins every sentence to a valid and an invalid test package, and **that pull
+request presents all of them in one table** (rule, sentence, where it's shown) for the package
+author to review and change before the contracts release (§ 5, step 1).
 
 **Issues filed while deciding them,** for later milestones unless noted:
 
@@ -227,6 +238,5 @@ confirmed before the contracts release** (§ 5, step 1).
 Earlier: #1453 (null semantics), #1455 (a `semantics` block), #1456 (an input `default`), #1457
 (a macro placed twice), #1458 and #1459 (json-everything), #1461 (an empty `all_pass`).
 
-Most refusal sentences are written here for the first time: the issues decide that each rule gets
-a sentence, and give the exact words for only a few. Each part's "Refusals" section marks which
-wording is decided and which is left to the build.
+Most refusal sentences are written in this design for the first time: the issues decide that each
+rule gets a sentence, and give the exact words for only a few.
