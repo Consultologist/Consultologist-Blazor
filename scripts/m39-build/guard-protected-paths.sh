@@ -39,6 +39,10 @@ elif tool == "Bash":
         refuse("tags and releases are the user'"'"'s")
     if re.search(r"\bgit\s+push\b.*(--force\b|--force-with-lease\b|\s-f\b|\s\+\S)", cmd):
         refuse("force-pushing rewrites shared history")
+    if re.search(r"\bgit\s+push\b.*[\s:](refs/heads/)?(main|master)\b", cmd):
+        refuse("main changes only through the user'"'"'s merges")
+    if re.search(r"\bgh\s+api\b.*\bgit/refs\b", cmd) and re.search(r"-X\s*(POST|PATCH|PUT|DELETE)|--method\s+(POST|PATCH|PUT|DELETE)", cmd):
+        refuse("branches move through git push and the driver'"'"'s merges")
     if re.search(r"(^|[;&|(\s])az\s", cmd):
         refuse("Azure is out of scope for the build")
 

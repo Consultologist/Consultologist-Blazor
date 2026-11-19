@@ -20,6 +20,14 @@
 # Every GitHub call is REST (gh api): gh's GraphQL commands fail on this repo (AGENTS.md).
 set -euo pipefail
 
+# Run from a private copy: bash reads a script as it runs, so an edit to the checkout's copy
+# mid-run would change what runs next.
+if [[ -z "${M39_DRIVER_COPY:-}" ]]; then
+  copy=$(mktemp "${TMPDIR:-/tmp}/m39-run-areas.XXXXXX")
+  cp "$0" "$copy" && chmod 500 "$copy"
+  M39_DRIVER_COPY=1 exec bash "$copy" "$@"
+fi
+
 REPO="Consultologist/Consultologist-Blazor"
 OWNER="${REPO%%/*}"
 BASE="m39-build"
@@ -56,6 +64,24 @@ if ! git -C "$ROOT" ls-remote --exit-code --heads origin "$BASE" >/dev/null; the
   log "Creating $BASE from origin/main"
   git -C "$ROOT" push -q origin "origin/main:refs/heads/$BASE"
 fi
+# The gate is only a gate if nothing reaches m39-build around it: a ruleset must require a PR
+# and status checks there, and forbid force pushes (the server's keys can push branches).
+rules=$(gh api "repos/$REPO/rules/branches/$BASE" --jq '[.[].type] | join(",")')
+for rule in pull_request required_status_checks non_fast_forward; do
+  if [[ ",$rules," != *",$rule,"* ]]; then
+    echo "$BASE has no '$rule' rule. Add a branch ruleset on $BASE: require a pull request, require the 'test' check, block force pushes." >&2
+    exit 5
+  fi
+done
+
+# The checkout's CI, driver and runbook must be exactly origin/main's: a session that edited
+# them locally would otherwise change what the next session reads or what the hook enforces.
+untampered() {
+  git -C "$ROOT" fetch -q origin --prune
+  git -C "$ROOT" diff --quiet origin/main -- .github scripts/m39-build "$RUNBOOK" \
+    && [[ -z "$(git -C "$ROOT" status --porcelain -- .github scripts/m39-build "$RUNBOOK")" ]]
+}
+untampered || { echo "$ROOT differs from origin/main under .github/, scripts/m39-build/ or the runbook." >&2; exit 5; }
 for label in "m39-area:1d76db" "m39-build-parent:0e8a16" "m39-built:5319e7" "needs-decision:d93f0b"; do
   gh api -X POST "repos/$REPO/labels" -f name="${label%%:*}" -f color="${label##*:}" >/dev/null 2>&1 || true
 done
@@ -132,6 +158,9 @@ for nn in "${AREAS[@]}"; do
   sessions=0
   while :; do
     if [[ -e "$STOP_FILE" ]]; then notify "Stopped before area $nn: $STOP_FILE exists."; exit 0; fi
+    if ! untampered; then
+      notify "Area $nn: $ROOT differs from origin/main under .github/, scripts/m39-build/ or the runbook. Stopped."; exit 3
+    fi
 
     read -r issue labels <<<"$(area_issue "$nn")"
     if [[ ",${labels:-}," == *",m39-built,"* ]]; then log "Area $nn: already built (#$issue)"; break; fi
