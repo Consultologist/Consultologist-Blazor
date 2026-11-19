@@ -138,8 +138,10 @@ its tags.
   until the user merges `m39-build` into `main`.
 - **31 stays off in production.** Every area lands with 31 outside the compiled-in accepted
   versions, admitted only through `WorkflowPackages__PreviewSpecVersions` (part 09 § 2.1).
-- **Protected paths:** `.github/`, `scripts/m39-build/` and this runbook change only by the user's
-  hand. A PR that touches them is refused by the driver; a hook on the server refuses the edit.
+- **Protected paths:** `.github/`, `.claude/`, `scripts/m39-build/`, `AGENTS.md`, `CLAUDE.md` and
+  this runbook change only by the user's hand. A PR that touches them is refused by the driver; a
+  hook on the server refuses the edit. A trap worth adding to `AGENTS.md` goes in the PR body under
+  *Decisions made during build*, for the user to add.
 - **Goldens freeze ground truth.** Generate them with the code that the spec says produces them,
   read each one, and list every one under *Goldens to review*.
 

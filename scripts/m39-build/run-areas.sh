@@ -38,8 +38,9 @@ STOP_FILE="${M39_STOP_FILE:-$HOME/m39-build.stop}"
 MAX_SESSIONS="${M39_MAX_SESSIONS:-8}"
 WAIT_MINUTES="${M39_WAIT_MINUTES:-30}"
 CHECK_MINUTES="${M39_CHECK_MINUTES:-120}"
-# A PR touching any of these is refused: CI, this driver and the runbook change by hand only.
-PROTECTED='^(\.github/|scripts/m39-build/|docs/customizable-workflow/package-format-v31/BUILD-RUNBOOK\.md$)'
+# A PR touching any of these is refused: CI, this driver, the agent's instructions and settings
+# change by the user's hand only.
+PROTECTED='^(\.github/|\.claude/|scripts/m39-build/|AGENTS\.md$|CLAUDE\.md$|docs/customizable-workflow/package-format-v31/BUILD-RUNBOOK\.md$)'
 AREAS=(00 01 02 03 04 05 06 07 08 09 10 11 12 13)
 
 log()    { printf '%s  %s\n' "$(date -u +%FT%TZ)" "$*"; }
@@ -66,22 +67,25 @@ if ! git -C "$ROOT" ls-remote --exit-code --heads origin "$BASE" >/dev/null; the
 fi
 # The gate is only a gate if nothing reaches m39-build around it: a ruleset must require a PR
 # and status checks there, and forbid force pushes (the server's keys can push branches).
-rules=$(gh api "repos/$REPO/rules/branches/$BASE" --jq '[.[].type] | join(",")')
-for rule in pull_request required_status_checks non_fast_forward; do
-  if [[ ",$rules," != *",$rule,"* ]]; then
-    echo "$BASE has no '$rule' rule. Add a branch ruleset on $BASE: require a pull request, require the 'test' check, block force pushes." >&2
-    exit 5
-  fi
+for branch in main "$BASE"; do
+  rules=$(gh api "repos/$REPO/rules/branches/$branch" --jq '[.[].type] | join(",")')
+  for rule in pull_request required_status_checks non_fast_forward; do
+    if [[ ",$rules," != *",$rule,"* ]]; then
+      echo "$branch has no '$rule' rule. Add a branch ruleset on $branch: require a pull request, require the 'test' check, block force pushes." >&2
+      exit 5
+    fi
+  done
 done
 
-# The checkout's CI, driver and runbook must be exactly origin/main's: a session that edited
+# The checkout's CI, driver, instructions and runbook must be exactly origin/main's: a session that edited
 # them locally would otherwise change what the next session reads or what the hook enforces.
+GUARDED=(.github scripts/m39-build AGENTS.md CLAUDE.md "$RUNBOOK")
 untampered() {
   git -C "$ROOT" fetch -q origin --prune
-  git -C "$ROOT" diff --quiet origin/main -- .github scripts/m39-build "$RUNBOOK" \
-    && [[ -z "$(git -C "$ROOT" status --porcelain -- .github scripts/m39-build "$RUNBOOK")" ]]
+  git -C "$ROOT" diff --quiet origin/main -- "${GUARDED[@]}" \
+    && [[ -z "$(git -C "$ROOT" status --porcelain -- "${GUARDED[@]}")" ]]
 }
-untampered || { echo "$ROOT differs from origin/main under .github/, scripts/m39-build/ or the runbook." >&2; exit 5; }
+untampered || { echo "$ROOT differs from origin/main in ${GUARDED[*]}." >&2; exit 5; }
 for label in "m39-area:1d76db" "m39-build-parent:0e8a16" "m39-built:5319e7" "needs-decision:d93f0b"; do
   gh api -X POST "repos/$REPO/labels" -f name="${label%%:*}" -f color="${label##*:}" >/dev/null 2>&1 || true
 done
@@ -144,8 +148,12 @@ gate() {
 run_session() {
   local nn=$1 n=$2 logfile="$LOGS/area-$1-$(date -u +%Y%m%dT%H%M%SZ).jsonl"
   log "Area $nn: session $n → $logfile"
+  # Settings: the user's own, plus the guard hook from the checked checkout. Project and local
+  # settings are not read, so a .claude/ the session writes cannot switch the hook off.
   local prompt="You are running area $nn of the Milestone 39 build, unattended. Read $RUNBOOK in full and follow it for area $nn until step 7's done line holds or you have recorded a block. Then stop."
-  ( cd "$ROOT" && claude -p "$prompt" --dangerously-skip-permissions --output-format stream-json --verbose ) >"$logfile" 2>&1
+  ( cd "$ROOT" && claude -p "$prompt" --dangerously-skip-permissions \
+      --setting-sources user --settings "$ROOT/scripts/m39-build/vps-claude-settings.json" \
+      --output-format stream-json --verbose ) >"$logfile" 2>&1
 }
 
 # --- the loop -------------------------------------------------------------------------------
@@ -159,7 +167,7 @@ for nn in "${AREAS[@]}"; do
   while :; do
     if [[ -e "$STOP_FILE" ]]; then notify "Stopped before area $nn: $STOP_FILE exists."; exit 0; fi
     if ! untampered; then
-      notify "Area $nn: $ROOT differs from origin/main under .github/, scripts/m39-build/ or the runbook. Stopped."; exit 3
+      notify "Area $nn: $ROOT differs from origin/main in ${GUARDED[*]}. Stopped."; exit 3
     fi
 
     read -r issue labels <<<"$(area_issue "$nn")"

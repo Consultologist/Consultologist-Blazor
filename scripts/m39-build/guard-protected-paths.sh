@@ -4,7 +4,7 @@
 #   - an Edit/Write/MultiEdit/NotebookEdit of a protected path;
 #   - a Bash command that writes to a protected path, merges a PR, tags, releases,
 #     force-pushes, or calls az.
-# Protected paths: .github/, scripts/m39-build/, the build runbook.
+# Protected paths: .github/, .claude/, scripts/m39-build/, AGENTS.md, CLAUDE.md, the build runbook.
 # The driver's merge gate (run-areas.sh) is the control that holds; this hook stops the
 # attempt early, inside the session, where the agent can still choose another way.
 exec python3 -I -c '
@@ -15,7 +15,7 @@ tool = event.get("tool_name", "")
 args = event.get("tool_input", {}) or {}
 
 # A path starts the string or follows a separator: "/", whitespace, a quote, "=" or ":".
-PROTECTED = re.compile(r"(^|[/\s\"=:])(\.github/|scripts/m39-build/|docs/customizable-workflow/package-format-v31/BUILD-RUNBOOK\.md)")
+PROTECTED = re.compile(r"(^|[/\s\"=:])(\.github/|\.claude/|scripts/m39-build/|AGENTS\.md|CLAUDE\.md|docs/customizable-workflow/package-format-v31/BUILD-RUNBOOK\.md)")
 
 def refuse(reason):
     print(f"Refused by the M39 build guard: {reason} "
@@ -41,7 +41,7 @@ elif tool == "Bash":
         refuse("force-pushing rewrites shared history")
     if re.search(r"\bgit\s+push\b.*[\s:](refs/heads/)?(main|master)\b", cmd):
         refuse("main changes only through the user'"'"'s merges")
-    if re.search(r"\bgh\s+api\b.*\bgit/refs\b", cmd) and re.search(r"-X\s*(POST|PATCH|PUT|DELETE)|--method\s+(POST|PATCH|PUT|DELETE)", cmd):
+    if re.search(r"\bgh\s+api\b.*\bgit/refs\b", cmd) and re.search(r"(-X|--method)[\s=]*(POST|PATCH|PUT|DELETE)|\s(-f|-F|--field|--raw-field|--input)\b", cmd, re.I):
         refuse("branches move through git push and the driver'"'"'s merges")
     if re.search(r"(^|[;&|(\s])az\s", cmd):
         refuse("Azure is out of scope for the build")
