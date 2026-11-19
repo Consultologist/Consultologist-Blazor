@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - main
+      - m39-build # the Milestone 39 integration branch: area PRs merge here first
   pull_request:
     branches:
       - main
+      - m39-build
   workflow_dispatch:
 
 jobs:
