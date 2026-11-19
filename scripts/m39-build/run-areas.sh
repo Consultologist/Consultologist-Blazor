@@ -88,7 +88,7 @@ gate() {
   [[ ",$labels," != *",needs-decision,"* ]] || { GATE_REASON="PR #$pr is labelled needs-decision"; return 20; }
 
   local touched
-  touched=$(gh api --paginate "repos/$REPO/pulls/$pr/files?per_page=100" --jq '.[].filename' | grep -E "$PROTECTED" || true)
+  touched=$(gh api --paginate "repos/$REPO/pulls/$pr/files?per_page=100" --jq '.[] | .filename, (.previous_filename // empty)' | grep -E "$PROTECTED" || true)
   if [[ -n "$touched" ]]; then
     GATE_REASON="PR #$pr changes protected paths: $(tr '\n' ' ' <<<"$touched")"; return 20
   fi
