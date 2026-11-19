@@ -83,7 +83,7 @@ GUARDED=(.github .claude scripts/m39-build ':(glob)**/AGENTS.md' ':(glob)**/CLAU
 untampered() {
   git -C "$ROOT" fetch -q origin --prune
   git -C "$ROOT" diff --quiet origin/main -- "${GUARDED[@]}" \
-    && [[ -z "$(git -C "$ROOT" status --porcelain -- "${GUARDED[@]}")" ]]
+    && [[ -z "$(git -C "$ROOT" status --porcelain --ignored --untracked-files=all -- "${GUARDED[@]}")" ]]
 }
 untampered || { echo "$ROOT differs from origin/main in ${GUARDED[*]}." >&2; exit 5; }
 for label in "m39-area:1d76db" "m39-build-parent:0e8a16" "m39-built:5319e7" "needs-decision:d93f0b"; do
