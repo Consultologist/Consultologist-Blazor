@@ -40,7 +40,7 @@ WAIT_MINUTES="${M39_WAIT_MINUTES:-30}"
 CHECK_MINUTES="${M39_CHECK_MINUTES:-120}"
 # A PR touching any of these is refused: CI, this driver, the agent's instructions and settings
 # change by the user's hand only.
-PROTECTED='^(\.github/|\.claude/|scripts/m39-build/|AGENTS\.md$|CLAUDE\.md$|docs/customizable-workflow/package-format-v31/BUILD-RUNBOOK\.md$)'
+PROTECTED='(^(\.github/|scripts/m39-build/)|(^|/)\.claude/|(^|/)(AGENTS|CLAUDE(\.local)?)\.md$|^docs/customizable-workflow/package-format-v31/BUILD-RUNBOOK\.md$)'
 AREAS=(00 01 02 03 04 05 06 07 08 09 10 11 12 13)
 
 log()    { printf '%s  %s\n' "$(date -u +%FT%TZ)" "$*"; }
@@ -79,7 +79,7 @@ done
 
 # The checkout's CI, driver, instructions and runbook must be exactly origin/main's: a session that edited
 # them locally would otherwise change what the next session reads or what the hook enforces.
-GUARDED=(.github scripts/m39-build AGENTS.md CLAUDE.md "$RUNBOOK")
+GUARDED=(.github .claude scripts/m39-build ':(glob)**/AGENTS.md' ':(glob)**/CLAUDE.md' ':(glob)**/CLAUDE.local.md' "$RUNBOOK")
 untampered() {
   git -C "$ROOT" fetch -q origin --prune
   git -C "$ROOT" diff --quiet origin/main -- "${GUARDED[@]}" \
