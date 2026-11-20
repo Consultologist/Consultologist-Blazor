@@ -25,7 +25,7 @@ public sealed record TypeCheckResult(IReadOnlyList<SourceRefusal> Refusals, Pack
 /// #1500 (specVersion 31, area 03): the type rules of a package source that need no expression or
 /// template (part 02), run on what <see cref="SourceParser.Parse"/> accepted. This file holds the
 /// format files (§§ 3–6, D30), every <c>format</c> member in the scope that owns it (§ 2, D11) and
-/// the inputs (§ 8, D17–D19); the nodes' rules are <c>SourceTypes.Nodes.cs</c>'s. Never throws on
+/// the inputs (§ 8, D17–D19); the nodes' rules (§§ 1–2, § 7) are <c>SourceTypes.Nodes.cs</c>'s. Never throws on
 /// package content.
 /// </summary>
 public static partial class SourceTypes
@@ -76,8 +76,9 @@ public static partial class SourceTypes
             }
         }
 
-        Nodes(formats, package.Nodes.Nodes, refusals);
-        Nodes(formats, package.Checks.Nodes, refusals);
+        var passed = new HashSet<SourceNode>(ReferenceEqualityComparer.Instance);
+        Nodes(formats, package.Nodes.Nodes, passed, refusals);
+        Nodes(formats, package.Checks.Nodes, passed, refusals);
         Definitions(formats, package.Definitions, refusals);
         Deliverables(formats, package.Deliverables, refusals);
         foreach (var function in package.Functions.Items)
@@ -88,17 +89,20 @@ public static partial class SourceTypes
             Member(scope, function.Index["format"], name, function.Id, path, refusals);
             foreach (var parameter in function.Inputs)
                 Member(scope, parameter.Json["format"], $"{name} parameter '{parameter.Id}'", parameter.Id, path, refusals);
-            Nodes(scope, function.Body.Nodes, refusals);
+            Nodes(scope, function.Body.Nodes, passed, refusals);
             Definitions(scope, function.Definitions, refusals);
         }
 
+        // The nodes' rules, each node judged only when its format passed all of the above.
+        var judge = new NodeJudge(registry, files, RefusedPaths(refusals), passed, refusals);
+        judge.Body(formats, package.Nodes.Nodes);
+        judge.Body(formats, package.Checks.Nodes);
+        foreach (var function in package.Functions.Items)
+            judge.Body(functionFormats[function.Id], function.Body.Nodes);
+
         var ordered = refusals.Distinct().OrderBy(r => r.Path, StringComparer.Ordinal).ToList();
         var types = ordered.Count == 0
-            ? new PackageTypes(
-                formats,
-                functionFormats,
-                new Dictionary<string, JsonNode>(StringComparer.Ordinal),
-                new Dictionary<string, AgentBinding>(StringComparer.Ordinal))
+            ? new PackageTypes(formats, functionFormats, judge.NodeFormats, judge.Bindings)
             : null;
         return new TypeCheckResult(ordered, types);
     }
@@ -175,26 +179,35 @@ public static partial class SourceTypes
         return refusals.Count == before;
     }
 
-    /// <summary>Each node of a body and the bodies inside it: a leaf by its file, a flow node by its <c>index.json</c>.</summary>
-    private static void Nodes(FormatSet set, IReadOnlyList<SourceNode> nodes, List<SourceRefusal> refusals)
+    /// <summary>
+    /// Each node of a body and the bodies inside it: a leaf by its file, a flow node by its
+    /// <c>index.json</c>; a node whose <c>format</c> added nothing joins <paramref name="passed"/>.
+    /// </summary>
+    private static void Nodes(FormatSet set, IReadOnlyList<SourceNode> nodes, HashSet<SourceNode> passed, List<SourceRefusal> refusals)
     {
         foreach (var node in nodes)
         {
-            var word = node switch
-            {
-                SourceFor => "Loop",
-                SourceWhile => "While",
-                SourceIf => "If",
-                SourceCase => "Case",
-                _ => node.Key.StartsWith("check.", StringComparison.Ordinal) ? "Check" : "Node",
-            };
-            var path = node is SourceLeaf ? node.Path : SourceLayout.Join(node.Path, "index.json");
-            Member(set, node.Header["format"], $"{word} '{node.Id}'", node.Id, path, refusals);
+            if (Member(set, node.Header["format"], $"{Word(node)} '{node.Id}'", node.Id, FilePath(node), refusals))
+                passed.Add(node);
             foreach (var body in Bodies(node))
-                Nodes(set, body.Nodes, refusals);
+                Nodes(set, body.Nodes, passed, refusals);
         }
     }
 
+    /// <summary>How a sentence names a node (02-D9): <c>Loop</c>, <c>While</c>, <c>If</c>, <c>Case</c>, or <c>Check</c> or <c>Node</c> for a leaf.</summary>
+    private static string Word(SourceNode node) => node switch
+    {
+        SourceFor => "Loop",
+        SourceWhile => "While",
+        SourceIf => "If",
+        SourceCase => "Case",
+        _ => node.Key.StartsWith("check.", StringComparison.Ordinal) ? "Check" : "Node",
+    };
+
+    /// <summary>The file a node's refusals carry: a leaf's own, a flow node's <c>index.json</c>.</summary>
+    private static string FilePath(SourceNode node) => node is SourceLeaf ? node.Path : SourceLayout.Join(node.Path, "index.json");
+
+    /// <summary>A node's bodies in order: a loop's one; an <c>if</c>'s <c>then</c>, then its <c>else</c>; a <c>case</c>'s branches, then its <c>else</c>.</summary>
     private static IEnumerable<SourceBlock> Bodies(SourceNode node)
     {
         switch (node)

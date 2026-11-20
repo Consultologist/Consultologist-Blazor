@@ -181,6 +181,26 @@ internal static class FormatSentences
     public static SourceRefusal AnyOfAtRoot(string node, string format, string path) =>
         new("S02-027", $"Node '{node}' returns {format}, an anyOf at its root, which strict mode can't send to a model; wrap it in an object.", path);
 
+    /// <summary>S02-013 (D15): a rendered node whose format is not a text format; <paramref name="format"/> its type string.</summary>
+    public static SourceRefusal RenderedNotText(string node, string format, string path) =>
+        new("S02-013", $"Node '{node}' is kind rendered and returns {format}; a rendered node returns plaintext, markdown_block or markdown_inline.", path);
+
+    /// <summary>S02-015 (D4, D24): a flow node's declared format is not what its <c>ret</c> gives; <paramref name="flow"/> is <c>Loop</c>, <c>While</c>, <c>If</c> or <c>Case</c>, the formats type strings.</summary>
+    public static SourceRefusal FlowFormatDiffers(string flow, string id, string declared, string derived, string path) =>
+        new("S02-015", $"{flow} '{id}' declares format {declared}, but its ret gives {derived}.", path);
+
+    /// <summary>S02-016 (D25): a body of an <c>if</c> or <c>case</c> (<paramref name="kind"/>, lower case) returns a format outside the declared union; <paramref name="n"/> counts bodies from 1.</summary>
+    public static SourceRefusal BranchNotInUnion(int n, string kind, string id, string format, string union, string path) =>
+        new("S02-016", $"Branch {n} of {kind} '{id}' returns {format}, which is not in the declared union {union}.", path);
+
+    /// <summary>
+    /// S01-027 (D5): a leaf whose <c>reproducible</c> is not its kind's; <paramref name="node"/> is
+    /// <c>Node</c> or <c>Check</c>, <paramref name="key"/> the rooted key. Here, not in
+    /// <see cref="SourceSentences"/>: the reader never says it.
+    /// </summary>
+    public static SourceRefusal ReproducibleNotTheKinds(string node, string key, bool declared, string path) =>
+        new("S01-027", $"{node} '{key}' declares reproducible {Bool(declared)}, but its kind makes it {Bool(!declared)}.", path);
+
     /// <summary>S02-055: a format sent to a model with too many properties (D3).</summary>
     public static SourceRefusal TooManyProperties(string name, int n, int limit, string path) =>
         new("S02-055", $"Format '{name}' declares {n} properties; a format sent to a model declares at most {limit}.", path);
@@ -238,6 +258,8 @@ internal static class FormatSentences
         new("A03-011", $"Format '{id}' expands to more than 10,000 schemas through the formats it refers to; refer to fewer.", path);
 
     private const string ManifestPath = "manifest.json";
+
+    private static string Bool(bool value) => value ? "true" : "false";
 
     private static string Where(string pointer) => pointer.Length == 0 ? "the root" : pointer;
 }

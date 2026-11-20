@@ -104,10 +104,11 @@ public static partial class SourceParser
             "computed" => isCheck ? SourceShapes.Check : SourceShapes.NodeComputed,
             _ => SourceShapes.NodeCall,
         };
-        // An agent's inline format has part 02's own sentence (S02-014, area 03's D15), not A02-001.
-        var inlineAgentFormat = kind == "agent" && header["format"] is JsonObject;
-        SourceMembers.Check(header, shape, declaration, path, walk.Refusals, inlineAgentFormat ? ["format"] : null);
-        if (inlineAgentFormat)
+        // An inline format has part 02's own sentence, not A02-001 (area 03's D15): an agent's is S02-014
+        // here; a rendered node's (not a check's: area 08) is read on, and the type rules say S02-013.
+        var inlineFormat = header["format"] is JsonObject && (kind == "agent" || (kind == "rendered" && !isCheck));
+        SourceMembers.Check(header, shape, declaration, path, walk.Refusals, inlineFormat ? ["format"] : null);
+        if (inlineFormat && kind == "agent")
             walk.Refuse(FormatSentences.AgentInlineFormat(member.Id, path));
 
         if (SourceLayout.Text(header["producer"]) is { } producer)

@@ -61,8 +61,8 @@ public class SourceTypesFormatsTests
         Assert.Equal("draft_section", function.Key);
         Assert.Equal(FormatOrigin.Package, function.Value.Find("standard_section")!.Origin);
         Assert.Null(function.Value.Find("verdict"));
-        Assert.Empty(types.NodeFormats);
-        Assert.Empty(types.Bindings);
+        Assert.Equal("section_plan", types.NodeFormats["nodes/plan.md"].GetValue<string>());
+        Assert.Equal("custom", types.Bindings["nodes/plan.md"].Via);
     }
 
     [Fact]
@@ -337,8 +337,15 @@ public class SourceTypesFormatsTests
         // verdict is a package format draft_section does not use: the package's members may name it, the function's may not.
         Assert.Empty(Refusals(FullWithFunctionDefinitions()));
         JsonNode value = inline ? JsonNode.Parse("""{ "type": "array", "items": { "$ref": "verdict" } }""")! : "verdict";
+        var files = FullWithFunctionDefinitions();
+        if (file == "nodes/refine/index.json")
+        {
+            // A while is what its ret gives (D24): it returns its judge's verdict, written inline as a $ref.
+            files.WithJson(file, h => h["ret"] = "node.refine.judge");
+            value = JsonNode.Parse("""{ "$ref": "verdict" }""")!;
+        }
 
-        var refusals = Refusals(Set(FullWithFunctionDefinitions(), file, member, value));
+        var refusals = Refusals(Set(files, file, member, value));
 
         if (!inFunction)
         {
