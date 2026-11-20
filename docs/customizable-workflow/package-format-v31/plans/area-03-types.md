@@ -291,7 +291,7 @@ If `TheDialectsOwnExamples_AgreeWithTheChecker` finds an example the checker and
     - `bool IsCyclic(string name)`.
   - Sentence S02-017.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 [Fact] public void AName_IsFoundPackageFirst_ThenCatalogue_ThenBuiltIn()
@@ -303,8 +303,8 @@ If `TheDialectsOwnExamples_AgreeWithTheChecker` finds an example the checker and
 [Fact] public void Resolve_And_NameOf_ReadBothWrittenForms()   // "plaintext", { "$ref": "plaintext" }, { "$ref": "plaintext", "title": "Notes" } → name plaintext; { "type": "number" } → no name, resolves to itself
 ```
 
-- [ ] **Step 2–4:** Run (fail), implement, run (pass).
-- [ ] **Step 5: Commit** `PackageFormat (#1500): a format name is looked up package first, and no format reaches itself`; push.
+- [x] **Step 2–4:** Run (fail), implement, run (pass).
+- [x] **Step 5: Commit** `PackageFormat (#1500): a format name is looked up package first, and no format reaches itself`; push.
 
 ### Task 5: The two equalities, the hashes and type strings
 
