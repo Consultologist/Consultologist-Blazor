@@ -405,8 +405,8 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | Id | Section | Sentence | Audience | Review |
 |---|---|---|---|---|
 | S09-001 | [1.3 Which spec versions an engine admits](09-engine-and-pages.md#13-which-spec-versions-an-engine-admits) | *"specVersion 31 is not supported: this engine accepts specVersion \<list\> (pre-v5 packages are archived; see registry-operations.md)."* | author | |
-| S09-002 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"Up to \<n\> agent calls could run at once; this engine runs at most \<ceiling\> per job, so the \> rest wait their turn."* | author | |
-| S09-003 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"An unbounded number of agent calls could run at once, since \<loop key\> has no maxParallel and \> reads a list of unknown length; this engine runs at most \<ceiling\> per job, so the rest wait \> their turn."* | author | |
+| S09-002 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"Up to \<n\> agent calls could run at once; this engine runs at most \<ceiling\> per job, so the rest wait their turn."* | author | |
+| S09-003 | [3.5 The publish note](09-engine-and-pages.md#35-the-publish-note) | *"An unbounded number of agent calls could run at once, since \<loop key\> has no maxParallel and reads a list of unknown length; this engine runs at most \<ceiling\> per job, so the rest wait their turn."* | author | |
 | S09-004 | [6.2 The job header](09-engine-and-pages.md#62-the-job-header) | *"migrated by the operator from \<old version\>"* | author | |
 | S09-005 | [6.3 Banners](09-engine-and-pages.md#63-banners) | *"\<deliverable label\> was blocked: check '\<check id\>' failed (\<check detail\>)."* | author | |
 | S09-006 | [6.4 The sections, in the order the job runs](09-engine-and-pages.md#64-the-sections-in-the-order-the-job-runs) | *"16 November 2026"* | author | |
