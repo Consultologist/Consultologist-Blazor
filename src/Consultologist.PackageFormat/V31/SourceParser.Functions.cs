@@ -39,15 +39,13 @@ public static partial class SourceParser
     /// <c>null</c> <c>ret</c> is S04-011, <c>nodes</c> <c>[]</c> A02-008, an id listed twice S04-013);
     /// each parameter's id and shape (a <c>required</c> or <c>channel</c> is S04-067); <c>uses</c> by
     /// <see cref="SourceShapes.Uses"/>; the body; and the four definition folders, read in full as the
-    /// package's are (S01-007 when one is missing). Null when the function has a fault of its own.
+    /// package's are (S01-007 when one is missing). Null only when its index cannot be read; otherwise built, whatever its faults.
     /// </summary>
     private static SourceFunction? ReadFunction(SourceWalk walk, ListedMember member)
     {
         var folder = member.Path;
         var id = member.Id;
         var name = $"Function '{id}'";
-        var before = walk.Refusals.Count;
-
         foreach (var top in TopLevelOnly)
         {
             var inner = SourceLayout.Join(folder, top);
@@ -74,10 +72,15 @@ public static partial class SourceParser
             var members = SourceLayout.ReadList(
                 walk, folder, $"{path} nodes", index["nodes"], MemberForm.FileOrFolder,
                 (new HashSet<string>(StringComparer.Ordinal), child => SourceSentences.BodyListsTwice(name, child, path)));
-            var faulty = walk.Refusals.Count != before;
-            var nodes = ReadBody(walk, members, "node", "");
-            if (!faulty)
-                body = new SourceBlock(nodes, SourceLayout.Text(index["ret"]));
+            var ret = SourceLayout.Text(index["ret"]);
+            if (index["nodes"] is JsonArray && ret != null && members.Count > 0)
+            {
+                SourceScopes.CheckReturn(
+                    name, ret, members.Select(child => Key("node", "", child.Id)).ToList(), path, walk.Refusals);
+            }
+
+            // Built even with a fault of its own: SourceScopes judges whatever was built.
+            body = new SourceBlock(ReadBody(walk, members, "node", ""), ret);
         }
 
         var definitions = ReadDefinitions(walk, folder);

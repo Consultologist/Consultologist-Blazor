@@ -98,10 +98,10 @@ public sealed record SourceLeaf(string Id, string Key, string Path, string Kind,
 /// <summary>#1499: a body: the nodes it lists, in order, and the key it returns (null only in an empty <c>case</c> branch).</summary>
 public sealed record SourceBlock(IReadOnlyList<SourceNode> Nodes, string? Ret);
 
-/// <summary>#1499: a <c>for</c> (part 04 § 2).</summary>
+/// <summary>#1499: a <c>for</c> (part 04 § 2); <c>max</c> is held as written, a whole number that fits a <see cref="long"/>.</summary>
 public sealed record SourceFor(
     string Id, string Key, string Path, string Kind, JsonObject Header,
-    string In, bool Parallel, int? MaxParallel, JsonNode? Until, int? Max, string? ItemLabel, SourceBlock Body)
+    string In, bool Parallel, int? MaxParallel, JsonNode? Until, long? Max, string? ItemLabel, SourceBlock Body)
     : SourceNode(Id, Key, Path, Kind, Header);
 
 /// <summary>#1499: a <c>while</c> (part 04 § 3).</summary>

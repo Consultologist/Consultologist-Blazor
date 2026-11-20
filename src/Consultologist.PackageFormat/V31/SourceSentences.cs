@@ -276,6 +276,29 @@ internal static class SourceSentences
     public static SourceRefusal NotAnObject(string path) =>
         new("A02-005", $"File '{path}' must hold one JSON object.", path);
 
+    /// <summary>
+    /// S01-002: two nodes of one id where the deeper one's folder is inside the other's.
+    /// <paramref name="path"/> is the deeper node's enclosing ids (<c>sections.paragraphs</c>, with the
+    /// root in <c>checks/</c>, D13); <paramref name="other"/> is <c>at the top level</c> or <c>in …</c>.
+    /// </summary>
+    public static SourceRefusal NodeReusesVisibleId(string id, string path, string other, string file) =>
+        new("S01-002", $"Node '{id}' in {path} reuses the id of node '{id}' {other}, which {path} can read: rename one. "
+            + "Ids may repeat only where neither can see the other (for example in two sibling loops).", file);
+
+    /// <summary>S01-036: two nodes of one id inside a <c>while</c>; each path is a key without its root (D14).</summary>
+    public static SourceRefusal NodeTwiceInWhile(string id, string whileId, string first, string second, string file) =>
+        new("S01-036", $"Node '{id}' appears twice inside while '{whileId}' ({first} and {second}): pass.\u2026.node.{id} must name one node.", file);
+
+    /// <summary>S01-042: an expression of <paramref name="count"/> nodes, past <see cref="SourceBounds.ExpressionNodes"/>.</summary>
+    public static SourceRefusal ExpressionTooLarge(string site, string path, int count) =>
+        new("S01-042", $"{site} in '{path}' has {count.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} expression nodes; "
+            + "the most is SourceBounds.expressionNodes (1,000).", path);
+
+    /// <summary>S04-012: a body's <c>ret</c> that is not one of its own listed children's full names.</summary>
+    public static SourceRefusal ReturnsNonChild(string subject, string ret, string fullNames, string path) =>
+        new("S04-012", $"{subject} returns {ret}, which is not one of its own children ({fullNames}): "
+            + "write the child's full name, for example node.sections.paragraphs.", path);
+
     /// <summary>The file a <c>&lt;list&gt;</c> names: the index's path, before the body member a flow folder's list adds.</summary>
     private static string IndexPath(string list)
     {

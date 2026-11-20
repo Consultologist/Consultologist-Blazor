@@ -39,13 +39,13 @@ public static partial class SourceParser
     };
 
     /// <summary>One body of a flow node or a function: the subject its sentences name, its list's name, the list and its <c>ret</c>.</summary>
-    private sealed record BodyList(string Subject, string Name, JsonNode? Ids, string? Ret);
+    private sealed record BodyList(string Subject, string Name, JsonNode? Ids, string? Ret, IReadOnlyList<string>? When = null);
 
     /// <summary>
     /// A flow node's folder. Its <c>kind</c> is read first, and a fault there ends the read with the
     /// folder's children left unsaid; then the members of the kind's shape and the kind's own rules;
     /// then each body's list (flat in the one folder, so an id is listed once across them all) and its
-    /// children, in order. Null when the node, though walked, has a fault of its own.
+    /// children, in order. Null only when the folder cannot be read at all (no index, or a refused <c>kind</c>).
     /// </summary>
     private static SourceNode? ReadFlowNode(SourceWalk walk, string root, string enclosing, ListedMember member)
     {
@@ -73,7 +73,6 @@ public static partial class SourceParser
             _ => SourceShapes.FlowCase,
         };
         var key = Key(root, enclosing, id);
-        var before = walk.Refusals.Count;
 
         // The members whose fault part 04 names in its own words.
         var foreign = index.Select(m => m.Key)
@@ -105,7 +104,8 @@ public static partial class SourceParser
         var bodies = new List<BodyList>();
         var complete = true;
         int? maxParallel = null;
-        int? max = null;
+        long? max = null;
+        int? whileMax = null;
         switch (kind)
         {
             case "for":
@@ -119,7 +119,7 @@ public static partial class SourceParser
                 bodies.Add(new BodyList(name, "nodes", index["nodes"], SourceLayout.Text(index["ret"])));
                 break;
             case "while":
-                max = ReadWhileMax(walk, index, id, name, path);
+                whileMax = ReadWhileMax(walk, index, id, name, path);
                 if (index["nodes"] is JsonArray { Count: 0 })
                     walk.Refuse(SourceSentences.WhileHasNoBody(id, path));
                 CheckRet(walk, index, name, path);
@@ -159,13 +159,26 @@ public static partial class SourceParser
 
         if (!complete)
             walk.MarkUnreadable(folder);
-        var faulty = walk.Refusals.Count != before;
 
         var inner = enclosing.Length == 0 ? id : $"{enclosing}.{id}";
-        var blocks = bodies.Select((body, i) => new SourceBlock(ReadBody(walk, lists[i], root, inner), body.Ret)).ToList();
-        if (faulty)
-            return null;
+        var blocks = new List<SourceBlock>();
+        for (var i = 0; i < bodies.Count; i++)
+        {
+            // S04-012 is judged against the ids the body lists, not the children that survived reading.
+            if (bodies[i].Ids is JsonArray && bodies[i].Ret is { } ret && lists[i].Count > 0)
+            {
+                SourceScopes.CheckReturn(
+                    bodies[i].Subject, ret, lists[i].Select(child => Key(root, inner, child.Id)).ToList(), path, walk.Refusals);
+            }
 
+            blocks.Add(new SourceBlock(ReadBody(walk, lists[i], root, inner), bodies[i].Ret));
+        }
+
+        // The node is built even when it has a fault of its own, with placeholders for what could not
+        // be read: SourceScopes judges whatever was built, so a scope fault is reported together with
+        // independent faults elsewhere (the package itself is withheld whenever anything was refused).
+        SourceBlock? Named(string body) => bodies.FindIndex(b => b.Name == body) is var at and >= 0 ? blocks[at] : null;
+        var empty = new SourceBlock([], null);
         switch (kind)
         {
             case "for":
@@ -176,18 +189,18 @@ public static partial class SourceParser
             case "while":
                 return new SourceWhile(
                     id, key, folder, kind, index,
-                    index["while"]!, max ?? 0, index["until"], Boolean(index["checkFirst"]) ?? false, blocks[0]);
+                    index["while"] ?? JsonValue.Create(false), whileMax ?? 0, index["until"], Boolean(index["checkFirst"]) ?? false, blocks[0]);
             case "if":
-                return new SourceIf(id, key, folder, kind, index, index["if"]!, blocks[0], blocks.Count > 1 ? blocks[1] : null);
+                return new SourceIf(
+                    id, key, folder, kind, index, index["if"] ?? JsonValue.Create(false), Named("then.nodes") ?? empty, Named("else.nodes"));
             default:
             {
-                var branches = (JsonArray)index["branches"]!;
-                var read = branches
-                    .Select((branch, i) => new SourceBranch(SourceLayout.Lines(branch!["when"]) ?? [], blocks[i]))
+                var branches = Enumerable.Range(0, bodies.Count)
+                    .Where(i => bodies[i].When != null)
+                    .Select(i => new SourceBranch(bodies[i].When!, blocks[i]))
                     .ToList();
                 return new SourceCase(
-                    id, key, folder, kind, index,
-                    SourceLayout.Text(index["case"]) ?? "", read, blocks.Count > branches.Count ? blocks[^1] : null);
+                    id, key, folder, kind, index, SourceLayout.Text(index["case"]) ?? "", branches, Named("else.nodes"));
             }
         }
     }
@@ -252,7 +265,8 @@ public static partial class SourceParser
             SourceMembers.Check(branch, SourceShapes.Branch, subject, path, walk.Refusals, ["when"]);
             CheckWhen(walk, branch, id, n, subject, path);
             CheckEmptyBranch(walk, branch, id, n, path);
-            bodies.Add(new BodyList(subject, $"branch {n} nodes", branch["nodes"], SourceLayout.Text(branch["ret"])));
+            bodies.Add(new BodyList(
+                subject, $"branch {n} nodes", branch["nodes"], SourceLayout.Text(branch["ret"]), SourceLayout.Lines(branch["when"]) ?? []));
         }
 
         return complete;
@@ -345,29 +359,36 @@ public static partial class SourceParser
     }
 
     /// <summary>
-    /// A <c>for</c>'s <c>max</c> (part 04 § 2.4): <c>null</c> passes; not a whole number is A02-001;
-    /// below 1 is S04-024, whose sentence is fixed. No upper bound (§ 6): a value past
-    /// <see cref="int.MaxValue"/> is held as that.
+    /// A <c>for</c>'s <c>max</c> (part 04 § 2.4): <c>null</c> passes; not a whole number, or one past
+    /// what a <see cref="long"/> holds, is A02-001; below 1 is S04-024, whose sentence is fixed. No
+    /// upper bound (§ 6): the value is held as written.
     /// </summary>
-    private static int? ReadLoopMax(SourceWalk walk, JsonObject index, string id, string name, string path)
+    private static long? ReadLoopMax(SourceWalk walk, JsonObject index, string id, string name, string path)
     {
         var node = index["max"];
         if (node is null)
             return null;
-        if (Number(node) is not { Whole: true } number)
+        if (Number(node) is not { Whole: true } || WholeLong(node) is not { } value)
         {
             walk.Refuse(SourceSentences.MemberWrongType(name, "max", SourceMembers.Describe(node), "a whole number", path));
             return null;
         }
 
-        if (number.Value < 1)
+        if (value < 1)
         {
             walk.Refuse(SourceSentences.LoopMaxTooLow(id, path));
             return null;
         }
 
-        return number.Value >= int.MaxValue ? int.MaxValue : (int)number.Value;
+        return value;
     }
+
+    /// <summary>A JSON number that is whole and fits a <see cref="long"/>, exactly; null otherwise.</summary>
+    private static long? WholeLong(JsonNode? node) =>
+        node is JsonValue number && number.TryGetValue<decimal>(out var exact)
+        && exact == decimal.Truncate(exact) && exact >= long.MinValue && exact <= long.MaxValue
+            ? (long)exact
+            : null;
 
     /// <summary>
     /// A <c>while</c>'s <c>max</c> (part 04 § 3.1), left out of the member rules: <c>null</c> is S04-031;

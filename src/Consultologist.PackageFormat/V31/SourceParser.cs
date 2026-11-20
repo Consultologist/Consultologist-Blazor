@@ -23,9 +23,15 @@ public static partial class SourceParser
     private static readonly string[] TopFolders =
         ["nodes", "checks", "functions", "renderers", "snippets", "macros", "formats", "deliverables", "tests"];
 
-    /// <summary>Reads <paramref name="upload"/> (path to bytes) against <paramref name="registry"/>'s names.</summary>
+    /// <summary>
+    /// Reads <paramref name="upload"/> (path to bytes) against <paramref name="registry"/>'s names. A null
+    /// argument is the caller's error (<see cref="ArgumentNullException"/>); nothing an upload holds throws.
+    /// </summary>
     public static SourceParseResult Parse(IReadOnlyDictionary<string, byte[]> upload, SourceRegistry registry)
     {
+        ArgumentNullException.ThrowIfNull(upload);
+        ArgumentNullException.ThrowIfNull(registry);
+
         var intake = SourceIntake.Read(upload);
         if (intake.Refusals.Count > 0)
             return new SourceParseResult(null, Order(intake.Refusals), intake.Normalised);
@@ -41,11 +47,15 @@ public static partial class SourceParser
         var tests = ReadTests(walk);
         SourceLayout.ReportStrays(walk);
 
+        // The scope rules need the whole tree, so they run on what the walk built, partial or not:
+        // a scope fault is reported together with independent faults elsewhere.
+        var tree = new SourcePackage(
+            manifest ?? new SourceManifest("", "", null, null, null, [], [], new JsonObject()),
+            nodes, checks, functions, definitions, deliverables, tests, walk.Readmes);
+        SourceScopes.Check(tree, walk.Refusals);
+
         var refusals = Order(walk.Refusals);
-        var package = refusals.Count == 0 && manifest != null
-            ? new SourcePackage(manifest, nodes, checks, functions, definitions, deliverables, tests, walk.Readmes)
-            : null;
-        return new SourceParseResult(package, refusals, intake.Normalised);
+        return new SourceParseResult(refusals.Count == 0 ? tree : null, refusals, intake.Normalised);
     }
 
     /// <summary>Each refusal once (same id, sentence and path), ordered by path, then in the order found.</summary>
