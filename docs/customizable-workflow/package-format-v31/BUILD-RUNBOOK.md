@@ -76,17 +76,10 @@ step whose done line does not hold yet is where you start.
 6. **Verify** with `superpowers:verification-before-completion`, from the worktree:
    - `dotnet build Consultologist.sln`;
    - `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`;
-   - the browser suite, served as CI serves it, in **one** shell command (the server lives only
-     as long as that command):
-     ```bash
-     dotnet publish src/Consultologist.Web -c Release -o publish -p:E2E=true \
-       && { python3 tests/Consultologist.Web.E2E.Tests/serve.py 5000 publish/wwwroot & srv=$!; } \
-       && curl -sf --retry 30 --retry-connrefused --retry-delay 1 http://localhost:5000/ >/dev/null \
-       && E2E_BASE_URL=http://localhost:5000 dotnet test tests/Consultologist.Web.E2E.Tests -c Release; \
-       rc=$?; kill $srv 2>/dev/null; exit $rc
-     ```
-     Stop the server by its process id, as above, never with `pkill -f serve.py`: that pattern also
-     matches the shell running the command, and kills it.
+   - the browser suite, exactly as CI runs it: `.github/scripts/run-e2e.sh`. It publishes the
+     app, serves it, runs the E2E tests and stops the server, quietly. If a test fails and you
+     need the server's request log, run it again with `-v`. Read its output directly or through
+     `| tail`; never redirect it with `>`, which the guard refuses on a protected path.
 
    All green, output read. A browser-suite failure that names the browser itself (*"Executable
    doesn't exist"*, a missing shared library) is the server's setup, not the code: record it as a
