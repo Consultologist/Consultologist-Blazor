@@ -122,7 +122,7 @@ consultologist-package-format (m39-build)
   - `public static class SourceIds { public static SourceRefusal? Check(string id, string path); }` — the first failing rule in the order pattern (S01-030), length (S01-031), Windows (S01-032), reserved (S01-033, D10).
   - Test helper `internal static class V31Contract { static string Path(params string[] parts); static JsonNode Json(params string[] parts); static void AssertSentence(SourceRefusal refusal); }`. `AssertSentence` finds the row of `v31/sentences.json` with the refusal's id, turns the row into a pattern (literal text escaped; each `<…>` placeholder, nested ones as one, becomes `.+?`; a `<a | b>` choice becomes `.+?` too), and asserts the whole sentence matches. An `A02-…` id is checked against the table above, held in the helper. It fails loudly when the submodule is missing, as `V31ContractsTests.Existing` does.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 [Fact] public void Bounds_AreThePublishedOnes()          // every member of bounds.json's sourceBounds and formatBounds equals its constant;
@@ -141,10 +141,10 @@ public void Check_GivesTheFirstFailingRule(string id, string? expected)
 [Fact] public void EveryIdSentence_IsTheDesigns()        // V31Contract.AssertSentence on one refusal of each of S01-030..033
 ```
 
-- [ ] **Step 2: Run** the test command; expected: build fails, the types do not exist.
-- [ ] **Step 3: Implement** the four files. Sentences are string literals copied from `sentences.json`.
-- [ ] **Step 4: Run** the test command; expected: PASS.
-- [ ] **Step 5: Commit** `PackageFormat (#1499): SourceBounds, FormatBounds and the id rules of 31` (tests in a second commit `Tests (#1499): …` or the same one), push.
+- [x] **Step 2: Run** the test command; expected: build fails, the types do not exist.
+- [x] **Step 3: Implement** the four files. Sentences are string literals copied from `sentences.json`.
+- [x] **Step 4: Run** the test command; expected: PASS.
+- [x] **Step 5: Commit** `PackageFormat (#1499): SourceBounds, FormatBounds and the id rules of 31` (tests in a second commit `Tests (#1499): …` or the same one), push.
 
 ### Task 2: Strict JSON and front matter
 
