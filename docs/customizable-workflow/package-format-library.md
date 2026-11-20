@@ -370,3 +370,164 @@ the reader's section above).
 ### Not wired in
 
 Nothing in the engine calls any of it yet. 31 stays outside `AcceptedSpecVersions`.
+
+## specVersion 31: JSON Logic (preview)
+
+*Area 04 of the Milestone 39 build (#1501). Built from
+[expressions](package-format-v31/03-expressions.md), with part 02 for the formats a rule is typed
+against and [the plan](package-format-v31/plans/area-04-json-logic.md) for the decisions (D1 to D29,
+and those taken during the build).*
+
+JSON Logic at 31 sits beside the type system in `Consultologist.PackageFormat.V31`. It holds the
+operations of part 03 § 5, judges the written form of a rule, types a rule against the formats,
+prints it for people, compiles and evaluates it, and checks every place a package writes one. It
+also holds the algorithm of the three flags and the conversion `plain` uses.
+
+`SourceCheck.Run(upload, registry)` now has a third step. After the reader and the type rules, when
+they gave no refusal, `SourceExpressions.Check` checks every expression site of the package.
+`SourceCheckResult` has a fourth member, `Expressions`, a `PackageExpressions`, null exactly when
+there is a refusal (`Types` stays set when only an expression is refused). `Refusals` is the
+reader's when it has any, else the type rules', else the expressions'.
+
+### The types
+
+- **`JsonLogicOperations`**: the 39 operations of § 5 (`All`: 21 standard, then 18 custom, each a
+  `JsonLogicOperation(Name, Min, Max, Custom)`), `Find`, `AllowedList`, `Takes` (the arity words of
+  S03-010), `RunFacts` (`date`, `id`, `package`, `engine`) and the three versions (`1.0.0`).
+- **`IRegexp`**: a pattern held to RFC 9485's grammar, to 200 code points and to repetition counts of
+  at most 100 (`Check` gives an `IRegexpCheck`: the `IRegexpFault`, a fixed-phrase `Reason`, a
+  `Count`, and the .NET `Regex` when it is sound), and translated to .NET (`ToDotNet`), compiled
+  `NonBacktracking` with no time-out. `IsMatch` searches; `TooLong` says a text is over 1 MiB.
+- **`JsonLogicShape`**: the written form with no types. `Check` gives every `ShapeFault`
+  (`ShapeFaultKind`: an object that is not a rule, a loose `==`, an unknown operation, a wrong
+  operand count, a bad `var` default, a pattern that is not I-Regexp, and so on). `Paths` lists the
+  paths a rule reads (`var` and `missing`), `IsPath` and `IsPosition` judge one. `MaxDepth` is 64.
+- **`JsonLogicPrinter`**: a rule as people see it. `Print` is total. `TryParse` reads back only text
+  `Print` itself writes: it parses, prints again and compares, and gives `false` for anything else.
+  `Reason` words a decision's reason for the record. `Version` is 1.0.0.
+- **`PlainConversion.ToPlain(markdown)`**: the conversion `plain` applies (Markdig's plain text with
+  the advanced extensions, `\n` line breaks, no spaces, tabs or line breaks at the very end).
+  `Version` is 1.0.0.
+- **`JsonLogicFunctions`**: the meaning of each operation on values (`Apply`), truthiness (`Truthy`),
+  reading a path (`Read`), `Missing`. A `JsonLogicFailure(Kind, Detail)` is a run-time failure
+  (`JsonLogicFailureKind`: `Declined`, `MatchesTextTooLong`, `NotABoolean`, `Fault`).
+- **`IJsonLogicEvaluator`**, **`CorvusJsonLogicEvaluator`**, **`IJsonLogicRule`**: compile and run
+  (below). `JsonLogicValue` and `JsonLogicDecision` are what a rule gives.
+- **`ExpressionSite`**, **`IExpressionScope`**, **`ScopeHead`**, **`ExpressionType`**: one place a
+  rule is written, who can be read there, and a rule's type (below).
+- **`ExpressionChecker`**: types one rule at one site. `ExpressionCheck` is its result.
+- **`SourceExpressions`**, **`PackageScope`**, **`IExpressionScopes`**, **`SiteContext`**,
+  **`SiteExpression`**, **`PackageExpressions`**, **`ExpressionCheckResult`**: every site of a
+  package.
+- **`LineageFlags`**, **`LineageFlag`**, **`LineageNode`**, **`LineageRead`**, **`LineageValue`**:
+  the three flags, worked out over a graph the caller supplies.
+
+### Checking, printing, compiling and evaluating a rule
+
+**Check.** `ExpressionChecker.Check(rule, site, scope, formats)` returns an `ExpressionCheck`
+(`Refusals`, `Type`, `Reads`, `Printed`, `PlainConverts`). It never throws on any rule. It works in
+four steps: the written form (each `ShapeFault` as its sentence, stopping there when there is any);
+every read, through the root and site rules of part 03 and then the scope and `FormatReads`; every
+operation's operands and result; and the result against the site (a condition yields a boolean,
+S03-025; a `computed` node its declared format, S03-026). `Type` is null exactly when there is a
+refusal. `ExpressionType` is a format (null: not known), whether it is declared nullable, and, for a
+`.title` read, the titles a literal is held to. The checker tracks declared nullability only, and a
+nullable operand is not refused.
+
+**Print.** `JsonLogicPrinter.Print(rule)` gives the text the record and the refusals show (`Printed`
+is the same). It is versioned: a change to its output is a major version.
+
+**Compile and evaluate.** `new CorvusJsonLogicEvaluator().Compile(rule, plainConverts)` gives an
+`IJsonLogicRule`. A rule with any fault of its written form is declined before Corvus sees it:
+`Declined` says why, and `Evaluate` and `Decide` give that failure. Otherwise `Evaluate(data)` gives a
+`JsonLogicValue` and `Decide(data)` a `JsonLogicDecision` (a condition: `true`, `false`, `null` and a
+list decide; a number, text or an object is a `NotABoolean` failure). `data` is one object whose
+members are the roots (`input`, `run`, `node`, ...). Neither throws on any data: a failure is in the
+result. A compiled rule is cached by its text and its `plainConverts`.
+
+**Corvus is serialised.** Corvus 5.8.12 is not thread-safe (it keeps the last rule it ran in two
+fields). Every call into it is under one lock per evaluator, so one evaluator is safe to share, and
+two evaluators do not exclude each other. Rules, data and results are read to 512 JSON levels deep;
+data deeper than that is a `Fault`.
+
+**`PlainConverts`.** `plain` converts Markdown to plain text and returns a plain-text operand
+unchanged. At run time a value is a string with no format, so the evaluator cannot tell which it has.
+`ExpressionCheck.PlainConverts` is that choice made at publish: for each `plain` in the rule,
+`true` for a Markdown operand or one whose type is not known, `false` for plain text or a string.
+Pass it to `Compile`. The `plain`s are numbered as the evaluator numbers them: a `plain` before
+those inside its operand, operands left to right, an `object`'s fields as written. Without a list, or
+past its end, a `plain` converts.
+
+### A scope
+
+A scope says who can be read at a site and their types. `IExpressionScope.Head(segments)` gives a
+`ScopeHead` for the start of a path: a `Format` (read through `.value`, `.content` or `.title`, the
+rest going to `FormatReads.Read`), a `Value` (already a value, a run fact), `Deferred` (no type yet:
+a read through it has no type and fits any operand), or `Unknown` (nothing there: S03-014). The root
+and site rules of part 03 (S03-013, S03-015, S03-018 to S03-022) are judged before a scope is asked.
+
+`PackageScope` is the scope of this area: `input.<id>` and `run.<fact>` are typed; every other root
+(`node`, `check`, `item`, `pass`, `param`), and every root inside a function, is `Deferred`. Area 05
+supplies the real scope, through `IExpressionScopes` (`SourceExpressions.Check(package, types,
+scopes)`), and until then a read through those roots is not judged. A read of `run.<fact>` at a site
+gives S03-037 (a condition) or S03-038 (a computed node) as a warning, in
+`PackageExpressions.Warnings`; a function's site that reads `run.*` warns the same way.
+
+### Where a rule is written
+
+`SourceExpressions.Check` visits, in the order `SourceScopes` does, the `if` of a production leaf, of
+an `if` flow node, of a check, of a deliverable, of a part, of a macro and of a snippet; the `while`
+and `until` of a flow node; and every `computed` node's `expression` (always checked). A condition
+site whose member is null or absent is skipped; at an `expression` a `null` rule is the `null`
+literal, held to the node's declared format. Each site is checked against its own function's
+`FormatSet` when it is in one. A `SiteExpression` holds the site, its rule (null for the `null`
+literal) and its `ExpressionCheck`. Refusals are said once and ordered by path.
+
+### The flags
+
+`LineageFlags.Derive(nodes)` works out `modelDerived`, `runDependent` and `profileCarrying` for a
+graph of `LineageNode`s the caller supplies, in rounds against a snapshot of the one before; a cycle
+ends. A flag's cause (`LineageValue.Because`) is the read that made it true first. `OfReads` gives a
+decision's flags, and `Disagreement` gives S03-036 when a node's declared flag is not what its
+reads make it. No caller gives it a graph yet: the compiled package's edges are area 05's and what
+templates read is area 07's (D28), so no package reaches S03-036 or S03-044.
+
+### Sentences
+
+The sentences are `ExpressionSentences`' (internal), one method each. A sentence with a row in
+`v31/sentences.json` is that row, character for character; the rules with no row are `A04-001` to
+`A04-011`, listed in the conformance README. Where part 03 and part 02 say one rule, the sentence is
+the part 03 row at a rule's site (D3). A run-time failure (S03-040, S03-041, A04-011) is never said
+at publish.
+
+### What it leaves to later areas
+
+- **The scope of `node`, `check`, `item`, `pass` and `param`, and the rules of what a site may see**
+  (D2): area 05's. Until then those reads are `Deferred`.
+- **The edges the flags spread along, and the header check** (D28): area 05's, and the reads of
+  templates, area 07's.
+- **Recording a run's facts and the record's rows**: area 09's.
+
+### The conformance cases
+
+Two families come out of this area, each exported by a test that does nothing without
+`CONFORMANCE_EXPORT_V31=<content repo root>`:
+
+- `tests/V31Source/RefusalPackagesExport.cs` writes the `refusal-packages` family, now with the
+  cases of chapter 3 (`tests/V31Source/RefusalPackages.Logic.cs`), pinned under
+  `external/consultologist-package-format/v31/conformance/refusal-packages/`.
+- `tests/V31Logic/LogicVectorsExport.cs` writes six families from `tests/V31Logic/LogicVectors.cs`:
+  `operation-goldens` (one file per custom operation), `printer-goldens`, `null-vectors`,
+  `text-vectors`, `number-vectors` and `date-vectors`. A file is `{ "about", "cases" }`; a case
+  holds `rule`, `data` and `result`, an `output` (an operation golden: the result's canonical JSON,
+  as a string) or a `text` (a printer golden).
+
+```
+CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~LogicVectorsExport|FullyQualifiedName~RefusalPackagesExport"
+```
+
+Each export deletes and rewrites its folders and the `cases` of `v31/conformance/index.json`.
+
+### Not wired in
+
+Nothing in the engine calls any of it yet. 31 stays outside `AcceptedSpecVersions`.
