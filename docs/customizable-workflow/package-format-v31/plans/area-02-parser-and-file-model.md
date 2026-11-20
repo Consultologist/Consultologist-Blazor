@@ -381,7 +381,7 @@ public sealed record SourceParameter(string Id, JsonObject Json);
 - Consumes: Task 5's model and `SourceLayout`.
 - Produces: `SourceParser` fills `SourceLeaf` for every `<id>.md` under `nodes/`, `checks/` and a function. `Key` is the root (`node.` or `check.`), the enclosing folders' ids, then the id (inside a function, counted from the function's root). Rules: header split and parse as Task 5; `kind` missing is S01-021 against no shape, and the file is read no further; `kind` not one of the eight is S02-007 with the declaration word `Node` as written; a `.md` leaf declaring a flow kind (`for`, `while`, `if`, `case`) is A02-006, and a folder's `index.json` declaring a leaf kind is A02-007 (D21). Then by kind: `agent` → `NodeAgent`, body required (`prompt`), each `parts` key held to the id rules; `rendered` → `NodeRendered`, body required (`template`); `computed` → `NodeComputed` under `nodes/` and `Check` under `checks/`, body must be empty (S01-020 with `computed node` or `check`); `call` → `NodeCall`, body must be empty (S01-020 with `call`, D12), every `with` value a string or `null` (A02-001). `producer` against `kind` (S01-028: `generated` for `agent`, `computed` otherwise; `<Node> '<key>'` is `Node` or `Check` and the key).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 [Fact] public void Full_ParsesItsTopLevelLeaves()         // plan is SourceLeaf, Kind "agent", Key "node.plan", Body the prompt bytes after the fence
@@ -403,10 +403,10 @@ public sealed record SourceParameter(string Id, JsonObject Json);
 [Fact] public void EveryLeafSentence_IsTheDesigns()
 ```
 
-- [ ] **Step 2: Run**; expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run**; expected: PASS.
-- [ ] **Step 5: Commit** `PackageFormat (#1499): the leaves of 31 — agent, rendered, computed, call and checks`, push.
+- [x] **Step 2: Run**; expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run**; expected: PASS.
+- [x] **Step 5: Commit** `PackageFormat (#1499): the leaves of 31 — agent, rendered, computed, call and checks`, push.
 
 ### Task 7: Flow nodes and functions
 
