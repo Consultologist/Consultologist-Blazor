@@ -75,6 +75,7 @@ public class FormatTypesTests
         Assert.Equal(formatHash, FormatTypes.FormatHash(nullFirst, Formats));
         // "date" for its schema is one type, but D8 brings the built-in's description in with the name.
         Assert.NotEqual(formatHash, FormatTypes.FormatHash(dateByName, Formats));
+        Assert.Equal(FormatTypes.TypeHash(J("\"date\""), Formats), FormatTypes.TypeHash(J("""{ "type": "string", "format": "date" }"""), Formats));
         Assert.NotEqual(formatHash, FormatTypes.FormatHash(reworded, Formats));
 
         // required is a set to the type form (D9); the full form keeps it as written.
@@ -323,6 +324,22 @@ public class FormatTypesTests
         Assert.Null(FormatTypes.TextKind(J("\"string\""), Formats));
         Assert.Null(FormatTypes.TextKind(J("""{ "type": "array", "items": { "$ref": "plaintext" } }"""), Formats));
         Assert.Null(FormatTypes.TextKind(J("""{ "type": "string", "contentMediaType": "text/markdown" }"""), Formats));
+
+        // Text is a string, nullable or not; any other type with a media type is not text.
+        foreach (var nullableText in new[] { """{ "type": ["string", "null"], "contentMediaType": "text/plain" }""", """{ "type": ["null", "string"], "contentMediaType": "text/plain" }""" })
+        {
+            Assert.Equal(FormatShape.Text, FormatTypes.Shape(J(nullableText), Formats));
+            Assert.Equal("plaintext", FormatTypes.TextKind(J(nullableText), Formats));
+            Assert.True(FormatTypes.IsNullable(J(nullableText), Formats));
+            Assert.Equal("plaintext | null", TypeStrings.Print(J(nullableText), Formats));
+        }
+
+        var integerText = J("""{ "type": "integer", "contentMediaType": "text/plain" }""");
+        Assert.Equal(FormatShape.Integer, FormatTypes.Shape(integerText, Formats));
+        Assert.Null(FormatTypes.TextKind(integerText, Formats));
+        Assert.False(FormatTypes.IsNullable(integerText, Formats));
+        Assert.Equal("integer", TypeStrings.Print(integerText, Formats));
+        Assert.False(FormatTypes.Fits(integerText, J("\"string\""), Formats));
     }
 
     [Fact]
