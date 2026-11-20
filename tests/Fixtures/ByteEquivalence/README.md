@@ -206,7 +206,7 @@ show what the node-placed macros (`counselling`, `section_caveat`, `table_note`,
 
 The `default` capture is `Failed`, with the acknowledgement's `failWith` sentence. With generated
 stubs both `terms_subset` checks refuse (`consult` and `ack_letter` are `failed`), and a job whose
-every deliverable is refused by its check fails (`ConsultGenerationEngine.FinalOutcome`). A lone
+every deliverable is refused by its check fails (`ConsultDeliverables.FinalOutcome`). A lone
 refusal leaves the job `Completed`: `letter-coverage-fails` (`ack_letter` failed, `consult`
 composed) and `note-coverage-fails` (`consult` failed, `ack_letter` composed).
 
@@ -233,10 +233,11 @@ The first test writes it and fails once; review it and commit it.
 `ConceptRenderers` joins its lines with `Environment.NewLine`, so the fixture's bytes depend on the
 platform. It was generated on Linux, as CI runs; regenerate it only there.
 
-`ConceptRendererCaptureTests` compiles against `V31BuiltInRenderersTests.Concept` and `.Render`.
-When the C# renderers and `V31BuiltInRenderersTests` are deleted, `Concept` and `Render` move
-into `ConceptRendererCaptureTests`, and its first test (`TheCSharpRenderers_GiveTheCapturedBytes`,
-the C# side) is deleted with them.
+`ConceptRendererCaptureTests` compiles against `V31BuiltInRenderersTests.Concept`, `.Cases`,
+`.ToConcepts` and `.Render`. When the C# renderers and `V31BuiltInRenderersTests` are deleted,
+`Concept` and `Render` move into `ConceptRendererCaptureTests`, and its first test
+(`TheCSharpRenderers_GiveTheCapturedBytes`, the C# side, with the case table and `ToConcepts` it
+uses) is deleted with them.
 
 ## What area 10 does with the captures and the renderer fixture
 
