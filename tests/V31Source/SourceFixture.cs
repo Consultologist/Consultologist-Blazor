@@ -412,7 +412,7 @@ internal static class SourceFixture
     internal static string Agent(string label, string format, string prompt) =>
         Md(Node("agent", label, format, false, true, AgentTail), prompt);
 
-    private static string Deliverable(string label, string format, string check, string whenEmpty) =>
+    internal static string Deliverable(string label, string format, string check, string whenEmpty) =>
         $"{{ \"label\": {Quote(label)}, \"kind\": \"rendered\", \"description\": null, \"format\": {format}, "
         + $"\"if\": null, \"check\": {check}, \"whenEmpty\": \"{whenEmpty}\" }}";
 

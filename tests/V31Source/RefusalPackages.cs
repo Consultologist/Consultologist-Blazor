@@ -18,10 +18,13 @@ internal sealed record RefusalCase(string Id, string About, Dictionary<string, b
 /// #1499 (specVersion 31, area 02): the <c>refusal-packages</c> cases of the file model, one for
 /// every sentence <see cref="SourceParser"/> can say (chapter 12 § 12.2), except S01-037 to S01-039,
 /// whose packages (513 files, a 257 KiB file, a package over 2 MiB) the library's tests prove and
-/// the suite does not ship (D17). Each invalid package is <see cref="SourceFixture.Minimal"/> or
-/// <see cref="SourceFixture.Full"/> with one change (and, where the change empties a body, its
-/// children's files removed so they are not strays), so it gives exactly one refusal; every edit is a
-/// text replacement that must match exactly once, so a fixture change cannot quietly empty a case.
+/// the suite does not ship (D17). Each side is <see cref="SourceFixture.Minimal"/> plus only the
+/// construct its rule needs (a loop, a while, an if, a case, a function with its call, a snippet
+/// folder, a delivery folder, a computed node, a format or a renderer: the <c>With…</c> helpers
+/// below), so a later change to <see cref="SourceFixture.Full"/> rewrites no case. Each invalid side
+/// is its valid side with one change (and, where the change empties a body, its children's files
+/// removed so they are not strays), so it gives exactly one refusal; every edit is a text replacement
+/// that must match exactly once, so a fixture change cannot quietly empty a case.
 /// The suite's <c>expect.json</c> files are written from what the parser says
 /// (<see cref="RefusalPackagesExport"/>), never by hand.
 /// </summary>
@@ -141,10 +144,10 @@ internal static class RefusalPackages
             Minimal().With("nodes/notes.txt", "Notes for Dr A. Sample: ask Margaret Okafor about her sleep.\n"));
 
         yield return new RefusalCase("S01-007",
-            "A folder without its index.json (chapter 1 § 1.2.2). Invalid: the snippet folder snippets/standards holds its two "
-            + "items and no index.json. Valid: the folder with its index.json.",
-            Full(),
-            Full().Without("snippets/standards/index.json"));
+            "A folder without its index.json (chapter 1 § 1.2.2). Invalid: the snippet folder snippets/standards holds its "
+            + "item and no index.json. Valid: the folder with its index.json.",
+            WithSnippetFolder(),
+            WithSnippetFolder().Without("snippets/standards/index.json"));
 
         yield return new RefusalCase("S01-008",
             "A top-level folder that is not there (chapter 1 § 1.2). Invalid: the package has no macros/ folder. "
@@ -166,25 +169,24 @@ internal static class RefusalPackages
         yield return new RefusalCase("S01-011",
             "An index lists a folder with a trailing / (chapter 1 § 1.2.2). Invalid: nodes/index.json lists 'sections/'. "
             + "Valid: it lists the folder by its bare id, 'sections'.",
-            Full(),
-            Full().Edit("nodes/index.json", "\"sections\", ", "\"sections/\", "));
+            WithLoop(),
+            WithLoop().Edit("nodes/index.json", "\"sections\"]", "\"sections/\"]"));
 
         yield return new RefusalCase("S01-012",
             "One id names both a file and a folder (chapter 1 § 1.2.2). Invalid: nodes/ holds refine.md beside the folder "
             + "refine/. Valid: only the folder.",
-            Full(),
-            Full().With("nodes/refine.md", Agent("Refining the summary", Plain, "Refine the summary once.\n")));
+            WithWhile(),
+            WithWhile().With("nodes/refine.md", Agent("Refining the summary", Plain, "Refine the summary once.\n")));
 
         yield return new RefusalCase("S01-013",
             "A delivery folder inside a delivery folder (chapter 1 § 1.2). Invalid: deliverables/emr/archive/ is a folder with "
             + "its own index.json and deliverable. Valid: the delivery folder deliverables/emr/ alone.",
-            Full(),
-            Full()
+            WithDeliveryFolder(),
+            WithDeliveryFolder()
                 .With("deliverables/emr/archive/index.json", SourceFixture.Index(["old_consult"], extra: ", \"delivery\": [\"emr\"], \"bundle\": null"))
                 .With("deliverables/emr/archive/old_consult.md", Md(
-                    "{ \"label\": \"Earlier consult letter\", \"kind\": \"rendered\", \"description\": null, \"format\": \"plaintext\", "
-                    + "\"if\": null, \"check\": null, \"whenEmpty\": \"release\" }",
-                    "Re: Margaret Okafor\n\n{{ node.refine.content }}\n")));
+                    SourceFixture.Deliverable("Earlier consult letter", Plain, "null", "release"),
+                    "Re: Margaret Okafor\n\n{{ node.plan.content }}\n")));
     }
 
     // ---- Chapter 1 § 1.4: front matter, and plain JSON files ----------------------------------------
@@ -199,7 +201,8 @@ internal static class RefusalPackages
 
         yield return new RefusalCase("S01-017",
             "A header that is not JSON (chapter 1 § 1.4). Invalid: nodes/plan.md's header ends with a comma before its closing "
-            + "brace. Valid: without the comma. The sentence carries the JSON parser's own message.",
+            + "brace. Valid: without the comma. The sentence's parser message is this implementation's: the line and column "
+            + "of the file where the JSON stops being valid.",
             Minimal(),
             Minimal().Edit("nodes/plan.md", "\"ordered\": false }", "\"ordered\": false, }"));
 
@@ -220,14 +223,14 @@ internal static class RefusalPackages
         yield return new RefusalCase("S01-020",
             "A body where none may be: a computed node keeps everything in its header (chapter 1 § 1.4). Invalid: "
             + "nodes/section_count.md has a line after its closing fence. Valid: nothing after the fence.",
-            Full(),
-            Full().With("nodes/section_count.md", Text(Full(), "nodes/section_count.md") + "Count the sections of the plan.\n"));
+            WithComputed(),
+            WithComputed().With("nodes/section_count.md", Text(WithComputed(), "nodes/section_count.md") + "Count the sections of the plan.\n"));
 
         yield return new RefusalCase("A02-005",
             "A plain JSON file whose root is not an object (chapter 1 § 1.4; this implementation's sentence). Invalid: "
             + "formats/verdict.json holds a JSON list. Valid: the format's object.",
-            Full(),
-            Full().With("formats/verdict.json", "[\"good\", \"revise\"]\n"));
+            WithFormat("verdict"),
+            WithFormat("verdict").With("formats/verdict.json", "[\"good\", \"revise\"]\n"));
     }
 
     // ---- Chapter 1 § 1.5: every member written ------------------------------------------------------
@@ -362,8 +365,8 @@ internal static class RefusalPackages
         yield return new RefusalCase("A02-007",
             "A leaf kind declared by a folder's index.json, where a leaf node is a file (chapter 4 § 4.1; this implementation's "
             + "sentence). Invalid: nodes/refine/index.json declares \"kind\": \"agent\". Valid: \"while\".",
-            Full(),
-            Full().Edit("nodes/refine/index.json", "\"kind\": \"while\"", "\"kind\": \"agent\""));
+            WithWhile(),
+            WithWhile().Edit("nodes/refine/index.json", "\"kind\": \"while\"", "\"kind\": \"agent\""));
     }
 
     // ---- Chapter 4 §§ 4.2–4.3: for and while ------------------------------------------------------------
@@ -372,108 +375,102 @@ internal static class RefusalPackages
     {
         const string refine = "nodes/refine/index.json";
         const string sections = "nodes/sections/index.json";
-        const string standards = "nodes/standards/index.json";
         const string parallelFour = "\"parallel\": true, \"maxParallel\": 4";
 
         yield return new RefusalCase("S04-009",
             "A flow node's label is null (chapter 4 § 4.10.1, in place of chapter 1's sentence for null). Invalid: the while "
             + "refine declares \"label\": null. Valid: it names its label.",
-            Full(),
-            Full().Edit(refine, "\"label\": \"Refining the summary\"", "\"label\": null"));
+            WithWhile(),
+            WithWhile().Edit(refine, "\"label\": \"Refining the summary\"", "\"label\": null"));
 
         yield return new RefusalCase("S04-010",
             "A member that belongs to another flow kind (chapter 4 § 4.10.1). Invalid: the while refine declares "
             + "\"parallel\": false, a for's member. Valid: without it.",
-            Full(),
-            Full().Edit(refine, "\"checkFirst\": false, ", "\"checkFirst\": false, \"parallel\": false, "));
+            WithWhile(),
+            WithWhile().Edit(refine, "\"checkFirst\": false, ", "\"checkFirst\": false, \"parallel\": false, "));
 
         yield return new RefusalCase("S04-011",
             "A body whose ret is null (chapter 4 § 4.7.6). Invalid: the while refine declares \"ret\": null. "
             + "Valid: it returns its child node.refine.draft_summary.",
-            Full(),
-            Full().Edit(refine, "\"ret\": \"node.refine.draft_summary\"", "\"ret\": null"));
+            WithWhile(),
+            WithWhile().Edit(refine, "\"ret\": \"node.refine.draft_summary\"", "\"ret\": null"));
 
         yield return new RefusalCase("S04-012",
             "A ret that is not one of the body's own children by its full name (chapter 4 § 4.7.6). Invalid: the while refine "
             + "returns node.draft_summary. Valid: node.refine.draft_summary.",
-            Full(),
-            Full().Edit(refine, "\"ret\": \"node.refine.draft_summary\"", "\"ret\": \"node.draft_summary\""));
+            WithWhile(),
+            WithWhile().Edit(refine, "\"ret\": \"node.refine.draft_summary\"", "\"ret\": \"node.draft_summary\""));
 
         yield return new RefusalCase("S04-013",
             "A body that lists one node twice (chapter 4 § 4.10.1, in place of chapter 1's sentence for a list). Invalid: "
             + "the while refine's nodes lists draft_summary twice. Valid: once.",
-            Full(),
-            Full().Edit(refine, "\"nodes\": [\"draft_summary\", \"judge\"]", "\"nodes\": [\"draft_summary\", \"judge\", \"draft_summary\"]"));
+            WithWhile(),
+            WithWhile().Edit(refine, "\"nodes\": [\"draft_summary\", \"judge\"]", "\"nodes\": [\"draft_summary\", \"judge\", \"draft_summary\"]"));
 
         yield return new RefusalCase("S04-018",
             "A for with no body (chapter 4 § 4.2.1). Invalid: the for sections declares \"nodes\": [] and its folder holds no "
-            + "children. Valid: its two children, listed.",
-            Full(),
-            Full().Edit(sections, "\"nodes\": [\"outline\", \"paragraphs\"]", "\"nodes\": []")
-                .Without("nodes/sections/outline.md")
-                .Without("nodes/sections/paragraphs/index.json")
-                .Without("nodes/sections/paragraphs/draft_paragraph.md"));
+            + "children. Valid: its child outline, listed.",
+            WithLoop(),
+            WithLoop().Edit(sections, "\"nodes\": [\"outline\"]", "\"nodes\": []").Without("nodes/sections/outline.md"));
 
         yield return new RefusalCase("S04-019",
-            "A parallel for capped at one item at a time (chapter 4 § 4.2.3). Invalid: the for standards declares "
+            "A parallel for capped at one item at a time (chapter 4 § 4.2.3). Invalid: the for sections declares "
             + "\"parallel\": true with \"maxParallel\": 1. Valid: what the sentence asks, \"parallel\": false and \"maxParallel\": null.",
-            Full().Edit(standards, parallelFour, "\"parallel\": false, \"maxParallel\": null"),
-            Full().Edit(standards, parallelFour, "\"parallel\": true, \"maxParallel\": 1"));
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": false, \"maxParallel\": null"),
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": true, \"maxParallel\": 1"));
 
         yield return new RefusalCase("S01-005",
-            "A maxParallel above FormatBounds.parallel, 15 (chapter 1 § 1.8, chapter 4 § 4.2.3). Invalid: the for standards "
+            "A maxParallel above FormatBounds.parallel, 15 (chapter 1 § 1.8, chapter 4 § 4.2.3). Invalid: the for sections "
             + "declares \"maxParallel\": 16. Valid: 15, the limit.",
-            Full().Edit(standards, parallelFour, "\"parallel\": true, \"maxParallel\": 15"),
-            Full().Edit(standards, parallelFour, "\"parallel\": true, \"maxParallel\": 16"));
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": true, \"maxParallel\": 15"),
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": true, \"maxParallel\": 16"));
 
         yield return new RefusalCase("S04-021",
-            "A maxParallel below 2 that is not one with parallel true (chapter 4 § 4.2.3). Invalid: the for standards declares "
+            "A maxParallel below 2 that is not one with parallel true (chapter 4 § 4.2.3). Invalid: the for sections declares "
             + "\"maxParallel\": 0. Valid: 2, the least.",
-            Full().Edit(standards, parallelFour, "\"parallel\": true, \"maxParallel\": 2"),
-            Full().Edit(standards, parallelFour, "\"parallel\": true, \"maxParallel\": 0"));
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": true, \"maxParallel\": 2"),
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": true, \"maxParallel\": 0"));
 
         yield return new RefusalCase("S04-022",
-            "A maxParallel on a sequential for (chapter 4 § 4.2.3). Invalid: the for standards declares \"parallel\": false "
+            "A maxParallel on a sequential for (chapter 4 § 4.2.3). Invalid: the for sections declares \"parallel\": false "
             + "with \"maxParallel\": 4. Valid: \"parallel\": false with \"maxParallel\": null.",
-            Full().Edit(standards, parallelFour, "\"parallel\": false, \"maxParallel\": null"),
-            Full().Edit(standards, parallelFour, "\"parallel\": false, \"maxParallel\": 4"));
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": false, \"maxParallel\": null"),
+            WithLoop().Edit(sections, parallelFour, "\"parallel\": false, \"maxParallel\": 4"));
 
         const string until = "\"until\": { \"===\": [{ \"var\": \"item.value.kind\" }, \"omit\"] }";
         yield return new RefusalCase("S04-023",
             "An until on a parallel for (chapter 4 § 4.2.4). Invalid: the for sections declares an until with \"parallel\": true. "
             + "Valid: the same until with \"parallel\": false and \"maxParallel\": null.",
-            Full().Edit(sections, "\"parallel\": true, \"maxParallel\": null, \"until\": null",
-                $"\"parallel\": false, \"maxParallel\": null, {until}"),
-            Full().Edit(sections, "\"parallel\": true, \"maxParallel\": null, \"until\": null",
-                $"\"parallel\": true, \"maxParallel\": null, {until}"));
+            WithLoop().Edit(sections, parallelFour + ", \"until\": null", $"\"parallel\": false, \"maxParallel\": null, {until}"),
+            WithLoop().Edit(sections, parallelFour + ", \"until\": null", $"\"parallel\": true, \"maxParallel\": null, {until}"));
 
         yield return new RefusalCase("S04-024",
             "A for's max below 1 (chapter 4 § 4.2.4). Invalid: the for sections declares \"max\": 0. Valid: 1, the least.",
-            Full().Edit(sections, "\"max\": null", "\"max\": 1"),
-            Full().Edit(sections, "\"max\": null", "\"max\": 0"));
+            WithLoop().Edit(sections, "\"max\": null", "\"max\": 1"),
+            WithLoop().Edit(sections, "\"max\": null", "\"max\": 0"));
 
         yield return new RefusalCase("S04-031",
             "A while's max is null (chapter 4 § 4.3.1, in place of chapter 1's sentence for null). Invalid: the while refine "
             + "declares \"max\": null. Valid: \"max\": 3.",
-            Full(),
-            Full().Edit(refine, "\"max\": 3", "\"max\": null"));
+            WithWhile(),
+            WithWhile().Edit(refine, "\"max\": 3", "\"max\": null"));
 
         yield return new RefusalCase("S01-003",
             "A while's max above FormatBounds.passes, 15 (chapter 1 § 1.8, chapter 4 § 4.3.1). Invalid: the while refine "
             + "declares \"max\": 16. Valid: 15, the limit.",
-            Full().Edit(refine, "\"max\": 3", "\"max\": 15"),
-            Full().Edit(refine, "\"max\": 3", "\"max\": 16"));
+            WithWhile().Edit(refine, "\"max\": 3", "\"max\": 15"),
+            WithWhile().Edit(refine, "\"max\": 3", "\"max\": 16"));
 
         yield return new RefusalCase("S04-033",
             "A while's max below 1 (chapter 4 § 4.3.1). Invalid: the while refine declares \"max\": 0. Valid: 1, the least.",
-            Full().Edit(refine, "\"max\": 3", "\"max\": 1"),
-            Full().Edit(refine, "\"max\": 3", "\"max\": 0"));
+            WithWhile().Edit(refine, "\"max\": 3", "\"max\": 1"),
+            WithWhile().Edit(refine, "\"max\": 3", "\"max\": 0"));
 
         yield return new RefusalCase("S04-034",
             "A while with no body (chapter 4 § 4.3.1). Invalid: the while refine declares \"nodes\": [] and its folder holds "
             + "no children. Valid: its two children, listed.",
-            Full(),
-            Full().Edit(refine, "\"nodes\": [\"draft_summary\", \"judge\"]", "\"nodes\": []")
+            WithWhile(),
+            WithWhile().Edit(refine, "\"nodes\": [\"draft_summary\", \"judge\"]", "\"nodes\": []")
                 .Without("nodes/refine/draft_summary.md")
                 .Without("nodes/refine/judge.md"));
     }
@@ -483,51 +480,49 @@ internal static class RefusalPackages
     private static IEnumerable<RefusalCase> Branches()
     {
         const string gate = "nodes/billing_gate/index.json";
-        const string route = "nodes/sections_draft/route/index.json";
+        const string route = "nodes/route/index.json";
         const string omit = "{ \"when\": [\"omit\"], \"nodes\": [], \"ret\": null }";
 
         yield return new RefusalCase("S04-041",
             "An if whose then is null (chapter 4 § 4.5.1). Invalid: the if billing_gate declares \"then\": null. "
             + "Valid: its then body runs billing_text.",
-            Full(),
-            Full().Edit(gate, "\"then\": { \"nodes\": [\"billing_text\"], \"ret\": \"node.billing_gate.billing_text\" }", "\"then\": null"));
+            WithIf(),
+            WithIf().Edit(gate, "\"then\": { \"nodes\": [\"billing_text\"], \"ret\": \"node.billing_gate.billing_text\" }", "\"then\": null"));
 
         yield return new RefusalCase("A02-008",
             "An if's then with no body (chapter 4 § 4.5.1; this implementation's sentence, since chapter 4's names loops and "
             + "whiles only). Invalid: the if billing_gate's then declares \"nodes\": [] and its folder holds no children. "
             + "Valid: then runs billing_text.",
-            Full(),
-            Full().Edit(gate, "\"nodes\": [\"billing_text\"]", "\"nodes\": []").Without("nodes/billing_gate/billing_text.md"));
+            WithIf(),
+            WithIf().Edit(gate, "\"nodes\": [\"billing_text\"]", "\"nodes\": []").Without("nodes/billing_gate/billing_text.md"));
 
         yield return new RefusalCase("S04-042",
             "A case with no branches (chapter 4 § 4.5.2). Invalid: the case route declares \"branches\": [] and its folder "
-            + "holds no children. Valid: its three branches.",
-            Full(),
-            Full().Edit(route,
-                    "\"branches\": [{ \"when\": [\"narrative\"], \"nodes\": [\"narrative_draft\"], \"ret\": \"node.sections_draft.route.narrative_draft\" }, "
-                    + "{ \"when\": [\"table\"], \"nodes\": [\"table_draft\"], \"ret\": \"node.sections_draft.route.table_draft\" }, "
+            + "holds no children. Valid: its two branches.",
+            WithCase(),
+            WithCase().Edit(route,
+                    "\"branches\": [{ \"when\": [\"narrative\"], \"nodes\": [\"narrative_draft\"], \"ret\": \"node.route.narrative_draft\" }, "
                     + omit + "]",
                     "\"branches\": []")
-                .Without("nodes/sections_draft/route/narrative_draft.md")
-                .Without("nodes/sections_draft/route/table_draft.md"));
+                .Without("nodes/route/narrative_draft.md"));
 
         yield return new RefusalCase("S04-043",
-            "A case branch whose when names no value (chapter 4 § 4.5.2). Invalid: the case route's third branch declares "
+            "A case branch whose when names no value (chapter 4 § 4.5.2). Invalid: the case route's second branch declares "
             + "\"when\": []. Valid: \"when\": [\"omit\"].",
-            Full(),
-            Full().Edit(route, omit, "{ \"when\": [], \"nodes\": [], \"ret\": null }"));
+            WithCase(),
+            WithCase().Edit(route, omit, "{ \"when\": [], \"nodes\": [], \"ret\": null }"));
 
         yield return new RefusalCase("S04-048",
             "A case branch half empty: nodes [] with a ret, or nodes with a null ret (chapter 4 § 4.5.2). Invalid: the case "
-            + "route's third branch declares \"nodes\": [] with a ret. Valid: the empty branch, nodes [] and ret null together.",
-            Full(),
-            Full().Edit(route, omit, "{ \"when\": [\"omit\"], \"nodes\": [], \"ret\": \"node.sections_draft.route.narrative_draft\" }"));
+            + "route's second branch declares \"nodes\": [] with a ret. Valid: the empty branch, nodes [] and ret null together.",
+            WithCase(),
+            WithCase().Edit(route, omit, "{ \"when\": [\"omit\"], \"nodes\": [], \"ret\": \"node.route.narrative_draft\" }"));
 
         yield return new RefusalCase("S04-076",
-            "A case branch whose when holds null (chapter 4 § 4.5.2). Invalid: the case route's third branch declares "
+            "A case branch whose when holds null (chapter 4 § 4.5.2). Invalid: the case route's second branch declares "
             + "\"when\": [\"omit\", null]. Valid: \"when\": [\"omit\"].",
-            Full(),
-            Full().Edit(route, omit, "{ \"when\": [\"omit\", null], \"nodes\": [], \"ret\": null }"));
+            WithCase(),
+            WithCase().Edit(route, omit, "{ \"when\": [\"omit\", null], \"nodes\": [], \"ret\": null }"));
     }
 
     // ---- Chapter 4 § 4.7: functions ---------------------------------------------------------------------
@@ -537,15 +532,15 @@ internal static class RefusalPackages
         yield return new RefusalCase("S04-062",
             "A function folder that holds a checks/ folder (chapter 4 § 4.7.5). Invalid: functions/draft_section/checks/ holds "
             + "an index.json. Valid: the function without it.",
-            Full(),
-            Full().With("functions/draft_section/checks/index.json", SourceFixture.Index([])));
+            WithFunction(),
+            WithFunction().With("functions/draft_section/checks/index.json", SourceFixture.Index([])));
 
         yield return new RefusalCase("S04-067",
-            "A function parameter that declares a package input's member (chapter 4 § 4.7.2.1). Invalid: the parameter standard "
+            "A function parameter that declares a package input's member (chapter 4 § 4.7.2.1). Invalid: the parameter draft "
             + "of draft_section declares \"required\": true. Valid: label, description and format only.",
-            Full(),
-            Full().Edit("functions/draft_section/index.json",
-                "\"format\": \"standard_section\" }, ", "\"format\": \"standard_section\", \"required\": true }, "));
+            WithFunction(),
+            WithFunction().Edit("functions/draft_section/index.json",
+                "\"format\": \"markdown_block\" }", "\"format\": \"markdown_block\", \"required\": true }"));
     }
 
     // ---- Chapter 1 §§ 1.7 and 1.9: scopes and the expression bound --------------------------------------
@@ -555,9 +550,10 @@ internal static class RefusalPackages
         yield return new RefusalCase("S01-002",
             "A node whose id is the id of a node it can see (chapter 1 § 1.9.2). Invalid: the for sections holds a node plan, "
             + "and the top level has one. Valid: the inner node is outline.",
-            Full(),
-            Full()
-                .Edit("nodes/sections/index.json", "\"nodes\": [\"outline\", \"paragraphs\"]", "\"nodes\": [\"plan\", \"paragraphs\"]")
+            WithLoop(),
+            WithLoop()
+                .Edit("nodes/sections/index.json", "\"nodes\": [\"outline\"], \"ret\": \"node.sections.outline\"",
+                    "\"nodes\": [\"plan\"], \"ret\": \"node.sections.plan\"")
                 .Rename("nodes/sections/outline.md", "nodes/sections/plan.md"));
 
         yield return new RefusalCase("S01-036",
@@ -581,16 +577,16 @@ internal static class RefusalPackages
         "{ \">\": [{ \"+\": [" + string.Join(", ", Enumerable.Repeat("1", ones)) + "] }, 0] }";
 
     /// <summary>
-    /// <see cref="SourceFixture.Full"/> whose while <c>refine</c> also holds two ifs, <c>brief</c> and
-    /// <c>detailed</c>, each running one agent node: <c>wording</c>, and <paramref name="second"/>.
+    /// <see cref="WithWhile"/> whose while <c>refine</c> also holds two ifs, <c>brief</c> and <c>detailed</c>,
+    /// each running one agent node: <c>wording</c>, and <paramref name="second"/>.
     /// </summary>
     private static Dictionary<string, byte[]> TwoWordings(string second)
     {
         static string If(string label, bool brief, string child) => Json(Node("if", label, Plain, false, true,
-            $"\"if\": {{ \"===\": [{{ \"var\": \"input.include_billing.value\" }}, {(brief ? "false" : "true")}] }}, "
+            $"\"if\": {{ \"===\": [{{ \"var\": \"input.consult_draft.content\" }}, {(brief ? "\"\"" : "\"full\"")}] }}, "
             + $"\"then\": {{ \"nodes\": [\"{child}\"], \"ret\": \"node.refine.{(brief ? "brief" : "detailed")}.{child}\" }}, \"else\": null"));
 
-        return Full()
+        return WithWhile()
             .Edit("nodes/refine/index.json", "\"nodes\": [\"draft_summary\", \"judge\"]",
                 "\"nodes\": [\"draft_summary\", \"judge\", \"brief\", \"detailed\"]")
             .With("nodes/refine/brief/index.json", If("Wording the summary briefly", true, "wording"))
@@ -598,7 +594,7 @@ internal static class RefusalPackages
                 "Shorten the summary to one sentence for Dr A. Sample.\n"))
             .With("nodes/refine/detailed/index.json", If("Wording the summary in full", false, second))
             .With($"nodes/refine/detailed/{second}.md", Agent("Wording the summary in full", Plain,
-                "Keep the summary's two sentences and add the billing note.\n"));
+                "Keep the summary's two sentences and add the plan's headings.\n"));
     }
 
     // ---- The registry's names (chapter 1 §§ 1.2 and 1.9.1, chapter 2) -------------------------------------
@@ -608,20 +604,129 @@ internal static class RefusalPackages
         yield return new RefusalCase("S01-034",
             "A package format named like a built-in format (chapter 2). Invalid: the package's own format of verdicts is named "
             + "judgement, a built-in's name. Valid: it is named verdict.",
-            Full(),
-            Full()
-                .Edit("formats/index.json", "\"verdict\"", "\"judgement\"")
-                .Rename("formats/verdict.json", "formats/judgement.json")
-                .Edit("nodes/refine/judge.md", "\"format\": \"verdict\"", "\"format\": \"judgement\""));
+            WithFormat("verdict"),
+            WithFormat("judgement"));
 
         yield return new RefusalCase("S01-035",
             "A package renderer named like a built-in renderer (chapter 1 § 1.2). Invalid: the package's renderer of terms as "
             + "bullets is named concept_bullets, a built-in's name. Valid: it is named term_bullets.",
-            Full(),
-            Full()
-                .Edit("renderers/index.json", "\"term_bullets\"", "\"concept_bullets\"")
-                .Rename("renderers/term_bullets.md", "renderers/concept_bullets.md"));
+            WithRenderer("term_bullets"),
+            WithRenderer("concept_bullets"));
     }
+
+    // ---- The constructs a case adds to Minimal() ------------------------------------------------------------
+
+    /// <summary><see cref="SourceFixture.Minimal"/> with <paramref name="id"/> listed after plan in <c>nodes/index.json</c>.</summary>
+    private static Dictionary<string, byte[]> MinimalListing(string id) =>
+        Minimal().Edit("nodes/index.json", "\"items\": [\"plan\"]", $"\"items\": [\"plan\", \"{id}\"]");
+
+    /// <summary>A parallel <c>for</c>, <c>sections</c>, capped at 4, running one agent node, <c>outline</c>, per section of the plan.</summary>
+    private static Dictionary<string, byte[]> WithLoop() =>
+        MinimalListing("sections")
+            .With("nodes/sections/index.json", Json(Node("for", "Sections", ArrayOf(Plain), false, true,
+                "\"in\": \"node.plan.value.sections\", \"parallel\": true, \"maxParallel\": 4, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"outline\"], \"ret\": \"node.sections.outline\"")))
+            .With("nodes/sections/outline.md", Agent("Outlining the section", Plain,
+                "Outline the section '{{ item.value.title }}' of the note as a short list of points.\n"));
+
+    /// <summary>A <c>while</c>, <c>refine</c>, of at most 3 passes, drafting a summary and judging it.</summary>
+    private static Dictionary<string, byte[]> WithWhile() =>
+        MinimalListing("refine")
+            .With("nodes/refine/index.json", Json(Node("while", "Refining the summary", Plain, false, true,
+                "\"while\": { \"!==\": [{ \"var\": \"node.judge.value\" }, \"good\"] }, \"max\": 3, "
+                + "\"until\": null, \"checkFirst\": false, \"nodes\": [\"draft_summary\", \"judge\"], "
+                + "\"ret\": \"node.refine.draft_summary\"")))
+            .With("nodes/refine/draft_summary.md", Agent("Drafting the summary", Plain,
+                "Summarise the note in two sentences for Dr A. Sample.\n"))
+            .With("nodes/refine/judge.md", Agent("Judging the summary", Plain,
+                "Answer good, or revise, for the summary below.\n\n{{ node.draft_summary.content }}\n"));
+
+    /// <summary>An <c>if</c>, <c>billing_gate</c>, whose then body renders one line of billing text.</summary>
+    private static Dictionary<string, byte[]> WithIf() =>
+        MinimalListing("billing_gate")
+            .With("nodes/billing_gate/index.json", Json(Node("if", "Adding the billing text to a written draft", Plain, true, false,
+                "\"if\": { \"!==\": [{ \"var\": \"input.consult_draft.content\" }, \"\"] }, "
+                + "\"then\": { \"nodes\": [\"billing_text\"], \"ret\": \"node.billing_gate.billing_text\" }, "
+                + "\"else\": null")))
+            .With("nodes/billing_gate/billing_text.md", Md(
+                Node("rendered", "Billing text", Plain, true, false, "\"if\": null"),
+                "Consultation with Margaret Okafor, 45 minutes.\n"));
+
+    /// <summary>A <c>case</c>, <c>route</c>, with a branch that drafts and an empty branch.</summary>
+    private static Dictionary<string, byte[]> WithCase() =>
+        MinimalListing("route")
+            .With("nodes/route/index.json", Json(Node("case", "Routing the note by its kind", Plain, false, true,
+                "\"case\": \"node.plan.value.kind\", \"branches\": ["
+                + "{ \"when\": [\"narrative\"], \"nodes\": [\"narrative_draft\"], \"ret\": \"node.route.narrative_draft\" }, "
+                + "{ \"when\": [\"omit\"], \"nodes\": [], \"ret\": null }], \"else\": null")))
+            .With("nodes/route/narrative_draft.md", Agent("Drafting the note as prose", Plain,
+                "Write the note for Margaret Okafor as prose.\n"));
+
+    /// <summary>A function, <c>draft_section</c>, of one parameter and one agent node, and a <c>call</c> node, <c>section</c>, that calls it.</summary>
+    private static Dictionary<string, byte[]> WithFunction()
+    {
+        var files = MinimalListing("section")
+            .With("nodes/section.md", Md(
+                Node("call", "Drafting the section", Plain, false, true,
+                    "\"if\": null, \"function\": \"draft_section\", \"with\": { \"draft\": \"input.consult_draft.content\" }"),
+                ""))
+            .Edit("functions/index.json", "\"items\": []", "\"items\": [\"draft_section\"]")
+            .With("functions/draft_section/index.json", Json(
+                "{ \"label\": \"Draft a section\", \"description\": null, "
+                + "\"inputs\": { \"draft\": { \"label\": \"Consult draft\", \"description\": null, \"format\": \"markdown_block\" } }, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                + "\"nodes\": [\"patient_draft\"], \"ret\": \"node.patient_draft\", \"format\": \"plaintext\" }"))
+            .With("functions/draft_section/patient_draft.md", Agent("Drafting from the patient's facts", Plain,
+                "Using the consult draft below, write what it says about Margaret Okafor.\n\n{{ param.draft.content }}\n"));
+        foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
+            files.With($"functions/draft_section/{folder}/index.json", SourceFixture.Index([]));
+        return files;
+    }
+
+    /// <summary>A snippet folder, <c>snippets/standards</c>, of one item.</summary>
+    private static Dictionary<string, byte[]> WithSnippetFolder() =>
+        Minimal()
+            .Edit("snippets/index.json", "\"items\": []", "\"items\": [\"standards\"]")
+            .With("snippets/standards/index.json", SourceFixture.Index(["hpi"],
+                description: "The standard sections of a consult note, in order.", extra: ", \"format\": \"plaintext\""))
+            .With("snippets/standards/hpi.md", Md(
+                "{ \"title\": \"History of Present Illness\" }",
+                "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n"));
+
+    /// <summary>A delivery folder, <c>deliverables/emr</c>, of one deliverable.</summary>
+    private static Dictionary<string, byte[]> WithDeliveryFolder() =>
+        Minimal()
+            .Edit("deliverables/index.json", "\"items\": [\"note\"]", "\"items\": [\"note\", \"emr\"]")
+            .With("deliverables/emr/index.json", SourceFixture.Index(["consult"], extra: ", \"delivery\": [\"emr\"], \"bundle\": null"))
+            .With("deliverables/emr/consult.md", Md(
+                SourceFixture.Deliverable("Consult letter", Plain, "null", "release"),
+                "Re: Margaret Okafor\n\n{{ node.plan.content }}\n\nDr A. Sample\n"));
+
+    /// <summary>A computed node, <c>section_count</c>, counting the plan's sections.</summary>
+    private static Dictionary<string, byte[]> WithComputed() =>
+        MinimalListing("section_count")
+            .With("nodes/section_count.md", Md(
+                Node("computed", "Counting the sections", "\"number\"", true, true,
+                    "\"if\": null, \"expression\": { \"size\": [{ \"var\": \"node.plan.value.sections\" }] }"),
+                ""));
+
+    /// <summary>A package format of verdicts named <paramref name="id"/>.</summary>
+    private static Dictionary<string, byte[]> WithFormat(string id) =>
+        Minimal()
+            .Edit("formats/index.json", "\"items\": []", $"\"items\": [\"{id}\"]")
+            .With($"formats/{id}.json", Json(
+                "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", \"required\": [\"verdict\"], "
+                + "\"additionalProperties\": false, \"properties\": { "
+                + "\"verdict\": { \"type\": \"string\", \"enum\": [\"good\", \"revise\"] } } }"));
+
+    /// <summary>A package renderer of terms as bullets named <paramref name="id"/>.</summary>
+    private static Dictionary<string, byte[]> WithRenderer(string id) =>
+        Minimal()
+            .Edit("renderers/index.json", "\"items\": []", $"\"items\": [\"{id}\"]")
+            .With($"renderers/{id}.md", Md(
+                "{ \"label\": \"Terms as bullets\", \"kind\": \"rendered\", "
+                + "\"description\": [\"One bullet for each term.\"], \"input\": \"concept_list\", \"format\": \"markdown_block\" }",
+                "{{~ for c in value.concepts ~}}\n- {{ c.term }}\n{{~ end ~}}\n"));
 
     // ---- Edits ------------------------------------------------------------------------------------------
 
