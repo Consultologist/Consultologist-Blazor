@@ -123,6 +123,23 @@ public class SourceIntakeTests
     }
 
     [Fact]
+    public void Intake_DropsAPublishReportAtTheRoot_Unread_AndUncounted()
+    {
+        // Part 07 § 5 step 0: a publish report in the upload is dropped, like resolve.json and lock.json.
+        var upload = Enumerable.Range(0, SourceBounds.Files)
+            .ToDictionary(i => $"f{i:D4}.md", _ => SourceFixture.Utf8("x"));
+        upload["publish-report.json"] = new byte[SourceBounds.FileBytes + 1];
+        upload["nodes/publish-report.json"] = SourceFixture.Utf8("{}");
+        upload.Remove("f0000.md");
+
+        var result = SourceIntake.Read(upload);
+
+        Assert.Empty(result.Refusals);
+        Assert.DoesNotContain("publish-report.json", result.Files.Keys);
+        Assert.Contains("nodes/publish-report.json", result.Files.Keys);
+    }
+
+    [Fact]
     public void Intake_DoesNotCountTheDroppedCopies()
     {
         var upload = Enumerable.Range(0, SourceBounds.Files)

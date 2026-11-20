@@ -20,14 +20,17 @@ public sealed record SourceIntakeResult(
 /// </summary>
 public static class SourceIntake
 {
-    /// <summary>Compiled copies at the package root; evidence written at publish, ignored in an upload (part 01 § 2).</summary>
-    private static readonly string[] CompiledCopies = ["resolve.json", "lock.json"];
+    /// <summary>
+    /// What publish writes at the package root, ignored in an upload: the compiled copies (part 01 § 2)
+    /// and the publish report (part 07 § 5 step 0 and § 6). Dropped unread and counted against no bound.
+    /// </summary>
+    private static readonly string[] CompiledCopies = ["resolve.json", "lock.json", "publish-report.json"];
 
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
 
     /// <summary>
     /// Reads <paramref name="upload"/> (path to bytes; a path is used as given, nothing is
-    /// rewritten). Drops the compiled copies at the root; then, for each file in path order,
+    /// rewritten). Drops the compiled copies and the publish report at the root; then, for each file in path order,
     /// refuses a byte-order mark (S01-014) and bytes that are not UTF-8 (A02-002), turns
     /// <c>\r\n</c> into <c>\n</c> and refuses a remaining <c>\r</c> (S01-015); then measures the
     /// normalised files against the bounds, reporting every one exceeded in the order of the
