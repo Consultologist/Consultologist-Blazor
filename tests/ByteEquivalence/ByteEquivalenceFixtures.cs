@@ -39,12 +39,12 @@ internal static class ByteEquivalenceFixtures
 
     /// <summary>
     /// A package's manifest text and its other files keyed by path relative to the package, looked
-    /// for in <c>packages/</c> and then <c>fixture-packages/</c>. <c>manifest.json</c> and the
+    /// for in <c>vendored/</c> and then <c>fixture-packages/</c>. <c>manifest.json</c> and the
     /// derived <c>dag.mmd</c> are not package files, so they are left out of <c>Files</c>.
     /// </summary>
     public static (string ManifestJson, Dictionary<string, string> Files) ReadPackage(string name)
     {
-        var directory = new[] { "packages", "fixture-packages" }
+        var directory = new[] { "vendored", "fixture-packages" }
             .Select(folder => Path.Combine(Root, folder, name))
             .FirstOrDefault(Directory.Exists)
             ?? throw new DirectoryNotFoundException($"No package '{name}' under {Root}.");
@@ -82,7 +82,7 @@ internal static class ByteEquivalenceFixtures
 
     private static IReadOnlyList<VendoredPackage> ReadIndex()
     {
-        var path = Path.Combine(Root, "packages", "index.json");
+        var path = Path.Combine(Root, "vendored", "index.json");
 
         if (!File.Exists(path))
         {

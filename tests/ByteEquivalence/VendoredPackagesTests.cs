@@ -58,7 +58,7 @@ public class VendoredPackagesTests
         {
             foreach (var (relative, hash) in package.Files)
             {
-                var path = Path.Combine(ByteEquivalenceFixtures.Root, "packages", package.Name, relative);
+                var path = Path.Combine(ByteEquivalenceFixtures.Root, "vendored", package.Name, relative);
 
                 Assert.True(File.Exists(path), $"{package.Name}/{relative} is indexed but not on disk.");
                 Assert.Equal(hash, "sha256:" + Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))));
@@ -69,10 +69,10 @@ public class VendoredPackagesTests
     [Fact]
     public void NoFileOnDisk_IsMissingFromTheIndex()
     {
-        var packages = Path.Combine(ByteEquivalenceFixtures.Root, "packages");
+        var vendored = Path.Combine(ByteEquivalenceFixtures.Root, "vendored");
 
-        var onDisk = Directory.EnumerateFiles(packages, "*", SearchOption.AllDirectories)
-            .Select(path => Path.GetRelativePath(packages, path).Replace(Path.DirectorySeparatorChar, '/'))
+        var onDisk = Directory.EnumerateFiles(vendored, "*", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(vendored, path).Replace(Path.DirectorySeparatorChar, '/'))
             .Where(relative => relative != "index.json")
             .Order(StringComparer.Ordinal)
             .ToList();
