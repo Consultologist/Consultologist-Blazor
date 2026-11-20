@@ -333,8 +333,12 @@ turns into a hand edit (§ 1.4), with a notice. In particular:
 
 **`!x` on text converts to `blank(x)`**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447#issuecomment-6980651765)).
-It differs from 30 only for whitespace-only text (30's truthiness treats it as present; `blank`
-counts it as blank), so **the migration report lists every such conversion**.
+It differs from 30 for **empty and whitespace-only text**
+([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7042190908)).
+At 30 only `null` is falsy for a text: `""` is truthy, and an unset optional text input reads `""`,
+so `!input.x` never holds at 30. `blank` counts `null`, `""` and whitespace-only text as blank,
+which is what an author writing `!x` on a text meant. So **the migration report lists every such
+conversion**.
 
 ### 2.4 How it's tested
 
@@ -342,7 +346,7 @@ counts it as blank), so **the migration report lists every such conversion**.
 - **Semantic equivalence** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)). For every condition in the public packages and the
   fixture set, 30's evaluator on the Scriban string and 31's evaluator on the converted JSON Logic
   are run on generated fictional inputs, including `null` and absent values, and **must agree,**
-  except the documented `blank(x)` whitespace case (§ 2.3), which is listed as an expected
+  except the documented `blank(x)` case for empty and whitespace-only text (§ 2.3), which is listed as an expected
   difference in the byte-equivalence report (§ 3), never silently accepted.
 - **The Editor's round trip** (expression → JSON Logic → expression, over a fixture set covering
   every operation) is Milestone 41's, with its screen (#1423).
