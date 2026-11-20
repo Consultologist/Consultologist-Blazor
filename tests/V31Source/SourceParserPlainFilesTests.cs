@@ -124,6 +124,15 @@ public class SourceParserPlainFilesTests
     }
 
     [Fact]
+    public void SpecVersionWritten31Point0_IsAccepted_AsTheWholeNumber31()
+    {
+        var result = SourceFixture.Minimal().WithJson("manifest.json", json => json["specVersion"] = JsonNode.Parse("31.0")).Parse();
+
+        Assert.Empty(result.Refusals);
+        Assert.NotNull(result.Package);
+    }
+
+    [Fact]
     public void ASpecVersionOfTheWrongType_IsOnlyAWrongType()
     {
         var refusal = Only(SourceFixture.Minimal().WithJson("manifest.json", json => json["specVersion"] = "31").Parse());

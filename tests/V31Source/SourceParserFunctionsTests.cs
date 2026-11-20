@@ -83,6 +83,21 @@ public class SourceParserFunctionsTests
         Assert.Equal("node.loop.child", Assert.Single(loop.Body.Nodes).Key);
     }
 
+    [Fact]
+    public void AFunctionHoldingChecksAndDeliverables_IsRefusedForEach()
+    {
+        var files = SourceFixture.Full()
+            .With("functions/draft_section/checks/index.json", "{ \"description\": null, \"items\": [] }")
+            .With("functions/draft_section/deliverables/index.json", "{ \"description\": null, \"items\": [] }");
+
+        var result = files.Parse();
+
+        Assert.Equal(
+            [("S04-062", "functions/draft_section/checks"), ("S04-062", "functions/draft_section/deliverables")],
+            result.Refusals.Select(r => (r.Id, r.Path)));
+        Assert.All(result.Refusals, V31Contract.AssertSentence);
+    }
+
     [Theory]
     [InlineData("checks")]
     [InlineData("deliverables")]

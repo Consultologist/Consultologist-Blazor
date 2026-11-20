@@ -21,6 +21,17 @@ public class SourceIdsTests
     }
 
     [Fact]
+    public void Check_RefusesAnIdEndingInANewline()
+    {
+        // The pattern's $ would match before a final newline; the id rules do not.
+        var refusal = SourceIds.Check("plan\n", "nodes/index.json")!;
+
+        Assert.Equal("S01-030", refusal.Id);
+        Assert.Equal("'plan\n' is not a valid id: a lowercase letter, then lowercase letters, digits or underscores.", refusal.Sentence);
+        V31Contract.AssertSentence(refusal);
+    }
+
+    [Fact]
     public void Check_RefusesSixtyFiveCharacters_AndAcceptsSixtyFour()
     {
         Assert.Null(SourceIds.Check(new string('a', 64), "nodes/x.md"));

@@ -340,6 +340,30 @@ public class SourceLayoutTests
     }
 
     [Fact]
+    public void AFileAndAFolderOfOneId_InAFlowFolder_AreRefused()
+    {
+        var files = SourceFixture.Full().With("nodes/sections/outline/index.json", "{}");
+
+        var refusal = Only(files.Parse());
+
+        Assert.Equal("S01-012", refusal.Id);
+        Assert.Equal("nodes/sections holds both outline.md and outline/: an id names one file or one folder.", refusal.Sentence);
+        Assert.Equal("nodes/sections/outline.md", refusal.Path);
+    }
+
+    [Fact]
+    public void AnIntakeRefusal_StillReturnsTheNormalisedFiles()
+    {
+        var files = SourceFixture.Minimal().With("nodes/plan.md", SourceFixture.Text(SourceFixture.Minimal(), "nodes/plan.md").Replace("\n", "\r\n"));
+        files["deliverables/note.md"] = [0xEF, 0xBB, 0xBF, (byte)'x'];
+
+        var result = files.Parse();
+
+        Assert.Equal("S01-014", Assert.Single(result.Refusals).Id);
+        Assert.Equal(["nodes/plan.md"], result.Normalised);
+    }
+
+    [Fact]
     public void AnIntakeRefusal_EndsTheParse()
     {
         var files = SourceFixture.Minimal().With("nodes/notes.txt", "x");
