@@ -40,7 +40,12 @@ public static class SentFormat
 {
     private const int DepthCap = 200;
 
-    /// <summary>The copy of <paramref name="format"/> a model receives, with <paramref name="strictRejects"/> removed. Never throws on package content.</summary>
+    /// <summary>
+    /// The copy of <paramref name="format"/> a model receives, with <paramref name="strictRejects"/>
+    /// removed. Meaningful only for a format that <see cref="FormatTypes.Expands"/>: for one that
+    /// does not, the copy keeps what could not be inlined as written, and a part nested past the
+    /// walk's cap is <c>{}</c>. Never throws on package content.
+    /// </summary>
     public static SentFormatResult Prepare(JsonNode? format, FormatSet formats, IReadOnlyList<string> strictRejects)
     {
         ArgumentNullException.ThrowIfNull(formats);
@@ -80,9 +85,11 @@ public static class SentFormat
 
     private static JsonObject Clean(JsonObject schema, string pointer, IReadOnlyList<string> strictRejects, List<string> notSent, int depth)
     {
+        // Past the cap a schema is never copied as written (it would keep what the model must not
+        // see): the over-deep part is sent as {}.
         if (depth > DepthCap)
         {
-            return (JsonObject)schema.DeepClone();
+            return new JsonObject();
         }
 
         var result = new JsonObject();
@@ -95,7 +102,7 @@ public static class SentFormat
 
             if (strictRejects.Contains(key))
             {
-                notSent.Add(pointer + "/" + Escape(key));
+                notSent.Add(pointer + "/" + FormatDialect.Escape(key));
                 continue;
             }
 
@@ -106,7 +113,7 @@ public static class SentFormat
                     foreach (var (name, child) in properties)
                     {
                         map[name] = child is JsonObject c
-                            ? Clean(c, $"{pointer}/properties/{Escape(name)}", strictRejects, notSent, depth + 1)
+                            ? Clean(c, $"{pointer}/properties/{FormatDialect.Escape(name)}", strictRejects, notSent, depth + 1)
                             : child?.DeepClone();
                     }
 
@@ -131,8 +138,6 @@ public static class SentFormat
 
         return result;
     }
-
-    private static string Escape(string token) => token.Replace("~", "~0", StringComparison.Ordinal).Replace("/", "~1", StringComparison.Ordinal);
 
     /// <summary>D3's counts on the sent copy, walked in document order.</summary>
     private sealed class Counter
@@ -170,7 +175,7 @@ public static class SentFormat
                             Properties++;
                             if (child is JsonObject c)
                             {
-                                Walk(c, $"{pointer}/properties/{Escape(name)}", level, depth + 1);
+                                Walk(c, $"{pointer}/properties/{FormatDialect.Escape(name)}", level, depth + 1);
                             }
                         }
 

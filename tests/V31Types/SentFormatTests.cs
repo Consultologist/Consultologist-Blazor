@@ -159,10 +159,71 @@ public class SentFormatTests
     [Fact]
     public void AFormatThatDoesNotExpand_IsStillPrepared()
     {
+        // Meaningful only for a format that expands; one that does not still gives a copy, the loop left as written.
         var set = FormatSet.ForPackage(Registry, [Package("a", Obj("\"x\": { \"$ref\": \"a\" }", "x"))]);
         var sent = SentFormat.Prepare("a", set, Format);
-        Assert.NotNull(sent.Schema);
-        Assert.NotNull(SentFormat.Prepare(null, set, Format).Schema);
-        Assert.NotNull(SentFormat.Prepare(JsonNode.Parse("5"), set, Format).Schema);
+        Assert.Equal(
+            """{"additionalProperties":false,"properties":{"x":{"$ref":"a"}},"required":["x"],"type":"object"}""",
+            Compact(sent.Schema));
+        Assert.Equal("{}", Compact(SentFormat.Prepare(null, set, Format).Schema));
+        Assert.Equal("{}", Compact(SentFormat.Prepare(JsonNode.Parse("5"), set, Format).Schema));
+    }
+
+    [Fact]
+    public void PastItsDepthCap_TheCopyIsEmpty_NeverUnstripped()
+    {
+        // 300 lists deep, each with a title: the cleaned part has no title, and the part past the cap is {}.
+        JsonNode inner = new JsonObject { ["type"] = "string", ["title"] = "Deepest", ["x-note"] = 1 };
+        for (var i = 0; i < 300; i++)
+            inner = new JsonObject { ["type"] = "array", ["title"] = $"Level {i}", ["items"] = inner };
+
+        var sent = SentFormat.Prepare(inner, Formats, Format);
+
+        JsonNode? node = sent.Schema;
+        var depth = 0;
+        while (node is JsonObject { Count: 2 } list && list["items"] is { } items)
+        {
+            Assert.Equal("array", (string)list["type"]!);
+            node = items;
+            depth++;
+        }
+
+        Assert.Equal("{}", Compact(node));
+        Assert.InRange(depth, 100, 299);
+        Assert.DoesNotContain("title", sent.Schema.ToJsonString(new System.Text.Json.JsonSerializerOptions { MaxDepth = 1000 }));
+    }
+
+    [Fact]
+    public void NotSent_PointsThroughListsUnionsAndEscapedNames()
+    {
+        // Through items, and through a nullable date, under a name that needs escaping.
+        var format = JsonNode.Parse(Obj(
+            "\"a/b\": { \"type\": \"array\", \"items\": { \"$ref\": \"date\" } }, "
+            + "\"x\": { \"anyOf\": [ { \"$ref\": \"date\" }, { \"type\": \"null\" } ] }",
+            "a/b", "x"));
+        var sent = SentFormat.Prepare(format, Formats, Format);
+        Assert.Equal(["/properties/a~1b/items/format", "/properties/x/anyOf/0/format"], sent.NotSent);
+        Assert.Equal("string", (string)sent.Schema["properties"]!["x"]!["anyOf"]![0]!["type"]!);
+        Assert.Null(sent.Schema["properties"]!["x"]!["anyOf"]![0]!["format"]);
+
+        // A format referenced twice gives two pointers.
+        var set = FormatSet.ForPackage(Registry, [Package("visit", Obj("\"on\": { \"$ref\": \"date\" }", "on"))]);
+        var twice = SentFormat.Prepare(JsonNode.Parse(Obj("\"first\": { \"$ref\": \"visit\" }, \"second\": { \"$ref\": \"visit\" }", "first", "second")), set, Format);
+        Assert.Equal(["/properties/first/properties/on/format", "/properties/second/properties/on/format"], twice.NotSent);
+    }
+
+    [Fact]
+    public void PropertiesNamedLikeKeywords_Survive_WithTheirExactShape()
+    {
+        string[] names = ["$id", "enum", "x-foo", "contentMediaType", "title", "format"];
+        var properties = string.Join(", ", names.Select((n, i) => $"\"{n}\": {{ \"type\": \"number\", \"description\": \"d{i}\" }}"));
+        var sent = SentFormat.Prepare(JsonNode.Parse(Obj(properties, names)), Formats, Format);
+
+        Assert.Empty(sent.NotSent);
+        var kept = sent.Schema["properties"]!.AsObject();
+        Assert.Equal(names, kept.Select(p => p.Key));
+        for (var i = 0; i < names.Length; i++)
+            Assert.Equal($$"""{"description":"d{{i}}","type":"number"}""", Compact(kept[names[i]]));
+        Assert.Equal(names, sent.Schema["required"]!.AsArray().Select(n => (string)n!));
     }
 }
