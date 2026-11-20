@@ -135,8 +135,10 @@ internal static class SourceScopes
     // ---- S01-036 ---------------------------------------------------------------------------------
 
     /// <summary>
-    /// Inside the outermost <c>while</c> that holds them, two nodes of one id at any depth that
-    /// S01-002 did not already refuse as a pair (D14), once each, in tree order.
+    /// Inside the outermost <c>while</c> that holds them, an id used more than once at any depth: in
+    /// tree order, each later occurrence is said once, against the first earlier occurrence it does not
+    /// form an S01-002 pair with (D14), so an id used k times (no S01-002 among them) gives k − 1
+    /// sentences, each naming the first occurrence and the later one.
     /// </summary>
     private static void CheckWhiles(IReadOnlyList<Entry> scope, List<SourceRefusal> refusals)
     {
@@ -146,19 +148,21 @@ internal static class SourceScopes
             foreach (var block in Blocks(outer.Node))
                 Visit(block.Nodes, [.. outer.Folder, outer.Node.Id], inside);
 
-            for (var i = 0; i < inside.Count; i++)
+            for (var j = 1; j < inside.Count; j++)
             {
-                for (var j = i + 1; j < inside.Count; j++)
+                var later = inside[j];
+                for (var i = 0; i < j; i++)
                 {
-                    var (a, b) = (inside[i], inside[j]);
-                    if (a.Node.Id != b.Node.Id
-                        || IsStrictPrefix(a.Folder, b.Folder) || IsStrictPrefix(b.Folder, a.Folder))
+                    var first = inside[i];
+                    if (first.Node.Id != later.Node.Id
+                        || IsStrictPrefix(first.Folder, later.Folder) || IsStrictPrefix(later.Folder, first.Folder))
                     {
                         continue;
                     }
 
                     refusals.Add(SourceSentences.NodeTwiceInWhile(
-                        a.Node.Id, outer.Node.Id, WithoutRoot(a.Node.Key), WithoutRoot(b.Node.Key), FileOf(outer.Node)));
+                        first.Node.Id, outer.Node.Id, WithoutRoot(first.Node.Key), WithoutRoot(later.Node.Key), FileOf(outer.Node)));
+                    break;
                 }
             }
         }

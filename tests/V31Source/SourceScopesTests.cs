@@ -186,6 +186,26 @@ public class SourceScopesTests
     }
 
     [Fact]
+    public void InsideAWhile_AnIdUsedThreeTimes_IsSaidTwice_EachAgainstTheFirst()
+    {
+        var files = SourceFixture.Full();
+        files.Remove("nodes/refine/judge.md");
+        foreach (var loop in new[] { "first", "second", "third" })
+            AddJudgeLoop(files, $"nodes/refine/{loop}", $"node.refine.{loop}");
+        files.WithJson(Refine, json => json["nodes"] = Ids("draft_summary", "first", "second", "third"));
+
+        var result = files.Parse();
+
+        Assert.All(result.Refusals, V31Contract.AssertSentence);
+        Assert.Equal(
+            [
+                "Node 'judge' appears twice inside while 'refine' (refine.first.judge and refine.second.judge): pass.\u2026.node.judge must name one node.",
+                "Node 'judge' appears twice inside while 'refine' (refine.first.judge and refine.third.judge): pass.\u2026.node.judge must name one node.",
+            ],
+            result.Refusals.Select(r => r.Sentence));
+    }
+
+    [Fact]
     public void ANodeSeenByAnother_InsideAWhile_IsS01002Only()
     {
         var files = SourceFixture.Full();
