@@ -19,6 +19,7 @@ public class PlainConversionTests
     public void ToPlain_HasNoCarriageReturn()
     {
         var plain = PlainConversion.ToPlain("a\r\nb");
+        Assert.NotNull(plain);
         Assert.DoesNotContain('\r', plain);
     }
 
@@ -51,5 +52,5 @@ public class PlainConversionTests
 
     [Fact]
     public void Version_IsTheContractsVersion() =>
-        Assert.Equal(V31Source.V31Contract.Json("constants.json")["builtins"]!["plain_conversion"]!.GetValue<string>(), PlainConversion.Version);
+        Assert.Equal(PlainConversion.Version, V31Source.V31Contract.Json("constants.json")["builtins"]!["plain_conversion"]!.GetValue<string>());
 }
