@@ -103,7 +103,7 @@ public class WorkflowV26DirectReadTests
             new Dictionary<string, string>(), null, null, new Dictionary<string, TemplateNodeOutput>(), new Dictionary<string, string>(),
             folders, null, new Dictionary<string, TemplateMacroSource>(), Run, Profile, InertSnippets: inert, MacroFolders: macroFolders);
 
-        Assert.Equal("History. hpi [History.Plan.] " + WorkflowMacroMechanics.Prompt("plan", "Note the plan.") + " Plan noted.",
+        Assert.Equal("History. hpi [History.Plan.] " + WorkflowMacroMechanics.Prompt("section_notes.plan", "Note the plan.") + " Plan noted.",
             TemplateRenderer.Render("Prompt 'p'", "{{ snippet.sections.hpi.content }} {{ snippet.sections.hpi.id }} [{{ for s in snippet.sections }}{{ s.content }}{{ end }}] {{ macro.section_notes.plan.prompt }} {{ macro.section_notes.plan.content }}", Scope()));
         // An item gated off (#1094, the engine's key) reads empty directly — and (#1179,
         // § 5.4) is left out of every loop over its folder; the list's size is the live count.
