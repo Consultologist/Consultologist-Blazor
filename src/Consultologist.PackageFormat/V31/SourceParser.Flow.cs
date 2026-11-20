@@ -165,10 +165,10 @@ public static partial class SourceParser
         for (var i = 0; i < bodies.Count; i++)
         {
             // S04-012 is judged against the ids the body lists, not the children that survived reading.
-            if (bodies[i].Ids is JsonArray && bodies[i].Ret is { } ret && lists[i].Count > 0)
+            if (bodies[i].Ret is { } ret && WrittenIds(bodies[i].Ids) is { Count: > 0 } written)
             {
                 SourceScopes.CheckReturn(
-                    bodies[i].Subject, ret, lists[i].Select(child => Key(root, inner, child.Id)).ToList(), path, walk.Refusals);
+                    bodies[i].Subject, ret, written.Select(child => Key(root, inner, child)).ToList(), path, walk.Refusals);
             }
 
             blocks.Add(new SourceBlock(ReadBody(walk, lists[i], root, inner), bodies[i].Ret));
@@ -204,6 +204,15 @@ public static partial class SourceParser
             }
         }
     }
+
+    /// <summary>
+    /// The ids a body's list writes, in order, each once (one trailing <c>/</c> dropped, as the listing does): what S04-012
+    /// judges <c>ret</c> against, whether or not the listing kept the entry (a missing file, an id the
+    /// rules refuse, a repeat). Null when the list is not an array.
+    /// </summary>
+    private static List<string>? WrittenIds(JsonNode? ids) => ids is JsonArray array
+        ? array.Select(SourceLayout.Text).OfType<string>().Select(id => id.EndsWith('/') ? id[..^1] : id).Distinct(StringComparer.Ordinal).ToList()
+        : null;
 
     /// <summary>A rooted key: the root, the enclosing flow nodes' ids, then the id (part 01 § 9.3).</summary>
     private static string Key(string root, string enclosing, string id) =>

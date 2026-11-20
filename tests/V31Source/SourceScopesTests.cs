@@ -357,4 +357,137 @@ public class SourceScopesTests
         foreach (var sentence in sentences)
             V31Contract.AssertSentence(sentence);
     }
+
+    // ---- S04-012 is judged against the ids as written ---------------------------------------------
+
+    private const string Function = "functions/draft_section/index.json";
+
+    private static void AssertRetNotJudged(Dictionary<string, byte[]> files, string real)
+    {
+        var result = files.Parse();
+
+        Assert.Null(result.Package);
+        Assert.Contains(result.Refusals, r => r.Id == real);
+        Assert.DoesNotContain(result.Refusals, r => r.Id == "S04-012");
+    }
+
+    [Fact]
+    public void ARetNamingAChildWithABrokenFile_IsNotJudged()
+    {
+        AssertRetNotJudged(SourceFixture.Full().With("nodes/sections/outline.md", "no front matter\n")
+            .WithJson(Sections, json => json["ret"] = "node.sections.outline"), "S01-016");
+        AssertRetNotJudged(SourceFixture.Full().With("functions/draft_section/apply_instructions.md", "no front matter\n"), "S01-016");
+    }
+
+    [Fact]
+    public void ARetNamingAChildWithNoFile_IsNotJudged()
+    {
+        AssertRetNotJudged(SourceFixture.Full().Without("nodes/sections/outline.md")
+            .WithJson(Sections, json => json["ret"] = "node.sections.outline"), "S01-009");
+        AssertRetNotJudged(SourceFixture.Full().Without("functions/draft_section/apply_instructions.md"), "S01-009");
+    }
+
+    [Fact]
+    public void ARetNamingAChildListedTwice_IsNotJudged()
+    {
+        AssertRetNotJudged(SourceFixture.Full().WithJson(Sections, json =>
+        {
+            json["nodes"] = Ids("outline", "paragraphs", "outline");
+            json["ret"] = "node.sections.outline";
+        }), "S04-013");
+        AssertRetNotJudged(SourceFixture.Full().WithJson(Function, json =>
+            json["nodes"] = Ids("standard_draft", "patient_draft", "apply_instructions", "apply_instructions")), "S04-013");
+    }
+
+    [Fact]
+    public void ARetNamingAChildWhoseIdIsRefused_IsNotJudged()
+    {
+        AssertRetNotJudged(SourceFixture.Full().WithJson(Sections, json =>
+        {
+            json["nodes"] = Ids("outline", "paragraphs", "Bad-Id");
+            json["ret"] = "node.sections.Bad-Id";
+        }), "S01-030");
+        AssertRetNotJudged(SourceFixture.Full().WithJson(Function, json =>
+        {
+            json["nodes"] = Ids("standard_draft", "patient_draft", "Bad-Id");
+            json["ret"] = "node.Bad-Id";
+        }), "S01-030");
+    }
+
+    // ---- Scopes: the remaining shapes -------------------------------------------------------------
+
+    private static void AddJudgeLoop(Dictionary<string, byte[]> files, string folder, string key)
+    {
+        files[$"{folder}/index.json"] = files[Paragraphs];
+        files.WithJson($"{folder}/index.json", json =>
+        {
+            json["nodes"] = Ids("judge");
+            json["ret"] = $"{key}.judge";
+        });
+        files[$"{folder}/judge.md"] = files["nodes/sections/paragraphs/draft_paragraph.md"];
+    }
+
+    [Fact]
+    public void AFunctionsScope_IsJudgedToo()
+    {
+        var files = SourceFixture.Full();
+        files["functions/draft_section/l/index.json"] = files[Paragraphs];
+        files.WithJson("functions/draft_section/l/index.json", json =>
+        {
+            json["nodes"] = Ids("standard_draft");
+            json["ret"] = "node.l.standard_draft";
+        });
+        files["functions/draft_section/l/standard_draft.md"] = files["functions/draft_section/standard_draft.md"];
+        files.WithJson(Function, json => json["nodes"] = Ids("standard_draft", "patient_draft", "l", "apply_instructions"));
+
+        var refusal = Only(files.Parse());
+
+        Assert.Equal("S01-002", refusal.Id);
+        Assert.StartsWith("Node 'standard_draft' in l reuses the id of node 'standard_draft' at the top level, which l can read", refusal.Sentence);
+    }
+
+    [Fact]
+    public void NestedWhiles_ReportOnTheOutermost()
+    {
+        var files = SourceFixture.Full();
+        files.Remove("nodes/refine/judge.md");
+        files["nodes/refine/inner/index.json"] = files[Refine];
+        files.WithJson("nodes/refine/inner/index.json", json =>
+        {
+            json["nodes"] = Ids("first", "second");
+            json["ret"] = "node.refine.inner.first";
+        });
+        AddJudgeLoop(files, "nodes/refine/inner/first", "node.refine.inner.first");
+        AddJudgeLoop(files, "nodes/refine/inner/second", "node.refine.inner.second");
+        files.WithJson(Refine, json => json["nodes"] = Ids("draft_summary", "inner"));
+
+        var refusal = Only(files.Parse());
+
+        Assert.Equal("S01-036", refusal.Id);
+        Assert.Equal(
+            "Node 'judge' appears twice inside while 'refine' (refine.inner.first.judge and refine.inner.second.judge): pass.\u2026.node.judge must name one node.",
+            refusal.Sentence);
+        Assert.Equal("nodes/refine/index.json", refusal.Path);
+    }
+
+    [Fact]
+    public void APairSplitAcrossThenAndElse_IsS01036()
+    {
+        var files = SourceFixture.Full();
+        files.Remove("nodes/refine/judge.md");
+        files["nodes/refine/gate/index.json"] = files["nodes/billing_gate/index.json"];
+        files.WithJson("nodes/refine/gate/index.json", json =>
+        {
+            json["then"] = new JsonObject { ["nodes"] = Ids("a"), ["ret"] = "node.refine.gate.a" };
+            json["else"] = new JsonObject { ["nodes"] = Ids("b"), ["ret"] = "node.refine.gate.b" };
+        });
+        AddJudgeLoop(files, "nodes/refine/gate/a", "node.refine.gate.a");
+        AddJudgeLoop(files, "nodes/refine/gate/b", "node.refine.gate.b");
+        files.WithJson(Refine, json => json["nodes"] = Ids("draft_summary", "gate"));
+
+        var refusal = Only(files.Parse());
+
+        Assert.Equal("S01-036", refusal.Id);
+        Assert.Contains("(refine.gate.a.judge and refine.gate.b.judge)", refusal.Sentence);
+    }
 }

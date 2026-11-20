@@ -73,10 +73,10 @@ public static partial class SourceParser
                 walk, folder, $"{path} nodes", index["nodes"], MemberForm.FileOrFolder,
                 (new HashSet<string>(StringComparer.Ordinal), child => SourceSentences.BodyListsTwice(name, child, path)));
             var ret = SourceLayout.Text(index["ret"]);
-            if (index["nodes"] is JsonArray && ret != null && members.Count > 0)
+            if (ret != null && WrittenIds(index["nodes"]) is { Count: > 0 } written)
             {
                 SourceScopes.CheckReturn(
-                    name, ret, members.Select(child => Key("node", "", child.Id)).ToList(), path, walk.Refusals);
+                    name, ret, written.Select(child => Key("node", "", child)).ToList(), path, walk.Refusals);
             }
 
             // Built even with a fault of its own: SourceScopes judges whatever was built.
