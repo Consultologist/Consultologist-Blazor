@@ -395,9 +395,10 @@ reader's when it has any, else the type rules', else the expressions'.
   `JsonLogicOperation(Name, Min, Max, Custom)`), `Find`, `AllowedList`, `Takes` (the arity words of
   S03-010), `RunFacts` (`date`, `id`, `package`, `engine`) and the three versions (`1.0.0`).
 - **`IRegexp`**: a pattern held to RFC 9485's grammar, to 200 code points and to repetition counts of
-  at most 100 (`Check` gives an `IRegexpCheck`: the `IRegexpFault`, a fixed-phrase `Reason`, a
-  `Count`, and the .NET `Regex` when it is sound), and translated to .NET (`ToDotNet`), compiled
-  `NonBacktracking` with no time-out. `IsMatch` searches; `TooLong` says a text is over 1 MiB.
+  at most 100 (`Check` gives an `IRegexpCheck`: the `IRegexpFault`, a `Reason` that is a phrase from a fixed
+  list with the position and the character filled in (plan D30), a `Count`, and the .NET `Regex`
+  when it is sound), and translated to .NET (`ToDotNet`), compiled `NonBacktracking` with no
+  time-out. `Check` caches at most 1,024 patterns, and only those past the grammar (plan D46). `IsMatch` searches; `TooLong` says a text is over 1 MiB.
 - **`JsonLogicShape`**: the written form with no types. `Check` gives every `ShapeFault`
   (`ShapeFaultKind`: an object that is not a rule, a loose `==`, an unknown operation, a wrong
   operand count, a bad `var` default, a pattern that is not I-Regexp, and so on). `Paths` lists the
@@ -406,11 +407,16 @@ reader's when it has any, else the type rules', else the expressions'.
   `Print` itself writes: it parses, prints again and compares, and gives `false` for anything else.
   `Reason` words a decision's reason for the record. `Version` is 1.0.0.
 - **`PlainConversion.ToPlain(markdown)`**: the conversion `plain` applies (Markdig's plain text with
-  the advanced extensions, `\n` line breaks, no spaces, tabs or line breaks at the very end).
-  `Version` is 1.0.0.
+  the advanced extensions, `\n` line breaks, no spaces, tabs or line breaks at the very end). It
+  returns `null`, never the source, when Markdig cannot convert the text (Markdown nested too
+  deeply, such as 200 nested `>`); it never throws. `Version` is 1.0.0.
 - **`JsonLogicFunctions`**: the meaning of each operation on values (`Apply`), truthiness (`Truthy`),
-  reading a path (`Read`), `Missing`. A `JsonLogicFailure(Kind, Detail)` is a run-time failure
-  (`JsonLogicFailureKind`: `Declined`, `MatchesTextTooLong`, `NotABoolean`, `Fault`).
+  reading a path (`Read`), `Missing`. `Truthy` is JSON Logic's operand truthiness (`0` and `""`
+  are false); a condition's result is tested by `IJsonLogicRule.Decide`, which is stricter. A
+  `JsonLogicFailure(Kind, Detail)` is a run-time failure (`JsonLogicFailureKind`: `Declined`,
+  `MatchesTextTooLong`, `NotABoolean`, `Fault`, `PlainNotConverted`). A `plain` told to convert
+  Markdown that `ToPlain` cannot convert fails the rule with `PlainNotConverted`, worded as A04-011:
+  `<site> <member> could not be evaluated: plain was given Markdown nested too deeply to convert.`
 - **`IJsonLogicEvaluator`**, **`CorvusJsonLogicEvaluator`**, **`IJsonLogicRule`**: compile and run
   (below). `JsonLogicValue` and `JsonLogicDecision` are what a rule gives.
 - **`ExpressionSite`**, **`IExpressionScope`**, **`ScopeHead`**, **`ExpressionType`**: one place a
@@ -450,6 +456,12 @@ fields). Every call into it is under one lock per evaluator, so one evaluator is
 two evaluators do not exclude each other. Rules, data and results are read to 512 JSON levels deep;
 data deeper than that is a `Fault`.
 
+**One evaluator per compiled package version.** Part 03 § 9 compiles a package's rules once per
+package version: hold one evaluator for each compiled package version, never one for the whole
+process. Every call into Corvus is serialised per evaluator, so a slow `matches` would stall every
+other rule run on a shared one, and its compiled-rule cache is never emptied: it lives as long as
+the evaluator does (plan D47).
+
 **`PlainConverts`.** `plain` converts Markdown to plain text and returns a plain-text operand
 unchanged. At run time a value is a string with no format, so the evaluator cannot tell which it has.
 `ExpressionCheck.PlainConverts` is that choice made at publish: for each `plain` in the rule,
@@ -463,7 +475,8 @@ past its end, a `plain` converts.
 A scope says who can be read at a site and their types. `IExpressionScope.Head(segments)` gives a
 `ScopeHead` for the start of a path: a `Format` (read through `.value`, `.content` or `.title`, the
 rest going to `FormatReads.Read`), a `Value` (already a value, a run fact), `Deferred` (no type yet:
-a read through it has no type and fits any operand), or `Unknown` (nothing there: S03-014). The root
+a read through it has no type and fits any operand), `Unknown` (nothing there: S03-014), or `Refused`
+(the scope refuses the read with its own sentence, `ScopeHead.Refusal`). The root
 and site rules of part 03 (S03-013, S03-015, S03-018 to S03-022) are judged before a scope is asked.
 
 `PackageScope` is the scope of this area: `input.<id>` and `run.<fact>` are typed; every other root
@@ -480,8 +493,9 @@ an `if` flow node, of a check, of a deliverable, of a part, of a macro and of a 
 and `until` of a flow node; and every `computed` node's `expression` (always checked). A condition
 site whose member is null or absent is skipped; at an `expression` a `null` rule is the `null`
 literal, held to the node's declared format. Each site is checked against its own function's
-`FormatSet` when it is in one. A `SiteExpression` holds the site, its rule (null for the `null`
-literal) and its `ExpressionCheck`. Refusals are said once and ordered by path.
+`FormatSet` when it is in one. A `SiteExpression` holds a `SiteContext` (the `ExpressionSite`, the
+declaration that holds it, its function if any, and the part of a `parts.<id>.if`), its rule (null
+for the `null` literal) and its `ExpressionCheck`. Refusals are said once and ordered by path.
 
 ### The flags
 
