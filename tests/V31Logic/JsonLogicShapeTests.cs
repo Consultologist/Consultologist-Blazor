@@ -82,6 +82,26 @@ public class JsonLogicShapeTests
         Assert.Equal(count, fault.Count);
     }
 
+    private static JsonNode CountPass(JsonNode min) => new JsonObject
+    {
+        ["count_pass"] = new JsonArray { new JsonObject { ["var"] = "a.b" }, min, "x" },
+    };
+
+    [Fact]
+    public void ARuleBuiltInCode_IsJudgedAsItsTextIs()
+    {
+        Assert.Empty(JsonLogicShape.Check(CountPass(JsonValue.Create(2))));
+        Assert.Empty(JsonLogicShape.Check(CountPass(JsonValue.Create(2L))));
+        Assert.Empty(JsonLogicShape.Check(CountPass(JsonValue.Create(2.0))));
+        Assert.Empty(JsonLogicShape.Check(CountPass(JsonValue.Create(2m))));
+        foreach (var bad in new[] { JsonValue.Create(-1), JsonValue.Create(1.5), JsonValue.Create(-1L), JsonValue.Create(1.5m) })
+            Assert.Equal(ShapeFaultKind.CountPassMin, Assert.Single(JsonLogicShape.Check(CountPass(bad))).Kind);
+
+        var path = new JsonObject { ["var"] = JsonValue.Create("input.a.value") };
+        Assert.Empty(JsonLogicShape.Check(path));
+        Assert.Empty(JsonLogicShape.Check(new JsonObject { ["missing"] = new JsonArray { JsonValue.Create("input.a.value") } }));
+    }
+
     [Fact]
     public void LongPattern_IsTooLong_AndCarriesItsLength()
     {

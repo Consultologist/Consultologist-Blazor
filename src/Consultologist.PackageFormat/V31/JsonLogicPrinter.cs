@@ -75,7 +75,7 @@ public static class JsonLogicPrinter
             case "object": return operands is JsonObject ? new Form(Kind.Object, Primary, name, "", operands) : call;
             case "missing": return count >= 0 ? new Form(Kind.Missing, Primary, name, "", operands) : call;
             case "var":
-                return operands is JsonValue v && v.GetValueKind() == JsonValueKind.String && IsBarePath(v.GetValue<string>())
+                return JsonLogicShape.TextOf(operands) is { } bare && IsBarePath(bare)
                     ? new Form(Kind.Path, Primary, name, "", operands)
                     : call;
             default: return call;
@@ -107,7 +107,7 @@ public static class JsonLogicPrinter
         switch (form.Kind)
         {
             case Kind.Path:
-                return ((JsonValue)operands!).GetValue<string>();
+                return JsonLogicShape.TextOf(operands)!;
             case Kind.Infix:
             {
                 var list = (JsonArray)operands!;
@@ -197,8 +197,9 @@ public static class JsonLogicPrinter
             rule = parsed;
             return true;
         }
-        catch (ParseFailure)
+        catch (Exception)
         {
+            // Never throws, whatever the text: anything unexpected is "the printer did not write this".
             return false;
         }
     }
@@ -588,7 +589,7 @@ public static class JsonLogicPrinter
             var args = List(")");
             if (name == "var")
             {
-                if (args is [JsonValue { } path] && path.GetValueKind() == JsonValueKind.String)
+                if (args is [JsonValue { } path] && JsonLogicShape.TextOf(path) != null)
                     return new JsonObject { ["var"] = path };
                 throw new ParseFailure();
             }

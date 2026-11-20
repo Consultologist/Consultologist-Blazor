@@ -88,6 +88,14 @@ public class JsonLogicPrinterTests
         Assert.Equal(text, JsonLogicPrinter.Print(Rule(rule)));
 
     [Fact]
+    public void Print_IsTotal_ForALoneSurrogateInAStringLiteral()
+    {
+        var rule = new JsonObject { ["=="] = new JsonArray { new JsonObject { ["var"] = "x.a" }, JsonValue.Create("\ud800") } };
+        Assert.False(string.IsNullOrEmpty(JsonLogicPrinter.Print(rule)));
+        Assert.False(string.IsNullOrEmpty(JsonLogicPrinter.Print(JsonValue.Create("\ud800"))));
+    }
+
+    [Fact]
     public void Print_IsTotal_PastTheDepthLimit()
     {
         JsonNode? rule = JsonValue.Create(1);
@@ -139,6 +147,7 @@ public class JsonLogicPrinterTests
     [InlineData("1 + if x.a then 1 else 2")]
     [InlineData("not not x.a")]
     [InlineData("x.a @ 1")]
+    [InlineData("\"\\ud800\"")]
     public void TryParse_RefusesWhatThePrinterNeverWrites(string text)
     {
         Assert.False(JsonLogicPrinter.TryParse(text, out var rule));

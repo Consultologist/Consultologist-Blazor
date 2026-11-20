@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
@@ -168,8 +169,8 @@ public static class JsonLogicShape
         {
             foreach (var operand in list)
             {
-                if (operand is JsonValue value && value.GetValueKind() == JsonValueKind.String)
-                    CheckPath(value.GetValue<string>(), faults);
+                if (TextOf(operand) is { } path)
+                    CheckPath(path, faults);
                 else
                     faults.Add(Literal(name, "path", operand));
             }
@@ -197,8 +198,8 @@ public static class JsonLogicShape
     {
         if (operand is JsonArray)
             faults.Add(Fault(ShapeFaultKind.VarDefault, "var"));
-        else if (operand is JsonValue value && value.GetValueKind() == JsonValueKind.String)
-            CheckPath(value.GetValue<string>(), faults);
+        else if (TextOf(operand) is { } path)
+            CheckPath(path, faults);
         else
             faults.Add(Fault(ShapeFaultKind.VarNotText, "var", Describe(operand)));
     }
@@ -236,13 +237,12 @@ public static class JsonLogicShape
             return;
         }
 
-        if (node is not JsonValue value || value.GetValueKind() != JsonValueKind.String)
+        if (TextOf(node) is not { } text)
         {
             faults.Add(Literal(operation, operand, node));
             return;
         }
 
-        var text = value.GetValue<string>();
         switch (operand)
         {
             case "pattern":
@@ -265,11 +265,29 @@ public static class JsonLogicShape
         }
     }
 
+    /// <summary>#1501 (specVersion 31, area 04): a string literal's text however the node was built, or null if it is not text.</summary>
+    internal static string? TextOf(JsonNode? node)
+    {
+        if (node is not JsonValue value || value.GetValueKind() != JsonValueKind.String)
+            return null;
+        if (value.TryGetValue<string>(out var text))
+            return text;
+        try
+        {
+            return JsonSerializer.Deserialize<string>(value.ToJsonString());
+        }
+        catch (Exception e) when (e is JsonException or ArgumentException or InvalidOperationException)
+        {
+            return null;
+        }
+    }
+
     private static bool IsCountMin(JsonNode? node)
     {
         if (node is not JsonValue value || value.GetValueKind() != JsonValueKind.Number)
             return false;
-        if (!value.TryGetValue<double>(out var d) || !double.IsFinite(d))
+        // The node's own text, so int-, long-, double- and decimal-backed nodes (built in code) and parsed ones agree.
+        if (!double.TryParse(value.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) || !double.IsFinite(d))
             return false;
         return d == Math.Floor(d) && d >= 0 && d <= int.MaxValue;
     }
@@ -333,12 +351,8 @@ public static class JsonLogicShape
 
     private static void Add(JsonNode? node, List<string> paths, HashSet<string> seen)
     {
-        if (node is JsonValue value && value.GetValueKind() == JsonValueKind.String)
-        {
-            var path = value.GetValue<string>();
-            if (seen.Add(path))
-                paths.Add(path);
-        }
+        if (TextOf(node) is { } path && seen.Add(path))
+            paths.Add(path);
     }
 
     private static ShapeFault Fault(ShapeFaultKind kind, string operation = "", string text = "", int count = 0, string detail = "") =>
