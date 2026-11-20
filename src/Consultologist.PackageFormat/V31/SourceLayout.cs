@@ -211,17 +211,16 @@ internal static class SourceLayout
                 continue;
             }
 
-            var file = Join(folder, id + (form == MemberForm.Json ? ".json" : ".md"));
-            var directory = Join(folder, id);
             if (SourceIds.Check(id, indexPath) is { } bad)
             {
-                // The id is refused; what it names is covered by that refusal, not stray.
+                // A refused entry names nothing (an id with a '/' would reach into another folder): it
+                // accounts for no file, and whatever is on disk is judged on its own.
                 walk.Refuse(bad);
-                walk.Account(file);
-                if (form is MemberForm.FileOrFolder or MemberForm.Folder && walk.HasFolder(directory))
-                    walk.MarkUnreadable(directory);
                 continue;
             }
+
+            var file = Join(folder, id + (form == MemberForm.Json ? ".json" : ".md"));
+            var directory = Join(folder, id);
 
             var hasFile = form != MemberForm.Folder && walk.HasFile(file);
             var hasFolder = form is MemberForm.FileOrFolder or MemberForm.Folder && walk.HasFolder(directory);

@@ -256,17 +256,53 @@ public class SourceLayoutTests
         files.With("nodes/Plan.md", SourceFixture.Text(files, "nodes/plan.md")).Without("nodes/plan.md");
         Items(files, "nodes/index.json", "Plan");
 
-        var refusal = Only(files.Parse());
-        Assert.Equal("S01-030", refusal.Id);
-        Assert.Equal("nodes/index.json", refusal.Path);
+        // The refused entry accounts for no file, so nodes/Plan.md is a stray as well.
+        var result = files.Parse();
+        Assert.Equal([("S01-006", "nodes/Plan.md"), ("S01-030", "nodes/index.json")], result.Refusals.Select(r => (r.Id, r.Path)));
 
         var full = SourceFixture.Full();
         full.With("macros/phrases/value.md", SourceFixture.Text(full, "macros/phrases/thanks.md")).Without("macros/phrases/thanks.md");
         Items(full, "macros/phrases/index.json", "value");
 
-        refusal = Only(full.Parse());
+        var refusal = full.Parse().Refusals[0];
         Assert.Equal("S01-033", refusal.Id);
         Assert.Equal("Id 'value' is reserved: member 'value' is read in references, so nothing may be called 'value'.", refusal.Sentence);
+    }
+
+    [Fact]
+    public void AListedIdThatIsRefused_AccountsForNoFile()
+    {
+        var files = SourceFixture.Minimal().With("nodes/sections/junk.md", SourceFixture.Text(SourceFixture.Minimal(), "nodes/plan.md"));
+        Items(files, "nodes/index.json", "plan", "sections/junk");
+
+        var result = files.Parse();
+
+        Assert.All(result.Refusals, V31Contract.AssertSentence);
+        Assert.Equal(
+            [
+                ("S01-030", "nodes/index.json"),
+                ("S01-006", "nodes/sections/junk.md"),
+            ],
+            result.Refusals.Select(r => (r.Id, r.Path)));
+        Assert.Equal(
+            "File 'nodes/sections/junk.md' is not listed: every file in nodes is named once in its index.json, or is index.json or README.md.",
+            result.Refusals[1].Sentence);
+    }
+
+    [Fact]
+    public void AListedIdThatIsRefused_LeavesItsFolderToBeJudgedOnItsOwn()
+    {
+        var files = SourceFixture.Full();
+        files["nodes/Refine/index.json"] = files["nodes/refine/index.json"];
+        Items(files, "nodes/index.json",
+            "plan", "section_count", "sections", "sections_draft", "refine", "billing_gate",
+            "standards", "extract_input_terms", "extract_note_terms", "Refine");
+
+        var result = files.Parse();
+
+        Assert.Equal(
+            [("S01-006", "nodes/Refine/index.json"), ("S01-030", "nodes/index.json")],
+            result.Refusals.Select(r => (r.Id, r.Path)));
     }
 
     [Fact]
