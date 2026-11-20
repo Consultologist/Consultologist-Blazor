@@ -328,7 +328,7 @@ public sealed record SourceParameter(string Id, JsonObject Json);
   - `public static class SourceParser { public static SourceParseResult Parse(IReadOnlyDictionary<string, byte[]> upload, SourceRegistry registry); }` — after intake (D4): the root's children are `manifest.json`, `README.md`, `dag.mmd` and the nine folders, each present (S01-008; A02-003 for the manifest); the manifest (`SourceShapes.Manifest`, each input by `SourceShapes.Input` and the id rules, A02-004); `renderers/`, `snippets/`, `macros/`, `formats/`, `tests/`, `deliverables/` in this task; `nodes/`, `checks/`, `functions/` are walked for layout only in this task (every listed child accepted without reading its content) and filled in by Tasks 6 and 7.
   - Per kind in this task: a header file is split (S01-016), its header parsed (S01-017, S01-018, S01-041) and checked by its shape; body rules of part 01 § 4 (S01-019 with `prompt`, `template` or `text`; S01-020 for a body that must be empty; D11). A renderer: `Renderer`, body required (`template`), S01-035 against `registry.BuiltInRenderers`. A snippet: `Snippet`, body required (`text`); a snippet folder: `SnippetFolderIndex`, items' headers any JSON object, bodies may be empty. A macro: `Macro`, body required; a macro folder: `MacroFolderIndex`, items as macros. A format: a JSON object, S01-034 against both format sets (`built-in` first). A test: `Test`. Deliverables: `deliverables/index.json` and each delivery folder's by `DeliverablesIndex`; a deliverable by `Deliverable`, body required (`template`); a folder inside a delivery folder is S01-013 with the inner folder's path; keys per part 01 § 9.3.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // SourceLayoutTests — each edits SourceFixture.Minimal() or Full() and parses with an empty registry unless said
@@ -365,10 +365,10 @@ public sealed record SourceParameter(string Id, JsonObject Json);
 [Fact] public void EveryLayoutSentence_IsTheDesigns()
 ```
 
-- [ ] **Step 2: Run**; expected: build fails.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run**; expected: PASS.
-- [ ] **Step 5: Commit** in two or three commits by concern (model; layout; plain files), push.
+- [x] **Step 2: Run**; expected: build fails.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run**; expected: PASS.
+- [x] **Step 5: Commit** in two or three commits by concern (model; layout; plain files), push.
 
 ### Task 6: Leaves — nodes and checks
 
