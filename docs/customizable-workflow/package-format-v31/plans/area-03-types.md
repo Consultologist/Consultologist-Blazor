@@ -38,9 +38,9 @@ Each goes in the PR body under *Decisions made during build*.
 | D4 | S02-015 against S04-014 | Two rows state one rule in different words. Part 02 owns it here, so S02-015 is produced and S04-014 is not. `<Flow>` is `Loop`, `While`, `If` or `Case` (02-D9); `<declared>` and `<derived>` are type strings. Likewise S02-019 here, S03-016 never from this area. |
 | D5 | § 1.1, § 1.2 | Derived here: a leaf's `reproducible` from its kind (`agent` false, `rendered` and `computed` true), refused with S01-027 and `<kind \| body \| function>` = `kind`. A flow node's and a `call`'s `reproducible`, and the three flags (S01-029, S02-011), depend on what is read, so they are areas 04 (part 03 § 4.4–4.6) and 05 (the edges). |
 | D6 | § 2.1, § 9 reads | `FormatReads` types a read and says S02-018, S02-019 and S02-020 when asked. Finding the reads (JSON Logic `var`, templates, reference strings) is areas 04, 05 and 07, so no package reaches those three sentences yet and the suite has no case for them. |
-| D7 | § 2.4 type strings | A built-in data type prints by name (`string`, `number`, `integer`, `boolean`, `date`, `null`); a name or `$ref` prints the name; `#/$defs/x` prints what it names; an object prints `{ a: T, b: U }` in written order (`{}` when empty); a list `list<T>`; a union its members in written order joined by ` \| `; a nullable type array `T \| null`; an enum or labelled `oneOf` `string {a, b}` with its non-null values, then ` \| null` when nullable. |
-| D8 | § 2.3, § 3.5 a `$ref` with siblings | In the full form and the sent copy a `$ref` site becomes the target's members (without `$schema`, `$id`, `$defs`), with the site's `title` replacing the target's and the descriptions joined target first: `"<target>\n<site>"` when both exist. `formatHash` hashes the full form without `$id` at any depth and without `$defs` (local references are inlined); `$schema` stays at the root. |
-| D9 | § 2.3 type equality | The type form: `title`, `description`, `$schema`, `$id` dropped everywhere; `#/$defs` references inlined and `$defs` dropped; a format name `"x"` and `{ "$ref": "x" }` are one; `{ "type": "string" }`, `number`, `integer`, `boolean` and `{ "type": "string", "format": "date" }` become references to the built-ins of those names (`integer` stays `{ "type": "integer" }`: there is no built-in of that name); `"type": [T, "null"]` in either order becomes `anyOf` of T and `{ "type": "null" }`; `anyOf` members are sorted by their canonical JSON and de-duplicated; `required` is sorted. `enum` and `oneOf` keep their order. `typeHash` is the hash of the type form; for a named format, of its schema's type form. |
+| D7 | § 2.4 type strings | A built-in data type prints by name (`string`, `number`, `integer`, `boolean`, `date`, `null`); a name or `$ref` prints the name; `#/$defs/x` prints what it names; an object prints `{ a: T, b: U }` in written order (`{}` when empty); a list `list<T>`; a union its members in written order joined by ` \| `; a nullable type array `T \| null`; an enum or labelled `oneOf` `string {a, b}` with its non-null values, then ` \| null` when nullable. *Amended during the build:* a text format's own schema prints its name (`plaintext`), as a reference to it does. |
+| D8 | § 2.3, § 3.5 a `$ref` with siblings | In the full form and the sent copy a `$ref` site becomes the target's members (without `$schema`, `$id`, `$defs`), with the site's `title` replacing the target's and the descriptions joined target first: `"<target>\n<site>"` when both exist. `formatHash` hashes the full form without `$id` at any depth and without `$defs` (local references are inlined); `$schema` stays at the root. *Amended during the build:* in the full form a nullable type array is written type first (`["string","null"]`); `required` stays as written. |
+| D9 | § 2.3 type equality | The type form: `title`, `description`, `$schema`, `$id` dropped everywhere; `#/$defs` references inlined and `$defs` dropped; a format name `"x"` and `{ "$ref": "x" }` are one; `{ "type": "string" }`, `number`, `integer`, `boolean` and `{ "type": "string", "format": "date" }` become references to the built-ins of those names (`integer` stays `{ "type": "integer" }`: there is no built-in of that name); `"type": [T, "null"]` in either order becomes `anyOf` of T and `{ "type": "null" }`; `anyOf` members are sorted by their canonical JSON and de-duplicated; `required` is sorted. `enum` and `oneOf` keep their order. `typeHash` is the hash of the type form; for a named format, of its schema's type form. *Amended during the build:* a name stays `{ "$ref": name }` at every depth, the root included; `Same` compares type forms, so two user formats with identical schemas are not the same type. `TypeHash(name)` is the hash of the named schema's type form, not `Hash(TypeForm(name))`. `Fits` compares names by name and opens one only for a built-in rule (text fits `string`; `integer` fits `number`). A nullable date is written `anyOf [ { "$ref": "date" }, { "type": "null" } ]`; `"type": ["string","null"]` beside `format` is S02-030. |
 | D10 | § 2.1 `.content` | On a text format it gives that format; on an object, a list or a union, `plaintext` (its canonical JSON, or the member's text); on `string`, `number`, `integer`, `boolean`, `date` and enums it is a fault for the caller to word (S05-011 and its like). |
 | D11 | *Refusals* `<Format>`, `<Subject>`, `<path>` | `<Format>` is `Format '<id>'` for a file, and for an inline schema its owner by 02-D9: `Input '<id>'`, `Node '<id>'`, `Check '<id>'`, `Loop`/`While`/`If`/`Case '<id>'`, `Function '<f>'`, `Function '<f>' parameter '<p>'`, `Renderer '<id>'`, `Snippet folder '<id>'`. `<path>` is the JSON pointer into the schema (`/properties/kind`), and `the root` for the schema itself. An enum's `<Subject>` is `<Format> at <path>`. S02-021's `<Format \| Input '<id>'>` takes any of those owners. |
 | D12 | § 9 snake_case | Applies to enum values in package formats and in inline schemas anywhere in a package; not to registry or catalogue formats. |
@@ -58,6 +58,16 @@ Each goes in the PR body under *Decisions made during build*.
 | D24 | part 02 § 2.2 | A flow node's derived format: `for` is `{ "type": "array", "items": T }` with T the `ret` child's declared format written as a `$ref` when it is a name; `while` is the `ret` child's; `if` and `case` are the union of their non-empty bodies' `ret` formats, one format when all are the same type (D9), else `anyOf` in body order. Declared and derived are compared by type equality. A node whose `ret` child was itself refused is not judged. |
 | D25 | S02-016 | Said when the declared format is an `anyOf` and a body's format is not one of its members; `<n>` counts bodies from 1 (`then` 1, `else` 2; a case's branches in order, its `else` last), `<union>` is the declared type string. Any other mismatch (a declared member no body returns, a single declared format that differs) is S02-015. |
 | D26 | § 3.1 `$schema` in S02-023 | `<n>` is 31 and `<id>` the dialect id: this reader reads 31 only. |
+| D27 | Task 1, the build | *Taken during the build.* A root `Directory.Build.targets` removes the `Corvus.Text.Json` analyzers from every project's compile. They arrive with the validator and are style suggestions; `PrivateAssets` and `ExcludeAssets` on the reference could not keep them out. |
+| D28 | § 5.3 field names | *Taken during the build.* Field names are held to the id pattern in package and inline formats only; registry and catalogue formats are exempt, since the published `concept_list` has `isSnomedConcept` and `isActive`. |
+| D29 | part 07 § 1 canonical JSON | *Taken during the build.* Canonical JSON writes `null` for a number no finite double holds (`1e400`) and for anything nested past 256 levels (part 03 § 7 gives `null` for a non-finite number). |
+| D30 | § 2.3, § 3.1 a format's size | *Taken during the build.* `FormatTypes.Expands(format, formats)` is false when a format's full form cannot be built within `FormatTypes.SchemaBudget` (10,000 schemas) or the depth cap, or reaches a cyclic or unknown name. A package or function format file that is in the dialect, has no unknown name and no cycle, and still does not expand is refused with A03-011. Hashes and forms mean something only for a format that expands. |
+| D31 | § 8.3 `channel` | *Taken during the build.* A nullable object counts as an object (`form`), and a nullable list of text as a list of text. |
+| D32 | § 2.2 unions | *Taken during the build.* A union of unions is the union of their members: the type form flattens a nested `anyOf` into its parent (a `{ "type": "null" }` member included), `UnionOf` flattens its members, and a body that returns a union is in a declared union when each of its members is. |
+| D33 | § 5 `Shape` | *Taken during the build.* `Shape` is `Text` exactly when the format has a text kind (`plaintext`, `markdown_block`, `markdown_inline`); a string with any other media type is `String`. |
+| D34 | S02-008, S02-010, S02-012, S02-013, S02-014, S02-027; S01-027 | *Taken during the build.* The six S02 sentences name the node by its id, as S02-007 does; S01-027 names it by its rooted key, as its row says. |
+| D35 | D24 a refused `ret` child | *Taken during the build.* A flow node is not judged when its `ret` child got a format refusal (S02-012, S02-013, S02-027 or one of Task 9's); S01-027 and the strict limits (S02-055, S02-056) do not stop it. |
+| D36 | § 6.3 function scope; part 04 § 7.3 | *Taken during the build.* Names written inside a package format resolve in the package's scope, so a function's `FormatSet` also finds the package formats reached from the ones `uses` lists; what the function itself writes may name only its own formats, the listed ones, the catalogue and the built-ins (S02-017 otherwise). `uses.formats` naming a name no scope knows is S02-017; whether it may list a built-in or catalogue name is part 04 § 7.3's (area 05). |
 
 **Area sentences** (ids not in `sentences.json`):
 
@@ -73,6 +83,7 @@ Each goes in the PR body under *Decisions made during build*.
 | A03-008 | `<Format> at <path> writes anyOf with <n> member; a union has two or more.` |
 | A03-009 | `<Format> declares <keyword> '<value>' (accepted: <list>).` (`contentMediaType`: `text/plain, text/markdown`; `x-markdown`: `block, inline`) |
 | A03-010 | `<Subject> lists null but is not nullable; write "type": ["string", "null"], or remove null.` |
+| A03-011 | `Format '<id>' expands to more than 10,000 schemas through the formats it refers to; refer to fewer.` (D30; added during the build) |
 
 ## Files
 
@@ -590,10 +601,10 @@ A `call`'s format against its function's, a `computed` node's against its expres
 **Files:**
 - Modify: `docs/customizable-workflow/package-format-library.md`; this plan
 
-- [ ] **Step 1:** Add "specVersion 31: types (preview)" after the source reader's section: what `SourceCheck.Run` takes and returns; the services one by one with a line each (`FormatDialect`, `FormatSet`, `FormatTypes`, `TypeStrings`, `FormatReads`, `AgentBindings`, `SentFormat`, `IFormatValueValidator`); the two hashes and what moves each; what is left to areas 04, 05, 07 and 08 (D5, D6, D15, D22); where the sentences come from; that nothing in the engine calls it yet.
-- [ ] **Step 2:** Tick this plan's boxes and write "Where the build departed from this plan".
-- [ ] **Step 3:** `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln`; expected: both green.
-- [ ] **Step 4: Commit** `Docs (#1500): the type system of 31 in the library's guide, and the plan ticked`; push.
+- [x] **Step 1:** Add "specVersion 31: types (preview)" after the source reader's section: what `SourceCheck.Run` takes and returns; the services one by one with a line each (`FormatDialect`, `FormatSet`, `FormatTypes`, `TypeStrings`, `FormatReads`, `AgentBindings`, `SentFormat`, `IFormatValueValidator`); the two hashes and what moves each; what is left to areas 04, 05, 07 and 08 (D5, D6, D15, D22); where the sentences come from; that nothing in the engine calls it yet.
+- [x] **Step 2:** Tick this plan's boxes and write "Where the build departed from this plan".
+- [x] **Step 3:** `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln`; expected: both green.
+- [x] **Step 4: Commit** `Docs (#1500): the type system of 31 in the library's guide, and the plan ticked`; push.
 
 ## Spec coverage
 
@@ -601,36 +612,88 @@ A `call`'s format against its function's, a `computed` node's against its expres
 |---|---|
 | part 01 § 8 `FormatBounds` | 1 (the constants against `bounds.json`, their comments); the three refusals were area 02's (`passes`, `parallel`) and are area 05's (`depth`) |
 | part 02 § 1 kinds, `let` | 9 (S02-008); S02-007 was area 02's |
-| § 1.1 `reproducible` | 10 for leaves; flow nodes and `call` in area 05 (D5) |
+| § 1.1 `reproducible` | 10 for leaves (S01-027, said by the type rules from `FormatSentences`); flow nodes and `call` in area 05 (D5) |
 | § 1.2 the three flags | written and typed by area 02; derived and compared in areas 04 and 05 (D5) |
 | § 1.3 producer | area 02 (S01-028); 9 (S02-010 reserved); 10 (the rules for a `generated` node: named format, no `anyOf` root, binding) |
-| § 2 name or inline; an agent's format is named; inline annotations | 9 (S02-014, S02-017), 3 (S02-038) |
+| § 2 name or inline; an agent's format is named; inline annotations | 9 (S02-014, S02-017), 3 (S02-038), 10b (S02-017 for an empty name) |
 | § 2.1 reading a value | 6 (the typing and the three sentences); the read sites in areas 04, 05, 07 (D6) |
-| § 2.2 which formats each kind may return | 10 (`agent`, `rendered` node, `for`, `while`, `if`, `case`); renderer, deliverable, macro: areas 07, 08; `computed`: 04; check: 08; `call`: 05 |
-| § 2.3 two equalities, two hashes, `integer` and text fitting | 5 |
+| § 2.2 which formats each kind may return | 10 (`agent`, `rendered` node, its inline format included once the reader let it through, `for`, `while`, `if`, `case`), 10b (unions of unions, D32; the strict limits never stop a flow node, D35); renderer, deliverable, macro: areas 07, 08; `computed`: 04; check: 08; `call`: 05 |
+| § 2.3 two equalities, two hashes, `integer` and text fitting | 5 (names by name, D9 amended; `Expands`, D30), 10b (D32 in the type form) |
 | § 2.4 type strings | 5 |
-| § 3, § 3.1 the dialect's keywords, `$schema`, recursion, size limits | 2, 3, 4 (cycles across files), 7 and 10 (limits) |
+| § 3, § 3.1 the dialect's keywords, `$schema`, recursion, size limits | 2, 3, 4 (cycles across files), 7 and 10 (strict limits), 9 (A03-011, D30) |
 | § 3.2 nullable | 2 (scalars, references), 3 (enums) |
 | § 3.3 `required`, `additionalProperties`, the root | 2, 10 (S02-027) |
 | § 3.4 validating values, `date` as an assertion | 8 |
 | § 3.5 what a model receives, the sent format's hash, the removed keywords | 7; the envelope and the record's row in the sending and record areas (D22) |
 | § 4 built-in and catalogue formats; packages define objects and lists | 1 (the registry), 3 (S02-034, A03-001), 5 (golden hashes) |
-| § 5, § 5.1 data and text, the annotations | 3, 5 (`TextKind`) |
+| § 5, § 5.1 data and text, the annotations | 3, 5 (`TextKind`), 10b (`Shape`, D33) |
 | § 5.2 Markdig | 1 (the exact pin, against `constants.json`) |
-| § 5.3 fully typed objects, field names | 2 |
+| § 5.3 fully typed objects, field names | 2 (package and inline formats only, D28) |
 | § 6.1 format files and the index | area 02 (layout); 9 (S02-039) |
 | § 6.2 `$id`s | 3 (S02-033); deriving a package format's `$id` at publish is area 05's bundle |
-| § 6.3 references, no shadowing, function scope | 4; S01-034 was area 02's; the rewrite to `#/$defs` is area 05's |
+| § 6.3 references, no shadowing, function scope | 4; 9 (a function's reached formats and `MayName`, D36); S01-034 was area 02's; the rewrite to `#/$defs` is area 05's; whether `uses` may list a built-in or catalogue name is area 05's (D36) |
 | § 7 agent bindings | 7, 10 (S02-012); `via` in `resolve.json` and the reserved `producer` route are area 05's; the catalogue's own publish check lives in the agents repository |
 | § 8 inputs: members, `default`, order | area 02 (members, order kept); 9 (S02-046); blank inputs reading `null` is the engine's (areas 04, 06) |
 | § 8.1 formats and widgets | 9 (S02-040, S02-041, S02-045); the widgets are area 12's |
 | § 8.2 documents | the engine's intake (area 06); nothing to check at publish |
-| § 8.3 `channel` | 9 |
+| § 8.3 `channel` | 9 (D17, D31) |
 | § 8.4 the example | 9 (`Part02s_ExampleInputs_AreAccepted`), 6 |
 | § 9 enum labels | 3 (the rules), 6 (`.title`, the literal), 7 (the plain `enum` a model receives) |
-| part 02 *Refusals* | every sentence but S02-001 to S02-006 (History's and a satellite's words, areas 09 and 12), S02-007 (area 02), S02-009 (S01-028's words), S02-011 (areas 04, 05) |
-| chapter 12, `refusal-packages` for area 03 | 11 |
+| part 02 *Refusals* | every sentence but S02-001 to S02-006 (History's and a satellite's words, areas 09 and 12), S02-007 (area 02), S02-009 (S01-028's words), S02-011 (areas 04, 05); of those said, S02-018 to S02-020 (D6) and S02-027, S02-035, S02-036 (a registry or catalogue format only) have no suite case |
+| chapter 12, `refusal-packages` for area 03 | 11; the conformance README aligned with the checker in 12 |
 
 ## Where the build departed from this plan
 
-What differs from the tasks above is written here as the build goes.
+What differs from the tasks above is written here as the build goes. The rulings that changed a
+decision are in the decisions table (D7, D8 and D9 amended; D27 to D36 added; A03-011 added).
+
+- **A wave "10b" between Tasks 10 and 11.** The task reviews of Tasks 1 to 10 had deferred small
+  points. The ones that changed behaviour were settled before the suite was exported, so it was
+  exported once. 10b made a union of unions the union of its members (D32); let no strict-limit
+  refusal stop a flow node being judged (D35); made `"format": ""` an unknown name (S02-017) and an
+  empty `$ref` the dialect's (A03-002 alone); kept each scope's formats in a list in the order
+  given, so no refusal follows a dictionary's order; made the sent copy reuse the dialect's pointer
+  escaper and write `{}` past its depth cap; read a field named `anyOf` or `oneOf` as a field in a
+  value's faults; made a string with any other media type a `String` (D33); and added the missing
+  tests (an exhaustive mutation sweep first, a diamond that is no loop, reads through `$defs`,
+  malformed bindings, a function's own format bound through `custom`), with no build warning in a
+  V31 file. `tests/V31Types/Golden/format-hashes.json` did not change.
+- **`TypeRegistry.Read`.** Task 1 added a reader of the published files beside the record (the
+  fixture needs one). It throws `FormatException` for a missing or malformed file.
+- **The root `Directory.Build.targets`** (D27) is a new file outside `V31/`, beside the two pins
+  and the one reference the constraints allow. Without it the solution build printed 1,676 lines of
+  CTJ analyzer warnings, in `Consultologist.Web` among others.
+- **`FormatTypes.Expands` and `SchemaBudget`** (D30). Task 5 found that inlining references can
+  copy a format 2^n times. Every walk stops at 10,000 schemas, `Expands` says whether the full form
+  could be built, and Task 9 refuses a format file that does not expand with the new sentence
+  A03-011.
+- **`FormatSet.MayName` and the reached formats of a function scope** (D36). Task 9's review found
+  a false A03-011 on a sound function format that used a package format naming another. A
+  function's `FormatSet` now finds the package formats its used ones reach, while `MayName` keeps
+  what the function itself writes to its own, the listed, the catalogue's and the built-ins.
+- **S01-027 lives in `FormatSentences`**, not `SourceSentences` as Task 10's file list had it: the
+  type rules say it, and the reader does not.
+- **A rendered node's inline format is let through the reader.** Task 10 gave it the treatment
+  Task 9 gave an agent's (`leave: ["format"]`), so the type rules judge it under `Node '<id>'` and
+  say S02-013. A rendered check's inline format is still A02-001 (area 08's).
+- **Two suite tests were renamed** for what they now hold: `ThePinnedSuite_IsWhatTheParserSays` is
+  `ThePinnedSuite_IsWhatTheCheckerSays` (Task 11 Step 5 names the old one), and
+  `EverySentence_TheParserCanSay_HasACase` is `EverySentence_TheCheckerCanSay_HasACase`. Task 12
+  added `EveryTypeNotShipped_IsASentenceTheCheckerHas_OrOneOfTheTwoWithNoMethod`, which holds the
+  not-shipped list to the ids `FormatSentences` gives, plus S02-009 and S02-011.
+- **`V31Contract.PublishedTypes()`.** Task 11 moved the reading of the published `TypeRegistry`
+  into `V31Contract`, so `tests/V31Source` and `tests/V31Types` share it; `TypeFixture.Published()`
+  calls it.
+- **A03-011's case.** Its valid side is under the limit, not on it: the schema count is this
+  implementation's and not public (49 references expand, 50 do not). Task 12 says so in the case's
+  `about` and in the conformance README, which it also aligned with the checker (content repo
+  `39d4274`; the pin moved to it).
+- **One commit's trailer.** `8ecdbef7` (Task 6) carries `Co-Authored-By: Claude Sonnet 5.5`; every
+  other commit of the area carries `Co-Authored-By: Claude`.
+- **The dialect's published examples.** No disagreement was found between the checker and
+  `schemas/dialect/`: every `valid-*` instance gives no refusal, and every `invalid-*` one is refused
+  for the reason its `about` gives.
+- **For the user: field names** (D28). Part 02 § 5.3 holds every field name to the id pattern and
+  makes no exception, but the published catalogue's `concept_list` has the camelCase fields
+  `isSnomedConcept` and `isActive`. The checker exempts registry and catalogue formats. Either the
+  catalogue renames them or the text names the exemption.
