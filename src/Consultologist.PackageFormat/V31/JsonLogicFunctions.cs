@@ -404,9 +404,12 @@ public static class JsonLogicFunctions
             return result;
         foreach (var element in array)
         {
-            if (element is not JsonObject concept || Text(concept["term"]) is not { } term)
+            // Every object is a concept (as at 30, nothing is dropped): one whose term is not text is named by its id
+            // when that is text, else as "", so a codable concept without a term still counts against the check.
+            if (element is not JsonObject concept)
                 continue;
             var id = Text(concept["id"]);
+            var term = Text(concept["term"]) ?? id ?? "";
             var codable = Flag(concept["isSnomedConcept"]) && Flag(concept["isActive"]) && !string.IsNullOrEmpty(id);
             result.Add(new Concept(term, id, codable));
         }

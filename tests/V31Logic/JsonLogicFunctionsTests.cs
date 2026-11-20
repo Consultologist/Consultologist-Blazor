@@ -243,6 +243,27 @@ public class JsonLogicFunctionsTests
         Assert.Equal(empty, Subset("5", Flushes));
     }
 
+    [Fact]
+    public void TermsSubset_AConceptWithNoTextTerm_IsNamedByItsId_NeverDropped()
+    {
+        // codable, absent from `in`, no term: uncovered, named by its id
+        const string NoTerm = """{"concepts":[{"type":"finding","id":"4","isSnomedConcept":true,"isActive":true,"support":null}]}""";
+        Assert.Equal(
+            """{"pass":false,"message":"Not every term is covered.","uncovered":["4"],"untested":null,"passed":null,"total":null}""",
+            Subset(NoTerm, Flushes));
+
+        // a term that is not text is no term
+        Assert.Equal(
+            """{"pass":false,"message":"Not every term is covered.","uncovered":["4"],"untested":null,"passed":null,"total":null}""",
+            Subset(NoTerm.Replace("\"type\"", "\"term\":5,\"type\""), Flushes));
+
+        // uncodable, no term and no id: untested, as ""
+        const string Nothing = """{"concepts":[{"type":"finding","isSnomedConcept":false,"isActive":true}]}""";
+        Assert.Equal(
+            """{"pass":true,"message":null,"uncovered":null,"untested":[""],"passed":null,"total":null}""",
+            Subset(Nothing, Flushes));
+    }
+
     private const string Pass = """{"pass":true,"message":null,"uncovered":null,"untested":null,"passed":null,"total":null}""";
     private const string Fail = """{"pass":false,"message":"x","uncovered":null,"untested":null,"passed":null,"total":null}""";
 
