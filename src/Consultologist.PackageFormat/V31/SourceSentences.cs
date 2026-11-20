@@ -52,6 +52,34 @@ internal static class SourceSentences
     public static SourceRefusal PathTooLong(string path) =>
         new("S01-040", $"Path '{path}' is {path.Length} characters; the most is SourceBounds.pathLength ({SourceBounds.PathLength}), counted from the package root.", path);
 
+    /// <summary>S01-021: a member the declaration does not write.</summary>
+    public static SourceRefusal MemberMissing(string declaration, string member, string path) =>
+        new("S01-021", $"{declaration} is missing '{member}'; every member is written, and null means none.", path);
+
+    /// <summary>S01-022: <c>null</c> in a member that can never be null.</summary>
+    public static SourceRefusal MemberNull(string declaration, string member, string path) =>
+        new("S01-022", $"{declaration} sets '{member}' to null, which it can never be.", path);
+
+    /// <summary>S01-023: a member the declaration's kind does not have; <paramref name="closest"/> is D20's.</summary>
+    public static SourceRefusal MemberUnknown(string declaration, string path, string member, string closest) =>
+        new("S01-023", $"{declaration} in '{path}' declares unknown member '{member}'. Did you mean '{closest}'?", path);
+
+    /// <summary>S01-024: <c>"description": []</c>.</summary>
+    public static SourceRefusal DescriptionEmpty(string declaration, string path) =>
+        new("S01-024", $"{declaration} has an empty description; write null for none.", path);
+
+    /// <summary>S01-025: a description of more than 500 code points, its lines joined with <c>\n</c>.</summary>
+    public static SourceRefusal DescriptionTooLong(string declaration, int characters, string path) =>
+        new("S01-025", $"{declaration}'s description is {characters} characters; the most is 500.", path);
+
+    /// <summary>S01-026: a label that is empty or only whitespace.</summary>
+    public static SourceRefusal LabelEmpty(string declaration, string path) =>
+        new("S01-026", $"{declaration} has an empty label.", path);
+
+    /// <summary>A02-001 (D7): a member of the wrong JSON type.</summary>
+    public static SourceRefusal MemberWrongType(string declaration, string member, string whatItIs, string whatItMustBe, string path) =>
+        new("A02-001", $"{declaration} declares '{member}' as {whatItIs}; it is {whatItMustBe}.", path);
+
     private static string Kib(long bytes) =>
         ((bytes + 1023) / 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
 
