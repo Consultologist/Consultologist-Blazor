@@ -86,6 +86,75 @@ public class SourceExpressionsTests
         Assert.NotNull(result.Types);
     }
 
+    /// <summary>Exactly one refusal: S03-004 for <see cref="Equal"/>, on <paramref name="path"/>, under <paramref name="subject"/>.</summary>
+    private static void OnlyLooseEquality(SourceCheckResult result, string path, string subject)
+    {
+        var refusal = Assert.Single(result.Refusals);
+        Assert.Equal("S03-004", refusal.Id);
+        Assert.Equal(path, refusal.Path);
+        Assert.Equal($"{subject} uses ==; equality is written === (shown as =).", refusal.Sentence);
+    }
+
+    [Theory]
+    [InlineData("nodes/billing_gate/billing_text.md", "Node 'billing_text'")] // in an if's then
+    [InlineData("nodes/sections/outline.md", "Node 'outline'")] // in a for's body
+    [InlineData("nodes/sections/paragraphs/draft_paragraph.md", "Node 'draft_paragraph'")] // in a for in a for
+    public void ALeafNestedInAFlowBody_IsChecked(string file, string subject) =>
+        OnlyLooseEquality(Run(Set(SourceFixture.Full(), file, "if", Equal)), file, subject);
+
+    [Theory]
+    [InlineData("macros", "sign_off", "Macro 'sign_off' in function 'draft_section'")]
+    [InlineData("snippets", "closing", "Snippet 'closing' in function 'draft_section'")]
+    public void AMacroOrSnippetInsideAFunction_IsChecked(string folder, string id, string subject)
+    {
+        var file = $"functions/draft_section/{folder}/{id}.md";
+        var instruction = folder == "macros" ? ", \"instruction\": [\"Place {{ macro." + id + ".content }} last.\"]" : "";
+        var files = SourceFixture.Full()
+            .With($"functions/draft_section/{folder}/index.json", SourceFixture.Index([id]))
+            .With(file, SourceFixture.Md(
+                $"{{ \"label\": \"Sign-off\", \"description\": null, \"if\": {Equal}, \"format\": \"plaintext\"{instruction} }}",
+                "Dr A. Sample\n"));
+
+        OnlyLooseEquality(Run(files), file, subject);
+    }
+
+    [Fact]
+    public void ADeliverableInADeliveryFolder_IsChecked() =>
+        OnlyLooseEquality(Run(Set(SourceFixture.Full(), "deliverables/emr/consult.md", "if", Equal)),
+            "deliverables/emr/consult.md", "Deliverable 'consult'");
+
+    /// <summary>
+    /// A computed node inside a function builds a format declared only in that function's <c>formats/</c>: it
+    /// type-checks, so the function's own <see cref="FormatSet"/> is the one its sites are checked against.
+    /// </summary>
+    [Fact]
+    public void AFunctionsSite_UsesTheFunctionsOwnFormats()
+    {
+        const string function = "functions/draft_section";
+        Dictionary<string, byte[]> WithTally(string expression) => SourceFixture.Full()
+            .WithJson($"{function}/index.json", f => f["nodes"]!.AsArray().Add("tally"))
+            .With($"{function}/formats/index.json", SourceFixture.Index(["paragraph_close"]))
+            .With($"{function}/formats/paragraph_close.json", SourceFixture.Json(
+                "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", \"required\": [\"line\"], "
+                + "\"additionalProperties\": false, \"properties\": { \"line\": { \"$ref\": \"plaintext\" } } }"))
+            .With($"{function}/tally.md", SourceFixture.Md(
+                SourceFixture.Node("computed", "Closing the section", "\"paragraph_close\"", true, false,
+                    $"\"if\": null, \"expression\": {expression}"),
+                ""));
+
+        var result = Run(WithTally("""{ "object": { "line": "Thank you." } }"""));
+        Assert.True(result.Refusals.Count == 0, Said(result));
+        var site = Assert.Single(result.Expressions!.Sites, s => s.Context.Site.Path == $"{function}/tally.md");
+        Assert.Equal("draft_section", site.Context.Function!.Id);
+        Assert.Empty(site.Check.Refusals);
+
+        // the field is held to the function's format: a number where it declares plaintext is refused
+        var wrong = Run(WithTally("""{ "object": { "line": 5 } }"""));
+        var refusal = Assert.Single(wrong.Refusals);
+        Assert.Equal($"{function}/tally.md", refusal.Path);
+        Assert.Contains("plaintext", refusal.Sentence, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("""{"===":[{"var":"input.consult_draft.content"},"x"]}""", "S03-002")]
     [InlineData("""{"var":"input.nope.value"}""", "S03-014")]
