@@ -81,9 +81,10 @@ differ fails.
 
 ### Coverage
 
-Every vendored package has a `default` scenario. Every deliverable of a package with scenarios is `composed` in at least one of its captures, and
-every node with a prompt has a `prompts` or `renders` entry in one. A deliverable or node no
-scenario can reach on today's engine goes in the test's exception table with the reason.
+Every vendored package has a `default` scenario. Every deliverable of a package with scenarios
+is `composed` in at least one of its captures, and every node with a prompt has a `prompts` or
+`renders` entry in one. A deliverable or node no scenario can reach on today's engine goes in the
+test's exception table with the reason; an entry a capture does reach is stale and fails the rule.
 
 A start the engine refuses is captured too, when it is the refusal a well-formed request can get:
 `NoApplicableDeliverable` (no deliverable's condition holds, or a fanned input has no entries).
@@ -100,7 +101,16 @@ Today's engine fails both packages (v2026.11.3) in every scenario, at node `summ
 walk does not reach from its prompt; the walk and the render disagree.` The summary prompt reads
 the `notes/` macro folder (`{{ for m in macro.notes }}… {{ m.prompt }}`); the render records those
 `.prompt` reads, and `ConsultNodeCompletion.SanctionedBy` — the walk that cross-checks them — does
-not reach them. The captures hold status `Failed`, that sentence, and the prompts sent before it
-(the three standing sections and the summary); the requested sections, the patient line and both
-deliverables are never reached, and the test's exception tables say so. This is the engine as it
-is; it is captured, not worked around.
+not reach them. This is the engine as it is; it is captured, not worked around.
+
+The captures hold status `Failed`, that sentence, and the prompts this harness sent before it: the
+three standing sections and the summary. Here `summary` is dispatched before the
+`requested_sections` loop, so no `narrative_draft`, `table_draft` or `patient_line` prompt is sent
+and neither deliverable is reached; the test's exception tables say so. A production orchestrator
+may dispatch independent nodes together, so it could send the requested sections' prompts before
+the job fails the same way at `summary`.
+
+`outputs` records each reply as served, before the node's placed macros are composed around it,
+and with no deliverable reached nothing shows the composed node texts — so these captures cannot
+show what the node-placed macros (`counselling`, `section_caveat`, `table_note`, `preamble`,
+`sign_off`) add.

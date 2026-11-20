@@ -4,7 +4,8 @@
     "one narrative and one table section.",
     "The choice applies only when the consult note composes, which the failure prevents; the prompts are default's.",
     "Today's engine fails the job at node summary (its prompt renders macro.notes/<item>.prompt, which the",
-    "package's walk does not reach), so no requested section, patient line or deliverable is reached."
+    "package's walk does not reach). In this harness summary is dispatched before the requested",
+    "sections, so no requested section, patient line or deliverable is reached."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)",
