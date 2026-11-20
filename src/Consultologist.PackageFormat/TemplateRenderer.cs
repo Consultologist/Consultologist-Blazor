@@ -532,7 +532,9 @@ public static class TemplateRenderer
             {
                 [TemplateMembers.Id] = () => source.Id,
                 [TemplateMembers.Name] = () => source.Name,
-                [TemplateMembers.Prompt] = () => RenderInstruction() is { } rendered ? WorkflowMacroMechanics.Prompt(source.Id, rendered) : string.Empty,
+                // The sentence names the read the reply renders: macro.<id> for a flat macro,
+                // macro.<folder>.<item> for a folder item (#1116) — its key with '/' as '.'.
+                [TemplateMembers.Prompt] = () => RenderInstruction() is { } rendered ? WorkflowMacroMechanics.Prompt(key.Replace('/', '.'), rendered) : string.Empty,
             };
             if (scope.Labelled)
             {

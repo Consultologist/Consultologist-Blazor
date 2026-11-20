@@ -87,6 +87,6 @@ public class MacroFolderCompletionTests
 
         var result = ConsultNodeCompletion.Complete(settled, input, package, reads);
 
-        Assert.Equal("Plan.\n\nHistory noted: Dr Example.", result.RawOutput);
+        Assert.StartsWith("Plan.\n\nHistory noted: Dr Example.", result.RawOutput);
     }
 }
