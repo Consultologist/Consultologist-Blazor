@@ -327,7 +327,7 @@ If `TheDialectsOwnExamples_AgreeWithTheChecker` finds an example the checker and
   - `public static class TypeStrings { public static string Print(JsonNode? format, FormatSet formats); }` (D7).
   - Every method returns (with `Unknown`, `"?"`, or the node as written) for an unknown name or a cyclic format; none recurses past `SourceBounds.JsonDepth`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // TypeStringsTests — part 02 § 2.4's table, row for row
@@ -363,8 +363,8 @@ public void Print_IsTheTablesText(string format, string expected)
 
 The golden is written by the test itself when the environment variable `UPDATE_V31_GOLDENS` is `1` (to the source tree, found from `Consultologist.sln` as `V31Contract.RepoRoot` does), and compared otherwise; read the file after generating it and check each type string by eye against the format's file.
 
-- [ ] **Step 2–4:** Run (fail), implement, generate the golden, run (pass).
-- [ ] **Step 5: Commit** `PackageFormat (#1500): type equality and full equality, their hashes, and type strings` and `Tests (#1500): the published formats' hashes, frozen`; push.
+- [x] **Step 2–4:** Run (fail), implement, generate the golden, run (pass).
+- [x] **Step 5: Commit** `PackageFormat (#1500): type equality and full equality, their hashes, and type strings` and `Tests (#1500): the published formats' hashes, frozen`; push.
 
 ### Task 6: Typed reads
 
