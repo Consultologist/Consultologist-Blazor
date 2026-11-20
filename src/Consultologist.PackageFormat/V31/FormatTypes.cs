@@ -27,7 +27,7 @@ public enum FormatShape
     /// <summary>A string with <c>format: "date"</c>.</summary>
     Date,
 
-    /// <summary>A string with <c>contentMediaType</c>: a text format.</summary>
+    /// <summary>A string whose <c>contentMediaType</c> (and <c>x-markdown</c>) make it a text format.</summary>
     Text,
 
     /// <summary>An object.</summary>
@@ -77,8 +77,9 @@ public static class FormatTypes
     /// at every depth, the root included (references are compared by name, never dereferenced,
     /// part 02 § 2.3), <c>string</c>, <c>number</c>, <c>boolean</c> and <c>date</c> schemas written
     /// as references to the built-ins of those names, a nullable type array written as an
-    /// <c>anyOf</c> with <c>{ "type": "null" }</c>, <c>anyOf</c> members sorted by their canonical
-    /// JSON and de-duplicated, <c>required</c> sorted. Anything that is not a schema is returned
+    /// <c>anyOf</c> with <c>{ "type": "null" }</c>, a member that is itself a union flattened into
+    /// its parent (D32), <c>anyOf</c> members sorted by their canonical JSON and de-duplicated,
+    /// <c>required</c> sorted. Anything that is not a schema is returned
     /// as written (a copy; null for null). Meaningful only for a format that <see cref="Expands"/>.
     /// </summary>
     public static JsonNode? TypeForm(JsonNode? format, FormatSet formats)
@@ -174,7 +175,8 @@ public static class FormatTypes
     /// The union of <paramref name="members"/> (part 02 § 2.2): null for none; the first, as
     /// written, when all are <see cref="Same"/> (so a union whose members de-duplicate to one is
     /// that member); otherwise <c>{ "anyOf": [...] }</c> of the members that are not the same as
-    /// an earlier one, in the order given, a name written as <c>{ "$ref": name }</c>.
+    /// an earlier one, in the order given, a name written as <c>{ "$ref": name }</c>. A member
+    /// written as an <c>anyOf</c> gives its own members in its place, at any depth (D32).
     /// </summary>
     public static JsonNode? UnionOf(IReadOnlyList<JsonNode> members, FormatSet formats)
     {
@@ -182,7 +184,9 @@ public static class FormatTypes
         ArgumentNullException.ThrowIfNull(formats);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var distinct = members
-            .Where(m => m is not null && seen.Add(CanonicalJson.Write(TypeForm(m, formats))))
+            .SelectMany(m => Members(m, 0))
+            .OfType<JsonNode>()
+            .Where(m => seen.Add(CanonicalJson.Write(TypeForm(m, formats))))
             .ToList();
         return distinct.Count switch
         {
@@ -192,9 +196,17 @@ public static class FormatTypes
         };
     }
 
+    /// <summary>A union member as <see cref="UnionOf"/> reads it: an <c>anyOf</c> with nothing but annotations beside it gives its members, at any depth; anything else itself.</summary>
+    private static IEnumerable<JsonNode?> Members(JsonNode? member, int depth) =>
+        depth <= SourceBounds.JsonDepth && member is JsonObject union && union["anyOf"] is JsonArray members
+            && union.All(p => p.Key is "anyOf" or "title" or "description")
+            ? members.SelectMany(m => Members(m, depth + 1))
+            : [member];
+
     /// <summary>
     /// What <paramref name="format"/> is, through names and <c>#/$defs</c>: <see cref="FormatShape.Text"/>
-    /// for a string with <c>contentMediaType</c>, <see cref="FormatShape.Enum"/> for one with <c>enum</c>
+    /// for a string whose annotations give a <see cref="TextKind"/> (any other <c>contentMediaType</c>
+    /// is a <see cref="FormatShape.String"/>), <see cref="FormatShape.Enum"/> for one with <c>enum</c>
     /// or <c>oneOf</c>, <see cref="FormatShape.Date"/> for <c>format: date</c>. A nullable type array,
     /// or an <c>anyOf</c> of one type and <c>null</c>, is that type's shape (<see cref="IsNullable"/>
     /// says the rest); any other <c>anyOf</c> is a <see cref="FormatShape.Union"/>.
@@ -337,7 +349,7 @@ public static class FormatTypes
         var type = schema["type"] is JsonArray pair ? NullablePair(pair) : Text(schema["type"]);
         return type switch
         {
-            "string" when schema.ContainsKey("contentMediaType") => FormatShape.Text,
+            "string" when KindOf(schema) != null => FormatShape.Text,
             "string" when schema.ContainsKey("enum") || schema.ContainsKey("oneOf") => FormatShape.Enum,
             "string" when Text(schema["format"]) == "date" => FormatShape.Date,
             "string" => FormatShape.String,
@@ -456,7 +468,7 @@ public static class FormatTypes
                         form[key] = Type(value, defs, depth + 1);
                         break;
                     case "anyOf" when value is JsonArray members:
-                        form[key] = Sorted(members.Select(m => Type(m, defs, depth + 1)));
+                        form[key] = Sorted(members.Select(m => Type(m, defs, depth + 1)).SelectMany(Flattened));
                         break;
                     case "required" when value is JsonArray names:
                         form[key] = new JsonArray(names
@@ -620,6 +632,12 @@ public static class FormatTypes
 
             return copy;
         }
+
+        /// <summary>D32: a member's type form that is itself a union gives its members (already flattened below); any other gives itself.</summary>
+        private static IEnumerable<JsonNode?> Flattened(JsonNode? form) =>
+            form is JsonObject { Count: 1 } union && union["anyOf"] is JsonArray members
+                ? members.Select(m => m?.DeepClone())
+                : [form];
 
         private static JsonArray Sorted(IEnumerable<JsonNode?> members)
         {

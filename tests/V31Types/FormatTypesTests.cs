@@ -285,6 +285,46 @@ public class FormatTypesTests
     }
 
     [Fact]
+    public void AUnionOfUnions_IsTheUnionOfTheirMembers()
+    {
+        // D32: the type form flattens a nested anyOf into its parent, at every depth.
+        var set = FormatSet.ForPackage(Registry, [Format("verdict", Verdict().ToJsonString())]);
+        var nested = J("""{ "anyOf": [ { "anyOf": [ { "$ref": "plaintext" }, { "$ref": "verdict" } ] }, { "$ref": "plaintext" } ] }""");
+        var flat = J("""{ "anyOf": [ { "$ref": "verdict" }, { "$ref": "plaintext" } ] }""");
+
+        Assert.True(FormatTypes.Same(nested, flat, set));
+        Assert.Equal(FormatTypes.TypeHash(flat, set), FormatTypes.TypeHash(nested, set));
+        Assert.Equal("plaintext | verdict | plaintext", TypeStrings.Print(nested, set));
+
+        // Deeper down, and a nullable type array inside a union gives its type and null.
+        Assert.True(FormatTypes.Same(
+            J("""{ "type": "array", "items": { "anyOf": [ { "anyOf": [ { "anyOf": [ { "type": "number" }, { "type": "null" } ] }, { "$ref": "plaintext" } ] }, { "type": "boolean" } ] } }"""),
+            J("""{ "type": "array", "items": { "anyOf": [ { "$ref": "boolean" }, { "type": ["null", "number"] }, { "$ref": "plaintext" } ] } }"""),
+            set));
+        Assert.True(FormatTypes.Same(
+            J("""{ "anyOf": [ { "type": ["integer", "null"] }, { "$ref": "plaintext" } ] }"""),
+            J("""{ "anyOf": [ { "type": "null" }, { "$ref": "plaintext" }, { "type": "integer" } ] }"""),
+            set));
+        Assert.False(FormatTypes.Same(nested, J("""{ "anyOf": [ { "$ref": "verdict" }, { "$ref": "outline" } ] }"""), set));
+
+        // UnionOf flattens its members: first-seen order, de-duplicated by type.
+        var union = FormatTypes.UnionOf([nested!, J("\"plaintext\"")!, J("""{ "anyOf": [ { "$ref": "verdict" }, { "type": "null" } ] }""")!], set);
+        Assert.Equal("""{"anyOf":[{"$ref":"plaintext"},{"$ref":"verdict"},{"type":"null"}]}""", CanonicalJson.Write(union));
+        Assert.Equal("""{"$ref":"plaintext"}""", CanonicalJson.Write(FormatTypes.UnionOf([J("""{ "anyOf": [ { "$ref": "plaintext" }, "plaintext" ] }""")!], set)));
+    }
+
+    [Fact]
+    public void AStringWithAnotherMediaType_IsAString_NotText()
+    {
+        var other = J("""{ "type": "string", "contentMediaType": "text/html" }""");
+
+        Assert.Equal(FormatShape.String, FormatTypes.Shape(other, Formats));
+        Assert.Null(FormatTypes.TextKind(other, Formats));
+        Assert.Equal(FormatShape.String, FormatTypes.Shape(J("""{ "type": ["string", "null"], "contentMediaType": "application/json" }"""), Formats));
+        Assert.Equal(FormatShape.Text, FormatTypes.Shape(J("""{ "type": "string", "contentMediaType": "text/plain" }"""), Formats));
+    }
+
+    [Fact]
     public void Shape_ReadsThroughNamesAndDefs()
     {
         var defs = TypeFixture.Schema("""
