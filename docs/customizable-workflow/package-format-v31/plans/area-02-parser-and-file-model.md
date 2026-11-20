@@ -161,7 +161,7 @@ public void Check_GivesTheFirstFailingRule(string id, string? expected)
   - `public sealed record FrontMatterSplit(string Header, string Body);`
   - `public static class FrontMatter { public static FrontMatterSplit? Split(string text); public static bool IsEmptyBody(string body); }` — input is already `\n`-normalised. Line 1 is exactly `---`; the closing fence is the next line that is exactly `---`; `Header` is the text between; `Body` is everything after the closing fence's line end (`""` when the file ends at the fence, with or without a final `\n`). `null` when either fence is missing. `IsEmptyBody` is true for whitespace only.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // StrictJsonTests
@@ -183,10 +183,10 @@ public void Split_RefusesAnythingElse(string text)                  // null
 [Fact] public void IsEmptyBody_IsTrueForWhitespaceOnly()
 ```
 
-- [ ] **Step 2: Run**; expected: build fails.
-- [ ] **Step 3: Implement** both files.
-- [ ] **Step 4: Run**; expected: PASS.
-- [ ] **Step 5: Commit** `PackageFormat (#1499): strict JSON and the front matter split`, push.
+- [x] **Step 2: Run**; expected: build fails.
+- [x] **Step 3: Implement** both files.
+- [x] **Step 4: Run**; expected: PASS.
+- [x] **Step 5: Commit** `PackageFormat (#1499): strict JSON and the front matter split`, push.
 
 ### Task 3: Intake — encoding, line endings and the size bounds
 
