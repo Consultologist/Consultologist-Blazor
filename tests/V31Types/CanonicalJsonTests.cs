@@ -36,6 +36,10 @@ public class CanonicalJsonTests
     [InlineData("333333333.33333329", "333333333.3333333")]
     [InlineData("4.50", "4.5")]
     [InlineData("2e-3", "0.002")]
+    [InlineData("-1.5", "-1.5")]
+    [InlineData("12345678901234567890", "12345678901234567000")]
+    [InlineData("1e20", "100000000000000000000")]
+    [InlineData("5e-324", "5e-324")]
     public void Write_PrintsNumbers_AsEcmaScriptDoes(string written, string expected)
     {
         Assert.Equal(expected, CanonicalJson.Write(JsonNode.Parse(written)));
@@ -76,5 +80,31 @@ public class CanonicalJsonTests
     public void HashText_HashesTheUtf8OfTheText()
     {
         Assert.Equal(CanonicalJson.Hash(JsonNode.Parse("{}")), CanonicalJson.HashText("{}"));
+    }
+
+    [Fact]
+    public void Write_WritesANumberNoDoubleHolds_AsNull()
+    {
+        Assert.Equal("[null,null]", CanonicalJson.Write(JsonNode.Parse("[1e400,-1e400]")));
+        Assert.StartsWith("sha256:", CanonicalJson.Hash(JsonNode.Parse("1e400")));
+    }
+
+    [Fact]
+    public void HashText_PinsUtf8()
+    {
+        // printf '€' | sha256sum
+        Assert.Equal("sha256:c4cc90ed3d26f12d4b08a75140970a7904035c31cbb4515a83f19b9003c00d1d", CanonicalJson.HashText("€"));
+    }
+
+    [Fact]
+    public void Write_DoesNotOverflowTheStack_OnDeepNesting()
+    {
+        JsonNode node = new JsonArray();
+        for (var i = 0; i < 100000; i++)
+        {
+            node = new JsonArray(node);
+        }
+
+        Assert.Contains("null", CanonicalJson.Write(node));
     }
 }
