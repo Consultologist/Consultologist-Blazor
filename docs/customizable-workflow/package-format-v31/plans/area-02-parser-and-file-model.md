@@ -445,7 +445,7 @@ public sealed record SourceParameter(string Id, JsonObject Json);
 
   A `then`, `else` or branch is checked by `SourceShapes.Body` / `Branch`; a `then`, `else` or non-empty branch body whose `nodes` is `[]` is A02-008 (D22; an empty case branch is S04-048's). A function's `inputs` keys are held to the id rules; each parameter by `SourceShapes.Parameter`; `uses` by `SourceShapes.Uses`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // SourceParserFlowTests
@@ -483,10 +483,10 @@ public void AWhileMax_IsHeldToItsRange(int? value, string expected) // 1 and 15 
 [Fact] public void AFunctionAndANode_MayShareAnId()
 ```
 
-- [ ] **Step 2: Run**; expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run**; expected: PASS.
-- [ ] **Step 5: Commit** `PackageFormat (#1499): flow nodes as folders, and functions`, push.
+- [x] **Step 2: Run**; expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run**; expected: PASS.
+- [x] **Step 5: Commit** `PackageFormat (#1499): flow nodes as folders, and functions`, push.
 
 ### Task 8: Scopes, keys, `ret` and expression size
 
