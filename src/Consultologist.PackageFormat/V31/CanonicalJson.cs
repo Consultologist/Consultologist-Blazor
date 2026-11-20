@@ -14,11 +14,18 @@ namespace Consultologist.PackageFormat.V31;
 /// </summary>
 public static class CanonicalJson
 {
-    /// <summary>The canonical text of <paramref name="node"/> (<c>null</c> is JSON null).</summary>
+    /// <summary>The deepest nesting written; anything deeper is written as <c>null</c>, so no document can overflow the stack.</summary>
+    private const int MaxDepth = 256;
+
+    /// <summary>
+    /// The canonical text of <paramref name="node"/> (<c>null</c> is JSON null). A number no finite
+    /// double holds (<c>1e400</c>) is written as <c>null</c>, part 03 § 7's rule for non-finite
+    /// numbers; so is anything nested deeper than 256 levels. Never throws on package content.
+    /// </summary>
     public static string Write(JsonNode? node)
     {
         var text = new StringBuilder();
-        Append(text, node);
+        Append(text, node, 0);
         return text.ToString();
     }
 
@@ -32,8 +39,14 @@ public static class CanonicalJson
         return "sha256:" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text))).ToLowerInvariant();
     }
 
-    private static void Append(StringBuilder text, JsonNode? node)
+    private static void Append(StringBuilder text, JsonNode? node, int depth)
     {
+        if (depth > MaxDepth)
+        {
+            text.Append("null");
+            return;
+        }
+
         switch (node)
         {
             case null:
@@ -52,7 +65,7 @@ public static class CanonicalJson
                     first = false;
                     AppendString(text, member.Key);
                     text.Append(':');
-                    Append(text, member.Value);
+                    Append(text, member.Value, depth + 1);
                 }
 
                 text.Append('}');
@@ -66,7 +79,7 @@ public static class CanonicalJson
                         text.Append(',');
                     }
 
-                    Append(text, array[i]);
+                    Append(text, array[i], depth + 1);
                 }
 
                 text.Append(']');
@@ -131,7 +144,7 @@ public static class CanonicalJson
 
         if (!double.IsFinite(number))
         {
-            throw new ArgumentException("JSON has no NaN or Infinity.", nameof(number));
+            return "null";
         }
 
         // "R" is the shortest round-trip text; take its digits and decimal exponent, then lay them out.
