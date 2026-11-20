@@ -28,10 +28,13 @@ public enum SchemaSite
 /// <see cref="FormatSet"/>'s), while <c>#/$defs/&lt;name&gt;</c> is resolved against the file's
 /// root <c>$defs</c>, each definition walked as a schema. The root's own keywords (<c>$schema</c>,
 /// <c>$id</c>, <c>$defs</c>, <c>contentMediaType</c>, <c>x-markdown</c>) and the contents of
-/// <c>enum</c> and <c>oneOf</c> are judged by the enum and root rules.
+/// <c>enum</c> and <c>oneOf</c> are judged by the enum and root rules (<c>FormatDialect.Enums.cs</c>).
 /// </summary>
-public static class FormatDialect
+public static partial class FormatDialect
 {
+    /// <summary>The dialect's id, the <c>$schema</c> of every format file (part 02 § 3).</summary>
+    internal const string DialectId = "urn:consultologist:spec:31:dialect";
+
     private const string DefsPrefix = "#/$defs/";
 
     /// <summary>The seven JSON types a <c>type</c> may name.</summary>
@@ -57,6 +60,9 @@ public static class FormatDialect
 
     private static readonly JsonSerializerOptions Compact = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
+    /// <summary>How deep <see cref="Json"/> prints before writing a container as <c>…</c>.</summary>
+    private const int PrintDepth = 32;
+
     /// <summary>
     /// The refusals of <paramref name="schema"/>, empty when it is in the dialect. <paramref name="subject"/>
     /// is D11's <c>&lt;Format&gt;</c> (<c>Format 'verdict'</c>, <c>Input 'sections'</c>); <paramref name="id"/>
@@ -81,7 +87,7 @@ public static class FormatDialect
         }
 
         var defs = site == SchemaSite.Inline ? null : root["$defs"] as JsonObject;
-        var walk = new Walk(site, subject, path, defs);
+        var walk = new Walk(site, subject, id, path, defs);
         walk.Schema(root, "", 1, isRoot: true);
         return walk.Refusals;
     }
@@ -101,7 +107,67 @@ public static class FormatDialect
         },
     };
 
-    private static string Json(JsonNode? value) => value?.ToJsonString(Compact) ?? "null";
+    /// <summary>
+    /// <paramref name="value"/> as compact JSON in written order; with <paramref name="hideText"/> every
+    /// string value is <c>"…"</c> (S02-051). It never throws: a container deeper than
+    /// <see cref="PrintDepth"/>, or a value no writer can write, prints as <c>…</c>.
+    /// </summary>
+    private static string Json(JsonNode? value, bool hideText = false)
+    {
+        var text = new System.Text.StringBuilder();
+        Print(value, 0);
+        return text.ToString();
+
+        void Print(JsonNode? node, int depth)
+        {
+            switch (node)
+            {
+                case null:
+                    text.Append("null");
+                    break;
+                case JsonObject or JsonArray when depth >= PrintDepth:
+                    text.Append('…');
+                    break;
+                case JsonObject members:
+                    text.Append('{');
+                    var first = true;
+                    foreach (var (key, member) in members)
+                    {
+                        text.Append(first ? "" : ",").Append(JsonSerializer.Serialize(key, Compact)).Append(':');
+                        first = false;
+                        Print(member, depth + 1);
+                    }
+
+                    text.Append('}');
+                    break;
+                case JsonArray items:
+                    text.Append('[');
+                    for (var i = 0; i < items.Count; i++)
+                    {
+                        text.Append(i == 0 ? "" : ",");
+                        Print(items[i], depth + 1);
+                    }
+
+                    text.Append(']');
+                    break;
+                default:
+                    text.Append(Scalar(node));
+                    break;
+            }
+        }
+
+        string Scalar(JsonNode node)
+        {
+            try
+            {
+                return hideText && node.GetValueKind() == JsonValueKind.String ? "\"…\"" : node.ToJsonString(Compact);
+            }
+            catch (Exception e) when (e is JsonException or InvalidOperationException or NotSupportedException or FormatException)
+            {
+                return "…";
+            }
+        }
+    }
 
     private static string? Text(JsonNode? value) =>
         value is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
@@ -129,7 +195,7 @@ public static class FormatDialect
     }
 
     /// <summary>One walk over one schema document: the refusals so far and what the root gives (its definitions).</summary>
-    private sealed class Walk(SchemaSite site, string format, string path, JsonObject? defs)
+    private sealed partial class Walk(SchemaSite site, string format, string id, string path, JsonObject? defs)
     {
         private readonly HashSet<string> looping = Loops(defs);
         private bool tooDeep;
@@ -150,15 +216,22 @@ public static class FormatDialect
 
             var hasRef = schema.ContainsKey("$ref");
             var declared = Declared.Of(schema["type"]);
+            if (isRoot)
+                Root(schema, declared);
             if (!hasRef)
                 Shape(schema, pointer, declared);
 
             foreach (var (keyword, value) in schema)
             {
+                if (keyword is "contentMediaType" or "x-markdown")
+                {
+                    Annotation(schema, keyword, value, pointer, isRoot, declared);
+                    continue;
+                }
+
                 if (isRoot && RootKeywords.Contains(keyword))
                 {
-                    if (keyword == "$defs" && site != SchemaSite.Inline)
-                        Definitions(value);
+                    RootKeyword(keyword, value);
                     continue;
                 }
 
@@ -196,13 +269,17 @@ public static class FormatDialect
                 {
                     foreach (var name in required.Where(n => !properties.ContainsKey(n)))
                         Refusals.Add(FormatSentences.RequiredNotAProperty(format, pointer, name, path));
-                    foreach (var (name, _) in properties.Where(p => !required.Contains(p.Key)))
+                    var listed = required.ToHashSet(StringComparer.Ordinal);
+                    foreach (var (name, _) in properties.Where(p => !listed.Contains(p.Key)))
                         Refusals.Add(FormatSentences.PropertyNotRequired(format, pointer, name, path));
                 }
             }
 
             if (declared.Type == "array" && !schema.ContainsKey("items"))
                 Refusals.Add(FormatSentences.ListWithoutItems(format, pointer, path));
+
+            if (schema.ContainsKey("enum") && schema.ContainsKey("oneOf"))
+                Refusals.Add(FormatSentences.EnumAndOneOf(format, pointer, path));
         }
 
         private void Keyword(JsonObject schema, string keyword, JsonNode? value, string pointer, int level, Declared declared)
@@ -258,10 +335,11 @@ public static class FormatDialect
                     break;
 
                 case "enum" or "oneOf":
-                    if (value is not JsonArray)
+                    if (value is not JsonArray values)
                         WrongType(pointer, keyword, value, "a list");
-                    else
-                        Place(pointer, keyword, declared, "string", "a string");
+                    else if (Place(pointer, keyword, declared, "string", "a string")
+                        && !(schema.ContainsKey("enum") && schema.ContainsKey("oneOf")))
+                        Values(keyword, values, pointer, declared);
                     break;
 
                 case "anyOf":
@@ -470,6 +548,7 @@ public static class FormatDialect
     private static List<string> References(JsonNode? definition, JsonObject defs)
     {
         var found = new List<string>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
         var pending = new Stack<(JsonNode? Node, int Level)>();
         pending.Push((definition, 3));
         while (pending.Count > 0)
@@ -478,7 +557,7 @@ public static class FormatDialect
             if (node is not JsonObject schema || level > SourceBounds.JsonDepth)
                 continue;
             if (Text(schema["$ref"]) is { } reference && DefinitionName(reference) is { } name
-                && defs.ContainsKey(name) && !found.Contains(name))
+                && defs.ContainsKey(name) && seen.Add(name))
                 found.Add(name);
             if (schema["properties"] is JsonObject properties)
             {

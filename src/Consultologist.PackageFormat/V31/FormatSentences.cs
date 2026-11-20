@@ -17,7 +17,7 @@ internal static class FormatSentences
     public static string Subject(string format, string pointer) =>
         $"{format} at {Where(pointer)}";
 
-    /// <summary>S02-021: a keyword outside the dialect, or one the root alone may write (Task 2's rule).</summary>
+    /// <summary>S02-021: a keyword outside the dialect, or <c>$schema</c>, <c>$id</c> or <c>$defs</c> anywhere but a format file's root.</summary>
     public static SourceRefusal OutsideDialect(string format, string pointer, string keyword, string path) =>
         new("S02-021", $"{format} uses keyword '{keyword}' at {Where(pointer)}, which is outside the formats dialect.", path);
 
@@ -80,6 +80,82 @@ internal static class FormatSentences
     /// <summary>A03-008: an <c>anyOf</c> of fewer than two members.</summary>
     public static SourceRefusal UnionTooSmall(string format, string pointer, int members, string path) =>
         new("A03-008", $"{Subject(format, pointer)} writes anyOf with {members} member; a union has two or more.", path);
+
+    /// <summary>S02-022: a format file without <c>$schema</c>.</summary>
+    public static SourceRefusal NoDialect(string id, string path) =>
+        new("S02-022", $"Format '{id}' declares no $schema; every format file names the dialect ({FormatDialect.DialectId}).", path);
+
+    /// <summary>S02-023: a <c>$schema</c> other than the dialect's id (D26: this reader reads 31 only).</summary>
+    public static SourceRefusal OtherDialect(string id, string value, string path) =>
+        new("S02-023", $"Format '{id}' declares $schema '{value}', but the package is specVersion 31, whose dialect is {FormatDialect.DialectId}.", path);
+
+    /// <summary>S02-033: a package format that writes its own <c>$id</c>.</summary>
+    public static SourceRefusal PackageFormatId(string id, string path) =>
+        new("S02-033", $"Package format '{id}' declares $id; a package format's $id is written at publish.", path);
+
+    /// <summary>S02-034 (D20): a package format whose root is a scalar; <paramref name="kind"/> is <c>string</c>, <c>number</c> or <c>boolean</c>.</summary>
+    public static SourceRefusal ScalarPackageFormat(string id, string kind, string path) =>
+        new("S02-034", $"Package format '{id}' is a {kind}; a package defines object and array formats, and refers to built-in and catalogue formats by name.", path);
+
+    /// <summary>S02-035: a registry string format with <c>x-markdown</c> and no <c>contentMediaType</c>.</summary>
+    public static SourceRefusal TextWithoutMediaType(string id, string path) =>
+        new("S02-035", $"Format '{id}' is a text format and declares no contentMediaType.", path);
+
+    /// <summary>S02-036: <c>contentMediaType: text/markdown</c> with no <c>x-markdown</c>.</summary>
+    public static SourceRefusal MarkdownWithoutFlavour(string id, string path) =>
+        new("S02-036", $"Format '{id}' is Markdown and declares no x-markdown (block or inline).", path);
+
+    /// <summary>S02-037: <paramref name="keyword"/> (<c>contentMediaType</c> or <c>x-markdown</c>) where it doesn't apply.</summary>
+    public static SourceRefusal AnnotationMisplaced(string format, string pointer, string keyword, string path) =>
+        new("S02-037", $"{format} declares {keyword} at {Where(pointer)}, where it doesn't apply.", path);
+
+    /// <summary>S02-038: a text annotation in an inline schema; <paramref name="owner"/> is the schema's owner (D11).</summary>
+    public static SourceRefusal AnnotationInline(string owner, string keyword, string path) =>
+        new("S02-038", $"{owner}'s inline format declares {keyword}; text inside an inline format is a $ref to a text format.", path);
+
+    /// <summary>S02-047: fewer than two non-null values (said for none as for one).</summary>
+    public static SourceRefusal OneValue(string format, string pointer, string path) =>
+        new("S02-047", $"{Subject(format, pointer)} declares one value; an enum with one value is a constant, not a choice.", path);
+
+    /// <summary>S02-048: a value written twice; <c>null</c> prints as <c>null</c>.</summary>
+    public static SourceRefusal ValueTwice(string format, string pointer, string value, string path) =>
+        new("S02-048", $"{Subject(format, pointer)} declares value '{value}' twice.", path);
+
+    /// <summary>S02-049: a value that is not snake_case (D12).</summary>
+    public static SourceRefusal ValueNotSnakeCase(string format, string pointer, string value, string path) =>
+        new("S02-049", $"{Subject(format, pointer)} value '{value}' must be snake_case (a lowercase letter, then lowercase letters, digits, or underscores).", path);
+
+    /// <summary>S02-050: two branches with one title.</summary>
+    public static SourceRefusal TitleTwice(string format, string pointer, string title, string path) =>
+        new("S02-050", $"{Subject(format, pointer)} gives two values the title '{title}'.", path);
+
+    /// <summary>S02-051: a <c>oneOf</c> branch of another shape; <paramref name="n"/> from 1, <paramref name="shape"/> its compact JSON with every text hidden.</summary>
+    public static SourceRefusal BranchShape(string format, string pointer, int n, string shape, string path) =>
+        new("S02-051", $"{Subject(format, pointer)} writes oneOf branch {n} as {shape}; each branch is exactly {{ \"const\": <value>, \"title\": <label> }}.", path);
+
+    /// <summary>S02-052: both <c>enum</c> and <c>oneOf</c>.</summary>
+    public static SourceRefusal EnumAndOneOf(string format, string pointer, string path) =>
+        new("S02-052", $"{Subject(format, pointer)} declares both enum and oneOf; write one.", path);
+
+    /// <summary>S02-053: a nullable plain enum that doesn't list <c>null</c>.</summary>
+    public static SourceRefusal NullableEnumWithoutNull(string format, string pointer, string path) =>
+        new("S02-053", $"{Subject(format, pointer)} is nullable but its enum doesn't list null; a nullable enum lists null among its values.", path);
+
+    /// <summary>S02-054: a nullable labelled enum with no <c>{ "const": null }</c> arm.</summary>
+    public static SourceRefusal NullableOneOfWithoutNullArm(string format, string pointer, string path) =>
+        new("S02-054", $"{Subject(format, pointer)} is nullable but its oneOf has no {{ \"const\": null }} arm; a nullable labelled enum adds one.", path);
+
+    /// <summary>A03-001 (D20): a package format whose root is neither an object, a list nor a scalar.</summary>
+    public static SourceRefusal PackageFormatNotObjectOrList(string id, string path) =>
+        new("A03-001", $"Package format '{id}' is neither an object nor a list; a package defines object and array formats, and refers to built-in and catalogue formats by name.", path);
+
+    /// <summary>A03-009: a text annotation's value outside <paramref name="accepted"/>.</summary>
+    public static SourceRefusal AnnotationValue(string format, string keyword, string value, string accepted, string path) =>
+        new("A03-009", $"{format} declares {keyword} '{value}' (accepted: {accepted}).", path);
+
+    /// <summary>A03-010: <c>null</c> listed, or a <c>{ "const": null }</c> arm, when the type is plain <c>"string"</c>.</summary>
+    public static SourceRefusal NullNotNullable(string format, string pointer, string path) =>
+        new("A03-010", $"{Subject(format, pointer)} lists null but is not nullable; write \"type\": [\"string\", \"null\"], or remove null.", path);
 
     private static string Where(string pointer) => pointer.Length == 0 ? "the root" : pointer;
 }
