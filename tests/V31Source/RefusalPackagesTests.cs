@@ -80,10 +80,11 @@ public class RefusalPackagesTests
     {
         // A stale or mistyped id in TypesNotShipped would hide nothing and excuse nothing; hold the
         // list to the ids FormatSentences gives, plus the two documented ones with no method.
-        var known = SaidBy(typeof(FormatSentences)).Concat(TypesWithNoMethod).ToHashSet(StringComparer.Ordinal);
+        var said = SaidBy(typeof(FormatSentences));
+        var known = said.Concat(TypesWithNoMethod).ToHashSet(StringComparer.Ordinal);
 
-        Assert.Empty(TypesNotShipped.Where(id => !known.Contains(id)));
-        Assert.Empty(TypesWithNoMethod.Intersect(SaidBy(typeof(FormatSentences))));
+        Assert.All(TypesNotShipped, id => Assert.Contains(id, known));
+        Assert.All(TypesWithNoMethod, id => Assert.DoesNotContain(id, said));
     }
 
     [Fact]
