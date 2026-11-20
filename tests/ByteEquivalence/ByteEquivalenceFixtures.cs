@@ -70,6 +70,12 @@ internal static class ByteEquivalenceFixtures
     public static WorkflowPackage Load(string name)
     {
         var (manifestJson, files) = ReadPackage(name);
+        return Load(name, manifestJson, files);
+    }
+
+    /// <summary>The same loading, of a package held in memory — a test's own manifest and files.</summary>
+    public static WorkflowPackage Load(string name, string manifestJson, Dictionary<string, string> files)
+    {
         using var document = JsonDocument.Parse(manifestJson);
         var version = document.RootElement.GetProperty("version").GetString()!;
         var packageRef = $"{name}@{version}";
