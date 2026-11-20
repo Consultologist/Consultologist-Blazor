@@ -50,6 +50,38 @@ internal static class V31Contract
 
     public static JsonNode Json(params string[] parts) => JsonNode.Parse(File.ReadAllText(Path(parts)))!;
 
+    /// <summary>
+    /// The published registry: the built-in formats and renderers of <c>v31/formats/index.json</c> and
+    /// <c>v31/renderers/index.json</c>, and the agents catalogue's formats
+    /// (<c>external/consultologist-agents/agents/v31/formats/index.json</c>), so that S01-034 and
+    /// S01-035 mean what an outside implementation reading the same files sees.
+    /// </summary>
+    public static SourceRegistry PublishedRegistry() => new(
+        Items(Json("formats", "index.json")),
+        Items(JsonNode.Parse(File.ReadAllText(AgentsFormatsIndex()))!),
+        Items(Json("renderers", "index.json")));
+
+    /// <summary>The folder of the pinned suite's refusal packages; fails when the submodule is not checked out.</summary>
+    public static string RefusalPackagesFolder()
+    {
+        var path = System.IO.Path.Combine(
+            RepoRoot(), "external", "consultologist-package-format", "v31", "conformance", "refusal-packages");
+        Assert.True(
+            Directory.Exists(path),
+            $"{path} is missing — the submodule is not checked out (git submodule update --init), or its pin has no refusal packages.");
+        return path;
+    }
+
+    private static HashSet<string> Items(JsonNode index) =>
+        index["items"]!.AsArray().Select(i => (string)i!).ToHashSet(StringComparer.Ordinal);
+
+    private static string AgentsFormatsIndex()
+    {
+        var path = System.IO.Path.Combine(RepoRoot(), "external", "consultologist-agents", "agents", "v31", "formats", "index.json");
+        Assert.True(File.Exists(path), $"{path} is missing; check out the submodules.");
+        return path;
+    }
+
     /// <summary>Asserts the refusal's sentence is its row of sentences.json (or the area table) with the placeholders filled in.</summary>
     public static void AssertSentence(SourceRefusal refusal)
     {

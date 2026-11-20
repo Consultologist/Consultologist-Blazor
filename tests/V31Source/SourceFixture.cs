@@ -357,16 +357,16 @@ internal static class SourceFixture
     // ---- Builders ------------------------------------------------------------------------------
 
     /// <summary>A file with front matter: the fence, the header, the fence, the body (part 01 § 4).</summary>
-    private static string Md(string header, string body) => $"---\n{header}\n---\n{body}";
+    internal static string Md(string header, string body) => $"---\n{header}\n---\n{body}";
 
     /// <summary>A plain JSON file: <paramref name="json"/> and the final line end.</summary>
-    private static string Json(string json) => json + "\n";
+    internal static string Json(string json) => json + "\n";
 
     /// <summary>
     /// An <c>index.json</c>: <c>description</c> (<c>null</c> when none) and <c>items</c>, then any
     /// <paramref name="extra"/> members written as <c>, "name": value</c>.
     /// </summary>
-    private static string Index(IEnumerable<string> items, string? description = null, string extra = "") =>
+    internal static string Index(IEnumerable<string> items, string? description = null, string extra = "") =>
         Json("{ \"description\": " + (description == null ? "null" : "[" + Quote(description) + "]")
             + ", \"items\": [" + string.Join(", ", items.Select(Quote)) + "]" + extra + " }");
 
@@ -402,14 +402,14 @@ internal static class SourceFixture
     /// A node header: the nine members every node and flow node shares (part 01 § 5.1, D18),
     /// then <paramref name="tail"/>, the kind's own members. <c>format</c> is JSON text.
     /// </summary>
-    private static string Node(
+    internal static string Node(
         string kind, string label, string format, bool reproducible, bool modelDerived, string tail) =>
         $"{{ \"kind\": \"{kind}\", \"producer\": \"{(kind == "agent" ? "generated" : "computed")}\", "
         + $"\"label\": {Quote(label)}, \"description\": null, \"format\": {format}, "
         + $"\"reproducible\": {Bool(reproducible)}, \"modelDerived\": {Bool(modelDerived)}, "
         + $"\"runDependent\": false, \"profileCarrying\": false, {tail} }}";
 
-    private static string Agent(string label, string format, string prompt) =>
+    internal static string Agent(string label, string format, string prompt) =>
         Md(Node("agent", label, format, false, true, AgentTail), prompt);
 
     private static string Deliverable(string label, string format, string check, string whenEmpty) =>
@@ -420,7 +420,7 @@ internal static class SourceFixture
         $"{{ \"label\": {Quote(label)}, \"description\": null, \"if\": {condition}, \"format\": \"plaintext\", "
         + $"\"instruction\": {instruction} }}";
 
-    private static string ArrayOf(string format) =>
+    internal static string ArrayOf(string format) =>
         format.StartsWith('{') ? $"{{ \"type\": \"array\", \"items\": {format} }}"
             : $"{{ \"type\": \"array\", \"items\": {{ \"$ref\": {(format.StartsWith('"') ? format : Quote(format))} }} }}";
 

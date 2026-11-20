@@ -98,13 +98,7 @@ public class SourceParserRobustnessTests
     [Fact]
     public void Full_Parses_WithThePublishedRegistry()
     {
-        static HashSet<string> Items(params string[] parts) =>
-            V31Contract.Json(parts)["items"]!.AsArray().Select(i => (string)i!).ToHashSet(StringComparer.Ordinal);
-
-        var registry = new SourceRegistry(
-            Items("formats", "index.json"),
-            ReadAgentsFormats(),
-            Items("renderers", "index.json"));
+        var registry = V31Contract.PublishedRegistry();
 
         Assert.Contains("plaintext", registry.BuiltInFormats);
         Assert.Contains("concept_list", registry.CatalogueFormats);
@@ -114,16 +108,5 @@ public class SourceParserRobustnessTests
 
         Assert.Empty(result.Refusals);
         Assert.NotNull(result.Package);
-    }
-
-    /// <summary>The agents catalogue's formats: <c>external/consultologist-agents/agents/v31/formats/index.json</c>, <c>items</c>.</summary>
-    private static HashSet<string> ReadAgentsFormats()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir != null && !File.Exists(System.IO.Path.Combine(dir.FullName, "Consultologist.sln")))
-            dir = dir.Parent;
-        var path = System.IO.Path.Combine(dir!.FullName, "external", "consultologist-agents", "agents", "v31", "formats", "index.json");
-        Assert.True(File.Exists(path), $"{path} is missing; check out the submodules.");
-        return JsonNode.Parse(File.ReadAllText(path))!["items"]!.AsArray().Select(i => (string)i!).ToHashSet(StringComparer.Ordinal);
     }
 }
