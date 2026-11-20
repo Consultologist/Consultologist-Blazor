@@ -5,13 +5,20 @@ using System.Text.Json.Nodes;
 
 namespace Consultologist.PackageFormat.V31;
 
-/// <summary>#1501 (specVersion 31, area 04): why a rule run could not give a value.</summary>
-public enum JsonLogicFailureKind { Declined, MatchesTextTooLong, NotABoolean, Fault }
+/// <summary>
+/// #1501 (specVersion 31, area 04): why a rule run could not give a value: the rule was declined (A04-011),
+/// <c>matches</c> was given text over 1 MiB (S03-040), a condition yielded no boolean (S03-041), the evaluator failed
+/// (A04-011), or <c>plain</c> was given Markdown nested too deeply to convert (A04-011).
+/// </summary>
+public enum JsonLogicFailureKind { Declined, MatchesTextTooLong, NotABoolean, Fault, PlainNotConverted }
 
 /// <summary>#1501 (specVersion 31, area 04): a failure of a rule run; <paramref name="Detail"/> never holds a value from the data.</summary>
 public sealed record JsonLogicFailure(JsonLogicFailureKind Kind, string Detail);
 
-/// <summary>#1501 (specVersion 31, area 04): thrown by an operation that fails the rule (S03-040), the only failure <see cref="JsonLogicFunctions.Apply"/> throws.</summary>
+/// <summary>
+/// #1501 (specVersion 31, area 04): thrown by an operation that fails the rule (S03-040 for <c>matches</c>, A04-011 for a
+/// <c>plain</c> that cannot convert), the only failure <see cref="JsonLogicFunctions.Apply"/> throws on run data.
+/// </summary>
 public sealed class JsonLogicFailureException(JsonLogicFailure failure) : Exception(failure.Detail)
 {
     /// <summary>The failure.</summary>
@@ -27,11 +34,15 @@ public static class JsonLogicFunctions
 {
     private const int MaxAddDays = 3_652_059; // days from 0001-01-01 to 9999-12-31
 
+    private static readonly JsonLogicFailure PlainNotConverted =
+        new(JsonLogicFailureKind.PlainNotConverted, "plain was given Markdown nested too deeply to convert");
+
     /// <summary>
     /// The value of <paramref name="operation"/> over already-evaluated <paramref name="operands"/>; a new node, never an operand.
     /// Not here: <c>var</c>, <c>missing</c>, <c>if</c>, <c>and</c>, <c>or</c>, <c>!</c>, <c>===</c>, <c>!==</c>, <c>object</c>.
     /// </summary>
-    /// <exception cref="JsonLogicFailureException"><c>matches</c> over text longer than 1 MiB.</exception>
+    /// <exception cref="JsonLogicFailureException"><c>matches</c> over text longer than 1 MiB; <c>plain</c>, told to convert, over
+    /// Markdown nested too deeply for <see cref="PlainConversion.ToPlain"/> to convert.</exception>
     /// <exception cref="ArgumentException">A name this class does not compute.</exception>
     public static JsonNode? Apply(string operation, IReadOnlyList<JsonNode?> operands, bool plainConverts = true)
     {
@@ -72,7 +83,11 @@ public static class JsonLogicFunctions
             case "ends_with":
                 return JsonValue.Create(Text(At(0)) is { } e && Text(At(1)) is { } q && e.EndsWith(q, StringComparison.Ordinal));
             case "plain":
-                return Text(At(0)) is { } md ? JsonValue.Create(plainConverts ? PlainConversion.ToPlain(md) : md) : null;
+                if (Text(At(0)) is not { } md)
+                    return null;
+                if (!plainConverts)
+                    return JsonValue.Create(md);
+                return JsonValue.Create(PlainConversion.ToPlain(md) ?? throw new JsonLogicFailureException(PlainNotConverted));
             case "matches": return JsonValue.Create(Matches(At(0), At(1)));
             case "has_word":
                 return JsonValue.Create(Text(At(0)) is { } hay && Text(At(1)) is { } word && HasWord(hay, word));

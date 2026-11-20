@@ -44,7 +44,8 @@ internal static class ExpressionSentences
 
     /// <summary>
     /// The words a rule fails with at run time (part 03 § 11.3; D22): S03-040 for text over the limit, S03-041 for a
-    /// condition that yields no boolean, A04-011 for a declined rule or a fault inside the evaluator.
+    /// condition that yields no boolean, A04-011 for a declined rule, a fault inside the evaluator, or a <c>plain</c> given
+    /// Markdown nested too deeply to convert.
     /// </summary>
     public static string RunTime(string subject, string member, JsonLogicFailure failure)
     {
@@ -54,6 +55,7 @@ internal static class ExpressionSentences
             JsonLogicFailureKind.MatchesTextTooLong =>
                 $"{subject} {member} could not be decided: matches was given {failure.Detail} MiB of text; the most is 1 MiB.",
             JsonLogicFailureKind.NotABoolean => $"{subject} {member} yields {failure.Detail}; a condition yields a boolean.",
+            // Declined, Fault and PlainNotConverted: A04-011, the detail as the failure gives it
             _ => $"{subject} {member} could not be evaluated: {failure.Detail}.",
         };
     }

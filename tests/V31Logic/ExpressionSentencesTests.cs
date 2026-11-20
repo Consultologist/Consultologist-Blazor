@@ -174,6 +174,10 @@ public class ExpressionSentencesTests
         Assert.Equal(
             "Node 'gate' while could not be evaluated: the evaluator failed.",
             ExpressionSentences.RunTime("Node 'gate'", "while", new JsonLogicFailure(JsonLogicFailureKind.Fault, "the evaluator failed")));
+        Assert.Equal(
+            "Computed node 'summary' expression could not be evaluated: plain was given Markdown nested too deeply to convert.",
+            ExpressionSentences.RunTime("Computed node 'summary'", "expression",
+                new JsonLogicFailure(JsonLogicFailureKind.PlainNotConverted, "plain was given Markdown nested too deeply to convert")));
     }
 
     [Fact]
@@ -185,6 +189,7 @@ public class ExpressionSentencesTests
             ("S03-041", new JsonLogicFailure(JsonLogicFailureKind.NotABoolean, "text")),
             ("A04-011", new JsonLogicFailure(JsonLogicFailureKind.Declined, "it is not a rule of this format")),
             ("A04-011", new JsonLogicFailure(JsonLogicFailureKind.Fault, "the evaluator failed")),
+            ("A04-011", new JsonLogicFailure(JsonLogicFailureKind.PlainNotConverted, "plain was given Markdown nested too deeply to convert")),
         };
 
         foreach (var (id, failure) in cases)

@@ -245,6 +245,18 @@ public class JsonLogicEvaluatorTests
         Assert.Equal("false", Eval("""{"matches":[{"var":"t"},"letrozole"]}""", DataWithText(Text(1_048_576))));
     }
 
+    [Fact]
+    public void Plain_MarkdownTooDeepToConvert_FailsTheRule_AndNeverQuotesTheText()
+    {
+        var deep = new string('[', 50_000);
+        var value = Run("""{"plain":[{"var":"t"}]}""", DataWithText(deep));
+        Assert.Null(value.Value);
+        Assert.Equal(new JsonLogicFailure(JsonLogicFailureKind.PlainNotConverted, "plain was given Markdown nested too deeply to convert"), value.Failure);
+
+        // told its operand is plain text, plain returns it unchanged
+        Assert.Equal(JsonValue.Create(deep).ToJsonString(), Eval("""{"plain":[{"var":"t"}]}""", DataWithText(deep), [false]));
+    }
+
     public static TheoryData<string> AnyData() =>
     [
         "null", "5", "\"x\"", "[]", "{}", """{"d":null}""",

@@ -325,6 +325,16 @@ public class JsonLogicFunctionsTests
     }
 
     [Fact]
+    public void Plain_MarkdownTooDeepToConvert_FailsTheRule()
+    {
+        var deep = string.Concat(Enumerable.Repeat("> ", 200)) + "Margaret Okafor";
+        var thrown = Assert.Throws<JsonLogicFailureException>(() => JsonLogicFunctions.Apply("plain", [JsonValue.Create(deep)]));
+        Assert.Equal(new JsonLogicFailure(JsonLogicFailureKind.PlainNotConverted, "plain was given Markdown nested too deeply to convert"), thrown.Failure);
+
+        Assert.Equal(deep, JsonLogicFunctions.Apply("plain", [JsonValue.Create(deep)], plainConverts: false)!.GetValue<string>());
+    }
+
+    [Fact]
     public void Apply_ReturnsNewNodes_AndRefusesOtherNames()
     {
         var text = JsonValue.Create("abc");

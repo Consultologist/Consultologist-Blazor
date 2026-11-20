@@ -31,7 +31,23 @@ public class PlainConversionTests
     [InlineData("a  \n")]
     [InlineData("a\t")]
     public void ToPlain_NeverEndsWithASpaceOrALineBreak(string markdown) =>
-        Assert.DoesNotContain(PlainConversion.ToPlain(markdown).LastOrDefault(), " \t\r\n");
+        Assert.DoesNotContain(PlainConversion.ToPlain(markdown)!.LastOrDefault(), " \t\r\n");
+
+    /// <summary>Markdown Markdig refuses as nested too deeply: 200 quotes, 300 list levels, 50,000 brackets.</summary>
+    public static TheoryData<string> TooDeep() =>
+    [
+        string.Concat(Enumerable.Repeat("> ", 200)) + "Margaret Okafor",
+        string.Concat(Enumerable.Range(0, 300).Select(i => new string(' ', i * 2) + "- level\n")),
+        new string('[', 50_000),
+    ];
+
+    [Theory]
+    [MemberData(nameof(TooDeep))]
+    public void ToPlain_MarkdownTooDeepToConvert_IsNull_NeverAThrow(string markdown)
+    {
+        var plain = PlainConversion.ToPlain(markdown);
+        Assert.Null(plain);
+    }
 
     [Fact]
     public void Version_IsTheContractsVersion() =>
