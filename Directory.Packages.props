@@ -16,7 +16,13 @@
     <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.*" />
     <PackageVersion Include="Microsoft.Authentication.WebAssembly.Msal" Version="10.*" />
     <PackageVersion Include="Microsoft.Extensions.Http" Version="10.*" />
-    <PackageVersion Include="Markdig" Version="0.41.*" />
+    <!-- #1500 (specVersion 31, area 03, D2): exactly 0.41.3, the version v31/constants.json names
+         for the one Markdown pipeline, and the one 0.41.* resolves to today. -->
+    <PackageVersion Include="Markdig" Version="0.41.3" />
+    <!-- #1500 (specVersion 31, area 03, D1): the run-time evaluator of the Corvus.JsonSchema
+         repository, which validates a value against a format. Exact, not floated: what it accepts
+         is what a run accepts, and lock.json records this version. -->
+    <PackageVersion Include="Corvus.Text.Json.Validator" Version="5.8.12" />
     <PackageVersion Include="AngleSharp" Version="1.5.2" />
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.13.1" />
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="4.13.1" />

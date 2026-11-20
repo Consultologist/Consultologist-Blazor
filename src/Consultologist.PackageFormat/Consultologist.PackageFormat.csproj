@@ -14,7 +14,9 @@
        one process that hosts both is the engine's. Markdig is here because
        the one Markdown pipeline the Web preview and the Api's emailed PDF
        share lives here (ConsultMarkdown, #1256), so the two surfaces render
-       a note the same way. -->
+       a note the same way. Corvus.Text.Json.Validator is here for specVersion 31's value
+       validation (#1500): the type system of the V31 reader checks a value against a format
+       behind one interface, and part 03 § 9 puts the Corvus-backed evaluator in this library. -->
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -23,6 +25,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Corvus.Text.Json.Validator" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="Scriban" />
   </ItemGroup>
