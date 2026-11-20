@@ -163,76 +163,17 @@ public class JsonLogicShapeTests
         Assert.Equal(isPosition, JsonLogicShape.IsPosition(path));
     }
 
-    private static IEnumerable<JsonNode?> Replacements() =>
-    [
-        null,
-        JsonValue.Create(true),
-        JsonValue.Create(5),
-        JsonValue.Create("x"),
-        new JsonArray(),
-        new JsonObject(),
-        new JsonObject { ["a"] = 1, ["b"] = 2 },
-        new JsonObject { ["var"] = null },
-        new JsonObject { [""] = new JsonArray() },
-    ];
-
-    private static void Positions(JsonNode? node, List<object> path, List<List<object>> into)
-    {
-        into.Add([.. path]);
-        switch (node)
-        {
-            case JsonArray array:
-                for (var i = 0; i < array.Count; i++)
-                {
-                    path.Add(i);
-                    Positions(array[i], path, into);
-                    path.RemoveAt(path.Count - 1);
-                }
-                break;
-            case JsonObject obj:
-                foreach (var (key, value) in obj)
-                {
-                    path.Add(key);
-                    Positions(value, path, into);
-                    path.RemoveAt(path.Count - 1);
-                }
-                break;
-        }
-    }
-
-    private static JsonNode? Replace(JsonNode? root, List<object> path, JsonNode? replacement)
-    {
-        if (path.Count == 0)
-            return replacement?.DeepClone();
-        var copy = root!.DeepClone();
-        var parent = copy;
-        for (var i = 0; i < path.Count - 1; i++)
-            parent = path[i] is int index ? parent![index] : parent![(string)path[i]];
-        if (path[^1] is int last)
-            parent![last] = replacement?.DeepClone();
-        else
-            parent![(string)path[^1]] = replacement?.DeepClone();
-        return copy;
-    }
-
     [Theory]
     [MemberData(nameof(Canonical))]
     public void AnyMutationOfAValidRule_NeverThrows(string json)
     {
-        var rule = Rule(json);
-        var positions = new List<List<object>>();
-        Positions(rule, [], positions);
+        foreach (var mutant in LogicFixture.Mutants(Rule(json)))
+        {
+            var faults = JsonLogicShape.Check(mutant);
+            var paths = JsonLogicShape.Paths(mutant);
 
-        foreach (var position in positions)
-            foreach (var replacement in Replacements())
-            {
-                var mutant = Replace(rule, position, replacement);
-
-                var faults = JsonLogicShape.Check(mutant);
-                var paths = JsonLogicShape.Paths(mutant);
-
-                Assert.NotNull(faults);
-                Assert.NotNull(paths);
-            }
+            Assert.NotNull(faults);
+            Assert.NotNull(paths);
+        }
     }
 }

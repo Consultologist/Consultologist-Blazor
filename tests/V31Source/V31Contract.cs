@@ -42,6 +42,22 @@ internal static class V31Contract
         ["A03-011"] = "Format '<id>' expands to more than 10,000 schemas through the formats it refers to; refer to fewer.",
     };
 
+    /// <summary>Area 04's own sentences (<c>A04-NNN</c>), as plan area-04-json-logic lists them.</summary>
+    private static readonly Dictionary<string, string> LogicAreaSentences = new()
+    {
+        ["A04-001"] = "<site> gives <operation> <operand> (<format>); <operation> takes <expected>.",
+        ["A04-002"] = "<site> compares <a> (<format>) with <b> (<format>); = and ≠ compare two values of one type.",
+        ["A04-003"] = "<site> mixes <format> and <format> in <the branches of an if | a list>; they have one type.",
+        ["A04-004"] = "<site> writes an object with <n> members where a rule is expected; an operation is an object with one member, and object builds an object.",
+        ["A04-005"] = "<site> writes var with <what it is>; var takes one path, written as text.",
+        ["A04-006"] = "<site> reads '<path>', which is not a path; a path is a root, then names joined by dots.",
+        ["A04-007"] = "<site> writes object with <what it is>; object takes one object, from field names to rules.",
+        ["A04-008"] = "<site> builds an object where no format gives its fields; object builds the value of a computed node.",
+        ["A04-009"] = "Computed node '<id>' builds <format> with <field> as <format>; the format declares it <format>.",
+        ["A04-010"] = "<site> gives <operation> a <operand> that is <what it is>; <operand> is written as text.",
+        ["A04-011"] = "<site> <member> could not be evaluated: <detail>.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -129,6 +145,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A03-", StringComparison.Ordinal))
         {
             Assert.True(TypeAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A04-", StringComparison.Ordinal))
+        {
+            Assert.True(LogicAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else
