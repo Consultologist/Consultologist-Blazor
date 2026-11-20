@@ -130,7 +130,7 @@ consultologist-package-format (m39-build)   v31/conformance/refusal-packages/**,
   - `tests`: `TypeFixture.Published()` → the `TypeRegistry` read from `external/consultologist-package-format/v31/formats/`, `…/renderers/index.json` and `external/consultologist-agents/agents/v31/` (`formats/`, `bindings.json`, `agents.json`), failing loudly when a file is missing; `TypeFixture.Schema(string json)` → `JsonObject`; `TypeFixture.FormatFile(string body)` → a format file's JSON text with the `$schema` line written.
   - `V31Contract.AssertSentence` accepts `A03-` ids from a second table holding the ten rows above.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // CanonicalJsonTests
@@ -150,10 +150,10 @@ public void Write_PrintsNumbers_AsEcmaScriptDoes(string written, string expected
 [Fact] public void ThePublishedRegistry_HoldsTheNineBuiltIns_AndTheCatalogue()  // BuiltInFormats keys == v31/formats/index.json items; CatalogueFormats keys == classification, concept_list
 ```
 
-- [ ] **Step 2:** Run `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31Types"`; expected: does not compile.
-- [ ] **Step 3: Implement.** Pin both packages (comment beside each: why exact, D1 and D2); add `<PackageReference Include="Corvus.Text.Json.Validator" />` to the format library with a line in its header comment. In `SourceBounds.cs` rewrite `FormatBounds`' comments to say what part 01 § 8 says: a `while`'s `max` (1 to 15), nested function calls (0 to 15), a loop's `maxParallel` (2 to 15 or null); each starts at 15, may be raised alone, and is never written in a package. `CanonicalJson.Write` prints a number with `double.ToString("R", InvariantCulture)` reshaped to ECMAScript's rules (exponent form only below 1e-6 and from 1e21, `e+`/`e-`, no trailing `.0`).
-- [ ] **Step 4:** Run the filter above, then `dotnet build Consultologist.sln`; expected: green, and the Web project still builds with the new reference.
-- [ ] **Step 5: Commit** `PackageFormat (#1500): canonical JSON, the type registry, and the Markdig and Corvus pins` and `Tests (#1500): …`; push.
+- [x] **Step 2:** Run `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~V31Types"`; expected: does not compile.
+- [x] **Step 3: Implement.** Pin both packages (comment beside each: why exact, D1 and D2); add `<PackageReference Include="Corvus.Text.Json.Validator" />` to the format library with a line in its header comment. In `SourceBounds.cs` rewrite `FormatBounds`' comments to say what part 01 § 8 says: a `while`'s `max` (1 to 15), nested function calls (0 to 15), a loop's `maxParallel` (2 to 15 or null); each starts at 15, may be raised alone, and is never written in a package. `CanonicalJson.Write` prints a number with `double.ToString("R", InvariantCulture)` reshaped to ECMAScript's rules (exponent form only below 1e-6 and from 1e21, `e+`/`e-`, no trailing `.0`).
+- [x] **Step 4:** Run the filter above, then `dotnet build Consultologist.sln`; expected: green, and the Web project still builds with the new reference.
+- [x] **Step 5: Commit** `PackageFormat (#1500): canonical JSON, the type registry, and the Markdig and Corvus pins` and `Tests (#1500): …`; push.
 
 ### Task 2: The dialect checker — keywords and structure
 

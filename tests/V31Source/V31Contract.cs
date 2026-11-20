@@ -26,6 +26,21 @@ internal static class V31Contract
         ["A02-008"] = "<subject> has no body; name the nodes that run in nodes.",
     };
 
+    /// <summary>Area 03's own sentences (<c>A03-NNN</c>), as plan area-03-types lists them.</summary>
+    private static readonly Dictionary<string, string> TypeAreaSentences = new()
+    {
+        ["A03-001"] = "Package format '<id>' is neither an object nor a list; a package defines object and array formats, and refers to built-in and catalogue formats by name.",
+        ["A03-002"] = "<Format> at <path> refers to #/$defs/<name>, which the file doesn't define.",
+        ["A03-003"] = "<Format> at <path> writes '<keyword>' as <what it is>; it is <what it must be>.",
+        ["A03-004"] = "<Format> at <path> uses '<keyword>', which belongs on <an object | a list | a string>.",
+        ["A03-005"] = "<Format> at <path> declares no type; write type, $ref or anyOf.",
+        ["A03-006"] = "<Format> at <path> is an object without '<keyword>'; every object writes properties, required and additionalProperties: false.",
+        ["A03-007"] = "<Format> at <path> is a list without items; write the one schema its items follow.",
+        ["A03-008"] = "<Format> at <path> writes anyOf with <n> member; a union has two or more.",
+        ["A03-009"] = "<Format> declares <keyword> '<value>' (accepted: <list>).",
+        ["A03-010"] = "<Subject> lists null but is not nullable; write \"type\": [\"string\", \"null\"], or remove null.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -89,6 +104,11 @@ internal static class V31Contract
         if (refusal.Id.StartsWith("A02-", StringComparison.Ordinal))
         {
             Assert.True(AreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A03-", StringComparison.Ordinal))
+        {
+            Assert.True(TypeAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else
