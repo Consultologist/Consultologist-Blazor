@@ -1,13 +1,15 @@
 {
   "description": [
     "Item names and loop bounds. topics: a labelField title is trimmed ('  Padded history  '), cut",
-    "to 120 characters ending in '…', and a blank title falls back to label plus position ('Topics",
-    "3'). sections: a blank title falls back to 'Sections 2' and a blank point heading to 'Points 1';",
-    "section 1's outline is pinned with no points, so its inner for composes empty and its block is",
-    "its heading followed by an empty text ('## Assessment\\n\\n' then the join); the for's max of 3",
-    "leaves the fourth planned section unrun and without a block. summary: the judge never says good,",
-    "so the while stops at its bound of 3 and the third pass's text composes. plan: no branch",
-    "(skipped)."
+    "to 120 characters ending in '…' (mid-word), cut where the character before the '…' is a space",
+    "(the space is trimmed, so the name is 119 characters), and a blank title falls back to the",
+    "input's label plus position ('Requested topics 4', not the loop's label 'Topics'). sections: a",
+    "blank title falls back to the loop's label, 'Sections 2', and a blank point heading to 'Points",
+    "1'; section 1's outline is pinned with no points, so its inner for composes empty and its block",
+    "is its heading followed by an empty text ('## Assessment\\n\\n' then the join); the for's max of",
+    "3 leaves the fourth planned section unrun and without a block. summary and",
+    "summary_then_opening: the judge never says good, so the while stops at its bound of 3 and the",
+    "third pass's text composes. plan: no branch (skipped)."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
@@ -18,6 +20,10 @@
       },
       {
         "title": "A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cut short",
+        "kind": "drafted"
+      },
+      {
+        "title": "A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again before the ellipsis is added.",
         "kind": "drafted"
       },
       {
@@ -93,9 +99,10 @@
     "closing": "Closing line for the note.",
     "draft_topic:0": "Padded history paragraph.",
     "draft_topic:1": "Long-titled topic paragraph.",
-    "draft_topic:2": "Blank-titled topic paragraph.",
+    "draft_topic:2": "Second long-titled topic paragraph.",
     "draft_point:2/1": "Blank-headed point paragraph.",
     "draft_point:3/1": "Review paragraph for the plan.",
-    "formal_line": "We remain at your disposal for any questions."
+    "formal_line": "We remain at your disposal for any questions.",
+    "draft_topic:3": "Blank-titled topic paragraph."
   }
 }

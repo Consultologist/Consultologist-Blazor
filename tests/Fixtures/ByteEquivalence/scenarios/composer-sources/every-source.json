@@ -8,14 +8,25 @@
     "blocks (labelField heading), so each section heading is followed by its point headings.",
     "summary: a while (checkFirst, until) that runs two passes; only the last pass's text composes.",
     "plan: an if that took its branch, composed as its returned node's text. tone_line: a case that",
-    "took its 'formal' branch. tally: a let of type text, composed as its plain text."
+    "took its 'formal' branch. tally: a let of type text, composed as its plain text.",
+    "summary_then_opening and topics_then_opening: the while's and the for's text, one blank line,",
+    "then opening's."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
     "topics": [
-      { "title": "History", "kind": "drafted" },
-      { "title": "Social history", "kind": "left_out" },
-      { "title": "Examination", "kind": "drafted" }
+      {
+        "title": "History",
+        "kind": "drafted"
+      },
+      {
+        "title": "Social history",
+        "kind": "left_out"
+      },
+      {
+        "title": "Examination",
+        "kind": "drafted"
+      }
     ],
     "include_plan": true,
     "tone": "formal",
@@ -33,28 +44,49 @@
     "draft_topic:2": "Examination paragraph: ejection systolic murmur.",
     "plan": {
       "sections": [
-        { "title": "Assessment", "purpose": "What the echo shows." },
-        { "title": "Plan", "purpose": "What happens next." }
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        },
+        {
+          "title": "Plan",
+          "purpose": "What happens next."
+        }
       ]
     },
     "outline:1": {
       "points": [
-        { "heading": "Valve", "point": "Mild aortic stenosis on echo." }
+        {
+          "heading": "Valve",
+          "point": "Mild aortic stenosis on echo."
+        }
       ]
     },
     "outline:2": {
       "points": [
-        { "heading": "Review", "point": "Review in six months." },
-        { "heading": "Advice", "point": "Report chest pain or fainting." }
+        {
+          "heading": "Review",
+          "point": "Review in six months."
+        },
+        {
+          "heading": "Advice",
+          "point": "Report chest pain or fainting."
+        }
       ]
     },
     "draft_point:1/1": "Valve paragraph for the assessment.",
     "draft_point:2/1": "Review paragraph for the plan.",
     "draft_point:2/2": "Advice paragraph for the plan.",
     "draft_summary:1": "Summary, first draft.",
-    "judge:1": { "verdict": "revise", "feedback": "Name the valve." },
+    "judge:1": {
+      "verdict": "revise",
+      "feedback": "Name the valve."
+    },
     "draft_summary:2": "Summary, second draft, naming the aortic valve.",
-    "judge:2": { "verdict": "good", "feedback": "Good." },
+    "judge:2": {
+      "verdict": "good",
+      "feedback": "Good."
+    },
     "draft_plan": "Plan paragraph: repeat echo in six months.",
     "formal_line": "We remain at your disposal for any questions."
   }

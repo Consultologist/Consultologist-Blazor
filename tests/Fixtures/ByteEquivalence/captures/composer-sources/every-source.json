@@ -196,6 +196,20 @@
       "reason": null,
       "hash": "sha256:2dd9803060c632e8ed4cdc04f1c8eeaa20c122e3fcf48b2d56150e2c0858e88a",
       "text": "Topic section length: 131"
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:44d1e482c7e16c1dfeacfbe2ec4bf881d827c86380a0b03541af722137d1ce71",
+      "text": "Summary, second draft, naming the aortic valve.\n\nOpening line for the note."
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e295bd86138ece98f63fd72970a4174f4c043995a2fdd665d928a298d0163b3d",
+      "text": "## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n\nOpening line for the note."
     }
   ]
 }

@@ -85,6 +85,20 @@
       "reason": null,
       "hash": "sha256:52328d84e428ee571c30efd0160356882e7bd8d82136948a2c864b9f7b7298aa",
       "text": "Topic section length: 0"
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:914c8cbe0692a3f743391dca67ed7716fe5ea819e90134e3a793f8cf2baaf8b7",
+      "text": "Opening line for the note."
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:a78cd1b34a589a1e34cec273b6f196cc06cf90f7e9911f6bdd96552716dd19a4",
+      "text": "\n\nOpening line for the note."
     }
   ]
 }

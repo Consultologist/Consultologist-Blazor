@@ -3,7 +3,7 @@
     "A reply whose '{{' reads what the node's scope does not hold: draft_plan's reply is rendered as",
     "a template before it composes, so {{ months }} fails the node and the job fails ('reply failed",
     "to render'). Deliverables already released stay composed; plan and those still waiting on a",
-    "release when the job failed (single, pair, tally) are unsettled."
+    "release when the job failed (single, pair, tally, summary_then_opening, topics_then_opening) are unsettled."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",

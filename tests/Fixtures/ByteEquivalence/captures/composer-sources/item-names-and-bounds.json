@@ -48,7 +48,8 @@
     "draft_point:3/1": "Review paragraph for the plan.",
     "draft_topic:0": "Padded history paragraph.",
     "draft_topic:1": "Long-titled topic paragraph.",
-    "draft_topic:2": "Blank-titled topic paragraph.",
+    "draft_topic:2": "Second long-titled topic paragraph.",
+    "draft_topic:3": "Blank-titled topic paragraph.",
     "opening": "Opening line for the note.",
     "closing": "Closing line for the note.",
     "draft_summary:1": "Summary, pass one.",
@@ -111,28 +112,33 @@
     },
     {
       "key": "draft_topic:2",
+      "hash": "sha256:d72df43e36d4c9492ed6cadb884bc95a4023b0785edc93b262618195e30c2563",
+      "text": "Write one paragraph on the topic \"A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again before the ellipsis is added.\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "draft_topic:3",
       "hash": "sha256:6ba7d7678cde288b3834ae2967140f03388e6ad2140dc0e58c4cb61aa08adf0e",
       "text": "Write one paragraph on the topic \"\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
     },
     {
       "key": "opening",
-      "hash": "sha256:23f2aff4ee6019d12a53f7d3042c7e28f591e88f1ace21d85296dec6f5d8bc28",
-      "text": "Write one opening line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+      "hash": "sha256:a8da2ca493f63a11cbea87e9e7a9f3c0d02386bd49219adbfe8cd1092b0a3bc3",
+      "text": "Write one opening line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph.\n"
     },
     {
       "key": "closing",
-      "hash": "sha256:bdebf9d91cbd57cb4281d4ca11122c6e7b5a3c99998b9a867d4a017eb8b3e777",
-      "text": "Write one closing line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+      "hash": "sha256:b253d33089ce29bcd5b76ffe8645c0be42fa051b68b8bb3733cb5d30ff3687db",
+      "text": "Write one closing line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph.\n"
     },
     {
       "key": "draft_summary:1",
-      "hash": "sha256:589cd6e908bd259275fd04262514ddec8d207389d13f8a5c9be2888459343573",
-      "text": "Write a two-sentence summary of this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+      "hash": "sha256:9a5b140d24b8b9af2f53f894b7812d322b02b42ba8235d113f86a9753c2c779e",
+      "text": "Write a two-sentence summary of this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph.\n"
     },
     {
       "key": "formal_line",
-      "hash": "sha256:d06cf12cac62cf468ad713f422ab406b94c47ba489a72d02aeaf963d17fc188a",
-      "text": "Write one line in a formal tone closing this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+      "hash": "sha256:9a67d7b9cd90293b674861a2b91c93811118522856aac6e5e4f33ef721a635dc",
+      "text": "Write one line in a formal tone closing this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph.\n"
     },
     {
       "key": "judge:1",
@@ -141,8 +147,8 @@
     },
     {
       "key": "draft_summary:2",
-      "hash": "sha256:9159f63bf1d219cd1b3f7119d44e0b220d5f759aba85b3c75f8ce6cfecc087c6",
-      "text": "Write a two-sentence summary of this draft. Revise the previous draft: Shorter.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+      "hash": "sha256:4f72ac7c04df717023bdfe952e0abbd41a9b2b712cd20e8507055896e1855df2",
+      "text": "Write a two-sentence summary of this draft. Revise the previous draft: Shorter.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph.\n"
     },
     {
       "key": "judge:2",
@@ -151,8 +157,8 @@
     },
     {
       "key": "draft_summary:3",
-      "hash": "sha256:810600cab4a88e8fe38046f39e0fd8d826533195ac8010c157c23597f11daf9e",
-      "text": "Write a two-sentence summary of this draft. Revise the previous draft: Shorter still.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+      "hash": "sha256:9c1fc8f5f623c307abdac3e03a765f6590491810d5b77d2697df7e9076a38b8d",
+      "text": "Write a two-sentence summary of this draft. Revise the previous draft: Shorter still.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph.\n"
     },
     {
       "key": "judge:3",
@@ -180,8 +186,8 @@
       "id": "topics",
       "state": "composed",
       "reason": null,
-      "hash": "sha256:418d8982a4b3b59864da8c9ceb1100fc84b09adbcd0c0e18469354368782b20c",
-      "text": "## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph."
+      "hash": "sha256:39e909ec1630c1b5ae76ba527a8e264cbd418afd1da67c0e1ab386c69d854009",
+      "text": "## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph."
     },
     {
       "id": "sections",
@@ -215,8 +221,22 @@
       "id": "tally",
       "state": "composed",
       "reason": null,
-      "hash": "sha256:4cf55d54739080bea3c264418220a0e07f1abdf20f0858bf648fbb8f3b52936a",
-      "text": "Topic section length: 243"
+      "hash": "sha256:99e8033a028171ce3c522af27f115502020a8486df9353cc2540fe3b1230153c",
+      "text": "Topic section length: 414"
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:583079c5e9ca391413ef0533bc6c4deac69293470f15d0c3c2e7f655bc94c1d0",
+      "text": "Summary, pass three.\n\nOpening line for the note."
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:54c80a3d401ae49aba48fde561f80a55eb2ede31bc1d517750dde07a24685e4c",
+      "text": "## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## A second long topic title, cut where the character just before the ellipsis is a space, so that space is trimmed again…\n\nSecond long-titled topic paragraph.\n\n## Requested topics 4\n\nBlank-titled topic paragraph.\n\nOpening line for the note."
     }
   ]
 }

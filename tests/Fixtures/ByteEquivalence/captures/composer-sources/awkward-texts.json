@@ -133,6 +133,20 @@
       "reason": null,
       "hash": "sha256:e7276a98431c729e8a90a2e12ae253c900ed7d34dbff1bd64d6fefde2fcc51db",
       "text": "Topic section length: 80"
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:1fa63272db434f13bc4ac9617638b0da9bf0ecc17887e9fb31a760d980208359",
+      "text": "## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph, indented.\n\n"
     }
   ]
 }

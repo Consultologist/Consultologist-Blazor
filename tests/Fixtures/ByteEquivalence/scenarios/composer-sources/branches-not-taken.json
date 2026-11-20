@@ -7,7 +7,10 @@
     "not). summary: redraft false, so the checkFirst while runs no pass and has no section; composed",
     "empty. plan: the if takes no branch and tone_line: the case ('none') matches no branch, so each",
     "deliverable is skipped at the start with 'source node.<flow> took no branch'. single and pair",
-    "compose as usual, and tally reads the empty topics text."
+    "compose as usual, and tally reads the empty topics text.",
+    "Beside another source the two empties differ: summary_then_opening is opening's text alone (a",
+    "while that ran no pass contributes no part to the join), while topics_then_opening starts with a",
+    "blank line (a for whose every item was skipped contributes an empty part)."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",

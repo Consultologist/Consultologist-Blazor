@@ -199,6 +199,20 @@
       "reason": null,
       "hash": null,
       "text": null
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
     }
   ]
 }

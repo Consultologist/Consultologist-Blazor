@@ -4,7 +4,7 @@
   "specVersion": 30,
   "derivedFrom": null,
   "title": "Composer sources fixture",
-  "description": "A byte-equivalence fixture (#1498): one deliverable per kind of source the deliverable composer reads \u2014 one prose node, two prose nodes, a for over an input with an if inside, a for over a node's list with a for inside, a while, an if, a case and a let of type text. Fictional; not intended for clinical use.",
+  "description": "A byte-equivalence fixture (#1498): one deliverable per kind of source the deliverable composer reads \u2014 one prose node, two prose nodes, a for over an input with an if inside, a for over a node's list with a for inside, a while, an if, a case and a let of type text \u2014 and the while and the for each beside a prose node, where a source with no part and a source with an empty part differ. Fictional; not intended for clinical use.",
   "tags": [
     "fixture"
   ],
@@ -20,7 +20,7 @@
     },
     {
       "id": "topics",
-      "label": "Topics",
+      "label": "Requested topics",
       "required": true,
       "type": "array",
       "items": "object",
@@ -297,6 +297,22 @@
       "label": "A let of type text",
       "sources": [
         "node.topic_tally"
+      ]
+    },
+    {
+      "id": "summary_then_opening",
+      "label": "A while beside a prose node",
+      "sources": [
+        "node.refine",
+        "node.opening"
+      ]
+    },
+    {
+      "id": "topics_then_opening",
+      "label": "A for beside a prose node",
+      "sources": [
+        "node.topic_loop",
+        "node.opening"
       ]
     }
   ]
