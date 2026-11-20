@@ -326,7 +326,8 @@ public static class JsonLogicFunctions
 
     // ---- dates ----
 
-    private static DateOnly? Date(JsonNode? node)
+    /// <summary>A text that is a date, <c>YYYY-MM-DD</c> in years 0001 to 9999 (D18); also the checker's test of a date literal (D24).</summary>
+    internal static DateOnly? Date(JsonNode? node)
     {
         if (Text(node) is not { Length: 10 } s || s[4] != '-' || s[7] != '-')
             return null;

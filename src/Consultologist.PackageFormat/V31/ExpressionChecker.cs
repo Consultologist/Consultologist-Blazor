@@ -7,8 +7,10 @@ namespace Consultologist.PackageFormat.V31;
 /// #1501 (specVersion 31, area 04): what the checker found of one rule at one site. <paramref name="Type"/> is null
 /// when there is a refusal; <paramref name="Reads"/> is every <c>var</c> and <c>missing</c> path
 /// (<see cref="JsonLogicShape.Paths"/>); <paramref name="Printed"/> the rule as people see it
-/// (<see cref="JsonLogicPrinter.Print"/>); <paramref name="PlainConverts"/> D14's list, for each <c>plain</c> in
-/// depth-first order whether its operand is Markdown.
+/// (<see cref="JsonLogicPrinter.Print"/>); <paramref name="PlainConverts"/> D14's list, for each <c>plain</c> in the
+/// order <see cref="CorvusJsonLogicEvaluator"/> numbers them (a <c>plain</c> before those in its operand, operands left
+/// to right, an <c>object</c>'s fields as written), whether it converts: <c>true</c> for a Markdown operand or one whose
+/// type is not known, <c>false</c> for plain text or a string.
 /// </summary>
 public sealed record ExpressionCheck(
     IReadOnlyList<SourceRefusal> Refusals,
@@ -21,8 +23,9 @@ public sealed record ExpressionCheck(
 /// #1501 (specVersion 31, area 04): types one rule at one site (part 03 §§ 3, 4, 7, 11.1; D2 to D5, D9, D26), in order:
 /// (1) the written form, each <see cref="ShapeFault"/> its sentence, stopping there when there is any; (2) every read,
 /// in tree order, through the root and site rules of part 03, then the <see cref="IExpressionScope"/>, then
-/// <see cref="FormatReads.Read"/>; (3) every operation's operands and result (<c>ExpressionChecker.Operations.cs</c>,
-/// Task 7; until then an operation's type is not known); (4) the result against the site. Never throws on any rule.
+/// <see cref="FormatReads.Read"/>; (3) every operation's operands and result (<c>ExpressionChecker.Operations.cs</c>);
+/// (4) the result against the site: a condition yields a boolean (S03-025), a computed node its declared format
+/// (S03-026, D25). Never throws on any rule.
 /// </summary>
 public static partial class ExpressionChecker
 {
@@ -57,10 +60,15 @@ public static partial class ExpressionChecker
         // (2) The reads, each said once, in tree order.
         var context = new Context(site, scope, formats);
         foreach (var path in paths)
+        {
+            var said = context.Refusals.Count;
             context.Reads[path] = context.Read(path);
+            if (context.Refusals.Count > said)
+                context.RefusedReads.Add(path);
+        }
 
-        // (3) The operations.
-        var type = TypeOf(rule, context);
+        // (3) The operations; a computed node's format is the target its value is built for (D27).
+        var type = TypeOf(rule, context, TopTarget(site, formats));
 
         // (4) The result.
         if (context.Refusals.Count == 0 && site.Kind != ExpressionSiteKind.Expression && type.Format is not null
@@ -69,16 +77,26 @@ public static partial class ExpressionChecker
             context.Refusals.Add(ExpressionSentences.NotABoolean(site, context.TypeString(type)));
         }
 
+        if (context.Refusals.Count == 0 && site.Kind == ExpressionSiteKind.Expression && type.Format is not null
+            && site.Declared is not null && !FormatTypes.Fits(context.Effective(type), site.Declared, formats))
+        {
+            context.Refusals.Add(ExpressionSentences.YieldsNotDeclared(site, context.TypeString(type), TypeStrings.Print(site.Declared, formats)));
+        }
+
         return context.Refusals.Count > 0
             ? new ExpressionCheck(context.Refusals, null, paths, printed, context.PlainConverts)
             : new ExpressionCheck([], type, paths, printed, context.PlainConverts);
     }
 
     /// <summary>D26: a condition may be a <c>missing</c> operation itself.</summary>
-    private static bool IsMissing(JsonNode rule) => rule is JsonObject { Count: 1 } obj && obj.First().Key == "missing";
+    private static bool IsMissing(JsonNode? rule) => rule is JsonObject { Count: 1 } obj && obj.First().Key == "missing";
 
-    /// <summary>The type of <paramref name="node"/>, a rule with no fault of its written form: a literal's, a read's, or its operation's.</summary>
-    private static ExpressionType TypeOf(JsonNode? node, Context context)
+    /// <summary>
+    /// The type of <paramref name="node"/>, a rule with no fault of its written form: a literal's, a read's, or its
+    /// operation's. A string literal where <paramref name="target"/> is an enum it is a value of, a date it is a valid
+    /// date of, or a text format, has the target's type (D24).
+    /// </summary>
+    private static ExpressionType TypeOf(JsonNode? node, Context context, Target target)
     {
         switch (node)
         {
@@ -87,6 +105,8 @@ public static partial class ExpressionChecker
             case JsonValue value:
                 return value.GetValueKind() switch
                 {
+                    JsonValueKind.String when target.Format is not null && LiteralFits(JsonLogicShape.TextOf(value), target.Format, context.Formats) =>
+                        new ExpressionType(target.Format.DeepClone(), false),
                     JsonValueKind.String => new ExpressionType(JsonValue.Create("string"), false),
                     JsonValueKind.True or JsonValueKind.False => new ExpressionType(JsonValue.Create("boolean"), false),
                     JsonValueKind.Number => new ExpressionType(
@@ -94,29 +114,23 @@ public static partial class ExpressionChecker
                     _ => Unknown,
                 };
             case JsonArray array:
-                return Operation(null, array, context);
+                return Operation(null, array, context, target);
             case JsonObject obj:
                 var (name, operands) = obj.First();
                 if (name == "var")
                     return JsonLogicShape.TextOf(operands) is { } path && context.Reads.TryGetValue(path, out var read) ? read : Unknown;
-                return Operation(name, operands, context);
+                return Operation(name, operands, context, target);
             default:
                 return Unknown;
         }
     }
-
-    /// <summary>
-    /// Task 7's place: the operand and result types of an operation (<paramref name="name"/>), or of an array of rules
-    /// (<paramref name="name"/> null). Until <c>ExpressionChecker.Operations.cs</c> replaces this, every one is not known.
-    /// </summary>
-    private static ExpressionType Operation(string? name, JsonNode? operands, Context context) => Unknown;
 
     private static bool IsWhole(JsonValue value) =>
         double.TryParse(value.ToJsonString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)
         && double.IsFinite(d) && d == Math.Floor(d);
 
     /// <summary>One check's state: the site, the scope, the formats, the reads typed so far and the refusals said.</summary>
-    private sealed class Context(ExpressionSite site, IExpressionScope scope, FormatSet formats)
+    private sealed partial class Context(ExpressionSite site, IExpressionScope scope, FormatSet formats)
     {
         public ExpressionSite Site { get; } = site;
 
@@ -127,11 +141,19 @@ public static partial class ExpressionChecker
         /// <summary>Each read path's type; a refused read's is not known, so one mistake gives one sentence.</summary>
         public Dictionary<string, ExpressionType> Reads { get; } = new(StringComparer.Ordinal);
 
+        /// <summary>The read paths that were refused: an operation over one has no type, and says nothing more.</summary>
+        public HashSet<string> RefusedReads { get; } = new(StringComparer.Ordinal);
+
         public List<bool> PlainConverts { get; } = [];
 
-        /// <summary>D4's <c>&lt;format&gt;</c>: the type string, with <c> | null</c> when the type is nullable and its format is not.</summary>
+        /// <summary>
+        /// D4's <c>&lt;format&gt;</c>: the type string, with <c> | null</c> when the type is nullable and its format is
+        /// not; a type that is only nullable (a <c>null</c> literal) is <c>null</c>.
+        /// </summary>
         public string TypeString(ExpressionType type)
         {
+            if (type.Format is null && type.Nullable)
+                return "null";
             var printed = TypeStrings.Print(type.Format, Formats);
             return type.Nullable && !FormatTypes.IsNullable(type.Format, Formats) ? printed + " | null" : printed;
         }
