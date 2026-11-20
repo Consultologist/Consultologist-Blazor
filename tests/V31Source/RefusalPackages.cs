@@ -28,7 +28,8 @@ internal sealed record RefusalCase(string Id, string About, Dictionary<string, b
 /// The suite's <c>expect.json</c> files are written from what <see cref="SourceCheck.Run"/> says
 /// (<see cref="RefusalPackagesExport"/>), never by hand. #1500 (specVersion 31, area 03): every case
 /// is held to the reader and the type rules together, and chapter 2's cases are
-/// <c>RefusalPackages.Types.cs</c>'s.
+/// <c>RefusalPackages.Types.cs</c>'s. #1501 (specVersion 31, area 04): and to the expression rules, the third
+/// step; chapter 3's cases are <c>RefusalPackages.Logic.cs</c>'s.
 /// </summary>
 internal static partial class RefusalPackages
 {
@@ -61,7 +62,7 @@ internal static partial class RefusalPackages
     public static IReadOnlyList<RefusalCase> All() =>
         Intake().Concat(Layout()).Concat(Headers()).Concat(Members()).Concat(Ids()).Concat(Kinds())
             .Concat(Loops()).Concat(Branches()).Concat(Functions()).Concat(Scopes()).Concat(Registry())
-            .Concat(Types())
+            .Concat(Types()).Concat(Logic())
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
 

@@ -8,7 +8,7 @@ namespace Consultologist.Api.Tests.V31Source;
 /// repository named by <c>CONFORMANCE_EXPORT_V31</c> (its root): it deletes and rewrites
 /// <c>v31/conformance/refusal-packages/</c> — each case's <c>valid/</c> and <c>invalid/</c>, a
 /// <c>package/</c> of the case's files byte for byte and the <c>expect.json</c> that
-/// <see cref="SourceCheck.Run"/> (the reader, then the type rules; #1500, area 03) gives — then sets the <c>refusal-packages</c> family's <c>cases</c> in
+/// <see cref="SourceCheck.Run"/> (the reader, then the type rules, #1500, area 03, then the expressions, #1501, area 04) gives — then sets the <c>refusal-packages</c> family's <c>cases</c> in
 /// <c>v31/conformance/index.json</c>, leaving every other byte of that file as it was. A no-op
 /// without the variable, as <see cref="ConformanceFixtureExport"/> is: it is a generator, not a check.
 /// </summary>
