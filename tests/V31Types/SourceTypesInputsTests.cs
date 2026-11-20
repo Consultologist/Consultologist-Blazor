@@ -201,6 +201,52 @@ public class SourceTypesInputsTests
     }
 
     [Fact]
+    public void AnInputWhoseNamedFormatWasRefused_IsNotJudgedFurther()
+    {
+        // The format file's own fault is said; the input that names it, directly or through another format, is not judged on top.
+        var files = SourceFixture.Minimal()
+            .With("formats/index.json", SourceFixture.Index(["referral", "letter"]))
+            .With("formats/referral.json", TypeFixture.FormatFile(
+                "\"type\": \"objekt\", \"properties\": { \"reason\": { \"$ref\": \"plaintext\" } }, \"required\": [\"reason\"], \"additionalProperties\": false"))
+            .With("formats/letter.json", TypeFixture.FormatFile(
+                "\"type\": \"object\", \"properties\": { \"referral\": { \"$ref\": \"referral\", \"title\": \"Referral\" } }, "
+                + "\"required\": [\"referral\"], \"additionalProperties\": false"));
+        WithInput("referral", "\"referral\"", "form", files);
+        WithInput("letter", "\"letter\"", "transcript", files);
+
+        var result = TypeFixture.CheckTypes(files);
+
+        var refusal = Assert.Single(result.Refusals);
+        Assert.Equal("S02-029", refusal.Id);
+        Assert.Equal("formats/referral.json", refusal.Path);
+    }
+
+    [Fact]
+    public void AListOfText_IsReadThroughAFormatsOwnDefinition()
+    {
+        var files = SourceFixture.Minimal()
+            .With("formats/index.json", SourceFixture.Index(["pages", "fragments"]))
+            .With("formats/pages.json", TypeFixture.FormatFile(
+                "\"type\": \"array\", \"items\": { \"$ref\": \"#/$defs/page\" }, \"$defs\": { \"page\": { \"$ref\": \"markdown_block\" } }"))
+            .With("formats/fragments.json", TypeFixture.FormatFile(
+                "\"type\": \"array\", \"items\": { \"$ref\": \"#/$defs/page\" }, \"$defs\": { \"page\": { \"$ref\": \"markdown_inline\" } }"));
+        WithInput("pages", "\"pages\"", "transcript", files);
+        WithInput("fragments", "\"fragments\"", "transcript", files);
+
+        var refusal = Assert.Single(Refusals(files));
+
+        Assert.Equal("Input 'fragments' declares channel 'transcript', which is only for a text input or an array of text.", refusal.Sentence);
+    }
+
+    [Theory]
+    [InlineData("""{ "type": ["object", "null"], "properties": { "name": { "type": "string", "title": "Name" } }, "required": ["name"], "additionalProperties": false }""", "form")]
+    [InlineData("""{ "type": ["array", "null"], "items": { "$ref": "plaintext" } }""", "transcript")]
+    public void D31_ANullableObjectOrListOfText_TakesItsChannel(string format, string channel)
+    {
+        Assert.Empty(Refusals(WithInput("notes", format, channel)));
+    }
+
+    [Fact]
     public void EveryFieldWithoutATitle_IsNamed_AtAnyDepth_ThroughNamesListsAndNullableUnions()
     {
         // section_plan: sections (a list) of objects with title ($ref plaintext) and kind (an enum); none has a title.

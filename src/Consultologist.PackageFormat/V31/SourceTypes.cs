@@ -65,11 +65,15 @@ public static partial class SourceTypes
             CheckFiles(scope, function.Definitions.Formats.Items, files, refusals);
         }
 
-        // Every format member, in its scope; then the inputs whose format passed.
+        // Every format member, in its scope; then the inputs whose format passed and reaches no refused format file.
+        var refused = RefusedPaths(refusals);
         foreach (var input in package.Manifest.Inputs)
         {
-            if (Member(formats, input.Json["format"], $"Input '{input.Id}'", input.Id, ManifestPath, refusals))
+            if (Member(formats, input.Json["format"], $"Input '{input.Id}'", input.Id, ManifestPath, refusals)
+                && !ReachesRefused(formats, input.Json["format"], files, refused))
+            {
                 CheckInput(formats, input, refusals);
+            }
         }
 
         Nodes(formats, package.Nodes.Nodes, refusals);
@@ -120,31 +124,34 @@ public static partial class SourceTypes
         foreach (var format in own)
             refusals.AddRange(set.CheckReferences(format.Schema, $"Format '{format.Id}'", format.Path));
 
-        var refused = refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal);
+        var refused = RefusedPaths(refusals);
         foreach (var format in own)
         {
-            if (!ReachesRefused(set, format, files, refused) && !FormatTypes.Expands(format.Schema, set))
+            if (!refused.Contains(format.Path) && !ReachesRefused(set, format.Schema, files, refused)
+                && !FormatTypes.Expands(format.Schema, set))
                 refusals.Add(FormatSentences.FormatDoesNotExpand(format.Id, format.Path));
         }
     }
 
-    /// <summary>Whether <paramref name="format"/>, or a package or function format file it reaches through names, has a refusal already.</summary>
+    private static HashSet<string> RefusedPaths(List<SourceRefusal> refusals) =>
+        refusals.Select(r => r.Path).ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>Whether a package or function format file that <paramref name="format"/> reaches through names, at any depth, has a refusal already.</summary>
     private static bool ReachesRefused(
-        FormatSet set, SourceFormat format, Dictionary<JsonObject, SourceFormat> files, HashSet<string> refused)
+        FormatSet set, JsonNode? format, Dictionary<JsonObject, SourceFormat> files, HashSet<string> refused)
     {
-        var seen = new HashSet<JsonObject>(ReferenceEqualityComparer.Instance) { format.Schema };
-        var pending = new Stack<SourceFormat>([format]);
+        var seen = new HashSet<JsonObject>(ReferenceEqualityComparer.Instance);
+        var pending = new Stack<JsonNode?>([format]);
         while (pending.Count > 0)
         {
-            var next = pending.Pop();
-            if (refused.Contains(next.Path))
-                return true;
-            foreach (var (name, _) in FormatSet.References(next.Schema))
+            foreach (var (name, _) in FormatSet.References(pending.Pop()))
             {
                 if (set.Find(name) is { Origin: FormatOrigin.Package or FormatOrigin.Function } found
                     && seen.Add(found.Schema) && files.TryGetValue(found.Schema, out var file))
                 {
-                    pending.Push(file);
+                    if (refused.Contains(file.Path))
+                        return true;
+                    pending.Push(file.Schema);
                 }
             }
         }
@@ -258,6 +265,7 @@ public static partial class SourceTypes
     {
         var id = input.Id;
         var format = input.Json["format"];
+        // D31: a nullable object counts as an object for form, a nullable list of text as a list of text.
         var schema = formats.Resolve(format);
 
         if (FormatSet.NameOf(format) == "markdown_inline")
@@ -274,7 +282,7 @@ public static partial class SourceTypes
                     refusals.Add(FormatSentences.InputFormNeedsObject(id));
                 break;
             case var channel when TextChannels.Contains(channel):
-                if (!IsTextName(format) && !(TypeOf(schema) == "array" && IsTextName(schema!["items"])))
+                if (!IsTextName(format) && !(TypeOf(schema) == "array" && IsTextItems(formats, schema!)))
                     refusals.Add(FormatSentences.InputChannelNeedsText(id, channel));
                 break;
             case var channel:
@@ -288,7 +296,15 @@ public static partial class SourceTypes
     /// <summary>D17: a text input's format is <c>plaintext</c> or <c>markdown_block</c>, by name or <c>$ref</c>.</summary>
     private static bool IsTextName(JsonNode? format) => FormatSet.NameOf(format) is "plaintext" or "markdown_block";
 
-    /// <summary>A schema's one type: its <c>type</c>, or the type of a nullable type pair.</summary>
+    /// <summary>
+    /// D17: a list's <c>items</c> is <c>plaintext</c> or <c>markdown_block</c>, written as the name or
+    /// through a <c>#/$defs</c> site of the list's file (in the dialect, a package's own definition can
+    /// only be text by referring to one of the two).
+    /// </summary>
+    private static bool IsTextItems(FormatSet formats, JsonObject list) =>
+        FormatTypes.KindOf(FormatTypes.Follow(list["items"], FormatTypes.Defs(list), formats).Schema) is "plaintext" or "markdown_block";
+
+    /// <summary>A schema's one type (D31: a nullable object or list counts as one): its <c>type</c>, or the type of a nullable type pair.</summary>
     private static string? TypeOf(JsonObject? schema) =>
         schema?["type"] is JsonArray pair ? FormatTypes.NullablePair(pair) : FormatTypes.Text(schema?["type"]);
 

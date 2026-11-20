@@ -281,16 +281,101 @@ public class SourceTypesFormatsTests
         Assert.Equal(file, refusal.Path);
     }
 
-    [Theory]
-    [MemberData(nameof(Owners))]
-    public void AnInlineSchema_IsLookedUpInItsOwnersScope(string file, string member, string owner)
+    /// <summary>
+    /// Full, with a function that owns a renderer, a snippet and a macro, and holds a while in its
+    /// body, so that every kind of member is written once in the package's scope and once in a function's.
+    /// </summary>
+    private static Dictionary<string, byte[]> FullWithFunctionDefinitions()
     {
-        Assert.NotEmpty(owner);
-        var refusal = Only(Set(SourceFixture.Full(), file, member, JsonNode.Parse("""{ "type": "array", "items": { "$ref": "ghost" } }""")));
+        const string function = "functions/draft_section";
+        return SourceFixture.Full()
+            .WithJson($"{function}/index.json", f => f["nodes"]!.AsArray().Add("polish"))
+            .With($"{function}/polish/index.json", SourceFixture.Json(SourceFixture.Node("while", "Polishing", "\"plaintext\"", false, true,
+                "\"while\": false, \"max\": 2, \"until\": null, \"checkFirst\": false, \"nodes\": [\"tidy\"], \"ret\": \"node.polish.tidy\"")))
+            .With($"{function}/polish/tidy.md", SourceFixture.Agent("Tidying the section", "\"plaintext\"", "Tidy the section.\n"))
+            .With($"{function}/renderers/index.json", SourceFixture.Index(["bullets"]))
+            .With($"{function}/renderers/bullets.md", SourceFixture.Md(
+                "{ \"label\": \"Bullets\", \"kind\": \"rendered\", \"description\": null, \"input\": \"concept_list\", \"format\": \"markdown_block\" }",
+                "{{ value }}\n"))
+            .With($"{function}/snippets/index.json", SourceFixture.Index(["closing"]))
+            .With($"{function}/snippets/closing.md", SourceFixture.Md(
+                "{ \"label\": \"Closing\", \"description\": null, \"if\": null, \"format\": \"plaintext\" }", "Thank you.\n"))
+            .With($"{function}/macros/index.json", SourceFixture.Index(["sign_off"]))
+            .With($"{function}/macros/sign_off.md", SourceFixture.Md(
+                "{ \"label\": \"Sign-off\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place {{ macro.sign_off.content }} last.\"] }",
+                "Dr A. Sample\n"));
+    }
 
-        Assert.Equal("S02-017", refusal.Id);
-        Assert.Equal(Ghost, refusal.Sentence);
+    /// <summary>
+    /// A member of each kind, in the package's scope (false) or a function's (true), and whether it takes
+    /// an inline schema (true) or only a name (false).
+    /// </summary>
+    public static TheoryData<string, string, bool, bool> Scoped => new()
+    {
+        { "nodes/section_count.md", "format", false, true },
+        { "nodes/refine/index.json", "format", false, true },
+        { "nodes/plan.md", "format", false, false },
+        { "renderers/term_bullets.md", "input", false, true },
+        { "snippets/closing_line.md", "format", false, false },
+        { "snippets/standards/index.json", "format", false, true },
+        { "macros/follow_up.md", "format", false, false },
+        { "functions/draft_section/index.json", "format", true, true },
+        { "functions/draft_section/index.json", "inputs.draft.format", true, true },
+        { "functions/draft_section/apply_instructions.md", "format", true, false },
+        { "functions/draft_section/polish/index.json", "format", true, true },
+        { "functions/draft_section/polish/tidy.md", "format", true, false },
+        { "functions/draft_section/renderers/bullets.md", "input", true, true },
+        { "functions/draft_section/snippets/closing.md", "format", true, false },
+        { "functions/draft_section/macros/sign_off.md", "format", true, false },
+    };
+
+    [Theory]
+    [MemberData(nameof(Scoped))]
+    public void AMember_IsLookedUpInItsOwnersScope(string file, string member, bool inFunction, bool inline)
+    {
+        // verdict is a package format draft_section does not use: the package's members may name it, the function's may not.
+        Assert.Empty(Refusals(FullWithFunctionDefinitions()));
+        JsonNode value = inline ? JsonNode.Parse("""{ "type": "array", "items": { "$ref": "verdict" } }""")! : "verdict";
+
+        var refusals = Refusals(Set(FullWithFunctionDefinitions(), file, member, value));
+
+        if (!inFunction)
+        {
+            Assert.Empty(refusals);
+            return;
+        }
+
+        var refusal = Assert.Single(refusals);
+        Assert.Equal("Format 'verdict' is not a built-in, catalogue or package format.", refusal.Sentence);
         Assert.Equal(file, refusal.Path);
+    }
+
+    [Fact]
+    public void AFunctionsFormat_ReadsWhatItsUsedFormatsName_ThoughItMayNotNameThemItself()
+    {
+        // standard_section (used) names verdict (not used): that name is the package's, so paragraph_plan is sound.
+        var files = SourceFixture.Full()
+            .WithJson("formats/standard_section.json", f =>
+            {
+                f["properties"]!["extra"] = JsonNode.Parse("""{ "$ref": "verdict", "title": "Extra" }""");
+                f["required"]!.AsArray().Add("extra");
+            })
+            .With("functions/draft_section/formats/index.json", SourceFixture.Index(["paragraph_plan"]))
+            .With("functions/draft_section/formats/paragraph_plan.json", TypeFixture.FormatFile(
+                "\"type\": \"object\", \"properties\": { \"section\": { \"$ref\": \"standard_section\" } }, "
+                + "\"required\": [\"section\"], \"additionalProperties\": false"));
+
+        Assert.Empty(Refusals(files));
+
+        var named = Only(files.WithJson("functions/draft_section/formats/paragraph_plan.json",
+            f =>
+            {
+                f["properties"]!["verdict"] = JsonNode.Parse("""{ "$ref": "verdict" }""");
+                f["required"]!.AsArray().Add("verdict");
+            }));
+        Assert.Equal("Format 'verdict' is not a built-in, catalogue or package format.", named.Sentence);
+        Assert.Equal("functions/draft_section/formats/paragraph_plan.json", named.Path);
     }
 
     [Fact]

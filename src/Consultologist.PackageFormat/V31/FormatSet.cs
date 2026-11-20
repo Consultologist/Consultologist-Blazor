@@ -29,8 +29,11 @@ public sealed record NamedFormat(string Id, FormatOrigin Origin, JsonObject Sche
 /// #1500 (specVersion 31, area 03): the formats a scope can name (part 02 § 4, § 6.3) and the
 /// lookup every later service consumes. A package's set finds its own <c>formats/</c> first, then
 /// the catalogue's, then the built-ins; a function's set finds its own formats, then the package
-/// formats it <c>uses</c>, then the catalogue and built-ins. Also the loops through named
-/// references (S02-032). Never throws on package content.
+/// formats it <c>uses</c>, then the package formats those reach through their names (a name written
+/// inside a package format belongs to the package's scope), then the catalogue and built-ins.
+/// What the function itself may write is narrower (<see cref="MayName"/>): a reached package format
+/// it does not list is found, but naming it is S02-017. Also the loops through named references
+/// (S02-032). Never throws on package content.
 /// </summary>
 public sealed class FormatSet
 {
@@ -41,6 +44,7 @@ public sealed class FormatSet
     private readonly Dictionary<string, SourceFormat> _package;
     private readonly Dictionary<string, SourceFormat> _function;
     private readonly Dictionary<string, SourceFormat> _usedPackage;
+    private readonly Dictionary<string, SourceFormat> _reachedPackage;
     private readonly bool _forFunction;
     private HashSet<JsonObject>? _cyclic;
     private List<(SourceFormat Format, string Pointer)>? _loops;
@@ -50,8 +54,10 @@ public sealed class FormatSet
         Dictionary<string, SourceFormat> package,
         Dictionary<string, SourceFormat> function,
         Dictionary<string, SourceFormat> usedPackage,
+        Dictionary<string, SourceFormat> reachedPackage,
         bool forFunction)
     {
+        _reachedPackage = reachedPackage;
         _forFunction = forFunction;
         _registry = registry;
         _package = package;
@@ -64,13 +70,14 @@ public sealed class FormatSet
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(package);
-        return new FormatSet(registry, Index(package), [], [], false);
+        return new FormatSet(registry, Index(package), [], [], [], false);
     }
 
     /// <summary>
     /// The set one function sees: its <paramref name="own"/> formats (origin <see cref="FormatOrigin.Function"/>),
-    /// then the package formats <paramref name="uses"/> names; a package format not in <paramref name="uses"/>
-    /// is not found (part 02 § 6.3).
+    /// then the package formats <paramref name="uses"/> names, then the package formats those reach through
+    /// their names, at any depth (origin <see cref="FormatOrigin.Package"/>). Any other package format is not
+    /// found; a reached one is found but not <see cref="MayName">nameable</see> by the function (part 02 § 6.3).
     /// </summary>
     public FormatSet ForFunction(IEnumerable<SourceFormat> own, IReadOnlyCollection<string> uses)
     {
@@ -85,7 +92,20 @@ public sealed class FormatSet
             }
         }
 
-        return new FormatSet(_registry, _package, Index(own), used, true);
+        var reached = new Dictionary<string, SourceFormat>(StringComparer.Ordinal);
+        var pending = new Stack<SourceFormat>(used.Values);
+        while (pending.Count > 0)
+        {
+            foreach (var (name, _) in References(pending.Pop().Schema))
+            {
+                if (!used.ContainsKey(name) && _package.TryGetValue(name, out var target) && reached.TryAdd(name, target))
+                {
+                    pending.Push(target);
+                }
+            }
+        }
+
+        return new FormatSet(_registry, _package, Index(own), used, reached, true);
     }
 
     /// <summary>The format a name gives in this scope, or null.</summary>
@@ -102,7 +122,7 @@ public sealed class FormatSet
             return new NamedFormat(name, FormatOrigin.Package, used.Schema);
         }
 
-        if (!_forFunction && _package.TryGetValue(name, out var package))
+        if ((_forFunction ? _reachedPackage : _package).TryGetValue(name, out var package))
         {
             return new NamedFormat(name, FormatOrigin.Package, package.Schema);
         }
@@ -115,6 +135,20 @@ public sealed class FormatSet
         return _registry.BuiltInFormats.TryGetValue(name, out var builtIn)
             ? new NamedFormat(name, FormatOrigin.BuiltIn, builtIn)
             : null;
+    }
+
+    /// <summary>
+    /// Whether this scope's own declarations may write <paramref name="name"/>: any name <see cref="Find"/>
+    /// finds in a package's scope; in a function's, its own formats, the package formats it <c>uses</c>,
+    /// the catalogue's and the built-ins, but not a package format it only reaches through a used one.
+    /// </summary>
+    public bool MayName(string name)
+    {
+        ArgumentNullException.ThrowIfNull(name);
+        return _forFunction
+            ? _function.ContainsKey(name) || _usedPackage.ContainsKey(name)
+              || _registry.CatalogueFormats.ContainsKey(name) || _registry.BuiltInFormats.ContainsKey(name)
+            : Find(name) != null;
     }
 
     /// <summary>
@@ -159,7 +193,7 @@ public sealed class FormatSet
         return BareName(obj["$ref"]);
     }
 
-    /// <summary>S02-017 for every bare name (the format itself, or a <c>$ref</c> at any depth) this set does not know, once per name.</summary>
+    /// <summary>S02-017 for every bare name (the format itself, or a <c>$ref</c> at any depth) this scope <see cref="MayName">may not name</see>, once per name.</summary>
     /// <param name="format">The format as written.</param>
     /// <param name="subject">The format's owner (D11); S02-017's words name the missing format instead.</param>
     /// <param name="path">The file the refusals carry.</param>
@@ -171,7 +205,7 @@ public sealed class FormatSet
         var refusals = new List<SourceRefusal>();
         foreach (var (name, _) in References(format))
         {
-            if (Find(name) == null && seen.Add(name))
+            if (!MayName(name) && seen.Add(name))
             {
                 refusals.Add(FormatSentences.UnknownFormat(name, path));
             }
@@ -216,7 +250,7 @@ public sealed class FormatSet
 
     /// <summary>The formats of this scope whose files are checked for loops, in file order.</summary>
     private IEnumerable<SourceFormat> Local() => _forFunction
-        ? _function.Values.Concat(_usedPackage.Values)
+        ? _function.Values.Concat(_usedPackage.Values).Concat(_reachedPackage.Values)
         : _package.Values;
 
     private void Analyse()

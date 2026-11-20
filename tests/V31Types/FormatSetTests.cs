@@ -53,6 +53,38 @@ public class FormatSetTests
     }
 
     [Fact]
+    public void AFunction_FindsWhatItsUsedFormatsReach_ButMayNotNameIt()
+    {
+        // plan uses section, section names row (part 02 § 6.3: a name inside a package format is the package's).
+        var package = FormatSet.ForPackage(Registry,
+        [
+            Format("plan", Obj($"\"s\": {Ref("section")}", "\"s\"")),
+            Format("section", Obj($"\"r\": {{ \"type\": \"array\", \"items\": {Ref("row")} }}", "\"r\"")),
+            Format("row", Obj("", "")),
+            Format("verdict", Obj("", "")),
+        ]);
+        var function = package.ForFunction([Format("local", Obj($"\"p\": {Ref("plan")}", "\"p\""))], ["plan"]);
+
+        Assert.Equal(FormatOrigin.Package, function.Find("section")!.Origin);
+        Assert.Equal(FormatOrigin.Package, function.Find("row")!.Origin);
+        Assert.Null(function.Find("verdict"));
+        Assert.True(function.MayName("plan"));
+        Assert.True(function.MayName("local"));
+        Assert.True(function.MayName("plaintext"));
+        Assert.False(function.MayName("section"));
+        Assert.False(function.MayName("row"));
+        Assert.False(function.MayName("verdict"));
+        Assert.True(FormatTypes.Expands(JsonValue.Create("local"), function));
+
+        Assert.Empty(function.CheckReferences(function.Find("local")!.Schema, "Format 'local'", "functions/f/formats/local.json"));
+        Assert.Equal(
+            ["Format 'row' is not a built-in, catalogue or package format.", "Format 'verdict' is not a built-in, catalogue or package format."],
+            function.CheckReferences(TypeFixture.Schema(Obj($"\"a\": {Ref("row")}, \"b\": {Ref("verdict")}", "\"a\", \"b\"")), "Node 'x'", "functions/f/x.md")
+                .Select(r => r.Sentence));
+        Assert.True(package.MayName("row"));
+    }
+
+    [Fact]
     public void AnUnknownName_IsRefusedOncePerName()
     {
         var set = FormatSet.ForPackage(Registry, [Format("verdict", Obj("", ""))]);
