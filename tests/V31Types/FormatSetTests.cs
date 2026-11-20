@@ -107,6 +107,58 @@ public class FormatSetTests
     }
 
     [Fact]
+    public void AnEmptyName_IsUnknown_AndAnEmptyRefIsTheDialects()
+    {
+        var set = FormatSet.ForPackage(Registry, []);
+
+        var refusal = Assert.Single(set.CheckReferences(JsonValue.Create(""), "Node 'x'", "nodes/x.md"));
+        Assert.Equal("S02-017", refusal.Id);
+        Assert.Equal("Format '' is not a built-in, catalogue or package format.", refusal.Sentence);
+        Assert.Equal("nodes/x.md", refusal.Path);
+        // V31Contract.AssertSentence reads each <…> as non-empty, so it cannot hold this one; the
+        // sentence above is S02-017's row with <id> filled by the empty name, character for character.
+
+        // An empty $ref inside a schema is A03-002, said by the dialect alone.
+        var inner = TypeFixture.Schema(Obj($"\"a\": {Ref("")}", "\"a\""));
+        Assert.Empty(set.CheckReferences(inner, "Node 'x'", "nodes/x.md"));
+        Assert.Equal(["A03-002"], FormatDialect.Check(inner, SchemaSite.Inline, "Node 'x'", "x", "nodes/x.md").Select(r => r.Id));
+    }
+
+    [Fact]
+    public void Loops_AreSaidInTheOrderTheFormatsAreGiven()
+    {
+        // Package: file order. Function: its own formats, then the used ones in uses order, then the reached ones.
+        var package = FormatSet.ForPackage(Registry,
+        [
+            Format("z", Obj($"\"me\": {Ref("z")}", "\"me\"")),
+            Format("m", Obj($"\"me\": {Ref("m")}, \"r\": {Ref("reached")}", "\"me\", \"r\"")),
+            Format("a", Obj($"\"me\": {Ref("a")}", "\"me\"")),
+            Format("reached", Obj($"\"me\": {Ref("reached")}", "\"me\"")),
+        ]);
+        Assert.Equal(["z", "m", "a", "reached"], package.CheckCycles().Select(r => Path.GetFileNameWithoutExtension(r.Path)));
+
+        var function = package.ForFunction([Format("own", Obj($"\"me\": {Ref("own")}", "\"me\""))], ["a", "m", "z"]);
+        Assert.Equal(["own", "a", "m", "z", "reached"], function.CheckCycles().Select(r => Path.GetFileNameWithoutExtension(r.Path)));
+    }
+
+    [Fact]
+    public void ADiamond_IsNotALoop()
+    {
+        var set = FormatSet.ForPackage(Registry,
+        [
+            Format("a", Obj($"\"b\": {Ref("b")}, \"c\": {Ref("c")}", "\"b\", \"c\"")),
+            Format("b", Obj($"\"d\": {Ref("d")}", "\"d\"")),
+            Format("c", Obj($"\"d\": {Ref("d")}", "\"d\"")),
+            Format("d", Obj("", "")),
+        ]);
+
+        Assert.Empty(set.CheckCycles());
+        Assert.False(set.IsCyclic("a"));
+        Assert.False(set.IsCyclic("d"));
+        Assert.True(FormatTypes.Expands(JsonValue.Create("a"), set));
+    }
+
+    [Fact]
     public void ALoopThroughTwoFiles_IsRefusedOncePerFormat()
     {
         var set = FormatSet.ForPackage(Registry,
@@ -207,6 +259,8 @@ public class FormatSetTests
         Assert.Same(plaintext, set.Resolve(TypeFixture.Schema("""{ "$ref": "plaintext", "title": "Notes" }""")));
         var inline = TypeFixture.Schema("""{ "type": "number" }""");
         Assert.Same(inline, set.Resolve(inline));
+        var definition = TypeFixture.Schema("""{ "$ref": "#/$defs/x" }""");
+        Assert.Same(definition, set.Resolve(definition));
         Assert.Null(set.Resolve(JsonValue.Create("nothing")));
         Assert.Null(set.Resolve(JsonValue.Create(5)));
         Assert.Null(set.Resolve(null));

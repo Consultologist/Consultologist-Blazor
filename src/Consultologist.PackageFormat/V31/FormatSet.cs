@@ -45,6 +45,13 @@ public sealed class FormatSet
     private readonly Dictionary<string, SourceFormat> _function;
     private readonly Dictionary<string, SourceFormat> _usedPackage;
     private readonly Dictionary<string, SourceFormat> _reachedPackage;
+
+    /// <summary>
+    /// The formats whose files this scope checks for loops, in the order given: the package's in
+    /// file order; a function's own, then the used ones in <c>uses</c> order, then the reached
+    /// ones in the order first reached. Refusals never follow a dictionary's enumeration order.
+    /// </summary>
+    private readonly List<SourceFormat> _local;
     private readonly bool _forFunction;
     private HashSet<JsonObject>? _cyclic;
     private List<(SourceFormat Format, string Pointer)>? _loops;
@@ -55,9 +62,11 @@ public sealed class FormatSet
         Dictionary<string, SourceFormat> function,
         Dictionary<string, SourceFormat> usedPackage,
         Dictionary<string, SourceFormat> reachedPackage,
+        List<SourceFormat> local,
         bool forFunction)
     {
         _reachedPackage = reachedPackage;
+        _local = local;
         _forFunction = forFunction;
         _registry = registry;
         _package = package;
@@ -70,7 +79,8 @@ public sealed class FormatSet
     {
         ArgumentNullException.ThrowIfNull(registry);
         ArgumentNullException.ThrowIfNull(package);
-        return new FormatSet(registry, Index(package), [], [], [], false);
+        var index = Index(package, out var order);
+        return new FormatSet(registry, index, [], [], [], order, false);
     }
 
     /// <summary>
@@ -83,29 +93,32 @@ public sealed class FormatSet
     {
         ArgumentNullException.ThrowIfNull(own);
         ArgumentNullException.ThrowIfNull(uses);
+        var function = Index(own, out var local);
         var used = new Dictionary<string, SourceFormat>(StringComparer.Ordinal);
+        var pending = new Queue<SourceFormat>();
         foreach (var name in uses)
         {
-            if (name != null && _package.TryGetValue(name, out var format))
+            if (name != null && _package.TryGetValue(name, out var format) && used.TryAdd(name, format))
             {
-                used[name] = format;
+                local.Add(format);
+                pending.Enqueue(format);
             }
         }
 
         var reached = new Dictionary<string, SourceFormat>(StringComparer.Ordinal);
-        var pending = new Stack<SourceFormat>(used.Values);
         while (pending.Count > 0)
         {
-            foreach (var (name, _) in References(pending.Pop().Schema))
+            foreach (var (name, _) in References(pending.Dequeue().Schema))
             {
                 if (!used.ContainsKey(name) && _package.TryGetValue(name, out var target) && reached.TryAdd(name, target))
                 {
-                    pending.Push(target);
+                    local.Add(target);
+                    pending.Enqueue(target);
                 }
             }
         }
 
-        return new FormatSet(_registry, _package, Index(own), used, reached, true);
+        return new FormatSet(_registry, _package, function, used, reached, local, true);
     }
 
     /// <summary>The format a name gives in this scope, or null.</summary>
@@ -193,7 +206,7 @@ public sealed class FormatSet
         return BareName(obj["$ref"]);
     }
 
-    /// <summary>S02-017 for every bare name (the format itself, or a <c>$ref</c> at any depth) this scope <see cref="MayName">may not name</see>, once per name.</summary>
+    /// <summary>S02-017 for every bare name (the format itself, or a <c>$ref</c> at any depth) this scope <see cref="MayName">may not name</see>, once per name, and for a format that is the empty text.</summary>
     /// <param name="format">The format as written.</param>
     /// <param name="subject">The format's owner (D11); S02-017's words name the missing format instead.</param>
     /// <param name="path">The file the refusals carry.</param>
@@ -203,6 +216,13 @@ public sealed class FormatSet
         ArgumentNullException.ThrowIfNull(path);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var refusals = new List<SourceRefusal>();
+
+        // "format": "" names no format; an empty $ref inside a schema is the dialect's (A03-002).
+        if (format is JsonValue value && value.TryGetValue<string>(out var text) && text.Length == 0)
+        {
+            refusals.Add(FormatSentences.UnknownFormat(text, path));
+        }
+
         foreach (var (name, _) in References(format))
         {
             if (!MayName(name) && seen.Add(name))
@@ -234,12 +254,17 @@ public sealed class FormatSet
         return found != null && found.Origin is FormatOrigin.Package or FormatOrigin.Function && _cyclic!.Contains(found.Schema);
     }
 
-    private static Dictionary<string, SourceFormat> Index(IEnumerable<SourceFormat> formats)
+    /// <summary>The formats by id, the first of an id kept; <paramref name="order"/> holds the kept ones in the order given.</summary>
+    private static Dictionary<string, SourceFormat> Index(IEnumerable<SourceFormat> formats, out List<SourceFormat> order)
     {
         var index = new Dictionary<string, SourceFormat>(StringComparer.Ordinal);
+        order = [];
         foreach (var format in formats)
         {
-            index.TryAdd(format.Id, format);
+            if (index.TryAdd(format.Id, format))
+            {
+                order.Add(format);
+            }
         }
 
         return index;
@@ -248,11 +273,6 @@ public sealed class FormatSet
     private static string? BareName(JsonNode? node) =>
         node is JsonValue v && v.TryGetValue<string>(out var s) && s.Length > 0 && s[0] != '#' ? s : null;
 
-    /// <summary>The formats of this scope whose files are checked for loops, in file order.</summary>
-    private IEnumerable<SourceFormat> Local() => _forFunction
-        ? _function.Values.Concat(_usedPackage.Values).Concat(_reachedPackage.Values)
-        : _package.Values;
-
     private void Analyse()
     {
         if (_cyclic != null)
@@ -260,7 +280,7 @@ public sealed class FormatSet
             return;
         }
 
-        var nodes = Local().ToList();
+        var nodes = _local;
         var edges = new Dictionary<JsonObject, List<(JsonObject Target, string Pointer)>>(ReferenceEqualityComparer.Instance);
         foreach (var format in nodes)
         {
