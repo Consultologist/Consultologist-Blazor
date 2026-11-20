@@ -2,13 +2,16 @@
   "package": "example-macros-warnings",
   "tag": "example-macros-warnings-v2026.11.3",
   "scenario": "discharge-summary",
-  "status": "Failed",
-  "failure": "Closing summary failed: Node 'summary' rendered macro.notes/red_flags.prompt, which the package's walk does not reach from its prompt; the walk and the render disagree.",
+  "status": "Completed",
+  "failure": null,
   "outputs": {
     "standing_draft:hpi": "Stub reply for standing_draft:hpi (6b1ac565).",
     "standing_draft:medications": "Stub reply for standing_draft:medications (a8003672).",
     "standing_draft:assessment_plan": "Stub reply for standing_draft:assessment_plan (ec5dded8).",
-    "summary": "Stub reply for summary (0d262d29)."
+    "summary": "Stub reply for summary (0d262d29).",
+    "narrative_draft:0": "Stub reply for narrative_draft:0 (7e956e10).",
+    "table_draft:1": "Stub reply for table_draft:1 (d93e3b25).",
+    "patient_line": "Stub reply for patient_line (8c2a9c14)."
   },
   "prompts": [
     {
@@ -28,25 +31,40 @@
     },
     {
       "key": "summary",
-      "hash": "sha256:2bad28617c4e6b1026edd22738c64221ef4494748f91cc78bb30dcab1f1d2775",
-      "text": "You are writing the closing summary of a consultation note.\n\nTask:\nSummarise the consult draft in one short paragraph: the question asked, the answer, and the plan.\n\nHouse style:\nWrite in the first person plural, past tense, without abbreviations the patient would not know.\nWhere the summary departs from the house style above, the reminder goes as the last sentence; otherwise nothing.\n\nIf so, write {{ macro.house_style.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\n\nReminders:\n- Red flags: If the draft reviews red flags, the red-flags line goes in the summary; otherwise nothing.\n\nIf so, write {{ macro.red_flags.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n- Safety net: If the draft gives safety-netting advice, the safety-net line goes in the summary; otherwise nothing.\n\nIf so, write {{ macro.safety_net.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nClose the summary with Dictated by Dr A. Sample; not yet reviewed.\n as its final line and write nothing after it.\n\nIf so, write {{ macro.wrap_up.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nWrite Reviewed with the patient.\n at the end of the summary.\n\nIf so, write {{ macro.self_read.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nDisclaimer to keep in mind (do not copy it into the summary):\nThis note was drafted with software assistance and reviewed by the signing clinician.\n\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+      "hash": "sha256:a613db38c6bcec999cc30c21d25696b86105a56df0434616873dba1fb07efeaa",
+      "text": "You are writing the closing summary of a consultation note.\n\nTask:\nSummarise the consult draft in one short paragraph: the question asked, the answer, and the plan.\n\nHouse style:\nWrite in the first person plural, past tense, without abbreviations the patient would not know.\nWhere the summary departs from the house style above, the reminder goes as the last sentence; otherwise nothing.\n\nIf so, write {{ macro.house_style.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\n\nReminders:\n- Red flags: If the draft reviews red flags, the red-flags line goes in the summary; otherwise nothing.\n\nIf so, write {{ macro.notes.red_flags.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n- Safety net: If the draft gives safety-netting advice, the safety-net line goes in the summary; otherwise nothing.\n\nIf so, write {{ macro.notes.safety_net.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nClose the summary with Dictated by Dr A. Sample; not yet reviewed.\n as its final line and write nothing after it.\n\nIf so, write {{ macro.wrap_up.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nWrite Reviewed with the patient.\n at the end of the summary.\n\nIf so, write {{ macro.self_read.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nDisclaimer to keep in mind (do not copy it into the summary):\nThis note was drafted with software assistance and reviewed by the signing clinician.\n\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+    },
+    {
+      "key": "narrative_draft:0",
+      "hash": "sha256:cd153e389f5d171bb46d8acadb8967ce713efb896cba28b8ca61bde9cc091362",
+      "text": "You are drafting one requested section of a consultation note as prose.\n\nTask:\nWrite the section titled below from the consult draft, in two to five sentences.\n\nGuardrail:\nDo not add clinical facts the draft does not contain; where the draft is silent, say so.\n\nOutput rule:\nReturn only the prose of this section. No heading, no bullets, no commentary.\n\nSection title:\nHistory\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+    },
+    {
+      "key": "table_draft:1",
+      "hash": "sha256:d0754156a245efa697500d0a382a2e69e8bb026fc5656bfbd5de3153783a7743",
+      "text": "You are drafting one requested section of a consultation note as a table.\n\nTask:\nLay the section titled below out as a Markdown pipe table with a header row, one row per item the draft documents for it.\n\nGuardrail:\nDo not add clinical facts the draft does not contain; where the draft documents nothing for this section, return one row saying so.\n\nOutput rule:\nReturn only the table. No heading, no commentary.\n\nSection title:\nMedications\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+    },
+    {
+      "key": "patient_line",
+      "hash": "sha256:fdd049209a04f9700d44c67a73fc64b4068359acf529f26346c6d356d9ca65b6",
+      "text": "You are writing one patient-facing sentence from a consultation note.\n\nTask:\nIn one plain-language sentence, tell the patient what was decided today.\n\n\nOutput rule:\nReturn only the sentence.\n\nThe sections drafted today:\n## Sections to produce 1\n\nStub reply for narrative_draft:0 (7e956e10).\n\n## Sections to produce 2\n\nValues are as documented in the consult draft; blanks mean not documented.\n\nStub reply for table_draft:1 (d93e3b25).\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
     }
   ],
   "renders": [],
   "deliverables": [
     {
       "id": "consult_note",
-      "state": "unsettled",
+      "state": "composed",
       "reason": null,
-      "hash": null,
-      "text": null
+      "hash": "sha256:8cceef69fa2418a26f62ca92e04fe771a7c2abad49e0378ab8bab9082f95e814",
+      "text": "## Sections to produce 1\n\nStub reply for narrative_draft:0 (7e956e10).\n\n## Sections to produce 2\n\nValues are as documented in the consult draft; blanks mean not documented.\n\nStub reply for table_draft:1 (d93e3b25).\n\n## History of presenting illness\n\nStub reply for standing_draft:hpi (6b1ac565).\n\n## Medications\n\nStub reply for standing_draft:medications (a8003672).\n\n## Assessment and plan\n\nStub reply for standing_draft:assessment_plan (ec5dded8).\n\nSummary of today's consultation.\n\nStub reply for summary (0d262d29).\n\nDictated by Dr A. Sample; not yet reviewed.\n\nEnd of note.\n\nNote type recorded as discharge_summary.\n\nA follow-up appointment will be arranged within three months."
     },
     {
       "id": "patient_letter",
-      "state": "unsettled",
+      "state": "composed",
       "reason": null,
-      "hash": null,
-      "text": null
+      "hash": "sha256:50e59b530b678975185e2b15af472e91be614ddf06b401cbed43594170c67d98",
+      "text": "Stub reply for patient_line (8c2a9c14)."
     }
   ]
 }
