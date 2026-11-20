@@ -20,6 +20,7 @@
 - **Bytes are exact.** Fixtures are read with `File.ReadAllBytes` / strict UTF-8 (`new UTF8Encoding(false, true)`) and compared without newline normalisation. `tests/Fixtures/ByteEquivalence/.gitattributes` holds `* -text` so git never rewrites a line ending. Captures are generated on Linux (CI is `ubuntu-latest`; `ConceptRenderers` joins with `Environment.NewLine`).
 - **Capture JSON is written one way:** `WriteIndented = true`, `Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping`, `\n` newlines, one trailing `\n`, members in the order this plan lists them.
 - **Hashes** are `"sha256:" +` lowercase hex of SHA-256 over the text's UTF-8 bytes.
+- **The vendored folder is `vendored/`, not `packages/`:** the root `.gitignore` hides every `packages/` folder.
 - **Fixture root:** `tests/Fixtures/ByteEquivalence/`, found from source with `[CallerFilePath]` (the `EngineRunGoldenTests.SourceFile` idiom), never from a sibling checkout. No test reads `~/Projects/consultologist-workflows`.
 - **Inputs are fictional, always:** invented people (the design's Margaret Okafor; `Dr A. Sample`) and invented clinical text, in every scenario, fixture package and vector.
 - **31 stays off:** nothing here adds 31 to any accepted set.
@@ -41,7 +42,7 @@ A throwaway run of all thirteen packages through today's engine found the follow
 ## Layout this plan creates
 
 ```
-scripts/vendor-public-packages.cs              reads the pinned tags, writes packages/ and its index
+scripts/vendor-public-packages.cs              reads the pinned tags, writes vendored/ and its index
 src/Consultologist.PackageFormat/WorkflowStubOutputs.cs
 tests/ByteEquivalence/
   ByteEquivalenceFixtures.cs                   paths, strict reads, hashes, the capture JSON writer, the golden match
@@ -57,8 +58,8 @@ tests/ByteEquivalence/
 tests/Fixtures/ByteEquivalence/
   .gitattributes                               * -text
   README.md                                    what each folder holds, how to regenerate, what area 10 reads
-  packages/index.json                          per package: name, tag, commit, files → sha256
-  packages/<name>/…                            every file at the tag (test/general nests)
+  vendored/index.json                          per package: name, tag, commit, files → sha256
+  vendored/<name>/…                            every file at the tag (test/general nests)
   fixture-packages/<name>/…                    packages authored here, for the composer
   scenarios/<name>/<scenario>.json             inputs, profile, macro choices, pinned outputs
   captures/<name>/<scenario>.json              written by the code; the goldens
@@ -82,13 +83,13 @@ tests/Fixtures/ByteEquivalence/
 **Files:**
 - Create: `scripts/vendor-public-packages.cs`
 - Create: `tests/Fixtures/ByteEquivalence/.gitattributes`, `tests/Fixtures/ByteEquivalence/README.md`
-- Create: `tests/Fixtures/ByteEquivalence/packages/index.json` and `packages/<name>/…` (written by the script)
+- Create: `tests/Fixtures/ByteEquivalence/vendored/index.json` and `vendored/<name>/…` (written by the script)
 - Create: `tests/ByteEquivalence/ByteEquivalenceFixtures.cs`
 - Test: `tests/ByteEquivalence/VendoredPackagesTests.cs`
 
 **Interfaces:**
 - Produces, in namespace `Consultologist.Api.Tests.ByteEquivalence`:
-  - `internal static class ByteEquivalenceFixtures` with `string Root` (the fixture root), `string ReadText(string path)` (strict UTF-8, no BOM handling, throws on invalid bytes), `string HashOf(string text)` (`sha256:<hex>`), `IReadOnlyList<VendoredPackage> Vendored` (from `packages/index.json`), `IReadOnlyList<string> FixturePackages` (directory names under `fixture-packages/`, empty when the folder is absent), `(string ManifestJson, Dictionary<string, string> Files) ReadPackage(string name)` (looks in `packages/` then `fixture-packages/`; `Files` keyed by path relative to the package, `manifest.json` and `dag.mmd` left out), `WorkflowPackage Load(string name)`.
+  - `internal static class ByteEquivalenceFixtures` with `string Root` (the fixture root), `string ReadText(string path)` (strict UTF-8, no BOM handling, throws on invalid bytes), `string HashOf(string text)` (`sha256:<hex>`), `IReadOnlyList<VendoredPackage> Vendored` (from `vendored/index.json`), `IReadOnlyList<string> FixturePackages` (directory names under `fixture-packages/`, empty when the folder is absent), `(string ManifestJson, Dictionary<string, string> Files) ReadPackage(string name)` (looks in `vendored/` then `fixture-packages/`; `Files` keyed by path relative to the package, `manifest.json` and `dag.mmd` left out), `WorkflowPackage Load(string name)`.
   - `internal sealed record VendoredPackage(string Name, string Tag, string Commit, IReadOnlyDictionary<string, string> Files)`.
   - `Load` is: `WorkflowPackageManifestJson.Read(manifestJson, $"{name}@{version}", WorkflowPackageValidator.AcceptedSpecVersions)` then `WorkflowPackageStore.PackageOf(WorkflowPackageStore.Materialise($"{name}@{version}", manifest, files, null, V29Catalog.Catalog, TestFormats.Catalog, WorkflowPackageValidator.AcceptedSpecVersions))`, `version` being the manifest's.
 
@@ -113,12 +114,12 @@ tests/Fixtures/ByteEquivalence/
 - [ ] **Step 1: Write the failing tests** in `VendoredPackagesTests`:
   - `TheIndex_NamesTheThirteenPublicPackages_AtTheirPinnedTags`: the index's `(Name, Tag)` pairs equal the table above, in that order; every `Commit` is 40 hex characters.
   - `EveryVendoredFile_HasTheBytesTheIndexRecords`: for each package and each indexed path, `sha256:<hex>` of the file's bytes on disk equals the index's value.
-  - `NoFileOnDisk_IsMissingFromTheIndex`: the set of files under `packages/` (other than `index.json`) equals the set the index names.
+  - `NoFileOnDisk_IsMissingFromTheIndex`: the set of files under `vendored/` (other than `index.json`) equals the set the index names.
   - `EveryVendoredPackage_IsAtSpecVersion30_AndLoads` (a theory over the thirteen names): the manifest's `specVersion` is 30, its `name` and `version` match the tag, and `ByteEquivalenceFixtures.Load(name)` does not throw.
 - [ ] **Step 2: Run them; expect failure** (`index.json` is missing).
-- [ ] **Step 3: Write `scripts/vendor-public-packages.cs`**, in the style of `scripts/validate-workflow-package.cs` (shebang, a usage comment, no project reference needed). Usage: `dotnet run -v q --file scripts/vendor-public-packages.cs -- <path to consultologist-workflows> [<fixture root>]`. For each pinned tag: resolve the commit with `git -C <repo> rev-parse <tag>^{commit}`; list `packages/<name>/` with `git ls-tree -r --name-only <tag>`; read each file's raw bytes with `git show <tag>:<path>`; write them unchanged under `packages/<name>/`; record the sha256. It first deletes `packages/` so a removed file cannot linger, then writes `index.json` as `{ "packages": [ { "name", "tag", "commit", "files": { "<relative path>": "sha256:<hex>" } } ] }`, files sorted ordinally, in the capture JSON style. A tag that does not resolve stops the script with exit code 1 and the sentence `Tag '<tag>' is not in <repo>: fetch the tags there and run again.`, writing nothing.
+- [ ] **Step 3: Write `scripts/vendor-public-packages.cs`**, in the style of `scripts/validate-workflow-package.cs` (shebang, a usage comment, no project reference needed). Usage: `dotnet run -v q --file scripts/vendor-public-packages.cs -- <path to consultologist-workflows> [<fixture root>]`. For each pinned tag: resolve the commit with `git -C <repo> rev-parse <tag>^{commit}`; list `packages/<name>/` with `git ls-tree -r --name-only <tag>`; read each file's raw bytes with `git show <tag>:<path>`; write them unchanged under `vendored/<name>/`; record the sha256. It first deletes `vendored/` so a removed file cannot linger, then writes `index.json` as `{ "packages": [ { "name", "tag", "commit", "files": { "<relative path>": "sha256:<hex>" } } ] }`, files sorted ordinally, in the capture JSON style. A tag that does not resolve stops the script with exit code 1 and the sentence `Tag '<tag>' is not in <repo>: fetch the tags there and run again.`, writing nothing.
 - [ ] **Step 4: Write `.gitattributes`** (`* -text`) **before** adding any vendored file, then run the script against `~/Projects/consultologist-workflows`.
-- [ ] **Step 5: Write `ByteEquivalenceFixtures`** and `README.md` (what `packages/` is, the script's command line, that the tags are the pins and the index is what CI checks).
+- [ ] **Step 5: Write `ByteEquivalenceFixtures`** and `README.md` (what `vendored/` is, the script's command line, that the tags are the pins and the index is what CI checks).
 - [ ] **Step 6: Run the tests; expect pass.** Confirm `git status --short ~/Projects/consultologist-workflows` printed nothing new.
 - [ ] **Step 7: Commit** as two commits (`Scripts (#1498): the public packages are vendored from their spec-30 tags`, then `Tests (#1498): the vendored packages hold the tags' bytes and load at 30`) and push.
 
