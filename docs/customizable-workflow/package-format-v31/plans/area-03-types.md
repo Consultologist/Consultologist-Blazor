@@ -205,10 +205,10 @@ Rules, each at every depth, in document order, all reported (part 02 § 3.1–3.
 [Fact] public void EveryRefusal_MatchesItsRow()                 // V31Contract.AssertSentence on every refusal the tests above produced
 ```
 
-- [ ] **Step 2:** Run the filter; expected: fail (no `FormatDialect`).
-- [ ] **Step 3: Implement** `FormatDialect.Check` as one recursive walk carrying the JSON pointer (RFC 6901 escaping of `~` and `/`) and a depth guard at `SourceBounds.JsonDepth`.
-- [ ] **Step 4:** Run the filter; expected: pass.
-- [ ] **Step 5: Commit** `PackageFormat (#1500): the formats dialect, keyword by keyword`; push.
+- [x] **Step 2:** Run the filter; expected: fail (no `FormatDialect`).
+- [x] **Step 3: Implement** `FormatDialect.Check` as one recursive walk carrying the JSON pointer (RFC 6901 escaping of `~` and `/`) and a depth guard at `SourceBounds.JsonDepth`.
+- [x] **Step 4:** Run the filter; expected: pass.
+- [x] **Step 5: Commit** `PackageFormat (#1500): the formats dialect, keyword by keyword`; push.
 
 ### Task 3: The dialect checker — enums, annotations and the owner's rules
 
