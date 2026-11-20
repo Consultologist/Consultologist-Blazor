@@ -562,9 +562,9 @@ public void CountExpressionNodes_FollowsD1(string json, int expected)
 **Files:**
 - Modify: `docs/customizable-workflow/package-format-library.md`; this plan (tick the boxes, record where the build departed)
 
-- [ ] **Step 1:** Add a section "specVersion 31: the source reader (preview)" — what `SourceParser.Parse` takes and returns, the four steps, what it leaves to later areas (D16), where the sentences come from, and that nothing in the engine calls it yet.
-- [ ] **Step 2:** `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln`; expected: both green.
-- [ ] **Step 3: Commit** `Docs (#1499): the source reader of 31 in the library's guide, and the plan ticked`, push.
+- [x] **Step 1:** Add a section "specVersion 31: the source reader (preview)" — what `SourceParser.Parse` takes and returns, the four steps, what it leaves to later areas (D16), where the sentences come from, and that nothing in the engine calls it yet.
+- [x] **Step 2:** `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln`; expected: both green.
+- [x] **Step 3: Commit** `Docs (#1499): the source reader of 31 in the library's guide, and the plan ticked`, push.
 
 ## Spec coverage
 
