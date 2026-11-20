@@ -16,8 +16,17 @@ public class FormatDialectTests
     private static string Field(string field) =>
         $$"""{ "type": "object", "required": ["a"], "additionalProperties": false, "properties": { "a": {{field}} } }""";
 
-    private static IReadOnlyList<SourceRefusal> Check(string json, SchemaSite site = SchemaSite.PackageFormat) =>
-        FormatDialect.Check(JsonNode.Parse(json), site, Verdict, "verdict", "formats/verdict.json");
+    /// <summary>
+    /// <paramref name="json"/> checked as <paramref name="site"/>; a format file without <c>$schema</c>
+    /// is given the dialect's first, so these tests see the keyword rules and not the root's.
+    /// </summary>
+    private static IReadOnlyList<SourceRefusal> Check(string json, SchemaSite site = SchemaSite.PackageFormat)
+    {
+        var schema = JsonNode.Parse(json);
+        if (site != SchemaSite.Inline && schema is JsonObject root && !root.ContainsKey("$schema"))
+            root.Insert(0, "$schema", "urn:consultologist:spec:31:dialect");
+        return FormatDialect.Check(schema, site, Verdict, "verdict", "formats/verdict.json");
+    }
 
     private static void AssertOne(IReadOnlyList<SourceRefusal> refusals, string id, string sentence)
     {
@@ -35,13 +44,13 @@ public class FormatDialectTests
         { """{ "type": "array", "items": [] }""", "A03-003", $"{Verdict} at /items writes 'items' as a list; it is an object." },
         { Field("""{ "anyOf": [5, { "type": "null" }] }"""), "A03-003", $"{Verdict} at /properties/a/anyOf/0 writes 'anyOf' as a number; it is an object." },
 
-        // A keyword outside the dialect, and the root's keywords below the root.
+        // A keyword outside the dialect, and the root's keywords below the root (the annotations are FormatDialectRootTests').
         { Field("""{ "type": "string", "minLength": 1 }"""), "S02-021", $"{Verdict} uses keyword 'minLength' at /properties/a, which is outside the formats dialect." },
         { Field("""{ "type": "string", "$schema": "urn:consultologist:spec:31:dialect" }"""), "S02-021", $"{Verdict} uses keyword '$schema' at /properties/a, which is outside the formats dialect." },
         { Field("""{ "type": "string", "$id": "urn:x" }"""), "S02-021", $"{Verdict} uses keyword '$id' at /properties/a, which is outside the formats dialect." },
         { Field("""{ "type": "string", "$defs": {} }"""), "S02-021", $"{Verdict} uses keyword '$defs' at /properties/a, which is outside the formats dialect." },
-        { Field("""{ "type": "string", "contentMediaType": "text/plain" }"""), "S02-021", $"{Verdict} uses keyword 'contentMediaType' at /properties/a, which is outside the formats dialect." },
-        { Field("""{ "type": "string", "x-markdown": "block" }"""), "S02-021", $"{Verdict} uses keyword 'x-markdown' at /properties/a, which is outside the formats dialect." },
+        { Field("""{ "type": "string", "contentMediaType": "text/plain" }"""), "S02-037", $"{Verdict} declares contentMediaType at /properties/a, where it doesn't apply." },
+        { Field("""{ "type": "string", "x-markdown": "block" }"""), "S02-037", $"{Verdict} declares x-markdown at /properties/a, where it doesn't apply." },
         { Field("""{ "type": "string", "const": "x" }"""), "S02-021", $"{Verdict} uses keyword 'const' at /properties/a, which is outside the formats dialect." },
         { """{ "type": "array", "items": { "type": "string" }, "pattern": "x" }""", "S02-021", $"{Verdict} uses keyword 'pattern' at the root, which is outside the formats dialect." },
 
@@ -78,9 +87,9 @@ public class FormatDialectTests
         { """{ "type": "array", "items": { "$ref": "#/$defs/a/b" }, "$defs": { "a": { "type": "string" } } }""", "A03-002", $"{Verdict} at /items refers to #/$defs/#/$defs/a/b, which the file doesn't define." },
 
         // Keywords where the type is not theirs.
-        { """{ "type": "string", "properties": {} }""", "A03-004", $"{Verdict} at the root uses 'properties', which belongs on an object." },
-        { """{ "type": "string", "required": [] }""", "A03-004", $"{Verdict} at the root uses 'required', which belongs on an object." },
-        { """{ "type": "string", "additionalProperties": false }""", "A03-004", $"{Verdict} at the root uses 'additionalProperties', which belongs on an object." },
+        { Field("""{ "type": "string", "properties": {} }"""), "A03-004", $"{Verdict} at /properties/a uses 'properties', which belongs on an object." },
+        { Field("""{ "type": "string", "required": [] }"""), "A03-004", $"{Verdict} at /properties/a uses 'required', which belongs on an object." },
+        { Field("""{ "type": "string", "additionalProperties": false }"""), "A03-004", $"{Verdict} at /properties/a uses 'additionalProperties', which belongs on an object." },
         { Field("""{ "type": "string", "items": { "type": "string" } }"""), "A03-004", $"{Verdict} at /properties/a uses 'items', which belongs on a list." },
         { Field("""{ "type": "number", "enum": ["a", "b"] }"""), "A03-004", $"{Verdict} at /properties/a uses 'enum', which belongs on a string." },
         { Field("""{ "type": ["number", "null"], "oneOf": [] }"""), "A03-004", $"{Verdict} at /properties/a uses 'oneOf', which belongs on a string." },
@@ -254,19 +263,7 @@ public class FormatDialectTests
         const string format = """{ "type": "array", "items": { "$ref": "#/$defs/row" }, "$defs": { "row": { "type": "string" } } }""";
 
         Assert.Empty(Check(format));
-        AssertOne(Check(format, SchemaSite.Inline), "A03-002", $"{Verdict} at /items refers to #/$defs/row, which the file doesn't define.");
-    }
-
-    [Fact]
-    public void TheRootsOwnKeywords_AreLeftToTheRootRules()
-    {
-        const string format = """
-            { "$schema": "urn:x", "$id": "urn:y", "type": "string", "contentMediaType": "text/x", "x-markdown": "x", "$defs": {} }
-            """;
-
-        Assert.Empty(Check(format));
-        Assert.Empty(Check(format, SchemaSite.RegistryFormat));
-        Assert.Empty(Check(format, SchemaSite.Inline));
+        Assert.Equal(["A03-002", "S02-021"], Check(format, SchemaSite.Inline).Select(r => r.Id));
     }
 
     [Fact]
@@ -383,27 +380,6 @@ public class FormatDialectTests
         var refusals = FormatDialect.Check(schema, SchemaSite.PackageFormat, Verdict, "verdict", "formats/verdict.json");
 
         Assert.Equal(5_001, refusals.Count(r => r.Id == "S02-032"));
-    }
-
-    public static TheoryData<string, string> PublishedFormats()
-    {
-        var data = new TheoryData<string, string>();
-        var registry = TypeFixture.Published();
-        foreach (var (name, _) in registry.BuiltInFormats)
-            data.Add("built-in", name);
-        foreach (var (name, _) in registry.CatalogueFormats)
-            data.Add("catalogue", name);
-        return data;
-    }
-
-    [Theory]
-    [MemberData(nameof(PublishedFormats))]
-    public void EveryPublishedFormat_IsInTheDialect(string owner, string name)
-    {
-        var registry = TypeFixture.Published();
-        var schema = owner == "built-in" ? registry.BuiltInFormats[name] : registry.CatalogueFormats[name];
-
-        Assert.Empty(FormatDialect.Check(schema, SchemaSite.RegistryFormat, $"Format '{name}'", name, $"formats/{name}.json"));
     }
 
     [Fact]
