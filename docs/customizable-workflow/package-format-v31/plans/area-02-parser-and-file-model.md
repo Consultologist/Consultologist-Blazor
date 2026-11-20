@@ -502,7 +502,7 @@ public void AWhileMax_IsHeldToItsRange(int? value, string expected) // 1 and 15 
   - Scopes are `nodes/`, `checks/` and each function, each on its own. **S01-002:** two nodes of one id are refused when the folder of one encloses, or is, the folder of the other; reported once, on the deeper node; `<path>` is the deeper node's enclosing ids joined by `.` (`sections.paragraphs`), and the other is `at the top level` or `in <its enclosing ids>` (D13 for checks). **S01-036:** inside one `while`, at any depth, two nodes of one id that S01-002 did not refuse; `<path>` values are each node's key without its root. **S04-012:** each body's `ret` is the key of one of that body's own listed children; `<full names>` are their keys joined by `, `; `<ret>` is as written. **S01-042:** every expression site (a header's `if`; `expression`; a flow node's `if`, `while`, `until`; each `parts.<id>.if`; a snippet's, macro's, macro folder's and deliverable's `if`) counted per D1 and refused above 1,000, named per D15, with `<n>` written with a thousands comma (`1,001`).
   - `SourcePackage` gains nothing: keys were set in Tasks 5–7; this task proves them.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // SourceScopesTests
@@ -531,10 +531,10 @@ public void CountExpressionNodes_FollowsD1(string json, int expected)
 [Fact] public void Full_Parses_WithThePublishedRegistry() // registry read from external/…/v31/formats/index.json, external/consultologist-agents/agents/v31/formats/index.json, v31/renderers/index.json: no refusals
 ```
 
-- [ ] **Step 2: Run**; expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the test command, then `dotnet build Consultologist.sln`; expected: PASS, no new warnings.
-- [ ] **Step 5: Commit** `PackageFormat (#1499): keys with their roots, disjoint scopes, ret and the expression bound`, push.
+- [x] **Step 2: Run**; expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the test command, then `dotnet build Consultologist.sln`; expected: PASS, no new warnings.
+- [x] **Step 5: Commit** `PackageFormat (#1499): keys with their roots, disjoint scopes, ret and the expression bound`, push.
 
 ### Task 9: The conformance suite's refusal packages
 
