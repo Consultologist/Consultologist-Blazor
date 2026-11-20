@@ -141,6 +141,17 @@ A capture holds `package`, `tag` (the vendored tag, or null), `scenario`, `statu
 `composed` with its final text, `skipped` or `failed` with the engine's reason, or `unsettled` in
 a failed job. Every text sits beside its `sha256:` hash.
 
+`status` is the job's (`Completed` or `Failed` in every capture here), or `Refused` for a refused
+start (below).
+`failure` is null unless the job failed. It is the engine's sentence as the test context surfaces
+it: the raw message of the failing activity, where production's Durable runtime wraps it (`Task
+'…' (#N) failed with an unhandled exception: …`). `CaptureRun.Failure` takes the first non-null of
+the job state's `AnalysisError`, `FailureError` and `StartFailure`, in that order.
+
+In a failed job, which deliverable rows are `composed` and which `unsettled`, and which prompts
+were sent before the failure, follows the test context's one-at-a-time dispatch order;
+production may get further before failing the same way.
+
 ### Adding a scenario
 
 Write the scenario file and run
@@ -191,6 +202,14 @@ and with no deliverable reached nothing shows the composed node texts — so the
 show what the node-placed macros (`counselling`, `section_caveat`, `table_note`, `preamble`,
 `sign_off`) add.
 
+### `example-v12-constructs`: `default` fails, a lone refusal does not
+
+The `default` capture is `Failed`, with the acknowledgement's `failWith` sentence. With generated
+stubs both `terms_subset` checks refuse (`consult` and `ack_letter` are `failed`), and a job whose
+every deliverable is refused by its check fails (`ConsultGenerationEngine.FinalOutcome`). A lone
+refusal leaves the job `Completed`: `letter-coverage-fails` (`ack_letter` failed, `consult`
+composed) and `note-coverage-fails` (`consult` failed, `ack_letter` composed).
+
 ## `renderers/`
 
 `concept-renderers.json` freezes the bytes of the two C# concept renderers, `ConceptRenderers.Bullets`
@@ -210,6 +229,40 @@ from this file.
 Regenerate: delete the file and run
 `dotnet test tests/Consultologist.Api.Tests.csproj --filter FullyQualifiedName~ConceptRendererCaptureTests`.
 The first test writes it and fails once; review it and commit it.
+
+`ConceptRenderers` joins its lines with `Environment.NewLine`, so the fixture's bytes depend on the
+platform. It was generated on Linux, as CI runs; regenerate it only there.
+
+`ConceptRendererCaptureTests` compiles against `V31BuiltInRenderersTests.Concept` and `.Render`.
+When the C# renderers and `V31BuiltInRenderersTests` are deleted, `Concept` and `Render` move
+into `ConceptRendererCaptureTests`, and its first test (`TheCSharpRenderers_GiveTheCapturedBytes`,
+the C# side) is deleted with them.
+
+## What area 10 does with the captures and the renderer fixture
+
+This folder is the specVersion 30 side of every comparison in part 10 § 3. The 31 side (the
+migrated package's run, the comparison, `migration-report.json`) is area 10's.
+
+Each compared text has a site and a hash here. In a capture `captures/<package>/<scenario>.json`
+a prompt or a render is identified by its `key` and a deliverable by its `id`, each beside its
+`hash` (`sha256:` and the lowercase hex of SHA-256 over the text's UTF-8 bytes). A site string
+area 10 can use for the report's `site` member is `<package>/<scenario>#prompts/<key>`,
+`<package>/<scenario>#renders/<key>` and `<package>/<scenario>#deliverables/<id>`. That is a
+proposal for area 10 to adopt or change; no code in this area emits it.
+
+The stub contract: every value a 30 run was served is in the capture's `outputs`, keyed by 30's
+instance key. A 31 run reproduces the comparison by serving those same values (mapped from 31's
+keys to 30's), or by seeding `WorkflowStubOutputs` with 30's instance-key string exactly (a text
+array input's items count from 0, a node's list loop's from 1, as under *`scenarios/` and
+`captures/`* above). Replaying `outputs` is the safer of the two: pinned outputs are not
+generated, so only the replay serves them.
+
+An `unsettled` deliverable row and a `Refused` capture hold no text to compare. A `Failed` capture
+holds the texts up to the failure: the prompts and renders sent before it, and any deliverable
+composed before it.
+
+The renderer fixture's strings are what the registry's Scriban templates must equal once the C#
+renderers are gone.
 
 ## `conditions/`
 
@@ -245,7 +298,12 @@ fixture packages, then one or more per row of § 2.2's table, then one or more p
 
   An input or a field may carry `"required": true`, and a node read `"settled": true`; either
   takes the absent value away (below). A property a node's schema lists in `required` is required
-  too: a reply without it is refused by the node's format.
+  too: a reply without it is refused by the node's format. Every such node read today is
+  `onInvalid: fail` (`judge` in `composer-sources` and `example-nested-note`, `plan` in
+  `example-nested-note`, `read_letter` in `example-prior-letters`); a node with `onInvalid: flag`
+  would keep an invalid reply, so a property its schema requires could be absent there. The § 2.2
+  expressions' own `node.triage` schemas list no `required` properties, so their absent-field
+  cases remain.
 - `note`, optional: why a read is `settled`.
 
   `APackageExpressionsReads_AreItsPackagesDeclarations` holds a package expression's reads to its
@@ -301,7 +359,13 @@ So:
   (`AnAbsentInput_ReadsAsTheEngineMakesIt` pins each);
 - an input is normalised first: trailing whitespace is cut, so a supplied `" "` reaches the
   condition as `""` (an input never carries whitespace-only text); a required text field of an
-  element supplied `""` or `" "` is accepted by the start and reads `""`;
+  element supplied `""` or `" "` is accepted by the start and reads `""`. A case's `scope` in
+  `vectors.json` writes an input's value as supplied, before the start normalises it (its `" "`
+  reaches 30 as `""`): area 10 passes the inputs through 31's own start, or compares against the
+  normalised value;
+- an input cannot carry null at 30: it is supplied or absent, the start refuses a JSON `null` for
+  a scalar input, and absence is the effective map's `""`. A number, date or boolean read sees
+  null only as that absence; a text read never sees null;
 - a node is `prose` (text) or `classification` from the bundled catalogue, or a package-local
   object format with the read's schema; an absent node is on the skipped list, as the engine
   carries a flow that took no branch or a while's body before its first pass: `.content` and
@@ -364,7 +428,13 @@ output), `""` or whitespace-only (`row.not-text.node`). `AWhitespaceOnlyText_IsT
 
 Part 10 § 2.3 names only the whitespace-only case as a difference. That contradicts today's
 engine, which differs on `""` too. This area records the contradiction and raises it for the user;
-area 10 must not resolve it by itself.
+area 10 must not resolve it by itself. It was raised on the area issue, #1498, and on area 10's
+issue, #1507.
+
+Its practical weight: no package uses `!` on a text today (no package expression uses `!` at all).
+Where a conversion would meet one, the difference from `blank(x)` is wider than whitespace: it
+covers every unset optional text input (absent reads `""`, so `!input.x` is `false` and
+`blank(input.x)` is `true`) as well as whitespace-only text.
 
 ### Regenerating
 
