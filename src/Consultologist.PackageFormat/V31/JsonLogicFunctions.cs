@@ -102,7 +102,7 @@ public static class JsonLogicFunctions
         {
             JsonValueKind.True => true,
             JsonValueKind.False or JsonValueKind.Null or JsonValueKind.Undefined => false,
-            JsonValueKind.Number => Num(v) is not 0,
+            JsonValueKind.Number => Num(v) is { } n && n != 0,
             JsonValueKind.String => Text(v) is not "",
             _ => true,
         },
@@ -151,7 +151,7 @@ public static class JsonLogicFunctions
             var number = double.Parse(value.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture);
             return double.IsFinite(number) ? number : null;
         }
-        catch (Exception e) when (e is FormatException or OverflowException or InvalidOperationException or JsonException)
+        catch (Exception e) when (e is FormatException or OverflowException or InvalidOperationException or JsonException or ArgumentException)
         {
             return null;
         }

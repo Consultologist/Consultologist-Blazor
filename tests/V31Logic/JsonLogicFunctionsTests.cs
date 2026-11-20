@@ -291,6 +291,33 @@ public class JsonLogicFunctionsTests
     }
 
     [Fact]
+    public void Matches_LimitIsInBytes_NotCharacters()
+    {
+        var text = new string('é', 600_000); // 600,000 characters, 1,200,000 bytes
+        Assert.True(text.Length < IRegexp.MaxTextBytes);
+        var thrown = Assert.Throws<JsonLogicFailureException>(() => JsonLogicFunctions.Apply("matches", [JsonValue.Create(text), JsonValue.Create("a")]));
+        Assert.Equal(JsonLogicFailureKind.MatchesTextTooLong, thrown.Failure.Kind);
+    }
+
+    [Fact]
+    public void NonFiniteNumbers_BuiltInCode_ReadAsNull()
+    {
+        foreach (var bad in new[] { double.NaN, double.PositiveInfinity, double.NegativeInfinity })
+        {
+            var x = JsonValue.Create(bad);
+            var one = JsonValue.Create(1);
+            Assert.Null(JsonLogicFunctions.Apply("+", [x, one]));
+            Assert.Null(JsonLogicFunctions.Apply("-", [x]));
+            Assert.Equal("false", CanonicalJson.Write(JsonLogicFunctions.Apply("<", [x, one])));
+            Assert.Equal("false", CanonicalJson.Write(JsonLogicFunctions.Apply("in", [x, new JsonArray(1)])));
+            Assert.Equal("a", JsonLogicFunctions.Apply("cat", [JsonValue.Create("a"), x])!.GetValue<string>());
+            Assert.Null(JsonLogicFunctions.Apply("size", [x]));
+            Assert.Null(JsonLogicFunctions.Apply("add_days", [JsonValue.Create("2026-01-01"), x]));
+            Assert.False(JsonLogicFunctions.Truthy(x));
+        }
+    }
+
+    [Fact]
     public void Plain_ConvertsOnlyWhenTold()
     {
         Assert.Equal("a", JsonLogicFunctions.Apply("plain", [JsonValue.Create("**a**")])!.GetValue<string>());

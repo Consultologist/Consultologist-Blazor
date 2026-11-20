@@ -5,7 +5,7 @@ namespace Consultologist.PackageFormat.V31;
 /// <summary>
 /// #1501 (specVersion 31, area 04): the one Markdown-to-plain-text conversion (decision D13): Markdig's
 /// <c>Markdown.ToPlainText</c> over the <c>UseAdvancedExtensions</c> pipeline (part 02 § 5.2), <c>\r\n</c> and <c>\r</c>
-/// turned to <c>\n</c>, line breaks at the very end removed. It is <c>plain_conversion</c> 1.0.0, pinned by goldens; the
+/// turned to <c>\n</c>, spaces, tabs and line breaks at the very end removed (everything else is Markdig's own output, a table's rows included, which run together). It is <c>plain_conversion</c> 1.0.0, pinned by goldens; the
 /// <c>plain</c> operation and plain-text output both use it.
 /// </summary>
 public static class PlainConversion
@@ -22,6 +22,6 @@ public static class PlainConversion
         if (string.IsNullOrEmpty(markdown))
             return "";
         var plain = Markdown.ToPlainText(markdown, Pipeline);
-        return plain.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').TrimEnd('\n');
+        return plain.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n').TrimEnd('\n', ' ', '\t');
     }
 }
