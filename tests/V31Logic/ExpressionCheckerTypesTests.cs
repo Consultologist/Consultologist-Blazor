@@ -24,6 +24,13 @@ public class ExpressionCheckerTypesTests
          "required":["a","b"],"additionalProperties":false}
         """;
 
+    /// <summary>A format whose property reads a <c>#/$defs</c> entry, which must travel with the property.</summary>
+    private const string CodedRow = """
+        {"$defs":{"code":{"type":"string","enum":["a","b"]}},
+         "type":"object","properties":{"code":{"$ref":"#/$defs/code"},"n":{"type":"number"}},
+         "required":["code","n"],"additionalProperties":false}
+        """;
+
     /// <summary>A check loop's <c>.items</c> element (part 04 § 2.6), as much of it as <c>all_pass</c> reads.</summary>
     private const string CoverageItem = """
         {"type":"object","properties":{"label":{"type":"string"},
@@ -32,7 +39,7 @@ public class ExpressionCheckerTypesTests
          "required":["label","state","value"],"additionalProperties":false}
         """;
 
-    private static readonly FormatSet Formats = LogicFixture.Formats(("summary_row", SummaryRow), ("plain_pair", PlainPair));
+    private static readonly FormatSet Formats = LogicFixture.Formats(("summary_row", SummaryRow), ("plain_pair", PlainPair), ("coded_row", CodedRow));
 
     private static readonly LogicFixture.MapScope Scope = new(new Dictionary<string, ScopeHead>
     {
@@ -47,6 +54,7 @@ public class ExpressionCheckerTypesTests
         ["input.date_of_birth"] = LogicFixture.FormatHead("date"),
         ["input.summary"] = LogicFixture.FormatHead("markdown_block"),
         ["input.flags"] = LogicFixture.FormatHead("""{"type":"array","items":{"type":"string"}}"""),
+        ["input.codes"] = LogicFixture.FormatHead("""{"$defs":{"code":{"type":"string","enum":["a","b"]}},"type":"array","items":{"$ref":"#/$defs/code"}}"""),
         ["node.draft"] = LogicFixture.Deferred(),
         ["node.count"] = LogicFixture.Deferred(),
         ["node.extract_input_terms"] = LogicFixture.FormatHead("concept_list"),
@@ -63,6 +71,7 @@ public class ExpressionCheckerTypesTests
     [
         "\"check_result\"", "\"number\"", "\"markdown_block\"", "\"string\"", "\"plaintext\"", NoteType, "\"date\"", "\"boolean\"",
         """{"type":"integer"}""", """{"type":["number","null"]}""", "\"summary_row\"", """{"type":"array","items":{"$ref":"summary_row"}}""",
+        "\"coded_row\"",
     ];
 
     private static ExpressionCheck Check(string rule, ExpressionSiteKind kind = ExpressionSiteKind.NodeIf, string? declared = null) =>
@@ -150,6 +159,10 @@ public class ExpressionCheckerTypesTests
             "Node 'gate' gives in input.age.value (number); in takes a string to find." },
         { ExpressionSiteKind.NodeIf, null, """{"in":["a",{"var":"input.age.value"}]}""", "A04-001",
             "Node 'gate' gives in input.age.value (number); in takes a list of its type, or text." },
+        { ExpressionSiteKind.NodeIf, null, """{"in":[{"var":"input.date_of_birth.value"},["1960-06-15","1970-13-01"]]}""", "A04-001",
+            "Node 'gate' gives in input.date_of_birth.value (date); in takes a list of its type, or text." },
+        { ExpressionSiteKind.NodeIf, null, """{"in":["c",{"var":"input.codes.value"}]}""", "S03-023",
+            "Node 'gate' compares input.codes.value with \"c\", which is not one of its values (a, b)." },
     };
 
     [Theory]
@@ -182,6 +195,9 @@ public class ExpressionCheckerTypesTests
         { ExpressionSiteKind.Expression, NoteType, """{"if":[{"var":"input.include_billing.value"},"consult","follow_up"]}""", "string {consult, follow_up}" },
         { ExpressionSiteKind.Expression, "\"date\"", """{"add_days":[{"var":"run.date"},7]}""", "date" },
         { ExpressionSiteKind.Expression, "\"number\"", """{"+":[{"var":"node.count.value"},1]}""", "number" },
+        { ExpressionSiteKind.NodeIf, null, """{"in":[{"var":"input.date_of_birth.value"},["1960-06-15","1970-01-01"]]}""", "boolean" },
+        { ExpressionSiteKind.NodeIf, null, """{"in":["a",{"var":"input.codes.value"}]}""", "boolean" },
+        { ExpressionSiteKind.Expression, "\"string\"", """{"cat":["Seen ",{"var":"run.date"}]}""", "string" },
     };
 
     [Theory]
@@ -202,6 +218,18 @@ public class ExpressionCheckerTypesTests
             "S03-026", "Computed node 'total' yields integer | null; it declares number.");
         Assert.Equal("integer", TypeOf(Check(OneOrNull, ExpressionSiteKind.Expression, """{"type":["number","null"]}""")));
 
+        // D25: a result that is only nullable is held as null; a deferred read (D2) is not held.
+        OneRefusal(Check("""{"if":[{"var":"input.include_billing.value"},null,null]}""", ExpressionSiteKind.Expression, "\"string\""),
+            "S03-026", "Computed node 'total' yields null; it declares string.");
+        OneRefusal(Check("null", ExpressionSiteKind.Expression, "\"string\""),
+            "S03-026", "Computed node 'total' yields null; it declares string.");
+        Assert.Empty(Check("null", ExpressionSiteKind.Expression, """{"type":["string","null"]}""").Refusals);
+        Assert.Empty(Check("""{"var":"node.count.value"}""", ExpressionSiteKind.Expression, "\"string\"").Refusals);
+
+        // A literal that is no value of the declared enum leaves the branches strings: the result is held to the enum.
+        OneRefusal(Check("""{"if":[{"var":"input.include_billing.value"},"consult","consultation"]}""", ExpressionSiteKind.Expression, NoteType),
+            "S03-026", "Computed node 'total' yields string; it declares string {consult, follow_up}.");
+
         // The expectation is computed from FormatTypes.Fits: the checker holds an enum to string as area 03 does.
         var fits = FormatTypes.Fits(JsonNode.Parse(NoteType), JsonValue.Create("string"), Formats);
         var check = Check("""{"var":"input.note_type.value"}""", ExpressionSiteKind.Expression, "\"string\"");
@@ -216,6 +244,10 @@ public class ExpressionCheckerTypesTests
         { "\"summary_row\"", """{"object":{"title":"Okafor","count":3,"note":{"var":"input.consult_draft.content"}}}""", null, null },
         { "\"summary_row\"", """{"object":{"title":"Okafor","note":null}}""",
             "S03-027", "Computed node 'total' builds summary_row without count; object must give every property of the format." },
+        { "\"summary_row\"", """{"object":{"title":"Okafor","count":3,"note":null}}""", null, null },
+        { "\"coded_row\"", """{"object":{"code":"a","n":1}}""", null, null },
+        { "\"coded_row\"", """{"object":{"code":"c","n":1}}""",
+            "A04-009", "Computed node 'total' builds coded_row with code as string; the format declares it string {a, b}." },
         { "\"summary_row\"", """{"object":{"title":"Okafor","count":3,"note":null,"extra":1}}""",
             "S03-028", "Computed node 'total' builds summary_row with extra, which the format doesn't declare." },
         { "\"summary_row\"", """{"object":{"title":"Okafor","count":"three","note":null}}""",

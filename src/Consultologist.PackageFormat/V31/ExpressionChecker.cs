@@ -38,8 +38,9 @@ public static partial class ExpressionChecker
     private static readonly ExpressionType Unknown = new(null, false);
 
     /// <summary>
-    /// The check of <paramref name="rule"/> at <paramref name="site"/>. A <c>null</c> rule (a site that is
-    /// <c>null</c>: always) gives no refusal and the type <c>boolean</c>.
+    /// The check of <paramref name="rule"/> at <paramref name="site"/>. A <c>null</c> rule at a condition
+    /// site (a site that is <c>null</c>: always) gives no refusal and the type <c>boolean</c>; at an
+    /// <see cref="ExpressionSiteKind.Expression"/> it is the <c>null</c> literal, held to the declared format (D25).
     /// </summary>
     public static ExpressionCheck Check(JsonNode? rule, ExpressionSite site, IExpressionScope scope, FormatSet formats)
     {
@@ -49,7 +50,7 @@ public static partial class ExpressionChecker
 
         var printed = JsonLogicPrinter.Print(rule);
         var paths = JsonLogicShape.Paths(rule);
-        if (rule is null)
+        if (rule is null && site.Kind != ExpressionSiteKind.Expression)
             return new ExpressionCheck([], new ExpressionType(JsonValue.Create("boolean"), false), paths, printed, []);
 
         // (1) The written form.
@@ -77,8 +78,9 @@ public static partial class ExpressionChecker
             context.Refusals.Add(ExpressionSentences.NotABoolean(site, context.TypeString(type)));
         }
 
-        if (context.Refusals.Count == 0 && site.Kind == ExpressionSiteKind.Expression && type.Format is not null
-            && site.Declared is not null && !FormatTypes.Fits(context.Effective(type), site.Declared, formats))
+        // D25: a result that is only nullable (a null literal, an if of null branches) is held as null; one not known (D2) is not held.
+        if (context.Refusals.Count == 0 && site.Kind == ExpressionSiteKind.Expression && site.Declared is not null
+            && context.Effective(type) is { } yields && !FormatTypes.Fits(yields, site.Declared, formats))
         {
             context.Refusals.Add(ExpressionSentences.YieldsNotDeclared(site, context.TypeString(type), TypeStrings.Print(site.Declared, formats)));
         }

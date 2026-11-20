@@ -257,7 +257,17 @@ public static class FormatReads
             return null;
         }
 
-        var clone = field.DeepClone();
+        return Carried(field, defs);
+    }
+
+    /// <summary>
+    /// A clone of <paramref name="node"/>, a schema taken out of a file whose <c>$defs</c> are <paramref name="defs"/>,
+    /// that reads alone: a <c>#/$defs</c> site gives its definition (with the site's annotations), and the
+    /// <c>$defs</c> travel with it when it still holds a <c>#/$defs</c> reference.
+    /// </summary>
+    internal static JsonNode Carried(JsonNode node, JsonObject? defs)
+    {
+        var clone = node.DeepClone();
         for (var hop = 0; hop < Hops && clone is JsonObject site && defs is not null
             && FormatTypes.Text(site["$ref"]) is { } reference && FormatTypes.OnlyAnnotationsBeside(site)
             && FormatDialect.DefinitionName(reference) is { } definition && defs[definition] is JsonObject target; hop++)

@@ -219,6 +219,14 @@ public static partial class ExpressionChecker
             {
                 var other = onlyLiterals ? o : one;
                 var strings = onlyLiterals ? literals : [o];
+                if (JsonLogicShape.TextOf(other.Rule) is not null)
+                {
+                    // A literal the target typed beside one it could not: both stay strings, and the result is held to the target (S03-026).
+                    if (!onlyLiterals)
+                        (one, literals) = (o, [o]);
+                    continue;
+                }
+
                 var shape = FormatTypes.Shape(other.Type.Format, c.Formats);
                 if (shape is FormatShape.Enum or FormatShape.Text
                     || (shape == FormatShape.Date && strings.All(s => JsonLogicFunctions.Date(s.Rule) is not null)))
@@ -330,8 +338,15 @@ public static partial class ExpressionChecker
 
         if (c.Is(haystack, Family.List))
         {
-            var items = c.Core(haystack.Type.Format)?["items"];
+            var items = ItemsOf(haystack.Type.Format, c.Formats);
             var element = c.FamilyOf(new Operand(null, new ExpressionType(items, false)));
+
+            // A literal list of valid dates is a list of dates to a date needle, as a date literal is to = (D24).
+            if (element == Family.String && c.FamilyOf(needle) == Family.Date && haystack.Rule is JsonArray dates
+                && dates.All(rule => rule is null || JsonLogicFunctions.Date(rule) is not null))
+            {
+                element = Family.Date;
+            }
             if (c.FamilyOf(needle) != Family.Free && element != Family.Free
                 && (element is not (Family.String or Family.Number or Family.Boolean or Family.Date) || !c.Is(needle, element)))
             {
@@ -364,9 +379,9 @@ public static partial class ExpressionChecker
     }
 
     /// <summary>
-    /// <c>cat</c>: strings, numbers and plain text (Markdown is S03-035, anything else A04-001); <c>string</c> when every
-    /// operand is a string or a <c>null</c> literal (D24), not known when the rest are strings and one is not known,
-    /// <c>plaintext</c> otherwise.
+    /// <c>cat</c>: strings, numbers and plain text (Markdown is S03-035, anything else A04-001); a date is a string here
+    /// (part 03 § 5.5: a <c>string</c> with <c>format: date</c>). <c>string</c> when every operand is a string, a date
+    /// or a <c>null</c> literal (D24), not known when the rest are such and one is not known, <c>plaintext</c> otherwise.
     /// </summary>
     private static ExpressionType Cat(List<Operand> ops, Context c)
     {
@@ -374,7 +389,7 @@ public static partial class ExpressionChecker
         {
             switch (c.FamilyOf(o))
             {
-                case Family.Free or Family.String or Family.Number:
+                case Family.Free or Family.String or Family.Date or Family.Number:
                     break;
                 case Family.Text when FormatTypes.KindOf(c.Core(o.Type.Format)) == "plaintext":
                     break;
@@ -387,7 +402,7 @@ public static partial class ExpressionChecker
             }
         }
 
-        if (ops.Any(o => c.FamilyOf(o) is not (Family.Free or Family.String)))
+        if (ops.Any(o => c.FamilyOf(o) is not (Family.Free or Family.String or Family.Date)))
             return Named("plaintext");
         return ops.Any(o => c.FamilyOf(o) == Family.Free && !o.IsNull) ? Unknown : Named("string");
     }
@@ -426,7 +441,7 @@ public static partial class ExpressionChecker
             return Target.Silent;
         if (target.Misfit is not { } misfit)
             return Target.None;
-        var items = FormatTypes.Shape(target.Format, formats) == FormatShape.List ? Core(target.Format, formats)?["items"] : null;
+        var items = FormatTypes.Shape(target.Format, formats) == FormatShape.List ? ItemsOf(target.Format, formats) : null;
         return new Target(items, yields => misfit($"list<{yields}>"));
     }
 
@@ -450,10 +465,10 @@ public static partial class ExpressionChecker
         }
 
         var built = TypeStrings.Print(target.Format, c.Formats);
-        var properties = schema["properties"] as JsonObject ?? [];
+        var properties = PropertiesOf(target.Format, c.Formats);
         foreach (var (field, rule) in fields)
         {
-            if (!properties.TryGetPropertyValue(field, out var property))
+            if (!properties.TryGetValue(field, out var property))
             {
                 TypeOf(rule, c, Target.Silent);
                 c.Refusals.Add(ExpressionSentences.BuildsUndeclared(c.Site, built, field));
@@ -467,7 +482,7 @@ public static partial class ExpressionChecker
                 c.Refusals.Add(ExpressionSentences.BuildsFieldAs(c.Site, built, field, c.TypeString(type), declared));
         }
 
-        foreach (var (property, _) in properties.Where(p => !fields.ContainsKey(p.Key)))
+        foreach (var property in properties.Keys.Where(p => !fields.ContainsKey(p)))
             c.Refusals.Add(ExpressionSentences.BuildsWithout(c.Site, built, property));
 
         return c.Refusals.Count > said ? Unknown : new ExpressionType(target.Format!.DeepClone(), false);
@@ -486,16 +501,36 @@ public static partial class ExpressionChecker
     /// The schema <paramref name="format"/> is, through names and <c>#/$defs</c>, with <c>null</c> set aside: an
     /// <c>anyOf</c> of one type and <c>null</c> gives that type's schema; null when there is no one schema.
     /// </summary>
-    private static JsonObject? Core(JsonNode? format, FormatSet formats)
+    private static JsonObject? Core(JsonNode? format, FormatSet formats) => CoreWithDefs(format, formats).Schema;
+
+    /// <summary><see cref="Core"/>, with the <c>$defs</c> the schema's own <c>#/$defs</c> references read.</summary>
+    private static (JsonObject? Schema, JsonObject? Defs) CoreWithDefs(JsonNode? format, FormatSet formats)
     {
         var (schema, defs) = FormatTypes.Follow(format, FormatTypes.Defs(format), formats);
         if (schema?["anyOf"] is not JsonArray members)
-            return schema;
+            return (schema, defs);
         var others = members
-            .Select(m => FormatTypes.Follow(m, defs, formats).Schema)
-            .Where(m => m is null || FormatTypes.Text(m["type"]) != "null")
+            .Select(m => FormatTypes.Follow(m, defs, formats))
+            .Where(m => m.Schema is null || FormatTypes.Text(m.Schema["type"]) != "null")
             .ToList();
-        return others.Count == 1 ? others[0] : null;
+        return others.Count == 1 ? others[0] : (null, null);
+    }
+
+    /// <summary>A list format's <c>items</c>, taken out so that it reads alone (its <c>#/$defs</c> carried, as <see cref="FormatReads"/> does); null when none.</summary>
+    private static JsonNode? ItemsOf(JsonNode? format, FormatSet formats) =>
+        CoreWithDefs(format, formats) is ({ } schema, var defs) && schema["items"] is { } items ? FormatReads.Carried(items, defs) : null;
+
+    /// <summary>An object format's properties in written order, each taken out so that it reads alone (its <c>#/$defs</c> carried).</summary>
+    private static OrderedDictionary<string, JsonNode?> PropertiesOf(JsonNode? format, FormatSet formats)
+    {
+        var properties = new OrderedDictionary<string, JsonNode?>(StringComparer.Ordinal);
+        if (CoreWithDefs(format, formats) is ({ } schema, var defs) && schema["properties"] is JsonObject written)
+        {
+            foreach (var (name, property) in written)
+                properties[name] = property is null ? null : FormatReads.Carried(property, defs);
+        }
+
+        return properties;
     }
 
     /// <summary>An enum's values, its <c>enum</c> or its <c>oneOf</c>'s <c>const</c>s, in order, <c>null</c> set aside.</summary>
@@ -549,13 +584,13 @@ public static partial class ExpressionChecker
         /// <summary><c>all_pass</c>'s and <c>count_pass</c>'s list: of <c>check_result</c>s, or of <c>.items</c> elements whose <c>value</c> is one (part 03 § 5.4).</summary>
         public bool ListOfCheckResults(Operand o)
         {
-            if (FamilyOf(o) != Family.List || Core(o.Type.Format)?["items"] is not { } items)
+            if (FamilyOf(o) != Family.List || ItemsOf(o.Type.Format, Formats) is not { } items)
                 return false;
             var checkResult = JsonValue.Create("check_result");
             if (FormatTypes.Fits(items, checkResult, Formats))
                 return true;
-            return Core(items)?["properties"] is JsonObject properties && properties.ContainsKey("state")
-                && properties["value"] is { } value && FitsAsideNull(value, checkResult);
+            var properties = PropertiesOf(items, Formats);
+            return properties.ContainsKey("state") && properties.GetValueOrDefault("value") is { } value && FitsAsideNull(value, checkResult);
         }
     }
 }
