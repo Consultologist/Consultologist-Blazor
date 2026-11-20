@@ -1,0 +1,75 @@
+{
+  "name": "example-prior-letters",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Prior letters demo",
+  "description": "A demonstration of a loop that stops early, which specVersion 30 opened: the prior letters are read one at a time, in the order given, and the loop stops after the first letter that answers the consult's referral question; the letters after it are kept, marked not run. An assessment then reads what the letters said. Not intended for clinical use.",
+  "tags": [
+    "demo",
+    "prior-letters"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "prior_letters",
+      "label": "Prior letters",
+      "required": false,
+      "type": "array",
+      "items": "text"
+    }
+  ],
+  "formats": [
+    {
+      "id": "letter_check",
+      "file": "formats/letter_check.json"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "letters",
+      "label": "Prior letters",
+      "for": "item in input.prior_letters",
+      "until": "node.read_letter.value.answers_question == true",
+      "nodes": [
+        "read_letter",
+        "letter_summary"
+      ],
+      "ret": "node.letter_summary"
+    },
+    {
+      "id": "read_letter",
+      "label": "Reading the letter",
+      "format": "letter_check",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "letter_summary",
+      "label": "Summarising the letter",
+      "format": "prose"
+    },
+    {
+      "id": "assessment",
+      "label": "Assessment",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Consultation note with prior letters",
+      "sources": [
+        "node.assessment",
+        "node.letters"
+      ]
+    }
+  ]
+}

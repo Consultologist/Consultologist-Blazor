@@ -1,0 +1,57 @@
+flowchart TD
+    input_sections(["input.sections"])
+    snippet_sections(["snippet.sections"])
+    input_consult_draft(["input.consult_draft"])
+    input_include_billing(["input.include_billing"])
+
+    coverage["coverage<br/>Naming the sections left out"]
+    sections_draft -->|"value, content"| coverage
+
+    subgraph for_sections_draft["sections_draft: per input.sections item"]
+        subgraph case_route_branch_1["route: narrative"]
+            narrative_draft["narrative_draft<br/>Drafting a narrative section"]
+        end
+        subgraph case_route_branch_2["route: table"]
+            table_draft["table_draft<br/>Drafting a table section"]
+        end
+        route["route<br/>Routing a section by its kind<br/>case item.value.kind"]
+    end
+    sections_draft["sections_draft<br/>Sections — drafting each requested section by its kind<br/>item in input.sections"]
+
+    subgraph for_patient_summaries["patient_summaries: per input.sections item"]
+        subgraph if_narrative_only_then["narrative_only: then"]
+            patient_summary["patient_summary<br/>Writing the patient-facing line"]
+        end
+        narrative_only["narrative_only<br/>Narrative sections only<br/>if item.value.kind == #quot;narrative#quot;"]
+    end
+    patient_summaries["patient_summaries<br/>Sections — one patient-facing line per narrative section<br/>item in input.sections"]
+
+    subgraph for_standing_sections["standing_sections: per snippet.sections item"]
+        subgraph if_applies_then["applies: then"]
+            standing_draft["standing_draft<br/>Tailoring a standing section"]
+        end
+        applies["applies<br/>Holding the billing section back unless asked<br/>if item.id != #quot;billing#quot; || input.include_billing == true"]
+    end
+    standing_sections["standing_sections<br/>Standing sections — tailored to this consult<br/>item in snippet.sections"]
+    input_consult_draft --> narrative_draft
+    input_consult_draft --> table_draft
+    narrative_draft -->|"ret (narrative)"| route
+    table_draft -->|"ret (table)"| route
+    input_sections -->|"for"| for_sections_draft
+    route -->|"ret"| sections_draft
+    input_consult_draft --> patient_summary
+    patient_summary -->|"ret (then)"| narrative_only
+    input_sections -->|"for"| for_patient_summaries
+    narrative_only -->|"ret"| patient_summaries
+    input_consult_draft --> standing_draft
+    standing_draft -->|"ret (then)"| applies
+    input_include_billing -.->|"if"| applies
+    snippet_sections -->|"for"| for_standing_sections
+    applies -->|"ret"| standing_sections
+
+    result_consult_note{{"consult_note<br/>Consult note"}}
+    sections_draft --> result_consult_note
+    standing_sections --> result_consult_note
+    coverage --> result_consult_note
+    result_patient_summary{{"patient_summary<br/>Patient summary"}}
+    patient_summaries --> result_patient_summary

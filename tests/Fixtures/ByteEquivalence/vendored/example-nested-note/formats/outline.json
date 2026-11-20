@@ -1,0 +1,30 @@
+{
+  "type": "object",
+  "producer": "custom",
+  "outputMacros": false,
+  "description": "The points one section of a consultation note makes, in order, one paragraph each.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "points"
+    ],
+    "properties": {
+      "points": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "point"
+          ],
+          "properties": {
+            "point": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

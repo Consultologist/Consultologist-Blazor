@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "producer": "custom",
+  "outputMacros": false,
+  "description": "The sections a consultation note should have for this consult, each with a short title and what it covers, and a one-sentence summary of the consultation.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "summary",
+      "sections"
+    ],
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "sections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "purpose"
+          ],
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "purpose": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

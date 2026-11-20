@@ -1,0 +1,126 @@
+{
+  "name": "test/general",
+  "version": "v2026.11.3",
+  "specVersion": 30,
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "nodes": [
+    {
+      "id": "extract_patient_concepts",
+      "label": "Extracting clinical concepts",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "The consult could not be processed because clinical concepts could not be extracted from the draft."
+    },
+    {
+      "id": "identify_problem",
+      "label": "Identifying primary problem",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "No valid disease or problem concept was identified."
+    },
+    {
+      "id": "create_typical_trajectory",
+      "label": "Building reference trajectory",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "No valid typical trajectory concepts were generated."
+    },
+    {
+      "id": "create_patient_trajectory",
+      "label": "Building patient trajectory",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "No valid patient trajectory concepts were generated."
+    },
+    {
+      "id": "standard_section_draft",
+      "label": "Drafting section",
+      "format": "prose"
+    },
+    {
+      "id": "patient_section_draft",
+      "label": "Applying patient information",
+      "format": "prose"
+    },
+    {
+      "id": "standards",
+      "label": "Standards",
+      "for": "item in snippet.standards",
+      "nodes": [
+        "section_instructions",
+        "patient_section_draft",
+        "standard_section_draft"
+      ],
+      "ret": "node.section_instructions"
+    },
+    {
+      "id": "section_instructions",
+      "label": "Applying section instructions",
+      "format": "prose"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "consult_specialty",
+      "label": "Specialty",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "family_medicine",
+        "internal_medicine",
+        "medical_oncology",
+        "cardiology",
+        "infectious_diseases",
+        "endocrinology",
+        "pediatric_infectious_diseases",
+        "pediatric_cardiology"
+      ]
+    },
+    {
+      "id": "note_type",
+      "label": "Note Type",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "consult",
+        "follow_up",
+        "discharge_summary",
+        "consult_requisition"
+      ]
+    },
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    }
+  ],
+  "tags": [],
+  "macros": [
+    "letrozole_prescription_text",
+    "test"
+  ],
+  "deliverables": [
+    {
+      "id": "consult",
+      "label": "Consultation note",
+      "macros": [
+        {
+          "id": "test",
+          "at": "append"
+        }
+      ],
+      "sources": [
+        "node.standards"
+      ]
+    }
+  ],
+  "snippets": [
+    "snomed_tool_guidance",
+    "standards/"
+  ]
+}

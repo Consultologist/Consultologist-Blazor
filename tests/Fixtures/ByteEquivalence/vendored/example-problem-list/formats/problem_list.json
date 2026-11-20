@@ -1,0 +1,38 @@
+{
+  "type": "object",
+  "producer": "custom",
+  "outputMacros": false,
+  "description": "The problems a consult draft names, each with what the draft says about it, and a one-sentence summary.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "summary",
+      "problems"
+    ],
+    "properties": {
+      "summary": {
+        "type": "string"
+      },
+      "problems": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "detail"
+          ],
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "detail": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

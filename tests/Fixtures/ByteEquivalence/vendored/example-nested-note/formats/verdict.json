@@ -1,0 +1,26 @@
+{
+  "type": "object",
+  "producer": "custom",
+  "outputMacros": false,
+  "description": "A judgement of a draft summary: good, or revise with what to change.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "verdict",
+      "feedback"
+    ],
+    "properties": {
+      "verdict": {
+        "type": "string",
+        "enum": [
+          "good",
+          "revise"
+        ]
+      },
+      "feedback": {
+        "type": "string"
+      }
+    }
+  }
+}

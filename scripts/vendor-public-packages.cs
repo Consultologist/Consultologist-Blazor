@@ -9,8 +9,8 @@
 //   dotnet run -v q --file scripts/vendor-public-packages.cs -- <path to consultologist-workflows> [<fixture root>]
 //
 // The fixture root defaults to tests/Fixtures/ByteEquivalence under the repo this script sits in.
-// It writes packages/<name>/... (the files exactly as git holds them) and packages/index.json
-// (name, tag, commit, and the sha256 of every file). packages/ is deleted first so a file removed
+// It writes vendored/<name>/... (the files exactly as git holds them) and vendored/index.json
+// (name, tag, commit, and the sha256 of every file). vendored/ is deleted first so a file removed
 // upstream cannot linger. A tag that does not resolve stops the script before anything is written.
 //
 // WHY THE TAGS ARE HERE. These are each package's latest tag at specVersion 30, the engine this
@@ -84,18 +84,18 @@ foreach (var tag in tags)
     packages.Add((name, tag, Encoding.UTF8.GetString(commit.Output).Trim(), files));
 }
 
-var packagesDir = Path.Combine(fixtureRoot, "packages");
+var vendoredDir = Path.Combine(fixtureRoot, "vendored");
 
-if (Directory.Exists(packagesDir))
+if (Directory.Exists(vendoredDir))
 {
-    Directory.Delete(packagesDir, recursive: true);
+    Directory.Delete(vendoredDir, recursive: true);
 }
 
 foreach (var package in packages)
 {
     foreach (var (relative, file) in package.Files)
     {
-        var target = Path.Combine(packagesDir, package.Name, relative);
+        var target = Path.Combine(vendoredDir, package.Name, relative);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
         File.WriteAllBytes(target, file.Bytes);
     }
@@ -119,8 +119,8 @@ var json = JsonSerializer.Serialize(index, new JsonSerializerOptions
     NewLine = "\n",
 });
 
-File.WriteAllBytes(Path.Combine(packagesDir, "index.json"), new UTF8Encoding(false).GetBytes(json + "\n"));
-Console.WriteLine($"Vendored {packages.Count} packages into {packagesDir}.");
+File.WriteAllBytes(Path.Combine(vendoredDir, "index.json"), new UTF8Encoding(false).GetBytes(json + "\n"));
+Console.WriteLine($"Vendored {packages.Count} packages into {vendoredDir}.");
 return 0;
 
 // Raw stdout bytes: text decoding would change a CRLF or a BOM, and the bytes are the point.

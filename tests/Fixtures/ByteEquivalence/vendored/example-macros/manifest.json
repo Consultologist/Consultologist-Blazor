@@ -1,0 +1,230 @@
+{
+  "name": "example-macros",
+  "version": "v2026.11.3",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "description": "Every state of the Editor\u0027s macro pane on one 27 package: a macro\u0027s own if (a clause; a grouped and/or), instances before and after a node and on loop body nodes with item gates (a snippet-folder loop; an array-input loop with a case), prepend and append on a deliverable with gates, inline reads through a prompt, a snippet and another macro\u0027s instruction, a .content read, a macro folder, an optional macro with a default, and the never-fires, unread and empty-prompt notes. Not clinical.",
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "note_type",
+      "label": "Note type",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "consult",
+        "follow_up",
+        "discharge_summary"
+      ]
+    },
+    {
+      "id": "include_counselling",
+      "label": "Include side-effect counselling",
+      "required": false,
+      "type": "boolean"
+    },
+    {
+      "id": "sections",
+      "label": "Sections to produce",
+      "required": true,
+      "type": "array",
+      "items": "object",
+      "fields": [
+        {
+          "id": "title",
+          "label": "Title",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "id": "kind",
+          "label": "Kind",
+          "required": true,
+          "type": "enum",
+          "values": [
+            "narrative",
+            "table",
+            "omit"
+          ]
+        }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "standing_sections",
+      "label": "Standing sections \u2014 tailored to this consult",
+      "for": "item in snippet.sections",
+      "nodes": [
+        "standing_draft"
+      ],
+      "ret": "node.standing_draft"
+    },
+    {
+      "id": "standing_draft",
+      "label": "Tailoring a standing section",
+      "format": "prose",
+      "macros": [
+        {
+          "id": "counselling",
+          "at": "after",
+          "if": "item.id == \u0022assessment_plan\u0022"
+        }
+      ]
+    },
+    {
+      "id": "requested_sections",
+      "label": "Requested sections \u2014 drafting each by its kind",
+      "for": "item in input.sections",
+      "nodes": [
+        "route"
+      ],
+      "ret": "node.route"
+    },
+    {
+      "id": "route",
+      "label": "Routing a section by its kind",
+      "case": "item.value.kind",
+      "branches": [
+        {
+          "when": [
+            "narrative"
+          ],
+          "nodes": [
+            "narrative_draft"
+          ],
+          "ret": "node.narrative_draft"
+        },
+        {
+          "when": [
+            "table"
+          ],
+          "nodes": [
+            "table_draft"
+          ],
+          "ret": "node.table_draft"
+        }
+      ]
+    },
+    {
+      "id": "narrative_draft",
+      "label": "Drafting a narrative section",
+      "format": "prose",
+      "macros": [
+        {
+          "id": "section_caveat",
+          "at": "after",
+          "if": "input.note_type == \u0022consult\u0022"
+        }
+      ]
+    },
+    {
+      "id": "table_draft",
+      "label": "Drafting a table section",
+      "format": "prose",
+      "macros": [
+        {
+          "id": "table_note",
+          "at": "before"
+        }
+      ]
+    },
+    {
+      "id": "summary",
+      "label": "Closing summary",
+      "format": "prose",
+      "macros": [
+        {
+          "id": "preamble",
+          "at": "before"
+        },
+        {
+          "id": "sign_off",
+          "at": "after"
+        }
+      ]
+    },
+    {
+      "id": "patient_line",
+      "label": "One line for the patient",
+      "format": "prose"
+    }
+  ],
+  "tags": [],
+  "macros": [
+    "counselling",
+    "house_style",
+    "silent_reminder",
+    "section_caveat",
+    "table_note",
+    "preamble",
+    "sign_off",
+    "wrap_up",
+    "boilerplate",
+    "header_line",
+    "closing",
+    "kept_note",
+    "followup_only",
+    "brief_plan",
+    "follow_up_reminder",
+    "notes/"
+  ],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "label": "Consult note",
+      "sources": [
+        "node.requested_sections",
+        "node.standing_sections",
+        "node.summary"
+      ],
+      "macros": [
+        {
+          "id": "header_line",
+          "at": "prepend",
+          "if": "input.note_type != \u0022discharge_summary\u0022"
+        },
+        {
+          "id": "closing",
+          "at": "append"
+        },
+        {
+          "id": "kept_note",
+          "at": "append"
+        },
+        {
+          "id": "followup_only",
+          "at": "append",
+          "if": "input.note_type == \u0022follow_up\u0022"
+        },
+        {
+          "id": "brief_plan",
+          "at": "append"
+        },
+        {
+          "id": "follow_up_reminder",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "patient_letter",
+      "label": "Patient letter",
+      "sources": [
+        "node.patient_line"
+      ]
+    }
+  ],
+  "snippets": [
+    "sections/",
+    "style"
+  ]
+}

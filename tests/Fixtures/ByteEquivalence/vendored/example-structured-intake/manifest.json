@@ -1,0 +1,174 @@
+{
+  "name": "example-structured-intake",
+  "version": "v2026.11.3",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Structured intake demo",
+  "description": "A demonstration of what specVersion 9 opened: an array of prior notes fanned per element (leave it empty to see the empty-fan refusal), a patient object read by path, a number driving an ordering comparison, and a deliverable gated on count(). Not intended for clinical use.",
+  "tags": [
+    "demo",
+    "structured-intake"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "prior_notes",
+      "label": "Prior notes",
+      "required": false,
+      "type": "array",
+      "items": "text"
+    },
+    {
+      "id": "patient",
+      "label": "Patient record",
+      "required": false,
+      "type": "object",
+      "fields": [
+        {
+          "id": "age",
+          "label": "Age",
+          "type": "number"
+        },
+        {
+          "id": "sex",
+          "label": "Sex",
+          "required": false,
+          "type": "enum",
+          "values": [
+            "female",
+            "male"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "length_of_stay",
+      "label": "Length of stay (days)",
+      "required": false,
+      "type": "number"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "sections_note_section",
+      "label": "Sections \u2014 drafting the note",
+      "for": "item in snippet.sections",
+      "nodes": [
+        "note_section"
+      ],
+      "ret": "node.note_section"
+    },
+    {
+      "id": "note_section",
+      "label": "Drafting the note",
+      "format": "prose"
+    },
+    {
+      "id": "sections_senior_review_section",
+      "label": "Sections \u2014 drafting the senior review request",
+      "for": "item in snippet.sections",
+      "nodes": [
+        "senior_review_section"
+      ],
+      "ret": "node.senior_review_section"
+    },
+    {
+      "id": "senior_review_section",
+      "label": "Drafting the senior review request",
+      "format": "prose"
+    },
+    {
+      "id": "sections_long_stay_section",
+      "label": "Sections \u2014 drafting the long-stay summary",
+      "for": "item in snippet.sections",
+      "nodes": [
+        "long_stay_section"
+      ],
+      "ret": "node.long_stay_section"
+    },
+    {
+      "id": "long_stay_section",
+      "label": "Drafting the long-stay summary",
+      "format": "prose"
+    },
+    {
+      "id": "prior_notes_summarise_note",
+      "label": "Prior notes \u2014 summarising a prior note",
+      "for": "item in input.prior_notes",
+      "nodes": [
+        "summarise_note"
+      ],
+      "ret": "node.summarise_note"
+    },
+    {
+      "id": "summarise_note",
+      "label": "Summarising a prior note",
+      "format": "prose"
+    },
+    {
+      "id": "prior_notes_index_note",
+      "label": "Prior notes \u2014 indexing a prior note",
+      "for": "item in input.prior_notes",
+      "nodes": [
+        "index_note"
+      ],
+      "ret": "node.index_note"
+    },
+    {
+      "id": "index_note",
+      "label": "Indexing a prior note",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Consultation note",
+      "sources": [
+        "node.sections_note_section"
+      ]
+    },
+    {
+      "id": "senior_review",
+      "label": "Senior review request",
+      "sources": [
+        "node.sections_senior_review_section"
+      ],
+      "if": "input.patient.age \u003E= 65"
+    },
+    {
+      "id": "long_stay_summary",
+      "label": "Long-stay summary",
+      "sources": [
+        "node.sections_long_stay_section"
+      ],
+      "if": "input.length_of_stay \u003E 7"
+    },
+    {
+      "id": "notes_digest",
+      "label": "Prior-notes digest",
+      "sources": [
+        "node.prior_notes_summarise_note"
+      ]
+    },
+    {
+      "id": "notes_index",
+      "label": "Prior-notes index",
+      "sources": [
+        "node.prior_notes_index_note"
+      ],
+      "if": "(input.prior_notes | array.size) \u003E 2"
+    }
+  ],
+  "snippets": [
+    "sections/"
+  ]
+}

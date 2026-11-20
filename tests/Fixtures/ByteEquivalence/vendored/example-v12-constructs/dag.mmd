@@ -1,0 +1,65 @@
+flowchart TD
+    snippet_standards(["snippet.standards"])
+    input_consult_draft(["input.consult_draft"])
+    snippet_snomed_tool_guidance(["snippet.snomed_tool_guidance"])
+    input_seen_on(["input.seen_on"])
+    snippet_disclaimer(["snippet.disclaimer"])
+
+    extract_patient_concepts["extract_patient_concepts<br/>Extracting clinical concepts"]
+    input_consult_draft --> extract_patient_concepts
+    snippet_snomed_tool_guidance --> extract_patient_concepts
+    identify_problem["identify_problem<br/>Identifying primary problem"]
+    extract_patient_concepts -->|"content"| identify_problem
+    snippet_snomed_tool_guidance --> identify_problem
+    create_typical_trajectory["create_typical_trajectory<br/>Building reference trajectory"]
+    identify_problem -->|"content"| create_typical_trajectory
+    snippet_snomed_tool_guidance --> create_typical_trajectory
+    create_patient_trajectory["create_patient_trajectory<br/>Building patient trajectory"]
+    identify_problem -->|"content"| create_patient_trajectory
+    extract_patient_concepts -->|"content"| create_patient_trajectory
+    create_typical_trajectory -->|"content"| create_patient_trajectory
+    snippet_snomed_tool_guidance --> create_patient_trajectory
+    tone["tone<br/>Reading the referral's tone"]
+    input_consult_draft --> tone
+    patient_header["patient_header<br/>Patient header"]
+    input_seen_on --> patient_header
+    snippet_disclaimer --> patient_header
+    extract_input_terms["extract_input_terms<br/>Extracting the referral's terms"]
+    input_consult_draft --> extract_input_terms
+    extract_note_terms["extract_note_terms<br/>Extracting the note's terms"]
+    standards_section_instructions -->|"content"| extract_note_terms
+    patient_header -->|"content"| extract_note_terms
+    note_coverage["note_coverage<br/>Note coverage check"]
+    extract_input_terms -->|"value"| note_coverage
+    extract_note_terms -->|"value"| note_coverage
+    extract_letter_terms["extract_letter_terms<br/>Extracting the letter's terms"]
+    standards_letter_body -->|"content"| extract_letter_terms
+    letter_coverage["letter_coverage<br/>Letter coverage check"]
+    extract_input_terms -->|"value"| letter_coverage
+    extract_letter_terms -->|"value"| letter_coverage
+
+    subgraph for_standards_section_instructions["standards_section_instructions: per snippet.standards item"]
+        section_instructions["section_instructions<br/>Applying section instructions"]
+        patient_section_draft["patient_section_draft<br/>Applying patient information"]
+        standard_section_draft["standard_section_draft<br/>Drafting section"]
+    end
+    standards_section_instructions["standards_section_instructions<br/>Standards — applying section instructions<br/>item in snippet.standards"]
+
+    subgraph for_standards_letter_body["standards_letter_body: per snippet.standards item"]
+        letter_body["letter_body<br/>Acknowledgement body"]
+    end
+    standards_letter_body["standards_letter_body<br/>Standards — acknowledgement body<br/>item in snippet.standards"]
+    patient_section_draft -->|"content"| section_instructions
+    standard_section_draft -->|"content"| patient_section_draft
+    input_consult_draft --> patient_section_draft
+    create_patient_trajectory -->|"content"| standard_section_draft
+    snippet_standards -->|"for"| for_standards_section_instructions
+    section_instructions -->|"ret"| standards_section_instructions
+    snippet_standards -->|"for"| for_standards_letter_body
+    letter_body -->|"ret"| standards_letter_body
+
+    result_consult{{"consult<br/>Consultation note"}}
+    standards_section_instructions --> result_consult
+    patient_header --> result_consult
+    result_ack_letter{{"ack_letter<br/>Acknowledgement letter"}}
+    standards_letter_body --> result_ack_letter

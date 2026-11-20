@@ -1,0 +1,90 @@
+{
+  "name": "example-problem-list",
+  "version": "v2026.11.2",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Problem list demo",
+  "description": "A demonstration of what specVersion 29 opened: a node finds the problems the consult draft names, and a loop over that node's list drafts one part per problem, so the loop's count is known only once the list is found; and a standing folder item, the follow-up plan, is drafted only when a classifier judges that the draft arranges a reassessment, and is otherwise skipped by condition. Not intended for clinical use.",
+  "tags": [
+    "demo",
+    "problem-list"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    }
+  ],
+  "formats": [
+    {
+      "id": "problem_list",
+      "file": "formats/problem_list.json"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "find_problems",
+      "label": "Finding the problems",
+      "format": "problem_list",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "follow_up",
+      "label": "Is a reassessment arranged?",
+      "format": "classification",
+      "with": {
+        "values": [
+          "yes",
+          "no"
+        ]
+      },
+      "onInvalid": "fail"
+    },
+    {
+      "id": "problems",
+      "label": "Problems",
+      "for": "item in node.find_problems.value.problems",
+      "nodes": [
+        "draft_problem"
+      ],
+      "ret": "node.draft_problem"
+    },
+    {
+      "id": "draft_problem",
+      "label": "Drafting the problem",
+      "format": "prose"
+    },
+    {
+      "id": "sections",
+      "label": "Standing sections",
+      "for": "item in snippet.sections",
+      "nodes": [
+        "section_draft"
+      ],
+      "ret": "node.section_draft"
+    },
+    {
+      "id": "section_draft",
+      "label": "Drafting the section",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Problem-oriented note",
+      "sources": [
+        "node.sections",
+        "node.problems"
+      ]
+    }
+  ],
+  "snippets": [
+    "sections/"
+  ]
+}
