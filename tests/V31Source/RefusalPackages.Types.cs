@@ -403,7 +403,10 @@ internal static partial class RefusalPackages
             "A format that expands to more than 10,000 schemas through the formats it refers to (chapter 2 § 2.3.1; this "
             + "implementation's sentence): the comparisons and hashes are defined on a format's full form. The package "
             + "format row has 100 plaintext properties; the package format table refers to row 49 times and has one more "
-            + "property. Invalid: that property refers to row too. Valid: it is plaintext, under the limit.",
+            + "property. Invalid: that property refers to row too. Valid: it is plaintext, under the limit. The count of "
+            + "schemas is this implementation's: each schema object visited while the references are inlined, a referenced "
+            + "format counted at each place it is referenced; so only the invalid side is meant, and the valid side is "
+            + "under the limit, not on it.",
             WithTable(),
             WithTable().Edit("formats/table.json", "\"last\": { \"$ref\": \"plaintext\" }", "\"last\": { \"$ref\": \"row\" }"));
     }

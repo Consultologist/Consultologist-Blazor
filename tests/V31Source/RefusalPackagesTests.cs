@@ -8,7 +8,7 @@ namespace Consultologist.Api.Tests.V31Source;
 /// <summary>
 /// #1499 (specVersion 31, area 02): the <c>refusal-packages</c> cases of the file model. Each case
 /// says what it claims (its valid package is accepted, its invalid one gives its sentence alone); every
-/// sentence the parser can say has a case, except D17's three; and the suite pinned in
+/// sentence the checker can say has a case, except D17's three and <c>TypesNotShipped</c>; and the suite pinned in
 /// <c>external/consultologist-package-format</c> is what the checker says and holds every case,
 /// byte for byte. The pinned tests fail, never skip, when the folder is missing.
 /// #1500 (specVersion 31, area 03): every case is judged by <see cref="SourceCheck.Run"/>, the reader
@@ -36,6 +36,9 @@ public class RefusalPackagesTests
     private static readonly string[] TypesNotShipped =
         ["S02-009", "S02-011", "S02-018", "S02-019", "S02-020", "S02-027", "S02-035", "S02-036", "A03-009"];
 
+    /// <summary>The two ids of <see cref="TypesNotShipped"/> that no method of <see cref="FormatSentences"/> gives (S01-028's words; areas 04 and 05's flags).</summary>
+    private static readonly string[] TypesWithNoMethod = ["S02-009", "S02-011"];
+
     [Fact]
     public void EveryCase_SaysWhatItClaims()
     {
@@ -60,11 +63,7 @@ public class RefusalPackagesTests
         // Each method of SourceSentences and FormatSentences that returns a refusal makes one sentence
         // with a fixed id; calling it with any arguments gives that id (FormatSentences.Subject, which
         // returns text, is not one).
-        var said = new[] { typeof(SourceSentences), typeof(FormatSentences) }
-            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
-            .Where(m => m.ReturnType == typeof(SourceRefusal))
-            .Select(m => ((SourceRefusal)m.Invoke(null, m.GetParameters().Select(Argument).ToArray())!).Id)
-            .Distinct()
+        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences))
             .Except(NotShipped)
             .Except(TypesNotShipped)
             .Order(StringComparer.Ordinal)
@@ -74,6 +73,17 @@ public class RefusalPackagesTests
 
         Assert.Equal(cases.Distinct().Count(), cases.Count);
         Assert.Equal(said, cases.Order(StringComparer.Ordinal).ToList());
+    }
+
+    [Fact]
+    public void EveryTypeNotShipped_IsASentenceTheCheckerHas_OrOneOfTheTwoWithNoMethod()
+    {
+        // A stale or mistyped id in TypesNotShipped would hide nothing and excuse nothing; hold the
+        // list to the ids FormatSentences gives, plus the two documented ones with no method.
+        var known = SaidBy(typeof(FormatSentences)).Concat(TypesWithNoMethod).ToHashSet(StringComparer.Ordinal);
+
+        Assert.Empty(TypesNotShipped.Where(id => !known.Contains(id)));
+        Assert.Empty(TypesWithNoMethod.Intersect(SaidBy(typeof(FormatSentences))));
     }
 
     [Fact]
@@ -142,6 +152,15 @@ public class RefusalPackagesTests
                 File.ReadAllBytes,
                 StringComparer.Ordinal);
     }
+
+    /// <summary>The ids the public static methods of <paramref name="types"/> that return a refusal give, each once.</summary>
+    private static List<string> SaidBy(params Type[] types) =>
+        types
+            .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
+            .Where(m => m.ReturnType == typeof(SourceRefusal))
+            .Select(m => ((SourceRefusal)m.Invoke(null, m.GetParameters().Select(Argument).ToArray())!).Id)
+            .Distinct()
+            .ToList();
 
     private static object Argument(ParameterInfo parameter) => parameter.ParameterType switch
     {
