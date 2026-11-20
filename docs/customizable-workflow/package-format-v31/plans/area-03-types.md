@@ -252,7 +252,7 @@ The root, by `site`:
 | root has `contentMediaType: text/markdown` and no `x-markdown` | Registry | S02-036 |
 | root has `x-markdown` with `text/plain`, or either annotation on a root that is not a string | Registry | S02-037 |
 
-- [ ] **Step 1: Write the failing tests** — one per row with the exact sentence; plus
+- [x] **Step 1: Write the failing tests** — one per row with the exact sentence; plus
 
 ```csharp
 [Fact] public void ANullableEnum_ListsNull_AndCountsOnlyItsValues()   // ["string","null"] + ["new_patient","follow_up",null] → accepted; + ["new_patient", null] → S02-047
@@ -266,10 +266,10 @@ The root, by `site`:
 
 If `TheDialectsOwnExamples_AgreeWithTheChecker` finds an example the checker and the meta-schema disagree on, the meta-schema is the published contract: fix the checker when the design agrees with the meta-schema, and otherwise list the file and the disagreement in this plan's closing section for the PR.
 
-- [ ] **Step 2:** Run; expected: fail.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4:** Run the filter; expected: pass.
-- [ ] **Step 5: Commit** `PackageFormat (#1500): enums, annotations and the rules of each kind of format file`; push.
+- [x] **Step 2:** Run; expected: fail.
+- [x] **Step 3: Implement.**
+- [x] **Step 4:** Run the filter; expected: pass.
+- [x] **Step 5: Commit** `PackageFormat (#1500): enums, annotations and the rules of each kind of format file`; push.
 
 ### Task 4: Format lookup
 
