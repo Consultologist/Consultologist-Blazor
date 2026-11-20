@@ -381,7 +381,7 @@ The golden is written by the test itself when the environment variable `UPDATE_V
     - `ReadResult Read(JsonNode? format, IReadOnlyList<string> steps, FormatSet formats)` — `steps` is what follows the node, input, item or parameter: `[]` is bare (`Bare`); the first step is `value`, `content` or `title` (anything else `UnknownMember`: `.state`, `.items` and the rest are part 04's, area 05); after `value`, each step is a field of an object (`NoSuchField`, `NotAnObject`), and a last step `title` on a labelled enum gives `string` and its titles, on a plain `enum` `TitleOfPlainEnum`, on anything else that has no field `title`, `TitleOfNonEnum`. A field named `title` wins over the label read (§ 5.3). Through a union: `.content` always (D10); `.value` when every member has a value (every member but a `null` one); a field only when every member is an object that declares it with the `Same` format, else `NotEveryMember`. A nullable step makes the result `Nullable`.
     - `SourceRefusal BareInput(string id, string path)` (S02-018), `SourceRefusal TitleOfPlainEnum(string readPath, string path)` (S02-019), `SourceRefusal? TitleLiteral(string condition, string readPath, string literal, ReadResult read, string path)` (S02-020 when `literal` is not in `read.Titles`; `<titles>` joined by `, `).
 
-- [ ] **Step 1: Write the failing tests** — on part 02 § 8.4's `sections` input and the published formats:
+- [x] **Step 1: Write the failing tests** — on part 02 § 8.4's `sections` input and the published formats:
 
 ```csharp
 [Fact] public void Value_GivesTheFormat_ContentItsText()         // markdown_block: value → markdown_block, content → markdown_block; judgement: content → plaintext; number: content → NoContent
@@ -395,8 +395,8 @@ The golden is written by the test itself when the environment variable `UPDATE_V
 [Fact] public void ANullableField_MakesTheReadNullable()
 ```
 
-- [ ] **Step 2–4:** Run (fail), implement, run (pass).
-- [ ] **Step 5: Commit** `PackageFormat (#1500): a read is typed by the format it reads`; push.
+- [x] **Step 2–4:** Run (fail), implement, run (pass).
+- [x] **Step 5: Commit** `PackageFormat (#1500): a read is typed by the format it reads`; push.
 
 ### Task 7: Agent bindings and what a model receives
 

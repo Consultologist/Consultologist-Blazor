@@ -271,7 +271,7 @@ public static class FormatTypes
     /// annotations beside the <c>$ref</c>), and the <c>$defs</c> its references read; null when a
     /// reference is unknown, or loops, or the node is no schema.
     /// </summary>
-    private static (JsonObject? Schema, JsonObject? Defs) Follow(JsonNode? node, JsonObject? defs, FormatSet formats)
+    internal static (JsonObject? Schema, JsonObject? Defs) Follow(JsonNode? node, JsonObject? defs, FormatSet formats)
     {
         var seen = new HashSet<JsonNode>(ReferenceEqualityComparer.Instance);
         while (true)

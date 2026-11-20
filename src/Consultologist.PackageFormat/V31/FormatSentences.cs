@@ -161,5 +161,17 @@ internal static class FormatSentences
     public static SourceRefusal NullNotNullable(string format, string pointer, string path) =>
         new("A03-010", $"{Subject(format, pointer)} lists null but is not nullable; write \"type\": [\"string\", \"null\"], or remove null.", path);
 
+    /// <summary>S02-018: an input read without <c>.value</c> or <c>.content</c>.</summary>
+    public static SourceRefusal BareInput(string id, string path) =>
+        new("S02-018", $"'input.{id}' is read bare; read input.{id}.value, or input.{id}.content for text.", path);
+
+    /// <summary>S02-019: <c>.title</c> read on a plain <c>enum</c>; <paramref name="readPath"/> is what precedes <c>.title</c>.</summary>
+    public static SourceRefusal TitleOfPlainEnum(string readPath, string path) =>
+        new("S02-019", $"'{readPath}.title' reads the title of a plain enum, which has none; use a labelled oneOf, or read .value.", path);
+
+    /// <summary>S02-020: a <c>.title</c> compared with a literal that is no title; <paramref name="titles"/> joined by <c>, </c>.</summary>
+    public static SourceRefusal TitleLiteralNotATitle(string condition, string readPath, string literal, string titles, string path) =>
+        new("S02-020", $"{condition} compares {readPath}.title with '{literal}', which is not one of its titles ({titles}).", path);
+
     private static string Where(string pointer) => pointer.Length == 0 ? "the root" : pointer;
 }
