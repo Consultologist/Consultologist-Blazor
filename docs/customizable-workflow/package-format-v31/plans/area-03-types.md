@@ -452,7 +452,7 @@ The golden is written by the test itself when the environment variable `UPDATE_V
 
 Corvus's API, as probed on 5.8.12: `Corvus.Text.Json.Validator.JsonSchema.FromText(string text, string canonicalUri, JsonSchema.Options options, bool refreshCache)`; `new JsonSchema.Options(additionalSchemaFiles: null, allowFileSystemAndHttpResolution: false, defaultDialect: Corvus.Text.Json.RuntimeEvaluator.JsonSchemaDialect.Draft202012, alwaysAssertFormat: true, additionalDocumentResolver: null)`; `bool Validate(string json, IJsonSchemaResultsCollector? collector)`; `JsonSchemaResultsCollector.Create(JsonSchemaResultsLevel.Detailed, …)` with `EnumerateResults()` for the failures' locations. With those options the probe refused `2026-02-30` for `format: date`, a number where `anyOf [plaintext, null]` was expected, and an extra property.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 [Fact] public void AValueOfTheFormat_IsValid()                 // judgement { answer: true, reason: "…" }; concept_list with one concept; "markdown_block" with a string; list<plaintext>
@@ -466,8 +466,8 @@ Corvus's API, as probed on 5.8.12: `Corvus.Text.Json.Validator.JsonSchema.FromTe
 [Fact] public void TheSameFormat_IsCompiledOnce()              // two validators, the same format, 1,000 values: completes, and both agree
 ```
 
-- [ ] **Step 2–4:** Run (fail), implement, run (pass).
-- [ ] **Step 5: Commit** `PackageFormat (#1500): values are validated against the full format, with Corvus behind our own interface`; push.
+- [x] **Step 2–4:** Run (fail), implement, run (pass).
+- [x] **Step 5: Commit** `PackageFormat (#1500): values are validated against the full format, with Corvus behind our own interface`; push.
 
 ### Task 9: The reader's amendments, formats and inputs in a package
 
