@@ -48,6 +48,26 @@ public class SourceMembersTests
     }
 
     [Fact]
+    public void LeftMembers_AreOnlyMissing_OrNotSaid()
+    {
+        var declaration = Agent();
+        declaration["label"] = null;
+        declaration["ordered"] = "yes";
+        declaration["then"] = 1;
+        declaration.Remove("parts");
+        var refusals = new List<SourceRefusal>();
+
+        SourceMembers.Check(declaration, SourceShapes.NodeAgent, "Node 'plan'", Path, refusals, ["label", "ordered", "then", "parts"]);
+
+        // Only the absence of a left member of the shape is still said; its null, type and presence are the caller's.
+        Assert.Equal("Node 'plan' is missing 'parts'; every member is written, and null means none.", Assert.Single(refusals).Sentence);
+
+        Assert.False(SourceMembers.CheckType(declaration["ordered"], MemberType.Boolean, "Node 'plan'", "ordered", Path, refusals));
+        Assert.True(SourceMembers.CheckType(null, MemberType.Boolean, "Node 'plan'", "label", Path, refusals));
+        Assert.Equal("Node 'plan' declares 'ordered' as text; it is true or false.", refusals[1].Sentence);
+    }
+
+    [Fact]
     public void Null_WhereNever()
     {
         var declaration = Agent();

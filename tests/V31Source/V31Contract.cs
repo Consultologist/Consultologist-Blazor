@@ -68,6 +68,9 @@ internal static class V31Contract
         }
 
         var pattern = "^" + ToPattern(row) + "$";
+        // Part 04 § 10.1 writes S04-009 for Loop "(also While, If, Case)": the word is the flow kind's.
+        if (refusal.Id == "S04-009")
+            pattern = "^(?:Loop|While|If|Case)" + pattern["^Loop".Length..];
         Assert.True(
             Regex.IsMatch(refusal.Sentence, pattern, RegexOptions.Singleline),
             $"{refusal.Id}: \"{refusal.Sentence}\" does not match the row \"{row}\".");

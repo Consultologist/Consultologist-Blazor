@@ -34,10 +34,13 @@ public class SourceParserLeavesTests
 
         Assert.Empty(result.Refusals);
         var package = result.Package!;
-        // The flow folders are not in the model until the flow nodes are built.
+        // The top level in listed order: leaves and flow nodes (SourceParserFlowTests reads the latter).
+        Assert.Equal(
+            ["plan", "section_count", "sections", "sections_draft", "refine", "billing_gate", "standards", "extract_input_terms", "extract_note_terms"],
+            package.Nodes.Nodes.Select(n => n.Id));
         Assert.Equal(
             ["plan", "section_count", "extract_input_terms", "extract_note_terms"],
-            package.Nodes.Nodes.Select(n => n.Id));
+            package.Nodes.Nodes.OfType<SourceLeaf>().Select(n => n.Id));
         var plan = Assert.IsType<SourceLeaf>(package.Nodes.Nodes[0]);
         Assert.Equal("agent", plan.Kind);
         Assert.Equal("node.plan", plan.Key);
@@ -50,8 +53,8 @@ public class SourceParserLeavesTests
         Assert.Equal("computed", count.Kind);
         Assert.Equal("", count.Body);
 
-        Assert.Equal(["all_sections"], package.Checks.Nodes.Select(n => n.Id));
-        var check = Assert.IsType<SourceLeaf>(package.Checks.Nodes[0]);
+        Assert.Equal(["section_coverage", "all_sections"], package.Checks.Nodes.Select(n => n.Id));
+        var check = Assert.IsType<SourceLeaf>(package.Checks.Nodes[1]);
         Assert.Equal("check.all_sections", check.Key);
     }
 
@@ -103,10 +106,27 @@ public class SourceParserLeavesTests
 
         Assert.Empty(actual.Refusals);
         Assert.Equal(unix.Keys.Where(k => k.EndsWith(".json") || k.EndsWith(".md")).OrderBy(k => k, StringComparer.Ordinal), actual.Normalised);
-        var want = expected.Package!.Nodes.Nodes.Cast<SourceLeaf>().Select(l => l.Body);
-        var got = actual.Package!.Nodes.Nodes.Cast<SourceLeaf>().Select(l => l.Body);
+        var want = Leaves(expected.Package!).Select(l => (l.Key, l.Body)).ToList();
+        var got = Leaves(actual.Package!).Select(l => (l.Key, l.Body)).ToList();
+        Assert.Equal(17, want.Count);
         Assert.Equal(want, got);
     }
+
+    /// <summary>Every leaf of the package, through flow nodes and functions, in listed order.</summary>
+    private static IEnumerable<SourceLeaf> Leaves(SourcePackage package) =>
+        package.Nodes.Nodes.Concat(package.Checks.Nodes)
+            .Concat(package.Functions.Items.SelectMany(f => f.Body.Nodes))
+            .SelectMany(Leaves);
+
+    private static IEnumerable<SourceLeaf> Leaves(SourceNode node) => node switch
+    {
+        SourceLeaf leaf => [leaf],
+        SourceFor loop => loop.Body.Nodes.SelectMany(Leaves),
+        SourceWhile pass => pass.Body.Nodes.SelectMany(Leaves),
+        SourceIf branch => branch.Then.Nodes.Concat(branch.Else?.Nodes ?? []).SelectMany(Leaves),
+        SourceCase choice => choice.Branches.SelectMany(b => b.Body.Nodes).Concat(choice.Else?.Nodes ?? []).SelectMany(Leaves),
+        _ => [],
+    };
 
     [Fact]
     public void ABlankLineAfterTheFence_IsPartOfTheBody()
