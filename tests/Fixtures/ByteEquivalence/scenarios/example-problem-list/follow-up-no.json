@@ -1,0 +1,32 @@
+{
+  "description": [
+    "Two problems found; follow_up pinned no, so the follow-up plan section is skipped by its",
+    "condition and only the overview is drafted."
+  ],
+  "inputs": {
+    "consult_draft": "Priya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "find_problems": {
+      "summary": "Breathlessness with a raised BNP in a patient with type 2 diabetes.",
+      "problems": [
+        {
+          "name": "Breathlessness and ankle swelling",
+          "detail": "BNP raised; echo requested."
+        },
+        {
+          "name": "Type 2 diabetes",
+          "detail": "HbA1c 61 mmol/mol on metformin."
+        }
+      ]
+    },
+    "follow_up": {
+      "value": "no"
+    }
+  }
+}

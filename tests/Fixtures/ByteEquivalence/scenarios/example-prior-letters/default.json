@@ -1,0 +1,22 @@
+{
+  "description": [
+    "Four prior letters, every reply generated from its format. The stubs answer answers_question",
+    "false, false, true on letters 0 to 2, so the until stops the loop early and letter 3 is kept,",
+    "not run."
+  ],
+  "inputs": {
+    "consult_draft": "Daniel Mbeki, 44, referred to ask whether his recurrent gout needs urate-lowering therapy. Three flares this year; serum urate 0.52 mmol/L. (Fictional.)",
+    "prior_letters": [
+      "2026-03-02, rheumatology clinic: right first MTP joint flare treated with colchicine. Urate 0.55 mmol/L. (Fictional.)",
+      "2026-06-15, GP letter: second flare, left ankle; advised to reduce alcohol. (Fictional.)",
+      "2026-09-01, rheumatology clinic: third flare this year; allopurinol 100 mg daily recommended once the flare settles, titrating to a urate below 0.36 mmol/L. (Fictional.)",
+      "2026-10-20, pharmacy note: allopurinol dispensed. (Fictional.)"
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

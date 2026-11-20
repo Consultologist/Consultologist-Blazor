@@ -1,0 +1,49 @@
+{
+  "package": "example-classifier-scope",
+  "tag": "example-classifier-scope-v2026.11.3",
+  "scenario": "out-of-scope",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "scope": {
+      "value": "out_of_scope"
+    },
+    "decline_letter:letter": "Stub reply for decline_letter:letter (91c124b6)."
+  },
+  "prompts": [
+    {
+      "key": "scope",
+      "hash": "sha256:01d56149854f24106cb2eed4b8de011433c83d465f9866292c4f13f1a561d4d5",
+      "text": "You are deciding whether a referral belongs in a general medical outpatient clinic.\n\nTask:\nRead the referral below and decide one thing only: whether it is in scope for the clinic, out of scope, or cannot be decided because the referral does not say enough.\n\nDefinitions:\nIn scope: a question a general medical outpatient clinic assesses and manages — a diagnostic question, a chronic condition to review, a treatment plan to make.\nOut of scope: a request the clinic does not provide — an emergency that needs a hospital now, a procedure or specialty the clinic does not offer, an administrative request with no clinical question.\nNeeds information: the referral does not state a clinical question, or leaves out what would be needed to tell the first two apart.\n\nGuardrail:\nDecide from the referral alone. Do not infer facts it does not contain.\n\nReferral:\nRequest for a cosmetic mole removal for Liam Doherty, 34; no clinical concern raised. (Fictional.)\n\n\nAnswer with exactly one of: in_scope, out_of_scope, needs_information."
+    },
+    {
+      "key": "decline_letter:letter",
+      "hash": "sha256:4a29ce93dc50586721cb70d9de55dee5ddbcab49fc3558022377fa2534bd8f90",
+      "text": "You are writing a short letter to the referring clinician declining a referral the clinic cannot take.\n\nTask:\nWrite the letter using only the referral below, following the letter standard. The referral was classified out_of_scope: say, in one sentence, why the request falls outside what the clinic provides, and suggest where it belongs if the referral itself makes that clear.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Do not offer advice on managing the patient.\n\nOutput rule:\nReturn only the letter's prose. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nLetter standard:\nOne short paragraph, addressed to the referring clinician, courteous and specific: what was received, what the clinic can or cannot do with it, and what happens next.\n\n\nReferral:\nRequest for a cosmetic mole removal for Liam Doherty, 34; no clinical concern raised. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "plan",
+      "state": "skipped",
+      "reason": "needs `node.scope.value == \"in_scope\"`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "decline_letter",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:9d87421cbbf85d98bd668fecc0d33b5712513218324a917116440620a63f4a83",
+      "text": "## Letter\n\nStub reply for decline_letter:letter (91c124b6).\n\nThis determination (out_of_scope) was recorded on 2026-11-10. If the clinical picture changes, please send an updated referral.\n\nDr A. Sample\nInternal Medicine"
+    },
+    {
+      "id": "information_request",
+      "state": "skipped",
+      "reason": "needs `node.scope.value == \"needs_information\"`; it does not hold",
+      "hash": null,
+      "text": null
+    }
+  ]
+}

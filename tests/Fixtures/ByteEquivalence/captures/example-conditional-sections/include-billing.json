@@ -1,0 +1,70 @@
+{
+  "package": "example-conditional-sections",
+  "tag": "example-conditional-sections-v2026.11.3",
+  "scenario": "include-billing",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "narrative_draft:0": "Stub reply for narrative_draft:0 (7e956e10).",
+    "table_draft:1": "Stub reply for table_draft:1 (d93e3b25).",
+    "coverage": "Stub reply for coverage (3f9826d8).",
+    "patient_summary:0": "Stub reply for patient_summary:0 (c3a1262e).",
+    "standing_draft:safety_netting": "Stub reply for standing_draft:safety_netting (9945c35d).",
+    "standing_draft:follow_up": "Stub reply for standing_draft:follow_up (b11afebe).",
+    "standing_draft:billing": "Stub reply for standing_draft:billing (bb2477b3)."
+  },
+  "prompts": [
+    {
+      "key": "narrative_draft:0",
+      "hash": "sha256:89dc5de00b5096ca2149cad577e3117fbe5c2cebef2f21bedea0ccca518574ae",
+      "text": "You are drafting one section of a consultation note as prose.\n\nTask:\nWrite the section named below, using only the consult draft and the author's notes for this section.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the draft is silent, say so plainly.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no table, no commentary.\n\nSection:\nHistory\n\nAuthor's notes for this section:\nFalls and the postural drop.\n\nConsult draft:\nAna Souza, 72, seen for falls. Two falls in a month; postural drop 24 mmHg. On doxazosin, ramipril and bendroflumethiazide. Doxazosin stopped today; review in three weeks; return sooner if she faints. New patient, 40 minutes. (Fictional.)\n"
+    },
+    {
+      "key": "table_draft:1",
+      "hash": "sha256:2ed05ac5bd5efb1356f33e7235d7a33401a8cb66d9a427a8154145706254b224",
+      "text": "You are drafting one section of a consultation note as a table.\n\nTask:\nLay the section named below out as one markdown table, using only the consult draft and the author's notes for this section. Choose the columns the section calls for (for a medication list: name, dose, frequency, indication).\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Leave a cell blank rather than inferring it.\n\nOutput rule:\nReturn only the markdown table, with a header row. No heading above it, no prose, no commentary.\n\nSection:\nMedications\n\nAuthor's notes for this section:\nInclude the doxazosin stopped today.\n\nConsult draft:\nAna Souza, 72, seen for falls. Two falls in a month; postural drop 24 mmHg. On doxazosin, ramipril and bendroflumethiazide. Doxazosin stopped today; review in three weeks; return sooner if she faints. New patient, 40 minutes. (Fictional.)\n"
+    },
+    {
+      "key": "coverage",
+      "hash": "sha256:1e0e782499ded5d32e124404ae9f962bc568fbfeb36bc4e471f745fd3aee3bfc",
+      "text": "You are closing a consultation note with one line about what it leaves out.\n\nThe sections the author asked for, and whether each was produced:\n\n- History: produced\n\n- Medications: produced\n\n- Social history: left out at the author's request\n\n\nOutput rule:\nReturn one sentence naming the sections left out at the author's request, or, if none were, one sentence saying every requested section was produced. No heading, no list, no commentary.\n"
+    },
+    {
+      "key": "patient_summary:0",
+      "hash": "sha256:838195a5dde7b80ebf9713bd70bbdfce2f74a89da066999dfcc22d724ec2a5fd",
+      "text": "You are writing one sentence for the patient about one section of their consultation.\n\nTask:\nIn plain language a patient can read, write one sentence that says what the section named below covers, drawing only on the consult draft and the author's notes.\n\nGuardrail:\nNo clinical jargon, no facts the draft does not contain, no advice.\n\nOutput rule:\nReturn exactly one sentence. No heading, no list, no commentary.\n\nSection:\nHistory\n\nAuthor's notes for this section:\nFalls and the postural drop.\n\nConsult draft:\nAna Souza, 72, seen for falls. Two falls in a month; postural drop 24 mmHg. On doxazosin, ramipril and bendroflumethiazide. Doxazosin stopped today; review in three weeks; return sooner if she faints. New patient, 40 minutes. (Fictional.)\n"
+    },
+    {
+      "key": "standing_draft:safety_netting",
+      "hash": "sha256:29a499eb4da06d779808109e4285229c095411bc8bbf3ec66cf8997991325876",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nSafety netting\n\nSection standard:\nOne short paragraph telling the patient and the referrer what should prompt an earlier review: the symptoms or changes the draft names as warning signs, and who to contact. Draw only on what the draft documents; where it names no warning signs, say that none were documented.\n\n\nConsult draft:\nAna Souza, 72, seen for falls. Two falls in a month; postural drop 24 mmHg. On doxazosin, ramipril and bendroflumethiazide. Doxazosin stopped today; review in three weeks; return sooner if she faints. New patient, 40 minutes. (Fictional.)\n"
+    },
+    {
+      "key": "standing_draft:follow_up",
+      "hash": "sha256:78731087acb8b566684fc7c28a3b1a467adc6a47d9e411865757e3e544ed80e9",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nFollow-up\n\nSection standard:\nOne short paragraph stating when and how the patient will be seen again, and what will be reviewed then, as the draft documents it. Where the draft sets no follow-up, say that none was arranged.\n\n\nConsult draft:\nAna Souza, 72, seen for falls. Two falls in a month; postural drop 24 mmHg. On doxazosin, ramipril and bendroflumethiazide. Doxazosin stopped today; review in three weeks; return sooner if she faints. New patient, 40 minutes. (Fictional.)\n"
+    },
+    {
+      "key": "standing_draft:billing",
+      "hash": "sha256:6eafaae4102349306639a88d077473c5421499b54784a3c468cdaada828e8c09",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nBilling\n\nSection standard:\nOne sentence stating the kind of encounter this was (new patient or follow-up) and its duration as the draft documents them, for billing purposes. Where the draft documents neither, say so.\n\n\nConsult draft:\nAna Souza, 72, seen for falls. Two falls in a month; postural drop 24 mmHg. On doxazosin, ramipril and bendroflumethiazide. Doxazosin stopped today; review in three weeks; return sooner if she faints. New patient, 40 minutes. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:bb4935a5835c1927a188bb68fab1c681a866d724e139a2419845331338d906b3",
+      "text": "## History\n\nStub reply for narrative_draft:0 (7e956e10).\n\n## Medications\n\nStub reply for table_draft:1 (d93e3b25).\n\n## Safety netting\n\nStub reply for standing_draft:safety_netting (9945c35d).\n\n## Follow-up\n\nStub reply for standing_draft:follow_up (b11afebe).\n\n## Billing\n\nStub reply for standing_draft:billing (bb2477b3).\n\nStub reply for coverage (3f9826d8)."
+    },
+    {
+      "id": "patient_summary",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:aa2ec89758be1cf16bfbac4e4b131668aeb2a8180221ddbfa1ba46b9114aa39e",
+      "text": "## History\n\nStub reply for patient_summary:0 (c3a1262e)."
+    }
+  ]
+}

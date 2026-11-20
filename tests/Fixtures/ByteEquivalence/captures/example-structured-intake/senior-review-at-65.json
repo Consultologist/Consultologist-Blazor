@@ -1,0 +1,85 @@
+{
+  "package": "example-structured-intake",
+  "tag": "example-structured-intake-v2026.11.3",
+  "scenario": "senior-review-at-65",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "note_section:assessment": "Stub reply for note_section:assessment (77d24528).",
+    "note_section:plan": "Stub reply for note_section:plan (1f0cd5de).",
+    "senior_review_section:assessment": "Stub reply for senior_review_section:assessment (1cb57388).",
+    "senior_review_section:plan": "Stub reply for senior_review_section:plan (8c5a0695).",
+    "summarise_note:0": "Stub reply for summarise_note:0 (32154d04).",
+    "summarise_note:1": "Stub reply for summarise_note:1 (ea270460)."
+  },
+  "prompts": [
+    {
+      "key": "note_section:assessment",
+      "hash": "sha256:818b001ebc114e007d1e2979f02baa8d952cad87394cebf191f1992ad3fbbbd1",
+      "text": "You are drafting one section of a consultation note.\n\nPatient context (from structured intake; blank where not supplied):\nAge: 65\nSex: female\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment\n\nSection standard:\nOne paragraph of prose. State the working impression and the reasoning that supports it, drawing only on what the referral documents. Name the competing possibilities that the referral raises and say briefly why each is more or less likely. Where the referral does not document something the impression would ordinarily rest on, say that it is not documented rather than inferring it. No headings or lists; paragraphs only.\n\n\nReferral:\nEileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)\n"
+    },
+    {
+      "key": "note_section:plan",
+      "hash": "sha256:e7f56414131fa59ed945db2d77a7f5c08fa45bec1c34abbb3fdd17febacd14b8",
+      "text": "You are drafting one section of a consultation note.\n\nPatient context (from structured intake; blank where not supplied):\nAge: 65\nSex: female\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPlan\n\nSection standard:\nOne paragraph of prose. State what is proposed next, who is to do it, and on what timescale, drawing only on what the referral documents. Include the investigations or treatments the referral already names, and say plainly where the next step is not documented rather than proposing one the referral does not support. No headings or lists; paragraphs only.\n\n\nReferral:\nEileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)\n"
+    },
+    {
+      "key": "senior_review_section:assessment",
+      "hash": "sha256:7a172903f9dc3b01094c77a9da0c1acdd5b88235feb4e2a902389d97272b19d6",
+      "text": "You are drafting one section of a senior review request for a patient aged 65 (female).\n\nTask:\nWrite the requested section as a concise request for senior clinician review, using only the referral below and following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain.\n\nOutput rule:\nReturn only prose for the requested section. No heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment\n\nSection standard:\nOne paragraph of prose. State the working impression and the reasoning that supports it, drawing only on what the referral documents. Name the competing possibilities that the referral raises and say briefly why each is more or less likely. Where the referral does not document something the impression would ordinarily rest on, say that it is not documented rather than inferring it. No headings or lists; paragraphs only.\n\n\nReferral:\nEileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)\n"
+    },
+    {
+      "key": "senior_review_section:plan",
+      "hash": "sha256:7d5d51b5f39134e67f371a18bf8a20ee09670a81a1e5d2170800c0e8271ae9ed",
+      "text": "You are drafting one section of a senior review request for a patient aged 65 (female).\n\nTask:\nWrite the requested section as a concise request for senior clinician review, using only the referral below and following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain.\n\nOutput rule:\nReturn only prose for the requested section. No heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPlan\n\nSection standard:\nOne paragraph of prose. State what is proposed next, who is to do it, and on what timescale, drawing only on what the referral documents. Include the investigations or treatments the referral already names, and say plainly where the next step is not documented rather than proposing one the referral does not support. No headings or lists; paragraphs only.\n\n\nReferral:\nEileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)\n"
+    },
+    {
+      "key": "summarise_note:0",
+      "hash": "sha256:55615d838dbe787fff1a20f5e1535d50348e1fcad285c1b128960ff1ae96a6f5",
+      "text": "You are summarising one prior clinical note.\n\nTask:\nSummarise the note below in at most four sentences of prose, keeping dates and clinical decisions.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only the summary prose. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-10-28, admission clerking: right lower lobe pneumonia, CURB-65 score 2; IV co-amoxiclav started. (Fictional.)\n"
+    },
+    {
+      "key": "summarise_note:1",
+      "hash": "sha256:dac5ebcf302ed79e2c9f0a8b76628fb7d4183af78cae97f6122a6fc1999ad69a",
+      "text": "You are summarising one prior clinical note.\n\nTask:\nSummarise the note below in at most four sentences of prose, keeping dates and clinical decisions.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only the summary prose. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-11-02, ward round: afebrile 48 hours; switched to oral amoxicillin. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:cc882d5623876f26d1c04c5043f54345144a1a8be5fc421f8daf330fcb680df4",
+      "text": "## Assessment\n\nStub reply for note_section:assessment (77d24528).\n\n## Plan\n\nStub reply for note_section:plan (1f0cd5de)."
+    },
+    {
+      "id": "senior_review",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:8847dda99050d2759d7d968555030815299ddbee299d42417d31239ac536846e",
+      "text": "## Assessment\n\nStub reply for senior_review_section:assessment (1cb57388).\n\n## Plan\n\nStub reply for senior_review_section:plan (8c5a0695)."
+    },
+    {
+      "id": "long_stay_summary",
+      "state": "skipped",
+      "reason": "needs `input.length_of_stay > 7`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "notes_digest",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:3b634ba31452cec23507b3e077374d510b70c8134a245d168ce6eacc3269da67",
+      "text": "## Prior notes 1\n\nStub reply for summarise_note:0 (32154d04).\n\n## Prior notes 2\n\nStub reply for summarise_note:1 (ea270460)."
+    },
+    {
+      "id": "notes_index",
+      "state": "skipped",
+      "reason": "needs `(input.prior_notes | array.size) > 2`; it does not hold",
+      "hash": null,
+      "text": null
+    }
+  ]
+}

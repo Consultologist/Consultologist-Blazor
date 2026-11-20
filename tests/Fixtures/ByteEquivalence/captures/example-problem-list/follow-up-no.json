@@ -1,0 +1,65 @@
+{
+  "package": "example-problem-list",
+  "tag": "example-problem-list-v2026.11.2",
+  "scenario": "follow-up-no",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "find_problems": {
+      "summary": "Breathlessness with a raised BNP in a patient with type 2 diabetes.",
+      "problems": [
+        {
+          "name": "Breathlessness and ankle swelling",
+          "detail": "BNP raised; echo requested."
+        },
+        {
+          "name": "Type 2 diabetes",
+          "detail": "HbA1c 61 mmol/mol on metformin."
+        }
+      ]
+    },
+    "follow_up": {
+      "value": "no"
+    },
+    "draft_problem:1": "Stub reply for draft_problem:1 (9f5b33aa).",
+    "draft_problem:2": "Stub reply for draft_problem:2 (d976cd83).",
+    "section_draft:overview": "Stub reply for section_draft:overview (41745024)."
+  },
+  "prompts": [
+    {
+      "key": "find_problems",
+      "hash": "sha256:b77e7165e1e240240d47bb05a5b46d429a83c46481b3109ff815fb6153fad60d",
+      "text": "You are reading a consult draft to list the clinical problems it names.\n\nTask:\nList each distinct problem the draft names — a diagnosis, a finding still to be explained, or a decision still to be made — once, in the order the draft first raises it. For each, give its name and one or two sentences of what the draft says about it: its findings, and the plan the draft records for it. Then write a one-sentence summary of the consultation.\n\nGuardrail:\nUse only what the draft contains. Do not add problems, findings or plans it does not name. Group what belongs to one problem under that problem rather than listing it twice.\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"problems\"],\"properties\":{\"summary\":{\"type\":\"string\"},\"problems\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\",\"detail\"],\"properties\":{\"name\":{\"type\":\"string\"},\"detail\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "follow_up",
+      "hash": "sha256:44a06ebebb431f715ddb680765f3560839ebb6e961ccbd8242620da52c6fa2cd",
+      "text": "You are deciding one thing about a consult draft: whether it arranges for the patient to be reassessed.\n\nDefinitions:\nYes: the draft schedules a further visit, review or reassessment with this clinic — at a stated time or interval.\nNo: the draft arranges no further visit with this clinic, or says only that the patient may be seen again if needed.\n\nGuardrail:\nDecide from the draft alone. A referral to another service, a test to be done, or a medication to start is not a reassessment by itself.\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n\n\nAnswer with exactly one of: yes, no."
+    },
+    {
+      "key": "draft_problem:1",
+      "hash": "sha256:37f1acfc62de0cec8e270cff877314558ae5138c980cd0fe266bf9f1146ec045",
+      "text": "You are drafting one problem of a problem-oriented consultation note.\n\nTask:\nWrite the part of the note for the problem named below: what the draft documents about it, the assessment, and the plan for it.\n\nGuardrail:\nUse only what the consult draft contains about this problem. Do not add clinical facts it does not contain. Where the draft records no plan for this problem, say so plainly.\n\nOutput rule:\nReturn only prose for this problem. No heading, no bullets, no commentary.\n\nProblem 1:\nBreathlessness and ankle swelling\n\nWhat the draft says about it:\nBNP raised; echo requested.\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n"
+    },
+    {
+      "key": "draft_problem:2",
+      "hash": "sha256:ca9c2b27a8394c9a6b9321d7b812690c606a327edcb881e34dfa2b7e4882d9b7",
+      "text": "You are drafting one problem of a problem-oriented consultation note.\n\nTask:\nWrite the part of the note for the problem named below: what the draft documents about it, the assessment, and the plan for it.\n\nGuardrail:\nUse only what the consult draft contains about this problem. Do not add clinical facts it does not contain. Where the draft records no plan for this problem, say so plainly.\n\nOutput rule:\nReturn only prose for this problem. No heading, no bullets, no commentary.\n\nProblem 2:\nType 2 diabetes\n\nWhat the draft says about it:\nHbA1c 61 mmol/mol on metformin.\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n"
+    },
+    {
+      "key": "section_draft:overview",
+      "hash": "sha256:cc910faf8507165513148b24fd6ef696c01b355ad2918057c5e1ae21e1eaf334",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nOverview\n\nSection standard:\nOne short paragraph introducing the patient and the reason for the consultation, as the draft documents them: who the patient is, what they were referred for, and what has been done so far.\n\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:58ca117bc6491873d477e046d20dacdeae1a8a79922048f1034c6e80d16f7c22",
+      "text": "## Overview\n\nStub reply for section_draft:overview (41745024).\n\n## Problems 1\n\nStub reply for draft_problem:1 (9f5b33aa).\n\n## Problems 2\n\nStub reply for draft_problem:2 (d976cd83)."
+    }
+  ]
+}

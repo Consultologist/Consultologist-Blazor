@@ -1,0 +1,19 @@
+{
+  "description": [
+    "scope pinned needs_information: the request for information is composed; the plan",
+    "and the decline letter are skipped."
+  ],
+  "inputs": {
+    "consult_draft": "Please see Mr K. Haddad, 49. Thanks. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "scope": {
+      "value": "needs_information"
+    }
+  }
+}
