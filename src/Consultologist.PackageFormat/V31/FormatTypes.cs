@@ -225,8 +225,8 @@ public static class FormatTypes
         return KindOf(Follow(format, Defs(format), formats).Schema);
     }
 
-    /// <summary>The text kind a <c>"type": "string"</c> schema's own <c>contentMediaType</c> and <c>x-markdown</c> give; null for any other type.</summary>
-    internal static string? KindOf(JsonObject? schema) => Text(schema?["type"]) != "string" ? null : Text(schema!["contentMediaType"]) switch
+    /// <summary>The text kind a string schema's own <c>contentMediaType</c> and <c>x-markdown</c> give (nullable or not); null for any other type.</summary>
+    internal static string? KindOf(JsonObject? schema) => !IsString(schema) ? null : Text(schema!["contentMediaType"]) switch
     {
         "text/plain" => "plaintext",
         "text/markdown" => Text(schema!["x-markdown"]) switch
@@ -237,6 +237,10 @@ public static class FormatTypes
         },
         _ => null,
     };
+
+    /// <summary>Whether <paramref name="schema"/>'s <c>type</c> is <c>string</c>, alone or with <c>null</c> in a type array.</summary>
+    private static bool IsString(JsonObject? schema) =>
+        (schema?["type"] is JsonArray pair ? NullablePair(pair) : Text(schema?["type"])) == "string";
 
     /// <summary>The <c>$defs</c> object at the root of <paramref name="node"/>, if any.</summary>
     internal static JsonObject? Defs(JsonNode? node) => (node as JsonObject)?["$defs"] as JsonObject;
@@ -333,7 +337,7 @@ public static class FormatTypes
         var type = schema["type"] is JsonArray pair ? NullablePair(pair) : Text(schema["type"]);
         return type switch
         {
-            "string" when Text(schema["type"]) == "string" && schema.ContainsKey("contentMediaType") => FormatShape.Text,
+            "string" when schema.ContainsKey("contentMediaType") => FormatShape.Text,
             "string" when schema.ContainsKey("enum") || schema.ContainsKey("oneOf") => FormatShape.Enum,
             "string" when Text(schema["format"]) == "date" => FormatShape.Date,
             "string" => FormatShape.String,
