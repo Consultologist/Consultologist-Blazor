@@ -62,19 +62,19 @@ public class FormatTypesTests
             """);
         var nullFirst = Verdict(note: """{ "type": ["null", "string"] }""");
         var dateByName = Verdict(on: """{ "$ref": "date" }""");
-        var dateSchemaInline = Verdict(on: """{ "type": "string", "format": "date", "description": "A calendar date, written YYYY-MM-DD." }""");
         var reworded = Verdict(description: "Good, or revise with what to change.");
 
         var typeHash = FormatTypes.TypeHash(verdict, Formats);
         Assert.StartsWith("sha256:", typeHash);
         Assert.All(
-            new[] { reordered, nullFirst, dateByName, dateSchemaInline, reworded },
+            new[] { reordered, nullFirst, dateByName, reworded },
             v => Assert.Equal(typeHash, FormatTypes.TypeHash(v, Formats)));
 
         var formatHash = FormatTypes.FormatHash(verdict, Formats);
         Assert.Equal(formatHash, FormatTypes.FormatHash(reordered, Formats));
         Assert.Equal(formatHash, FormatTypes.FormatHash(nullFirst, Formats));
-        Assert.Equal(FormatTypes.FormatHash(dateByName, Formats), FormatTypes.FormatHash(dateSchemaInline, Formats));
+        // "date" for its schema is one type, but D8 brings the built-in's description in with the name.
+        Assert.NotEqual(formatHash, FormatTypes.FormatHash(dateByName, Formats));
         Assert.NotEqual(formatHash, FormatTypes.FormatHash(reworded, Formats));
 
         // required is a set to the type form (D9); the full form keeps it as written.
@@ -90,6 +90,57 @@ public class FormatTypesTests
             J("""{ "type": "string", "oneOf": [ { "const": "a", "title": "Ay" }, { "const": "b" } ] }"""),
             Formats));
         Assert.False(FormatTypes.Same(J("""{ "type": "string", "enum": ["a", "b"] }"""), J("""{ "type": "string", "enum": ["b", "a"] }"""), Formats));
+    }
+
+    [Fact]
+    public void ReferencesCompareByName_AtEveryDepth()
+    {
+        const string Body = """{ "type": "object", "properties": { "ok": { "type": "boolean" } }, "required": ["ok"], "additionalProperties": false }""";
+        var set = FormatSet.ForPackage(Registry, [Format("verdict", Body), Format("verdict2", Body)]);
+        var verdict = J("\"verdict\"");
+        var verdict2 = J("\"verdict2\"");
+        var list = J("""{ "type": "array", "items": { "$ref": "verdict" } }""");
+        var list2 = J("""{ "type": "array", "items": { "$ref": "verdict2" } }""");
+
+        Assert.False(FormatTypes.Same(verdict, verdict2, set));
+        Assert.False(FormatTypes.Same(list, list2, set));
+        Assert.True(FormatTypes.Same(verdict, J("""{ "$ref": "verdict", "description": "d" }"""), set));
+        Assert.False(FormatTypes.Same(verdict, J(Body), set));
+        Assert.False(FormatTypes.Same(J("\"judgement\""), Registry.BuiltInFormats["judgement"], set));
+
+        Assert.False(FormatTypes.Fits(verdict, verdict2, set));
+        Assert.False(FormatTypes.Fits(verdict2, verdict, set));
+        Assert.False(FormatTypes.Fits(list, list2, set));
+        Assert.True(FormatTypes.Fits(list, list, set));
+
+        // The per-format hash is the named schema's: equal for identical schemas, which are still not Same.
+        Assert.Equal(FormatTypes.TypeHash(verdict, set), FormatTypes.TypeHash(verdict2, set));
+        Assert.Equal(FormatTypes.TypeHash(verdict, set), FormatTypes.TypeHash(J(Body), set));
+        Assert.NotEqual(FormatTypes.TypeHash(list, set), FormatTypes.TypeHash(list2, set));
+    }
+
+    [Fact]
+    public void Expands_SaysWhetherTheFullFormCouldBeBuilt()
+    {
+        var set = FormatSet.ForPackage(Registry,
+        [
+            Format("a", """{ "type": "array", "items": { "$ref": "b" } }"""),
+            Format("b", """{ "type": "array", "items": { "$ref": "a" } }"""),
+            Format("e", """{ "type": "array", "items": { "$ref": "#/$defs/x" }, "$defs": { "x": { "type": "array", "items": { "$ref": "#/$defs/x" } } } }"""),
+        ]);
+
+        foreach (var id in Registry.BuiltInFormats.Keys.Concat(Registry.CatalogueFormats.Keys))
+        {
+            Assert.True(FormatTypes.Expands(JsonValue.Create(id), set), id);
+        }
+
+        Assert.True(FormatTypes.Expands(J("""{ "type": "array", "items": { "$ref": "judgement" } }"""), set));
+        Assert.False(FormatTypes.Expands(J("\"a\""), set));
+        Assert.False(FormatTypes.Expands(J("""{ "type": "array", "items": { "$ref": "a" } }"""), set));
+        Assert.False(FormatTypes.Expands(J("\"e\""), set));
+        Assert.False(FormatTypes.Expands(J("\"nothing\""), set));
+        Assert.False(FormatTypes.Expands(J("""{ "type": "array", "items": { "$ref": "nothing" } }"""), set));
+        Assert.False(FormatTypes.Expands(J("""{ "$ref": "#/$defs/missing" }"""), set));
     }
 
     [Fact]
@@ -161,7 +212,9 @@ public class FormatTypesTests
     [Fact]
     public void TypeForm_KeepsReferencesByName()
     {
-        var form = FormatTypes.TypeForm(J("\"judgement\""), Formats)!;
+        Assert.Equal("""{"$ref":"judgement"}""", CanonicalJson.Write(FormatTypes.TypeForm(J("\"judgement\""), Formats)));
+        Assert.Equal("""{"$ref":"judgement"}""", CanonicalJson.Write(FormatTypes.TypeForm(J("""{ "$ref": "judgement", "title": "J" }"""), Formats)));
+        var form = FormatTypes.TypeForm(Registry.BuiltInFormats["judgement"], Formats)!;
 
         Assert.Equal(
             """{"additionalProperties":false,"properties":{"answer":{"$ref":"boolean"},"reason":{"$ref":"plaintext"}},"required":["answer","reason"],"type":"object"}""",
@@ -192,6 +245,7 @@ public class FormatTypesTests
         { """{ "anyOf": [ { "$ref": "plaintext" }, { "$ref": "judgement" }, { "type": "null" } ] }""", """{ "anyOf": [ { "$ref": "plaintext" }, { "type": "null" } ] }""", false },
         { """{ "type": "array", "items": { "$ref": "plaintext" } }""", """{ "type": "array", "items": { "type": "string" } }""", true },
         { "\"judgement\"", "\"classification\"", false },
+        { """{ "type": "array", "items": { "type": "string" } }""", """{ "type": "array", "items": { "$ref": "plaintext" } }""", false },
         { "\"judgement\"", "\"judgement\"", true },
         { "5", "5", true },
         { "5", "6", false },
@@ -223,6 +277,10 @@ public class FormatTypesTests
         var two = FormatTypes.UnionOf([J("\"plaintext\"")!, J("\"judgement\"")!, J("""{ "$ref": "plaintext" }""")!, J("""{ "type": "null" }""")!], Formats);
         Assert.Equal("""{"anyOf":[{"$ref":"plaintext"},{"$ref":"judgement"},{"type":"null"}]}""", CanonicalJson.Write(two));
         Assert.Equal("plaintext | judgement | null", TypeStrings.Print(two, Formats));
+
+        Assert.Null(FormatTypes.UnionOf([], Formats));
+        var deduplicated = FormatTypes.UnionOf([J("""{ "$ref": "plaintext", "description": "d" }""")!, J("\"plaintext\"")!], Formats);
+        Assert.Equal("""{"$ref":"plaintext","description":"d"}""", CanonicalJson.Write(deduplicated));
     }
 
     [Fact]
@@ -317,6 +375,8 @@ public class FormatTypesTests
         var set = FormatSet.ForPackage(Registry, chain);
 
         Assert.StartsWith("sha256:", FormatTypes.FormatHash(J("\"f0\""), set));
+        Assert.False(FormatTypes.Expands(J("\"f0\""), set));
+        Assert.True(FormatTypes.Expands(J("\"f30\""), set));
         Assert.True(FormatTypes.Fits(J("\"f0\""), J("\"f0\""), set));
         Assert.Equal("{ l: f1, r: f1 }", TypeStrings.Print(set.Find("f0")!.Schema, set));
     }
