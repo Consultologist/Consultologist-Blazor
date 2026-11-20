@@ -152,6 +152,7 @@ public class PackageCaptureGoldenTests
             .ToList();
 
         Assert.Empty(never);
+        Assert.Empty(Stale(NeverComposed.Keys, package, composed));
     }
 
     [Theory]
@@ -171,7 +172,18 @@ public class PackageCaptureGoldenTests
             .ToList();
 
         Assert.Empty(never);
+        Assert.Empty(Stale(NeverPrompted.Keys, package, prompted));
     }
+
+    /// <summary>
+    /// The package's exception entries a capture has made stale — the deliverable is composed, or
+    /// the node prompted or rendered, in some scenario — so the tables hold no more than needed.
+    /// </summary>
+    private static List<string> Stale(IEnumerable<(string Package, string Id)> entries, string package, IReadOnlySet<string> reached) =>
+        entries
+            .Where(entry => entry.Package == package && reached.Contains(entry.Id))
+            .Select(entry => $"stale: ({entry.Package}, {entry.Id})")
+            .ToList();
 
     /// <summary>The package's captures, one per scenario; a scenario not yet captured fails the rule.</summary>
     private static List<JsonNode> CapturesOf(string package)
