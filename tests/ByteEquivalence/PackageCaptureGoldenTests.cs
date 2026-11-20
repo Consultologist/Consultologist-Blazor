@@ -77,7 +77,8 @@ public class PackageCaptureGoldenTests
 
             ByteEquivalenceFixtures.Matches(relative, "{ \"first\": 1 }\n", root);
 
-            Assert.ThrowsAny<Exception>(() => ByteEquivalenceFixtures.Matches(relative, "{ \"first\": 2 }\n", root));
+            var differs = Assert.ThrowsAny<Exception>(() => ByteEquivalenceFixtures.Matches(relative, "{ \"first\": 2 }\n", root));
+            Assert.False(differs.Message.StartsWith("Wrote", StringComparison.Ordinal), differs.Message);
             Assert.Equal("{ \"first\": 1 }\n", ByteEquivalenceFixtures.ReadText(path));
         }
         finally
