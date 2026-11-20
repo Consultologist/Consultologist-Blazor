@@ -23,7 +23,32 @@ public class StrictJsonTests
     {
         var result = StrictJson.Parse(text);
         Assert.Equal(StrictJsonFault.NotJson, result.Fault);
-        Assert.False(string.IsNullOrEmpty(result.Detail));
+        Assert.NotNull(result.Position);
+        Assert.Null(result.Detail);
+    }
+
+    [Theory]
+    [InlineData("{\"a\":1,}", 0, 7)]
+    [InlineData("[1,\n2", 1, 1)]
+    [InlineData("", 0, 0)]
+    [InlineData("{\"a\":1}\n{}", 1, 0)]
+    [InlineData("[\"x\",\n \"\\ud800\"]", 1, 1)]
+    public void ANotJsonFault_CarriesItsPosition_AsTheReaderCountsIt(string text, long line, long byteInLine)
+    {
+        var result = StrictJson.Parse(text);
+
+        Assert.Equal(StrictJsonFault.NotJson, result.Fault);
+        Assert.Equal(new StrictJsonPosition(line, byteInLine), result.Position);
+    }
+
+    [Theory]
+    [InlineData("{ x }", 0, 2, 1, 3)]
+    [InlineData("{\n  \"é\": x }", 1, 8, 2, 8)]
+    [InlineData("{\"a\":1", 0, 6, 1, 7)]
+    [InlineData("", 0, 0, 1, 1)]
+    public void Locate_CountsLinesFromOne_AndColumnsInCharacters(string text, long line, long byteInLine, int expectedLine, int expectedColumn)
+    {
+        Assert.Equal((expectedLine, expectedColumn), StrictJson.Locate(text, new StrictJsonPosition(line, byteInLine)));
     }
 
     [Fact]

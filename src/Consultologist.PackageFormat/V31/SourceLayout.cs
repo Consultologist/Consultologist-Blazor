@@ -266,8 +266,9 @@ internal static class SourceLayout
     /// </summary>
     public static JsonObject? ReadJson(SourceWalk walk, string path)
     {
-        var parsed = StrictJson.Parse(walk.Files[path]);
-        if (Fault(walk, path, parsed))
+        var text = walk.Files[path];
+        var parsed = StrictJson.Parse(text);
+        if (Fault(walk, path, parsed, text, linesBefore: 0))
             return null;
         if (parsed.Value is JsonObject json)
             return json;
@@ -288,8 +289,9 @@ internal static class SourceLayout
             return null;
         }
 
+        // The header starts on the file's second line, after the opening fence.
         var parsed = StrictJson.Parse(split.Header);
-        if (Fault(walk, path, parsed))
+        if (Fault(walk, path, parsed, split.Header, linesBefore: 1))
             return null;
         if (parsed.Value is JsonObject header)
             return (header, split.Body);
@@ -321,7 +323,12 @@ internal static class SourceLayout
         return lines;
     }
 
-    private static bool Fault(SourceWalk walk, string path, StrictJsonResult parsed)
+    /// <summary>
+    /// Says <paramref name="parsed"/>'s fault, if any. <paramref name="text"/> is the JSON that was
+    /// parsed and <paramref name="linesBefore"/> the lines of the file above it, so S01-017 names the
+    /// file's own line.
+    /// </summary>
+    private static bool Fault(SourceWalk walk, string path, StrictJsonResult parsed, string text, int linesBefore)
     {
         switch (parsed.Fault)
         {
@@ -334,7 +341,8 @@ internal static class SourceLayout
                 walk.Refuse(SourceSentences.JsonTooDeep(path, parsed.Detail ?? ""));
                 return true;
             default:
-                walk.Refuse(SourceSentences.NotJson(path, parsed.Detail ?? ""));
+                var (line, column) = StrictJson.Locate(text, parsed.Position ?? new StrictJsonPosition(0, 0));
+                walk.Refuse(SourceSentences.NotJson(path, linesBefore + line, column));
                 return true;
         }
     }

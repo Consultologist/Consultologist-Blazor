@@ -183,8 +183,37 @@ public class SourceParserPlainFilesTests
         var refusal = Only(WithRenderer("---\n{ label: 'X' }\n---\nT\n").Parse());
 
         Assert.Equal("S01-017", refusal.Id);
-        Assert.StartsWith("The header of 'renderers/x.md' is not valid JSON: ", refusal.Sentence);
-        Assert.DoesNotContain("..", refusal.Sentence);
+        Assert.Equal("The header of 'renderers/x.md' is not valid JSON: line 2, column 3.", refusal.Sentence);
+    }
+
+    [Theory]
+    // The header's first line is the file's line 2.
+    [InlineData("---\n{ \"label\": x }\n---\nT\n", "line 2, column 12")]
+    // The third line of a multi-line header is the file's line 4.
+    [InlineData("---\n{\n  \"label\": \"X\",\n  \"kind\": rendered\n}\n---\nT\n", "line 4, column 11")]
+    // An empty header ends where it starts: the closing fence's line.
+    [InlineData("---\n---\nT\n", "line 2, column 1")]
+    // A truncated header: the column after its last character.
+    [InlineData("---\n{ \"label\": \"X\"\n---\nT\n", "line 2, column 15")]
+    // ë is two bytes but one character.
+    [InlineData("---\n{ \"label\": \"Zoë\", \"kind\": x }\n---\nT\n", "line 2, column 27")]
+    public void AHeaderThatIsNotJson_IsPlacedByLineAndColumnOfTheFile(string text, string position)
+    {
+        var refusal = Only(WithRenderer(text).Parse());
+
+        Assert.Equal("S01-017", refusal.Id);
+        Assert.Equal($"The header of 'renderers/x.md' is not valid JSON: {position}.", refusal.Sentence);
+    }
+
+    [Fact]
+    public void APlainJsonFileThatIsNotJson_IsPlacedFromItsFirstLine()
+    {
+        var files = SourceFixture.Minimal().With("renderers/index.json", "{\n  \"description\": null,\n  \"items\": [,]\n}\n");
+
+        var refusal = Only(files.Parse());
+
+        Assert.Equal("S01-017", refusal.Id);
+        Assert.Equal("The header of 'renderers/index.json' is not valid JSON: line 3, column 13.", refusal.Sentence);
     }
 
     [Fact]
@@ -418,7 +447,7 @@ public class SourceParserPlainFilesTests
             SourceSentences.FileAndFolder("nodes", "plan"),
             SourceSentences.NestedDeliveryFolder("deliverables/emr/inner"),
             SourceSentences.NoFrontMatter("renderers/x.md"),
-            SourceSentences.NotJson("renderers/x.md", "'l' is an invalid start of a property name."),
+            SourceSentences.NotJson("renderers/x.md", 2, 3),
             SourceSentences.DuplicateMember("renderers/x.md", "label"),
             SourceSentences.EmptyBody("Renderer 'x'", "template", "renderers/x.md"),
             SourceSentences.HasBody("Node 'count'", "computed node", "nodes/count.md"),
@@ -436,7 +465,7 @@ public class SourceParserPlainFilesTests
                 "S01-017", "S01-018", "S01-019", "S01-020", "S01-034", "S01-035", "S01-041", "A02-003", "A02-004", "A02-005",
             ],
             sentences.Select(s => s.Id));
-        Assert.Equal("The header of 'renderers/x.md' is not valid JSON: 'l' is an invalid start of a property name.", sentences[9].Sentence);
+        Assert.Equal("The header of 'renderers/x.md' is not valid JSON: line 2, column 3.", sentences[9].Sentence);
         foreach (var sentence in sentences)
         {
             V31Contract.AssertSentence(sentence);

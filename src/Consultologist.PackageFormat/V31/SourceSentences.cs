@@ -117,11 +117,15 @@ internal static class SourceSentences
         new("S01-016", $"File '{path}' must start with a line of exactly ---, then one JSON object, then a line of exactly ---.", path);
 
     /// <summary>
-    /// S01-017: a header (or, D6, a plain JSON file) that is not JSON. The parser's message is
-    /// given without its own final full stop, since the sentence ends with one.
+    /// S01-017: a header (or, D6, a plain JSON file) that is not JSON. The <c>&lt;parser message&gt;</c>
+    /// is this reader's own, <c>line &lt;n&gt;, column &lt;m&gt;</c>: the 1-based line of the file (a
+    /// header's first line is the file's line 2) and the 1-based column in characters, never the
+    /// wording of the JSON library underneath.
     /// </summary>
-    public static SourceRefusal NotJson(string path, string message) =>
-        new("S01-017", $"The header of '{path}' is not valid JSON: {message.TrimEnd().TrimEnd('.')}.", path);
+    public static SourceRefusal NotJson(string path, int line, int column) =>
+        new("S01-017", string.Create(
+            System.Globalization.CultureInfo.InvariantCulture,
+            $"The header of '{path}' is not valid JSON: line {line}, column {column}."), path);
 
     /// <summary>S01-018: a member written twice in one object of a header (or, D6, a plain JSON file).</summary>
     public static SourceRefusal DuplicateMember(string path, string member) =>
