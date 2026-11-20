@@ -47,6 +47,102 @@ public class SourceParserRobustnessTests
         }
     }
 
+    /// <summary>The values every member of Full() is given in turn by <see cref="AnyMemberMutated_IsJudged_AndNeverThrows"/>.</summary>
+    private static JsonNode?[] HostileValues() =>
+    [
+        null, true, 0, -1, 1.5, JsonNode.Parse("1e30"), "", " ", "x", new string('x', 300),
+        new JsonArray(), new JsonArray((JsonNode?)null), new JsonArray(1), new JsonObject(), new JsonObject { ["a"] = 1 },
+        Enumerable.Range(0, 32).Aggregate((JsonNode)new JsonArray(), (inner, _) => new JsonArray(inner)),
+    ];
+
+    /// <summary>Every member of <paramref name="node"/> at any depth, as the steps (a name or an index) to its parent and its own name.</summary>
+    private static IEnumerable<(object[] Parent, string Name)> Members(JsonNode? node, object[] at)
+    {
+        switch (node)
+        {
+            case JsonObject json:
+                foreach (var (name, value) in json)
+                {
+                    yield return (at, name);
+                    foreach (var inner in Members(value, [.. at, name]))
+                        yield return inner;
+                }
+
+                break;
+            case JsonArray array:
+                for (var i = 0; i < array.Count; i++)
+                {
+                    foreach (var inner in Members(array[i], [.. at, i]))
+                        yield return inner;
+                }
+
+                break;
+        }
+    }
+
+    private static JsonObject Walk(JsonNode root, object[] steps) =>
+        steps.Aggregate(root, (node, step) => step is string name ? node[name]! : node[(int)step]!).AsObject();
+
+    /// <summary>
+    /// Every member, at any depth, of every JSON file and header of Full() is given each hostile value,
+    /// deleted, and renamed. The whole product is about 10,000 parses (about ten seconds), so each member
+    /// gets half of its 18 mutations, drawn with <c>new Random(31)</c>: every member and every mutation
+    /// is still tried, and the run is the same every time. The full product passed once when this test
+    /// was written.
+    /// </summary>
+    [Fact]
+    public void AnyMemberMutated_IsJudged_AndNeverThrows()
+    {
+        var full = SourceFixture.Full();
+        var registry = SourceFixture.EmptyRegistry();
+        var random = new Random(31);
+        var runs = 0;
+
+        foreach (var path in full.Keys.Order(StringComparer.Ordinal).ToList())
+        {
+            var text = SourceFixture.Text(full, path);
+            var isHeader = path.EndsWith(".md", StringComparison.Ordinal);
+            var split = isHeader ? FrontMatter.Split(text) : null;
+            if (isHeader && split == null)
+                continue; // README.md: no JSON in it
+            var root = JsonNode.Parse(split?.Header ?? text)!;
+
+            foreach (var (parent, name) in Members(root, []).ToList())
+            {
+                var mutations = HostileValues()
+                    .Select(value => ((string, Action<JsonObject>))($"= {value?.ToJsonString() ?? "null"}", json => json[name] = value))
+                    .Append(("deleted", json => json.Remove(name)))
+                    .Append(("renamed", json =>
+                    {
+                        var value = json[name]?.DeepClone();
+                        json.Remove(name);
+                        json[name + "_renamed"] = value;
+                    }))
+                    .OrderBy(_ => random.Next())
+                    .Take(9);
+
+                foreach (var (what, mutate) in mutations)
+                {
+                    var copy = root.DeepClone();
+                    mutate(Walk(copy, parent));
+                    var json = copy.ToJsonString();
+                    var files = new Dictionary<string, byte[]>(full)
+                    {
+                        [path] = SourceFixture.Utf8(split != null ? SourceFixture.Md(json, split.Body) : json + "\n"),
+                    };
+
+                    var where = $"{path} {string.Join('.', parent.Append(name))} {what}";
+                    var result = SourceParser.Parse(files, registry);
+                    runs++;
+
+                    Assert.True(result.Refusals.Count == 0 == (result.Package != null), $"{where}: Package and Refusals disagree.");
+                }
+            }
+        }
+
+        Assert.True(runs > 4000, $"only {runs} mutations ran");
+    }
+
     [Fact]
     public void AnExpressionSite_OfAnyType_NeverThrows()
     {
