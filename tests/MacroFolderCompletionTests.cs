@@ -30,8 +30,8 @@ public class MacroFolderCompletionTests
         files["prompts/assessment.md"] = "Assess.\n{{ for m in macro.section_notes }}- {{ m.label }}: {{ m.prompt }}\n{{ end }}";
     }
 
-    [Fact]
-    public void APromptReadingAMacroFoldersItems_Completes()
+    /// <summary>The node prepared as the activity prepares it: the package with its folders, the input, the render and its reads.</summary>
+    private static (WorkflowPackage Package, ConsultPromptNodeActivityInput Input, HashSet<string> Reads, string Rendered) Prepare()
     {
         var built = V26JobStartTests.Package(WithFolder, FolderFiles);
         var errors = new List<string>();
@@ -48,8 +48,14 @@ public class MacroFolderCompletionTests
             Run: Run, Profile: Profile, Supplied: Supplied, Classifications: new Dictionary<string, string> { ["scope"] = "in_scope" },
             FailIfEmpty: descriptor.FailIfEmpty, Instances: descriptor.Macros);
         var trace = new TemplateRenderer.TemplateRenderTrace();
-        ConsultRenderPayload.RenderAt25(input, package, package.TextOf(node.Prompt!), trace);
-        var reads = trace.PromptReads.ToHashSet(StringComparer.Ordinal);
+        var rendered = ConsultRenderPayload.RenderAt25(input, package, package.TextOf(node.Prompt!), trace);
+        return (package, input, trace.PromptReads.ToHashSet(StringComparer.Ordinal), rendered);
+    }
+
+    [Fact]
+    public void APromptReadingAMacroFoldersItems_Completes()
+    {
+        var (package, input, reads, _) = Prepare();
         Assert.Equal(new[] { "section_notes/hpi", "section_notes/plan" }, reads.Order(StringComparer.Ordinal));
 
         const string reply = "Plan.\n\n{{ macro.section_notes.hpi.content }}";
@@ -59,5 +65,28 @@ public class MacroFolderCompletionTests
         var result = ConsultNodeCompletion.Complete(settled, input, package, reads);
 
         Assert.StartsWith("Plan.", result.RawOutput);
+    }
+
+    /// <summary>
+    /// The whole round trip for a folder item: the prompt tells the model which read to write
+    /// (the mechanics sentence), the model writes exactly that, and the reply renders it to the
+    /// item's content. The read named must be one the reply can render: macro.&lt;folder&gt;.&lt;item&gt;
+    /// (#1116), not the item's bare id, which names no macro.
+    /// </summary>
+    [Fact]
+    public void TheReadAFolderItemsSentenceNames_IsOneTheReplyRenders()
+    {
+        var (package, input, reads, rendered) = Prepare();
+
+        var named = System.Text.RegularExpressions.Regex.Matches(rendered, @"\{\{ macro\.[^ ]+\.content \}\}").Select(m => m.Value).ToList();
+        Assert.Equal(new[] { "{{ macro.section_notes.hpi.content }}", "{{ macro.section_notes.plan.content }}" }, named);
+
+        var reply = "Plan.\n\n" + named[0];
+        var settled = new NodeRunResult(reply, null, "in", ConsultGenerationProvenance.Sha256Hex(reply), ConsultGenerationProvenance.NodeHashVersionAt25,
+            AgentOutputHash: ConsultGenerationProvenance.Sha256Hex(reply));
+
+        var result = ConsultNodeCompletion.Complete(settled, input, package, reads);
+
+        Assert.StartsWith("Plan.\n\nHistory noted: Dr Example.", result.RawOutput);
     }
 }
