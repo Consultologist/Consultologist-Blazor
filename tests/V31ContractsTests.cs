@@ -178,15 +178,18 @@ public class V31ContractsTests
         var bindings = Json(Agents("agents", "v31", "bindings.json")).AsObject();
         var catalogue = Strings(Json(Agents("agents", "v31", "formats", "index.json"))["items"]);
 
+        var bound = bindings["formats"]!.AsObject();
+        Assert.NotEmpty(bound);
+
         var generated = new List<(string Name, JsonNode Binding)>();
-        foreach (var (format, binding) in bindings["formats"]!.AsObject())
+        foreach (var (format, binding) in bound)
         {
             Assert.True(
                 BuiltInFormats.Contains(format) || catalogue.Contains(format),
                 $"Binding '{format}' is neither a built-in format nor a file in agents/v31/formats.");
             if (catalogue.Contains(format))
             {
-                Assert.True(File.Exists(Agents("agents", "v31", "formats", format + ".json")));
+                Existing(Agents("agents", "v31", "formats", format + ".json"));
             }
 
             generated.Add((format, binding!));
@@ -205,20 +208,59 @@ public class V31ContractsTests
     }
 
     [Fact]
+    public void TheCatalogue_IsTheSchemasExamples()
+    {
+        // package-format's examples of the bindings and agents schemas are copies of the
+        // catalogue's files, so the catalogue is shown valid by the schemas' own check.
+        var examples = PackageFormat("v31", "conformance", "schemas");
+        foreach (var (catalogueFile, example) in new[]
+                 {
+                     ("bindings.json", Path.Combine(examples, "bindings", "valid-agents-catalogue-bindings.json")),
+                     ("agents.json", Path.Combine(examples, "agents", "valid-attested-agents.json")),
+                 })
+        {
+            Assert.True(
+                JsonNode.DeepEquals(Json(Agents("agents", "v31", catalogueFile)), Json(example)["instance"]),
+                $"agents/v31/{catalogueFile} is not the instance of {Path.GetFileName(example)}.");
+        }
+    }
+
+    [Fact]
     public void TheJudgementAgent_CarriesTheBuiltInJudgementAsAModelReceivesIt()
     {
-        // part 02 § 3.5: each description is kept, and a referenced text format's description
-        // comes first, so `reason` reads as plaintext's description and then its own.
         var manifest = AttestedAgentManifest.Load(File.ReadAllText(Existing(Agents("agents", "judgement.yaml"))));
-        Assert.Equal("judgement", manifest.Definition.Text!.Format!.Name);
+        Assert.NotNull(manifest.Definition.Text);
+        Assert.NotNull(manifest.Definition.Text.Format);
+        Assert.Equal("judgement", manifest.Definition.Text.Format.Name);
+        Assert.NotNull(manifest.Definition.Text.Format.Schema);
+        var sent = JsonNode.Parse(manifest.Definition.Text.Format.Schema)!;
 
-        var schema = JsonNode.Parse(manifest.Definition.Text.Format.Schema!)!;
-        Assert.Equal(["answer", "reason"], schema["properties"]!.AsObject().Select(p => p.Key).ToArray());
-        Assert.Equal(["answer", "reason"], Strings(schema["required"]));
+        // The built-in judgement as part 02 § 3.5 says a model receives it: `$schema`, `$id` and
+        // `title` removed, every `description` kept, and a property that references a text format
+        // sent as that format's type with the text format's description first, then its own.
+        // "First, then its own" is read as the two joined by one space.
+        var expected = Json(PackageFormat("v31", "formats", "judgement.json")).AsObject();
+        expected.Remove("$schema");
+        expected.Remove("$id");
+        expected.Remove("title");
+        foreach (var (name, property) in expected["properties"]!.AsObject().ToList())
+        {
+            if (property!["$ref"] is { } reference)
+            {
+                var text = Json(PackageFormat("v31", "formats", (string)reference! + ".json"));
+                expected["properties"]![name] = new JsonObject
+                {
+                    ["type"] = text["type"]!.DeepClone(),
+                    ["description"] = $"{(string)text["description"]!} {(string)property["description"]!}",
+                };
+            }
+        }
 
-        var plaintext = (string)Json(PackageFormat("v31", "formats", "plaintext.json"))["description"]!;
-        var own = (string)Json(PackageFormat("v31", "formats", "judgement.json"))["properties"]!["reason"]!["description"]!;
-        Assert.Equal($"{plaintext} {own}", (string)schema["properties"]!["reason"]!["description"]!);
+        Assert.True(
+            JsonNode.DeepEquals(expected, sent),
+            $"judgement.yaml sends {sent.ToJsonString()}, not {expected.ToJsonString()}.");
+        Assert.Equal(["answer", "reason"], sent["properties"]!.AsObject().Select(p => p.Key).ToArray());
+        Assert.Equal(["answer", "reason"], Strings(sent["required"]));
     }
 
     [Fact]
