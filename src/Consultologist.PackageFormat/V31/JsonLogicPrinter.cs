@@ -111,16 +111,16 @@ public static class JsonLogicPrinter
             case Kind.Infix:
             {
                 var list = (JsonArray)operands!;
-                return string.Join($" {form.Symbol} ", list.Select(e => Write(e, form.Level, depth + 2)));
+                return string.Join($" {form.Symbol} ", list.Select(e => Write(e, form.Level, depth + 1)));
             }
             case Kind.Not:
-                return "not " + Write(((JsonArray)operands!)[0], form.Level, depth + 2);
+                return "not " + Write(((JsonArray)operands!)[0], form.Level, depth + 1);
             case Kind.Negate:
             {
                 var operand = ((JsonArray)operands!)[0];
                 return operand is JsonValue value && value.GetValueKind() == JsonValueKind.Number
                     ? "-(" + CanonicalJson.Write(operand) + ")"
-                    : "-" + Write(operand, form.Level, depth + 2);
+                    : "-" + Write(operand, form.Level, depth + 1);
             }
             case Kind.If:
             {
@@ -129,26 +129,27 @@ public static class JsonLogicPrinter
                 for (var i = 0; i + 1 < list.Count; i += 2)
                 {
                     text.Append(i == 0 ? "if " : " else if ")
-                        .Append(Write(list[i], 0, depth + 2)).Append(" then ")
-                        .Append(Write(list[i + 1], 0, depth + 2));
+                        .Append(Write(list[i], 0, depth + 1)).Append(" then ")
+                        .Append(Write(list[i + 1], 0, depth + 1));
                 }
 
-                return text.Append(" else ").Append(Write(list[^1], 0, depth + 2)).ToString();
+                return text.Append(" else ").Append(Write(list[^1], 0, depth + 1)).ToString();
             }
             case Kind.Object:
             {
                 var fields = (JsonObject)operands!;
                 if (fields.Count == 0)
                     return "{}";
-                var parts = fields.Select(f => FieldName(f.Key) + ": " + Write(f.Value, Bare, depth + 2));
+                var parts = fields.Select(f => FieldName(f.Key) + ": " + Write(f.Value, Bare, depth + 1));
                 return "{ " + string.Join(", ", parts) + " }";
             }
             case Kind.Missing:
-                return "missing(" + Write(operands, Bare, depth + 1) + ")";
+                // the list of paths (always a list here) is no level of its own, as the shape counts
+                return "missing(" + Write(operands, Bare, depth) + ")";
             default:
             {
                 var args = operands is JsonArray list
-                    ? list.Select(e => Write(e, Bare, depth + 2))
+                    ? list.Select(e => Write(e, Bare, depth + 1))
                     : [Write(operands, Bare, depth + 1)];
                 return form.Name + "(" + string.Join(", ", args) + ")";
             }
@@ -307,6 +308,12 @@ public static class JsonLogicPrinter
     private sealed class Parser(List<Token> tokens)
     {
         private int _at;
+        // Expressions nested in parentheses, lists, arguments and fields. The shape admits containers MaxDepth deep; a
+        // literal inside the deepest one is one Expression more, and the path inside a missing's list two (the list
+        // itself is one), so the bound admits every rule the shape does. Text that parses deeper prints "…" past the
+        // limit, so TryParse still refuses it; the bound only keeps the recursion short.
+        private const int MaxParseDepth = JsonLogicShape.MaxDepth + 2;
+
         private int _depth;
 
         private Token Peek => tokens[_at];
@@ -340,7 +347,7 @@ public static class JsonLogicPrinter
         /// <summary>Level 0: an <c>if</c>, or anything tighter.</summary>
         private JsonNode? Expression()
         {
-            if (++_depth > JsonLogicShape.MaxDepth)
+            if (++_depth > MaxParseDepth)
                 throw new ParseFailure();
             JsonNode? result;
             if (IsWord("if"))

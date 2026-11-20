@@ -107,6 +107,49 @@ public class JsonLogicPrinterTests
         Assert.False(JsonLogicPrinter.TryParse(new string('(', 500) + "1" + new string(')', 500), out _));
     }
 
+    /// <summary><paramref name="inner"/> inside <paramref name="levels"/> containers built by <paramref name="wrap"/>.</summary>
+    private static JsonNode? Nest(JsonNode? inner, int levels, Func<JsonNode?, JsonNode> wrap)
+    {
+        for (var i = 0; i < levels; i++)
+            inner = wrap(inner);
+        return inner;
+    }
+
+    private static JsonNode Not(JsonNode? operand) => new JsonObject { ["!"] = new JsonArray { operand } };
+
+    public static TheoryData<string> AtTheDepthLimit()
+    {
+        var max = JsonLogicShape.MaxDepth;
+        return
+        [
+            Nest(JsonValue.Create(1), max, inner => new JsonArray { inner })!.ToJsonString(),
+            Nest(JsonValue.Create(true), max, Not)!.ToJsonString(),
+            Nest(new JsonObject { ["missing"] = new JsonArray { "input.a", "input.b" } }, max - 1, Not)!.ToJsonString(),
+            Nest(new JsonObject { ["var"] = "a b" }, max - 1, Not)!.ToJsonString(),
+            Nest(new JsonObject { ["-"] = new JsonArray { 1 } }, max - 1, Not)!.ToJsonString(),
+            Nest(new JsonObject { ["object"] = new JsonObject { ["a"] = 1 } }, max - 1, Not)!.ToJsonString(),
+            Nest(new JsonObject { ["size"] = new JsonArray { "a" } }, max - 1, inner => new JsonObject { ["+"] = new JsonArray { 1, inner } })!.ToJsonString(),
+        ];
+    }
+
+    [Theory]
+    [MemberData(nameof(AtTheDepthLimit))]
+    public void ARuleExactlyAsDeepAsTheShapeAllows_RoundTrips(string json)
+    {
+        var rule = JsonNode.Parse(json, documentOptions: new System.Text.Json.JsonDocumentOptions { MaxDepth = 512 });
+        Assert.Empty(JsonLogicShape.Check(rule));
+
+        var text = JsonLogicPrinter.Print(rule);
+        Assert.DoesNotContain("…", text);
+        Assert.True(JsonLogicPrinter.TryParse(text, out var parsed), text);
+        Assert.Equal(rule!.ToJsonString(), parsed!.ToJsonString());
+
+        // one level deeper is past the limit, and the printer marks it
+        var deeper = Not(rule.DeepClone());
+        Assert.Contains(JsonLogicShape.Check(deeper), f => f.Kind == ShapeFaultKind.TooDeep);
+        Assert.False(JsonLogicPrinter.TryParse(JsonLogicPrinter.Print(deeper), out _));
+    }
+
     [Fact]
     public void Reason_IsTheRowOfTheSentences()
     {
