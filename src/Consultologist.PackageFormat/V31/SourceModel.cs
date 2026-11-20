@@ -7,9 +7,17 @@ namespace Consultologist.PackageFormat.V31;
 /// <see cref="Package"/> is null exactly when <see cref="Refusals"/> is not empty; the refusals are
 /// said once each and ordered by <see cref="SourceRefusal.Path"/> (ordinal), then in the order the
 /// reader found them. <see cref="Normalised"/> lists the files whose <c>\r\n</c> intake turned into
-/// <c>\n</c>, whatever the outcome (part 01 § 2.4: the publish report notes them).
+/// <c>\n</c>, whatever the outcome (part 01 § 2.4: the publish report notes them). <see cref="Files"/>
+/// is what intake read, whatever the outcome: every file's text after line-ending normalisation,
+/// keyed by its path and ordinal-sorted, without the compiled copies intake dropped and without a
+/// file intake refused. Later steps hash and write back these texts (part 07 § 2.6), <c>dag.mmd</c>
+/// among them.
 /// </summary>
-public sealed record SourceParseResult(SourcePackage? Package, IReadOnlyList<SourceRefusal> Refusals, IReadOnlyList<string> Normalised);
+public sealed record SourceParseResult(
+    SourcePackage? Package,
+    IReadOnlyList<SourceRefusal> Refusals,
+    IReadOnlyList<string> Normalised,
+    IReadOnlyDictionary<string, string> Files);
 
 /// <summary>
 /// #1499: a package source read whole (part 01 § 2): the manifest, the nine top-level folders and

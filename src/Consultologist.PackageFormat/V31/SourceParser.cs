@@ -34,7 +34,7 @@ public static partial class SourceParser
 
         var intake = SourceIntake.Read(upload);
         if (intake.Refusals.Count > 0)
-            return new SourceParseResult(null, Order(intake.Refusals), intake.Normalised);
+            return new SourceParseResult(null, Order(intake.Refusals), intake.Normalised, intake.Files);
 
         var walk = new SourceWalk(intake.Files, registry);
         ReadRoot(walk);
@@ -55,7 +55,7 @@ public static partial class SourceParser
         SourceScopes.Check(tree, walk.Refusals);
 
         var refusals = Order(walk.Refusals);
-        return new SourceParseResult(refusals.Count == 0 ? tree : null, refusals, intake.Normalised);
+        return new SourceParseResult(refusals.Count == 0 ? tree : null, refusals, intake.Normalised, intake.Files);
     }
 
     /// <summary>Each refusal once (same id, sentence and path), ordered by path, then in the order found.</summary>

@@ -178,6 +178,41 @@ public class SourceParserPlainFilesTests
     }
 
     [Fact]
+    public void Files_HoldWhatIntakeRead_ByteForByte_WithLineEndsNormalised()
+    {
+        const string dag = "flowchart TD\n  plan --> note\n";
+        var files = SourceFixture.Full()
+            .With("dag.mmd", dag)
+            .With("resolve.json", "{}")
+            .With("snippets/closing_line.md", SourceFixture.Text(SourceFixture.Full(), "snippets/closing_line.md").Replace("\n", "\r\n"));
+
+        var result = files.Parse();
+
+        Assert.Empty(result.Refusals);
+        Assert.Equal(dag, result.Files["dag.mmd"]);
+        Assert.Equal(SourceFixture.Text(files, "README.md"), result.Files["README.md"]);
+        Assert.Equal(SourceFixture.Text(SourceFixture.Full(), "snippets/closing_line.md"), result.Files["snippets/closing_line.md"]);
+        Assert.DoesNotContain("resolve.json", result.Files.Keys);
+        Assert.Equal(files.Keys.Where(k => k != "resolve.json").Order(StringComparer.Ordinal), result.Files.Keys);
+    }
+
+    [Fact]
+    public void Files_AreReturned_WhenTheParseRefuses()
+    {
+        var refusedByTheWalk = SourceFixture.Full().With("dag.mmd", "flowchart TD\n").Without("tests/index.json").Parse();
+        Assert.NotEmpty(refusedByTheWalk.Refusals);
+        Assert.Equal("flowchart TD\n", refusedByTheWalk.Files["dag.mmd"]);
+
+        // Intake refuses one file: the files it could read are still returned.
+        var refusedAtIntake = SourceFixture.Full().With("dag.mmd", "flowchart TD\n");
+        refusedAtIntake["nodes/plan.md"] = [0xEF, 0xBB, 0xBF, (byte)'x'];
+        var result = refusedAtIntake.Parse();
+        Assert.Equal("S01-014", Assert.Single(result.Refusals).Id);
+        Assert.Equal("flowchart TD\n", result.Files["dag.mmd"]);
+        Assert.DoesNotContain("nodes/plan.md", result.Files.Keys);
+    }
+
+    [Fact]
     public void AHeaderThatIsNotJson_CarriesTheParsersMessage()
     {
         var refusal = Only(WithRenderer("---\n{ label: 'X' }\n---\nT\n").Parse());
