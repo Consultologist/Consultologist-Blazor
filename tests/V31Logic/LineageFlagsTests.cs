@@ -75,11 +75,77 @@ public class LineageFlagsTests
             Node("b", reads: [Read("node.a.value", "a"), Read("run.id")]),
         ]);
 
-        Assert.True(derived["a"][LineageFlag.RunDependent].Value);
-        Assert.True(derived["b"][LineageFlag.RunDependent].Value);
-        // Because is the first read, in written order, that makes it true once the graph settles: for b that is its read of a.
-        Assert.Equal("node.b.value", derived["a"][LineageFlag.RunDependent].Because);
-        Assert.Equal("node.a.value", derived["b"][LineageFlag.RunDependent].Because);
+        Assert.Equal(new LineageValue(true, "node.b.value"), derived["a"][LineageFlag.RunDependent]);
+        Assert.Equal(new LineageValue(true, "run.id"), derived["b"][LineageFlag.RunDependent]);
+    }
+
+    [Fact]
+    public void ASelfRead_IsNotItsOwnCause()
+    {
+        var derived = LineageFlags.Derive([Node("a", reads: [Read("node.a.value", "a"), Read("run.id")])]);
+
+        Assert.Equal(new LineageValue(true, "run.id"), derived["a"][LineageFlag.RunDependent]);
+    }
+
+    [Fact]
+    public void ACycleSeededByAStarter_NamesTheStartersWay()
+    {
+        var derived = LineageFlags.Derive([
+            Node("a", reads: Read("node.b.value", "b")),
+            Node("b", reads: [Read("node.a.value", "a"), Read("node.seed.content", "seed")]),
+            Node("seed", model: true),
+        ]);
+
+        Assert.Equal(new LineageValue(true, "node.b.value"), derived["a"][LineageFlag.ModelDerived]);
+        Assert.Equal(new LineageValue(true, "node.seed.content"), derived["b"][LineageFlag.ModelDerived]);
+    }
+
+    [Fact]
+    public void AStarter_HasNoBecause_EvenIfItsReadsWouldMakeItSo()
+    {
+        var derived = LineageFlags.Derive([
+            Node("draft", model: true),
+            Node("both", model: true, reads: Read("node.draft.content", "draft")),
+        ]);
+
+        Assert.Equal(new LineageValue(true, null), derived["both"][LineageFlag.ModelDerived]);
+    }
+
+    [Fact]
+    public void OfReads_SeesARunReadDirectly()
+    {
+        var decision = LineageFlags.OfReads([Read("input.a.value"), Read("run.date")], LineageFlags.Derive([]));
+
+        Assert.Equal(new LineageValue(true, "run.date"), decision[LineageFlag.RunDependent]);
+    }
+
+    [Fact]
+    public void TheRunRoot_IsTheWholeFirstSegment()
+    {
+        var derived = LineageFlags.Derive([
+            Node("bare", reads: Read("run")),
+            Node("running", reads: Read("running.x")),
+        ]);
+
+        Assert.Equal(new LineageValue(true, "run"), derived["bare"][LineageFlag.RunDependent]);
+        Assert.False(derived["running"][LineageFlag.RunDependent].Value);
+    }
+
+    [Fact]
+    public void DuplicateKeys_LastOneWins()
+    {
+        var derived = LineageFlags.Derive([Node("a", reads: Read("run.id")), Node("a")]);
+
+        Assert.False(derived["a"][LineageFlag.RunDependent].Value);
+    }
+
+    [Fact]
+    public void NullsInTheGraph_AreEmpty()
+    {
+        var derived = LineageFlags.Derive([null!, new LineageNode("a", false, false, null!), Node("b", reads: [null!, Read("run.id")])]);
+
+        Assert.False(derived["a"][LineageFlag.RunDependent].Value);
+        Assert.Equal(new LineageValue(true, "run.id"), derived["b"][LineageFlag.RunDependent]);
     }
 
     [Fact]

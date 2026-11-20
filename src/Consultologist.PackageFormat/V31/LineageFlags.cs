@@ -46,32 +46,45 @@ public static class LineageFlags
         ArgumentNullException.ThrowIfNull(nodes);
         var byKey = new Dictionary<string, LineageNode>(StringComparer.Ordinal);
         foreach (var node in nodes)
-            byKey[node.Key] = node;
+            if (node is not null && node.Key is not null)
+                byKey[node.Key] = node;
 
         var result = new Dictionary<string, IReadOnlyDictionary<LineageFlag, LineageValue>>(StringComparer.Ordinal);
-        var flags = new Dictionary<string, Dictionary<LineageFlag, bool>>(StringComparer.Ordinal);
         foreach (var node in byKey.Values)
-            flags[node.Key] = All.ToDictionary(f => f, f => Starts(node, f));
+            result[node.Key] = new Dictionary<LineageFlag, LineageValue>();
 
-        bool changed;
-        do
+        foreach (var flag in All)
         {
-            changed = false;
+            // Round 0: the nodes that start it. Round n: against a frozen snapshot of round n-1, a node still false
+            // becomes true because of the first read that counts; its cause is fixed then and never recomputed.
+            var causes = new Dictionary<string, LineageValue>(StringComparer.Ordinal);
             foreach (var node in byKey.Values)
-                foreach (var flag in All)
-                {
-                    if (flags[node.Key][flag] || FirstCause(node.ContentReads, flag, key => flags.TryGetValue(key, out var f) && f[flag]) is null)
-                        continue;
-                    flags[node.Key][flag] = true;
-                    changed = true;
-                }
-        }
-        while (changed);
+                if (Starts(node, flag))
+                    causes[node.Key] = new LineageValue(true, null);
 
-        foreach (var node in byKey.Values)
-            result[node.Key] = All.ToDictionary(f => f, f => flags[node.Key][f] && !Starts(node, f)
-                ? new LineageValue(true, FirstCause(node.ContentReads, f, key => flags.TryGetValue(key, out var v) && v[f]))
-                : new LineageValue(flags[node.Key][f], null));
+            while (true)
+            {
+                var snapshot = causes.Keys.ToHashSet(StringComparer.Ordinal);
+                var added = new List<(string Key, string Because)>();
+                foreach (var node in byKey.Values)
+                {
+                    if (snapshot.Contains(node.Key))
+                        continue;
+                    var cause = FirstCause(node.ContentReads, flag, snapshot.Contains);
+                    if (cause is not null)
+                        added.Add((node.Key, cause));
+                }
+
+                if (added.Count == 0)
+                    break;
+                foreach (var (key, because) in added)
+                    causes[key] = new LineageValue(true, because);
+            }
+
+            foreach (var node in byKey.Values)
+                ((Dictionary<LineageFlag, LineageValue>)result[node.Key])[flag] = causes.TryGetValue(node.Key, out var v) ? v : new LineageValue(false, null);
+        }
+
         return result;
     }
 
@@ -114,8 +127,12 @@ public static class LineageFlags
     /// <summary>The path of the first read that makes <paramref name="flag"/> true, or null.</summary>
     private static string? FirstCause(IReadOnlyList<LineageRead> reads, LineageFlag flag, Func<string, bool> nodeHas)
     {
+        if (reads is null)
+            return null;
         foreach (var read in reads)
         {
+            if (read?.Path is null)
+                continue;
             if (flag == LineageFlag.RunDependent && HasRunRoot(read.Path))
                 return read.Path;
             if (read.Key is not null && nodeHas(read.Key))
