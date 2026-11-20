@@ -32,15 +32,9 @@ public static class SourceIds
     /// </summary>
     public static SourceRefusal? Check(string id, string path)
     {
-        // The pattern's $ would also accept a trailing newline; ordinal checks keep it exact.
-        if (!Pattern.IsMatch(id) || id.EndsWith('\n'))
+        if (CheckPatternAndLength(id, path) is { } refusal)
         {
-            return SourceSentences.IdNotValid(id, path);
-        }
-
-        if (id.Length > SourceBounds.IdLength)
-        {
-            return SourceSentences.IdTooLong(id, path);
+            return refusal;
         }
 
         if (ReservedIds.Windows.Contains(id))
@@ -62,4 +56,27 @@ public static class SourceIds
 
         return null;
     }
+
+    /// <summary>
+    /// The pattern (S01-030) and the length (S01-031) alone, without the reserved names: the rule
+    /// a format's property names follow (#1500, part 02 § 5.3). Null when <paramref name="id"/> passes both.
+    /// </summary>
+    internal static SourceRefusal? CheckPatternAndLength(string id, string path)
+    {
+        // The pattern's $ would also accept a trailing newline; ordinal checks keep it exact.
+        if (!IsPattern(id))
+        {
+            return SourceSentences.IdNotValid(id, path);
+        }
+
+        if (id.Length > SourceBounds.IdLength)
+        {
+            return SourceSentences.IdTooLong(id, path);
+        }
+
+        return null;
+    }
+
+    /// <summary>Whether <paramref name="id"/> matches <c>^[a-z][a-z0-9_]*$</c> exactly.</summary>
+    internal static bool IsPattern(string id) => Pattern.IsMatch(id) && !id.EndsWith('\n');
 }
