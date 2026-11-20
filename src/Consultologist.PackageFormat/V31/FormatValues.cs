@@ -114,7 +114,7 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
         static bool Under(string child, string parent) => child.Length > parent.Length && child.StartsWith(parent + "/", StringComparison.Ordinal);
         static string Keyword(string schema) => schema[(schema.LastIndexOf('/') + 1)..];
 
-        var unions = failed.Where(f => Keyword(f.Schema) is "anyOf" or "oneOf").Select(f => f.Schema).ToList();
+        var unions = failed.Where(f => EndsOnKeyword(f.Schema) is "anyOf" or "oneOf").Select(f => f.Schema).ToList();
         var kept = failed.Where(f => !unions.Any(u => Under(f.Schema, u))).ToList();
         var leaves = kept.Where(f => !kept.Any(o => Under(o.Schema, f.Schema)));
 
@@ -129,5 +129,25 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
             .OrderBy(f => f.Pointer, StringComparer.Ordinal)
             .ThenBy(f => f.Keyword, StringComparer.Ordinal)
             .ToList();
+    }
+
+    /// <summary>
+    /// The keyword a schema location (<c>/properties/a/anyOf/0/type</c>) ends on, or null when it
+    /// ends on a name or a position: a segment after <c>properties</c> or <c>$defs</c> is a
+    /// property's or a definition's name (a field may be called <c>anyOf</c>), one after
+    /// <c>anyOf</c>, <c>oneOf</c>, <c>allOf</c> or <c>prefixItems</c> a position.
+    /// </summary>
+    private static string? EndsOnKeyword(string schema)
+    {
+        string? keyword = null;
+        var nameOrPosition = false;
+        foreach (var segment in schema.Split('/').Skip(1))
+        {
+            keyword = nameOrPosition ? null : segment;
+            nameOrPosition = keyword is "properties" or "$defs" or "patternProperties" or "dependentSchemas"
+                or "anyOf" or "oneOf" or "allOf" or "prefixItems";
+        }
+
+        return keyword;
     }
 }

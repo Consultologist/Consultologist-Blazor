@@ -107,6 +107,16 @@ public class FormatValuesTests
     }
 
     [Fact]
+    public void AFieldNamedLikeAUnionKeyword_IsAField()
+    {
+        foreach (var name in new[] { "anyOf", "oneOf" })
+        {
+            var format = $$"""{ "type": "object", "additionalProperties": false, "required": ["{{name}}"], "properties": { "{{name}}": { "type": "integer" } } }""";
+            Assert.Equal($"/{name}|type", Faults(Check($$"""{ "{{name}}": "three" }""", format)));
+        }
+    }
+
+    [Fact]
     public void Faults_NeverCarryTheValue()
     {
         var text = string.Concat(Enumerable.Repeat("Margaret Okafor has had a cough since March. ", 50_000));
@@ -114,9 +124,10 @@ public class FormatValuesTests
         var value = new JsonObject { ["answer"] = text, ["reason"] = "r", ["Margaret"] = 1 };
         var result = new CorvusFormatValueValidator().Validate(value, JsonNode.Parse(Judgement), Formats);
         Assert.False(result.Valid);
-        Assert.NotEmpty(result.Faults);
+        Assert.Equal([new FormatValueFault("", "additionalProperties"), new FormatValueFault("/answer", "type")], result.Faults);
         foreach (var fault in result.Faults)
         {
+            Assert.DoesNotContain("Margaret", fault.Pointer + fault.Keyword);
             Assert.DoesNotContain("Okafor", fault.Pointer + fault.Keyword);
             Assert.DoesNotContain("cough", fault.Pointer + fault.Keyword);
             Assert.True(fault.Pointer.Length < 100 && fault.Keyword.Length < 40);
@@ -153,18 +164,25 @@ public class FormatValuesTests
     }
 
     [Fact]
-    public void TheSameFormat_IsCompiledOnce()
+    public void ManyThreads_ValidatingFreshFormatsAtOnce_AllGetTheRightAnswer()
     {
+        // Each iteration a format no other has used (its own enum value) and the same format named again,
+        // on two validators shared by every thread: every result right, nothing thrown.
         var a = new CorvusFormatValueValidator();
         var b = new CorvusFormatValueValidator();
-        for (var i = 0; i < 1000; i++)
+        var wrong = new System.Collections.Concurrent.ConcurrentBag<string>();
+        Parallel.For(0, 400, new ParallelOptions { MaxDegreeOfParallelism = 8 }, i =>
         {
-            var value = $$"""{ "answer": {{(i % 2 == 0 ? "true" : "\"no\"")}}, "reason": "r" }""";
-            var ra = Check(value, Judgement, validator: a);
-            var rb = Check(value, Judgement, validator: b);
-            Assert.Equal(ra.Valid, rb.Valid);
-            Assert.Equal(i % 2 == 0, ra.Valid);
-        }
+            var validator = i % 2 == 0 ? a : b;
+            var format = $$"""{ "type": "object", "additionalProperties": false, "required": ["v"], "properties": { "v": { "type": "string", "enum": ["v{{i}}"] } } }""";
+            var good = Check($$"""{ "v": "v{{i}}" }""", format, validator: validator);
+            var bad = Check($$"""{ "v": "v{{i + 1}}" }""", format, validator: validator);
+            var named = Check($$"""{ "answer": {{(i % 3 == 0 ? "true" : "\"no\"")}}, "reason": "r" }""", Judgement, validator: validator);
+            if (!good.Valid || Faults(bad) != "/v|enum" || named.Valid != (i % 3 == 0))
+                wrong.Add($"{i}: {good.Valid} {Faults(bad)} {named.Valid}");
+        });
+
+        Assert.Empty(wrong);
     }
 
     [Fact]
