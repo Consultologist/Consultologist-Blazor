@@ -1,0 +1,93 @@
+{
+  "description": [
+    "Every source kind composing, with readable pins. single: one prose source, verbatim. pair: two",
+    "prose sources joined by one blank line, in sources order. topics: a for over an input, one",
+    "'## <title>' block per item in input order, named by the input's labelField; the inner if takes",
+    "no branch for 'Social history', so that item has no block and the blocks close up around it.",
+    "sections: a for over node.plan's list (labelField title) whose item text is an inner for's",
+    "blocks (labelField heading), so each section heading is followed by its point headings.",
+    "summary: a while (checkFirst, until) that runs two passes; only the last pass's text composes.",
+    "plan: an if that took its branch, composed as its returned node's text. tone_line: a case that",
+    "took its 'formal' branch. tally: a let of type text, composed as its plain text.",
+    "summary_then_opening and topics_then_opening: the while's and the for's text, one blank line,",
+    "then opening's."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
+    "topics": [
+      {
+        "title": "History",
+        "kind": "drafted"
+      },
+      {
+        "title": "Social history",
+        "kind": "left_out"
+      },
+      {
+        "title": "Examination",
+        "kind": "drafted"
+      }
+    ],
+    "include_plan": true,
+    "tone": "formal",
+    "redraft": true
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note.",
+    "draft_topic:0": "History paragraph: breathless on exertion for a year.",
+    "draft_topic:2": "Examination paragraph: ejection systolic murmur.",
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        },
+        {
+          "title": "Plan",
+          "purpose": "What happens next."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "heading": "Valve",
+          "point": "Mild aortic stenosis on echo."
+        }
+      ]
+    },
+    "outline:2": {
+      "points": [
+        {
+          "heading": "Review",
+          "point": "Review in six months."
+        },
+        {
+          "heading": "Advice",
+          "point": "Report chest pain or fainting."
+        }
+      ]
+    },
+    "draft_point:1/1": "Valve paragraph for the assessment.",
+    "draft_point:2/1": "Review paragraph for the plan.",
+    "draft_point:2/2": "Advice paragraph for the plan.",
+    "draft_summary:1": "Summary, first draft.",
+    "judge:1": {
+      "verdict": "revise",
+      "feedback": "Name the valve."
+    },
+    "draft_summary:2": "Summary, second draft, naming the aortic valve.",
+    "judge:2": {
+      "verdict": "good",
+      "feedback": "Good."
+    },
+    "draft_plan": "Plan paragraph: repeat echo in six months.",
+    "formal_line": "We remain at your disposal for any questions."
+  }
+}

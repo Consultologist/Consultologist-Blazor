@@ -1,0 +1,44 @@
+flowchart TD
+    snippet_standards(["snippet.standards"])
+    input_consult_draft(["input.consult_draft"])
+    snippet_snomed_tool_guidance(["snippet.snomed_tool_guidance"])
+    input_consult_specialty(["input.consult_specialty"])
+    input_note_type(["input.note_type"])
+
+    extract_patient_concepts["extract_patient_concepts<br/>Extracting clinical concepts"]
+    input_consult_draft --> extract_patient_concepts
+    snippet_snomed_tool_guidance --> extract_patient_concepts
+    identify_problem["identify_problem<br/>Identifying primary problem"]
+    extract_patient_concepts -->|"content"| identify_problem
+    input_consult_specialty --> identify_problem
+    snippet_snomed_tool_guidance --> identify_problem
+    create_typical_trajectory["create_typical_trajectory<br/>Building reference trajectory"]
+    identify_problem -->|"content"| create_typical_trajectory
+    input_consult_specialty --> create_typical_trajectory
+    snippet_snomed_tool_guidance --> create_typical_trajectory
+    create_patient_trajectory["create_patient_trajectory<br/>Building patient trajectory"]
+    identify_problem -->|"content"| create_patient_trajectory
+    extract_patient_concepts -->|"content"| create_patient_trajectory
+    create_typical_trajectory -->|"content"| create_patient_trajectory
+    input_consult_specialty --> create_patient_trajectory
+    snippet_snomed_tool_guidance --> create_patient_trajectory
+
+    subgraph for_standards["standards: per snippet.standards item"]
+        section_instructions["section_instructions<br/>Applying section instructions"]
+        patient_section_draft["patient_section_draft<br/>Applying patient information"]
+        standard_section_draft["standard_section_draft<br/>Drafting section"]
+    end
+    standards["standards<br/>Standards<br/>item in snippet.standards"]
+    patient_section_draft -->|"content"| section_instructions
+    input_consult_specialty --> section_instructions
+    input_note_type --> section_instructions
+    standard_section_draft -->|"content"| patient_section_draft
+    input_consult_draft --> patient_section_draft
+    create_patient_trajectory -->|"content"| standard_section_draft
+    input_consult_specialty --> standard_section_draft
+    input_note_type --> standard_section_draft
+    snippet_standards -->|"for"| for_standards
+    section_instructions -->|"ret"| standards
+
+    result_consult{{"consult<br/>Consultation note"}}
+    standards --> result_consult

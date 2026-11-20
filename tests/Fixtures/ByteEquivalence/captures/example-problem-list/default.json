@@ -1,0 +1,61 @@
+{
+  "package": "example-problem-list",
+  "tag": "example-problem-list-v2026.11.2",
+  "scenario": "default",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "find_problems": {
+      "summary": "stub 572eeb84",
+      "problems": [
+        {
+          "name": "stub 341b50c8",
+          "detail": "stub 2e43ca09"
+        }
+      ]
+    },
+    "follow_up": {
+      "value": "yes"
+    },
+    "draft_problem:1": "Stub reply for draft_problem:1 (9f5b33aa).",
+    "section_draft:overview": "Stub reply for section_draft:overview (41745024).",
+    "section_draft:follow_up_plan": "Stub reply for section_draft:follow_up_plan (273a1d2b)."
+  },
+  "prompts": [
+    {
+      "key": "find_problems",
+      "hash": "sha256:b77e7165e1e240240d47bb05a5b46d429a83c46481b3109ff815fb6153fad60d",
+      "text": "You are reading a consult draft to list the clinical problems it names.\n\nTask:\nList each distinct problem the draft names — a diagnosis, a finding still to be explained, or a decision still to be made — once, in the order the draft first raises it. For each, give its name and one or two sentences of what the draft says about it: its findings, and the plan the draft records for it. Then write a one-sentence summary of the consultation.\n\nGuardrail:\nUse only what the draft contains. Do not add problems, findings or plans it does not name. Group what belongs to one problem under that problem rather than listing it twice.\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"problems\"],\"properties\":{\"summary\":{\"type\":\"string\"},\"problems\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"name\",\"detail\"],\"properties\":{\"name\":{\"type\":\"string\"},\"detail\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "follow_up",
+      "hash": "sha256:44a06ebebb431f715ddb680765f3560839ebb6e961ccbd8242620da52c6fa2cd",
+      "text": "You are deciding one thing about a consult draft: whether it arranges for the patient to be reassessed.\n\nDefinitions:\nYes: the draft schedules a further visit, review or reassessment with this clinic — at a stated time or interval.\nNo: the draft arranges no further visit with this clinic, or says only that the patient may be seen again if needed.\n\nGuardrail:\nDecide from the draft alone. A referral to another service, a test to be done, or a medication to start is not a reassessment by itself.\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n\n\nAnswer with exactly one of: yes, no."
+    },
+    {
+      "key": "draft_problem:1",
+      "hash": "sha256:2938570bd1f827456f4b321890093a3d875071dbb1f4331d7bc6b47cd4cc17b9",
+      "text": "You are drafting one problem of a problem-oriented consultation note.\n\nTask:\nWrite the part of the note for the problem named below: what the draft documents about it, the assessment, and the plan for it.\n\nGuardrail:\nUse only what the consult draft contains about this problem. Do not add clinical facts it does not contain. Where the draft records no plan for this problem, say so plainly.\n\nOutput rule:\nReturn only prose for this problem. No heading, no bullets, no commentary.\n\nProblem 1:\nstub 341b50c8\n\nWhat the draft says about it:\nstub 2e43ca09\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n"
+    },
+    {
+      "key": "section_draft:overview",
+      "hash": "sha256:cc910faf8507165513148b24fd6ef696c01b355ad2918057c5e1ae21e1eaf334",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nOverview\n\nSection standard:\nOne short paragraph introducing the patient and the reason for the consultation, as the draft documents them: who the patient is, what they were referred for, and what has been done so far.\n\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n"
+    },
+    {
+      "key": "section_draft:follow_up_plan",
+      "hash": "sha256:c66d82d900efd84c0a8b7f901c96e563f7ddd7276fa9eefbb38f4ce1803a621f",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nFollow-up plan\n\nSection standard:\nOne short paragraph stating when the patient will be seen again, by whom, and what will be reviewed then, as the draft documents it.\n\n\nConsult draft:\nPriya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:664aa6f169e67d4e7d4292c1e543dbcfa78d041852ce1c7a91cbfbee538b5d23",
+      "text": "## Overview\n\nStub reply for section_draft:overview (41745024).\n\n## Follow-up plan\n\nStub reply for section_draft:follow_up_plan (273a1d2b).\n\n## Problems 1\n\nStub reply for draft_problem:1 (9f5b33aa)."
+    }
+  ]
+}

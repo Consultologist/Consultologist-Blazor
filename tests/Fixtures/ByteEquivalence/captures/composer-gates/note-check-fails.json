@@ -1,0 +1,139 @@
+{
+  "package": "composer-gates",
+  "tag": null,
+  "scenario": "note-check-fails",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "extract_input_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "note_body": "Closing paragraph: review in three months.",
+    "patient_line": "Your sugar levels are high; we will review your tablets.",
+    "extract_note_terms": {
+      "concepts": [
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "extract_copy_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "cover_note": "Please find the clinic note enclosed."
+  },
+  "prompts": [
+    {
+      "key": "problem_draft:0",
+      "hash": "sha256:f18562cbc553709b49dbfd31fa99d007b4b4ed4899208ef58102b7a9a080970f",
+      "text": "Write one paragraph on the problem \"Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    },
+    {
+      "key": "problem_draft:1",
+      "hash": "sha256:c211938d63392c30c6c2d18b14d6af99f4a99ab59f63e15c2260d9248b705329",
+      "text": "Write one paragraph on the problem \"Metformin 1 g twice daily, continued (fictional)\" from this draft.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    },
+    {
+      "key": "extract_input_terms",
+      "hash": "sha256:eaa37a006c9793276e10c597a1d3bd98652c114de541364ef69e20a744740a01",
+      "text": "Extract the clinical terms as concept-list JSON: Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n"
+    },
+    {
+      "key": "note_body",
+      "hash": "sha256:f365be62e68fb20f71a048a68f51259640e3755271d92eba052cb9e4efeefd6a",
+      "text": "Write the closing paragraph of a clinic note from this draft and its problems.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n"
+    },
+    {
+      "key": "patient_line",
+      "hash": "sha256:6730bb43b79d43c8518ec1eb0ad6a39b4af4b3f6ecc6ff7079f6ea4b2a5f1086",
+      "text": "Write one line for the patient about these problems.\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n"
+    },
+    {
+      "key": "extract_note_terms",
+      "hash": "sha256:16f5c4caf7d37d35cbba96389a0ec4958e7ba55bca07b1b8f0d850df96bbd907",
+      "text": "Extract the clinical terms as concept-list JSON: ## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n"
+    },
+    {
+      "key": "extract_copy_terms",
+      "hash": "sha256:16f5c4caf7d37d35cbba96389a0ec4958e7ba55bca07b1b8f0d850df96bbd907",
+      "text": "Extract the clinical terms as concept-list JSON: ## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n"
+    },
+    {
+      "key": "cover_note",
+      "hash": "sha256:3067d23585b72f05b4cab0c121dce13e09a0d5283aa61d5cd1edb82cb7f833fa",
+      "text": "Write a two-line cover letter for this note.\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\nPatient copy: Your sugar levels are high; we will review your tablets.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "failed",
+      "reason": "The note does not cover every clinical term in the draft.",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "record_copy",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:de57fa9e395477853cff07d72d71c423ce9aa7d2feffa4fd5fee442391c0e73d",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months."
+    },
+    {
+      "id": "patient_copy",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:af662aa6cbd72645d75abf38cf0bc68be8405e0951adb03508b086c018af4228",
+      "text": "Your sugar levels are high; we will review your tablets."
+    },
+    {
+      "id": "cover_letter",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:24e3c374c91466dfa733ec17d3f13137e493d3d72b00fd222f4b4bd6c096fbb1",
+      "text": "Please find the clinic note enclosed."
+    }
+  ]
+}

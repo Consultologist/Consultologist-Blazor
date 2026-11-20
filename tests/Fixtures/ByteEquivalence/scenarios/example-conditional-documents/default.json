@@ -1,0 +1,18 @@
+{
+  "description": [
+    "encounter_kind new_patient, include_billing unset: the consultation note is composed from",
+    "its two sections with no billing paragraph; the progress note is skipped by its condition."
+  ],
+  "inputs": {
+    "consult_draft": "Tomasz Nowak, 52, referred with exertional chest tightness for two months. ECG normal at rest; exercise test booked. On amlodipine for hypertension. (Fictional.)",
+    "seen_on": "2026-11-09",
+    "encounter_kind": "new_patient",
+    "include_billing": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

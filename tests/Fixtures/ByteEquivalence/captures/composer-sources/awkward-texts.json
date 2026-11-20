@@ -1,0 +1,152 @@
+{
+  "package": "composer-sources",
+  "tag": null,
+  "scenario": "awkward-texts",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "heading": "Valve",
+          "point": "Mild aortic stenosis."
+        }
+      ]
+    },
+    "draft_point:1/1": "## Not a block heading\n\nA point whose text holds its own heading.",
+    "draft_topic:0": "History paragraph.\n\n",
+    "draft_topic:1": "   Examination paragraph, indented.",
+    "opening": "",
+    "closing": "\n\nClosing line, after two blank lines and before three.\n\n\n",
+    "draft_plan": "# Plan\n\n## Medicines\n\nRepeat the echo in {{ 3 * 2 }} months.\nThe braces {{ \"{{\" }} and {{ \"}}\" }} stay literal.\n",
+    "plain_line": "Any questions, just ask."
+  },
+  "prompts": [
+    {
+      "key": "plan",
+      "hash": "sha256:4bb43077788990d6a1eb50075aad4279730c29aacedea54fa4fefafdd30892e2",
+      "text": "Plan the sections of a clinic note, each with a title and its purpose, from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"sections\"],\"properties\":{\"sections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"purpose\"],\"properties\":{\"title\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:1",
+      "hash": "sha256:e8143dcd1963abe05b4bd0f2b4853bba0000d66bb9321bee6a2b7f0af3c7a72e",
+      "text": "List the points the section \"Assessment\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "draft_point:1/1",
+      "hash": "sha256:9b4d27b4e7410339cee721d2218363a530db02e7b20febf6dd08635f0a0dde2f",
+      "text": "Write one paragraph making this point in the section \"Assessment\": Mild aortic stenosis.\n"
+    },
+    {
+      "key": "draft_topic:0",
+      "hash": "sha256:79708dfeb90f329f96e0cca98d869b918e5fae1595333d7969a0dbe4213be4d0",
+      "text": "Write one paragraph on the topic \"History\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "draft_topic:1",
+      "hash": "sha256:3a1ee80d9e48d95b1459e945c0549f25a3dd54e9d3b5af9f791b8e59fa87c4fd",
+      "text": "Write one paragraph on the topic \"Examination\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "opening",
+      "hash": "sha256:9edf46233212080784706073d4ab5fdebf969a049f251ac0458cca82e3d800c7",
+      "text": "Write one opening line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph, indented.\n"
+    },
+    {
+      "key": "closing",
+      "hash": "sha256:f555d6ce7db136fa2fd6c689fe3c6a82ce77c2f66a715a4d0306bacdcfa661e8",
+      "text": "Write one closing line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph, indented.\n"
+    },
+    {
+      "key": "draft_plan",
+      "hash": "sha256:b320f90adb516d87940e0e9e0f812d590b75201703d96620b6d14102706e1717",
+      "text": "Write the plan for this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph, indented.\n"
+    },
+    {
+      "key": "plain_line",
+      "hash": "sha256:f2c85be2c754db79e3cc810a5d6462a2a54e410fca287c20ccb114d399b186bb",
+      "text": "Write one line in a plain tone closing this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph, indented.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "single",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "pair",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:c673f8cb7c5ad99661baf274912616f03d8858f7c9ed6e6d72782da50de58d8c",
+      "text": "\n\nClosing line, after two blank lines and before three."
+    },
+    {
+      "id": "topics",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:1f3fdde30622f2e8bd58562e37e266eda53539b9e0f75993d5259b07997ceb45",
+      "text": "## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph, indented."
+    },
+    {
+      "id": "sections",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:33af2e26b917978c817ce4d7f38b888a11e8a5736c84f3f16b7339c4eb16f1ed",
+      "text": "## Assessment\n\n## Valve\n\n## Not a block heading\n\nA point whose text holds its own heading."
+    },
+    {
+      "id": "summary",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "plan",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e429b697bc535b52e2666934f1c9ef67cd1c6e1785ea1176cff2b5efa329a011",
+      "text": "# Plan\n\n## Medicines\n\nRepeat the echo in 6 months.\nThe braces {{ and }} stay literal."
+    },
+    {
+      "id": "tone_line",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:c083c29a00fa507e36c11d74e370380037001fad037694dbc807d44ef6007b54",
+      "text": "Any questions, just ask."
+    },
+    {
+      "id": "tally",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e7276a98431c729e8a90a2e12ae253c900ed7d34dbff1bd64d6fefde2fcc51db",
+      "text": "Topic section length: 80"
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:1fa63272db434f13bc4ac9617638b0da9bf0ecc17887e9fb31a760d980208359",
+      "text": "## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph, indented.\n\n"
+    }
+  ]
+}

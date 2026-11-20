@@ -1,0 +1,161 @@
+{
+  "package": "composer-sources",
+  "tag": null,
+  "scenario": "failed-item",
+  "status": "Failed",
+  "failure": "A for over an input could not assemble: topic_gate:2 did not complete.",
+  "outputs": {
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        },
+        {
+          "title": "Plan",
+          "purpose": "What happens next."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "heading": "Valve",
+          "point": "Mild aortic stenosis on echo."
+        }
+      ]
+    },
+    "outline:2": {
+      "points": [
+        {
+          "heading": "Review",
+          "point": "Review in six months."
+        },
+        {
+          "heading": "Advice",
+          "point": "Report chest pain or fainting."
+        }
+      ]
+    },
+    "draft_point:1/1": "Valve paragraph for the assessment.",
+    "draft_point:2/1": "Review paragraph for the plan.",
+    "draft_point:2/2": "Advice paragraph for the plan.",
+    "draft_topic:0": "History paragraph: breathless on exertion for a year.",
+    "draft_topic:2": ""
+  },
+  "prompts": [
+    {
+      "key": "plan",
+      "hash": "sha256:4bb43077788990d6a1eb50075aad4279730c29aacedea54fa4fefafdd30892e2",
+      "text": "Plan the sections of a clinic note, each with a title and its purpose, from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"sections\"],\"properties\":{\"sections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"purpose\"],\"properties\":{\"title\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:1",
+      "hash": "sha256:e8143dcd1963abe05b4bd0f2b4853bba0000d66bb9321bee6a2b7f0af3c7a72e",
+      "text": "List the points the section \"Assessment\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:2",
+      "hash": "sha256:30c78bfed39b3d2575a5015d4658dc1b4300cb569336d249a50ae064287f8a4a",
+      "text": "List the points the section \"Plan\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "draft_point:1/1",
+      "hash": "sha256:8f191a5b3f07c70a9962948961e40eee7c51584d9bfa4e70b9da25c283c33c87",
+      "text": "Write one paragraph making this point in the section \"Assessment\": Mild aortic stenosis on echo.\n"
+    },
+    {
+      "key": "draft_point:2/1",
+      "hash": "sha256:227c907f55b61a3a3d8ce3288a7fe68a48bc37ac14dc232eefacf49e32ed3a27",
+      "text": "Write one paragraph making this point in the section \"Plan\": Review in six months.\n"
+    },
+    {
+      "key": "draft_point:2/2",
+      "hash": "sha256:011949de7997bcd9cf44229e60dbac6d8ebbe3be53b6fac1d807871f753b2541",
+      "text": "Write one paragraph making this point in the section \"Plan\": Report chest pain or fainting.\n"
+    },
+    {
+      "key": "draft_topic:0",
+      "hash": "sha256:79708dfeb90f329f96e0cca98d869b918e5fae1595333d7969a0dbe4213be4d0",
+      "text": "Write one paragraph on the topic \"History\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "draft_topic:2",
+      "hash": "sha256:3a1ee80d9e48d95b1459e945c0549f25a3dd54e9d3b5af9f791b8e59fa87c4fd",
+      "text": "Write one paragraph on the topic \"Examination\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "single",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "pair",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "topics",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "sections",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:ed11b544d42842583ddc9c65ba74355c5c69f1f7eab675aad469ed8f0e1287dd",
+      "text": "## Assessment\n\n## Valve\n\nValve paragraph for the assessment.\n\n## Plan\n\n## Review\n\nReview paragraph for the plan.\n\n## Advice\n\nAdvice paragraph for the plan."
+    },
+    {
+      "id": "summary",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "plan",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "tone_line",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "tally",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    }
+  ]
+}

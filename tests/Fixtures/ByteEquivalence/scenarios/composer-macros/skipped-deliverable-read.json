@@ -1,0 +1,33 @@
+{
+  "description": [
+    "A placed macro reading a skipped deliverable: quoted_review is chosen on a new visit, so it reads",
+    "deliverable.review_summary.content while review_summary is skipped by its if. Today the macro's",
+    "render fails ('Cannot get the member deliverable.review_summary.content for a null object') and",
+    "the job fails: echoes, which places it, and signed_only, released after it, are unsettled; the",
+    "rest are composed as in new-visit-defaults."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)",
+    "sections": [
+      {
+        "title": "History"
+      },
+      {
+        "title": "Plan"
+      }
+    ],
+    "visit": "new"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {
+    "quoted_review": true
+  },
+  "outputs": {
+    "section_draft:0": "History paragraph: palpitations for two months.\n\n",
+    "section_draft:1": "Plan paragraph: apixaban started.",
+    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\n"
+  }
+}

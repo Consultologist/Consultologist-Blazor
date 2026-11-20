@@ -1,0 +1,271 @@
+{
+  "name": "composer-macros",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Composer macros fixture",
+  "description": "A byte-equivalence fixture (#1498): the deliverable composer's macros and signature, one deliverable per rule \u2014 prepend, append, both, two at one place; a macro's own if and a placement's if; an empty-rendering macro; optional macros; the profile and the run date; node macros around a loop's item; signed deliverables; placed macros reading a node, a macro and a deliverable. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "sections",
+      "label": "Sections",
+      "required": true,
+      "type": "array",
+      "items": "object",
+      "fields": [
+        {
+          "id": "title",
+          "label": "Title",
+          "required": true,
+          "type": "text"
+        }
+      ],
+      "labelField": "title"
+    },
+    {
+      "id": "visit",
+      "label": "Visit",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "new",
+        "review"
+      ]
+    }
+  ],
+  "macros": [
+    "letterhead",
+    "reference_line",
+    "closing_line",
+    "second_closing",
+    "new_visit_note",
+    "review_note",
+    "review_leaflet",
+    "followup_offer",
+    "leaflet_offer",
+    "author_line",
+    "section_intro",
+    "section_close",
+    "cc_line",
+    "body_echo",
+    "visit_echo",
+    "quoted_review"
+  ],
+  "nodes": [
+    {
+      "id": "section_loop",
+      "label": "Sections",
+      "for": "item in input.sections",
+      "nodes": [
+        "section_draft"
+      ],
+      "ret": "node.section_draft"
+    },
+    {
+      "id": "section_draft",
+      "label": "Drafting a section",
+      "format": "prose",
+      "macros": [
+        {
+          "id": "section_intro",
+          "at": "before"
+        },
+        {
+          "id": "section_close",
+          "at": "after",
+          "if": "item.value.title != \"Plan\""
+        }
+      ]
+    },
+    {
+      "id": "letter_body",
+      "label": "Drafting the letter body",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "prepended",
+      "label": "A prepended macro",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "letterhead",
+          "at": "prepend"
+        }
+      ]
+    },
+    {
+      "id": "appended",
+      "label": "An appended macro",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "closing_line",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "both",
+      "label": "Two prepended and two appended macros",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "letterhead",
+          "at": "prepend"
+        },
+        {
+          "id": "reference_line",
+          "at": "prepend"
+        },
+        {
+          "id": "closing_line",
+          "at": "append"
+        },
+        {
+          "id": "second_closing",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "gated",
+      "label": "Gated macros",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "new_visit_note",
+          "at": "append"
+        },
+        {
+          "id": "review_note",
+          "at": "append",
+          "if": "input.visit == \"review\""
+        },
+        {
+          "id": "review_leaflet",
+          "at": "append"
+        },
+        {
+          "id": "closing_line",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "optional",
+      "label": "Optional macros",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "followup_offer",
+          "at": "append"
+        },
+        {
+          "id": "leaflet_offer",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "authored",
+      "label": "A macro reading the profile and the run",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "author_line",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "sections_note",
+      "label": "Node macros inside a loop's item",
+      "sources": [
+        "node.section_loop"
+      ]
+    },
+    {
+      "id": "signed_letter",
+      "label": "A signed letter",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "cc_line",
+          "at": "append"
+        }
+      ],
+      "signature": true
+    },
+    {
+      "id": "review_summary",
+      "label": "A review summary",
+      "sources": [
+        "node.letter_body"
+      ],
+      "if": "input.visit == \"review\"",
+      "macros": [
+        {
+          "id": "letterhead",
+          "at": "prepend"
+        }
+      ]
+    },
+    {
+      "id": "echoes",
+      "label": "Macros reading a node, a macro and a deliverable",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "body_echo",
+          "at": "append"
+        },
+        {
+          "id": "visit_echo",
+          "at": "append"
+        },
+        {
+          "id": "quoted_review",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "signed_only",
+      "label": "A signed deliverable with no macro",
+      "sources": [
+        "node.letter_body"
+      ],
+      "signature": true
+    }
+  ]
+}

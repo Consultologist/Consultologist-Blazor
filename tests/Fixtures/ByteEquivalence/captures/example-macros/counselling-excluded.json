@@ -1,0 +1,52 @@
+{
+  "package": "example-macros",
+  "tag": "example-macros-v2026.11.3",
+  "scenario": "counselling-excluded",
+  "status": "Failed",
+  "failure": "Closing summary failed: Node 'summary' rendered macro.notes/red_flags.prompt, which the package's walk does not reach from its prompt; the walk and the render disagree.",
+  "outputs": {
+    "standing_draft:hpi": "Stub reply for standing_draft:hpi (6b1ac565).",
+    "standing_draft:medications": "Stub reply for standing_draft:medications (a8003672).",
+    "standing_draft:assessment_plan": "Stub reply for standing_draft:assessment_plan (ec5dded8).",
+    "summary": "Stub reply for summary (0d262d29)."
+  },
+  "prompts": [
+    {
+      "key": "standing_draft:hpi",
+      "hash": "sha256:7527bcdcdace0b81adc874f88ff6dfcae25e45cb5d9d998f354e5b22e9942857",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nHistory of presenting illness\n\nSection standard:\nThe presenting problem in the patient's words, its onset and course, and what has been tried, as the draft documents them.\n\n\n\n\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+    },
+    {
+      "key": "standing_draft:medications",
+      "hash": "sha256:066b448bda254de913ae00b8e4dddba9eb5a3011c354ae60d8775ed2d994b1ed",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nMedications\n\nSection standard:\nEach medication the draft names with its dose and frequency where documented; say where a dose is not documented.\n\n\n\n\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+    },
+    {
+      "key": "standing_draft:assessment_plan",
+      "hash": "sha256:867b24e764967392ae526ad3e24a971d86ef220a25ce32e6df53514297621ccb",
+      "text": "You are tailoring a standing section of a consultation note to this consult.\n\nTask:\nWrite the section named below by following its standard against the consult draft.\n\nGuardrail:\nDo not add clinical facts the draft does not contain. Where the standard asks for something the draft does not document, say that it is not documented.\n\nOutput rule:\nReturn only prose for this section. No heading, no bullets, no commentary.\n\nSection:\nAssessment and plan\n\nSection standard:\nThe assessment as a short statement of the problem, then the plan as the steps the draft commits to, in order.\n\n\n\n\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+    },
+    {
+      "key": "summary",
+      "hash": "sha256:317f2ecabd66c6f408affe610031729261c4c989d7892eb5944fac6de04a5121",
+      "text": "You are writing the closing summary of a consultation note.\n\nTask:\nSummarise the consult draft in one short paragraph: the question asked, the answer, and the plan.\n\nHouse style:\nWrite in the first person plural, past tense, without abbreviations the patient would not know.\nWhere the summary departs from the house style above, the reminder goes as the last sentence; otherwise nothing.\n\nIf so, write {{ macro.house_style.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\n\nReminders:\n- Red flags: If the draft reviews red flags, the red-flags line goes in the summary; otherwise nothing.\n\nIf so, write {{ macro.red_flags.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n- Safety net: If the draft gives safety-netting advice, the safety-net line goes in the summary; otherwise nothing.\n\nIf so, write {{ macro.safety_net.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nClose the summary with Dictated by Dr A. Sample; not yet reviewed.\n as its final line and write nothing after it.\n\nIf so, write {{ macro.wrap_up.content }} verbatim and nothing else at that place; do not write that content yourself — it is filled in afterward.\n\nDisclaimer to keep in mind (do not copy it into the summary):\nThis note was drafted with software assistance and reviewed by the signing clinician.\n\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nConsult draft:\nMargaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "patient_letter",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    }
+  ]
+}

@@ -1,0 +1,72 @@
+{
+  "package": "example-prior-letters",
+  "tag": "example-prior-letters-v2026.11.1",
+  "scenario": "default",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "read_letter:0": {
+      "answers_question": false,
+      "note": "stub 1b171b8d"
+    },
+    "letter_summary:0": "Stub reply for letter_summary:0 (ac776bfa).",
+    "read_letter:1": {
+      "answers_question": false,
+      "note": "stub 6dcd0031"
+    },
+    "letter_summary:1": "Stub reply for letter_summary:1 (41ef6f2f).",
+    "read_letter:2": {
+      "answers_question": true,
+      "note": "stub 7bd2cba9"
+    },
+    "letter_summary:2": "Stub reply for letter_summary:2 (ba2ec318).",
+    "assessment": "Stub reply for assessment (72d44b23)."
+  },
+  "prompts": [
+    {
+      "key": "read_letter:0",
+      "hash": "sha256:1259b3141f194bcc6b636cc37208444072723e90f23a9a3dcfb93d4bb1e3ec94",
+      "text": "You are reading one prior letter against a consult draft's referral question.\n\nTask:\nDecide whether this letter answers the question the consult draft was referred with: true when the letter states the answer or the decision the referral asks for, false otherwise. Then say in one or two sentences what in the letter bears on the question.\n\nGuardrail:\nDecide from the letter and the draft alone. A letter that only mentions the same condition does not answer the question.\n\nPrior letter 0:\n2026-03-02, rheumatology clinic: right first MTP joint flare treated with colchicine. Urate 0.55 mmol/L. (Fictional.)\n\nConsult draft:\nDaniel Mbeki, 44, referred to ask whether his recurrent gout needs urate-lowering therapy. Three flares this year; serum urate 0.52 mmol/L. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"answers_question\",\"note\"],\"properties\":{\"answers_question\":{\"type\":\"boolean\"},\"note\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "letter_summary:0",
+      "hash": "sha256:bf274fd615ad61e16a6111d0331c4d441107b7e9f6b2ee2204651d7721f3c108",
+      "text": "You are summarising one prior letter for a consultation note.\n\nTask:\nSummarise in two or three sentences what this letter says that bears on the referral question.\n\nGuardrail:\nUse only what the letter contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the summary. No heading, no commentary.\n\nWhat bears on the question:\nstub 1b171b8d\n\nPrior letter 0:\n2026-03-02, rheumatology clinic: right first MTP joint flare treated with colchicine. Urate 0.55 mmol/L. (Fictional.)\n"
+    },
+    {
+      "key": "read_letter:1",
+      "hash": "sha256:7e0e5432275a57f25881abde8ca369ca57c469b9ec55e6ad7e2f64e7a19effb6",
+      "text": "You are reading one prior letter against a consult draft's referral question.\n\nTask:\nDecide whether this letter answers the question the consult draft was referred with: true when the letter states the answer or the decision the referral asks for, false otherwise. Then say in one or two sentences what in the letter bears on the question.\n\nGuardrail:\nDecide from the letter and the draft alone. A letter that only mentions the same condition does not answer the question.\n\nPrior letter 1:\n2026-06-15, GP letter: second flare, left ankle; advised to reduce alcohol. (Fictional.)\n\nConsult draft:\nDaniel Mbeki, 44, referred to ask whether his recurrent gout needs urate-lowering therapy. Three flares this year; serum urate 0.52 mmol/L. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"answers_question\",\"note\"],\"properties\":{\"answers_question\":{\"type\":\"boolean\"},\"note\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "letter_summary:1",
+      "hash": "sha256:ae52deefc2dae13d751fdb64a43f707a3fac6820f61d86a7f3aeb2ca22a520ed",
+      "text": "You are summarising one prior letter for a consultation note.\n\nTask:\nSummarise in two or three sentences what this letter says that bears on the referral question.\n\nGuardrail:\nUse only what the letter contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the summary. No heading, no commentary.\n\nWhat bears on the question:\nstub 6dcd0031\n\nPrior letter 1:\n2026-06-15, GP letter: second flare, left ankle; advised to reduce alcohol. (Fictional.)\n"
+    },
+    {
+      "key": "read_letter:2",
+      "hash": "sha256:1ac6a040b495ec4fa4b9ac41a16adb5eebceafbdcaa8691d31528d2eb31d4081",
+      "text": "You are reading one prior letter against a consult draft's referral question.\n\nTask:\nDecide whether this letter answers the question the consult draft was referred with: true when the letter states the answer or the decision the referral asks for, false otherwise. Then say in one or two sentences what in the letter bears on the question.\n\nGuardrail:\nDecide from the letter and the draft alone. A letter that only mentions the same condition does not answer the question.\n\nPrior letter 2:\n2026-09-01, rheumatology clinic: third flare this year; allopurinol 100 mg daily recommended once the flare settles, titrating to a urate below 0.36 mmol/L. (Fictional.)\n\nConsult draft:\nDaniel Mbeki, 44, referred to ask whether his recurrent gout needs urate-lowering therapy. Three flares this year; serum urate 0.52 mmol/L. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"answers_question\",\"note\"],\"properties\":{\"answers_question\":{\"type\":\"boolean\"},\"note\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "letter_summary:2",
+      "hash": "sha256:c5c38e1d0740e6e8e3bed821906c0e1d978f830e6ecfffdbf05df764639ae76d",
+      "text": "You are summarising one prior letter for a consultation note.\n\nTask:\nSummarise in two or three sentences what this letter says that bears on the referral question.\n\nGuardrail:\nUse only what the letter contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the summary. No heading, no commentary.\n\nWhat bears on the question:\nstub 7bd2cba9\n\nPrior letter 2:\n2026-09-01, rheumatology clinic: third flare this year; allopurinol 100 mg daily recommended once the flare settles, titrating to a urate below 0.36 mmol/L. (Fictional.)\n"
+    },
+    {
+      "key": "assessment",
+      "hash": "sha256:5d5a1b71add076097af9d65395b0884967f05b78645057f325509767acec8741",
+      "text": "You are writing the assessment of a consultation note.\n\nTask:\nWrite the assessment: the referral question, what the prior letters said about it, and the conclusion the consult draft reaches.\n\nGuardrail:\nUse only what the consult draft and the letter summaries contain. Do not add clinical facts they do not contain. Where no prior letter was read, say so plainly.\n\nOutput rule:\nReturn only prose. No heading, no bullets, no commentary.\n\nPrior letters, as read:\nStub reply for letter_summary:0 (ac776bfa).\n\nStub reply for letter_summary:1 (41ef6f2f).\n\nStub reply for letter_summary:2 (ba2ec318).\n\n\nConsult draft:\nDaniel Mbeki, 44, referred to ask whether his recurrent gout needs urate-lowering therapy. Three flares this year; serum urate 0.52 mmol/L. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:aea907e5e2e90d5b43e6b529627ffcb6b662bea1d6b42f5890fcbb25b0013215",
+      "text": "Stub reply for assessment (72d44b23).\n\n## Prior letters 1\n\nStub reply for letter_summary:0 (ac776bfa).\n\n## Prior letters 2\n\nStub reply for letter_summary:1 (41ef6f2f).\n\n## Prior letters 3\n\nStub reply for letter_summary:2 (ba2ec318)."
+    }
+  ]
+}

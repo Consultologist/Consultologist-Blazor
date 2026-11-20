@@ -1,0 +1,20 @@
+{
+  "description": [
+    "scope pinned out_of_scope: the decline letter is composed, its closing macro appended",
+    "(reading the scope and run.date) and the profile's signature after it; the plan and the",
+    "request for information are skipped."
+  ],
+  "inputs": {
+    "consult_draft": "Request for a cosmetic mole removal for Liam Doherty, 34; no clinical concern raised. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "scope": {
+      "value": "out_of_scope"
+    }
+  }
+}

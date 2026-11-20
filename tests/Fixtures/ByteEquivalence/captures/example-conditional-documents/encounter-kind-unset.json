@@ -1,0 +1,26 @@
+{
+  "package": "example-conditional-documents",
+  "tag": "example-conditional-documents-v2026.11.3",
+  "scenario": "encounter-kind-unset",
+  "status": "Refused",
+  "failure": "NoApplicableDeliverable: No document applies to these inputs. 'Consultation note' needs `input.encounter_kind == \"new_patient\"`; it does not hold. 'Progress note' needs `input.encounter_kind == \"follow_up\"`; it does not hold.",
+  "outputs": {},
+  "prompts": [],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "progress_note",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    }
+  ]
+}

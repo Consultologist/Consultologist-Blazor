@@ -1,0 +1,319 @@
+{
+  "name": "composer-sources",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Composer sources fixture",
+  "description": "A byte-equivalence fixture (#1498): one deliverable per kind of source the deliverable composer reads \u2014 one prose node, two prose nodes, a for over an input with an if inside, a for over a node's list with a for inside, a while, an if, a case and a let of type text \u2014 and the while and the for each beside a prose node, where a source with no part and a source with an empty part differ. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "topics",
+      "label": "Requested topics",
+      "required": true,
+      "type": "array",
+      "items": "object",
+      "fields": [
+        {
+          "id": "title",
+          "label": "Title",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "id": "kind",
+          "label": "Kind",
+          "required": true,
+          "type": "enum",
+          "values": [
+            "drafted",
+            "left_out"
+          ]
+        }
+      ],
+      "labelField": "title"
+    },
+    {
+      "id": "include_plan",
+      "label": "Include the plan",
+      "required": false,
+      "type": "boolean"
+    },
+    {
+      "id": "tone",
+      "label": "Tone",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "formal",
+        "plain",
+        "none"
+      ]
+    },
+    {
+      "id": "redraft",
+      "label": "Redraft the summary",
+      "required": false,
+      "type": "boolean"
+    }
+  ],
+  "formats": [
+    {
+      "id": "section_plan",
+      "file": "formats/section_plan.json"
+    },
+    {
+      "id": "outline",
+      "file": "formats/outline.json"
+    },
+    {
+      "id": "verdict",
+      "file": "formats/verdict.json"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "opening",
+      "label": "Opening line",
+      "format": "prose"
+    },
+    {
+      "id": "closing",
+      "label": "Closing line",
+      "format": "prose"
+    },
+    {
+      "id": "topic_loop",
+      "label": "Topics",
+      "for": "item in input.topics",
+      "nodes": [
+        "topic_gate"
+      ],
+      "ret": "node.topic_gate"
+    },
+    {
+      "id": "topic_gate",
+      "label": "Drafted topics only",
+      "if": "item.value.kind == \"drafted\"",
+      "then": {
+        "nodes": [
+          "draft_topic"
+        ],
+        "ret": "node.draft_topic"
+      }
+    },
+    {
+      "id": "draft_topic",
+      "label": "Drafting a topic",
+      "format": "prose",
+      "failIfEmpty": "A drafted topic came back empty."
+    },
+    {
+      "id": "plan",
+      "label": "Planning the sections",
+      "format": "section_plan",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "section_loop",
+      "label": "Sections",
+      "for": "item in node.plan.value.sections",
+      "labelField": "title",
+      "max": 3,
+      "nodes": [
+        "outline",
+        "point_loop"
+      ],
+      "ret": "node.point_loop"
+    },
+    {
+      "id": "outline",
+      "label": "Outlining a section",
+      "format": "outline",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "point_loop",
+      "label": "Points",
+      "for": "item in node.outline.value.points",
+      "labelField": "heading",
+      "nodes": [
+        "draft_point"
+      ],
+      "ret": "node.draft_point"
+    },
+    {
+      "id": "draft_point",
+      "label": "Drafting a point",
+      "format": "prose"
+    },
+    {
+      "id": "refine",
+      "label": "Refining the summary",
+      "while": "input.redraft == true",
+      "checkFirst": true,
+      "until": "node.judge.value.verdict == \"good\"",
+      "max": 3,
+      "nodes": [
+        "draft_summary",
+        "judge"
+      ],
+      "ret": "node.draft_summary"
+    },
+    {
+      "id": "draft_summary",
+      "label": "Drafting the summary",
+      "format": "prose"
+    },
+    {
+      "id": "judge",
+      "label": "Judging the summary",
+      "format": "verdict",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "plan_gate",
+      "label": "The plan, when asked for",
+      "if": "input.include_plan == true",
+      "then": {
+        "nodes": [
+          "draft_plan"
+        ],
+        "ret": "node.draft_plan"
+      }
+    },
+    {
+      "id": "draft_plan",
+      "label": "Drafting the plan",
+      "format": "prose"
+    },
+    {
+      "id": "tone_case",
+      "label": "A line in the chosen tone",
+      "case": "input.tone",
+      "branches": [
+        {
+          "when": [
+            "formal"
+          ],
+          "nodes": [
+            "formal_line"
+          ],
+          "ret": "node.formal_line"
+        },
+        {
+          "when": [
+            "plain"
+          ],
+          "nodes": [
+            "plain_line"
+          ],
+          "ret": "node.plain_line"
+        }
+      ]
+    },
+    {
+      "id": "formal_line",
+      "label": "Writing the formal line",
+      "format": "prose"
+    },
+    {
+      "id": "plain_line",
+      "label": "Writing the plain line",
+      "format": "prose"
+    },
+    {
+      "id": "topic_tally",
+      "label": "Counting the topics",
+      "let": "\"Topic section length: \" | string.append (node.topic_loop.content | string.size)",
+      "type": "text",
+      "onInvalid": "fail"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "single",
+      "label": "One prose source",
+      "sources": [
+        "node.opening"
+      ]
+    },
+    {
+      "id": "pair",
+      "label": "Two prose sources",
+      "sources": [
+        "node.opening",
+        "node.closing"
+      ]
+    },
+    {
+      "id": "topics",
+      "label": "A for over an input",
+      "sources": [
+        "node.topic_loop"
+      ]
+    },
+    {
+      "id": "sections",
+      "label": "A for over a node's list, with a for inside",
+      "sources": [
+        "node.section_loop"
+      ]
+    },
+    {
+      "id": "summary",
+      "label": "A while",
+      "sources": [
+        "node.refine"
+      ]
+    },
+    {
+      "id": "plan",
+      "label": "An if",
+      "sources": [
+        "node.plan_gate"
+      ]
+    },
+    {
+      "id": "tone_line",
+      "label": "A case",
+      "sources": [
+        "node.tone_case"
+      ]
+    },
+    {
+      "id": "tally",
+      "label": "A let of type text",
+      "sources": [
+        "node.topic_tally"
+      ]
+    },
+    {
+      "id": "summary_then_opening",
+      "label": "A while beside a prose node",
+      "sources": [
+        "node.refine",
+        "node.opening"
+      ]
+    },
+    {
+      "id": "topics_then_opening",
+      "label": "A for beside a prose node",
+      "sources": [
+        "node.topic_loop",
+        "node.opening"
+      ]
+    }
+  ]
+}

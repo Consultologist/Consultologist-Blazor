@@ -1,0 +1,38 @@
+flowchart TD
+    input_consult_draft(["input.consult_draft"])
+
+    plan["plan<br/>Planning the sections"]
+    input_consult_draft --> plan
+    section_count[["section_count<br/>Counting the sections<br/>computed · let → number"]]
+    plan -.->|"if"| section_count
+
+    subgraph for_parts["parts: per node.plan.value.sections item"]
+        outline["outline<br/>Outlining the section"]
+        subgraph for_paragraphs["paragraphs: per node.outline.value.points item"]
+            draft_paragraph["draft_paragraph<br/>Drafting the paragraph"]
+        end
+        paragraphs["paragraphs<br/>Paragraphs<br/>item in node.outline.value.points"]
+    end
+    parts["parts<br/>Sections<br/>item in node.plan.value.sections"]
+
+    subgraph while_refine["refine: while node.judge.value.verdict != #quot;good#quot; — at most 3"]
+        draft_summary["draft_summary<br/>Drafting the summary"]
+        judge["judge<br/>Judging the summary"]
+    end
+    refine["refine<br/>Refining the summary<br/>while: node.judge.value.verdict != #quot;good#quot;<br/>at most 3"]
+    input_consult_draft --> outline
+    input_consult_draft --> draft_paragraph
+    outline -->|"for"| for_paragraphs
+    draft_paragraph -->|"ret"| paragraphs
+    plan -->|"for"| for_parts
+    paragraphs -->|"ret"| parts
+    section_count -->|"value"| draft_summary
+    input_consult_draft --> draft_summary
+    draft_summary -->|"content"| judge
+    input_consult_draft --> judge
+    draft_summary -->|"ret"| refine
+    judge -.->|"if"| refine
+
+    result_note{{"note<br/>Nested consultation note"}}
+    refine --> result_note
+    parts --> result_note

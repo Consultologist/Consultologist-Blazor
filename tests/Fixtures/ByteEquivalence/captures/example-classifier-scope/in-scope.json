@@ -1,0 +1,55 @@
+{
+  "package": "example-classifier-scope",
+  "tag": "example-classifier-scope-v2026.11.3",
+  "scenario": "in-scope",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "scope": {
+      "value": "in_scope"
+    },
+    "plan_section:assessment": "Stub reply for plan_section:assessment (736315ee).",
+    "plan_section:plan": "Stub reply for plan_section:plan (318bfc78)."
+  },
+  "prompts": [
+    {
+      "key": "scope",
+      "hash": "sha256:4cb6f4f3199fc43f81a637e63115a243074ca91fa8b3288bff7ed7dfbe72455a",
+      "text": "You are deciding whether a referral belongs in a general medical outpatient clinic.\n\nTask:\nRead the referral below and decide one thing only: whether it is in scope for the clinic, out of scope, or cannot be decided because the referral does not say enough.\n\nDefinitions:\nIn scope: a question a general medical outpatient clinic assesses and manages — a diagnostic question, a chronic condition to review, a treatment plan to make.\nOut of scope: a request the clinic does not provide — an emergency that needs a hospital now, a procedure or specialty the clinic does not offer, an administrative request with no clinical question.\nNeeds information: the referral does not state a clinical question, or leaves out what would be needed to tell the first two apart.\n\nGuardrail:\nDecide from the referral alone. Do not infer facts it does not contain.\n\nReferral:\nGrace Adeyemi, 61, referred for review of resistant hypertension: 168/98 on three agents, potassium 3.3 mmol/L. Question: secondary causes? (Fictional.)\n\n\nAnswer with exactly one of: in_scope, out_of_scope, needs_information."
+    },
+    {
+      "key": "plan_section:assessment",
+      "hash": "sha256:e67d18aef3106aa5844af83df999120251aecc2b16500ffd478c1f29697602d9",
+      "text": "You are drafting one section of a management plan for a referral the clinic has accepted.\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment\n\nSection standard:\nState the clinical question the referral asks and what the referral establishes about it, in the referral's own terms.\n\n\nReferral:\nGrace Adeyemi, 61, referred for review of resistant hypertension: 168/98 on three agents, potassium 3.3 mmol/L. Question: secondary causes? (Fictional.)\n"
+    },
+    {
+      "key": "plan_section:plan",
+      "hash": "sha256:8d69f0f36bdd8feeea5cafaee40e1236c311dc4ee56e17123e4ac9f5e4e5d425",
+      "text": "You are drafting one section of a management plan for a referral the clinic has accepted.\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPlan\n\nSection standard:\nSet out the next steps the clinic will take on the question, each tied to something the referral states; where a step depends on information the referral does not give, say what is needed.\n\n\nReferral:\nGrace Adeyemi, 61, referred for review of resistant hypertension: 168/98 on three agents, potassium 3.3 mmol/L. Question: secondary causes? (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "plan",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:78abd7322ce2f68d0f30779d57b76e8322012b58c836e69c96adbe76fe0525ed",
+      "text": "## Assessment\n\nStub reply for plan_section:assessment (736315ee).\n\n## Plan\n\nStub reply for plan_section:plan (318bfc78)."
+    },
+    {
+      "id": "decline_letter",
+      "state": "skipped",
+      "reason": "needs `node.scope.value == \"out_of_scope\"`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "information_request",
+      "state": "skipped",
+      "reason": "needs `node.scope.value == \"needs_information\"`; it does not hold",
+      "hash": null,
+      "text": null
+    }
+  ]
+}

@@ -1,0 +1,1 @@
+Is this referral's tone formal or friendly? {{ input.consult_draft }}

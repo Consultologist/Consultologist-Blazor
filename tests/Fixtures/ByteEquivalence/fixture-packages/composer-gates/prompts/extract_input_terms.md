@@ -1,0 +1,1 @@
+Extract the clinical terms as concept-list JSON: {{ input.consult_draft }}

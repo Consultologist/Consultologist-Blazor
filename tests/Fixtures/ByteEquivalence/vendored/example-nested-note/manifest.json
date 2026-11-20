@@ -1,0 +1,115 @@
+{
+  "name": "example-nested-note",
+  "version": "v2026.11.2",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Nested note demo",
+  "description": "A demonstration of what specVersion 30 opened: a node plans the note's sections, a loop drafts each section by first outlining it and then running an inner loop over that outline's points, one paragraph per point; a let counts the sections with no model call; and a while redrafts the opening summary until a judge holding a house style the drafter is not told calls it good, at most three times. Sections are named by their title. Not intended for clinical use.",
+  "tags": [
+    "demo",
+    "nested"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    }
+  ],
+  "formats": [
+    {
+      "id": "section_plan",
+      "file": "formats/section_plan.json"
+    },
+    {
+      "id": "outline",
+      "file": "formats/outline.json"
+    },
+    {
+      "id": "verdict",
+      "file": "formats/verdict.json"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "plan",
+      "label": "Planning the sections",
+      "format": "section_plan",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "section_count",
+      "label": "Counting the sections",
+      "let": "node.plan.value.sections | array.size",
+      "type": "number",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "parts",
+      "label": "Sections",
+      "for": "item in node.plan.value.sections",
+      "labelField": "title",
+      "nodes": [
+        "outline",
+        "paragraphs"
+      ],
+      "ret": "node.paragraphs"
+    },
+    {
+      "id": "outline",
+      "label": "Outlining the section",
+      "format": "outline",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "paragraphs",
+      "label": "Paragraphs",
+      "for": "item in node.outline.value.points",
+      "nodes": [
+        "draft_paragraph"
+      ],
+      "ret": "node.draft_paragraph"
+    },
+    {
+      "id": "draft_paragraph",
+      "label": "Drafting the paragraph",
+      "format": "prose"
+    },
+    {
+      "id": "refine",
+      "label": "Refining the summary",
+      "while": "node.judge.value.verdict != \"good\"",
+      "max": 3,
+      "nodes": [
+        "draft_summary",
+        "judge"
+      ],
+      "ret": "node.draft_summary"
+    },
+    {
+      "id": "draft_summary",
+      "label": "Drafting the summary",
+      "format": "prose"
+    },
+    {
+      "id": "judge",
+      "label": "Judging the summary",
+      "format": "verdict",
+      "onInvalid": "fail"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Nested consultation note",
+      "sources": [
+        "node.refine",
+        "node.parts"
+      ]
+    }
+  ]
+}

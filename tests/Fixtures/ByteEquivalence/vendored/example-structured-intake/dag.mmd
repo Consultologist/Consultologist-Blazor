@@ -1,0 +1,59 @@
+flowchart TD
+    snippet_sections(["snippet.sections"])
+    input_prior_notes(["input.prior_notes"])
+    input_patient(["input.patient"])
+    input_consult_draft(["input.consult_draft"])
+    input_length_of_stay(["input.length_of_stay"])
+
+
+    subgraph for_sections_note_section["sections_note_section: per snippet.sections item"]
+        note_section["note_section<br/>Drafting the note"]
+    end
+    sections_note_section["sections_note_section<br/>Sections — drafting the note<br/>item in snippet.sections"]
+
+    subgraph for_sections_senior_review_section["sections_senior_review_section: per snippet.sections item"]
+        senior_review_section["senior_review_section<br/>Drafting the senior review request"]
+    end
+    sections_senior_review_section["sections_senior_review_section<br/>Sections — drafting the senior review request<br/>item in snippet.sections"]
+
+    subgraph for_sections_long_stay_section["sections_long_stay_section: per snippet.sections item"]
+        long_stay_section["long_stay_section<br/>Drafting the long-stay summary"]
+    end
+    sections_long_stay_section["sections_long_stay_section<br/>Sections — drafting the long-stay summary<br/>item in snippet.sections"]
+
+    subgraph for_prior_notes_summarise_note["prior_notes_summarise_note: per input.prior_notes item"]
+        summarise_note["summarise_note<br/>Summarising a prior note"]
+    end
+    prior_notes_summarise_note["prior_notes_summarise_note<br/>Prior notes — summarising a prior note<br/>item in input.prior_notes"]
+
+    subgraph for_prior_notes_index_note["prior_notes_index_note: per input.prior_notes item"]
+        index_note["index_note<br/>Indexing a prior note"]
+    end
+    prior_notes_index_note["prior_notes_index_note<br/>Prior notes — indexing a prior note<br/>item in input.prior_notes"]
+    input_patient --> note_section
+    input_consult_draft --> note_section
+    snippet_sections -->|"for"| for_sections_note_section
+    note_section -->|"ret"| sections_note_section
+    input_patient --> senior_review_section
+    input_consult_draft --> senior_review_section
+    snippet_sections -->|"for"| for_sections_senior_review_section
+    senior_review_section -->|"ret"| sections_senior_review_section
+    input_length_of_stay --> long_stay_section
+    input_consult_draft --> long_stay_section
+    snippet_sections -->|"for"| for_sections_long_stay_section
+    long_stay_section -->|"ret"| sections_long_stay_section
+    input_prior_notes -->|"for"| for_prior_notes_summarise_note
+    summarise_note -->|"ret"| prior_notes_summarise_note
+    input_prior_notes -->|"for"| for_prior_notes_index_note
+    index_note -->|"ret"| prior_notes_index_note
+
+    result_note{{"note<br/>Consultation note"}}
+    sections_note_section --> result_note
+    result_senior_review{{"senior_review<br/>Senior review request"}}
+    sections_senior_review_section --> result_senior_review
+    result_long_stay_summary{{"long_stay_summary<br/>Long-stay summary"}}
+    sections_long_stay_section --> result_long_stay_summary
+    result_notes_digest{{"notes_digest<br/>Prior-notes digest"}}
+    prior_notes_summarise_note --> result_notes_digest
+    result_notes_index{{"notes_index<br/>Prior-notes index"}}
+    prior_notes_index_note --> result_notes_index

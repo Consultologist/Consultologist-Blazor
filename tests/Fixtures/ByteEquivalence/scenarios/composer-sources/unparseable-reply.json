@@ -1,0 +1,37 @@
+{
+  "description": [
+    "A reply whose '{{' reads what the node's scope does not hold: draft_plan's reply is rendered as",
+    "a template before it composes, so {{ months }} fails the node and the job fails ('reply failed",
+    "to render'). Deliverables already released stay composed; plan and those still waiting on a",
+    "release when the job failed (single, pair, tally, summary_then_opening, topics_then_opening) are unsettled."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
+    "topics": [
+      {
+        "title": "History",
+        "kind": "drafted"
+      },
+      {
+        "title": "Examination",
+        "kind": "drafted"
+      }
+    ],
+    "include_plan": true,
+    "tone": "plain",
+    "redraft": false
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note.",
+    "draft_topic:0": "History paragraph.",
+    "draft_topic:1": "Examination paragraph.",
+    "draft_plan": "Repeat the echo in {{ months }} months.",
+    "plain_line": "Any questions, just ask."
+  }
+}

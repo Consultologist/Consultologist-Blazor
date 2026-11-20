@@ -1,0 +1,43 @@
+{
+  "description": [
+    "Every source that yields nothing. topics: the inner if takes no branch for either item, so the",
+    "loop has no item to compose; the deliverable is composed, empty (a document with no section, not",
+    "a skipped one). sections: node.plan's list is pinned empty, so the for over it runs no item and",
+    "composes empty (the input fan's zero items would refuse the start; a node's empty list does",
+    "not). summary: redraft false, so the checkFirst while runs no pass and has no section; composed",
+    "empty. plan: the if takes no branch and tone_line: the case ('none') matches no branch, so each",
+    "deliverable is skipped at the start with 'source node.<flow> took no branch'. single and pair",
+    "compose as usual, and tally reads the empty topics text.",
+    "Beside another source the two empties differ: summary_then_opening is opening's text alone (a",
+    "while that ran no pass contributes no part to the join), while topics_then_opening starts with a",
+    "blank line (a for whose every item was skipped contributes an empty part)."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
+    "topics": [
+      {
+        "title": "Social history",
+        "kind": "left_out"
+      },
+      {
+        "title": "Family history",
+        "kind": "left_out"
+      }
+    ],
+    "include_plan": false,
+    "tone": "none",
+    "redraft": false
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note.",
+    "plan": {
+      "sections": []
+    }
+  }
+}

@@ -1,0 +1,104 @@
+{
+  "package": "composer-sources",
+  "tag": null,
+  "scenario": "branches-not-taken",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "plan": {
+      "sections": []
+    },
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note."
+  },
+  "prompts": [
+    {
+      "key": "plan",
+      "hash": "sha256:4bb43077788990d6a1eb50075aad4279730c29aacedea54fa4fefafdd30892e2",
+      "text": "Plan the sections of a clinic note, each with a title and its purpose, from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"sections\"],\"properties\":{\"sections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"purpose\"],\"properties\":{\"title\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "opening",
+      "hash": "sha256:182aa4f77cfdec0593275730d361a46f90ecc55003740a8f3d6ff450e7f5da09",
+      "text": "Write one opening line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: \n"
+    },
+    {
+      "key": "closing",
+      "hash": "sha256:4aabf09e8e5dbf76d4aa071b89172cdc0965bcb3c937132c882427e9a8ff064d",
+      "text": "Write one closing line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: \n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "single",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:914c8cbe0692a3f743391dca67ed7716fe5ea819e90134e3a793f8cf2baaf8b7",
+      "text": "Opening line for the note."
+    },
+    {
+      "id": "pair",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:0c3f6548ba4714c5292c7720f3351b6e94c336284424f7b1afe5885e7c7169b6",
+      "text": "Opening line for the note.\n\nClosing line for the note."
+    },
+    {
+      "id": "topics",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "sections",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "summary",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "plan",
+      "state": "skipped",
+      "reason": "source node.plan_gate took no branch",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "tone_line",
+      "state": "skipped",
+      "reason": "source node.tone_case took no branch",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "tally",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:52328d84e428ee571c30efd0160356882e7bd8d82136948a2c864b9f7b7298aa",
+      "text": "Topic section length: 0"
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:914c8cbe0692a3f743391dca67ed7716fe5ea819e90134e3a793f8cf2baaf8b7",
+      "text": "Opening line for the note."
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:a78cd1b34a589a1e34cec273b6f196cc06cf90f7e9911f6bdd96552716dd19a4",
+      "text": "\n\nOpening line for the note."
+    }
+  ]
+}

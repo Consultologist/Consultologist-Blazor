@@ -1,0 +1,120 @@
+{
+  "name": "example-classifier-scope",
+  "version": "v2026.11.3",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Scope classifier demo",
+  "description": "A demonstration of what specVersion 10 opened: a classifier reads the referral and answers in_scope, out_of_scope or needs_information; the package then produces a plan, a decline letter or a request for further information \u2014 one document, decided at the boundary rather than asked at intake. Not intended for clinical use.",
+  "tags": [
+    "demo",
+    "classifier"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    }
+  ],
+  "macros": [
+    "closing"
+  ],
+  "nodes": [
+    {
+      "id": "scope",
+      "label": "Is the referral in scope?",
+      "format": "classification",
+      "with": {
+        "values": [
+          "in_scope",
+          "out_of_scope",
+          "needs_information"
+        ]
+      },
+      "onInvalid": "fail"
+    },
+    {
+      "id": "plan_sections",
+      "label": "Plan sections",
+      "for": "item in snippet.plan_sections",
+      "nodes": [
+        "plan_section"
+      ],
+      "ret": "node.plan_section"
+    },
+    {
+      "id": "plan_section",
+      "label": "Drafting the plan",
+      "format": "prose"
+    },
+    {
+      "id": "letter_decline_letter",
+      "label": "Letter \u2014 drafting the decline letter",
+      "for": "item in snippet.letter",
+      "nodes": [
+        "decline_letter"
+      ],
+      "ret": "node.decline_letter"
+    },
+    {
+      "id": "decline_letter",
+      "label": "Drafting the decline letter",
+      "format": "prose"
+    },
+    {
+      "id": "letter_information_request",
+      "label": "Letter \u2014 drafting the request for information",
+      "for": "item in snippet.letter",
+      "nodes": [
+        "information_request"
+      ],
+      "ret": "node.information_request"
+    },
+    {
+      "id": "information_request",
+      "label": "Drafting the request for information",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "plan",
+      "label": "Plan",
+      "sources": [
+        "node.plan_sections"
+      ],
+      "if": "node.scope.value == \u0022in_scope\u0022"
+    },
+    {
+      "id": "decline_letter",
+      "label": "Decline letter",
+      "macros": [
+        {
+          "id": "closing",
+          "at": "append"
+        }
+      ],
+      "signature": true,
+      "sources": [
+        "node.letter_decline_letter"
+      ],
+      "if": "node.scope.value == \u0022out_of_scope\u0022"
+    },
+    {
+      "id": "information_request",
+      "label": "Request for information",
+      "sources": [
+        "node.letter_information_request"
+      ],
+      "if": "node.scope.value == \u0022needs_information\u0022"
+    }
+  ],
+  "snippets": [
+    "letter/",
+    "plan_sections/"
+  ]
+}

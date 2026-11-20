@@ -1,0 +1,280 @@
+{
+  "name": "example-v12-constructs",
+  "version": "v2026.11.3",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "The v12 constructs demo",
+  "description": "A demonstration of everything specVersion 12 opened: an optional macro the run chooses (with a declared default), a macro placed against a section, a closing macro carrying the profile signature, conditional macros gated on a tone classifier, a template node whose render IS its output, and two checks \u2014 the note\u0027s passes, while the letter\u0027s fixed template text cannot cover the referral\u0027s clinical terms and records a deterministic failure. Not intended for clinical use.",
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "nodes": [
+    {
+      "id": "extract_patient_concepts",
+      "label": "Extracting clinical concepts",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "The consult could not be processed because clinical concepts could not be extracted from the draft."
+    },
+    {
+      "id": "identify_problem",
+      "label": "Identifying primary problem",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "No valid disease or problem concept was identified."
+    },
+    {
+      "id": "create_typical_trajectory",
+      "label": "Building reference trajectory",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "No valid typical trajectory concepts were generated."
+    },
+    {
+      "id": "create_patient_trajectory",
+      "label": "Building patient trajectory",
+      "format": "concept_list",
+      "onInvalid": "fail",
+      "failIfEmpty": "No valid patient trajectory concepts were generated."
+    },
+    {
+      "id": "standard_section_draft",
+      "label": "Drafting section",
+      "format": "prose"
+    },
+    {
+      "id": "patient_section_draft",
+      "label": "Applying patient information",
+      "format": "prose"
+    },
+    {
+      "id": "standards_section_instructions",
+      "label": "Standards \u2014 applying section instructions",
+      "for": "item in snippet.standards",
+      "nodes": [
+        "section_instructions",
+        "patient_section_draft",
+        "standard_section_draft"
+      ],
+      "ret": "node.section_instructions"
+    },
+    {
+      "id": "section_instructions",
+      "label": "Applying section instructions",
+      "format": "prose"
+    },
+    {
+      "id": "tone",
+      "label": "Reading the referral\u0027s tone",
+      "format": "classification",
+      "with": {
+        "values": [
+          "formal",
+          "friendly"
+        ]
+      },
+      "onInvalid": "fail"
+    },
+    {
+      "id": "patient_header",
+      "label": "Patient header",
+      "format": "rendered"
+    },
+    {
+      "id": "extract_input_terms",
+      "label": "Extracting the referral\u0027s terms",
+      "format": "concept_list",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "extract_note_terms",
+      "label": "Extracting the note\u0027s terms",
+      "format": "concept_list",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "note_coverage",
+      "label": "Note coverage check",
+      "format": "terms_subset",
+      "with": {
+        "of": "node.extract_input_terms",
+        "in": "node.extract_note_terms",
+        "failWith": "The note does not cover every clinical term found in the referral."
+      },
+      "onInvalid": "fail"
+    },
+    {
+      "id": "standards_letter_body",
+      "label": "Standards \u2014 acknowledgement body",
+      "for": "item in snippet.standards",
+      "nodes": [
+        "letter_body"
+      ],
+      "ret": "node.letter_body"
+    },
+    {
+      "id": "letter_body",
+      "label": "Acknowledgement body",
+      "format": "rendered"
+    },
+    {
+      "id": "extract_letter_terms",
+      "label": "Extracting the letter\u0027s terms",
+      "format": "concept_list",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "letter_coverage",
+      "label": "Letter coverage check",
+      "format": "terms_subset",
+      "with": {
+        "of": "node.extract_input_terms",
+        "in": "node.extract_letter_terms",
+        "failWith": "The acknowledgement does not cover the referral\u0027s clinical terms."
+      },
+      "onInvalid": "fail"
+    }
+  ],
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "seen_on",
+      "label": "Date seen",
+      "required": true,
+      "type": "date"
+    },
+    {
+      "id": "encounter_kind",
+      "label": "Encounter kind",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "new_patient",
+        "follow_up"
+      ]
+    },
+    {
+      "id": "billable",
+      "label": "Billable encounter",
+      "required": false,
+      "type": "boolean"
+    },
+    {
+      "id": "length_of_stay",
+      "label": "Length of stay (days)",
+      "required": false,
+      "type": "number"
+    },
+    {
+      "id": "patient",
+      "label": "Patient record",
+      "required": false,
+      "type": "object",
+      "fields": [
+        {
+          "id": "family_name",
+          "label": "Family name",
+          "required": true
+        },
+        {
+          "id": "age",
+          "label": "Age",
+          "required": true,
+          "type": "number"
+        },
+        {
+          "id": "sex",
+          "label": "Sex",
+          "required": false,
+          "type": "enum",
+          "values": [
+            "female",
+            "male"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "prior_notes",
+      "label": "Prior notes",
+      "required": false,
+      "type": "array",
+      "items": "text"
+    },
+    {
+      "id": "medications",
+      "label": "Medications",
+      "required": false,
+      "type": "array",
+      "items": "object",
+      "fields": [
+        {
+          "id": "name",
+          "label": "Drug",
+          "required": true
+        },
+        {
+          "id": "dose",
+          "label": "Dose",
+          "required": false
+        }
+      ]
+    }
+  ],
+  "tags": [],
+  "macros": [
+    "formal_note",
+    "friendly_note",
+    "followup",
+    "closing"
+  ],
+  "deliverables": [
+    {
+      "id": "consult",
+      "label": "Consultation note",
+      "macros": [
+        {
+          "id": "formal_note",
+          "at": "append",
+          "if": "node.tone.value == \u0022formal\u0022"
+        },
+        {
+          "id": "friendly_note",
+          "at": "append",
+          "if": "node.tone.value == \u0022friendly\u0022"
+        },
+        {
+          "id": "followup",
+          "at": "append"
+        },
+        {
+          "id": "closing",
+          "at": "append"
+        }
+      ],
+      "check": "node.note_coverage",
+      "sources": [
+        "node.standards_section_instructions",
+        "node.patient_header"
+      ]
+    },
+    {
+      "id": "ack_letter",
+      "label": "Acknowledgement letter",
+      "check": "node.letter_coverage",
+      "sources": [
+        "node.standards_letter_body"
+      ]
+    }
+  ],
+  "snippets": [
+    "disclaimer",
+    "snomed_tool_guidance",
+    "standards/"
+  ]
+}

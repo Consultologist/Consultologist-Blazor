@@ -1,0 +1,49 @@
+{
+  "package": "example-classifier-scope",
+  "tag": "example-classifier-scope-v2026.11.3",
+  "scenario": "needs-information",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "scope": {
+      "value": "needs_information"
+    },
+    "information_request:letter": "Stub reply for information_request:letter (f8b708c6)."
+  },
+  "prompts": [
+    {
+      "key": "scope",
+      "hash": "sha256:50f39bab3a6f5f1a3eb62a7f464ecce67f2c8b628fe44d4674415444dd31f349",
+      "text": "You are deciding whether a referral belongs in a general medical outpatient clinic.\n\nTask:\nRead the referral below and decide one thing only: whether it is in scope for the clinic, out of scope, or cannot be decided because the referral does not say enough.\n\nDefinitions:\nIn scope: a question a general medical outpatient clinic assesses and manages — a diagnostic question, a chronic condition to review, a treatment plan to make.\nOut of scope: a request the clinic does not provide — an emergency that needs a hospital now, a procedure or specialty the clinic does not offer, an administrative request with no clinical question.\nNeeds information: the referral does not state a clinical question, or leaves out what would be needed to tell the first two apart.\n\nGuardrail:\nDecide from the referral alone. Do not infer facts it does not contain.\n\nReferral:\nPlease see Mr K. Haddad, 49. Thanks. (Fictional.)\n\n\nAnswer with exactly one of: in_scope, out_of_scope, needs_information."
+    },
+    {
+      "key": "information_request:letter",
+      "hash": "sha256:5a18dc8fc35c580596e99cf18ca7aadea2af127449cca377bd106f2bd1d5ca0e",
+      "text": "You are writing a short letter to the referring clinician asking for the information the clinic needs before it can decide on a referral.\n\nTask:\nWrite the letter using only the referral below, following the letter standard. Name, plainly, what the referral does not say — the clinical question, the relevant history, the findings so far — and ask for it.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Do not decide the referral.\n\nOutput rule:\nReturn only the letter's prose. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nLetter standard:\nOne short paragraph, addressed to the referring clinician, courteous and specific: what was received, what the clinic can or cannot do with it, and what happens next.\n\n\nReferral:\nPlease see Mr K. Haddad, 49. Thanks. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "plan",
+      "state": "skipped",
+      "reason": "needs `node.scope.value == \"in_scope\"`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "decline_letter",
+      "state": "skipped",
+      "reason": "needs `node.scope.value == \"out_of_scope\"`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "information_request",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:fb396d2005173498c70a53050f07bb36ef17afdb9f3e536074c62e0b6f357650",
+      "text": "## Letter\n\nStub reply for information_request:letter (f8b708c6)."
+    }
+  ]
+}

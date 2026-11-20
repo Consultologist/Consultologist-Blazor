@@ -1,0 +1,449 @@
+{
+  "cases": [
+    {
+      "name": "empty",
+      "concepts": [],
+      "concept_bullets": "(none)",
+      "concept_context": "(none)"
+    },
+    {
+      "name": "one active SNOMED",
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Type 2 diabetes mellitus (disorder) - 44054006",
+      "concept_context": "- Type 2 diabetes mellitus (disorder) - 44054006; active: True; source: extract"
+    },
+    {
+      "name": "one not SNOMED",
+      "concepts": [
+        {
+          "term": "Lives alone",
+          "type": "finding",
+          "id": null,
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Lives alone [not SNOMED concept]",
+      "concept_context": "- Lives alone (finding) - ; active: False; source: extract"
+    },
+    {
+      "name": "one inactive",
+      "concepts": [
+        {
+          "term": "Diabetes mellitus",
+          "type": "disorder",
+          "id": "73211009",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Diabetes mellitus (disorder) - 73211009 [not active SNOMED concept]",
+      "concept_context": "- Diabetes mellitus (disorder) - 73211009; active: False; source: extract"
+    },
+    {
+      "name": "with support",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "adjuvant endocrine therapy",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: extract support: adjuvant endocrine therapy"
+    },
+    {
+      "name": "without support",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: extract"
+    },
+    {
+      "name": "empty support",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: extract"
+    },
+    {
+      "name": "whitespace support",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": " \t ",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: extract"
+    },
+    {
+      "name": "tab and newline only support",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "\t\r\n\t",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: extract"
+    },
+    {
+      "name": "different source",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "adjuvant",
+          "source": "typical"
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: typical support: adjuvant"
+    },
+    {
+      "name": "empty source",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": ""
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: "
+    },
+    {
+      "name": "three mixed",
+      "concepts": [
+        {
+          "term": "Malignant neoplasm of breast",
+          "type": "disorder",
+          "id": "254837009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "stage II",
+          "source": "extract"
+        },
+        {
+          "term": "Diabetes mellitus",
+          "type": "disorder",
+          "id": "73211009",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": "  long-standing  ",
+          "source": "draft"
+        },
+        {
+          "term": "Family support strong",
+          "type": null,
+          "id": null,
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Malignant neoplasm of breast (disorder) - 254837009\n- Diabetes mellitus (disorder) - 73211009 [not active SNOMED concept]\n- Family support strong [not SNOMED concept]",
+      "concept_context": "- Malignant neoplasm of breast (disorder) - 254837009; active: True; source: extract support: stage II\n- Diabetes mellitus (disorder) - 73211009; active: False; source: draft support:   long-standing  \n- Family support strong () - ; active: False; source: extract"
+    },
+    {
+      "name": "markdown characters",
+      "concepts": [
+        {
+          "term": "*Bold* _term_ `code` [link](x) # | <b>",
+          "type": "dis*order*",
+          "id": "123",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "> quote {{ not a tag }}",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- *Bold* _term_ `code` [link](x) # | <b> (dis*order*) - 123",
+      "concept_context": "- *Bold* _term_ `code` [link](x) # | <b> (dis*order*) - 123; active: True; source: extract support: > quote {{ not a tag }}"
+    },
+    {
+      "name": "two in order",
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Asthma",
+          "type": "disorder",
+          "id": "195967001",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "seasonal",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Type 2 diabetes mellitus (disorder) - 44054006\n- Asthma (disorder) - 195967001",
+      "concept_context": "- Type 2 diabetes mellitus (disorder) - 44054006; active: True; source: extract\n- Asthma (disorder) - 195967001; active: True; source: extract support: seasonal"
+    },
+    {
+      "name": "non-ASCII term",
+      "concepts": [
+        {
+          "term": "Anémie ferriprive",
+          "type": "disorder",
+          "id": "87522002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "糖尿病",
+          "type": "disorder",
+          "id": "73211009",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": "長期",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Anémie ferriprive (disorder) - 87522002\n- 糖尿病 (disorder) - 73211009 [not active SNOMED concept]",
+      "concept_context": "- Anémie ferriprive (disorder) - 87522002; active: True; source: extract\n- 糖尿病 (disorder) - 73211009; active: False; source: extract support: 長期"
+    },
+    {
+      "name": "empty term",
+      "concepts": [
+        {
+          "term": "",
+          "type": "finding",
+          "id": "404684003",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "-  (finding) - 404684003",
+      "concept_context": "-  (finding) - 404684003; active: True; source: extract"
+    },
+    {
+      "name": "null type on a SNOMED concept",
+      "concepts": [
+        {
+          "term": "Hypertension",
+          "type": null,
+          "id": "38341003",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Hypertension () - 38341003",
+      "concept_context": "- Hypertension () - 38341003; active: True; source: extract"
+    },
+    {
+      "name": "null id on a SNOMED concept",
+      "concepts": [
+        {
+          "term": "Hypertension",
+          "type": "disorder",
+          "id": null,
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Hypertension (disorder) - ",
+      "concept_context": "- Hypertension (disorder) - ; active: True; source: extract"
+    },
+    {
+      "name": "newline in support",
+      "concepts": [
+        {
+          "term": "Tamoxifen therapy",
+          "type": "procedure",
+          "id": "75367002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "adjuvant\nendocrine therapy",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Tamoxifen therapy (procedure) - 75367002",
+      "concept_context": "- Tamoxifen therapy (procedure) - 75367002; active: True; source: extract support: adjuvant\nendocrine therapy"
+    },
+    {
+      "name": "long list",
+      "concepts": [
+        {
+          "term": "Concept 1",
+          "type": "finding",
+          "id": "1001",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 2",
+          "type": "finding",
+          "id": "1002",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 3",
+          "type": "finding",
+          "id": "1003",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": "support 3",
+          "source": "extract"
+        },
+        {
+          "term": "Concept 4",
+          "type": "finding",
+          "id": "1004",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 5",
+          "type": "finding",
+          "id": "1005",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 6",
+          "type": "finding",
+          "id": "1006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "support 6",
+          "source": "extract"
+        },
+        {
+          "term": "Concept 7",
+          "type": "finding",
+          "id": "1007",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 8",
+          "type": "finding",
+          "id": "1008",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 9",
+          "type": "finding",
+          "id": "1009",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": "support 9",
+          "source": "extract"
+        },
+        {
+          "term": "Concept 10",
+          "type": "finding",
+          "id": "1010",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 11",
+          "type": "finding",
+          "id": "1011",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": null,
+          "source": "extract"
+        },
+        {
+          "term": "Concept 12",
+          "type": "finding",
+          "id": "1012",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "support 12",
+          "source": "extract"
+        }
+      ],
+      "concept_bullets": "- Concept 1 (finding) - 1001 [not active SNOMED concept]\n- Concept 2 (finding) - 1002\n- Concept 3 (finding) - 1003 [not active SNOMED concept]\n- Concept 4 (finding) - 1004\n- Concept 5 (finding) - 1005 [not active SNOMED concept]\n- Concept 6 (finding) - 1006\n- Concept 7 (finding) - 1007 [not active SNOMED concept]\n- Concept 8 (finding) - 1008\n- Concept 9 (finding) - 1009 [not active SNOMED concept]\n- Concept 10 (finding) - 1010\n- Concept 11 (finding) - 1011 [not active SNOMED concept]\n- Concept 12 (finding) - 1012",
+      "concept_context": "- Concept 1 (finding) - 1001; active: False; source: extract\n- Concept 2 (finding) - 1002; active: True; source: extract\n- Concept 3 (finding) - 1003; active: False; source: extract support: support 3\n- Concept 4 (finding) - 1004; active: True; source: extract\n- Concept 5 (finding) - 1005; active: False; source: extract\n- Concept 6 (finding) - 1006; active: True; source: extract support: support 6\n- Concept 7 (finding) - 1007; active: False; source: extract\n- Concept 8 (finding) - 1008; active: True; source: extract\n- Concept 9 (finding) - 1009; active: False; source: extract support: support 9\n- Concept 10 (finding) - 1010; active: True; source: extract\n- Concept 11 (finding) - 1011; active: False; source: extract\n- Concept 12 (finding) - 1012; active: True; source: extract support: support 12"
+    }
+  ]
+}

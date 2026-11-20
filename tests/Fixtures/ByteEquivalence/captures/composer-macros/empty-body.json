@@ -1,0 +1,109 @@
+{
+  "package": "composer-macros",
+  "tag": null,
+  "scenario": "empty-body",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "section_draft:0": "History paragraph: palpitations for two months.\n\n",
+    "section_draft:1": "Plan paragraph: apixaban started.",
+    "letter_body": ""
+  },
+  "prompts": [
+    {
+      "key": "section_draft:0",
+      "hash": "sha256:edb3bd2e0d9470256d859f0b86800e6fee063780d5ad3a519f32daf25213c2de",
+      "text": "Write the section \"History\" of a clinic letter from this draft.\nMargaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)\n"
+    },
+    {
+      "key": "section_draft:1",
+      "hash": "sha256:c8cac09994e1ed7b1eea8035061f6b1a9e23a24817856f6539b69bd030f7350f",
+      "text": "Write the section \"Plan\" of a clinic letter from this draft.\nMargaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)\n"
+    },
+    {
+      "key": "letter_body",
+      "hash": "sha256:4bfe1d9e2270232d7504dc441071429ec49171dbd834dd699277882c483104da",
+      "text": "Write the body of a clinic letter from this draft and its sections.\nMargaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)\n## History\n\nThe History section follows.\n\nHistory paragraph: palpitations for two months.\n\n\n\nEnd of the History section.\n\n## Plan\n\nThe Plan section follows.\n\nPlan paragraph: apixaban started.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "prepended",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:6301d1873c46611c995b2a65ef1c36f68efddc1a6ae7113f7678ebf8fbaf2934",
+      "text": "Riverside Clinic (fictional)\n\n"
+    },
+    {
+      "id": "appended",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e6adfe599330ac696e5b0545fa90bee95ffd54f3bbaaed18b8366575d66d9ec4",
+      "text": "\n\nFirst closing paragraph."
+    },
+    {
+      "id": "both",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:16f995e91af62fd5a5d5034c94b2245e8de0b123b7e39f5d7348e315caf24dd8",
+      "text": "Riverside Clinic (fictional)\n\nReference: new visit\n\n\n\nFirst closing paragraph.\n\nSecond closing paragraph."
+    },
+    {
+      "id": "gated",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:05118cd622c6ca159153e0b4fc35291ae8a24244309a3a456f405ea1861b51b7",
+      "text": "\n\nFirst visit to this clinic.\n\n\n\nFirst closing paragraph."
+    },
+    {
+      "id": "optional",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:b6ddf60446ee64a02dd52a73baa33998221d1e806025e5dff5a8d4b1a9ef04a3",
+      "text": "\n\nA follow-up appointment will be offered."
+    },
+    {
+      "id": "authored",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:93c6aed243c598b8658873f191c5d0bcf8cfc41410f9e448ec694eb443745a93",
+      "text": "\n\nWritten by Dr A. Sample on 2026-11-10.\nDr A. Sample\nInternal Medicine"
+    },
+    {
+      "id": "sections_note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:d107854cba9457afd737752a8ccd05ad1ca35ce9bf0d40f18bd2c9e315567710",
+      "text": "## History\n\nThe History section follows.\n\nHistory paragraph: palpitations for two months.\n\n\n\nEnd of the History section.\n\n## Plan\n\nThe Plan section follows.\n\nPlan paragraph: apixaban started."
+    },
+    {
+      "id": "signed_letter",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:aa71b150907dc4a878be1ddfb6a338a20d52233c62669c8b286291992a72dad3",
+      "text": "\n\ncc: the referring practice (fictional)\n\nDr A. Sample\nInternal Medicine"
+    },
+    {
+      "id": "review_summary",
+      "state": "skipped",
+      "reason": "needs `input.visit == \"review\"`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "echoes",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:70f91cc052b80d3d56179df658867c6317365725867234907c212f809d3cee9a",
+      "text": "\n\nBody as this macro reads it: []\n\nNew-visit note as this macro reads it: [First visit to this clinic.\n]"
+    },
+    {
+      "id": "signed_only",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:b84a8c3ae15c12cbdee221dde935f8e1f1e403cb163a761b3bf92e72a8054dcd",
+      "text": "\n\nDr A. Sample\nInternal Medicine"
+    }
+  ]
+}

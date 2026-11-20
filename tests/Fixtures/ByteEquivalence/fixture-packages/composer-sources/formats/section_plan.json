@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "producer": "custom",
+  "outputMacros": false,
+  "description": "The sections a note should have, each with a title and what it covers.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "sections"
+    ],
+    "properties": {
+      "sections": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "purpose"
+          ],
+          "properties": {
+            "title": {
+              "type": "string"
+            },
+            "purpose": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

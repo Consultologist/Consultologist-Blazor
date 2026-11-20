@@ -1,0 +1,80 @@
+{
+  "description": [
+    "Audience patient. note's check passes and it is composed; record_copy's extracted list lacks",
+    "Metformin, so its check refuses it: failed, with its failWith sentence. patient_copy's if holds",
+    "and it is composed. cover_note's prompt reads both deliverable.note.content and",
+    "deliverable.patient_copy.content."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "audience": "patient"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "note_body": "Closing paragraph: review in three months.",
+    "patient_line": "Your sugar levels are high; we will review your tablets.",
+    "cover_note": "Please find the clinic note enclosed.",
+    "extract_input_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "extract_note_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "extract_copy_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    }
+  }
+}

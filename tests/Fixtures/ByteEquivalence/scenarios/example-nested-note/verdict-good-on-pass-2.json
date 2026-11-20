@@ -1,0 +1,38 @@
+{
+  "description": [
+    "Two planned sections; the judge says revise on pass 1 and good on pass 2, so the while runs",
+    "twice and the second draft_summary prompt reads pass.previous: the judge's feedback and the",
+    "first draft."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "plan": {
+      "summary": "Subclinical hypothyroidism started on levothyroxine.",
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the fatigue and the raised TSH point to."
+        },
+        {
+          "title": "Plan",
+          "purpose": "Treatment and follow-up."
+        }
+      ]
+    },
+    "judge:1": {
+      "verdict": "revise",
+      "feedback": "The second sentence must begin with \"Recommendation:\"."
+    },
+    "judge:2": {
+      "verdict": "good",
+      "feedback": "Follows the house style."
+    }
+  }
+}

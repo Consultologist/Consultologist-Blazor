@@ -1,0 +1,215 @@
+{
+  "package": "composer-sources",
+  "tag": null,
+  "scenario": "every-source",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        },
+        {
+          "title": "Plan",
+          "purpose": "What happens next."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "heading": "Valve",
+          "point": "Mild aortic stenosis on echo."
+        }
+      ]
+    },
+    "outline:2": {
+      "points": [
+        {
+          "heading": "Review",
+          "point": "Review in six months."
+        },
+        {
+          "heading": "Advice",
+          "point": "Report chest pain or fainting."
+        }
+      ]
+    },
+    "draft_point:1/1": "Valve paragraph for the assessment.",
+    "draft_point:2/1": "Review paragraph for the plan.",
+    "draft_point:2/2": "Advice paragraph for the plan.",
+    "draft_topic:0": "History paragraph: breathless on exertion for a year.",
+    "draft_topic:2": "Examination paragraph: ejection systolic murmur.",
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note.",
+    "draft_summary:1": "Summary, first draft.",
+    "draft_plan": "Plan paragraph: repeat echo in six months.",
+    "formal_line": "We remain at your disposal for any questions.",
+    "judge:1": {
+      "verdict": "revise",
+      "feedback": "Name the valve."
+    },
+    "draft_summary:2": "Summary, second draft, naming the aortic valve.",
+    "judge:2": {
+      "verdict": "good",
+      "feedback": "Good."
+    }
+  },
+  "prompts": [
+    {
+      "key": "plan",
+      "hash": "sha256:4bb43077788990d6a1eb50075aad4279730c29aacedea54fa4fefafdd30892e2",
+      "text": "Plan the sections of a clinic note, each with a title and its purpose, from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"sections\"],\"properties\":{\"sections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"purpose\"],\"properties\":{\"title\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:1",
+      "hash": "sha256:e8143dcd1963abe05b4bd0f2b4853bba0000d66bb9321bee6a2b7f0af3c7a72e",
+      "text": "List the points the section \"Assessment\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:2",
+      "hash": "sha256:30c78bfed39b3d2575a5015d4658dc1b4300cb569336d249a50ae064287f8a4a",
+      "text": "List the points the section \"Plan\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "draft_point:1/1",
+      "hash": "sha256:8f191a5b3f07c70a9962948961e40eee7c51584d9bfa4e70b9da25c283c33c87",
+      "text": "Write one paragraph making this point in the section \"Assessment\": Mild aortic stenosis on echo.\n"
+    },
+    {
+      "key": "draft_point:2/1",
+      "hash": "sha256:227c907f55b61a3a3d8ce3288a7fe68a48bc37ac14dc232eefacf49e32ed3a27",
+      "text": "Write one paragraph making this point in the section \"Plan\": Review in six months.\n"
+    },
+    {
+      "key": "draft_point:2/2",
+      "hash": "sha256:011949de7997bcd9cf44229e60dbac6d8ebbe3be53b6fac1d807871f753b2541",
+      "text": "Write one paragraph making this point in the section \"Plan\": Report chest pain or fainting.\n"
+    },
+    {
+      "key": "draft_topic:0",
+      "hash": "sha256:79708dfeb90f329f96e0cca98d869b918e5fae1595333d7969a0dbe4213be4d0",
+      "text": "Write one paragraph on the topic \"History\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "draft_topic:2",
+      "hash": "sha256:3a1ee80d9e48d95b1459e945c0549f25a3dd54e9d3b5af9f791b8e59fa87c4fd",
+      "text": "Write one paragraph on the topic \"Examination\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "opening",
+      "hash": "sha256:dcf522c76ac48be369f35eb1740ab1a98c4ef2a4914f70b1c3085e00898f2cc8",
+      "text": "Write one opening line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n"
+    },
+    {
+      "key": "closing",
+      "hash": "sha256:e2e4a879cf509ad78ad1ed13e90d4ec61bd6ad27263e783223b69e043a031ec1",
+      "text": "Write one closing line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n"
+    },
+    {
+      "key": "draft_summary:1",
+      "hash": "sha256:fbb56559eec77b04eeccf7157d11c8a99240755626c3cf1f15bd26c6d8899890",
+      "text": "Write a two-sentence summary of this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n"
+    },
+    {
+      "key": "draft_plan",
+      "hash": "sha256:1f507b836041c5a086f640033705e41603a54287d8f2f9d1ab76b204c9240fb7",
+      "text": "Write the plan for this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n"
+    },
+    {
+      "key": "formal_line",
+      "hash": "sha256:35354b0c4b7b22d869102d4bd1e67c8f1d557eed3da2118a4d4e76f6c1181f22",
+      "text": "Write one line in a formal tone closing this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n"
+    },
+    {
+      "key": "judge:1",
+      "hash": "sha256:27097e159ba41e7eebb543acb32de2c373b183ed62574d56ae6fa2f59cb2c38d",
+      "text": "Is this summary good, or should it be revised? Say why in one sentence.\nSummary, first draft.\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"verdict\",\"feedback\"],\"properties\":{\"verdict\":{\"type\":\"string\",\"enum\":[\"good\",\"revise\"]},\"feedback\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "draft_summary:2",
+      "hash": "sha256:04e545b353ef5268b2b1ab7e3d482739ed2d246300bb70b470d4d6d1feb3bf48",
+      "text": "Write a two-sentence summary of this draft. Revise the previous draft: Name the valve.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n"
+    },
+    {
+      "key": "judge:2",
+      "hash": "sha256:48c913c5d3a4b0e5c08b943d9ca505deacbff27cfd1d1a42464da07e5b0799ef",
+      "text": "Is this summary good, or should it be revised? Say why in one sentence.\nSummary, second draft, naming the aortic valve.\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"verdict\",\"feedback\"],\"properties\":{\"verdict\":{\"type\":\"string\",\"enum\":[\"good\",\"revise\"]},\"feedback\":{\"type\":\"string\"}}}"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "single",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:914c8cbe0692a3f743391dca67ed7716fe5ea819e90134e3a793f8cf2baaf8b7",
+      "text": "Opening line for the note."
+    },
+    {
+      "id": "pair",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:0c3f6548ba4714c5292c7720f3351b6e94c336284424f7b1afe5885e7c7169b6",
+      "text": "Opening line for the note.\n\nClosing line for the note."
+    },
+    {
+      "id": "topics",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:ff982278b45070ec3e45b028a51fff9726af25900d08180a154fd1f6e3356e5f",
+      "text": "## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur."
+    },
+    {
+      "id": "sections",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:ed11b544d42842583ddc9c65ba74355c5c69f1f7eab675aad469ed8f0e1287dd",
+      "text": "## Assessment\n\n## Valve\n\nValve paragraph for the assessment.\n\n## Plan\n\n## Review\n\nReview paragraph for the plan.\n\n## Advice\n\nAdvice paragraph for the plan."
+    },
+    {
+      "id": "summary",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:82b8943f3aecf862eff4e93d167297cd41f17c4bb823be6ada2b275b804cd27d",
+      "text": "Summary, second draft, naming the aortic valve."
+    },
+    {
+      "id": "plan",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:232490533aa911e35ed584d9842e9a3a5c1314d5ba43a8dacd7ecfdbb226dedf",
+      "text": "Plan paragraph: repeat echo in six months."
+    },
+    {
+      "id": "tone_line",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:c7cfec14846bdcca434bfbe9a65edc5e7deea04b3d51644fda4fd577b4029c31",
+      "text": "We remain at your disposal for any questions."
+    },
+    {
+      "id": "tally",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:2dd9803060c632e8ed4cdc04f1c8eeaa20c122e3fcf48b2d56150e2c0858e88a",
+      "text": "Topic section length: 131"
+    },
+    {
+      "id": "summary_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:44d1e482c7e16c1dfeacfbe2ec4bf881d827c86380a0b03541af722137d1ce71",
+      "text": "Summary, second draft, naming the aortic valve.\n\nOpening line for the note."
+    },
+    {
+      "id": "topics_then_opening",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e295bd86138ece98f63fd72970a4174f4c043995a2fdd665d928a298d0163b3d",
+      "text": "## History\n\nHistory paragraph: breathless on exertion for a year.\n\n## Examination\n\nExamination paragraph: ejection systolic murmur.\n\nOpening line for the note."
+    }
+  ]
+}

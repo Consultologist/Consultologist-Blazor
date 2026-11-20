@@ -1,0 +1,444 @@
+# Byte-equivalence fixtures (#1498)
+
+What today's workflow engine (specVersion 30) produces, frozen as in-repo files. Every file here
+is read as exact bytes: `.gitattributes` holds `* -text`, so git never normalises a newline.
+
+## `vendored/`
+
+The thirteen public workflow packages, each vendored from the tag that pins it in the
+`consultologist-workflows` repo, as git holds the files (`manifest.json`, `dag.mmd`, prompts,
+macros, snippets, everything under `packages/<name>/` at the tag). `test/general` sits at
+`vendored/test/general/`.
+
+`vendored/index.json` records, per package, the tag, the commit it resolved to, and the SHA-256 of
+every file. The tags are the pins (the list lives in the script); the index is what CI checks:
+`VendoredPackagesTests` fails if a file's bytes differ from its hash, or a file is on disk that
+the index does not name.
+
+Regenerate from a checkout of the content repo that has the tags:
+
+```
+dotnet run -v q --file scripts/vendor-public-packages.cs -- <path to consultologist-workflows> [<fixture root>]
+```
+
+The script deletes `vendored/` first, so a file removed upstream cannot linger, and writes nothing
+if a tag does not resolve. Move a pin by editing the tag list in the script, then re-run it.
+
+## `fixture-packages/`
+
+Three hand-written specVersion 30 packages (`v2026.11.1`, fictional text) that exercise the
+deliverable composer's rules one at a time (`ConsultDeliverableComposition`,
+`ConsultAggregateRenderer`, `RenderDeliverableMacrosActivity` with `ComposeAt25`,
+`ConsultSignatureAppend`, and the release in `ConsultGenerationEngine`), so a generated
+deliverable template has today's bytes to reproduce rule by rule (Part 10 § 3.3). Each package
+gives every rule its own deliverable, so one capture shows each rule's bytes beside the others.
+`ByteEquivalenceFixtures.Load` finds them after `vendored/`; their captures have `"tag": null`.
+They have no `dag.mmd`. Validate one with
+`dotnet run -v q --file scripts/validate-workflow-package.cs -- tests/Fixtures/ByteEquivalence/fixture-packages/<name>`.
+
+At 30 the validator refuses a deliverable that does not transitively include a `for`, so every
+"scalar" source here (a prose node, the while's body, the if's and case's nodes, the let) reads
+a loop's text in its prompt or expression; the composer still reads each as one scalar part.
+
+### `composer-sources`
+
+One deliverable per kind of source: `single` (one prose node), `pair` (two), `topics` (a `for`
+over an input with an `if` inside), `sections` (a `for` over a node's list, `labelField` and
+`max: 3`, with a `for` inside), `summary` (a `while` with `checkFirst`, `until` and `max: 3`),
+`plan` (an `if`), `tone_line` (a `case`), `tally` (a `let` of type text), and
+`summary_then_opening` and `topics_then_opening` (the `while` and the `for`, each followed by
+`opening`). The input's label (`Requested topics`) differs from its loop's (`Topics`).
+
+| Scenario | Rules it reaches |
+|---|---|
+| `every-source` | one scalar source verbatim; two joined by one blank line in `sources` order; a `for` as `## <name>` blocks in item order, named by `labelField`, an item whose inner `if` took no branch left out; a nested `for` (a section heading, then its points' blocks); a `while`'s last pass's text (two passes); an `if` and a `case` that took a branch, as their returned node's text; a `let` of type text as its plain text; a `while` and a `for` each joined to a following source |
+| `branches-not-taken` | a `for` whose every item's inner `if` took no branch, composed empty; a `for` over a node's list pinned empty (zero items), composed empty; a `while` that ran no pass (`checkFirst`), composed empty; an `if` and a `case` that took no branch: the deliverable is skipped, `source node.<flow> took no branch`; beside another source, the zero-pass `while` contributes no part (the text is the other source alone) but the all-skipped `for` contributes an empty part (the text starts with a blank line) |
+| `awkward-texts` | an empty source (composed empty; in a join it still takes its place, so the text starts with a blank line); leading and trailing newlines and spaces trimmed from each part; a part holding its own `##` headings, verbatim; a reply holding `{{` rendered as a template before it composes (`{{ 3 * 2 }}` → `6`, `{{ "{{" }}` → `{{`) |
+| `item-names-and-bounds` | `labelField` text trimmed, cut to 120 characters with `…` (mid-word, and where the character before the cut is a space, which is trimmed: 119 characters), and a blank one falling back to the input's label plus position (`Requested topics 4`) for an input fan and the loop's label (`Sections 2`, `Points 1`) for a node's list; an inner `for` with zero items inside an outer item (its block is the heading and an empty text); a `for`'s `max` leaving an item unrun and without a block; a `while` stopped at its bound, the third pass's text |
+| `unparseable-reply` | a reply whose `{{` reads what the scope does not hold fails the node and the job; deliverables not yet released are unsettled |
+| `failed-item` | a loop item that failed (`failIfEmpty`): the composer's `<label> could not assemble: <key> did not complete` fails the job |
+
+### `composer-macros`
+
+One deliverable per macro rule, all over `node.letter_body` except `sections_note` (a `for` over
+an input whose body node places `section_intro` before and `section_close` after, gated by the
+item): `prepended`, `appended`, `both` (two prepends, two appends), `gated` (a macro's own `if`,
+a placement's `if`, a macro that renders empty), `optional` (`followup_offer`, default on;
+`leaflet_offer`, default off), `authored` (reads `profile.name`, `profile.signature` and
+`run.date`), `signed_letter` (`signature: true` after an appended macro), `signed_only`
+(`signature: true`, no macro), `review_summary` (an `if` on `input.visit`, a prepended
+letterhead) and `echoes`, whose placed macros read `node.letter_body.content` (`body_echo`),
+`macro.new_visit_note.content` (`visit_echo`) and `deliverable.review_summary.content`
+(`quoted_review`, optional, default off). `letter_body` is pinned with a trailing blank line.
+
+| Scenario | Rules it reaches |
+|---|---|
+| `new-visit-defaults` | prepend, append and both, each one blank line from the sections; two at one place in placement order; a macro's own `if` holding and a placement's `if` not (not placed); a placed macro rendering empty, its empty piece still joined (four newlines); optional macros defaulted (on placed, off not); `profile.name`, `profile.signature` and `run.date` (`2026-11-10`) in one macro; node macros before and after a loop item's reply, the after one gated off for one item, the reply's own trailing blank line kept inside the item; the signature block appended last, after a macro and with none; a placed macro reading a source node's text untrimmed (the composed part is trimmed); a placed macro reading a live macro's `.content` (with its file's trailing newline); a deliverable skipped by its `if` |
+| `review-visit-choices` | a macro's own `if` not holding and a placement's `if` holding; the empty-rendering macro rendering text; optional macros chosen on (default off) and off (default on); a placed macro reading an inert macro's `.content` as empty; a placed macro reading another deliverable's composed text (its sections, without that deliverable's own macros) |
+| `no-signature` | `signature: true` with no signature on the profile: nothing appended, never refused; `profile.signature` rendering empty, the macro's trailing whitespace trimmed |
+| `empty-body` | macros and signature around empty sections: a prepend leaves a trailing blank line, an append and the signature a leading one, prepends and appends four newlines apart |
+| `skipped-deliverable-read` | a placed macro reading `deliverable.<id>.content` of a deliverable skipped by its `if` fails the macro's render and the job (`Cannot get the member … for a null object`); the deliverables waiting on it are unsettled |
+
+The validator refuses `signature: true` beside a placed macro that reads `profile.signature`
+("a deliverable is signed once"), so `authored` is not signed.
+
+### `composer-gates`
+
+`note` and `record_copy` source the same nodes (a `for` over a text array whose label, `Problem
+list`, differs from the loop's, `Problems`, then a prose node),
+each gated by a `terms_subset` check; `patient_copy` has an `if` on `input.audience`;
+`cover_letter`'s node reads `deliverable.note.content` (and `deliverable.patient_copy.content`
+under the same `if`) in its prompt.
+
+| Scenario | Rules it reaches |
+|---|---|
+| `clinician-checks-pass` | two deliverables over the same nodes, the same bytes; input items named by the input's label plus position (`Problem list 1`); both checks passing; a deliverable whose `if` is false, `skipped` with ``needs `input.audience == "patient"`; it does not hold``; a prompt reading another deliverable's composed text |
+| `patient-copy-check-fails` | one check passing and one refusing, `failed` with its `failWith` sentence; the `if` holding |
+| `note-check-fails` | the other deliverable's check refusing; a prompt reading a deliverable whose check refused it still reads its composed text |
+
+A prompt that reads `deliverable.<id>.content` of a deliverable skipped by its `if`, unguarded,
+fails the job today (`Cannot get the member deliverable.<id>.content for a null object`), and a
+bare `deliverable.<id>` is refused at publish; `cover_note` gates the read on the same input.
+
+## `scenarios/` and `captures/`
+
+`scenarios/<package>/<scenario>.json` says how to run one package; `captures/<package>/<scenario>.json`
+is what today's engine did with it. `PackageCaptureGoldenTests` runs every scenario through
+`CaptureRun` (the real starter, entity and orchestrator, the activities' production halves, no
+model) and compares the capture document byte for byte. A package name may hold `/`
+(`test/general` is `scenarios/test/general/<scenario>.json`).
+
+A scenario has exactly these members, each present:
+
+```json
+{
+  "description": ["What the run reaches, in a line or a few."],
+  "inputs": { "consult_draft": "Fictional text.", "include_billing": null },
+  "profile": { "name": "Dr A. Sample", "signature": "Dr A. Sample\nInternal Medicine" },
+  "macroChoices": {},
+  "outputs": { "judge:1": { "verdict": "revise", "feedback": "…" }, "scope": { "value": "in_scope" } }
+}
+```
+
+- `inputs` names every declared input; `null` leaves an optional one unset. Values are what the
+  starter accepts, and always fictional.
+- `profile` is the display name and the chosen signature block's text. Every scenario uses the
+  one above, except `composer-macros/no-signature`, whose `signature` is `null` (no block chosen).
+- `macroChoices` sets optional macros on or off by id; `{}` takes the defaults.
+- `outputs` pins a reply by instance key: `node`, or `node:path`, where the path is item ids and
+  while passes joined by `/` (`draft_paragraph:2/3`, `judge:2`, `read_letter:0`; a text array's
+  items count from 0, a node's list from 1, a folder's by item id). A text format's pin is a JSON
+  string, a structured format's the JSON value, a classifier's `{ "value": "<member>" }`. Every
+  other reply is a stub made from the node's format, seeded by its key. A pin that never runs,
+  a `null` pin, and a stub the engine flags are refused.
+
+Pin only what a branch needs. To learn the keys, run the scenario with `outputs: {}` first and
+read the capture's `outputs`.
+
+A capture holds `package`, `tag` (the vendored tag, or null), `scenario`, `status`, `failure`,
+`outputs` (every reply served), `prompts` (each agent node's sent text, trailers included),
+`renders` (each rendered node's text), and `deliverables`: one row per manifest deliverable,
+`composed` with its final text, `skipped` or `failed` with the engine's reason, or `unsettled` in
+a failed job. Every text sits beside its `sha256:` hash.
+
+`status` is the job's (`Completed` or `Failed` in every capture here), or `Refused` for a refused
+start (below).
+`failure` is null unless the job failed. It is the engine's sentence as the test context surfaces
+it: the raw message of the failing activity, where production's Durable runtime wraps it (`Task
+'…' (#N) failed with an unhandled exception: …`). `CaptureRun.Failure` takes the first non-null of
+the job state's `AnalysisError`, `FailureError` and `StartFailure`, in that order.
+
+In a failed job, which deliverable rows are `composed` and which `unsettled`, and which prompts
+were sent before the failure, follows the test context's one-at-a-time dispatch order;
+production may get further before failing the same way.
+
+### Adding a scenario
+
+Write the scenario file and run
+`dotnet test tests/Consultologist.Api.Tests.csproj --filter FullyQualifiedName~PackageCaptureGoldenTests`.
+The missing capture is written and its row fails once with `Wrote <path>; review it and commit
+it.` Read the capture in full: the prompts carry the scenario's inputs, the branches the
+description names were taken, each deliverable has its headings, macros and signature. If it did
+not do what the description says, fix the scenario, delete the capture, and run again.
+
+### Regenerating
+
+Delete the capture and run its test. A capture is never rewritten in place: a run whose bytes
+differ fails.
+
+### Coverage
+
+Every vendored package has a `default` scenario. Every deliverable of a package with scenarios
+is `composed` in at least one of its captures, and every node with a prompt has a `prompts` or
+`renders` entry in one. A deliverable or node no scenario can reach on today's engine goes in the
+test's exception table with the reason; an entry a capture does reach is stale and fails the rule.
+
+A start the engine refuses is captured too, when it is the refusal a well-formed request can get:
+`NoApplicableDeliverable` (no deliverable's condition holds, or a fanned input has no entries).
+Its capture has `status` `Refused` (the runner's word, not a job status), `failure`
+`NoApplicableDeliverable: <the starter's sentence>`, no outputs, prompts or renders, and every
+deliverable `unsettled`. Any other start error (inputs that do not fit the manifest, an undeclared
+macro choice, a rate limit) throws, so a mistake in a scenario is never frozen as a refusal. A
+refused capture composes nothing, so it adds nothing to the coverage rules.
+
+### Known failure: `example-macros` and `example-macros-warnings`
+
+Today's engine fails both packages (v2026.11.3) in every scenario, at node `summary`, with
+`Closing summary failed: Node 'summary' rendered macro.notes/red_flags.prompt, which the package's
+walk does not reach from its prompt; the walk and the render disagree.` The summary prompt reads
+the `notes/` macro folder (`{{ for m in macro.notes }}… {{ m.prompt }}`); the render records those
+`.prompt` reads, and `ConsultNodeCompletion.SanctionedBy` — the walk that cross-checks them — does
+not reach them. This is the engine as it is; it is captured, not worked around.
+
+The captures hold status `Failed`, that sentence, and the prompts this harness sent before it: the
+three standing sections and the summary. Here `summary` is dispatched before the
+`requested_sections` loop, so no `narrative_draft`, `table_draft` or `patient_line` prompt is sent
+and neither deliverable is reached; the test's exception tables say so. A production orchestrator
+may dispatch independent nodes together, so it could send the requested sections' prompts before
+the job fails the same way at `summary`.
+
+`outputs` records each reply as served, before the node's placed macros are composed around it,
+and with no deliverable reached nothing shows the composed node texts — so these captures cannot
+show what the node-placed macros (`counselling`, `section_caveat`, `table_note`, `preamble`,
+`sign_off`) add.
+
+### `example-v12-constructs`: `default` fails, a lone refusal does not
+
+The `default` capture is `Failed`, with the acknowledgement's `failWith` sentence. With generated
+stubs both `terms_subset` checks refuse (`consult` and `ack_letter` are `failed`), and a job whose
+every deliverable is refused by its check fails (`ConsultDeliverables.FinalOutcome`). A lone
+refusal leaves the job `Completed`: `letter-coverage-fails` (`ack_letter` failed, `consult`
+composed) and `note-coverage-fails` (`consult` failed, `ack_letter` composed).
+
+## `renderers/`
+
+`concept-renderers.json` freezes the bytes of the two C# concept renderers, `ConceptRenderers.Bullets`
+and `ConceptRenderers.Context`, so the package-format registry's Scriban templates
+(`v31/renderers/concept_bullets.md`, `concept_context.md`) can be held to them after the C#
+renderers are gone (Part 10 § 3.3). It holds twenty cases: the thirteen of
+`V31BuiltInRenderersTests` and seven more (`two in order`, `non-ASCII term`, `empty term`,
+`null type on a SNOMED concept`, `null id on a SNOMED concept`, `newline in support`, `long list`).
+Each case has its `name`, its `concepts` (`term`, `type`, `id`, `isSnomedConcept`, `isActive`,
+`support`, `source`; a null `type`, `id` or `support` is JSON `null`, and the C# renderers receive
+`""` for a null type or id) and the two renderings, `concept_bullets` and `concept_context`.
+
+`ConceptRendererCaptureTests` writes it from the C# renderers and compares byte for byte, then
+renders the registry's templates on each case's concepts and compares them with the strings read
+from this file.
+
+Regenerate: delete the file and run
+`dotnet test tests/Consultologist.Api.Tests.csproj --filter FullyQualifiedName~ConceptRendererCaptureTests`.
+The first test writes it and fails once; review it and commit it.
+
+`ConceptRenderers` joins its lines with `Environment.NewLine`, so the fixture's bytes depend on the
+platform. It was generated on Linux, as CI runs; regenerate it only there.
+
+`ConceptRendererCaptureTests` compiles against `V31BuiltInRenderersTests.Concept`, `.Cases`,
+`.ToConcepts` and `.Render`. When the C# renderers and `V31BuiltInRenderersTests` are deleted,
+`Concept` and `Render` move into `ConceptRendererCaptureTests`, and its first test
+(`TheCSharpRenderers_GiveTheCapturedBytes`, the C# side, with the case table and `ToConcepts` it
+uses) is deleted with them.
+
+## What area 10 does with the captures and the renderer fixture
+
+This folder is the specVersion 30 side of every comparison in part 10 § 3. The 31 side (the
+migrated package's run, the comparison, `migration-report.json`) is area 10's.
+
+Each compared text has a site and a hash here. In a capture `captures/<package>/<scenario>.json`
+a prompt or a render is identified by its `key` and a deliverable by its `id`, each beside its
+`hash` (`sha256:` and the lowercase hex of SHA-256 over the text's UTF-8 bytes). A site string
+area 10 can use for the report's `site` member is `<package>/<scenario>#prompts/<key>`,
+`<package>/<scenario>#renders/<key>` and `<package>/<scenario>#deliverables/<id>`. That is a
+proposal for area 10 to adopt or change; no code in this area emits it.
+
+The stub contract: every value a 30 run was served is in the capture's `outputs`, keyed by 30's
+instance key. A 31 run reproduces the comparison by serving those same values (mapped from 31's
+keys to 30's), or by seeding `WorkflowStubOutputs` with 30's instance-key string exactly (a text
+array input's items count from 0, a node's list loop's from 1, as under *`scenarios/` and
+`captures/`* above). Replaying `outputs` is the safer of the two: pinned outputs are not
+generated, so only the replay serves them.
+
+An `unsettled` deliverable row and a `Refused` capture hold no text to compare. A `Failed` capture
+holds the texts up to the failure: the prompts and renders sent before it, and any deliverable
+composed before it.
+
+The renderer fixture's strings are what the registry's Scriban templates must equal once the C#
+renderers are gone.
+
+## `conditions/`
+
+What today's condition and `let` evaluator answers, for the converter from 30's Scriban
+expressions to JSON Logic (Part 10 § 2.4). `expressions.json` is hand-written; `vectors.json` is
+written by `ConditionVectorTests` from today's evaluator.
+
+### `expressions.json`
+
+One entry per expression, in this order: every condition, `case` and `let` of the vendored and
+fixture packages, then one or more per row of § 2.2's table, then one or more per refusal of
+§ 2.3. Each has:
+
+- `id`; `kind`, one of `condition`, `case` (the expression a `case` node switches on: a value,
+  not a boolean) and `let`; `expression`, the text as written; `letType`, a `let`'s declared type
+  (`text`, `number`, `boolean` or a format id), else `null`.
+- `origin`: `package <name>, <site>` for a package's, the site one of `node <id>, if|when|while|until|case|let`,
+  `node <id> macro <macro>, if`, `deliverable <id>, if`, `deliverable <id> macro <macro>, if`, or
+  `file <path>, if` (the header of a snippet, folder item, macro or macro-folder item file);
+  `§ 2.2: <the row's left cell>` (a cell's `\|` written `|`); `§ 2.3: <the bullet>` (without its
+  closing `;` or `.`). `EveryConditionAndLetOfThePackages_IsInTheExpressions` finds the package
+  sites from the files (the typed manifest and the text headers) and fails on a site the file
+  lacks or an entry naming no site; `EveryRowOf2_2_AndEveryRefusalOf2_3_HasAnExpression` holds
+  the origins to the table's sixteen cells and the four bullets.
+- `reads`: what the expression reads, in order, each with its type. A type is a name or an object:
+  - `input.<id>`: `text`, `enum` (`values`), `number`, `boolean`, `date`, `array` (`items`, a type)
+    or `object` (`fields`, name to type);
+  - `node.<id>`: `text` (its content), `classification` (`values`) or `object` with `schema`, the
+    node's format's JSON Schema (its fields are read from the schema);
+  - `item`: `{ "id": "text" }`, a snippet folder's item, or `{ "value": <type> }`, an input fan's
+    element;
+  - `pass.number`; and, beyond the brief's list, `run.date` (`date`) and `profile.name` (`text`).
+
+  An input or a field may carry `"required": true`, and a node read `"settled": true`; either
+  takes the absent value away (below). A property a node's schema lists in `required` is required
+  too: a reply without it is refused by the node's format. Every such node read today is
+  `onInvalid: fail` (`judge` in `composer-sources` and `example-nested-note`, `plan` in
+  `example-nested-note`, `read_letter` in `example-prior-letters`); a node with `onInvalid: flag`
+  would keep an invalid reply, so a property its schema requires could be absent there. The § 2.2
+  expressions' own `node.triage` schemas list no `required` properties, so their absent-field
+  cases remain.
+- `note`, optional: why a read is `settled`.
+
+  `APackageExpressionsReads_AreItsPackagesDeclarations` holds a package expression's reads to its
+  package: an input's type, values, `required` and fields (each field's type, values and
+  `required`) as declared; an `item.value`'s fields as the input its loop runs over declares them;
+  a node's type as the engine types its format (`ConsultRenderPayload.FormatTypeOf`), a
+  classifier's values, an object node's schema its format's; and a `note` beside every `settled`.
+
+#### `required` and `settled`
+
+A package expression's `required` is its package's declaration: the start refuses a run without a
+required input or field, so no condition ever sees one absent. A § 2.2 or § 2.3 expression's reads
+are the fixture's own, all optional, so they keep their absent cases.
+
+A node read is `settled` when the engine only judges that site after the node has an output. The
+package reads marked so, each with its `note`: `node.judge` by `composer-sources`' `until` (an
+`until` is judged after a pass); `node.judge` by `example-nested-note`'s `while` (no `checkFirst`,
+so its check comes after a pass); `node.read_letter` by `example-prior-letters`' `until` (judged
+per item once that item's body has settled); `node.plan` and `node.topic_loop` read by a `let` (a
+let runs once its reads have settled). A node a run can really meet without an output stays
+unsettled: a classifier a deliverable's or snippet's `if` reads (when it failed or was skipped),
+a node gated by an `if`, a `while` body under `checkFirst`.
+
+### The scopes
+
+Each read's values (the absent value written `"<absent>"`; a `required` or `settled` read has none):
+
+| Type | Values |
+|---|---|
+| `text` | absent, `""`, `" "`, `"lorem"`, each quoted string literal of the expression |
+| `enum`, `classification` | absent, each value |
+| `number` | absent, `0`, and `n - 1`, `n`, `n + 1` for each number in the expression |
+| `boolean` | absent, `true`, `false` |
+| `date` | absent, `"2026-11-09"`, `"2026-11-10"`, `"2026-11-11"` |
+| `array` | absent, `[]`, one item, three items (the item type's present values in order, repeated as needed) |
+| `object` | absent, every field at its first present value, then each field through its own values (absent is the field left out) with the others there |
+| `item` | an id: `"1"` and each quoted literal; a value: the value type's present values (an element is never absent; its fields may be) |
+| `pass.number` | `1`, `2`, `3` |
+| `run.date`, `profile.name` | the type's values but absent: the run's and profile's facts are always there |
+
+The cases are the product over the reads in order, the first 200
+(`TheCases_AreTheProductInDeclaredOrder_CutAt200`).
+
+Each case's scope is built by the engine's own functions (`ConditionScopes.Build`): a package
+declaring exactly what is read, required as the read says, and `consult_draft` supplied so the
+start has an input. The inputs pass through `ConsultGenerationJobStarter.NormalizeInputs` and
+`ConsultGenerationJobStarter.ResolveEffectiveInputs`; the scope is
+`ConsultRenderPayload.ScopeFor` over that effective map, typed by `ConsultConditionScope.TypesOf`.
+So:
+
+- an absent input is the effective map's `""`, which the render reads as `""` (text, enum), null
+  (number, date, boolean), an empty array or an empty object
+  (`AnAbsentInput_ReadsAsTheEngineMakesIt` pins each);
+- an input is normalised first: trailing whitespace is cut, so a supplied `" "` reaches the
+  condition as `""` (an input never carries whitespace-only text); a required text field of an
+  element supplied `""` or `" "` is accepted by the start and reads `""`. A case's `scope` in
+  `vectors.json` writes an input's value as supplied, before the start normalises it (its `" "`
+  reaches 30 as `""`): area 10 passes the inputs through 31's own start, or compares against the
+  normalised value;
+- an input cannot carry null at 30: it is supplied or absent, the start refuses a JSON `null` for
+  a scalar input, and absence is the effective map's `""`. A number, date or boolean read sees
+  null only as that absence; a text read never sees null;
+- a node is `prose` (text) or `classification` from the bundled catalogue, or a package-local
+  object format with the read's schema; an absent node is on the skipped list, as the engine
+  carries a flow that took no branch or a while's body before its first pass: `.content` and
+  `.value` read null, and a member of its value fails (`Cannot get the member … for a null object`);
+- an item is the fan's: an input fan's element through `WorkflowInputFans.Items` over
+  `input.items`, a snippet folder's item over `snippet.sections`;
+- the pass is pass `n` after `n - 1` earlier ones; the run date is `2026-11-10` unless read; the
+  profile name is `Dr A. Sample` unless read.
+
+### `vectors.json`
+
+Per expression, in order: `id`; `refused`, 30's sentence when the expression is not one (a
+template as the walk refuses it, anything else as `WorkflowConditionAt25.TryParse` does), else
+`null`; and `cases`, none when refused. Each case has its `scope` (read to value), its `result`
+and its `error`:
+
+- a `condition`: `WorkflowConditionAt25.Holds`'s boolean, the subject `Condition '<id>'`;
+- a `case`: the value it switches on, as JSON. `WorkflowFlowDecision` does not expose that value,
+  so it is evaluated with `WorkflowLetAt30.Evaluate` in the same context (the same parse, scope
+  and pipes), not taken from the decision itself; `error` is `WorkflowFlowDecision.Decide`'s
+  sentence when it is not a text (`Node '<id>' case must yield a declared value; it yields …`);
+- a `let`: what `WorkflowLetAt30.ValueOf` stores, as JSON (a text bare, as a JSON string), the
+  subject `Let '<id>'`; `error` is its errors joined as the activity joins them. A format-typed
+  `let` here has no schema, so only its being an object is checked.
+
+An `error` (else `null`) is the sentence 30 throws when it judges this expression over this scope;
+`result` is then `null` (a `case` keeps its value). The renderer pipes are the engine's
+(`TemplatePipes.Engine`).
+
+A `let` cannot be a bare list at 30, so `[x, y]` appears here only inside an object
+(`row.let-array`): the walk refuses a list it can type against every declared type (`Let '<id>'
+yields an array; it declares type <type>.`), and `ValueOf` fails any list
+(`Let '<id>' yielded a list; it declares type <type>.`); `ABareListLet_IsRefusedAt30` pins both.
+
+### What area 10 does with them
+
+Convert each `expression` with `WorkflowConditionConverter.FromScriban` (part 10 § 2.1); a refused
+one, and every § 2.3 one, converts to no logic. For every other, evaluate the JSON Logic on each
+case's `scope` and compare with `result`. A case with an `error` is not an equivalence
+requirement: area 10 reports 31's result beside 30's sentence.
+
+### `!x` on a text, at 30
+
+At 30 only null, `false`, an empty array or object and a skipped node are falsy
+(`PromptTemplateRenderer.RenderingContext.ToBool`); a text is truthy whatever it holds. So `!x` on a
+text holds only when `x` is null. Against a `blank(x)`, value by value:
+
+| `x` | 30's `!x` | `blank(x)` | |
+|---|---|---|---|
+| null | true | true | agree |
+| `""` | false | true | differ |
+| whitespace-only | false | true | differ |
+| other text | false | false | agree |
+
+Which reads can carry each value: an input's text is never null (absent reads `""`) and never
+whitespace-only (trimmed to `""`), so `!input.x` on a text is `false` in every case
+(`row.not-text.input`); a node's text, an item's and a `let`'s value can be null (a node with no
+output), `""` or whitespace-only (`row.not-text.node`). `AWhitespaceOnlyText_IsTruthyAt30`,
+`AnEmptyText_IsTruthyAt30_Too` and `OnlyANullText_IsFalsyAt30` pin 30's side.
+
+Part 10 § 2.3 names only the whitespace-only case as a difference. That contradicts today's
+engine, which differs on `""` too. This area records the contradiction and raises it for the user;
+area 10 must not resolve it by itself. It was raised on the area issue, #1498, and on area 10's
+issue, #1507.
+
+Its practical weight: no package uses `!` on a text today (no package expression uses `!` at all).
+Where a conversion would meet one, the difference from `blank(x)` is wider than whitespace: it
+covers every unset optional text input (absent reads `""`, so `!input.x` is `false` and
+`blank(input.x)` is `true`) as well as whitespace-only text.
+
+### Regenerating
+
+Edit `expressions.json`, delete `vectors.json`, and run
+`dotnet test tests/Consultologist.Api.Tests.csproj --filter FullyQualifiedName~ConditionVectorTests`.
+The vectors are written and the test fails once; review them and commit them.

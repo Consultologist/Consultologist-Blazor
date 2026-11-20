@@ -1,0 +1,41 @@
+{
+  "description": [
+    "Two planned sections; the judge says revise on every pass, so the while stops at its bound",
+    "of three passes and the note carries the third draft."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "plan": {
+      "summary": "Subclinical hypothyroidism started on levothyroxine.",
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the fatigue and the raised TSH point to."
+        },
+        {
+          "title": "Plan",
+          "purpose": "Treatment and follow-up."
+        }
+      ]
+    },
+    "judge:1": {
+      "verdict": "revise",
+      "feedback": "Use exactly two sentences."
+    },
+    "judge:2": {
+      "verdict": "revise",
+      "feedback": "The second sentence must begin with \"Recommendation:\"."
+    },
+    "judge:3": {
+      "verdict": "revise",
+      "feedback": "Name who was seen in the first sentence."
+    }
+  }
+}

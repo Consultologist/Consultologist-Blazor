@@ -1,0 +1,21 @@
+{
+  "description": [
+    "As default, with three consult_draft entries: each prompt that reads the draft shows the three",
+    "joined by a --- rule."
+  ],
+  "inputs": {
+    "consult_specialty": "medical_oncology",
+    "note_type": "consult",
+    "consult_draft": [
+      "Margaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. Letrozole 2.5 mg daily started today. (Fictional.)",
+      "2026-10-30, breast clinic: ultrasound-guided core biopsy of the left breast mass. (Fictional.)",
+      "2026-11-06, MDT: for wide local excision and sentinel node biopsy; endocrine therapy to follow. (Fictional.)"
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

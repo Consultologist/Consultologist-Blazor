@@ -1,0 +1,19 @@
+{
+  "description": [
+    "scope pinned in_scope: the plan is composed from its two sections; the decline letter and",
+    "the request for information are skipped."
+  ],
+  "inputs": {
+    "consult_draft": "Grace Adeyemi, 61, referred for review of resistant hypertension: 168/98 on three agents, potassium 3.3 mmol/L. Question: secondary causes? (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "scope": {
+      "value": "in_scope"
+    }
+  }
+}

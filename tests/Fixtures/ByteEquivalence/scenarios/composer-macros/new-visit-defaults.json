@@ -1,0 +1,43 @@
+{
+  "description": [
+    "A new visit, macro choices left to their defaults. prepended: one prepend, a blank line before",
+    "the sections. appended: one append after them. both: two prepends and two appends, each place",
+    "in placement order. gated: new_visit_note's own if holds; review_note's placement if does not,",
+    "so it is not placed; review_leaflet is placed but renders empty, and its empty piece still takes",
+    "its place in the blank-line join (four newlines). optional: followup_offer (default on) is",
+    "placed and leaflet_offer (default off) is not. authored: one macro reads profile.name,",
+    "run.date (the run's date, 2026-11-10) and profile.signature, so it carries the signature text",
+    "itself. sections_note: in each loop item, section_intro is placed before the reply and",
+    "section_close after it, gated by the item (it holds for History and not for Plan); History's",
+    "reply ends in a blank line, which stays inside the item's text (only the item's ends are",
+    "trimmed). signed_letter: signature true, so the profile's signature block follows the appended",
+    "macro, after a blank line.",
+    "echoes: body_echo reads node.letter_body.content untrimmed (the pinned reply's trailing blank",
+    "line sits inside its brackets) while the composed part is trimmed; visit_echo reads",
+    "macro.new_visit_note.content, live, with the macro file's trailing newline; quoted_review is",
+    "optional and off. review_summary: its if does not hold, so it is skipped. signed_only: the",
+    "signature block after the sections, one blank line between."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)",
+    "sections": [
+      {
+        "title": "History"
+      },
+      {
+        "title": "Plan"
+      }
+    ],
+    "visit": "new"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "section_draft:0": "History paragraph: palpitations for two months.\n\n",
+    "section_draft:1": "Plan paragraph: apixaban started.",
+    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\n"
+  }
+}

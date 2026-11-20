@@ -1,0 +1,17 @@
+{
+  "description": [
+    "prior_notes unset: the patient letter's prompt says none were supplied. The consult note is",
+    "the nine standard sections; the patient letter is drafted from the assembled sections and the",
+    "patient trajectory."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)",
+    "prior_notes": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

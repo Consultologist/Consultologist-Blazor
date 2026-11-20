@@ -1,0 +1,31 @@
+flowchart TD
+    snippet_sections(["snippet.sections"])
+    input_seen_on(["input.seen_on"])
+    input_include_billing(["input.include_billing"])
+    input_consult_draft(["input.consult_draft"])
+
+
+    subgraph for_sections_consult_note_section["sections_consult_note_section: per snippet.sections item"]
+        consult_note_section["consult_note_section<br/>Drafting the consultation note"]
+    end
+    sections_consult_note_section["sections_consult_note_section<br/>Sections — drafting the consultation note<br/>item in snippet.sections"]
+
+    subgraph for_sections_progress_note_section["sections_progress_note_section: per snippet.sections item"]
+        progress_note_section["progress_note_section<br/>Drafting the progress note"]
+    end
+    sections_progress_note_section["sections_progress_note_section<br/>Sections — drafting the progress note<br/>item in snippet.sections"]
+    input_seen_on --> consult_note_section
+    input_include_billing --> consult_note_section
+    input_consult_draft --> consult_note_section
+    snippet_sections -->|"for"| for_sections_consult_note_section
+    consult_note_section -->|"ret"| sections_consult_note_section
+    input_seen_on --> progress_note_section
+    input_include_billing --> progress_note_section
+    input_consult_draft --> progress_note_section
+    snippet_sections -->|"for"| for_sections_progress_note_section
+    progress_note_section -->|"ret"| sections_progress_note_section
+
+    result_consult_note{{"consult_note<br/>Consultation note"}}
+    sections_consult_note_section --> result_consult_note
+    result_progress_note{{"progress_note<br/>Progress note"}}
+    sections_progress_note_section --> result_progress_note

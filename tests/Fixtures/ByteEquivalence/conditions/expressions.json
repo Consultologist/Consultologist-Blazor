@@ -1,0 +1,753 @@
+{
+  "expressions": [
+    {
+      "id": "composer-gates.patient_copy.if",
+      "kind": "condition",
+      "expression": "input.audience == \"patient\"",
+      "letType": null,
+      "origin": "package composer-gates, deliverable patient_copy, if",
+      "reads": { "input.audience": { "type": "enum", "values": ["clinician", "patient"], "required": true } }
+    },
+    {
+      "id": "composer-macros.section_draft.section_close.if",
+      "kind": "condition",
+      "expression": "item.value.title != \"Plan\"",
+      "letType": null,
+      "origin": "package composer-macros, node section_draft macro section_close, if",
+      "reads": { "item": { "value": { "type": "object", "fields": { "title": { "type": "text", "required": true } } } } }
+    },
+    {
+      "id": "composer-macros.gated.review_note.if",
+      "kind": "condition",
+      "expression": "input.visit == \"review\"",
+      "letType": null,
+      "origin": "package composer-macros, deliverable gated macro review_note, if",
+      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"], "required": true } }
+    },
+    {
+      "id": "composer-macros.review_summary.if",
+      "kind": "condition",
+      "expression": "input.visit == \"review\"",
+      "letType": null,
+      "origin": "package composer-macros, deliverable review_summary, if",
+      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"], "required": true } }
+    },
+    {
+      "id": "composer-macros.new_visit_note.md.if",
+      "kind": "condition",
+      "expression": "input.visit == \"new\"",
+      "letType": null,
+      "origin": "package composer-macros, file macros/new_visit_note.md, if",
+      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"], "required": true } }
+    },
+    {
+      "id": "composer-sources.topic_gate.if",
+      "kind": "condition",
+      "expression": "item.value.kind == \"drafted\"",
+      "letType": null,
+      "origin": "package composer-sources, node topic_gate, if",
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["drafted", "left_out"], "required": true } } } } }
+    },
+    {
+      "id": "composer-sources.refine.while",
+      "kind": "condition",
+      "expression": "input.redraft == true",
+      "letType": null,
+      "origin": "package composer-sources, node refine, while",
+      "reads": { "input.redraft": "boolean" }
+    },
+    {
+      "id": "composer-sources.refine.until",
+      "kind": "condition",
+      "expression": "node.judge.value.verdict == \"good\"",
+      "letType": null,
+      "origin": "package composer-sources, node refine, until",
+      "note": "node.judge is settled: judge is a body node of the while refine, and its until is judged only after a pass (DecideFlowItemActivity: pass.Number > 0).",
+      "reads": { "node.judge": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["verdict", "feedback"], "properties": { "verdict": { "type": "string", "enum": ["good", "revise"] }, "feedback": { "type": "string" } } } } }
+    },
+    {
+      "id": "composer-sources.plan_gate.if",
+      "kind": "condition",
+      "expression": "input.include_plan == true",
+      "letType": null,
+      "origin": "package composer-sources, node plan_gate, if",
+      "reads": { "input.include_plan": "boolean" }
+    },
+    {
+      "id": "composer-sources.tone_case.case",
+      "kind": "case",
+      "expression": "input.tone",
+      "letType": null,
+      "origin": "package composer-sources, node tone_case, case",
+      "reads": { "input.tone": { "type": "enum", "values": ["formal", "plain", "none"], "required": true } }
+    },
+    {
+      "id": "composer-sources.topic_tally.let",
+      "kind": "let",
+      "expression": "\"Topic section length: \" | string.append (node.topic_loop.content | string.size)",
+      "letType": "text",
+      "origin": "package composer-sources, node topic_tally, let",
+      "note": "node.topic_loop is settled: a let runs once the nodes it reads have settled.",
+      "reads": { "node.topic_loop": { "type": "text", "settled": true } }
+    },
+    {
+      "id": "example-classifier-scope.plan.if",
+      "kind": "condition",
+      "expression": "node.scope.value == \"in_scope\"",
+      "letType": null,
+      "origin": "package example-classifier-scope, deliverable plan, if",
+      "reads": { "node.scope": { "type": "classification", "values": ["in_scope", "out_of_scope", "needs_information"] } }
+    },
+    {
+      "id": "example-classifier-scope.decline_letter.if",
+      "kind": "condition",
+      "expression": "node.scope.value == \"out_of_scope\"",
+      "letType": null,
+      "origin": "package example-classifier-scope, deliverable decline_letter, if",
+      "reads": { "node.scope": { "type": "classification", "values": ["in_scope", "out_of_scope", "needs_information"] } }
+    },
+    {
+      "id": "example-classifier-scope.information_request.if",
+      "kind": "condition",
+      "expression": "node.scope.value == \"needs_information\"",
+      "letType": null,
+      "origin": "package example-classifier-scope, deliverable information_request, if",
+      "reads": { "node.scope": { "type": "classification", "values": ["in_scope", "out_of_scope", "needs_information"] } }
+    },
+    {
+      "id": "example-conditional-documents.consult_note.if",
+      "kind": "condition",
+      "expression": "input.encounter_kind == \"new_patient\"",
+      "letType": null,
+      "origin": "package example-conditional-documents, deliverable consult_note, if",
+      "reads": { "input.encounter_kind": { "type": "enum", "values": ["new_patient", "follow_up"] } }
+    },
+    {
+      "id": "example-conditional-documents.progress_note.if",
+      "kind": "condition",
+      "expression": "input.encounter_kind == \"follow_up\"",
+      "letType": null,
+      "origin": "package example-conditional-documents, deliverable progress_note, if",
+      "reads": { "input.encounter_kind": { "type": "enum", "values": ["new_patient", "follow_up"] } }
+    },
+    {
+      "id": "example-conditional-sections.route.case",
+      "kind": "case",
+      "expression": "item.value.kind",
+      "letType": null,
+      "origin": "package example-conditional-sections, node route, case",
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
+    },
+    {
+      "id": "example-conditional-sections.narrative_only.if",
+      "kind": "condition",
+      "expression": "item.value.kind == \"narrative\"",
+      "letType": null,
+      "origin": "package example-conditional-sections, node narrative_only, if",
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
+    },
+    {
+      "id": "example-conditional-sections.applies.if",
+      "kind": "condition",
+      "expression": "item.id != \"billing\" || input.include_billing == true",
+      "letType": null,
+      "origin": "package example-conditional-sections, node applies, if",
+      "reads": { "item": { "id": "text" }, "input.include_billing": "boolean" }
+    },
+    {
+      "id": "example-macros.standing_draft.counselling.if",
+      "kind": "condition",
+      "expression": "item.id == \"assessment_plan\"",
+      "letType": null,
+      "origin": "package example-macros, node standing_draft macro counselling, if",
+      "reads": { "item": { "id": "text" } }
+    },
+    {
+      "id": "example-macros.route.case",
+      "kind": "case",
+      "expression": "item.value.kind",
+      "letType": null,
+      "origin": "package example-macros, node route, case",
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
+    },
+    {
+      "id": "example-macros.narrative_draft.section_caveat.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"consult\"",
+      "letType": null,
+      "origin": "package example-macros, node narrative_draft macro section_caveat, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros.consult_note.header_line.if",
+      "kind": "condition",
+      "expression": "input.note_type != \"discharge_summary\"",
+      "letType": null,
+      "origin": "package example-macros, deliverable consult_note macro header_line, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros.consult_note.followup_only.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"follow_up\"",
+      "letType": null,
+      "origin": "package example-macros, deliverable consult_note macro followup_only, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros.brief_plan.md.if",
+      "kind": "condition",
+      "expression": "(input.note_type == \"consult\" || input.note_type == \"follow_up\") && input.include_counselling != true",
+      "letType": null,
+      "origin": "package example-macros, file macros/brief_plan.md, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true }, "input.include_counselling": "boolean" }
+    },
+    {
+      "id": "example-macros.counselling.md.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"consult\"",
+      "letType": null,
+      "origin": "package example-macros, file macros/counselling.md, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros.followup_only.md.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"consult\"",
+      "letType": null,
+      "origin": "package example-macros, file macros/followup_only.md, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros-warnings.standing_draft.counselling.if",
+      "kind": "condition",
+      "expression": "item.id == \"assessment_plan\"",
+      "letType": null,
+      "origin": "package example-macros-warnings, node standing_draft macro counselling, if",
+      "reads": { "item": { "id": "text" } }
+    },
+    {
+      "id": "example-macros-warnings.route.case",
+      "kind": "case",
+      "expression": "item.value.kind",
+      "letType": null,
+      "origin": "package example-macros-warnings, node route, case",
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
+    },
+    {
+      "id": "example-macros-warnings.narrative_draft.section_caveat.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"consult\"",
+      "letType": null,
+      "origin": "package example-macros-warnings, node narrative_draft macro section_caveat, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros-warnings.consult_note.header_line.if",
+      "kind": "condition",
+      "expression": "input.note_type != \"discharge_summary\"",
+      "letType": null,
+      "origin": "package example-macros-warnings, deliverable consult_note macro header_line, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros-warnings.consult_note.followup_only.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"follow_up\"",
+      "letType": null,
+      "origin": "package example-macros-warnings, deliverable consult_note macro followup_only, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros-warnings.brief_plan.md.if",
+      "kind": "condition",
+      "expression": "(input.note_type == \"consult\" || input.note_type == \"follow_up\") && input.include_counselling != true",
+      "letType": null,
+      "origin": "package example-macros-warnings, file macros/brief_plan.md, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true }, "input.include_counselling": "boolean" }
+    },
+    {
+      "id": "example-macros-warnings.counselling.md.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"consult\"",
+      "letType": null,
+      "origin": "package example-macros-warnings, file macros/counselling.md, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-macros-warnings.followup_only.md.if",
+      "kind": "condition",
+      "expression": "input.note_type == \"consult\"",
+      "letType": null,
+      "origin": "package example-macros-warnings, file macros/followup_only.md, if",
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
+    },
+    {
+      "id": "example-nested-note.section_count.let",
+      "kind": "let",
+      "expression": "node.plan.value.sections | array.size",
+      "letType": "number",
+      "origin": "package example-nested-note, node section_count, let",
+      "note": "node.plan is settled: a let runs once the nodes it reads have settled.",
+      "reads": { "node.plan": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["summary", "sections"], "properties": { "summary": { "type": "string" }, "sections": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["title", "purpose"], "properties": { "title": { "type": "string" }, "purpose": { "type": "string" } } } } } } } }
+    },
+    {
+      "id": "example-nested-note.refine.while",
+      "kind": "condition",
+      "expression": "node.judge.value.verdict != \"good\"",
+      "letType": null,
+      "origin": "package example-nested-note, node refine, while",
+      "note": "node.judge is settled: judge is a body node of the while refine, which has no checkFirst, so its check is judged only after a pass.",
+      "reads": { "node.judge": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["verdict", "feedback"], "properties": { "verdict": { "type": "string", "enum": ["good", "revise"] }, "feedback": { "type": "string" } } } } }
+    },
+    {
+      "id": "example-prior-letters.letters.until",
+      "kind": "condition",
+      "expression": "node.read_letter.value.answers_question == true",
+      "letType": null,
+      "origin": "package example-prior-letters, node letters, until",
+      "note": "node.read_letter is settled: read_letter is a body node of the loop letters, whose until is judged per item once that item's body has settled.",
+      "reads": { "node.read_letter": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["answers_question", "note"], "properties": { "answers_question": { "type": "boolean" }, "note": { "type": "string" } } } } }
+    },
+    {
+      "id": "example-problem-list.follow_up_plan.md.if",
+      "kind": "condition",
+      "expression": "node.follow_up.value == \"yes\"",
+      "letType": null,
+      "origin": "package example-problem-list, file snippets/sections/follow_up_plan.md, if",
+      "reads": { "node.follow_up": { "type": "classification", "values": ["yes", "no"] } }
+    },
+    {
+      "id": "example-structured-intake.senior_review.if",
+      "kind": "condition",
+      "expression": "input.patient.age >= 65",
+      "letType": null,
+      "origin": "package example-structured-intake, deliverable senior_review, if",
+      "reads": { "input.patient": { "type": "object", "fields": { "age": { "type": "number", "required": true } } } }
+    },
+    {
+      "id": "example-structured-intake.long_stay_summary.if",
+      "kind": "condition",
+      "expression": "input.length_of_stay > 7",
+      "letType": null,
+      "origin": "package example-structured-intake, deliverable long_stay_summary, if",
+      "reads": { "input.length_of_stay": "number" }
+    },
+    {
+      "id": "example-structured-intake.notes_index.if",
+      "kind": "condition",
+      "expression": "(input.prior_notes | array.size) > 2",
+      "letType": null,
+      "origin": "package example-structured-intake, deliverable notes_index, if",
+      "reads": { "input.prior_notes": { "type": "array", "items": "text" } }
+    },
+    {
+      "id": "example-v12-constructs.consult.formal_note.if",
+      "kind": "condition",
+      "expression": "node.tone.value == \"formal\"",
+      "letType": null,
+      "origin": "package example-v12-constructs, deliverable consult macro formal_note, if",
+      "reads": { "node.tone": { "type": "classification", "values": ["formal", "friendly"] } }
+    },
+    {
+      "id": "example-v12-constructs.consult.friendly_note.if",
+      "kind": "condition",
+      "expression": "node.tone.value == \"friendly\"",
+      "letType": null,
+      "origin": "package example-v12-constructs, deliverable consult macro friendly_note, if",
+      "reads": { "node.tone": { "type": "classification", "values": ["formal", "friendly"] } }
+    },
+    {
+      "id": "row.read.node-value",
+      "kind": "condition",
+      "expression": "node.triage.value.priority == \"high\"",
+      "letType": null,
+      "origin": "§ 2.2: a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x`",
+      "reads": { "node.triage": { "type": "object", "schema": { "type": "object", "properties": { "priority": { "type": "string", "enum": ["low", "high"] }, "score": { "type": "number" } } } } }
+    },
+    {
+      "id": "row.read.node-content",
+      "kind": "condition",
+      "expression": "node.summary.content == \"Reviewed in clinic.\"",
+      "letType": null,
+      "origin": "§ 2.2: a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x`",
+      "reads": { "node.summary": "text" }
+    },
+    {
+      "id": "row.read.item-id",
+      "kind": "condition",
+      "expression": "item.id == \"plan\"",
+      "letType": null,
+      "origin": "§ 2.2: a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x`",
+      "reads": { "item": { "id": "text" } }
+    },
+    {
+      "id": "row.read.item-value",
+      "kind": "condition",
+      "expression": "item.value.kind == \"table\"",
+      "letType": null,
+      "origin": "§ 2.2: a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x`",
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table"] } } } } }
+    },
+    {
+      "id": "row.read.pass-number",
+      "kind": "condition",
+      "expression": "pass.number >= 2",
+      "letType": null,
+      "origin": "§ 2.2: a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x`",
+      "reads": { "pass.number": "number" }
+    },
+    {
+      "id": "row.read.run-date",
+      "kind": "condition",
+      "expression": "run.date == \"2026-11-10\"",
+      "letType": null,
+      "origin": "§ 2.2: a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x`",
+      "reads": { "run.date": "date" }
+    },
+    {
+      "id": "row.input.x",
+      "kind": "condition",
+      "expression": "input.reason == \"Breathlessness\"",
+      "letType": null,
+      "origin": "§ 2.2: a read of an input: `input.x`, `input.x.y`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.input.x-y",
+      "kind": "condition",
+      "expression": "input.patient.name == \"Margaret Okafor\"",
+      "letType": null,
+      "origin": "§ 2.2: a read of an input: `input.x`, `input.x.y`",
+      "reads": { "input.patient": { "type": "object", "fields": { "name": "text", "age": "number" } } }
+    },
+    {
+      "id": "row.eq",
+      "kind": "condition",
+      "expression": "input.kind == \"new\"",
+      "letType": null,
+      "origin": "§ 2.2: `a == b`, `a != b`",
+      "reads": { "input.kind": { "type": "enum", "values": ["new", "review"] } }
+    },
+    {
+      "id": "row.ne",
+      "kind": "condition",
+      "expression": "input.kind != \"new\"",
+      "letType": null,
+      "origin": "§ 2.2: `a == b`, `a != b`",
+      "reads": { "input.kind": { "type": "enum", "values": ["new", "review"] } }
+    },
+    {
+      "id": "row.lt",
+      "kind": "condition",
+      "expression": "input.age < 18",
+      "letType": null,
+      "origin": "§ 2.2: `a < b`, `a <= b`, `a > b`, `a >= b`",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.le",
+      "kind": "condition",
+      "expression": "input.age <= 18",
+      "letType": null,
+      "origin": "§ 2.2: `a < b`, `a <= b`, `a > b`, `a >= b`",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.gt",
+      "kind": "condition",
+      "expression": "input.age > 65",
+      "letType": null,
+      "origin": "§ 2.2: `a < b`, `a <= b`, `a > b`, `a >= b`",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.ge",
+      "kind": "condition",
+      "expression": "input.age >= 65",
+      "letType": null,
+      "origin": "§ 2.2: `a < b`, `a <= b`, `a > b`, `a >= b`",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.and3",
+      "kind": "condition",
+      "expression": "input.urgent && input.kind == \"new\" && input.age > 65",
+      "letType": null,
+      "origin": "§ 2.2: `a && b`, `a || b`",
+      "reads": { "input.urgent": "boolean", "input.kind": { "type": "enum", "values": ["new", "review"] }, "input.age": "number" }
+    },
+    {
+      "id": "row.or3",
+      "kind": "condition",
+      "expression": "input.urgent || input.kind == \"review\" || input.age < 18",
+      "letType": null,
+      "origin": "§ 2.2: `a && b`, `a || b`",
+      "reads": { "input.urgent": "boolean", "input.kind": { "type": "enum", "values": ["new", "review"] }, "input.age": "number" }
+    },
+    {
+      "id": "row.not-boolean",
+      "kind": "condition",
+      "expression": "!input.urgent",
+      "letType": null,
+      "origin": "§ 2.2: `!a`, with `a` boolean",
+      "reads": { "input.urgent": "boolean" }
+    },
+    {
+      "id": "row.not-text.node",
+      "kind": "condition",
+      "expression": "!node.summary.content",
+      "letType": null,
+      "origin": "§ 2.2: `!a`, with `a` text",
+      "reads": { "node.summary": "text" }
+    },
+    {
+      "id": "row.not-text.input",
+      "kind": "condition",
+      "expression": "!input.reason",
+      "letType": null,
+      "origin": "§ 2.2: `!a`, with `a` text",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.add",
+      "kind": "condition",
+      "expression": "input.age + 1 > 65",
+      "letType": null,
+      "origin": "§ 2.2: `+ - * / %` on numbers",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.subtract",
+      "kind": "condition",
+      "expression": "input.age - 1 < 18",
+      "letType": null,
+      "origin": "§ 2.2: `+ - * / %` on numbers",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.multiply",
+      "kind": "condition",
+      "expression": "input.age * 2 >= 100",
+      "letType": null,
+      "origin": "§ 2.2: `+ - * / %` on numbers",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.divide",
+      "kind": "condition",
+      "expression": "input.age / 2 <= 30",
+      "letType": null,
+      "origin": "§ 2.2: `+ - * / %` on numbers",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.divide.half",
+      "kind": "condition",
+      "expression": "input.age / 2 == 1.5",
+      "letType": null,
+      "origin": "§ 2.2: `+ - * / %` on numbers",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.modulo",
+      "kind": "condition",
+      "expression": "input.age % 2 == 0",
+      "letType": null,
+      "origin": "§ 2.2: `+ - * / %` on numbers",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.size.pipe",
+      "kind": "condition",
+      "expression": "(input.problems | array.size) > 1",
+      "letType": null,
+      "origin": "§ 2.2: `(x | array.size)`, `x.size` on a list",
+      "reads": { "input.problems": { "type": "array", "items": "text" } }
+    },
+    {
+      "id": "row.size.member",
+      "kind": "condition",
+      "expression": "input.problems.size == 0",
+      "letType": null,
+      "origin": "§ 2.2: `(x | array.size)`, `x.size` on a list",
+      "reads": { "input.problems": { "type": "array", "items": "text" } }
+    },
+    {
+      "id": "row.downcase",
+      "kind": "condition",
+      "expression": "(string.downcase input.reason) == \"breathlessness\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.downcase x`, `string.strip x`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.strip.input",
+      "kind": "condition",
+      "expression": "(string.strip input.reason) == \"\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.downcase x`, `string.strip x`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.strip.node",
+      "kind": "condition",
+      "expression": "(node.summary.content | string.strip) == \"\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.downcase x`, `string.strip x`",
+      "reads": { "node.summary": "text" }
+    },
+    {
+      "id": "row.starts-with",
+      "kind": "condition",
+      "expression": "string.starts_with input.reason \"Breath\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.starts_with x \"p\"`, `string.ends_with x \"p\"`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.ends-with",
+      "kind": "condition",
+      "expression": "string.ends_with input.reason \"ness\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.starts_with x \"p\"`, `string.ends_with x \"p\"`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.contains",
+      "kind": "condition",
+      "expression": "string.contains input.reason \"less\"",
+      "letType": null,
+      "origin": "§ 2.2: `string.contains x \"p\"`",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "row.date-parse.lt",
+      "kind": "condition",
+      "expression": "input.seen_on < (date.parse \"2026-11-10\")",
+      "letType": null,
+      "origin": "§ 2.2: `date.parse \"YYYY-MM-DD\"`",
+      "reads": { "input.seen_on": "date" }
+    },
+    {
+      "id": "row.date-parse.eq",
+      "kind": "condition",
+      "expression": "input.seen_on == (date.parse \"2026-11-10\")",
+      "letType": null,
+      "origin": "§ 2.2: `date.parse \"YYYY-MM-DD\"`",
+      "reads": { "input.seen_on": "date" }
+    },
+    {
+      "id": "row.literal.number",
+      "kind": "condition",
+      "expression": "input.age == 65",
+      "letType": null,
+      "origin": "§ 2.2: a number, `true`, `false`, a quoted string",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "row.literal.true",
+      "kind": "condition",
+      "expression": "input.urgent == true",
+      "letType": null,
+      "origin": "§ 2.2: a number, `true`, `false`, a quoted string",
+      "reads": { "input.urgent": "boolean" }
+    },
+    {
+      "id": "row.literal.false",
+      "kind": "condition",
+      "expression": "input.urgent == false",
+      "letType": null,
+      "origin": "§ 2.2: a number, `true`, `false`, a quoted string",
+      "reads": { "input.urgent": "boolean" }
+    },
+    {
+      "id": "row.literal.string",
+      "kind": "condition",
+      "expression": "input.kind == \"review\"",
+      "letType": null,
+      "origin": "§ 2.2: a number, `true`, `false`, a quoted string",
+      "reads": { "input.kind": { "type": "enum", "values": ["new", "review"] } }
+    },
+    {
+      "id": "row.let-object",
+      "kind": "let",
+      "expression": "{ priority: node.triage.value.priority, age: input.age }",
+      "letType": "triage_summary",
+      "origin": "§ 2.2: `{ a: x, b: y }` (a `let`'s object)",
+      "reads": { "node.triage": { "type": "object", "schema": { "type": "object", "properties": { "priority": { "type": "string", "enum": ["low", "high"] }, "score": { "type": "number" } } } }, "input.age": "number" }
+    },
+    {
+      "id": "row.let-array",
+      "kind": "let",
+      "expression": "{ reasons: [input.reason, node.summary.content] }",
+      "letType": "reasons",
+      "origin": "§ 2.2: `[x, y]`",
+      "reads": { "input.reason": "text", "node.summary": "text" }
+    },
+    {
+      "id": "refuse.builtin.upcase",
+      "kind": "condition",
+      "expression": "(string.upcase input.reason) == \"BREATHLESSNESS\"",
+      "letType": null,
+      "origin": "§ 2.3: a builtin or pipe with no 31 operation",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "refuse.builtin.round",
+      "kind": "condition",
+      "expression": "(math.round input.age) == 65",
+      "letType": null,
+      "origin": "§ 2.3: a builtin or pipe with no 31 operation",
+      "reads": { "input.age": "number" }
+    },
+    {
+      "id": "refuse.builtin.first",
+      "kind": "condition",
+      "expression": "(input.problems | array.first) == \"\"",
+      "letType": null,
+      "origin": "§ 2.3: a builtin or pipe with no 31 operation",
+      "reads": { "input.problems": { "type": "array", "items": "text" } }
+    },
+    {
+      "id": "refuse.text-less-than",
+      "kind": "condition",
+      "expression": "input.reason < \"m\"",
+      "letType": null,
+      "origin": "§ 2.3: a comparison the 31 checker refuses by type (for example `<` on text), using **the checker's own sentence** (part 03)",
+      "reads": { "input.reason": "text" }
+    },
+    {
+      "id": "refuse.profile",
+      "kind": "condition",
+      "expression": "profile.name == \"Dr A. Sample\"",
+      "letType": null,
+      "origin": "§ 2.3: a read of `profile.*` in a condition, which 31 refuses (#1408)",
+      "reads": { "profile.name": "text" }
+    },
+    {
+      "id": "refuse.assignment",
+      "kind": "condition",
+      "expression": "x = 1",
+      "letType": null,
+      "origin": "§ 2.3: an assignment, a template, or more than one statement",
+      "reads": {}
+    },
+    {
+      "id": "refuse.template",
+      "kind": "condition",
+      "expression": "{{ input.kind }}",
+      "letType": null,
+      "origin": "§ 2.3: an assignment, a template, or more than one statement",
+      "reads": { "input.kind": { "type": "enum", "values": ["new", "review"] } }
+    },
+    {
+      "id": "refuse.two-statements",
+      "kind": "condition",
+      "expression": "input.urgent; input.kind == \"new\"",
+      "letType": null,
+      "origin": "§ 2.3: an assignment, a template, or more than one statement",
+      "reads": { "input.urgent": "boolean", "input.kind": { "type": "enum", "values": ["new", "review"] } }
+    }
+  ]
+}

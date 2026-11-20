@@ -1,0 +1,32 @@
+{
+  "description": [
+    "letter_body pinned empty, so every deliverable over it composes empty sections and its macros and",
+    "signature still join with one blank line each. prepended ends with a blank line; appended,",
+    "optional, authored and gated start with one; both holds four newlines between its prepends and",
+    "its appends; signed_only is a blank line then the signature block; signed_letter starts with a",
+    "blank line before its appended macro. echoes: body_echo reads the empty reply. Defaults otherwise,",
+    "as new-visit-defaults."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)",
+    "sections": [
+      {
+        "title": "History"
+      },
+      {
+        "title": "Plan"
+      }
+    ],
+    "visit": "new"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "section_draft:0": "History paragraph: palpitations for two months.\n\n",
+    "section_draft:1": "Plan paragraph: apixaban started.",
+    "letter_body": ""
+  }
+}

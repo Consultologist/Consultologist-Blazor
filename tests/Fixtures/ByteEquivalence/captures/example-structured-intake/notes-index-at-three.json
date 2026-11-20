@@ -1,0 +1,97 @@
+{
+  "package": "example-structured-intake",
+  "tag": "example-structured-intake-v2026.11.3",
+  "scenario": "notes-index-at-three",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "note_section:assessment": "Stub reply for note_section:assessment (77d24528).",
+    "note_section:plan": "Stub reply for note_section:plan (1f0cd5de).",
+    "summarise_note:0": "Stub reply for summarise_note:0 (32154d04).",
+    "summarise_note:1": "Stub reply for summarise_note:1 (ea270460).",
+    "summarise_note:2": "Stub reply for summarise_note:2 (4a993a05).",
+    "index_note:0": "Stub reply for index_note:0 (e0ed780a).",
+    "index_note:1": "Stub reply for index_note:1 (50731efe).",
+    "index_note:2": "Stub reply for index_note:2 (68f95e73)."
+  },
+  "prompts": [
+    {
+      "key": "note_section:assessment",
+      "hash": "sha256:08ee0306d2cadf79e42ac9675097e217b7fd8ea77a7687a6b153a74992f23770",
+      "text": "You are drafting one section of a consultation note.\n\nPatient context (from structured intake; blank where not supplied):\nAge: 64\nSex: female\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment\n\nSection standard:\nOne paragraph of prose. State the working impression and the reasoning that supports it, drawing only on what the referral documents. Name the competing possibilities that the referral raises and say briefly why each is more or less likely. Where the referral does not document something the impression would ordinarily rest on, say that it is not documented rather than inferring it. No headings or lists; paragraphs only.\n\n\nReferral:\nEileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)\n"
+    },
+    {
+      "key": "note_section:plan",
+      "hash": "sha256:505244a01883dd4423de7cdc331b9bb4526810c9b66c3588159820b6ad1808a7",
+      "text": "You are drafting one section of a consultation note.\n\nPatient context (from structured intake; blank where not supplied):\nAge: 64\nSex: female\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPlan\n\nSection standard:\nOne paragraph of prose. State what is proposed next, who is to do it, and on what timescale, drawing only on what the referral documents. Include the investigations or treatments the referral already names, and say plainly where the next step is not documented rather than proposing one the referral does not support. No headings or lists; paragraphs only.\n\n\nReferral:\nEileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)\n"
+    },
+    {
+      "key": "summarise_note:0",
+      "hash": "sha256:55615d838dbe787fff1a20f5e1535d50348e1fcad285c1b128960ff1ae96a6f5",
+      "text": "You are summarising one prior clinical note.\n\nTask:\nSummarise the note below in at most four sentences of prose, keeping dates and clinical decisions.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only the summary prose. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-10-28, admission clerking: right lower lobe pneumonia, CURB-65 score 2; IV co-amoxiclav started. (Fictional.)\n"
+    },
+    {
+      "key": "summarise_note:1",
+      "hash": "sha256:dac5ebcf302ed79e2c9f0a8b76628fb7d4183af78cae97f6122a6fc1999ad69a",
+      "text": "You are summarising one prior clinical note.\n\nTask:\nSummarise the note below in at most four sentences of prose, keeping dates and clinical decisions.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only the summary prose. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-11-02, ward round: afebrile 48 hours; switched to oral amoxicillin. (Fictional.)\n"
+    },
+    {
+      "key": "summarise_note:2",
+      "hash": "sha256:04c795a4815a380d6db850a4cf053ac2f7bfdf9860d45c7acde22694c03175af",
+      "text": "You are summarising one prior clinical note.\n\nTask:\nSummarise the note below in at most four sentences of prose, keeping dates and clinical decisions.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only the summary prose. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-11-05, physiotherapy: mobile with a frame; home assessment requested. (Fictional.)\n"
+    },
+    {
+      "key": "index_note:0",
+      "hash": "sha256:e4d7ffa709ebd0dd5694bdc556d93a2e8a68c84090dd459a46b398ef4552bdfb",
+      "text": "You are writing one line of an index of prior clinical notes.\n\nTask:\nWrite a single line of at most fifteen words naming the note's date and its main subject, from the note below.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only that one line. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-10-28, admission clerking: right lower lobe pneumonia, CURB-65 score 2; IV co-amoxiclav started. (Fictional.)\n"
+    },
+    {
+      "key": "index_note:1",
+      "hash": "sha256:10e34113a2506bf96ed2319d8360a75f67c9c2aa5be9b84eb3084a7b83281889",
+      "text": "You are writing one line of an index of prior clinical notes.\n\nTask:\nWrite a single line of at most fifteen words naming the note's date and its main subject, from the note below.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only that one line. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-11-02, ward round: afebrile 48 hours; switched to oral amoxicillin. (Fictional.)\n"
+    },
+    {
+      "key": "index_note:2",
+      "hash": "sha256:2ef874fcc9c69634851456bcc3c51eceb70fc1effd9349270eeb7c0af5443bec",
+      "text": "You are writing one line of an index of prior clinical notes.\n\nTask:\nWrite a single line of at most fifteen words naming the note's date and its main subject, from the note below.\n\nGuardrail:\nDo not add facts the note does not contain.\n\nOutput rule:\nReturn only that one line. No heading, JSON, markdown, bullets, or commentary.\n\nPrior note:\n2026-11-05, physiotherapy: mobile with a frame; home assessment requested. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:cc882d5623876f26d1c04c5043f54345144a1a8be5fc421f8daf330fcb680df4",
+      "text": "## Assessment\n\nStub reply for note_section:assessment (77d24528).\n\n## Plan\n\nStub reply for note_section:plan (1f0cd5de)."
+    },
+    {
+      "id": "senior_review",
+      "state": "skipped",
+      "reason": "needs `input.patient.age >= 65`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "long_stay_summary",
+      "state": "skipped",
+      "reason": "needs `input.length_of_stay > 7`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "notes_digest",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:d73e9988f0629598d486f6ef90b62346048512e94c4b0f1c552838a36c7cad90",
+      "text": "## Prior notes 1\n\nStub reply for summarise_note:0 (32154d04).\n\n## Prior notes 2\n\nStub reply for summarise_note:1 (ea270460).\n\n## Prior notes 3\n\nStub reply for summarise_note:2 (4a993a05)."
+    },
+    {
+      "id": "notes_index",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:a133f072aba948e61664b0ef479a9c91a6276381fd759a80d0720d0de90f51be",
+      "text": "## Prior notes 1\n\nStub reply for index_note:0 (e0ed780a).\n\n## Prior notes 2\n\nStub reply for index_note:1 (50731efe).\n\n## Prior notes 3\n\nStub reply for index_note:2 (68f95e73)."
+    }
+  ]
+}

@@ -1,0 +1,180 @@
+{
+  "name": "example-conditional-sections",
+  "version": "v2026.11.3",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "description": "A demonstration of what specVersion 27 opened \u2014 a flow node inside a for: a case on each section\u0027s kind drafts narrative sections as prose and table sections as a table and skips the rest, an if with no else writes a patient-facing line for the narrative sections alone, and an if over a folder of standing sections holds the billing section back unless asked. At 30 a section is named by its title (labelField). Not intended for clinical use.",
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "sections",
+      "label": "Sections to produce",
+      "required": true,
+      "type": "array",
+      "items": "object",
+      "fields": [
+        {
+          "id": "title",
+          "label": "Title",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "id": "kind",
+          "label": "Kind",
+          "required": true,
+          "type": "enum",
+          "values": [
+            "narrative",
+            "table",
+            "omit"
+          ]
+        },
+        {
+          "id": "notes",
+          "label": "Notes for this section",
+          "required": false,
+          "type": "text"
+        }
+      ],
+      "labelField": "title"
+    },
+    {
+      "id": "include_billing",
+      "label": "Include the billing section",
+      "required": false,
+      "type": "boolean"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "sections_draft",
+      "label": "Sections \u2014 drafting each requested section by its kind",
+      "for": "item in input.sections",
+      "nodes": [
+        "route"
+      ],
+      "ret": "node.route"
+    },
+    {
+      "id": "route",
+      "label": "Routing a section by its kind",
+      "case": "item.value.kind",
+      "branches": [
+        {
+          "when": [
+            "narrative"
+          ],
+          "nodes": [
+            "narrative_draft"
+          ],
+          "ret": "node.narrative_draft"
+        },
+        {
+          "when": [
+            "table"
+          ],
+          "nodes": [
+            "table_draft"
+          ],
+          "ret": "node.table_draft"
+        }
+      ]
+    },
+    {
+      "id": "narrative_draft",
+      "label": "Drafting a narrative section",
+      "format": "prose"
+    },
+    {
+      "id": "table_draft",
+      "label": "Drafting a table section",
+      "format": "prose"
+    },
+    {
+      "id": "patient_summaries",
+      "label": "Sections \u2014 one patient-facing line per narrative section",
+      "for": "item in input.sections",
+      "nodes": [
+        "narrative_only"
+      ],
+      "ret": "node.narrative_only"
+    },
+    {
+      "id": "narrative_only",
+      "label": "Narrative sections only",
+      "if": "item.value.kind == \u0022narrative\u0022",
+      "then": {
+        "nodes": [
+          "patient_summary"
+        ],
+        "ret": "node.patient_summary"
+      }
+    },
+    {
+      "id": "patient_summary",
+      "label": "Writing the patient-facing line",
+      "format": "prose"
+    },
+    {
+      "id": "standing_sections",
+      "label": "Standing sections \u2014 tailored to this consult",
+      "for": "item in snippet.sections",
+      "nodes": [
+        "applies"
+      ],
+      "ret": "node.applies"
+    },
+    {
+      "id": "applies",
+      "label": "Holding the billing section back unless asked",
+      "if": "item.id != \u0022billing\u0022 || input.include_billing == true",
+      "then": {
+        "nodes": [
+          "standing_draft"
+        ],
+        "ret": "node.standing_draft"
+      }
+    },
+    {
+      "id": "standing_draft",
+      "label": "Tailoring a standing section",
+      "format": "prose"
+    },
+    {
+      "id": "coverage",
+      "label": "Naming the sections left out",
+      "format": "prose"
+    }
+  ],
+  "tags": [],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "label": "Consult note",
+      "sources": [
+        "node.sections_draft",
+        "node.standing_sections",
+        "node.coverage"
+      ]
+    },
+    {
+      "id": "patient_summary",
+      "label": "Patient summary",
+      "sources": [
+        "node.patient_summaries"
+      ]
+    }
+  ],
+  "snippets": [
+    "sections/"
+  ]
+}

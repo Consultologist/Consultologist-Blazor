@@ -1,0 +1,40 @@
+{
+  "package": "example-conditional-documents",
+  "tag": "example-conditional-documents-v2026.11.3",
+  "scenario": "default",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "consult_note_section:assessment": "Stub reply for consult_note_section:assessment (3b21e0f5).",
+    "consult_note_section:plan": "Stub reply for consult_note_section:plan (af0258fe)."
+  },
+  "prompts": [
+    {
+      "key": "consult_note_section:assessment",
+      "hash": "sha256:a01bf7a05e0ecfb001f39d4f53eba4f73a82d22cad1fd317f9e8cc656de45321",
+      "text": "You are drafting one section of a new-patient consultation note.\n\nEncounter date: 09 Nov 2026\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment\n\nSection standard:\nOne paragraph of prose. State the working impression and the reasoning that supports it, drawing only on what the referral documents. Name the competing possibilities that the referral raises and say briefly why each is more or less likely. Where the referral does not document something the impression would ordinarily rest on, say that it is not documented rather than inferring it. No headings or lists; paragraphs only.\n\n\nReferral:\nTomasz Nowak, 52, referred with exertional chest tightness for two months. ECG normal at rest; exercise test booked. On amlodipine for hypertension. (Fictional.)\n"
+    },
+    {
+      "key": "consult_note_section:plan",
+      "hash": "sha256:8a9ca22507e99b9f47fddd85c0cdf0fe2ec66e48f0a5d4086649ca0537770476",
+      "text": "You are drafting one section of a new-patient consultation note.\n\nEncounter date: 09 Nov 2026\n\nTask:\nWrite the requested section using only the referral below, following the section standard.\n\nGuardrail:\nDo not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPlan\n\nSection standard:\nOne paragraph of prose. State what is proposed next, who is to do it, and on what timescale, drawing only on what the referral documents. Include the investigations or treatments the referral already names, and say plainly where the next step is not documented rather than proposing one the referral does not support. No headings or lists; paragraphs only.\n\n\nReferral:\nTomasz Nowak, 52, referred with exertional chest tightness for two months. ECG normal at rest; exercise test booked. On amlodipine for hypertension. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:45b856b203a551d9810b4c9ea90725f9339ed449323ed6ec9b199ac80b79d0b3",
+      "text": "## Assessment\n\nStub reply for consult_note_section:assessment (3b21e0f5).\n\n## Plan\n\nStub reply for consult_note_section:plan (af0258fe)."
+    },
+    {
+      "id": "progress_note",
+      "state": "skipped",
+      "reason": "needs `input.encounter_kind == \"follow_up\"`; it does not hold",
+      "hash": null,
+      "text": null
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+  "package": "example-conditional-documents",
+  "tag": "example-conditional-documents-v2026.11.3",
+  "scenario": "follow-up",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "progress_note_section:assessment": "Stub reply for progress_note_section:assessment (91220ba0).",
+    "progress_note_section:plan": "Stub reply for progress_note_section:plan (a1b2aa59)."
+  },
+  "prompts": [
+    {
+      "key": "progress_note_section:assessment",
+      "hash": "sha256:7611187da23f8785d24cef70a9f3d075ed224c7a19a1bc10d47e1b33568dc76c",
+      "text": "You are drafting one section of a follow-up progress note.\n\nEncounter date: 09 Nov 2026\n\nTask:\nWrite the requested section as an interval update, using only the referral below and following the section standard.\n\nGuardrail:\nCover what has changed since the last encounter. Do not restate the original presentation in full, and do not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment\n\nSection standard:\nOne paragraph of prose. State the working impression and the reasoning that supports it, drawing only on what the referral documents. Name the competing possibilities that the referral raises and say briefly why each is more or less likely. Where the referral does not document something the impression would ordinarily rest on, say that it is not documented rather than inferring it. No headings or lists; paragraphs only.\n\n\nReferral:\nTomasz Nowak, 52, referred with exertional chest tightness for two months. ECG normal at rest; exercise test booked. On amlodipine for hypertension. (Fictional.)\n"
+    },
+    {
+      "key": "progress_note_section:plan",
+      "hash": "sha256:5bcd9edea3af9ca5d6b8999c584735822b8eb1c79e920bc32c559e2538083e75",
+      "text": "You are drafting one section of a follow-up progress note.\n\nEncounter date: 09 Nov 2026\n\nTask:\nWrite the requested section as an interval update, using only the referral below and following the section standard.\n\nGuardrail:\nCover what has changed since the last encounter. Do not restate the original presentation in full, and do not add clinical facts the referral does not contain. Where the referral is silent, say so plainly.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPlan\n\nSection standard:\nOne paragraph of prose. State what is proposed next, who is to do it, and on what timescale, drawing only on what the referral documents. Include the investigations or treatments the referral already names, and say plainly where the next step is not documented rather than proposing one the referral does not support. No headings or lists; paragraphs only.\n\n\nReferral:\nTomasz Nowak, 52, referred with exertional chest tightness for two months. ECG normal at rest; exercise test booked. On amlodipine for hypertension. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "state": "skipped",
+      "reason": "needs `input.encounter_kind == \"new_patient\"`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "progress_note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:258b92741e38457ddf409816a2f934f4b2fa1212214887b2785d508b64d91a64",
+      "text": "## Assessment\n\nStub reply for progress_note_section:assessment (91220ba0).\n\n## Plan\n\nStub reply for progress_note_section:plan (a1b2aa59)."
+    }
+  ]
+}

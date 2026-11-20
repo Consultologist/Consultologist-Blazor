@@ -1,0 +1,52 @@
+flowchart TD
+    snippet_sections(["snippet.sections"])
+    input_sections(["input.sections"])
+    input_include_counselling(["input.include_counselling"])
+    input_consult_draft(["input.consult_draft"])
+    input_note_type(["input.note_type"])
+    snippet_style(["snippet.style"])
+    macro_notes(["macro.notes"])
+
+    summary["summary<br/>Closing summary"]
+    input_consult_draft --> summary
+    snippet_style --> summary
+    macro_notes --> summary
+    patient_line["patient_line<br/>One line for the patient"]
+    requested_sections -->|"content"| patient_line
+    input_note_type --> patient_line
+    input_consult_draft --> patient_line
+
+    subgraph for_standing_sections["standing_sections: per snippet.sections item"]
+        standing_draft["standing_draft<br/>Tailoring a standing section"]
+    end
+    standing_sections["standing_sections<br/>Standing sections — tailored to this consult<br/>item in snippet.sections"]
+
+    subgraph for_requested_sections["requested_sections: per input.sections item"]
+        subgraph case_route_branch_1["route: narrative"]
+            narrative_draft["narrative_draft<br/>Drafting a narrative section"]
+        end
+        subgraph case_route_branch_2["route: table"]
+            table_draft["table_draft<br/>Drafting a table section"]
+        end
+        route["route<br/>Routing a section by its kind<br/>case item.value.kind"]
+    end
+    requested_sections["requested_sections<br/>Requested sections — drafting each by its kind<br/>item in input.sections"]
+    input_include_counselling --> standing_draft
+    input_consult_draft --> standing_draft
+    input_note_type --> standing_draft
+    snippet_sections -->|"for"| for_standing_sections
+    standing_draft -->|"ret"| standing_sections
+    input_consult_draft --> narrative_draft
+    input_note_type -.->|"if"| narrative_draft
+    input_consult_draft --> table_draft
+    narrative_draft -->|"ret (narrative)"| route
+    table_draft -->|"ret (table)"| route
+    input_sections -->|"for"| for_requested_sections
+    route -->|"ret"| requested_sections
+
+    result_consult_note{{"consult_note<br/>Consult note"}}
+    requested_sections --> result_consult_note
+    standing_sections --> result_consult_note
+    summary --> result_consult_note
+    result_patient_letter{{"patient_letter<br/>Patient letter"}}
+    patient_line --> result_patient_letter

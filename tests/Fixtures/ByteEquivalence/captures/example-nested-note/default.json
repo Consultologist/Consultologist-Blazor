@@ -1,0 +1,130 @@
+{
+  "package": "example-nested-note",
+  "tag": "example-nested-note-v2026.11.2",
+  "scenario": "default",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "plan": {
+      "summary": "stub 8427a0bf",
+      "sections": [
+        {
+          "title": "stub 100f4302",
+          "purpose": "stub d1c908e8"
+        },
+        {
+          "title": "stub eec677ff",
+          "purpose": "stub debbf7cf"
+        },
+        {
+          "title": "stub 746c715a",
+          "purpose": "stub fadce096"
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "point": "stub 196f0ecf"
+        }
+      ]
+    },
+    "outline:2": {
+      "points": [
+        {
+          "point": "stub ad3b4e54"
+        },
+        {
+          "point": "stub 514438cc"
+        },
+        {
+          "point": "stub 3cb46a03"
+        }
+      ]
+    },
+    "outline:3": {
+      "points": [
+        {
+          "point": "stub c151d71f"
+        }
+      ]
+    },
+    "draft_summary:1": "Stub reply for draft_summary:1 (78b0fc65).",
+    "judge:1": {
+      "verdict": "good",
+      "feedback": "stub 815397a2"
+    },
+    "draft_paragraph:1/1": "Stub reply for draft_paragraph:1/1 (a2dad8e1).",
+    "draft_paragraph:2/1": "Stub reply for draft_paragraph:2/1 (47b7f41d).",
+    "draft_paragraph:2/2": "Stub reply for draft_paragraph:2/2 (a2bd5654).",
+    "draft_paragraph:2/3": "Stub reply for draft_paragraph:2/3 (5bcb3112).",
+    "draft_paragraph:3/1": "Stub reply for draft_paragraph:3/1 (1842ab6a)."
+  },
+  "prompts": [
+    {
+      "key": "plan",
+      "hash": "sha256:608696329813bd276386157e8b07b86ef2738798582cd6eb599a3b8bdc076554",
+      "text": "You are planning the sections of a consultation note from a consult draft.\n\nTask:\nChoose the sections this note needs — between two and four — in the order a reader expects them. Give each a short title that names the section, not the patient (for example \"Assessment\" or \"Plan\"), and one sentence on what it covers. Then write a one-sentence summary of the consultation.\n\nGuardrail:\nPlan only sections the draft has material for. Do not add clinical facts the draft does not contain. Keep patient details out of the titles.\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"summary\",\"sections\"],\"properties\":{\"summary\":{\"type\":\"string\"},\"sections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"purpose\"],\"properties\":{\"title\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:1",
+      "hash": "sha256:ef9d217318ef798ec244266b03aba121d57c438dc89bc43c1e8ed9ba1ee4df6c",
+      "text": "You are outlining one section of a consultation note.\n\nTask:\nList the points this section makes, in order, one paragraph each — between one and three. State each point in a sentence.\n\nGuardrail:\nUse only what the consult draft contains for this section. Do not add clinical facts it does not contain.\n\nSection:\nstub 100f4302 — stub d1c908e8\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"point\"],\"properties\":{\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:2",
+      "hash": "sha256:f3e0ad5f3f3123d675c2ac3cbcf68419d13629e2a3ec79df8cd2131d091aefbb",
+      "text": "You are outlining one section of a consultation note.\n\nTask:\nList the points this section makes, in order, one paragraph each — between one and three. State each point in a sentence.\n\nGuardrail:\nUse only what the consult draft contains for this section. Do not add clinical facts it does not contain.\n\nSection:\nstub eec677ff — stub debbf7cf\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"point\"],\"properties\":{\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:3",
+      "hash": "sha256:b4ef68ba062d4d92eeeace5967b0d309e6baa62e65788c0f5a56692a6917eeac",
+      "text": "You are outlining one section of a consultation note.\n\nTask:\nList the points this section makes, in order, one paragraph each — between one and three. State each point in a sentence.\n\nGuardrail:\nUse only what the consult draft contains for this section. Do not add clinical facts it does not contain.\n\nSection:\nstub 746c715a — stub fadce096\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"point\"],\"properties\":{\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "draft_summary:1",
+      "hash": "sha256:905dd9238f31b409a597f472d77e235114d837e6ef938a03ec184a4861da2fb1",
+      "text": "You are drafting the opening summary of a consultation note.\n\nTask:\nWrite a summary of two or three sentences: who was seen, why, and the main conclusion. The note that follows has 3 sections.\n\nGuardrail:\nUse only what the consult draft contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the summary. No heading, no commentary.\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n"
+    },
+    {
+      "key": "judge:1",
+      "hash": "sha256:75bf3058c3f7cec7cd50db72e11fcb6e8ca11cfe5aa8571f56e40f7ec50cec70",
+      "text": "You are reviewing the opening summary of a consultation note against its consult draft and this note's house style.\n\nHouse style:\nThe summary is exactly two sentences. The first says who was seen and why. The second begins with the word \"Recommendation:\" and states the main conclusion.\n\nDefinitions:\nGood: the summary follows the house style exactly, and every fact in it is in the draft.\nRevise: anything else. Say in one sentence what to change, naming the house-style rule it breaks.\n\nGuardrail:\nJudge against the draft and the house style alone. Where the verdict is good, give feedback that says so in a few words.\n\nSummary:\nStub reply for draft_summary:1 (78b0fc65).\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"verdict\",\"feedback\"],\"properties\":{\"verdict\":{\"type\":\"string\",\"enum\":[\"good\",\"revise\"]},\"feedback\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "draft_paragraph:1/1",
+      "hash": "sha256:71ff265207c3cc496ef347159b3ecdaec4fe01f6fc6db210c5855a16bf6e6c0b",
+      "text": "You are drafting one paragraph of a consultation note.\n\nTask:\nWrite the paragraph that makes the point below, within the section it belongs to.\n\nGuardrail:\nUse only what the consult draft contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nSection:\nstub 100f4302\n\nPoint 1:\nstub 196f0ecf\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n"
+    },
+    {
+      "key": "draft_paragraph:2/1",
+      "hash": "sha256:1d1d6ba1d099eb94e9047f3776963e42333e55b4435a2df20482cc8909256e0d",
+      "text": "You are drafting one paragraph of a consultation note.\n\nTask:\nWrite the paragraph that makes the point below, within the section it belongs to.\n\nGuardrail:\nUse only what the consult draft contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nSection:\nstub eec677ff\n\nPoint 1:\nstub ad3b4e54\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n"
+    },
+    {
+      "key": "draft_paragraph:2/2",
+      "hash": "sha256:ce27436e01711cef436009f097d094c00e727ad6202d096351e4d1ec0ca40f6b",
+      "text": "You are drafting one paragraph of a consultation note.\n\nTask:\nWrite the paragraph that makes the point below, within the section it belongs to.\n\nGuardrail:\nUse only what the consult draft contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nSection:\nstub eec677ff\n\nPoint 2:\nstub 514438cc\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n"
+    },
+    {
+      "key": "draft_paragraph:2/3",
+      "hash": "sha256:bfa375cfb0724554ba459ef8921570d7b6dcb1ed61427e2108200d2d84638656",
+      "text": "You are drafting one paragraph of a consultation note.\n\nTask:\nWrite the paragraph that makes the point below, within the section it belongs to.\n\nGuardrail:\nUse only what the consult draft contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nSection:\nstub eec677ff\n\nPoint 3:\nstub 3cb46a03\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n"
+    },
+    {
+      "key": "draft_paragraph:3/1",
+      "hash": "sha256:b6b20be6ae4523f3b9ea3e60716722fca311ef1aa112a6f00fa9d0b0d4e23357",
+      "text": "You are drafting one paragraph of a consultation note.\n\nTask:\nWrite the paragraph that makes the point below, within the section it belongs to.\n\nGuardrail:\nUse only what the consult draft contains. Do not add clinical facts it does not contain.\n\nOutput rule:\nReturn only the paragraph. No heading, no bullets, no commentary.\n\nSection:\nstub 746c715a\n\nPoint 1:\nstub c151d71f\n\nConsult draft:\nMargaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:d3e73bc27c63cec277da6803a81cd9fd2de40c916cfe078bc0686654b15b9999",
+      "text": "Stub reply for draft_summary:1 (78b0fc65).\n\n## stub 100f4302\n\n## Paragraphs 1\n\nStub reply for draft_paragraph:1/1 (a2dad8e1).\n\n## stub eec677ff\n\n## Paragraphs 1\n\nStub reply for draft_paragraph:2/1 (47b7f41d).\n\n## Paragraphs 2\n\nStub reply for draft_paragraph:2/2 (a2bd5654).\n\n## Paragraphs 3\n\nStub reply for draft_paragraph:2/3 (5bcb3112).\n\n## stub 746c715a\n\n## Paragraphs 1\n\nStub reply for draft_paragraph:3/1 (1842ab6a)."
+    }
+  ]
+}

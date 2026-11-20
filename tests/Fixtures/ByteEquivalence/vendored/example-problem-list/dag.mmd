@@ -1,0 +1,30 @@
+flowchart TD
+    snippet_sections(["snippet.sections"])
+    input_consult_draft(["input.consult_draft"])
+
+    find_problems["find_problems<br/>Finding the problems"]
+    input_consult_draft --> find_problems
+    follow_up["follow_up<br/>Is a reassessment arranged?"]
+    input_consult_draft --> follow_up
+
+    subgraph for_problems["problems: per node.find_problems.value.problems item"]
+        draft_problem["draft_problem<br/>Drafting the problem"]
+    end
+    problems["problems<br/>Problems<br/>item in node.find_problems.value.problems"]
+
+    subgraph for_sections["sections: per snippet.sections item"]
+        section_draft["section_draft<br/>Drafting the section"]
+    end
+    sections["sections<br/>Standing sections<br/>item in snippet.sections"]
+    input_consult_draft --> draft_problem
+    find_problems -->|"for"| for_problems
+    draft_problem -->|"ret"| problems
+    input_consult_draft --> section_draft
+    follow_up -.->|"if"| section_draft
+    snippet_sections -->|"for"| for_sections
+    section_draft -->|"ret"| sections
+    follow_up -.->|"if"| sections
+
+    result_note{{"note<br/>Problem-oriented note"}}
+    sections --> result_note
+    problems --> result_note

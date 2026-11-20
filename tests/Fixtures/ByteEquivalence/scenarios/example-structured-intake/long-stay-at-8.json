@@ -1,0 +1,24 @@
+{
+  "description": [
+    "length_of_stay 8 (patient.age 64, two prior notes): the long-stay summary is composed and",
+    "reads the stay; the senior review request and the prior-notes index are skipped."
+  ],
+  "inputs": {
+    "consult_draft": "Eileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)",
+    "prior_notes": [
+      "2026-10-28, admission clerking: right lower lobe pneumonia, CURB-65 score 2; IV co-amoxiclav started. (Fictional.)",
+      "2026-11-02, ward round: afebrile 48 hours; switched to oral amoxicillin. (Fictional.)"
+    ],
+    "patient": {
+      "age": 64,
+      "sex": "female"
+    },
+    "length_of_stay": 8
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

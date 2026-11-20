@@ -19,9 +19,9 @@ namespace Consultologist.Api.Tests;
 /// </summary>
 public class V31BuiltInRenderersTests
 {
-    private sealed record Concept(string Term, string? Type, string? Id, bool IsSnomedConcept, bool IsActive, string? Support, string Source = ConceptSamples.Source);
+    internal sealed record Concept(string Term, string? Type, string? Id, bool IsSnomedConcept, bool IsActive, string? Support, string Source = ConceptSamples.Source);
 
-    private static readonly IReadOnlyDictionary<string, Concept[]> Cases = new Dictionary<string, Concept[]>
+    internal static readonly IReadOnlyDictionary<string, Concept[]> Cases = new Dictionary<string, Concept[]>
     {
         ["empty"] = [],
         ["one active SNOMED"] = [new("Type 2 diabetes mellitus", "disorder", "44054006", true, true, null)],
@@ -55,11 +55,11 @@ public class V31BuiltInRenderersTests
     public void ConceptContext_MatchesTheCSharpRenderer_ByteForByte(string name) =>
         Assert.Equal(ConceptRenderers.Context(ToConcepts(Cases[name])), Render("concept_context", Cases[name]));
 
-    private static List<ClinicalConcept> ToConcepts(Concept[] concepts) => concepts
+    internal static List<ClinicalConcept> ToConcepts(Concept[] concepts) => concepts
         .Select(c => new ClinicalConcept(c.Term, c.Type ?? "", c.Id ?? "", c.IsSnomedConcept, c.IsActive, c.Source, c.Support))
         .ToList();
 
-    private static string Render(string rendererId, Concept[] concepts)
+    internal static string Render(string rendererId, Concept[] concepts)
     {
         var list = new ScriptArray();
         foreach (var c in concepts)

@@ -1,0 +1,15 @@
+{
+  "description": [
+    "Every reply generated from its format: three planned sections, each outlined and drafted",
+    "point by point; the judge's stub answers good on pass 1, so the summary is drafted once."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for fatigue over three months. TSH 9.8 mU/L, free T4 low-normal. Started levothyroxine 50 micrograms daily; repeat TSH in six weeks. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

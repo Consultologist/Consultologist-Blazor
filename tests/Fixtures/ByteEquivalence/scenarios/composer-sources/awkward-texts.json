@@ -1,0 +1,60 @@
+{
+  "description": [
+    "Texts the composer trims or renders. single: opening pinned empty, composed as the empty text.",
+    "pair: the empty part still takes its place in the blank-line join, so the text starts with",
+    "'\\n\\n'; closing's leading and trailing newlines are trimmed. topics: a block's trailing",
+    "newlines and leading spaces are trimmed. sections: a point whose text holds its own '##'",
+    "heading is composed verbatim under its block heading. plan: the reply holding Markdown headings",
+    "and '{{' is rendered as a template before it composes ({{ 3 * 2 }} becomes 6, {{ \"{{\" }} a",
+    "literal '{{'); its trailing newline is trimmed. tone_line: the case's 'plain' branch. summary:",
+    "redraft false, composed empty.",
+    "summary_then_opening: the zero-pass while (no part) and the empty opening (an empty part) compose",
+    "empty; topics_then_opening ends in the blank line before the empty opening."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
+    "topics": [
+      {
+        "title": "History",
+        "kind": "drafted"
+      },
+      {
+        "title": "Examination",
+        "kind": "drafted"
+      }
+    ],
+    "include_plan": true,
+    "tone": "plain",
+    "redraft": false
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "opening": "",
+    "closing": "\n\nClosing line, after two blank lines and before three.\n\n\n",
+    "draft_topic:0": "History paragraph.\n\n",
+    "draft_topic:1": "   Examination paragraph, indented.",
+    "draft_plan": "# Plan\n\n## Medicines\n\nRepeat the echo in {{ 3 * 2 }} months.\nThe braces {{ \"{{\" }} and {{ \"}}\" }} stay literal.\n",
+    "plain_line": "Any questions, just ask.",
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "heading": "Valve",
+          "point": "Mild aortic stenosis."
+        }
+      ]
+    },
+    "draft_point:1/1": "## Not a block heading\n\nA point whose text holds its own heading."
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "description": [
+    "As default, with prior_notes supplied: the patient letter's prompt carries the prior notes in",
+    "place of the none-supplied sentence. Nothing else reads them."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)",
+    "prior_notes": "2026-10-12, GP referral: screening mammogram shows a 14 mm left breast mass; urgent breast clinic requested. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

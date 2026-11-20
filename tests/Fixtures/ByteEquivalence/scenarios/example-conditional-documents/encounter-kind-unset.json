@@ -1,0 +1,18 @@
+{
+  "description": [
+    "encounter_kind left unset (include_billing unset): neither deliverable's condition holds, so",
+    "today's starter refuses the job before any model call (NoApplicableDeliverable)."
+  ],
+  "inputs": {
+    "consult_draft": "Tomasz Nowak, 52, referred with exertional chest tightness for two months. ECG normal at rest; exercise test booked. On amlodipine for hypertension. (Fictional.)",
+    "seen_on": "2026-11-09",
+    "encounter_kind": null,
+    "include_billing": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

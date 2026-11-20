@@ -1,0 +1,145 @@
+{
+  "name": "composer-gates",
+  "version": "v2026.11.1",
+  "specVersion": 30,
+  "derivedFrom": null,
+  "title": "Composer gates fixture",
+  "description": "A byte-equivalence fixture (#1498): what decides whether a deliverable is composed \u2014 two deliverables over the same nodes, a deliverable's if, a terms_subset check that passes or refuses with its failWith sentence, and a prompt that reads another deliverable's composed text. Fictional; not intended for clinical use.",
+  "tags": [
+    "fixture"
+  ],
+  "templating": {
+    "engine": "scriban",
+    "engineVersion": "7.2.5"
+  },
+  "inputs": [
+    {
+      "id": "consult_draft",
+      "label": "Consult draft",
+      "required": true
+    },
+    {
+      "id": "problems",
+      "label": "Problem list",
+      "required": true,
+      "type": "array",
+      "items": "text"
+    },
+    {
+      "id": "audience",
+      "label": "Audience",
+      "required": true,
+      "type": "enum",
+      "values": [
+        "clinician",
+        "patient"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "problem_loop",
+      "label": "Problems",
+      "for": "item in input.problems",
+      "nodes": [
+        "problem_draft"
+      ],
+      "ret": "node.problem_draft"
+    },
+    {
+      "id": "problem_draft",
+      "label": "Drafting a problem",
+      "format": "prose"
+    },
+    {
+      "id": "note_body",
+      "label": "Drafting the closing paragraph",
+      "format": "prose"
+    },
+    {
+      "id": "patient_line",
+      "label": "Writing the patient line",
+      "format": "prose"
+    },
+    {
+      "id": "extract_input_terms",
+      "label": "Extracting the draft's terms",
+      "format": "concept_list",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "extract_note_terms",
+      "label": "Extracting the note's terms",
+      "format": "concept_list",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "extract_copy_terms",
+      "label": "Extracting the record copy's terms",
+      "format": "concept_list",
+      "onInvalid": "fail"
+    },
+    {
+      "id": "note_coverage",
+      "label": "Note coverage check",
+      "format": "terms_subset",
+      "with": {
+        "of": "node.extract_input_terms",
+        "in": "node.extract_note_terms",
+        "failWith": "The note does not cover every clinical term in the draft."
+      },
+      "onInvalid": "fail"
+    },
+    {
+      "id": "copy_coverage",
+      "label": "Record copy coverage check",
+      "format": "terms_subset",
+      "with": {
+        "of": "node.extract_input_terms",
+        "in": "node.extract_copy_terms",
+        "failWith": "The record copy does not cover every clinical term in the draft."
+      },
+      "onInvalid": "fail"
+    },
+    {
+      "id": "cover_note",
+      "label": "Writing the cover letter",
+      "format": "prose"
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "note",
+      "label": "Clinic note",
+      "sources": [
+        "node.problem_loop",
+        "node.note_body"
+      ],
+      "check": "node.note_coverage"
+    },
+    {
+      "id": "record_copy",
+      "label": "Record copy",
+      "sources": [
+        "node.problem_loop",
+        "node.note_body"
+      ],
+      "check": "node.copy_coverage"
+    },
+    {
+      "id": "patient_copy",
+      "label": "Patient copy",
+      "sources": [
+        "node.patient_line"
+      ],
+      "if": "input.audience == \"patient\""
+    },
+    {
+      "id": "cover_letter",
+      "label": "Cover letter",
+      "sources": [
+        "node.cover_note"
+      ]
+    }
+  ]
+}

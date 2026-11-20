@@ -1,0 +1,47 @@
+{
+  "package": "example-structured-intake",
+  "tag": "example-structured-intake-v2026.11.3",
+  "scenario": "all-optional-inputs-unset",
+  "status": "Refused",
+  "failure": "NoApplicableDeliverable: No document applies to these inputs. 'Prior notes' has no entries, and every document this package produces is written from them.",
+  "outputs": {},
+  "prompts": [],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "note",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "senior_review",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "long_stay_summary",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "notes_digest",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "notes_index",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    }
+  ]
+}

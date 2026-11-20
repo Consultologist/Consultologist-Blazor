@@ -1,0 +1,23 @@
+{
+  "description": [
+    "As default, with section_instructions:assessment_plan pinned to prose that writes",
+    "{{ macro.letrozole_prescription_text.content }} where the macro's instruction told it to: the",
+    "reply is rendered as a template over the node's scope, so the Assessment and Plan section holds",
+    "the letrozole counselling text in place of the placeholder."
+  ],
+  "inputs": {
+    "consult_specialty": "medical_oncology",
+    "note_type": "consult",
+    "consult_draft": [
+      "Margaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. Letrozole 2.5 mg daily started today. (Fictional.)"
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "section_instructions:assessment_plan": "Margaret Okafor, 58, has grade 2 ER-positive, HER2-negative invasive ductal carcinoma of the left breast.\n\nLetrozole 2.5 mg daily started today.\n{{ macro.letrozole_prescription_text.content }}\n\nReview in clinic in three months."
+  }
+}

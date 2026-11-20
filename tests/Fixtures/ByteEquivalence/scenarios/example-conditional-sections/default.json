@@ -1,0 +1,34 @@
+{
+  "description": [
+    "Three requested sections: History (narrative), Medications (table) and Social history (omit,",
+    "no notes). The case drafts History as prose and Medications as a table and takes no branch for",
+    "Social history, which coverage names as left out; only History gets a patient-facing line.",
+    "include_billing unset, so the billing standing section is held back by its if."
+  ],
+  "inputs": {
+    "consult_draft": "Ana Souza, 72, seen for falls. Two falls in a month; postural drop 24 mmHg. On doxazosin, ramipril and bendroflumethiazide. Doxazosin stopped today; review in three weeks; return sooner if she faints. New patient, 40 minutes. (Fictional.)",
+    "sections": [
+      {
+        "title": "History",
+        "kind": "narrative",
+        "notes": "Falls and the postural drop."
+      },
+      {
+        "title": "Medications",
+        "kind": "table",
+        "notes": "Include the doxazosin stopped today."
+      },
+      {
+        "title": "Social history",
+        "kind": "omit"
+      }
+    ],
+    "include_billing": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

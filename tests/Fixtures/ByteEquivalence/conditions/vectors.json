@@ -1,0 +1,4434 @@
+{
+  "vectors": [
+    {
+      "id": "composer-gates.patient_copy.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.audience": "clinician"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.audience": "patient"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-macros.section_draft.section_close.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "title": ""
+              }
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "title": " "
+              }
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "title": "lorem"
+              }
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "title": "Plan"
+              }
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-macros.gated.review_note.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.visit": "new"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.visit": "review"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-macros.review_summary.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.visit": "new"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.visit": "review"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-macros.new_visit_note.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.visit": "new"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.visit": "review"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-sources.topic_gate.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "drafted"
+              }
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "left_out"
+              }
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-sources.refine.while",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.redraft": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.redraft": true
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.redraft": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-sources.refine.until",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": ""
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "revise",
+              "feedback": ""
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": " "
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": "lorem"
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": "good"
+            }
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-sources.plan_gate.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.include_plan": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.include_plan": true
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.include_plan": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-sources.tone_case.case",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.tone": "formal"
+          },
+          "result": "formal",
+          "error": null
+        },
+        {
+          "scope": {
+            "input.tone": "plain"
+          },
+          "result": "plain",
+          "error": null
+        },
+        {
+          "scope": {
+            "input.tone": "none"
+          },
+          "result": "none",
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "composer-sources.topic_tally.let",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.topic_loop": ""
+          },
+          "result": "Topic section length: 0",
+          "error": null
+        },
+        {
+          "scope": {
+            "node.topic_loop": " "
+          },
+          "result": "Topic section length: 1",
+          "error": null
+        },
+        {
+          "scope": {
+            "node.topic_loop": "lorem"
+          },
+          "result": "Topic section length: 5",
+          "error": null
+        },
+        {
+          "scope": {
+            "node.topic_loop": "Topic section length: "
+          },
+          "result": "Topic section length: 22",
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-classifier-scope.plan.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.scope": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "in_scope"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "out_of_scope"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "needs_information"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-classifier-scope.decline_letter.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.scope": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "in_scope"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "out_of_scope"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "needs_information"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-classifier-scope.information_request.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.scope": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "in_scope"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "out_of_scope"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.scope": "needs_information"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-conditional-documents.consult_note.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.encounter_kind": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.encounter_kind": "new_patient"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.encounter_kind": "follow_up"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-conditional-documents.progress_note.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.encounter_kind": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.encounter_kind": "new_patient"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.encounter_kind": "follow_up"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-conditional-sections.route.case",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "narrative"
+              }
+            }
+          },
+          "result": "narrative",
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "table"
+              }
+            }
+          },
+          "result": "table",
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "omit"
+              }
+            }
+          },
+          "result": "omit",
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-conditional-sections.narrative_only.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "narrative"
+              }
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "table"
+              }
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "omit"
+              }
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-conditional-sections.applies.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "id": "1"
+            },
+            "input.include_billing": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "1"
+            },
+            "input.include_billing": true
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "1"
+            },
+            "input.include_billing": false
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "billing"
+            },
+            "input.include_billing": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "billing"
+            },
+            "input.include_billing": true
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "billing"
+            },
+            "input.include_billing": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.standing_draft.counselling.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "id": "1"
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "assessment_plan"
+            }
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.route.case",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "narrative"
+              }
+            }
+          },
+          "result": "narrative",
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "table"
+              }
+            }
+          },
+          "result": "table",
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "omit"
+              }
+            }
+          },
+          "result": "omit",
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.narrative_draft.section_caveat.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.consult_note.header_line.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.consult_note.followup_only.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.brief_plan.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult",
+            "input.include_counselling": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "consult",
+            "input.include_counselling": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "consult",
+            "input.include_counselling": false
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up",
+            "input.include_counselling": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up",
+            "input.include_counselling": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up",
+            "input.include_counselling": false
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary",
+            "input.include_counselling": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary",
+            "input.include_counselling": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary",
+            "input.include_counselling": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.counselling.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros.followup_only.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.standing_draft.counselling.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "id": "1"
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "assessment_plan"
+            }
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.route.case",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "narrative"
+              }
+            }
+          },
+          "result": "narrative",
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "table"
+              }
+            }
+          },
+          "result": "table",
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "omit"
+              }
+            }
+          },
+          "result": "omit",
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.narrative_draft.section_caveat.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.consult_note.header_line.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.consult_note.followup_only.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.brief_plan.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult",
+            "input.include_counselling": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "consult",
+            "input.include_counselling": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "consult",
+            "input.include_counselling": false
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up",
+            "input.include_counselling": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up",
+            "input.include_counselling": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up",
+            "input.include_counselling": false
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary",
+            "input.include_counselling": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary",
+            "input.include_counselling": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary",
+            "input.include_counselling": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.counselling.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-macros-warnings.followup_only.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.note_type": "consult"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "follow_up"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.note_type": "discharge_summary"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-nested-note.section_count.let",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.plan": {
+              "summary": "",
+              "sections": []
+            }
+          },
+          "result": 0,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.plan": {
+              "summary": " ",
+              "sections": []
+            }
+          },
+          "result": 0,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.plan": {
+              "summary": "lorem",
+              "sections": []
+            }
+          },
+          "result": 0,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.plan": {
+              "summary": "",
+              "sections": [
+                {
+                  "title": "",
+                  "purpose": ""
+                }
+              ]
+            }
+          },
+          "result": 1,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.plan": {
+              "summary": "",
+              "sections": [
+                {
+                  "title": "",
+                  "purpose": ""
+                },
+                {
+                  "title": " ",
+                  "purpose": ""
+                },
+                {
+                  "title": "lorem",
+                  "purpose": ""
+                }
+              ]
+            }
+          },
+          "result": 3,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-nested-note.refine.while",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": ""
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "revise",
+              "feedback": ""
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": " "
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": "lorem"
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.judge": {
+              "verdict": "good",
+              "feedback": "good"
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-prior-letters.letters.until",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.read_letter": {
+              "answers_question": true,
+              "note": ""
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.read_letter": {
+              "answers_question": false,
+              "note": ""
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.read_letter": {
+              "answers_question": true,
+              "note": " "
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.read_letter": {
+              "answers_question": true,
+              "note": "lorem"
+            }
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-problem-list.follow_up_plan.md.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.follow_up": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.follow_up": "yes"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.follow_up": "no"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-structured-intake.senior_review.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.patient": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "age": 0
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "age": 64
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "age": 65
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "age": 66
+            }
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-structured-intake.long_stay_summary.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.length_of_stay": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.length_of_stay": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.length_of_stay": 6
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.length_of_stay": 7
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.length_of_stay": 8
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-structured-intake.notes_index.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.prior_notes": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.prior_notes": []
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.prior_notes": [
+              ""
+            ]
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.prior_notes": [
+              "",
+              " ",
+              "lorem"
+            ]
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-v12-constructs.consult.formal_note.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.tone": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.tone": "formal"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.tone": "friendly"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "example-v12-constructs.consult.friendly_note.if",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.tone": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.tone": "formal"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.tone": "friendly"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.read.node-value",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.triage": "<absent>"
+          },
+          "result": null,
+          "error": "Condition 'row.read.node-value' failed to evaluate: <input>(1,19) : error : Cannot get the member node.triage.value.priority for a null object."
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "low",
+              "score": 0
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "score": 0
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "high",
+              "score": 0
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "low"
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.read.node-content",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.summary": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": "Reviewed in clinic."
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.read.item-id",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "id": "1"
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "id": "plan"
+            }
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.read.item-value",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "narrative"
+              }
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {}
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "item": {
+              "value": {
+                "kind": "table"
+              }
+            }
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.read.pass-number",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "pass.number": 1
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "pass.number": 2
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "pass.number": 3
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.read.run-date",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "run.date": "2026-11-09"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "run.date": "2026-11-10"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "run.date": "2026-11-11"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.input.x",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "Breathlessness"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.input.x-y",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.patient": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": "",
+              "age": 0
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "age": 0
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": " ",
+              "age": 0
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": "lorem",
+              "age": 0
+            }
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": "Margaret Okafor",
+              "age": 0
+            }
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.patient": {
+              "name": ""
+            }
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.eq",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.kind": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.kind": "new"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.kind": "review"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.ne",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.kind": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.kind": "new"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.kind": "review"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.lt",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 18
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 19
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.le",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 18
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 19
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.gt",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 66
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.ge",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 65
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 66
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.and3",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 66
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 65
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.or3",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 18
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "<absent>",
+            "input.age": 19
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 18
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "new",
+            "input.age": 19
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 18
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": "<absent>",
+            "input.kind": "review",
+            "input.age": 19
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 18
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "<absent>",
+            "input.age": 19
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 18
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "new",
+            "input.age": 19
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 18
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true,
+            "input.kind": "review",
+            "input.age": 19
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 18
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "<absent>",
+            "input.age": 19
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 18
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "new",
+            "input.age": 19
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 18
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false,
+            "input.kind": "review",
+            "input.age": 19
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.not-boolean",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.urgent": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.not-text.node",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.summary": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": "lorem"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.not-text.input",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.add",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 65
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 66
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.subtract",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 17
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 18
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 19
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.multiply",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 3
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 99
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 100
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 101
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.divide",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 3
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 29
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 30
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 31
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.divide.half",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 3
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0.5
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1.5
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2.5
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.modulo",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 3
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": -1
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.size.pipe",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.problems": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": []
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              ""
+            ]
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              "",
+              " ",
+              "lorem"
+            ]
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.size.member",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.problems": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": []
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              ""
+            ]
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              "",
+              " ",
+              "lorem"
+            ]
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.downcase",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "breathlessness"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.strip.input",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.strip.node",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.summary": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": ""
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": " "
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "node.summary": "lorem"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.starts-with",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "Breath"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.ends-with",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "ness"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.contains",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "less"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.date-parse.lt",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.seen_on": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.seen_on": "2026-11-09"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.seen_on": "2026-11-10"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.seen_on": "2026-11-11"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.date-parse.eq",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.seen_on": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.seen_on": "2026-11-09"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.seen_on": "2026-11-10"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.seen_on": "2026-11-11"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.literal.number",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 65
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.literal.true",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.urgent": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.literal.false",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.urgent": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": true
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.urgent": false
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.literal.string",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.kind": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.kind": "new"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.kind": "review"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.let-object",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "node.triage": "<absent>",
+            "input.age": "<absent>"
+          },
+          "result": null,
+          "error": "Let 'row.let-object' failed to evaluate: <input>(1,31) : error : Cannot get the member node.triage.value.priority for a null object."
+        },
+        {
+          "scope": {
+            "node.triage": "<absent>",
+            "input.age": 0
+          },
+          "result": null,
+          "error": "Let 'row.let-object' failed to evaluate: <input>(1,31) : error : Cannot get the member node.triage.value.priority for a null object."
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "low",
+              "score": 0
+            },
+            "input.age": "<absent>"
+          },
+          "result": {
+            "age": null,
+            "priority": "low"
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "low",
+              "score": 0
+            },
+            "input.age": 0
+          },
+          "result": {
+            "age": 0,
+            "priority": "low"
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "score": 0
+            },
+            "input.age": "<absent>"
+          },
+          "result": {
+            "age": null,
+            "priority": null
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "score": 0
+            },
+            "input.age": 0
+          },
+          "result": {
+            "age": 0,
+            "priority": null
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "high",
+              "score": 0
+            },
+            "input.age": "<absent>"
+          },
+          "result": {
+            "age": null,
+            "priority": "high"
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "high",
+              "score": 0
+            },
+            "input.age": 0
+          },
+          "result": {
+            "age": 0,
+            "priority": "high"
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "low"
+            },
+            "input.age": "<absent>"
+          },
+          "result": {
+            "age": null,
+            "priority": "low"
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "node.triage": {
+              "priority": "low"
+            },
+            "input.age": 0
+          },
+          "result": {
+            "age": 0,
+            "priority": "low"
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.let-array",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>",
+            "node.summary": "<absent>"
+          },
+          "result": {
+            "reasons": [
+              "",
+              null
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "<absent>",
+            "node.summary": ""
+          },
+          "result": {
+            "reasons": [
+              "",
+              ""
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "<absent>",
+            "node.summary": " "
+          },
+          "result": {
+            "reasons": [
+              "",
+              " "
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "<absent>",
+            "node.summary": "lorem"
+          },
+          "result": {
+            "reasons": [
+              "",
+              "lorem"
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "",
+            "node.summary": "<absent>"
+          },
+          "result": {
+            "reasons": [
+              "",
+              null
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "",
+            "node.summary": ""
+          },
+          "result": {
+            "reasons": [
+              "",
+              ""
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "",
+            "node.summary": " "
+          },
+          "result": {
+            "reasons": [
+              "",
+              " "
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "",
+            "node.summary": "lorem"
+          },
+          "result": {
+            "reasons": [
+              "",
+              "lorem"
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " ",
+            "node.summary": "<absent>"
+          },
+          "result": {
+            "reasons": [
+              "",
+              null
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " ",
+            "node.summary": ""
+          },
+          "result": {
+            "reasons": [
+              "",
+              ""
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " ",
+            "node.summary": " "
+          },
+          "result": {
+            "reasons": [
+              "",
+              " "
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " ",
+            "node.summary": "lorem"
+          },
+          "result": {
+            "reasons": [
+              "",
+              "lorem"
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem",
+            "node.summary": "<absent>"
+          },
+          "result": {
+            "reasons": [
+              "lorem",
+              null
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem",
+            "node.summary": ""
+          },
+          "result": {
+            "reasons": [
+              "lorem",
+              ""
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem",
+            "node.summary": " "
+          },
+          "result": {
+            "reasons": [
+              "lorem",
+              " "
+            ]
+          },
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem",
+            "node.summary": "lorem"
+          },
+          "result": {
+            "reasons": [
+              "lorem",
+              "lorem"
+            ]
+          },
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "refuse.builtin.upcase",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "BREATHLESSNESS"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "refuse.builtin.round",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 64
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 65
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 66
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "refuse.builtin.first",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.problems": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": []
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              ""
+            ]
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.problems": [
+              "",
+              " ",
+              "lorem"
+            ]
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "refuse.text-less-than",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.reason": "<absent>"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": ""
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": " "
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "lorem"
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.reason": "m"
+          },
+          "result": false,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "refuse.profile",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "profile.name": ""
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "profile.name": " "
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "profile.name": "lorem"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "profile.name": "Dr A. Sample"
+          },
+          "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "refuse.assignment",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {},
+          "result": null,
+          "error": "Condition 'refuse.assignment' must be a boolean expression; it yields nothing."
+        }
+      ]
+    },
+    {
+      "id": "refuse.template",
+      "refused": "Condition 'refuse.template' is a template, not a condition; write the expression bare (node.<id>.value == \"<value>\").",
+      "cases": []
+    },
+    {
+      "id": "refuse.two-statements",
+      "refused": "Condition 'refuse.two-statements' is not one expression; a condition is one boolean expression.",
+      "cases": []
+    }
+  ]
+}

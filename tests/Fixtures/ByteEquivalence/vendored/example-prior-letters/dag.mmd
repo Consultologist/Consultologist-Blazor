@@ -1,0 +1,22 @@
+flowchart TD
+    input_prior_letters(["input.prior_letters"])
+    input_consult_draft(["input.consult_draft"])
+
+    assessment["assessment<br/>Assessment"]
+    letters -->|"value, content"| assessment
+    input_consult_draft --> assessment
+
+    subgraph for_letters["letters: per input.prior_letters item"]
+        read_letter["read_letter<br/>Reading the letter"]
+        letter_summary["letter_summary<br/>Summarising the letter"]
+    end
+    letters["letters<br/>Prior letters<br/>item in input.prior_letters"]
+    input_consult_draft --> read_letter
+    read_letter -->|"value"| letter_summary
+    input_prior_letters -->|"for"| for_letters
+    letter_summary -->|"ret"| letters
+    read_letter -.->|"if"| letters
+
+    result_note{{"note<br/>Consultation note with prior letters"}}
+    assessment --> result_note
+    letters --> result_note
