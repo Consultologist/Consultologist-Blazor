@@ -10,8 +10,8 @@ namespace Consultologist.PackageFormat.V31;
 /// § 11) or the area's own <c>A04-NNN</c> with its placeholders filled in, character for character. <c>&lt;site&gt;</c>
 /// is <see cref="ExpressionSite.Subject"/> (D4), <c>&lt;member&gt;</c> its <see cref="ExpressionSite.Member"/>, and
 /// every refusal names the site's file. No sentence carries a value from an input or a model: only ids, paths,
-/// operation names, type strings, counts, limits and package text (a literal, a pattern). Tasks 8 and 9 add
-/// S03-036 to S03-039 and S03-044.
+/// operation names, type strings, counts, limits and package text (a literal, a pattern). Task 9 adds
+/// S03-036, S03-039 and S03-044.
 /// </summary>
 internal static class ExpressionSentences
 {
@@ -193,6 +193,17 @@ internal static class ExpressionSentences
     /// <summary>S03-035: Markdown given to <c>cat</c>.</summary>
     public static SourceRefusal CatsMarkdown(ExpressionSite site, string path, string format) =>
         Say(site, "S03-035", $"{site.Subject} cats {path} ({format}); convert Markdown with plain first.");
+
+    /// <summary>S03-037 (a warning, § 11.2): a condition that reads the run fact <paramref name="fact"/> itself.</summary>
+    public static SourceRefusal RunDependentDecision(ExpressionSite site, string fact) =>
+        Say(site, "S03-037", $"{site.Subject} {site.Member} reads run.{fact}; its decision can differ between runs with the same inputs.");
+
+    /// <summary>
+    /// S03-038 (a warning, § 11.2): computed node <paramref name="id"/> reads <paramref name="read"/>, a run fact
+    /// (<c>run.id</c>) or a run-dependent value's path; <paramref name="path"/> is the node's file.
+    /// </summary>
+    public static SourceRefusal RunDependentValue(string id, string read, string path) =>
+        new("S03-038", $"Computed node '{id}' reads {read}, which is run-dependent; its value can differ between runs with the same inputs.", path);
 
     /// <summary>S03-042: a counted repetition over 100.</summary>
     public static SourceRefusal PatternRepeats(ExpressionSite site, string pattern, int times) =>

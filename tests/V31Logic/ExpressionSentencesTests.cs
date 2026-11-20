@@ -63,6 +63,8 @@ public class ExpressionSentencesTests
         ExpressionSentences.ObjectWithoutFormat(Gate),
         ExpressionSentences.BuildsFieldAs(Total, "{ a: number }", "a", "string", "number"),
         ExpressionSentences.LiteralNotText(Gate, "matches", "pattern", "a number"),
+        ExpressionSentences.RunDependentDecision(Gate, "date"),
+        ExpressionSentences.RunDependentValue("total", "run.id", "nodes/total.md"),
     ];
 
     private static IEnumerable<string> Ids(string prefix, int from, int to) =>
@@ -76,9 +78,9 @@ public class ExpressionSentencesTests
         Assert.All(every, V31Contract.AssertSentence);
         Assert.All(every, r => Assert.Equal(r.Id == "S03-020" || r.Id == "S03-021" ? "deliverables/note.md"
             : r.Id == "S03-022" ? "macros/footer.md"
-            : r.Id is "S03-026" or "S03-027" or "S03-028" or "A04-009" ? "nodes/total.md" : "nodes/gate.md", r.Path));
+            : r.Id is "S03-026" or "S03-027" or "S03-028" or "S03-038" or "A04-009" ? "nodes/total.md" : "nodes/gate.md", r.Path));
         Assert.Equal(
-            Ids("S03", 2, 35).Concat(["S03-042", "S03-043"]).Concat(Ids("A04", 1, 10)).Order(StringComparer.Ordinal),
+            Ids("S03", 2, 35).Concat(["S03-037", "S03-038", "S03-042", "S03-043"]).Concat(Ids("A04", 1, 10)).Order(StringComparer.Ordinal),
             every.Select(r => r.Id).Order(StringComparer.Ordinal));
     }
 

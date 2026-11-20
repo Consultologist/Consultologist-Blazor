@@ -585,8 +585,9 @@ internal static partial class RefusalPackages
     /// </summary>
     private static Dictionary<string, byte[]> TwoWordings(string second)
     {
+        const string blank = "{ \"blank\": [{ \"var\": \"input.consult_draft.content\" }] }";
         static string If(string label, bool brief, string child) => Json(Node("if", label, Plain, false, true,
-            $"\"if\": {{ \"===\": [{{ \"var\": \"input.consult_draft.content\" }}, {(brief ? "\"\"" : "\"full\"")}] }}, "
+            $"\"if\": {(brief ? blank : $"{{ \"!\": [{blank}] }}")}, "
             + $"\"then\": {{ \"nodes\": [\"{child}\"], \"ret\": \"node.refine.{(brief ? "brief" : "detailed")}.{child}\" }}, \"else\": null"));
 
         return WithWhile()
@@ -648,7 +649,7 @@ internal static partial class RefusalPackages
     private static Dictionary<string, byte[]> WithIf() =>
         MinimalListing("billing_gate")
             .With("nodes/billing_gate/index.json", Json(Node("if", "Adding the billing text to a written draft", Plain, true, false,
-                "\"if\": { \"!==\": [{ \"var\": \"input.consult_draft.content\" }, \"\"] }, "
+                "\"if\": { \"!\": [{ \"blank\": [{ \"var\": \"input.consult_draft.content\" }] }] }, "
                 + "\"then\": { \"nodes\": [\"billing_text\"], \"ret\": \"node.billing_gate.billing_text\" }, "
                 + "\"else\": null")))
             .With("nodes/billing_gate/billing_text.md", Md(
