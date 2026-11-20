@@ -80,6 +80,92 @@ internal static class SourceSentences
     public static SourceRefusal MemberWrongType(string declaration, string member, string whatItIs, string whatItMustBe, string path) =>
         new("A02-001", $"{declaration} declares '{member}' as {whatItIs}; it is {whatItMustBe}.", path);
 
+    /// <summary>S01-006: a file no index lists; <paramref name="folder"/> is the folder whose index should, or <c>the package root</c>.</summary>
+    public static SourceRefusal NotListed(string path, string folder) =>
+        new("S01-006", $"File '{path}' is not listed: every file in {folder} is named once in its index.json, or is index.json or README.md.", path);
+
+    /// <summary>S01-007: a folder without its <c>index.json</c>; the refusal's path is the missing file.</summary>
+    public static SourceRefusal NoIndex(string folder) =>
+        new("S01-007", $"{folder} has no index.json; every folder lists its members, even when it has none (\"items\": []).", folder + "/index.json");
+
+    /// <summary>S01-008: a top-level folder that is not there at all; the refusal's path is the index it needs.</summary>
+    public static SourceRefusal NoTopFolder(string folder) =>
+        new("S01-008", $"The package has no {folder}/ folder; all nine top-level folders are always present.", folder + "/index.json");
+
+    /// <summary>S01-009: a listed id with no member of the kind its folder holds; <paramref name="list"/> is the index's path (and member, for a body).</summary>
+    public static SourceRefusal ListedButMissing(string list, string id, string folder) =>
+        new("S01-009", $"{list} lists '{id}', but {folder} has no {id}.md or {id}/.", IndexPath(list));
+
+    /// <summary>S01-010: an id listed more than once in one list.</summary>
+    public static SourceRefusal ListedTwice(string list, string id) =>
+        new("S01-010", $"{list} lists '{id}' twice.", IndexPath(list));
+
+    /// <summary>S01-011: an id listed with a trailing <c>/</c>; <paramref name="id"/> is the bare id.</summary>
+    public static SourceRefusal ListedWithSlash(string list, string id) =>
+        new("S01-011", $"{list} lists '{id}/'; list a folder by its bare id.", IndexPath(list));
+
+    /// <summary>S01-012: a folder holding both <c>&lt;id&gt;.md</c> and <c>&lt;id&gt;/</c>; the refusal's path is the file.</summary>
+    public static SourceRefusal FileAndFolder(string folder, string id) =>
+        new("S01-012", $"{folder} holds both {id}.md and {id}/: an id names one file or one folder.", $"{folder}/{id}.md");
+
+    /// <summary>S01-013: a folder inside a delivery folder; <paramref name="path"/> is the inner folder's.</summary>
+    public static SourceRefusal NestedDeliveryFolder(string path) =>
+        new("S01-013", $"Delivery folder '{path}' is inside another delivery folder; delivery folders are one level deep.", path);
+
+    /// <summary>S01-016: a <c>.md</c> file that is not fence, one JSON object, fence.</summary>
+    public static SourceRefusal NoFrontMatter(string path) =>
+        new("S01-016", $"File '{path}' must start with a line of exactly ---, then one JSON object, then a line of exactly ---.", path);
+
+    /// <summary>
+    /// S01-017: a header (or, D6, a plain JSON file) that is not JSON. The parser's message is
+    /// given without its own final full stop, since the sentence ends with one.
+    /// </summary>
+    public static SourceRefusal NotJson(string path, string message) =>
+        new("S01-017", $"The header of '{path}' is not valid JSON: {message.TrimEnd().TrimEnd('.')}.", path);
+
+    /// <summary>S01-018: a member written twice in one object of a header (or, D6, a plain JSON file).</summary>
+    public static SourceRefusal DuplicateMember(string path, string member) =>
+        new("S01-018", $"The header of '{path}' declares '{member}' twice.", path);
+
+    /// <summary>S01-019: a required body that is empty; <paramref name="declaration"/> is D9's (<c>Renderer 'x'</c>), <paramref name="what"/> <c>prompt</c>, <c>template</c> or <c>text</c>.</summary>
+    public static SourceRefusal EmptyBody(string declaration, string what, string path) =>
+        new("S01-019", $"{declaration} has an empty body; its {what} is the body.", path);
+
+    /// <summary>S01-020: a body where none may be; <paramref name="what"/> is <c>computed node</c>, <c>call</c> or <c>check</c>.</summary>
+    public static SourceRefusal HasBody(string declaration, string what, string path) =>
+        new("S01-020", $"{declaration} has a body; a {what} keeps everything in its header.", path);
+
+    /// <summary>S01-034: a package format named like a <c>built-in</c> or <c>catalogue</c> one.</summary>
+    public static SourceRefusal FormatReusesName(string id, string builtInOrCatalogue, string path) =>
+        new("S01-034", $"Format '{id}' reuses the name of a {builtInOrCatalogue} format: rename it.", path);
+
+    /// <summary>S01-035: a package renderer named like a built-in one.</summary>
+    public static SourceRefusal RendererReusesName(string id, string path) =>
+        new("S01-035", $"Renderer '{id}' reuses the name of a built-in renderer: rename it.", path);
+
+    /// <summary>S01-041: JSON nested past <see cref="SourceBounds.JsonDepth"/> (D2); <paramref name="pointer"/> is the container's.</summary>
+    public static SourceRefusal JsonTooDeep(string path, string pointer) =>
+        new("S01-041", $"File '{path}' nests JSON more than 32 levels deep at {pointer}; the most is SourceBounds.jsonDepth ({SourceBounds.JsonDepth}).", path);
+
+    /// <summary>A02-003 (D8): no <c>manifest.json</c>.</summary>
+    public static SourceRefusal NoManifest() =>
+        new("A02-003", "The package has no manifest.json; it holds the package's name, version and inputs.", "manifest.json");
+
+    /// <summary>A02-004 (D8): a <c>specVersion</c> other than 31; <paramref name="written"/> is the number as written.</summary>
+    public static SourceRefusal SpecVersionNotRead(string written) =>
+        new("A02-004", $"The manifest declares specVersion {written}; this reader reads 31.", "manifest.json");
+
+    /// <summary>A02-005 (D6): a plain JSON file whose root is not an object.</summary>
+    public static SourceRefusal NotAnObject(string path) =>
+        new("A02-005", $"File '{path}' must hold one JSON object.", path);
+
+    /// <summary>The file a <c>&lt;list&gt;</c> names: the index's path, before the body member a flow folder's list adds.</summary>
+    private static string IndexPath(string list)
+    {
+        var space = list.IndexOf(' ');
+        return space < 0 ? list : list[..space];
+    }
+
     private static string Kib(long bytes) =>
         ((bytes + 1023) / 1024).ToString(System.Globalization.CultureInfo.InvariantCulture);
 

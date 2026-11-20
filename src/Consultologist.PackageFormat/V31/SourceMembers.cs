@@ -114,9 +114,10 @@ public static class SourceMembers
         return written.IndexOfAny(['.', 'e', 'E']) < 0;
     }
 
-    /// <summary>A02-001's <c>&lt;what it is&gt;</c>.</summary>
-    private static string Describe(JsonNode value) => value switch
+    /// <summary>A02-001's <c>&lt;what it is&gt;</c>; <c>null</c> for a JSON <c>null</c>.</summary>
+    internal static string Describe(JsonNode? value) => value switch
     {
+        null => "null",
         JsonArray => "a list",
         JsonObject => "an object",
         _ => Kind(value) switch
