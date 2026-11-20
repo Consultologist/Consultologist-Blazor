@@ -149,7 +149,9 @@ public class IRegexpTests
     [Fact]
     public void Check_IsCachedByPattern()
     {
-        Assert.Same(IRegexp.Check("letrozole"), IRegexp.Check("letrozole"));
+        // The cache is the process's, and another test class may fill it to its cap (which clears it)
+        // between the two calls; so look until two calls in a row give the one cached result.
+        Assert.Contains(Enumerable.Range(0, 100), _ => ReferenceEquals(IRegexp.Check("letrozole"), IRegexp.Check("letrozole")));
     }
 
     /// <summary>A distinct valid pattern for each number: a literal word, then the number's digits.</summary>
@@ -174,8 +176,8 @@ public class IRegexpTests
         Assert.Equal(IRegexpFault.NotIRegexp, IRegexp.Check("(uncached").Fault);
         Assert.False(IRegexp.IsCached("(uncached"));
 
-        Assert.Equal(IRegexpFault.None, IRegexp.Check("cached").Fault);
-        Assert.True(IRegexp.IsCached("cached"));
+        // As above: a clear by another test class may fall between the check and the look.
+        Assert.Contains(Enumerable.Range(0, 100), _ => IRegexp.Check("cached").Fault == IRegexpFault.None && IRegexp.IsCached("cached"));
     }
 
     [Fact]
