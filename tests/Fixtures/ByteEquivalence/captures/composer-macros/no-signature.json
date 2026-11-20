@@ -7,7 +7,7 @@
   "outputs": {
     "section_draft:0": "History paragraph: palpitations for two months.\n\n",
     "section_draft:1": "Plan paragraph: apixaban started.",
-    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation."
+    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\n"
   },
   "prompts": [
     {
@@ -83,6 +83,27 @@
       "reason": null,
       "hash": "sha256:9d821f2b58be469e5f1cd61225dda4d76cacbbd9cee82a78e176e7ba9266cf45",
       "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\ncc: the referring practice (fictional)"
+    },
+    {
+      "id": "review_summary",
+      "state": "skipped",
+      "reason": "needs `input.visit == \"review\"`; it does not hold",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "echoes",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:816fb51c7edb4cb0cf4fc53e3d288ccf576458e080294cab325da1da932bdc8c",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\nBody as this macro reads it: [Letter body: palpitations from paroxysmal atrial fibrillation.\n\n]\n\nNew-visit note as this macro reads it: [First visit to this clinic.\n]"
+    },
+    {
+      "id": "signed_only",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:fa71190d0e6c600ab7a2bb9148b67718a7987cc8d66690037f9dd255bb056a94",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation."
     }
   ]
 }

@@ -4,7 +4,7 @@
   "specVersion": 30,
   "derivedFrom": null,
   "title": "Composer macros fixture",
-  "description": "A byte-equivalence fixture (#1498): the deliverable composer's macros and signature, one deliverable per rule \u2014 prepend, append, both and two at one place; a macro's own if and a placement's if; a macro that renders empty; optional macros; a macro reading the profile and the run date; node macros before and after a loop's item; and a signed letter. Fictional; not intended for clinical use.",
+  "description": "A byte-equivalence fixture (#1498): the deliverable composer's macros and signature, one deliverable per rule \u2014 prepend, append, both, two at one place; a macro's own if and a placement's if; an empty-rendering macro; optional macros; the profile and the run date; node macros around a loop's item; signed deliverables; placed macros reading a node, a macro and a deliverable. Fictional; not intended for clinical use.",
   "tags": [
     "fixture"
   ],
@@ -58,7 +58,10 @@
     "author_line",
     "section_intro",
     "section_close",
-    "cc_line"
+    "cc_line",
+    "body_echo",
+    "visit_echo",
+    "quoted_review"
   ],
   "nodes": [
     {
@@ -218,6 +221,49 @@
           "id": "cc_line",
           "at": "append"
         }
+      ],
+      "signature": true
+    },
+    {
+      "id": "review_summary",
+      "label": "A review summary",
+      "sources": [
+        "node.letter_body"
+      ],
+      "if": "input.visit == \"review\"",
+      "macros": [
+        {
+          "id": "letterhead",
+          "at": "prepend"
+        }
+      ]
+    },
+    {
+      "id": "echoes",
+      "label": "Macros reading a node, a macro and a deliverable",
+      "sources": [
+        "node.letter_body"
+      ],
+      "macros": [
+        {
+          "id": "body_echo",
+          "at": "append"
+        },
+        {
+          "id": "visit_echo",
+          "at": "append"
+        },
+        {
+          "id": "quoted_review",
+          "at": "append"
+        }
+      ]
+    },
+    {
+      "id": "signed_only",
+      "label": "A signed deliverable with no macro",
+      "sources": [
+        "node.letter_body"
       ],
       "signature": true
     }

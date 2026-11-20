@@ -7,7 +7,7 @@
   "outputs": {
     "section_draft:0": "History paragraph: palpitations for two months.\n\n",
     "section_draft:1": "Plan paragraph: apixaban started.",
-    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation."
+    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\n"
   },
   "prompts": [
     {
@@ -83,6 +83,27 @@
       "reason": null,
       "hash": "sha256:bd62eda1136bd601eb8e001da79e073237d1efaf5b60ffba66913d84c295b6b0",
       "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\ncc: the referring practice (fictional)\n\nDr A. Sample\nInternal Medicine"
+    },
+    {
+      "id": "review_summary",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:cf9271152d91c4a44cf267e130c3c3ae8266f358a1e997e648b3c55473b827b7",
+      "text": "Riverside Clinic (fictional)\n\nLetter body: palpitations from paroxysmal atrial fibrillation."
+    },
+    {
+      "id": "echoes",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:08155738e338404e11f8929d1f85cdd94120ae3a1c9e87a07ef1456e8eee0c5c",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\nBody as this macro reads it: [Letter body: palpitations from paroxysmal atrial fibrillation.\n\n]\n\nNew-visit note as this macro reads it: []\n\nReview summary as this macro reads it: [Letter body: palpitations from paroxysmal atrial fibrillation.]"
+    },
+    {
+      "id": "signed_only",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:42383c10685f5e81864470c1cfc4d2e220e5a2208de5803a1989c98627a9bb0c",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\nDr A. Sample\nInternal Medicine"
     }
   ]
 }
