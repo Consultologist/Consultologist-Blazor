@@ -107,7 +107,12 @@ public static class JsonLogicFunctions
         }
     }
 
-    /// <summary>Truthiness (part 03 § 6.4): <c>false</c>, <c>null</c>, the empty list, <c>0</c> and <c>""</c> are false; anything else is true.</summary>
+    /// <summary>
+    /// JSON Logic's operand truthiness (part 03 § 6.4), the rule <c>if</c>, <c>and</c>, <c>or</c> and <c>!</c> apply to the
+    /// data values they are given inside a rule: <c>false</c>, <c>null</c>, the empty list, <c>0</c> and <c>""</c> are false; anything else is true.
+    /// It is not how a condition's result is tested: that is <see cref="IJsonLogicRule.Decide"/>, which is stricter and
+    /// fails a result that is a number, text or an object (S03-041) where this reads <c>0</c> and <c>""</c> as false.
+    /// </summary>
     public static bool Truthy(JsonNode? value) => value switch
     {
         null => false,
