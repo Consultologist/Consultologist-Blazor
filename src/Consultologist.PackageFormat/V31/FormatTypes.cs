@@ -55,43 +55,52 @@ public enum FormatShape
 /// Every method takes a format as written (a name or a schema) that may not have passed the
 /// dialect checker, and returns for any <see cref="JsonNode"/>: an unknown name, a loop through
 /// names or <c>#/$defs</c>, or a value that is no schema at all. No walk goes deeper than
-/// <see cref="SourceBounds.JsonDepth"/> schemas or past <see cref="NodeBudget"/> of them; what it
-/// cannot read it leaves as written.
+/// <see cref="SourceBounds.JsonDepth"/> schemas or past <see cref="SchemaBudget"/> of them. The
+/// forms and hashes are meaningful only for a format that <see cref="Expands"/>; the checker
+/// refuses one that does not.
 /// </para>
 /// </summary>
 public static class FormatTypes
 {
     /// <summary>
     /// The most schemas one call walks. Inlining references copies a format once per place it is
-    /// referenced, so a chain of formats each referring to the next twice would otherwise write
-    /// 2^n copies; past this, references are left as written.
+    /// referenced, so a chain of formats each referring to the next twice would write 2^n copies.
+    /// Past this bound (or past <see cref="SourceBounds.JsonDepth"/>) a walk copies each further
+    /// schema as written, unnormalised, so its form and hash no longer mean anything;
+    /// <see cref="Expands"/> says when that happened.
     /// </summary>
-    internal const int NodeBudget = 10_000;
+    public const int SchemaBudget = 10000;
 
     /// <summary>
     /// The type form (D9): <c>title</c>, <c>description</c>, <c>$schema</c>, <c>$id</c> and
-    /// <c>$defs</c> dropped, <c>#/$defs</c> references inlined, a name written <c>{ "$ref": name }</c>,
-    /// <c>string</c>, <c>number</c>, <c>boolean</c> and <c>date</c> written as references to the
-    /// built-ins, a nullable type array written as an <c>anyOf</c> with <c>{ "type": "null" }</c>,
-    /// <c>anyOf</c> members sorted by their canonical JSON and de-duplicated, <c>required</c> sorted.
-    /// A name, or a <c>$ref</c> with only annotations, gives its schema's type form; an unknown
-    /// name gives <c>{ "$ref": name }</c>; anything that is not a schema is returned as written
-    /// (a copy; null for null).
+    /// <c>$defs</c> dropped, <c>#/$defs</c> references inlined, a name written <c>{ "$ref": name }</c>
+    /// at every depth, the root included (references are compared by name, never dereferenced,
+    /// part 02 § 2.3), <c>string</c>, <c>number</c>, <c>boolean</c> and <c>date</c> schemas written
+    /// as references to the built-ins of those names, a nullable type array written as an
+    /// <c>anyOf</c> with <c>{ "type": "null" }</c>, <c>anyOf</c> members sorted by their canonical
+    /// JSON and de-duplicated, <c>required</c> sorted. Anything that is not a schema is returned
+    /// as written (a copy; null for null). Meaningful only for a format that <see cref="Expands"/>.
     /// </summary>
     public static JsonNode? TypeForm(JsonNode? format, FormatSet formats)
     {
         ArgumentNullException.ThrowIfNull(formats);
-        var walk = new Walk(formats, keepId: false);
-        if (FormatSet.NameOf(format) is { } name)
-        {
-            return formats.Find(name)?.Schema is { } schema ? walk.Type(schema, Defs(schema), 0) : Ref(name);
-        }
-
-        return walk.Type(format, Defs(format), 0);
+        return new Walk(formats, keepId: false).Type(format, Defs(format), 0);
     }
 
-    /// <summary>The hash of <see cref="TypeForm"/>: what the record and <c>resolve.json</c> call <c>typeHash</c>.</summary>
-    public static string TypeHash(JsonNode? format, FormatSet formats) => CanonicalJson.Hash(TypeForm(format, formats));
+    /// <summary>
+    /// The type hash <c>resolve.json</c> and the record carry for a format: for a name (or a
+    /// <c>$ref</c> with only annotations), the hash of the <b>named schema's</b> type form, in which
+    /// nested names stay references; for an inline schema, the hash of its <see cref="TypeForm"/>.
+    /// So for a user-defined name it is not the hash of <c>TypeForm(name)</c>, and two formats with
+    /// identical schemas share it without being <see cref="Same"/>: compare types with
+    /// <see cref="Same"/>, never through this hash. Meaningful only for a format that <see cref="Expands"/>.
+    /// </summary>
+    public static string TypeHash(JsonNode? format, FormatSet formats)
+    {
+        ArgumentNullException.ThrowIfNull(formats);
+        var schema = FormatSet.NameOf(format) is { } name ? formats.Find(name)?.Schema : null;
+        return CanonicalJson.Hash(schema is null ? TypeForm(format, formats) : TypeForm(schema, formats));
+    }
 
     /// <summary>
     /// The full form (D8): every reference inlined, every keyword kept. A <c>$ref</c> site becomes
@@ -99,7 +108,8 @@ public static class FormatTypes
     /// <c>title</c> in place of the target's and the descriptions joined <c>"&lt;target&gt;\n&lt;site&gt;"</c>;
     /// <c>$defs</c> are dropped once inlined; a nullable type array is written type first. A name
     /// at the root gives its schema with its <c>$schema</c> and <c>$id</c>. A reference that is
-    /// unknown, or that reaches a format already being inlined, is left as written.
+    /// unknown, or that reaches a format already being inlined, is left as written. Meaningful
+    /// only for a format that <see cref="Expands"/>.
     /// </summary>
     public static JsonNode? FullForm(JsonNode? format, FormatSet formats)
     {
@@ -107,14 +117,35 @@ public static class FormatTypes
         return new Walk(formats, keepId: true).Full(format, Defs(format), 0, root: true);
     }
 
-    /// <summary>The hash of <see cref="FullForm"/> without <c>$id</c>: what the record and <c>resolve.json</c> call <c>formatHash</c>.</summary>
+    /// <summary>
+    /// The hash of <see cref="FullForm"/> without <c>$id</c>: what the record and <c>resolve.json</c>
+    /// call <c>formatHash</c>. Meaningful only for a format that <see cref="Expands"/>.
+    /// </summary>
     public static string FormatHash(JsonNode? format, FormatSet formats)
     {
         ArgumentNullException.ThrowIfNull(formats);
         return CanonicalJson.Hash(new Walk(formats, keepId: false).Full(format, Defs(format), 0, root: true));
     }
 
-    /// <summary>Type equality: the two <see cref="TypeForm"/>s write the same canonical JSON.</summary>
+    /// <summary>
+    /// Whether the full form of <paramref name="format"/> can be built: false when building it
+    /// passes <see cref="SchemaBudget"/> schemas or <see cref="SourceBounds.JsonDepth"/> levels,
+    /// or reaches a name or <c>#/$defs</c> entry that is unknown or already being inlined (a loop).
+    /// The forms and hashes of a format that does not expand are not normalised.
+    /// </summary>
+    public static bool Expands(JsonNode? format, FormatSet formats)
+    {
+        ArgumentNullException.ThrowIfNull(formats);
+        var walk = new Walk(formats, keepId: false);
+        walk.Full(format, Defs(format), 0, root: true);
+        return !walk.Incomplete;
+    }
+
+    /// <summary>
+    /// Type equality: the two <see cref="TypeForm"/>s write the same canonical JSON. A name and
+    /// its <c>$ref</c> are one; two names are the same only when they are one name, or a built-in's
+    /// name against its schema.
+    /// </summary>
     public static bool Same(JsonNode? a, JsonNode? b, FormatSet formats) =>
         CanonicalJson.Write(TypeForm(a, formats)) == CanonicalJson.Write(TypeForm(b, formats));
 
@@ -122,7 +153,9 @@ public static class FormatTypes
     /// Whether a value of format <paramref name="value"/> may stand where <paramref name="expected"/>
     /// is: <see cref="Same"/>; or <c>integer</c> for <c>number</c>; a text format for <c>string</c>;
     /// a format for a union with a member it fits (so <c>T</c> for <c>T | null</c>); a union whose
-    /// every member fits; <c>list&lt;A&gt;</c> for <c>list&lt;B&gt;</c> when A fits B. Never the reverse.
+    /// every member fits; <c>list&lt;A&gt;</c> for <c>list&lt;B&gt;</c> when A fits B. Never the
+    /// reverse. Names are compared by name; one is opened only to read its text kind or whether it
+    /// is an <c>integer</c>.
     /// </summary>
     public static bool Fits(JsonNode? value, JsonNode? expected, FormatSet formats)
     {
@@ -138,11 +171,12 @@ public static class FormatTypes
     }
 
     /// <summary>
-    /// The union of <paramref name="members"/> (part 02 § 2.2): the first, as written, when all are
-    /// <see cref="Same"/>; otherwise <c>{ "anyOf": [...] }</c> of the members that are not the same
-    /// as an earlier one, in the order given, a name written as <c>{ "$ref": name }</c>.
+    /// The union of <paramref name="members"/> (part 02 § 2.2): null for none; the first, as
+    /// written, when all are <see cref="Same"/> (so a union whose members de-duplicate to one is
+    /// that member); otherwise <c>{ "anyOf": [...] }</c> of the members that are not the same as
+    /// an earlier one, in the order given, a name written as <c>{ "$ref": name }</c>.
     /// </summary>
-    public static JsonNode UnionOf(IReadOnlyList<JsonNode> members, FormatSet formats)
+    public static JsonNode? UnionOf(IReadOnlyList<JsonNode> members, FormatSet formats)
     {
         ArgumentNullException.ThrowIfNull(members);
         ArgumentNullException.ThrowIfNull(formats);
@@ -150,9 +184,12 @@ public static class FormatTypes
         var distinct = members
             .Where(m => m is not null && seen.Add(CanonicalJson.Write(TypeForm(m, formats))))
             .ToList();
-        return distinct.Count == 1
-            ? distinct[0].DeepClone()
-            : new JsonObject { ["anyOf"] = new JsonArray(distinct.Select(AsSchema).ToArray()) };
+        return distinct.Count switch
+        {
+            0 => null,
+            1 => distinct[0].DeepClone(),
+            _ => new JsonObject { ["anyOf"] = new JsonArray(distinct.Select(AsSchema).ToArray()) },
+        };
     }
 
     /// <summary>
@@ -181,15 +218,15 @@ public static class FormatTypes
         return schema != null && AdmitsNull(schema);
     }
 
-    /// <summary><c>plaintext</c>, <c>markdown_block</c> or <c>markdown_inline</c> by the annotations at the root <paramref name="format"/> resolves to; otherwise null.</summary>
+    /// <summary><c>plaintext</c>, <c>markdown_block</c> or <c>markdown_inline</c> by the annotations of the string schema <paramref name="format"/> resolves to; otherwise null.</summary>
     public static string? TextKind(JsonNode? format, FormatSet formats)
     {
         ArgumentNullException.ThrowIfNull(formats);
         return KindOf(Follow(format, Defs(format), formats).Schema);
     }
 
-    /// <summary>The text kind <paramref name="schema"/>'s own <c>contentMediaType</c> and <c>x-markdown</c> give.</summary>
-    internal static string? KindOf(JsonObject? schema) => Text(schema?["contentMediaType"]) switch
+    /// <summary>The text kind a <c>"type": "string"</c> schema's own <c>contentMediaType</c> and <c>x-markdown</c> give; null for any other type.</summary>
+    internal static string? KindOf(JsonObject? schema) => Text(schema?["type"]) != "string" ? null : Text(schema!["contentMediaType"]) switch
     {
         "text/plain" => "plaintext",
         "text/markdown" => Text(schema!["x-markdown"]) switch
@@ -296,7 +333,7 @@ public static class FormatTypes
         var type = schema["type"] is JsonArray pair ? NullablePair(pair) : Text(schema["type"]);
         return type switch
         {
-            "string" when schema.ContainsKey("contentMediaType") => FormatShape.Text,
+            "string" when Text(schema["type"]) == "string" && schema.ContainsKey("contentMediaType") => FormatShape.Text,
             "string" when schema.ContainsKey("enum") || schema.ContainsKey("oneOf") => FormatShape.Enum,
             "string" when Text(schema["format"]) == "date" => FormatShape.Date,
             "string" => FormatShape.String,
@@ -310,13 +347,37 @@ public static class FormatTypes
         };
     }
 
-    /// <summary>One call's walk: the formats being inlined (so a loop stops) and what is left of the budget.</summary>
+    /// <summary>
+    /// One call's walk: the formats being inlined (so a loop stops), what is left of the budget,
+    /// and whether anything was left unexpanded (<see cref="Incomplete"/>).
+    /// </summary>
     private sealed class Walk(FormatSet formats, bool keepId)
     {
         private readonly HashSet<JsonNode> open = new(ReferenceEqualityComparer.Instance);
-        private int budget = NodeBudget;
+        private int budget = SchemaBudget;
 
-        private bool Spend() => budget-- > 0;
+        /// <summary>
+        /// Whether the walk passed its bound (<see cref="SchemaBudget"/>, <see cref="SourceBounds.JsonDepth"/>)
+        /// or met a reference it could not inline (unknown, or a loop) and copied it as written.
+        /// </summary>
+        public bool Incomplete { get; private set; }
+
+        private bool Within(int depth)
+        {
+            if (depth > SourceBounds.JsonDepth || budget-- <= 0)
+            {
+                Incomplete = true;
+                return false;
+            }
+
+            return true;
+        }
+
+        private JsonNode? Unexpanded(JsonNode node)
+        {
+            Incomplete = true;
+            return node.DeepClone();
+        }
 
         /// <summary>The type form of one schema; <paramref name="defs"/> are its file's.</summary>
         public JsonNode? Type(JsonNode? node, JsonObject? defs, int depth)
@@ -326,11 +387,13 @@ public static class FormatTypes
                 return Ref(name);
             }
 
-            if (node is not JsonObject obj || depth > SourceBounds.JsonDepth || !Spend())
+            if (node is not JsonObject obj || !Within(depth))
             {
                 return node?.DeepClone();
             }
 
+            // A $ref with keywords other than title and description beside it is refused by the
+            // dialect (§ 3.1); it is not read as a reference here, and its keywords are kept.
             if (Text(obj["$ref"]) is { } reference && OnlyAnnotationsBeside(obj))
             {
                 if (FormatSet.NameOf(obj) is { } refName)
@@ -348,6 +411,9 @@ public static class FormatTypes
                 return Ref(reference);
             }
 
+            // A type array that is not one type and "null" is refused by the dialect (S02-029); it
+            // is kept as written. "type": ["string", "null"] beside format: "date" is refused too
+            // (S02-030), and reads as the nullable date it means.
             if (obj["type"] is JsonArray pair && NullablePair(pair) is { } single)
             {
                 return new JsonObject { ["anyOf"] = Sorted([TypeObject(obj, defs, depth, single), new JsonObject { ["type"] = "null" }]) };
@@ -429,16 +495,21 @@ public static class FormatTypes
         /// </summary>
         public JsonNode? Full(JsonNode? node, JsonObject? defs, int depth, bool root)
         {
-            if (depth > SourceBounds.JsonDepth || !Spend())
+            if (!Within(depth))
             {
                 return node?.DeepClone();
             }
 
             if (node is JsonValue)
             {
-                return FormatSet.NameOf(node) is { } name && formats.Find(name)?.Schema is { } named
-                    ? Site(null, named, Defs(named), depth, root) ?? node.DeepClone()
-                    : node.DeepClone();
+                if (FormatSet.NameOf(node) is not { } name)
+                {
+                    return node.DeepClone();
+                }
+
+                return formats.Find(name)?.Schema is { } named
+                    ? Site(null, named, Defs(named), depth, root) ?? Unexpanded(node)
+                    : Unexpanded(node);
             }
 
             if (node is not JsonObject obj)
@@ -446,6 +517,7 @@ public static class FormatTypes
                 return node?.DeepClone();
             }
 
+            // A $ref with other keywords beside it is refused by the dialect (§ 3.1); kept as written.
             if (Text(obj["$ref"]) is { } reference && OnlyAnnotationsBeside(obj))
             {
                 JsonObject? target = null;
@@ -460,7 +532,7 @@ public static class FormatTypes
                     target = defs?[definition] as JsonObject;
                 }
 
-                return (target is null ? null : Site(obj, target, targetDefs, depth, root)) ?? obj.DeepClone();
+                return (target is null ? null : Site(obj, target, targetDefs, depth, root)) ?? Unexpanded(obj);
             }
 
             var full = new JsonObject();
@@ -557,7 +629,7 @@ public static class FormatTypes
         }
     }
 
-    /// <summary>One <see cref="Fits"/> call: type forms compared, names opened one level at a time, each pair judged once.</summary>
+    /// <summary>One <see cref="Fits"/> call: type forms compared structurally, names by name, each pair judged once.</summary>
     private sealed class Fitter(FormatSet formats)
     {
         private readonly Dictionary<(string, string), bool> judged = [];
@@ -582,18 +654,13 @@ public static class FormatTypes
 
             // While a pair is being judged it does not fit, so a loop ends.
             judged[key] = false;
-            var fits = Judge(Open(value), Open(expected), depth);
+            var fits = Judge(value, expected, depth);
             judged[key] = fits;
             return fits;
         }
 
         private bool Judge(JsonNode? value, JsonNode? expected, int depth)
         {
-            if (CanonicalJson.Write(value) == CanonicalJson.Write(expected))
-            {
-                return true;
-            }
-
             if (Members(expected) is { } wanted)
             {
                 return Members(value) is { } given
@@ -606,20 +673,19 @@ public static class FormatTypes
                 return members.All(m => Fit(m, expected, depth + 1));
             }
 
+            // Names are compared by name; one is opened only for what a built-in rule reads.
             switch (RefName(expected))
             {
                 case "number":
-                    return value is JsonObject { Count: 1 } integer && Text(integer["type"]) == "integer";
+                    return IsInteger(value) || (RefName(value) is { } name && IsInteger(formats.Find(name)?.Schema is { } schema ? TypeForm(schema, formats) : null));
                 case "string":
-                    return KindOf(value as JsonObject) != null;
+                    return TextKind(value, formats) != null;
             }
 
             return Items(value) is { } given2 && Items(expected) is { } wanted2 && Fit(given2, wanted2, depth + 1);
         }
 
-        /// <summary>A type form's <c>{ "$ref": name }</c> opened to its schema's type form, one level.</summary>
-        private JsonNode? Open(JsonNode? form) =>
-            RefName(form) is { } name && formats.Find(name) != null ? TypeForm(JsonValue.Create(name), formats) : form;
+        private static bool IsInteger(JsonNode? form) => form is JsonObject { Count: 1 } obj && Text(obj["type"]) == "integer";
 
         private static string? RefName(JsonNode? form) =>
             form is JsonObject { Count: 1 } obj ? FormatSet.NameOf(obj) : null;

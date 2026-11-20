@@ -28,7 +28,7 @@ public static class TypeStrings
     private sealed class Printer
     {
         private readonly HashSet<JsonNode> open = new(ReferenceEqualityComparer.Instance);
-        private int budget = FormatTypes.NodeBudget;
+        private int budget = FormatTypes.SchemaBudget;
 
         public string Print(JsonNode? node, JsonObject? defs, int depth)
         {
