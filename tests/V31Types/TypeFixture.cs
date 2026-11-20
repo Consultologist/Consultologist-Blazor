@@ -43,6 +43,19 @@ internal static class TypeFixture
         Agents("bindings.json"),
         Agents("agents.json"));
 
+    private static readonly Lazy<TypeRegistry> Shared = new(Published);
+
+    /// <summary>
+    /// Parses <paramref name="files"/> against the published registry, asserts the reader accepts them,
+    /// and runs <see cref="SourceTypes.Check"/> on the package.
+    /// </summary>
+    public static TypeCheckResult CheckTypes(Dictionary<string, byte[]> files)
+    {
+        var parsed = SourceParser.Parse(files, Shared.Value.Names);
+        Assert.True(parsed.Package != null, "The reader refused: " + string.Join(" | ", parsed.Refusals.Select(r => $"{r.Id} {r.Sentence}")));
+        return SourceTypes.Check(parsed.Package!, Shared.Value);
+    }
+
     /// <summary>A schema, as the object a package's JSON gives.</summary>
     public static JsonObject Schema(string json) => JsonNode.Parse(json)!.AsObject();
 

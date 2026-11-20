@@ -39,6 +39,7 @@ internal static class V31Contract
         ["A03-008"] = "<Format> at <path> writes anyOf with <n> member; a union has two or more.",
         ["A03-009"] = "<Format> declares <keyword> '<value>' (accepted: <list>).",
         ["A03-010"] = "<Subject> lists null but is not nullable; write \"type\": [\"string\", \"null\"], or remove null.",
+        ["A03-011"] = "Format '<id>' expands to more than 10,000 schemas through the formats it refers to; refer to fewer.",
     };
 
     private static string RepoRoot()

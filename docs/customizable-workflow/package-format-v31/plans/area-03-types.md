@@ -499,7 +499,7 @@ What `Check` does in this task:
 | `form` on anything but an object with at least one property | S02-044 |
 | a property with no `title`, at any depth of an object input | S02-045, once per property |
 
-- [ ] **Step 1: Write the failing tests** — the amendments each with its exact sentence and the proof that the old sentence is no longer said; the rules above one test each on `SourceFixture.Minimal()` / `Full()` edited with `WithJson`; and
+- [x] **Step 1: Write the failing tests** — the amendments each with its exact sentence and the proof that the old sentence is no longer said; the rules above one test each on `SourceFixture.Minimal()` / `Full()` edited with `WithJson`; and
 
 ```csharp
 [Fact] public void Minimal_And_Full_PassTheTypeRules()            // SourceTypes.Check(parsed, TypeFixture.Published()) → no refusal, Types not null
@@ -509,8 +509,8 @@ What `Check` does in this task:
 [Fact] public void IndependentTypeFaults_AreAllReported_InPathOrder()
 ```
 
-- [ ] **Step 2–4:** Run (fail), implement, run the whole `~V31` filter (area 02's tests updated where D13–D16 change what they expect); expected: pass.
-- [ ] **Step 5: Commit** `PackageFormat (#1500): the reader says part 02's own sentences for let, a reserved producer, an inline agent format, default and a missing format file`, `PackageFormat (#1500): a package's formats and inputs are held to the dialect`; push.
+- [x] **Step 2–4:** Run (fail), implement, run the whole `~V31` filter (area 02's tests updated where D13–D16 change what they expect); expected: pass.
+- [x] **Step 5: Commit** `PackageFormat (#1500): the reader says part 02's own sentences for let, a reserved producer, an inline agent format, default and a missing format file`, `PackageFormat (#1500): a package's formats and inputs are held to the dialect`; push.
 
 ### Task 10: Nodes — kinds, bindings, reproducible and flow formats
 

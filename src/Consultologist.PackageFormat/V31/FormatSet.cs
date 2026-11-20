@@ -285,7 +285,7 @@ public sealed class FormatSet
     }
 
     /// <summary>Every bare name written as a schema or as a <c>$ref</c>, with the pointer of the schema that holds it, in document order.</summary>
-    private static List<(string Name, string Pointer)> References(JsonNode? format)
+    internal static List<(string Name, string Pointer)> References(JsonNode? format)
     {
         var found = new List<(string, string)>();
         Walk(format, string.Empty, 0, found);

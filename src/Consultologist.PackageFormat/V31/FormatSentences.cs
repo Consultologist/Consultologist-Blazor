@@ -205,9 +205,37 @@ internal static class FormatSentences
     public static SourceRefusal FormatFileMissing(string id) =>
         new("S02-039", $"formats/index.json lists '{id}', but formats/ has no {id}.json.", "formats/index.json");
 
+    /// <summary>S02-040 (D19): an input whose format is <c>markdown_inline</c>, by name or <c>$ref</c>.</summary>
+    public static SourceRefusal InputMarkdownInline(string id) =>
+        new("S02-040", $"Input '{id}' takes markdown_inline; use plaintext or markdown_block.", ManifestPath);
+
+    /// <summary>S02-041 (D19): an input whose format's root, through its name, is an <c>anyOf</c>.</summary>
+    public static SourceRefusal InputChoiceOfShapes(string id) =>
+        new("S02-041", $"Input '{id}' takes a choice of shapes (anyOf); an input has one shape.", ManifestPath);
+
+    /// <summary>S02-042: a <c>channel</c> that is none of the four.</summary>
+    public static SourceRefusal InputChannelUnknown(string id, string channel) =>
+        new("S02-042", $"Input '{id}' declares channel '{channel}' (accepted: transcript, image, ambient-note, form).", ManifestPath);
+
+    /// <summary>S02-043 (D17): <c>transcript</c>, <c>image</c> or <c>ambient-note</c> on an input that is not text or a list of text.</summary>
+    public static SourceRefusal InputChannelNeedsText(string id, string channel) =>
+        new("S02-043", $"Input '{id}' declares channel '{channel}', which is only for a text input or an array of text.", ManifestPath);
+
+    /// <summary>S02-044 (D17): <c>form</c> on anything but an object with at least one property.</summary>
+    public static SourceRefusal InputFormNeedsObject(string id) =>
+        new("S02-044", $"Input '{id}' declares channel 'form', which needs an object with at least one property.", ManifestPath);
+
+    /// <summary>S02-045 (D18): a property of an object input with no <c>title</c>; <paramref name="property"/> is its dotted path of names.</summary>
+    public static SourceRefusal InputFieldWithoutTitle(string id, string property) =>
+        new("S02-045", $"Input '{id}' field '{property}' has no title; the Create page labels each field by its title.", ManifestPath);
+
     /// <summary>S02-046 (D16): an input that declares <c>default</c>, in place of S01-023.</summary>
     public static SourceRefusal InputDefault(string id) =>
         new("S02-046", $"Input '{id}' declares default; inputs have no default at 31.", ManifestPath);
+
+    /// <summary>A03-011 (D30): a package or function format file, otherwise sound, whose full form passes <see cref="FormatTypes.SchemaBudget"/>.</summary>
+    public static SourceRefusal FormatDoesNotExpand(string id, string path) =>
+        new("A03-011", $"Format '{id}' expands to more than 10,000 schemas through the formats it refers to; refer to fewer.", path);
 
     private const string ManifestPath = "manifest.json";
 
