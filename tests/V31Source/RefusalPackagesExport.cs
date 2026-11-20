@@ -48,20 +48,20 @@ public class RefusalPackagesExport
         }
 
         var index = Path.Combine(root, "v31", "conformance", "index.json");
-        File.WriteAllText(index, WithCases(File.ReadAllText(index, Utf8NoBom), cases.Order(StringComparer.Ordinal).ToList()), Utf8NoBom);
+        File.WriteAllText(index, WithCases(File.ReadAllText(index, Utf8NoBom), "refusal-packages", cases.Order(StringComparer.Ordinal).ToList()), Utf8NoBom);
     }
 
     /// <summary>
-    /// <paramref name="index"/> with the <c>refusal-packages</c> family's <c>cases</c> array replaced by
+    /// <paramref name="index"/> with the <paramref name="family"/> family's <c>cases</c> array replaced by
     /// <paramref name="cases"/>, one per line, indented as the <c>schemas</c> family's are; nothing
-    /// else changes.
+    /// else changes. #1501 (area 04): the family is named, so the JSON Logic families are written the same way.
     /// </summary>
-    internal static string WithCases(string index, IReadOnlyList<string> cases)
+    internal static string WithCases(string index, string family, IReadOnlyList<string> cases)
     {
-        var family = index.IndexOf("\"id\": \"refusal-packages\"", StringComparison.Ordinal);
-        Assert.True(family >= 0, "index.json has no refusal-packages family.");
-        var member = index.IndexOf("\"cases\": [", family, StringComparison.Ordinal);
-        Assert.True(member >= 0, "the refusal-packages family has no cases array.");
+        var at = index.IndexOf($"\"id\": \"{family}\"", StringComparison.Ordinal);
+        Assert.True(at >= 0, $"index.json has no {family} family.");
+        var member = index.IndexOf("\"cases\": [", at, StringComparison.Ordinal);
+        Assert.True(member >= 0, $"the {family} family has no cases array.");
 
         var open = member + "\"cases\": ".Length;
         var close = index.IndexOf(']', open);
