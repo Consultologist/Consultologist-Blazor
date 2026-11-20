@@ -111,17 +111,17 @@ tests/Fixtures/ByteEquivalence/
 | `general` | `general-v2026.11.3` |
 | `test/general` | `test/general-v2026.11.3` |
 
-- [ ] **Step 1: Write the failing tests** in `VendoredPackagesTests`:
+- [x] **Step 1: Write the failing tests** in `VendoredPackagesTests`:
   - `TheIndex_NamesTheThirteenPublicPackages_AtTheirPinnedTags`: the index's `(Name, Tag)` pairs equal the table above, in that order; every `Commit` is 40 hex characters.
   - `EveryVendoredFile_HasTheBytesTheIndexRecords`: for each package and each indexed path, `sha256:<hex>` of the file's bytes on disk equals the index's value.
   - `NoFileOnDisk_IsMissingFromTheIndex`: the set of files under `vendored/` (other than `index.json`) equals the set the index names.
   - `EveryVendoredPackage_IsAtSpecVersion30_AndLoads` (a theory over the thirteen names): the manifest's `specVersion` is 30, its `name` and `version` match the tag, and `ByteEquivalenceFixtures.Load(name)` does not throw.
-- [ ] **Step 2: Run them; expect failure** (`index.json` is missing).
-- [ ] **Step 3: Write `scripts/vendor-public-packages.cs`**, in the style of `scripts/validate-workflow-package.cs` (shebang, a usage comment, no project reference needed). Usage: `dotnet run -v q --file scripts/vendor-public-packages.cs -- <path to consultologist-workflows> [<fixture root>]`. For each pinned tag: resolve the commit with `git -C <repo> rev-parse <tag>^{commit}`; list `packages/<name>/` with `git ls-tree -r --name-only <tag>`; read each file's raw bytes with `git show <tag>:<path>`; write them unchanged under `vendored/<name>/`; record the sha256. It first deletes `vendored/` so a removed file cannot linger, then writes `index.json` as `{ "packages": [ { "name", "tag", "commit", "files": { "<relative path>": "sha256:<hex>" } } ] }`, files sorted ordinally, in the capture JSON style. A tag that does not resolve stops the script with exit code 1 and the sentence `Tag '<tag>' is not in <repo>: fetch the tags there and run again.`, writing nothing.
-- [ ] **Step 4: Write `.gitattributes`** (`* -text`) **before** adding any vendored file, then run the script against `~/Projects/consultologist-workflows`.
-- [ ] **Step 5: Write `ByteEquivalenceFixtures`** and `README.md` (what `vendored/` is, the script's command line, that the tags are the pins and the index is what CI checks).
-- [ ] **Step 6: Run the tests; expect pass.** Confirm `git status --short ~/Projects/consultologist-workflows` printed nothing new.
-- [ ] **Step 7: Commit** as two commits (`Scripts (#1498): the public packages are vendored from their spec-30 tags`, then `Tests (#1498): the vendored packages hold the tags' bytes and load at 30`) and push.
+- [x] **Step 2: Run them; expect failure** (`index.json` is missing).
+- [x] **Step 3: Write `scripts/vendor-public-packages.cs`**, in the style of `scripts/validate-workflow-package.cs` (shebang, a usage comment, no project reference needed). Usage: `dotnet run -v q --file scripts/vendor-public-packages.cs -- <path to consultologist-workflows> [<fixture root>]`. For each pinned tag: resolve the commit with `git -C <repo> rev-parse <tag>^{commit}`; list `packages/<name>/` with `git ls-tree -r --name-only <tag>`; read each file's raw bytes with `git show <tag>:<path>`; write them unchanged under `vendored/<name>/`; record the sha256. It first deletes `vendored/` so a removed file cannot linger, then writes `index.json` as `{ "packages": [ { "name", "tag", "commit", "files": { "<relative path>": "sha256:<hex>" } } ] }`, files sorted ordinally, in the capture JSON style. A tag that does not resolve stops the script with exit code 1 and the sentence `Tag '<tag>' is not in <repo>: fetch the tags there and run again.`, writing nothing.
+- [x] **Step 4: Write `.gitattributes`** (`* -text`) **before** adding any vendored file, then run the script against `~/Projects/consultologist-workflows`.
+- [x] **Step 5: Write `ByteEquivalenceFixtures`** and `README.md` (what `vendored/` is, the script's command line, that the tags are the pins and the index is what CI checks).
+- [x] **Step 6: Run the tests; expect pass.** Confirm `git status --short ~/Projects/consultologist-workflows` printed nothing new.
+- [x] **Step 7: Commit** as two commits (`Scripts (#1498): the public packages are vendored from their spec-30 tags`, then `Tests (#1498): the vendored packages hold the tags' bytes and load at 30`) and push.
 
 ### Task 2: The deterministic stub generator
 
@@ -161,17 +161,17 @@ public static class WorkflowStubOutputs
   - `null` → `null`.
 - Whatever else `JsonSchemaSubsetValidator` enforces on the bundled and vendored formats (read it) is honoured the same way: the smallest deterministic value that validates.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `TheSameSeed_GivesTheSameStub`, `ADifferentSeed_GivesADifferentText`.
   - `Text_IsTheStatedSentence`: `Text("draft:2/1")` starts with `"Stub reply for draft:2/1 ("` and ends with `")."`, with eight hex characters between.
   - `Member_IsOneOfTheValues_AndEveryValueIsReachable`: over seeds `n0`…`n63` and values `a, b, c`, every result is a member and all three occur.
   - `AnArray_HoldsOneToThreeItems_WithinItsBounds`: plain, with `minItems: 4`, with `maxItems: 1`.
   - `ANullableType_IsStubbedWithItsValue`: `{"type":["string","null"]}` gives a string.
   - `EveryBundledStructuredFormat_IsStubbedValid` and `EveryVendoredPackageFormat_IsStubbedValid`: for each schema (the catalogue's structured formats; each vendored package's `formats/*.json` `schema` member) and seeds `s0`…`s49`, `JsonSchemaSubsetValidator.Validate(JsonNode.Parse(stub.ToJsonString()), schema)` returns no error.
-- [ ] **Step 2: Run; expect failure** (the class does not exist).
-- [ ] **Step 3: Implement `WorkflowStubOutputs`.**
-- [ ] **Step 4: Run; expect pass.**
-- [ ] **Step 5: Commit** (`PackageFormat (#1498): stubs are made from a format alone, seeded by the instance's key`) and push.
+- [x] **Step 2: Run; expect failure** (the class does not exist).
+- [x] **Step 3: Implement `WorkflowStubOutputs`.**
+- [x] **Step 4: Run; expect pass.**
+- [x] **Step 5: Commit** (`PackageFormat (#1498): stubs are made from a format alone, seeded by the instance's key`) and push.
 
 ### Task 3: The scenario file and the faithful runner
 
@@ -242,7 +242,7 @@ A skipped or failed deliverable has `hash` and `text` `null` and its sentence in
 - A job that fails is a result, not an exception: `Status` and `Failure` carry it, and what was captured up to it stays. An exception that escapes the orchestrator from a handler is caught only when it is the job's own failure path; an activity name with no handler still throws `The test answers no activity '…'`.
 - After the run, a pinned output whose key was never served throws `InvalidOperationException`: `Scenario pins <key>, which did not run.` A **generated** stub the engine flags invalid (`NodeRunResult` reporting the reply invalid) throws `Generated stub for <key> is not valid for its format: <the engine's sentence>.`
 
-- [ ] **Step 1: Write the failing tests** in `CaptureRunTests`, on `V30Package.Minimal()` and small variants of it (loaded as `ByteEquivalenceFixtures.Load` loads, from the in-test manifest and files):
+- [x] **Step 1: Write the failing tests** in `CaptureRunTests`, on `V30Package.Minimal()` and small variants of it (loaded as `ByteEquivalenceFixtures.Load` loads, from the in-test manifest and files):
   - `AScenario_ReadsEveryMember_AndRefusesAMissingOne`: a scenario without `macroChoices` throws naming `macroChoices`; one with an extra member throws naming it.
   - `TheMinimal_Completes_AndEveryAgentNodesSentPromptIsCaptured`: status `Completed`; `Prompts` has one entry per `run-prompt-node` call that was not a rendered node; each key is the instance key.
   - `TheSentText_IncludesTheClassifiersTrailer`: the classifier node's captured prompt ends with the `Answer with exactly one of:` trailer that `ConsultNodeDispatch.Plan` appends, which `EngineRun`'s capture lacks.
@@ -254,10 +254,10 @@ A skipped or failed deliverable has `hash` and `text` `null` and its sentence in
   - `TheProfile_ReachesASignedDeliverable`: a variant with `"signature": true` ends with `"\n\n" + scenario.Profile.Signature`.
   - `AFailedJob_IsCaptured_NotThrown`: a pinned output of `""` on a node with `failIfEmpty` gives status `Failed`, a non-null `Failure`, and the prompts captured before it.
   - `TheCaptureDocument_HasItsMembersInOrder_AndEndsWithOneNewline`.
-- [ ] **Step 2: Run; expect failure.**
-- [ ] **Step 3: Implement** `CaptureScenario`, `CaptureRun`, `PackageCapture`.
-- [ ] **Step 4: Run; expect pass.** Also run `--filter FullyQualifiedName~EngineRun` and confirm the existing goldens still pass untouched.
-- [ ] **Step 5: Commit** (`Tests (#1498): a capture run sends what production sends, with stubs from the formats`) and push.
+- [x] **Step 2: Run; expect failure.**
+- [x] **Step 3: Implement** `CaptureScenario`, `CaptureRun`, `PackageCapture`.
+- [x] **Step 4: Run; expect pass.** Also run `--filter FullyQualifiedName~EngineRun` and confirm the existing goldens still pass untouched.
+- [x] **Step 5: Commit** (`Tests (#1498): a capture run sends what production sends, with stubs from the formats`) and push.
 
 ### Task 4: Captures for the first seven packages, and the coverage rules
 
@@ -282,18 +282,18 @@ A skipped or failed deliverable has `hash` and `text` `null` and its sentence in
 | `example-conditional-sections` | sections of both kinds and a `billing` section, with `include_billing` `true`, `false` and unset |
 | `example-structured-intake` | each conditional deliverable both composed and skipped: `patient.age` 64 and 65, `length_of_stay` 7 and 8, two and three `prior_notes`, and the optional inputs unset |
 
-- [ ] **Step 1: Write the failing tests** in `PackageCaptureGoldenTests`:
+- [x] **Step 1: Write the failing tests** in `PackageCaptureGoldenTests`:
   - `AScenario_RunsToTheCapturedBytes` (theory over `Scenarios`): load the package, read the scenario, run, and `Matches($"captures/{package}/{scenario}.json", PackageCapture.Write(package, tag, scenario, run))`.
   - `AMissingCapture_IsWritten_AndFailsTheTest`: `Matches` on a temporary root writes the file and throws with `Wrote`; a second call passes; a call with different text fails without rewriting the file.
   - `EveryCapture_HasItsScenario`: no file under `captures/` lacks a scenario file.
   - `EveryDeliverable_IsComposedInSomeScenario` (theory over packages that have scenarios): each deliverable id in the manifest is `composed` in at least one capture of the package, except the ids in a `static readonly` exception table `(package, deliverable) → reason`, which starts empty.
   - `EveryAgentNode_HasACapturedPrompt` (same theory): each node with a prompt file has a `prompts` or `renders` entry in at least one capture of the package, except entries in an exception table `(package, node) → reason`, which starts empty.
-- [ ] **Step 2: Run; expect failure** (no scenarios, no captures).
-- [ ] **Step 3: Implement `Matches` and the tests' plumbing.**
-- [ ] **Step 4: Write the scenario files** for the seven packages.
-- [ ] **Step 5: Run to write the captures** (each new one fails once with `Wrote …`), then **read every capture file in full**: the prompts carry the scenario's fictional inputs and the stubs where the prompt reads them; trailers are present on classifier and custom-format nodes; each deliverable's text has its headings, macros and signature where the manifest places them; the branches the description names were taken. A capture that shows a run that did not do what its description says means the scenario is wrong: fix the scenario, delete the capture, run again.
-- [ ] **Step 6: Run again; expect pass** for the seven packages' rows and the two coverage theories. Run the whole class twice to confirm nothing is rewritten (`git status --short` shows no change between runs).
-- [ ] **Step 7: Update `README.md`** (scenario and capture shapes, how to add a scenario, how to regenerate) and **commit** in two commits (`Tests (#1498): capture goldens, a missing capture fails, and every deliverable and prompt is reached`; `Tests (#1498): captures of seven public packages at 30`) and push.
+- [x] **Step 2: Run; expect failure** (no scenarios, no captures).
+- [x] **Step 3: Implement `Matches` and the tests' plumbing.**
+- [x] **Step 4: Write the scenario files** for the seven packages.
+- [x] **Step 5: Run to write the captures** (each new one fails once with `Wrote …`), then **read every capture file in full**: the prompts carry the scenario's fictional inputs and the stubs where the prompt reads them; trailers are present on classifier and custom-format nodes; each deliverable's text has its headings, macros and signature where the manifest places them; the branches the description names were taken. A capture that shows a run that did not do what its description says means the scenario is wrong: fix the scenario, delete the capture, run again.
+- [x] **Step 6: Run again; expect pass** for the seven packages' rows and the two coverage theories. Run the whole class twice to confirm nothing is rewritten (`git status --short` shows no change between runs).
+- [x] **Step 7: Update `README.md`** (scenario and capture shapes, how to add a scenario, how to regenerate) and **commit** in two commits (`Tests (#1498): capture goldens, a missing capture fails, and every deliverable and prompt is reached`; `Tests (#1498): captures of seven public packages at 30`) and push.
 
 ### Task 5: Captures for the remaining six packages
 
@@ -314,10 +314,10 @@ A skipped or failed deliverable has `hash` and `text` `null` and its sentence in
 
 **`example-macros` and `example-macros-warnings`.** The spike found both fail on today's engine at node `summary` (see *What the spike established*). First confirm it with `CaptureRun`: the `default` scenario's status and failure sentence. If they fail, **capture the failure as it is** — the captures hold status `Failed`, the failure sentence, and the prompts sent before it — and add each deliverable and each unreached prompt node to the exception tables with the reason `today's engine fails this package at node 'summary': the walk does not reach macro.notes/<item>.prompt (ConsultNodeCompletion.SanctionedBy)`. Do not work around the failure, in the runner or the scenarios, and do not change the engine. If instead they complete, capture them like the others and say so in the report. Either way, report exactly what was seen.
 
-- [ ] **Step 1: Write the failing test** `EveryVendoredPackage_HasADefaultScenario` in `PackageCaptureGoldenTests` (it names each vendored package with no `scenarios/<name>/default.json`), run it and see the six named, then **write the scenario files** for the six packages.
-- [ ] **Step 2: Run to write the captures, and read every one in full** as in Task 4 Step 5. For `example-v12-constructs` check the two `terms_subset` checks decide what the description says and the rendered nodes are under `renders`.
-- [ ] **Step 3: Run the whole class; expect pass**, including `EveryVendoredPackage_HasADefaultScenario` for all thirteen and both coverage theories, with only the exceptions the previous section allows.
-- [ ] **Step 4: Update `README.md`** with the known failure, if seen, and **commit** (`Tests (#1498): captures of the remaining six public packages at 30`) and push.
+- [x] **Step 1: Write the failing test** `EveryVendoredPackage_HasADefaultScenario` in `PackageCaptureGoldenTests` (it names each vendored package with no `scenarios/<name>/default.json`), run it and see the six named, then **write the scenario files** for the six packages.
+- [x] **Step 2: Run to write the captures, and read every one in full** as in Task 4 Step 5. For `example-v12-constructs` check the two `terms_subset` checks decide what the description says and the rendered nodes are under `renders`.
+- [x] **Step 3: Run the whole class; expect pass**, including `EveryVendoredPackage_HasADefaultScenario` for all thirteen and both coverage theories, with only the exceptions the previous section allows.
+- [x] **Step 4: Update `README.md`** with the known failure, if seen, and **commit** (`Tests (#1498): captures of the remaining six public packages at 30`) and push.
 
 ### Task 6: The composer's bytes on fixture packages
 
@@ -341,12 +341,12 @@ Read `src/Consultologist.Api/Jobs/ConsultDeliverableComposition.cs`, `ConsultAgg
 
 Any rule in that code that this table misses is added to the package it fits, with a scenario.
 
-- [ ] **Step 1: Write the failing test** `EveryFixturePackage_IsAtSpecVersion30_AndLoads` (theory over `ByteEquivalenceFixtures.FixturePackages`, which must name exactly `composer-gates`, `composer-macros`, `composer-sources`).
-- [ ] **Step 2: Run; expect failure.**
-- [ ] **Step 3: Author the three packages** and validate each with `dotnet run -v q --file scripts/validate-workflow-package.cs -- tests/Fixtures/ByteEquivalence/fixture-packages/<name>` (expect it to report the package valid).
-- [ ] **Step 4: Write their scenarios, run to write the captures, and read every capture in full**, checking each rule the description names against the composer code's stated behaviour.
-- [ ] **Step 5: Run the class; expect pass**, the coverage theories included (every fixture package's deliverables composed in some scenario, with any deliberate exception in the table with its reason).
-- [ ] **Step 6: Update `README.md`** and **commit** (`Tests (#1498): the composer's bytes at 30, rule by rule, on fixture packages`) and push.
+- [x] **Step 1: Write the failing test** `EveryFixturePackage_IsAtSpecVersion30_AndLoads` (theory over `ByteEquivalenceFixtures.FixturePackages`, which must name exactly `composer-gates`, `composer-macros`, `composer-sources`).
+- [x] **Step 2: Run; expect failure.**
+- [x] **Step 3: Author the three packages** and validate each with `dotnet run -v q --file scripts/validate-workflow-package.cs -- tests/Fixtures/ByteEquivalence/fixture-packages/<name>` (expect it to report the package valid).
+- [x] **Step 4: Write their scenarios, run to write the captures, and read every capture in full**, checking each rule the description names against the composer code's stated behaviour.
+- [x] **Step 5: Run the class; expect pass**, the coverage theories included (every fixture package's deliverables composed in some scenario, with any deliberate exception in the table with its reason).
+- [x] **Step 6: Update `README.md`** and **commit** (`Tests (#1498): the composer's bytes at 30, rule by rule, on fixture packages`) and push.
 
 ### Task 7: The C# concept renderers' bytes
 
@@ -369,14 +369,14 @@ Part 10 § 3.3: the built-in Scriban renderers must match the C# renderers (#139
 
 The cases are the thirteen of `V31BuiltInRenderersTests.Cases` (same names, same values) plus: `two in order` (order is kept, never sorted), `non-ASCII term` (an accented term and a non-Latin one), `empty term`, `null type on a SNOMED concept`, `null id on a SNOMED concept`, `newline in support`, `long list` (twelve concepts). Null `type` and `id` reach the C# renderers as `""`, as `V31BuiltInRenderersTests.ToConcepts` passes them.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `TheCSharpRenderers_GiveTheCapturedBytes`: build the document from the case table by calling the two C# renderers and `Matches("renderers/concept-renderers.json", document)`.
   - `TheRegistrysScribanRenderers_GiveTheCapturedBytes` (theory over the fixture's case names × the two renderers): the registry template rendered on the case's concepts equals the **fixture's** string, read from the file.
   - `TheFixture_NamesTheTwentyCases`.
-- [ ] **Step 2: Run; expect failure**, then the first run writes the fixture.
-- [ ] **Step 3: Read the fixture in full** against the two renderers' doc comments in `src/Consultologist.PackageFormat/ConceptRenderers.cs`. If a registry template disagrees with a captured string on a new case, the capture stands (it is the C# renderer's output); report the case and the two strings, leave that theory row failing, and stop the task there for the controller.
-- [ ] **Step 4: Run; expect pass.**
-- [ ] **Step 5: Commit** (`Tests (#1498): the C# concept renderers' bytes are frozen, and the registry's templates give them`) and push.
+- [x] **Step 2: Run; expect failure**, then the first run writes the fixture.
+- [x] **Step 3: Read the fixture in full** against the two renderers' doc comments in `src/Consultologist.PackageFormat/ConceptRenderers.cs`. If a registry template disagrees with a captured string on a new case, the capture stands (it is the C# renderer's output); report the case and the two strings, leave that theory row failing, and stop the task there for the controller.
+- [x] **Step 4: Run; expect pass.**
+- [x] **Step 5: Commit** (`Tests (#1498): the C# concept renderers' bytes are frozen, and the registry's templates give them`) and push.
 
 ### Task 8: The 30 evaluator's answers, for the converter
 
@@ -425,17 +425,17 @@ Part 10 § 2.4 tests the converter by semantic equivalence: 30's evaluator on th
 
 The cases are the product over the expression's reads, in declared order, cut to the first 200. "Absent" must be what the engine makes of an unsupplied input or an unsettled node at that site, so build the scope's inputs through the engine's own effective-input map (`src/Consultologist.Api/Jobs/ConsultConditionScope.cs` and the starter's `ResolveEffectiveInputs`) and say in the README which function made them.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `EveryConditionAndLetOfThePackages_IsInTheExpressions`: enumerate group 1 from the packages on disk and fail naming each `(package, site, expression)` the file lacks.
   - `EveryRowOf2_2_AndEveryRefusalOf2_3_HasAnExpression`: the set of `origin`s starting `§ 2.2: ` equals the table's sixteen left cells; the set starting `§ 2.3: ` equals the four bullets (both lists are constants in the test, copied from the spec).
   - `TheEvaluatorAt30_GivesTheCapturedAnswers`: generate the scopes, evaluate, and `Matches("conditions/vectors.json", document)`.
-  - `AWhitespaceOnlyText_IsTruthyAt30`: for the `!a`-on-text expression, the case whose value is `" "` has result `false` — the one documented difference from `blank(x)`.
+  - `AWhitespaceOnlyText_IsTruthyAt30`: for the `!a`-on-text expression, the case whose value is `" "` has result `false` — the one documented difference from `blank(x)` (as built: not the only difference; see *As built*).
   - `AnAbsentInput_ReadsAsTheEngineMakesIt`: the pinned examples from `WorkflowConditionAt25.Holds`'s doc comment (an unsupplied optional text is `""`, a number null, an array empty).
-- [ ] **Step 2: Run; expect failure.**
-- [ ] **Step 3: Write `expressions.json`** and the scope generator and evaluator plumbing in the test class.
-- [ ] **Step 4: Run to write `vectors.json`, and read it:** every package condition's cases include both outcomes where the type allows; every `error` is one today's engine would raise at that site, not a mistake in the scope builder.
-- [ ] **Step 5: Run; expect pass.**
-- [ ] **Step 6: Update `README.md`** (what area 10 does with the two files: convert each `expression`, evaluate the JSON Logic on each `scope`, compare with `result`, with the whitespace case listed as expected) and **commit** (`Tests (#1498): what the evaluator at 30 answers, for every package condition and every converter row`) and push.
+- [x] **Step 2: Run; expect failure.**
+- [x] **Step 3: Write `expressions.json`** and the scope generator and evaluator plumbing in the test class.
+- [x] **Step 4: Run to write `vectors.json`, and read it:** every package condition's cases include both outcomes where the type allows; every `error` is one today's engine would raise at that site, not a mistake in the scope builder.
+- [x] **Step 5: Run; expect pass.**
+- [x] **Step 6: Update `README.md`** (what area 10 does with the two files: convert each `expression`, evaluate the JSON Logic on each `scope`, compare with `result`, with the whitespace case listed as expected) and **commit** (`Tests (#1498): what the evaluator at 30 answers, for every package condition and every converter row`) and push.
 
 ---
 
@@ -448,9 +448,29 @@ The cases are the product over the expression's reads, in declared order, cut to
 | 10 § 3.1 compares every prompt and every deliverable, byte for byte | 3 (the 30 side: sent prompts, renders, final deliverable texts, with hashes); the comparison with 31 is area 10's |
 | 10 § 3.1 the same harness runs in-package tests and the corpus re-render | 2 (the generator is in the library); the 31 runner is areas 06–11's |
 | 10 § 3.2 the report's inputs: a site and a hash per compared text | 3 (`key`/`id` and `hash` per text in each capture); the report itself is area 10's |
-| 10 § 3.3 every public package's prompts and notes on fictional inputs | 1, 4, 5 |
+| 10 § 3.3 every public package's prompts and notes on fictional inputs | 1, 4, 5 — with the holes today's engine leaves: `example-macros` and `example-macros-warnings` fail at node `summary` and compose no deliverable; a start with an empty input fan is refused (see *As built*) |
 | 10 § 3.3 generated deliverable templates reproducing today's composer bytes (#1406) | 6 (the bytes to reproduce), 4, 5 |
 | 10 § 3.3 the built-in Scriban renderers matching the C# renderers (#1397) | 7 |
 | 10 § 3.3 the converter's fixtures and equivalence vectors; § 2.4 | 8 (expressions, scopes and 30's answers; the expected JSON Logic bytes are area 10's, from the converter) |
-| 10 § 2.4 the documented `blank(x)` whitespace case, never silently accepted | 8 |
+| 10 § 2.4 the documented `blank(x)` whitespace case, never silently accepted | 8 — and the vectors show `""` differs too, which § 2.3 does not name (see *As built*) |
 | Runbook: packages vendored from tags; in-repo fixtures; fails loudly | 1 |
+
+## As built: where the build departed from this plan
+
+- **The vendored folder is `vendored/`, not `packages/`**: the root `.gitignore` hides every `packages/` folder, so the first commits left the files untracked. The plan was updated before Task 1 closed.
+- **`ConditionScopes.cs` sits beside `ConditionVectorTests.cs`** (not in the layout): it builds each case's scope through the engine's own functions (`NormalizeInputs`, `ResolveEffectiveInputs`, `ConsultRenderPayload.ScopeFor`, `ConsultConditionScope.TypesOf`).
+- **A run's status may be `Refused`**, the runner's word, not a job status: a start refused with `NoApplicableDeliverable` is captured (`failure` `NoApplicableDeliverable: <the starter's sentence>`, nothing served, sent or rendered, every deliverable `unsettled`); every other start error throws, so a scenario's mistake is never frozen as a refusal.
+- **A deliverable's state may be `unsettled`** (beside `composed`, `skipped`, `failed`): a deliverable a failed job never released, or every deliverable of a refused start. `Failure` is the first non-null of the state's `AnalysisError`, `FailureError` and `StartFailure`, the test context's raw message (production's Durable runtime wraps it).
+- **The runner refuses more than the plan named**: a fault of the harness's own (`The capture runner failed, not the engine: …`), an activity it does not answer (read back from the calls, since the orchestrator's catches can swallow the refusal), a pinned `null` in a scenario's `outputs` (refused as the scenario is read), and a capture that holds the job's id (a package reading `run.job`).
+- **The coverage exception tables are not empty**: they hold `consult_note` and `patient_letter` (never composed) and `narrative_draft`, `table_draft`, `patient_line` (never prompted) for each macros package, and an entry a capture does reach is stale and fails the rule.
+- **`example-macros` and `example-macros-warnings` fail at node `summary` in every scenario** (eight each), with `Closing summary failed: Node 'summary' rendered macro.notes/red_flags.prompt, which the package's walk does not reach from its prompt; the walk and the render disagree.` Each capture holds four prompts (`standing_draft:hpi`, `:medications`, `:assessment_plan`, `summary`) and no composed deliverable.
+- **Three scenarios are refused starts**: `example-conditional-documents/encounter-kind-unset` (no deliverable's condition holds), and `example-prior-letters/no-prior-letters` and `example-structured-intake/all-optional-inputs-unset` (an empty input fan refuses the start even where a deliverable has other sources).
+- **`example-v12-constructs/default` is `Failed`**: with generated stubs both `terms_subset` checks refuse, and a job whose every deliverable is refused fails; a lone refusal (`letter-coverage-fails`, `note-coverage-fails`) leaves it `Completed`.
+- **At 30 every deliverable must reach a `for`** (the validator refuses one that does not), so the composer packages' "scalar" sources are prose nodes (and the while's body, the if's and case's nodes, the let) that read a loop's text; the composer still reads each as one scalar part.
+- **The composer packages as built**: `composer-sources` has `single`, `pair`, `topics`, `sections`, `summary`, `plan`, `tone_line`, `tally`, `summary_then_opening`, `topics_then_opening`, with scenarios `every-source`, `branches-not-taken`, `awkward-texts`, `item-names-and-bounds`, `unparseable-reply`, `failed-item`.
+- `composer-macros` has `prepended`, `appended`, `both`, `gated`, `optional`, `authored`, `sections_note`, `signed_letter`, `review_summary`, `echoes`, `signed_only`, with scenarios `new-visit-defaults`, `review-visit-choices`, `no-signature`, `empty-body`, `skipped-deliverable-read`.
+- `composer-gates` has `note`, `record_copy`, `patient_copy`, `cover_letter`, with scenarios `clinician-checks-pass`, `patient-copy-check-fails`, `note-check-fails`.
+- **`V31BuiltInRenderersTests`**: `Concept`, `Cases`, `ToConcepts` and `Render` were made `internal` (the plan named `Render` and the registry read), because the capture test builds its cases from the same records and table.
+- **The conditions fixture's vocabulary as built**: `kind` is also `case` (the value a `case` node switches on); a read may carry `required` (an input or field), `settled` (a node read the engine only judges after it has an output), and an expression a `note` saying why; reads include `run.date` and `profile.name`; `vectors.json`'s root is `{ "vectors": [ … ] }`.
+- **No absent case for a `required` or `settled` read**, nor for a property a node's schema requires; the inputs are normalised before a condition sees them (a supplied `" "` reaches 30 as `""`), while a case's `scope` writes the value as supplied.
+- **§ 2.3 contradicts today's engine**: at 30 `""` is truthy, so `!x` on a text is true only for null, and it differs from `blank(x)` on `""` as well as on whitespace-only text. Raised on #1498 and #1507, not resolved here; the fixture states 30's side and takes none.
