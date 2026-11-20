@@ -6,7 +6,9 @@ namespace Consultologist.PackageFormat.V31;
 /// #1500 (specVersion 31, area 03): what the type rules learned of a package, for the areas that
 /// follow: the formats the package's own scope can name, each function's (by function id), and,
 /// by each node's <see cref="SourceNode.Path"/> (a key is not unique across functions), its
-/// declared format and, for an agent, its binding.
+/// declared format and, for an agent, its binding. The formats in <c>NodeFormats</c> are the
+/// reader's own nodes, not clones: read-only, like all of the model's JSON (clone before building
+/// a new tree from one).
 /// </summary>
 public sealed record PackageTypes(
     FormatSet Formats,

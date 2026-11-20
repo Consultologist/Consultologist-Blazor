@@ -60,7 +60,12 @@ public static partial class SourceTypes
             }
         }
 
-        /// <summary>A leaf's rules; true when none was about its format (S01-027 is not).</summary>
+        /// <summary>
+        /// A leaf's rules; true when none was about its format. S01-027 is not, and neither are the
+        /// strict-mode limits (S02-055, S02-056): they do not change what a flow node derives, so
+        /// every agent returning a format over them is treated alike, whether or not it is the one
+        /// the refusal was said on.
+        /// </summary>
         private bool Leaf(FormatSet set, SourceLeaf leaf, JsonNode format)
         {
             var isCheck = leaf.Key.StartsWith("check.", StringComparison.Ordinal);
@@ -76,6 +81,8 @@ public static partial class SourceTypes
             }
 
             var ok = refusals.Count == before;
+            if (leaf.Kind == "agent")
+                Limits(set, leaf, format);
 
             // D5: an agent is not reproducible, a rendered or computed node is; a call's is area 05's.
             bool? kinds = leaf.Kind switch
@@ -95,8 +102,7 @@ public static partial class SourceTypes
 
         /// <summary>
         /// An agent (whose format the reader holds to a name, D15): its binding for <c>generated</c>
-        /// (D21), a union at the root of what it returns, and, the first time the format's name is
-        /// met in the package, the strict-mode limits of the copy it is sent with its agent's rejects.
+        /// (D21) and a union at the root of what it returns.
         /// </summary>
         private void Agent(FormatSet set, SourceLeaf leaf, JsonNode format)
         {
@@ -111,16 +117,27 @@ public static partial class SourceTypes
 
             if (found.Schema.ContainsKey("anyOf"))
                 refusals.Add(FormatSentences.AnyOfAtRoot(leaf.Id, TypeStrings.Print(format, set), leaf.Path));
+        }
 
-            if (binding != null && FormatTypes.Expands(format, set) && limited.Add(name))
+        /// <summary>
+        /// The first time a bound agent's format name is met in the package: the strict-mode limits
+        /// of the copy it is sent with its agent's rejects (S02-055, S02-056), once per format name.
+        /// </summary>
+        private void Limits(FormatSet set, SourceLeaf leaf, JsonNode format)
+        {
+            if (FormatSet.NameOf(format) is { } name && Bindings.TryGetValue(leaf.Path, out var binding)
+                && FormatTypes.Expands(format, set) && limited.Add(name))
+            {
                 refusals.AddRange(SentFormat.CheckLimits(name, SentFormat.Prepare(format, set, binding.StrictRejects), leaf.Path));
+            }
         }
 
         /// <summary>
         /// D24: a <c>for</c> is a list of its <c>ret</c> child's declared format, a <c>while</c> that
         /// format, an <c>if</c> or <c>case</c> the union of its non-empty bodies' (in body order).
         /// Compared with the declared format by type equality: S02-016 for each body outside a
-        /// declared union (D25), else S02-015. Not judged when a <c>ret</c> child is not sound,
+        /// declared union (D25; a body returning a union is outside when one of its members is,
+        /// D32), else S02-015. Not judged when a <c>ret</c> child is not sound,
         /// or no body returns anything. True when it said nothing.
         /// </summary>
         private bool Flow(FormatSet set, SourceNode node, JsonNode declared)
@@ -152,8 +169,9 @@ public static partial class SourceTypes
             if (node is SourceIf or SourceCase && FormatTypes.TypeForm(declared, set) is JsonObject { } form
                 && form["anyOf"] is JsonArray members)
             {
+                // D32: a body that returns a union is in the declared one when each of its members is.
                 var union = members.Select(m => CanonicalJson.Write(m)).ToHashSet(StringComparer.Ordinal);
-                var outside = rets.Where(r => !union.Contains(CanonicalJson.Write(FormatTypes.TypeForm(r.Format, set)))).ToList();
+                var outside = rets.Where(r => !TypeMembers(FormatTypes.TypeForm(r.Format, set)).All(union.Contains)).ToList();
                 foreach (var (branch, format) in outside)
                 {
                     refusals.Add(FormatSentences.BranchNotInUnion(
@@ -168,5 +186,11 @@ public static partial class SourceTypes
                 Word(node), node.Id, TypeStrings.Print(declared, set), TypeStrings.Print(derived, set), path));
             return false;
         }
+
+        /// <summary>The canonical JSON of each member of a type form that is a union (flattened, D32), or of the form itself.</summary>
+        private static IEnumerable<string> TypeMembers(JsonNode? form) =>
+            form is JsonObject { Count: 1 } union && union["anyOf"] is JsonArray members
+                ? members.Select(m => CanonicalJson.Write(m))
+                : [CanonicalJson.Write(form)];
     }
 }

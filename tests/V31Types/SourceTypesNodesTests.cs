@@ -83,6 +83,24 @@ public class SourceTypesNodesTests
     }
 
     [Fact]
+    public void AnAgent_ReturningItsFunctionsOwnFormat_IsBoundThroughCustom()
+    {
+        var files = SourceFixture.Full()
+            .With("functions/draft_section/formats/index.json", SourceFixture.Index(["local_note"]))
+            .With("functions/draft_section/formats/local_note.json", TypeFixture.FormatFile(
+                "\"type\": \"object\", \"required\": [\"line\"], \"additionalProperties\": false, \"properties\": { \"line\": { \"$ref\": \"plaintext\" } }"))
+            .WithJson("functions/draft_section/standard_draft.md", h => h["format"] = "local_note");
+
+        var result = TypeFixture.CheckTypes(files);
+
+        Assert.Empty(Refusals(result));
+        Assert.Equal(FormatOrigin.Function, result.Types!.FunctionFormats["draft_section"].Find("local_note")!.Origin);
+        var binding = result.Types.Bindings["functions/draft_section/standard_draft.md"];
+        Assert.Equal("custom", binding.Via);
+        Assert.Equal("custom-json", binding.AgentName);
+    }
+
+    [Fact]
     public void EveryNode_HasItsDeclaredFormat_AsWritten()
     {
         var types = TypeFixture.CheckTypes(SourceFixture.Full()).Types!;

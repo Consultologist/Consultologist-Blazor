@@ -149,6 +149,115 @@ public class SourceTypesFlowTests
         Assert.Equal("Branch 4 of case 'route' returns verdict, which is not in the declared union plaintext | outline.", refusal.Sentence);
     }
 
+    /// <summary>
+    /// Full() with route's branch 1 an <c>if</c> declared <c>plaintext | verdict</c> (a plaintext
+    /// <c>then</c>, a verdict <c>else</c>) and its branch 2 returning plaintext; route declared <paramref name="declared"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> CaseOverAnIf(JsonObject declared) => SourceFixture.Full()
+        .WithJson("nodes/sections_draft/index.json", h => h["format"] = new JsonObject { ["type"] = "array", ["items"] = declared.DeepClone() })
+        .WithJson("nodes/sections_draft/route/index.json", h =>
+        {
+            h["format"] = declared.DeepClone();
+            h["branches"]![0]!["nodes"] = new JsonArray("narrative");
+            h["branches"]![0]!["ret"] = "node.sections_draft.route.narrative";
+        })
+        .Without("nodes/sections_draft/route/narrative_draft.md")
+        .With("nodes/sections_draft/route/narrative/index.json", SourceFixture.Json(SourceFixture.Node("if", "Narrative, or a verdict on it",
+            "{ \"anyOf\": [ { \"$ref\": \"plaintext\" }, { \"$ref\": \"verdict\" } ] }", false, true,
+            "\"if\": { \"===\": [{ \"var\": \"item.value.title\" }, \"History\"] }, "
+            + "\"then\": { \"nodes\": [\"narrative_draft\"], \"ret\": \"node.sections_draft.route.narrative.narrative_draft\" }, "
+            + "\"else\": { \"nodes\": [\"narrative_verdict\"], \"ret\": \"node.sections_draft.route.narrative.narrative_verdict\" }")))
+        .With("nodes/sections_draft/route/narrative/narrative_draft.md", SourceFixture.Agent("Drafting a narrative section", "\"plaintext\"",
+            "Write the section '{{ item.value.title }}' as prose.\n"))
+        .With("nodes/sections_draft/route/narrative/narrative_verdict.md", SourceFixture.Agent("Judging a narrative section", "\"verdict\"",
+            "Say whether the section '{{ item.value.title }}' is needed.\n"));
+
+    [Fact]
+    public void ABodyReturningAUnion_IsInTheDeclaredUnion_WhenEachOfItsMembersIs()
+    {
+        // D32: branch 1 gives plaintext | verdict, branch 2 plaintext; their union is plaintext | verdict.
+        Assert.Empty(Refusals(CaseOverAnIf(Union("plaintext", "verdict"))));
+
+        var outside = Only(CaseOverAnIf(Union("plaintext", "outline")));
+        Assert.Equal("S02-016", outside.Id);
+        Assert.Equal("Branch 1 of case 'route' returns plaintext | verdict, which is not in the declared union plaintext | outline.", outside.Sentence);
+        Assert.Equal("nodes/sections_draft/route/index.json", outside.Path);
+
+        // Every member of branch 1 is in the declared union, which is wider: S02-015, not S02-016 (D25).
+        var wider = Only(CaseOverAnIf(Union("plaintext", "verdict", "outline")));
+        Assert.Equal("S02-015", wider.Id);
+        Assert.Equal("Case 'route' declares format plaintext | verdict | outline, but its ret gives plaintext | verdict.", wider.Sentence);
+    }
+
+    [Fact]
+    public void ACaseWhoseEveryBranchIsEmpty_IsNotJudged()
+    {
+        var files = SourceFixture.Full()
+            .WithJson("nodes/sections_draft/route/index.json", h =>
+            {
+                h["format"] = "outline";
+                foreach (var branch in h["branches"]!.AsArray())
+                {
+                    branch!["nodes"] = new JsonArray();
+                    branch["ret"] = null;
+                }
+            })
+            .WithJson("nodes/sections_draft/index.json", h => h["format"] = JsonNode.Parse(SourceFixture.ArrayOf("\"outline\"")))
+            .Without("nodes/sections_draft/route/narrative_draft.md")
+            .Without("nodes/sections_draft/route/table_draft.md");
+
+        Assert.Empty(Refusals(files));
+    }
+
+    [Fact]
+    public void AnS01027OnARetChild_StillLetsItsParentBeJudged()
+    {
+        var files = SourceFixture.Full()
+            .WithJson("nodes/refine/draft_summary.md", h => h["reproducible"] = true)
+            .WithJson("nodes/refine/index.json", h => h["format"] = "verdict");
+
+        var refusals = Refusals(files);
+
+        Assert.Equal(
+            [
+                ("S01-027", "Node 'node.refine.draft_summary' declares reproducible true, but its kind makes it false."),
+                ("S02-015", "While 'refine' declares format verdict, but its ret gives plaintext."),
+            ],
+            refusals.Select(r => (r.Id, r.Sentence)).ToList());
+    }
+
+    [Fact]
+    public void AnAgentOverAStrictLimit_StillLetsItsParentBeJudged()
+    {
+        // S02-055 is said once for the format; neither agent returning it stops its while from being judged.
+        var properties = string.Join(", ", Enumerable.Range(1, 101).Select(i => $"\"p{i}\": {{ \"$ref\": \"plaintext\" }}"));
+        var required = string.Join(", ", Enumerable.Range(1, 101).Select(i => $"\"p{i}\""));
+        var files = SourceFixture.Full()
+            .WithJson("formats/index.json", h => h["items"]!.AsArray().Add("big"))
+            .With("formats/big.json", TypeFixture.FormatFile(
+                $"\"type\": \"object\", \"required\": [{required}], \"additionalProperties\": false, \"properties\": {{ {properties} }}"))
+            .WithJson("nodes/refine/draft_summary.md", h => h["format"] = "big")
+            .WithJson("functions/draft_section/index.json", h =>
+            {
+                h["nodes"] = new JsonArray("standard_draft", "patient_draft", "apply_instructions", "again");
+                h["uses"]!["formats"]!.AsArray().Add("big");
+            })
+            .With("functions/draft_section/again/index.json", SourceFixture.Json(SourceFixture.Node("while", "Again", "\"plaintext\"", false, true,
+                "\"while\": false, \"max\": 2, \"until\": null, \"checkFirst\": false, \"nodes\": [\"redo\"], "
+                + "\"ret\": \"node.again.redo\"")))
+            .With("functions/draft_section/again/redo.md", SourceFixture.Agent("Redoing", "\"big\"", "Again.\n"));
+
+        var refusals = Refusals(files);
+
+        Assert.Equal(
+            [
+                ("S02-015", "While 'again' declares format plaintext, but its ret gives big.", "functions/draft_section/again/index.json"),
+                ("S02-055", "Format 'big' declares 101 properties; a format sent to a model declares at most 100.", "nodes/refine/draft_summary.md"),
+                ("S02-015", "While 'refine' declares format plaintext, but its ret gives big.", "nodes/refine/index.json"),
+            ],
+            refusals.Select(r => (r.Id, r.Sentence, r.Path)).ToList());
+    }
+
     [Fact]
     public void ADeclaredUnion_InAnotherOrder_IsTheSameType()
     {
