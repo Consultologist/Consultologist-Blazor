@@ -66,6 +66,40 @@ public class ExpressionCheckerReadsTests
         { """{"missing":["input.nope.value"]}""", "S03-014", "Computed node 'total' reads input.nope.value, which doesn't exist here." },
     };
 
+    /// <summary>A root alone, and every other root S03-019 names (D34): judged before the scope is asked.</summary>
+    public static TheoryData<string, string, string> RootRows => new()
+    {
+        { "profile", "S03-014", "Computed node 'total' reads profile, which doesn't exist here." },
+        { "input", "S03-014", "Computed node 'total' reads input, which doesn't exist here." },
+        { "wibble", "S03-014", "Computed node 'total' reads wibble, which doesn't exist here." },
+        { "snippet", "S03-014", "Computed node 'total' reads snippet, which doesn't exist here." },
+        { "part.x", "S03-019", "Computed node 'total' reads part.x; JSON Logic reads input, node, check, item, pass, param and run." },
+        { "macro.x", "S03-019", "Computed node 'total' reads macro.x; JSON Logic reads input, node, check, item, pass, param and run." },
+        { "renderer.x", "S03-019", "Computed node 'total' reads renderer.x; JSON Logic reads input, node, check, item, pass, param and run." },
+        { "deliverable.x.y", "S03-019", "Computed node 'total' reads deliverable.x.y; JSON Logic reads input, node, check, item, pass, param and run." },
+    };
+
+    [Theory]
+    [MemberData(nameof(RootRows))]
+    public void Roots(string path, string id, string sentence) =>
+        Reads($$"""{"var":"{{path}}"}""", id, sentence);
+
+    /// <summary>A bare <c>node</c>, <c>check</c> or <c>param</c> is the scope's to judge (D2, D34).</summary>
+    [Theory]
+    [InlineData("node")]
+    [InlineData("check")]
+    [InlineData("param")]
+    public void ABareScopeRoot_IsTheScopes(string root)
+    {
+        // this test's MapScope knows no bare root: Unknown
+        Reads($$"""{"var":"{{root}}"}""", "S03-014", $"Computed node 'total' reads {root}, which doesn't exist here.");
+
+        // a scope that defers it: no refusal
+        var deferring = new LogicFixture.MapScope(new Dictionary<string, ScopeHead> { [root] = LogicFixture.Deferred() });
+        var check = ExpressionChecker.Check(LogicFixture.Rule($$"""{"var":"{{root}}"}"""), LogicFixture.Site(ExpressionSiteKind.Expression), deferring, Formats);
+        Assert.Empty(check.Refusals);
+    }
+
     [Theory]
     [MemberData(nameof(ReadRows))]
     public void Reads(string rule, string id, string sentence)
