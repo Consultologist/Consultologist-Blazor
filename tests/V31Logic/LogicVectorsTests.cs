@@ -58,8 +58,16 @@ public class LogicVectorsTests
                 var where = $"{file.Family}/{file.Name}: {logicCase.About}";
                 Assert.False(string.IsNullOrWhiteSpace(logicCase.About), where);
                 var rule = JsonNode.Parse(logicCase.Rule);
-                Assert.True(JsonLogicShape.Check(rule).Count == 0, $"{where}: a fault of the written form.");
                 Assert.True(JsonNode.Parse(logicCase.Data) is JsonObject, $"{where}: the data is not an object.");
+                if (file.Family == LogicVectors.PrinterGoldens && file.Name == LogicVectors.Refused)
+                {
+                    // The printer is total (D23): these rules are refused, never run or parsed back.
+                    Assert.True(JsonLogicShape.Check(rule).Count > 0, $"{where}: the written form has no fault.");
+                    Assert.NotNull(Evaluator.Compile(rule).Declined);
+                    Assert.False(string.IsNullOrEmpty(JsonLogicPrinter.Print(rule)), where);
+                    continue;
+                }
+                Assert.True(JsonLogicShape.Check(rule).Count == 0, $"{where}: a fault of the written form.");
 
                 var compiled = Evaluator.Compile(rule);
                 Assert.Null(compiled.Declined);
@@ -120,9 +128,23 @@ public class LogicVectorsTests
 
         foreach (var file in files)
         {
-            var pinned = File.ReadAllText(V31Contract.Path("conformance", file.Family, file.Name + ".json"), Encoding.UTF8);
-            Assert.True(pinned == LogicVectors.Render(file), $"{file.Family}/{file.Name}.json is not what the code gives.");
+            var pinned = File.ReadAllBytes(V31Contract.Path("conformance", file.Family, file.Name + ".json"));
+            var rendered = new UTF8Encoding(false).GetBytes(LogicVectors.Render(file));
+            Assert.True(pinned.AsSpan().SequenceEqual(rendered), $"{file.Family}/{file.Name}.json is not, byte for byte, what the code gives.");
         }
+    }
+
+    [Fact]
+    public void WithCases_RewritesOnlyTheNamedFamilysOwnCases()
+    {
+        const string index = "{\n  \"families\": [\n    {\n      \"id\": \"a\",\n      \"cases\": []\n    },\n    {\n      \"id\": \"b\"\n    },\n    {\n      \"id\": \"c\",\n      \"cases\": [\"x\"]\n    }\n  ]\n}\n";
+
+        var written = RefusalPackagesExport.WithCases(index, "a", ["one.json", "two.json"]);
+        Assert.Equal(index.Replace("\"cases\": []", "\"cases\": [\n        \"one.json\",\n        \"two.json\"\n      ]"), written);
+
+        // b has no cases member: the search must not reach c's array.
+        Assert.ThrowsAny<Exception>(() => RefusalPackagesExport.WithCases(index, "b", ["one.json"]));
+        Assert.Equal(index.Replace("[\"x\"]", "[]"), RefusalPackagesExport.WithCases(index, "c", []));
     }
 
     private static LogicFile Named(IReadOnlyList<LogicFile> files, string family, string name) =>

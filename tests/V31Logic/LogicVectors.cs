@@ -32,6 +32,9 @@ internal static class LogicVectors
     public const string NumberVectors = "number-vectors";
     public const string DateVectors = "date-vectors";
 
+    /// <summary>The one file whose rules have faults of the written form: the printer's text for them, never run or parsed back.</summary>
+    public const string Refused = "refused";
+
     /// <summary>The six families, in the index's order.</summary>
     public static IReadOnlyList<string> Families { get; } =
         [OperationGoldens, PrinterGoldens, NullVectors, TextVectors, NumberVectors, DateVectors];
@@ -309,7 +312,8 @@ internal static class LogicVectors
             C("§ 3.5.3 has_word: a decimal digit is a word character.", """{"has_word":["pain2","pain"]}"""),
             C("§ 3.5.3 has_word: a later occurrence with boundaries is found.", """{"has_word":["painpain pain","pain"]}"""),
             C("§ 3.5.3 has_word: case-sensitive.", """{"has_word":["Pain","pain"]}"""),
-            C("§ 3.5.3 has_word: an accented letter is a word character, but the second occurrence stands alone.", """{"has_word":["paín pain","pain"]}"""),
+            C("§ 3.5.3 has_word: an accented letter directly after the word is a word character.", """{"has_word":["painé","pain"]}"""),
+            C("§ 3.5.3 has_word: an occurrence beside an accented letter does not count, a later one standing alone does.", """{"has_word":["painé pain","pain"]}"""),
             C("§ 3.5.3 has_word: the letter U+1D4B3 outside the Basic Multilingual Plane is a word character.", """{"has_word":["𝒳pain","pain"]}"""),
             C("§ 3.5.3 has_word: an emoji is not a word character.", """{"has_word":["😀pain😀","pain"]}"""),
             C("§ 3.6.2 has_word: a number, data that escaped validation, reads as null, so false.", """{"has_word":[5,"5"]}"""));
@@ -472,6 +476,15 @@ internal static class LogicVectors
             C("D23: an object field that is not an identifier prints as a JSON string.", """{"object":{"my field":1}}"""),
             C("D23: the empty object prints {}.", """{"object":{}}"""),
             C("§ 3.8 a .title read prints as written.", """{"===":[{"var":"input.specialty.title"},"Medical oncology"]}"""));
+
+        yield return File(F, Refused, "What the printer writes for a rule the written form refuses (D23: the printer is total); such text is shown in refusals and is not parsed back.",
+            C("D23: an operation whose operand count its form cannot show prints as name(a, b).", """{"<":[1,2,3]}"""),
+            C("D23: an operation outside § 3.5 prints as name(a, b).", """{"map":[[1],2]}"""),
+            C("D23: a refused standard operation prints as name(a, b).", """{"==":[1,2]}"""),
+            C("D23: an operation with a bare operand prints as name(a).", """{"!":true}"""),
+            C("D23: var with a number prints as var(5).", """{"var":5}"""),
+            C("D23: an object with two members is not a rule, and prints as its canonical JSON.", """{"b":2,"a":1}"""),
+            C("D23: an object with no member is not a rule, and prints as its canonical JSON.", "{}"));
     }
 
     // ---- null-vectors (part 03 §§ 6.1 to 6.4) ----
@@ -592,7 +605,7 @@ internal static class LogicVectors
             C("§ 3.6.1 an unsupplied input's .title is null.", """{"var":"input.specialty.title"}""", """{"input":{"specialty":{"value":null,"content":null,"title":null}}}"""),
             C("§ 3.6.1 an unsupplied input's .value equals null.", """{"===":[{"var":"input.age.value"},null]}""", """{"input":{"age":{"value":null,"content":null,"title":null}}}"""),
             C("§ 3.6.1 an unsupplied input is missing.", """{"missing":["input.age.value"]}""", """{"input":{"age":{"value":null,"content":null,"title":null}}}"""),
-            C("§ 3.6.1 a blank optional text input is missing (\"\" counts as missing).", """{"missing":["input.consult_draft.content"]}""", """{"input":{"consult_draft":{"value":"","content":"","title":null}}}"""),
+            C("§ 3.6.1 a blank optional input's .content is null, as an unsupplied one's.", """{"var":"input.consult_draft.content"}""", """{"input":{"consult_draft":{"value":null,"content":null,"title":null}}}"""),
             C("§ 3.6.1 a node that completed: its .value is its value.", """{"var":"node.draft.value"}""", """{"node":{"draft":{"value":"Plan: continue letrozole.","content":"Plan: continue letrozole.","state":"completed"}}}"""),
             C("§ 3.6.1 a node that completed: its .state is completed.", """{"var":"node.draft.state"}""", """{"node":{"draft":{"value":"Plan: continue letrozole.","content":"Plan: continue letrozole.","state":"completed"}}}"""),
             C("§ 3.6.1 a node that was skipped: its .value is null.", """{"var":"node.draft.value"}""", """{"node":{"draft":{"value":null,"content":null,"state":"skipped"}}}"""),
@@ -733,7 +746,8 @@ internal static class LogicVectors
             hasWord.Add(C($"§ 3.5.3 has_word: {category} on either side is not a word character.", $$"""{"has_word":["{{escape}}pain{{escape}}","pain"]}"""));
         hasWord.Add(C("§ 3.5.3 has_word: the whole text is the word.", """{"has_word":["pain","pain"]}"""));
         hasWord.Add(C("§ 3.5.3 has_word: a word that ends in a word character still needs a boundary after it.", """{"has_word":["chest pains","chest pain"]}"""));
-        hasWord.Add(C("§ 3.5.3 has_word: a word outside ASCII.", """{"has_word":["la douleur thoracique","douleur"]}"""));
+        hasWord.Add(C("§ 3.5.3 has_word: a word outside ASCII, standing alone.", """{"has_word":["Mme Okafor : céphalée depuis hier","céphalée"]}"""));
+        hasWord.Add(C("§ 3.5.3 has_word: a word outside ASCII, followed by a letter, is not found.", """{"has_word":["céphalées","céphalée"]}"""));
         hasWord.Add(C("§ 3.5.3 has_word: a word that begins with a non-word character is bounded by what is before it.", """{"has_word":["see (pain)","(pain"]}"""));
         yield return File(F, "has_word", "has_word: each category of word character beside the word, and other categories that are not (§ 3.5.3).", [.. hasWord]);
     }
@@ -834,7 +848,7 @@ internal static class LogicVectors
             C("§ 3.5.5 years_between: born 29 February, 4 on 1 March 1900.", """{"years_between":["1896-02-29","1900-03-01"]}"""),
             C("§ 3.5.5 years_between: born 28 February, 1 on 28 February of a leap year.", """{"years_between":["2007-02-28","2008-02-28"]}"""),
             C("§ 3.5.5 years_between: born 1 March, 0 on 29 February of a leap year.", """{"years_between":["2007-03-01","2008-02-29"]}"""),
-            C("§ 3.5.5 years_between: mirrored, 29 February to 28 February of a year with no 29 February is 0.", """{"years_between":["2009-02-28","2008-02-29"]}"""),
+            C("§ 3.5.5 years_between: mirrored, 28 February of a year with no 29 February back to 29 February is 0.", """{"years_between":["2009-02-28","2008-02-29"]}"""),
             C("§ 3.5.5 years_between: mirrored, 1 March back to 29 February is -1.", """{"years_between":["2009-03-01","2008-02-29"]}"""),
             C("§ 3.5.5 years_between: 0 for the same date.", """{"years_between":["2026-11-20","2026-11-20"]}"""),
             C("§ 3.5.5 years_between: from 0001-01-01 to 9999-12-31.", """{"years_between":["0001-01-01","9999-12-31"]}"""),

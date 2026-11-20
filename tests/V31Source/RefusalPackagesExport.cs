@@ -54,14 +54,16 @@ public class RefusalPackagesExport
     /// <summary>
     /// <paramref name="index"/> with the <paramref name="family"/> family's <c>cases</c> array replaced by
     /// <paramref name="cases"/>, one per line, indented as the <c>schemas</c> family's are; nothing
-    /// else changes. #1501 (area 04): the family is named, so the JSON Logic families are written the same way.
+    /// else changes. #1501 (area 04): the family is named, so the JSON Logic families are written the same way, and its
+    /// <c>cases</c> is looked for in its own object only (before the next family's <c>id</c>).
     /// </summary>
     internal static string WithCases(string index, string family, IReadOnlyList<string> cases)
     {
         var at = index.IndexOf($"\"id\": \"{family}\"", StringComparison.Ordinal);
         Assert.True(at >= 0, $"index.json has no {family} family.");
+        var next = index.IndexOf("\"id\":", at + 1, StringComparison.Ordinal);
         var member = index.IndexOf("\"cases\": [", at, StringComparison.Ordinal);
-        Assert.True(member >= 0, $"the {family} family has no cases array.");
+        Assert.True(member >= 0 && (next < 0 || member < next), $"the {family} family has no cases array.");
 
         var open = member + "\"cases\": ".Length;
         var close = index.IndexOf(']', open);
