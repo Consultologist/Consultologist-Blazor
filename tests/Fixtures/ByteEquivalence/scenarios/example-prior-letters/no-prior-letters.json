@@ -1,0 +1,17 @@
+{
+  "description": [
+    "prior_letters left unset: the letters loop fans over no entries, and today's starter refuses",
+    "the job before any model call (NoApplicableDeliverable, the empty-fan refusal), though the",
+    "assessment prompt is written to say when no prior letter was read."
+  ],
+  "inputs": {
+    "consult_draft": "Daniel Mbeki, 44, referred to ask whether his recurrent gout needs urate-lowering therapy. Three flares this year; serum urate 0.52 mmol/L. (Fictional.)",
+    "prior_letters": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

@@ -1,0 +1,19 @@
+{
+  "description": [
+    "Every optional input left unset (prior_notes, patient, length_of_stay): the prior-notes loops",
+    "fan over no entries, and today's starter refuses the job before any model call",
+    "(NoApplicableDeliverable, the empty-fan refusal the manifest's description names)."
+  ],
+  "inputs": {
+    "consult_draft": "Eileen Murphy admitted with community-acquired pneumonia; now afebrile on oral amoxicillin. Mobilising with a frame; physiotherapy and a home assessment before discharge. (Fictional.)",
+    "prior_notes": null,
+    "patient": null,
+    "length_of_stay": null
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

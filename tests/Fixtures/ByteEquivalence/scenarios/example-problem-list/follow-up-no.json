@@ -4,7 +4,7 @@
     "condition and only the overview is drafted."
   ],
   "inputs": {
-    "consult_draft": "Priya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Review in clinic in four weeks with the echo result. (Fictional.)"
+    "consult_draft": "Priya Raman, 67, seen for breathlessness. Known type 2 diabetes, HbA1c 61 mmol/mol on metformin. New ankle swelling; BNP raised, echo requested. Discharged back to her GP; no further clinic review arranged. (Fictional.)"
   },
   "profile": {
     "name": "Dr A. Sample",
