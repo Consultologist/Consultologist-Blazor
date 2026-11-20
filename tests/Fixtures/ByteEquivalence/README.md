@@ -190,3 +190,23 @@ the job fails the same way at `summary`.
 and with no deliverable reached nothing shows the composed node texts — so these captures cannot
 show what the node-placed macros (`counselling`, `section_caveat`, `table_note`, `preamble`,
 `sign_off`) add.
+
+## `renderers/`
+
+`concept-renderers.json` freezes the bytes of the two C# concept renderers, `ConceptRenderers.Bullets`
+and `ConceptRenderers.Context`, so the package-format registry's Scriban templates
+(`v31/renderers/concept_bullets.md`, `concept_context.md`) can be held to them after the C#
+renderers are gone (Part 10 § 3.3). It holds twenty cases: the thirteen of
+`V31BuiltInRenderersTests` and seven more (`two in order`, `non-ASCII term`, `empty term`,
+`null type on a SNOMED concept`, `null id on a SNOMED concept`, `newline in support`, `long list`).
+Each case has its `name`, its `concepts` (`term`, `type`, `id`, `isSnomedConcept`, `isActive`,
+`support`, `source`; a null `type`, `id` or `support` is JSON `null`, and the C# renderers receive
+`""` for a null type or id) and the two renderings, `concept_bullets` and `concept_context`.
+
+`ConceptRendererCaptureTests` writes it from the C# renderers and compares byte for byte, then
+renders the registry's templates on each case's concepts and compares them with the strings read
+from this file.
+
+Regenerate: delete the file and run
+`dotnet test tests/Consultologist.Api.Tests.csproj --filter FullyQualifiedName~ConceptRendererCaptureTests`.
+The first test writes it and fails once; review it and commit it.
