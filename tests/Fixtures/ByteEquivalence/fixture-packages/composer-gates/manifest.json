@@ -20,7 +20,7 @@
     },
     {
       "id": "problems",
-      "label": "Problems",
+      "label": "Problem list",
       "required": true,
       "type": "array",
       "items": "text"

@@ -1,10 +1,11 @@
 {
   "description": [
     "Audience clinician. note and record_copy source the same two nodes (the problem loop, then",
-    "note_body) and compose to the same bytes: the input's items named label plus position",
-    "('Problems 1'), then the scalar after a blank line. Both checks pass (each extracted list holds",
-    "every coded term of the draft's), so both are composed. patient_copy: its if does not hold, so",
-    "it is skipped with the reason 'needs `input.audience == \"patient\"`; it does not hold'.",
+    "note_body) and compose to the same bytes: the input's items named by the input's label plus",
+    "position ('Problem list 1', not the loop's label 'Problems'), then the scalar after a blank",
+    "line. Both checks pass (each extracted list holds every coded term of the draft's), so both are",
+    "composed. patient_copy: its if does not hold, so it is skipped with the reason",
+    "'needs `input.audience == \"patient\"`; it does not hold'.",
     "cover_letter: cover_note's prompt reads deliverable.note.content (the composed note, before its",
     "check settles) and its patient-copy line is gated off by input.audience. patient_line still runs:",
     "the cover prompt's read of deliverable.patient_copy keeps it in the run."

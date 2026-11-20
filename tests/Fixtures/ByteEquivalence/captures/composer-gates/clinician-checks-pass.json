@@ -89,28 +89,28 @@
     },
     {
       "key": "note_body",
-      "hash": "sha256:43ad09bfc27e8acb2748129873a0ff6fe70c3018c9caeb39d56548ef9025b78e",
-      "text": "Write the closing paragraph of a clinic note from this draft and its problems.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n## Problems 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problems 2\n\nMedication paragraph: metformin continued.\n"
+      "hash": "sha256:f365be62e68fb20f71a048a68f51259640e3755271d92eba052cb9e4efeefd6a",
+      "text": "Write the closing paragraph of a clinic note from this draft and its problems.\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n"
     },
     {
       "key": "patient_line",
-      "hash": "sha256:25b725439ba2332859e36d767649f01702c767308d464da8dfbd8716fc167f4a",
-      "text": "Write one line for the patient about these problems.\n## Problems 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problems 2\n\nMedication paragraph: metformin continued.\n"
+      "hash": "sha256:6730bb43b79d43c8518ec1eb0ad6a39b4af4b3f6ecc6ff7079f6ea4b2a5f1086",
+      "text": "Write one line for the patient about these problems.\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n"
     },
     {
       "key": "extract_note_terms",
-      "hash": "sha256:82b09b206145fd070adb83844138f616d4f06d11f969a8d2db7ffc782992d50d",
-      "text": "Extract the clinical terms as concept-list JSON: ## Problems 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problems 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n"
+      "hash": "sha256:16f5c4caf7d37d35cbba96389a0ec4958e7ba55bca07b1b8f0d850df96bbd907",
+      "text": "Extract the clinical terms as concept-list JSON: ## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n"
     },
     {
       "key": "extract_copy_terms",
-      "hash": "sha256:82b09b206145fd070adb83844138f616d4f06d11f969a8d2db7ffc782992d50d",
-      "text": "Extract the clinical terms as concept-list JSON: ## Problems 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problems 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n"
+      "hash": "sha256:16f5c4caf7d37d35cbba96389a0ec4958e7ba55bca07b1b8f0d850df96bbd907",
+      "text": "Extract the clinical terms as concept-list JSON: ## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n"
     },
     {
       "key": "cover_note",
-      "hash": "sha256:35484e8def79496f2b3756f58a2abeb386da89a5ded9fe0d7e207a49b8249fb2",
-      "text": "Write a two-line cover letter for this note.\n## Problems 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problems 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n\n"
+      "hash": "sha256:be7c0c0d0be9e435fd7b11a2d6087f136089fce028d5516a43bf9959c69038e6",
+      "text": "Write a two-line cover letter for this note.\n## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months.\n\n"
     }
   ],
   "renders": [],
@@ -119,15 +119,15 @@
       "id": "note",
       "state": "composed",
       "reason": null,
-      "hash": "sha256:be0732f3117eea580e1974c64b83977015c96af2450bcec913842ffbd932389e",
-      "text": "## Problems 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problems 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months."
+      "hash": "sha256:de57fa9e395477853cff07d72d71c423ce9aa7d2feffa4fd5fee442391c0e73d",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months."
     },
     {
       "id": "record_copy",
       "state": "composed",
       "reason": null,
-      "hash": "sha256:be0732f3117eea580e1974c64b83977015c96af2450bcec913842ffbd932389e",
-      "text": "## Problems 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problems 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months."
+      "hash": "sha256:de57fa9e395477853cff07d72d71c423ce9aa7d2feffa4fd5fee442391c0e73d",
+      "text": "## Problem list 1\n\nDiabetes paragraph: HbA1c 71 mmol/mol.\n\n## Problem list 2\n\nMedication paragraph: metformin continued.\n\nClosing paragraph: review in three months."
     },
     {
       "id": "patient_copy",
