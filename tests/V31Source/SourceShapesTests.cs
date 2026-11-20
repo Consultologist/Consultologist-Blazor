@@ -24,18 +24,29 @@ public class SourceShapesTests
 
     public static IEnumerable<object[]> SchemaNames() => KnownSchemas().Select(n => new object[] { n });
 
+    /// <summary>
+    /// The examples of the schemas <see cref="SourceShapes.ForSchema"/> knows whose name starts with
+    /// <paramref name="prefix"/>, without those that judge a part of a schema (<c>against</c>), not its root shape.
+    /// </summary>
     private static IEnumerable<string> Examples(string prefix) =>
         KnownSchemas()
             .Select(n => System.IO.Path.Combine(ExamplesDir(), n))
             .Where(Directory.Exists)
             .SelectMany(d => Directory.GetFiles(d, prefix + "*.json"))
             .Select(f => System.IO.Path.GetRelativePath(ExamplesDir(), f).Replace('\\', '/'))
+            .Where(f => Example(f)["against"] == null)
             .OrderBy(f => f, StringComparer.Ordinal);
 
     public static IEnumerable<object[]> ValidExamples() => Examples("valid-").Select(f => new object[] { f });
 
     public static IEnumerable<object[]> MissingAndUnknownExamples() =>
         Examples("invalid-missing-").Concat(Examples("invalid-unknown-member")).Select(f => new object[] { f });
+
+    public static IEnumerable<object[]> NullBlankAndEmptyExamples() =>
+        Examples("invalid-")
+            .Where(f => System.IO.Path.GetFileNameWithoutExtension(f) is var name
+                && (name.EndsWith("-null", StringComparison.Ordinal) || name is "invalid-label-blank" or "invalid-description-empty-array"))
+            .Select(f => new object[] { f });
 
     private static JsonObject Example(string file) =>
         (JsonObject)JsonNode.Parse(File.ReadAllText(System.IO.Path.Combine(ExamplesDir(), file)))!;
@@ -118,10 +129,7 @@ public class SourceShapesTests
     [MemberData(nameof(ValidExamples))]
     public void EveryValidExample_PassesTheMemberRules(string file)
     {
-        var example = Example(file);
-        if (example["against"] != null)
-            return; // judges a part of a schema, not the root shape
-        var refusals = CheckDeep(file, example);
+        var refusals = CheckDeep(file, Example(file));
         Assert.True(refusals.Count == 0, file + ": " + string.Join(" | ", refusals.Select(r => r.Sentence)));
     }
 
@@ -129,10 +137,7 @@ public class SourceShapesTests
     [MemberData(nameof(MissingAndUnknownExamples))]
     public void EveryMissingOrUnknownExample_IsRefused(string file)
     {
-        var example = Example(file);
-        if (example["against"] != null)
-            return;
-        var refusals = CheckDeep(file, example);
+        var refusals = CheckDeep(file, Example(file));
         Assert.NotEmpty(refusals);
         var name = System.IO.Path.GetFileNameWithoutExtension(file);
         if (name.StartsWith("invalid-missing-", StringComparison.Ordinal))
@@ -144,5 +149,59 @@ public class SourceShapesTests
         {
             Assert.Contains(refusals, r => r.Id == "S01-023");
         }
+    }
+
+    [Fact]
+    public void NoExampleOfTheKnownSchemas_IsFilteredForJudgingAPart()
+    {
+        // The against filter is in the theory data; this says how much it leaves out (none today).
+        var all = KnownSchemas()
+            .Select(n => System.IO.Path.Combine(ExamplesDir(), n))
+            .Where(Directory.Exists)
+            .SelectMany(d => Directory.GetFiles(d, "*.json"))
+            .Count();
+        Assert.Equal(all, Examples("").Count());
+    }
+
+    [Theory]
+    [MemberData(nameof(NullBlankAndEmptyExamples))]
+    public void EveryNullBlankOrEmptyExample_IsRefused_ByItsOwnSentence(string file)
+    {
+        var name = System.IO.Path.GetFileNameWithoutExtension(file);
+        var expected = name switch
+        {
+            "invalid-label-blank" => "S01-026",
+            "invalid-description-empty-array" => "S01-024",
+            _ => "S01-022",
+        };
+
+        var refusals = CheckDeep(file, Example(file));
+        if (file == "flow-case/invalid-branch-when-null.json")
+        {
+            // A null inside when is a value of a list, not a member: Check calls it a list that is not
+            // all text (A02-001); its own sentence is the flow reader's (S04-076), so it goes through Parse.
+            Assert.Contains(refusals, r => r.Id == "A02-001");
+            expected = "S04-076";
+            refusals = AsCaseFolder(Example(file)["instance"]!.AsObject()).Parse().Refusals.ToList();
+        }
+
+        Assert.True(
+            refusals.Any(r => r.Id == expected),
+            $"{file}: expected {expected}, got: " + string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Sentence}")));
+    }
+
+    /// <summary>Minimal with <paramref name="index"/> as the case folder <c>nodes/route/</c>, and an agent file for each id its bodies list.</summary>
+    private static Dictionary<string, byte[]> AsCaseFolder(JsonObject index)
+    {
+        var files = SourceFixture.Minimal()
+            .With("nodes/index.json", SourceFixture.Index(["plan", "route"]))
+            .With("nodes/route/index.json", index.ToJsonString());
+        var ids = (index["branches"] as JsonArray ?? [])
+            .Select(b => b?["nodes"] as JsonArray ?? [])
+            .SelectMany(n => n)
+            .Select(n => (string)n!);
+        foreach (var id in ids)
+            files[$"nodes/route/{id}.md"] = files["nodes/plan.md"];
+        return files;
     }
 }
