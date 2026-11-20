@@ -79,7 +79,7 @@ public static class FormatReads
             return Fault(ReadFault.UnknownMember);
         }
 
-        var root = View_(format, FormatTypes.Defs(format), formats);
+        var root = Look(format, FormatTypes.Defs(format), formats);
         switch (steps[0])
         {
             case "content":
@@ -104,7 +104,8 @@ public static class FormatReads
                 return Fault(ReadFault.NoSuchField);
             }
 
-            var field = Field(view, step, formats, out var fault);
+            var field = Field(view, step, formats, out var fault, out var viaNull);
+            nullable |= viaNull;
             if (field is null)
             {
                 if (last && step == "title" && fault is ReadFault.NoSuchField or ReadFault.NotAnObject)
@@ -117,7 +118,7 @@ public static class FormatReads
             }
 
             current = field;
-            view = View_(field, FormatTypes.Defs(field), formats);
+            view = Look(field, FormatTypes.Defs(field), formats);
             nullable |= view.Nullable;
         }
 
@@ -152,7 +153,7 @@ public static class FormatReads
         ArgumentNullException.ThrowIfNull(literal);
         ArgumentNullException.ThrowIfNull(read);
         ArgumentNullException.ThrowIfNull(path);
-        if (read.Titles is null || read.Titles.Contains(literal, StringComparer.Ordinal))
+        if (read.Titles is null || read.Titles.Count == 0 || read.Titles.Contains(literal, StringComparer.Ordinal))
         {
             return null;
         }
@@ -195,9 +196,10 @@ public static class FormatReads
     }
 
     /// <summary>The field <paramref name="name"/> of what <paramref name="view"/> is, as written there; null with the fault in <paramref name="fault"/>.</summary>
-    private static JsonNode? Field(View view, string name, FormatSet formats, out ReadFault fault)
+    private static JsonNode? Field(View view, string name, FormatSet formats, out ReadFault fault, out bool nullable)
     {
         fault = ReadFault.None;
+        nullable = false;
         if (view.Schema is null)
         {
             fault = ReadFault.NotAnObject;
@@ -220,11 +222,14 @@ public static class FormatReads
         JsonNode? first = null;
         foreach (var member in members)
         {
-            var m = View_(member, view.Defs, formats);
+            var m = Look(member, view.Defs, formats);
             if (m.Schema is not null && m.Shape == FormatShape.Null)
             {
+                nullable = true;
                 continue;
             }
+
+            nullable |= m.Nullable;
 
             var found = m.Shape == FormatShape.Object && m.Schema is not null ? FieldOf(m.Schema, m.Defs, name) : null;
             if (found is null || (first is not null && !FormatTypes.Same(first, found, formats)))
@@ -270,7 +275,7 @@ public static class FormatReads
             clone = resolved;
         }
 
-        if (clone is JsonObject obj && defs is not null && !obj.ContainsKey("$defs"))
+        if (clone is JsonObject obj && defs is not null && !obj.ContainsKey("$defs") && HasLocalReference(obj, 0))
         {
             obj["$defs"] = defs.DeepClone();
         }
@@ -278,11 +283,43 @@ public static class FormatReads
         return clone;
     }
 
+    /// <summary>Whether <paramref name="node"/> holds a <c>$ref</c> into <c>#/$defs</c> (so its file's <c>$defs</c> must travel with it); true past the depth bound.</summary>
+    private static bool HasLocalReference(JsonNode? node, int depth)
+    {
+        if (depth > SourceBounds.JsonDepth)
+        {
+            return true;
+        }
+
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var (key, member) in obj)
+                {
+                    if (key == "$ref" && FormatTypes.Text(member) is { } r && r.StartsWith('#'))
+                    {
+                        return true;
+                    }
+
+                    if (HasLocalReference(member, depth + 1))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            case JsonArray array:
+                return array.Any(m => HasLocalReference(m, depth + 1));
+            default:
+                return false;
+        }
+    }
+
     /// <summary>
     /// What <paramref name="node"/> is, through names, <c>#/$defs</c> and an <c>anyOf</c> of one
     /// type and <c>null</c> (read as that type, nullable); a union of more is a union.
     /// </summary>
-    private static View View_(JsonNode? node, JsonObject? defs, FormatSet formats)
+    private static View Look(JsonNode? node, JsonObject? defs, FormatSet formats)
     {
         var nullable = false;
         for (var hop = 0; hop < Hops; hop++)

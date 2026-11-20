@@ -175,6 +175,78 @@ public class FormatReadsTests
     }
 
     [Fact]
+    public void ANameField_InAFileWithDefs_StaysExactlyTheName()
+    {
+        var format = JsonNode.Parse("""
+            { "$defs": { "inner": { "type": "object", "required": ["q"], "additionalProperties": false, "properties": { "q": { "type": "number" } } },
+                         "alias": { "$ref": "judgement", "description": "An alias." } },
+              "type": "object", "required": ["j", "a", "d", "n"], "additionalProperties": false, "properties": {
+                "j": { "$ref": "judgement", "description": "Why." },
+                "a": { "$ref": "#/$defs/alias" },
+                "d": { "$ref": "#/$defs/inner" },
+                "n": { "type": "string" } } }
+            """);
+        var j = Read(format, "value", "j");
+        Assert.Equal("judgement", Print(j));
+        Assert.True(FormatTypes.Same(j.Format, "judgement", Formats));
+        Assert.Equal("plaintext", Print(Read(format, "value", "j", "reason")));
+        Assert.Equal("{ \"$ref\": \"judgement\", \"description\": \"Why.\" }".Replace(" ", ""), j.Format!.ToJsonString().Replace(" ", ""));
+
+        var a = Read(format, "value", "a");
+        Assert.Equal("judgement", Print(a));
+        Assert.True(FormatTypes.Same(a.Format, "judgement", Formats));
+        Assert.Null(a.Format!["$defs"]);
+        Assert.Equal("plaintext", Print(Read(format, "value", "a", "reason")));
+        Assert.Null(Read(format, "value", "n").Format!["$defs"]);
+    }
+
+    [Fact]
+    public void ANullableLabelledEnum_ExcludesTheNullArm_AndReadsNullable()
+    {
+        var nullableEnum = JsonNode.Parse("""
+            { "type": ["string", "null"], "oneOf": [
+              { "const": "a", "title": "Alpha" }, { "const": "b", "title": "Beta" }, { "const": null } ] }
+            """);
+        var r = Read(nullableEnum, "title");
+        Assert.Equal(["Alpha", "Beta"], r.Titles);
+        Assert.True(r.Nullable);
+
+        var inObject = JsonNode.Parse("""
+            { "anyOf": [ { "type": "object", "required": ["k"], "additionalProperties": false, "properties": { "k": { "type": "string", "oneOf": [ { "const": "a", "title": "Alpha" }, { "const": "b", "title": "Beta" } ] } } }, { "type": "null" } ] }
+            """);
+        var through = Read(inObject, "value", "k", "title");
+        Assert.Equal(["Alpha", "Beta"], through.Titles);
+        Assert.True(through.Nullable);
+    }
+
+    [Fact]
+    public void AUnionMembersOwnNullability_MakesTheFieldReadNullable()
+    {
+        var union = JsonNode.Parse("""
+            { "anyOf": [
+              { "type": "object", "required": ["a"], "additionalProperties": false, "properties": { "a": { "$ref": "plaintext" } } },
+              { "type": "object", "required": ["a"], "additionalProperties": false, "properties": { "a": { "$ref": "plaintext" } } },
+              { "type": "null" } ] }
+            """);
+        Assert.True(Read(union, "value", "a").Nullable);
+        var nested = JsonNode.Parse("""
+            { "anyOf": [
+              { "anyOf": [ { "type": "object", "required": ["a"], "additionalProperties": false, "properties": { "a": { "$ref": "plaintext" } } }, { "type": "null" } ] },
+              { "type": "object", "required": ["a"], "additionalProperties": false, "properties": { "a": { "$ref": "plaintext" } } } ] }
+            """);
+        var r = Read(nested, "value", "a");
+        Assert.Equal(ReadFault.None, r.Fault);
+        Assert.True(r.Nullable);
+    }
+
+    [Fact]
+    public void ATitleLiteral_IsNotRefused_WhenThereAreNoTitles()
+    {
+        Assert.Null(FormatReads.TitleLiteral("c", "x", "y", new ReadResult(null, ReadFault.None, false, null), "w.json"));
+        Assert.Null(FormatReads.TitleLiteral("c", "x", "y", new ReadResult(null, ReadFault.None, false, []), "w.json"));
+    }
+
+    [Fact]
     public void NeverThrows_OnOddFormatsOrSteps()
     {
         var cyclic = JsonNode.Parse("""{ "$defs": { "a": { "$ref": "#/$defs/a" } }, "$ref": "#/$defs/a" }""");
@@ -183,9 +255,15 @@ public class FormatReadsTests
         {
             foreach (var steps in new[] { Array.Empty<string>(), ["value"], ["content"], ["title"], ["value", "x"], ["value", ""], ["value", "title"], [""], ["value", null!] })
             {
-                var r = FormatReads.Read(format, steps, Formats);
-                Assert.NotNull(r);
+                Assert.NotNull(FormatReads.Read(format, steps, Formats));
             }
+        }
+
+        foreach (var format in new JsonNode?[] { null, "nope", cyclic, JsonValue.Create(5) })
+        {
+            Assert.NotEqual(ReadFault.None, FormatReads.Read(format, ["value", "x"], Formats).Fault);
+            Assert.NotEqual(ReadFault.None, FormatReads.Read(format, ["content"], Formats).Fault);
+            Assert.NotEqual(ReadFault.None, FormatReads.Read(format, ["title"], Formats).Fault);
         }
     }
 }
