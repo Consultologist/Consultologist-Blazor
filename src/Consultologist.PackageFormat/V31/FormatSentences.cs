@@ -173,5 +173,21 @@ internal static class FormatSentences
     public static SourceRefusal TitleLiteralNotATitle(string condition, string readPath, string literal, string titles, string path) =>
         new("S02-020", $"{condition} compares {readPath}.title with '{literal}', which is not one of its titles ({titles}).", path);
 
+    /// <summary>S02-012: an agent node whose format has no binding for its producer.</summary>
+    public static SourceRefusal NoBinding(string node, string format, string producer, string path) =>
+        new("S02-012", $"Node '{node}' is kind agent and returns {format}, which has no binding for producer {producer} in agents/bindings.json.", path);
+
+    /// <summary>S02-027: an agent node's format is an <c>anyOf</c> at its root; <paramref name="format"/> its type string.</summary>
+    public static SourceRefusal AnyOfAtRoot(string node, string format, string path) =>
+        new("S02-027", $"Node '{node}' returns {format}, an anyOf at its root, which strict mode can't send to a model; wrap it in an object.", path);
+
+    /// <summary>S02-055: a format sent to a model with too many properties (D3).</summary>
+    public static SourceRefusal TooManyProperties(string name, int n, int limit, string path) =>
+        new("S02-055", $"Format '{name}' declares {n} properties; a format sent to a model declares at most {limit}.", path);
+
+    /// <summary>S02-056: a format sent to a model nested too deep (D3); <paramref name="where"/> the first object at level 6.</summary>
+    public static SourceRefusal TooDeep(string name, int n, string where, int limit, string path) =>
+        new("S02-056", $"Format '{name}' nests {n} levels deep at {where}; a format sent to a model nests at most {limit}.", path);
+
     private static string Where(string pointer) => pointer.Length == 0 ? "the root" : pointer;
 }

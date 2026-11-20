@@ -416,7 +416,7 @@ The golden is written by the test itself when the environment variable `UPDATE_V
     - `IReadOnlyList<SourceRefusal> CheckLimits(string formatName, SentFormatResult sent, string path)` — S02-055, S02-056.
   - Sentences S02-012, S02-027, S02-055, S02-056.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // AgentBindingsTests (on the published files)
@@ -434,8 +434,8 @@ The golden is written by the test itself when the environment variable `UPDATE_V
 [Fact] public void AReferencedFormat_CountsWhereverItIsReferenced()   // a format referencing a 60-property format twice → 120 + its own
 ```
 
-- [ ] **Step 2–4:** Run (fail), implement, run (pass).
-- [ ] **Step 5: Commit** `PackageFormat (#1500): agent bindings by format and producer, and the copy of a format a model receives`; push.
+- [x] **Step 2–4:** Run (fail), implement, run (pass).
+- [x] **Step 5: Commit** `PackageFormat (#1500): agent bindings by format and producer, and the copy of a format a model receives`; push.
 
 ### Task 8: Validating values
 
