@@ -1,12 +1,13 @@
 using System.Text.Json.Nodes;
+using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
 
 namespace Consultologist.Api.Tests.V31Types;
 
 /// <summary>
-/// #1500 (specVersion 31, area 03): what the type tests share: the published registry, read off the
-/// submodules like <see cref="Consultologist.Api.Tests.V31Source.V31Contract"/> does (and failing
-/// loudly when they are not checked out), and the small builders for a schema and a format file.
+/// #1500 (specVersion 31, area 03): what the type tests share: the published registry (read off the
+/// submodules by <see cref="V31Contract.PublishedTypes"/>, failing loudly when they are not checked
+/// out), and the small builders for a schema and a format file.
 /// </summary>
 internal static class TypeFixture
 {
@@ -29,19 +30,11 @@ internal static class TypeFixture
         return path;
     }
 
-    private static string Contract(params string[] parts) =>
-        Path.Combine([Path.GetDirectoryName(RepoFile("external", "consultologist-package-format", "v31", "bounds.json"))!, .. parts]);
-
-    private static string Agents(params string[] parts) =>
-        Path.Combine([Path.GetDirectoryName(RepoFile("external", "consultologist-agents", "agents", "v31", "agents.json"))!, .. parts]);
-
-    /// <summary>The registry as the submodules publish it: the nine built-ins, the catalogue, the renderers, the bindings.</summary>
-    public static TypeRegistry Published() => TypeRegistry.Read(
-        Contract("formats"),
-        Agents("formats"),
-        Contract("renderers", "index.json"),
-        Agents("bindings.json"),
-        Agents("agents.json"));
+    /// <summary>
+    /// The registry as the submodules publish it: the nine built-ins, the catalogue, the renderers, the
+    /// bindings; read by <see cref="V31Contract.PublishedTypes"/>, which the refusal packages share.
+    /// </summary>
+    public static TypeRegistry Published() => V31Contract.PublishedTypes();
 
     private static readonly Lazy<TypeRegistry> Shared = new(Published);
 

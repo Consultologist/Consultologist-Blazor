@@ -77,6 +77,25 @@ internal static class V31Contract
         Items(JsonNode.Parse(File.ReadAllText(AgentsFormatsIndex()))!),
         Items(Json("renderers", "index.json")));
 
+    /// <summary>
+    /// #1500 (specVersion 31, area 03): the published <see cref="TypeRegistry"/>, read off the two
+    /// submodules: the built-in formats and renderers of <c>v31/</c>, and the agents catalogue's
+    /// formats, bindings and agents (<c>external/consultologist-agents/agents/v31/</c>). The type
+    /// tests and the refusal packages share it.
+    /// </summary>
+    public static TypeRegistry PublishedTypes()
+    {
+        var contract = System.IO.Path.GetDirectoryName(Path("bounds.json"))!;
+        var agents = System.IO.Path.GetDirectoryName(AgentsFormatsIndex())!;
+        var catalogue = System.IO.Path.GetDirectoryName(agents)!;
+        return TypeRegistry.Read(
+            System.IO.Path.Combine(contract, "formats"),
+            agents,
+            System.IO.Path.Combine(contract, "renderers", "index.json"),
+            System.IO.Path.Combine(catalogue, "bindings.json"),
+            System.IO.Path.Combine(catalogue, "agents.json"));
+    }
+
     /// <summary>The folder of the pinned suite's refusal packages; fails when the submodule is not checked out.</summary>
     public static string RefusalPackagesFolder()
     {
