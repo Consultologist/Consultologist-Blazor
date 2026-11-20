@@ -95,8 +95,10 @@ public static class SourceMembers
         return false;
     }
 
-    // A string with a lone surrogate escape ("\ud800") parses but cannot be read back; it counts as one
-    // replacement character, which is neither blank nor long enough to matter.
+    // A string with a lone surrogate escape ("\ud800") cannot be read back; it counts as one replacement
+    // character, which is neither blank nor long enough to matter. StrictJson refuses such a string, so
+    // the parser never reaches this; Check is public, though, and may be given an object that
+    // System.Text.Json parsed (SourceMembersTests.ALoneSurrogate_InAnObjectNotReadByStrictJson_IsOneCharacter).
     private static string ReadText(JsonNode node)
     {
         try

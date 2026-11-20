@@ -227,6 +227,18 @@ public class SourceMembersTests
     }
 
     [Fact]
+    public void ALoneSurrogate_InAnObjectNotReadByStrictJson_IsOneCharacter()
+    {
+        // StrictJson refuses a lone surrogate escape, but Check is public and may be given an object
+        // System.Text.Json parsed, whose string cannot be read back: it counts as one character.
+        var declaration = Agent();
+        declaration["label"] = JsonNode.Parse("\"\\ud800\"");
+        declaration["description"] = JsonNode.Parse("[\"\\ud800\"]");
+
+        Assert.Empty(Run(declaration));
+    }
+
+    [Fact]
     public void NeverThrows_OnAnyMemberValue()
     {
         foreach (var shape in new[] { SourceShapes.NodeAgent, SourceShapes.FlowCase, SourceShapes.Manifest })
