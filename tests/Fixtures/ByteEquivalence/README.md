@@ -181,26 +181,20 @@ deliverable `unsettled`. Any other start error (inputs that do not fit the manif
 macro choice, a rate limit) throws, so a mistake in a scenario is never frozen as a refusal. A
 refused capture composes nothing, so it adds nothing to the coverage rules.
 
-### Known failure: `example-macros` and `example-macros-warnings`
+### `example-macros` and `example-macros-warnings`: fixed, now complete
 
-Today's engine fails both packages (v2026.11.3) in every scenario, at node `summary`, with
-`Closing summary failed: Node 'summary' rendered macro.notes/red_flags.prompt, which the package's
-walk does not reach from its prompt; the walk and the render disagree.` The summary prompt reads
-the `notes/` macro folder (`{{ for m in macro.notes }}… {{ m.prompt }}`); the render records those
-`.prompt` reads, and `ConsultNodeCompletion.SanctionedBy` — the walk that cross-checks them — does
-not reach them. This is the engine as it is; it is captured, not worked around.
+Area 01 first captured both packages (v2026.11.3) failing in every scenario at node `summary`.
+Their summary prompt reads the `notes/` macro folder (`{{ for m in macro.notes }}… {{ m.prompt }}`),
+and two engine bugs stopped it:
 
-The captures hold status `Failed`, that sentence, and the prompts this harness sent before it: the
-three standing sections and the summary. Here `summary` is dispatched before the
-`requested_sections` loop, so no `narrative_draft`, `table_draft` or `patient_line` prompt is sent
-and neither deliverable is reached; the test's exception tables say so. A production orchestrator
-may dispatch independent nodes together, so it could send the requested sections' prompts before
-the job fails the same way at `summary`.
+1. the completion cross-check (`ConsultNodeCompletion.SanctionedBy`) walked the package without its
+   macro folders, so no folder item was a read it sanctioned (#1514, engine v2026.11.6);
+2. the mechanics sentence named a folder item by its bare id (`{{ macro.red_flags.content }}`),
+   which the reply cannot render; it now names `macro.<folder>.<item>` (#1516, engine v2026.11.7).
 
-`outputs` records each reply as served, before the node's placed macros are composed around it,
-and with no deliverable reached nothing shows the composed node texts — so these captures cannot
-show what the node-placed macros (`counselling`, `section_caveat`, `table_note`, `preamble`,
-`sign_off`) add.
+Both fixes were merged from `main` into `m39-build` and these captures regenerated: all sixteen
+complete, every requested section, the summary and both deliverables composed. The exception
+tables are empty. A live run of `example-macros` on v2026.11.7 completed too.
 
 ### `example-v12-constructs`: `default` fails, a lone refusal does not
 

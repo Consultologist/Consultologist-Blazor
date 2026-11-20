@@ -172,7 +172,11 @@ internal static class ConsultNodeCompletion
 
     /// <summary>The bare node id of an instance key (<c>node:item</c> on a fan).</summary>
 
-    /// <summary>The inline macros the package's walk says this prompt reaches — the validator's closure, for this instance (B5: the static half).</summary>
+    /// <summary>
+    /// The inline macros the package's walk says this prompt reaches — the validator's closure, for this
+    /// instance (B5: the static half). The walk takes the macro folders, as the validators' does, so a
+    /// folder item a prompt reads (<c>{{ for m in macro.&lt;folder&gt; }}{{ m.prompt }}</c>, #1099) is reached.
+    /// </summary>
     private static IReadOnlySet<string> SanctionedBy(WorkflowPackage package, string nodeId, string? itemId)
     {
         if (package.SourceFiles is null)
@@ -180,9 +184,7 @@ internal static class ConsultNodeCompletion
             return TemplateReferenceContext.NoIds;
         }
 
-        var nodes = WorkflowDerivedEdges.PrepareNodes(package.Manifest, package.SourceFiles, package.Formats, out var snippets, out var contextFor);
-        var walk = WorkflowDerivedEdges.WalkAll(package.Manifest, package.SourceFiles, nodes, snippets, contextFor);
-        return walk.PromptReadsOf(nodeId, itemId);
+        return WorkflowDerivedEdges.WalkOf(package.Manifest, package.SourceFiles, package.Formats).PromptReadsOf(nodeId, itemId);
     }
 
     private static string RenderMacro(TemplateRenderScope scope, string macroId, string nodeId)

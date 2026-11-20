@@ -16,34 +16,16 @@ namespace Consultologist.Api.Tests.ByteEquivalence;
 public class PackageCaptureGoldenTests
 {
     /// <summary>
-    /// Why the two macros packages compose nothing: every scenario fails at node <c>summary</c>,
-    /// whose prompt renders the <c>notes/</c> folder's <c>.prompt</c> reads, which the walk that
-    /// sanctions a node's inline reads does not see. Captured as it is, not worked around.
+    /// A deliverable no scenario of its package can compose on today's engine, and why. Empty since
+    /// the macro-folder fixes (#1514, #1516): the two macros packages, which failed at node
+    /// <c>summary</c>, now compose.
     /// </summary>
-    private const string FailsAtSummary =
-        "today's engine fails this package at node 'summary': the walk does not reach macro.notes/<item>.prompt (ConsultNodeCompletion.SanctionedBy)";
-
-    /// <summary>A deliverable no scenario of its package can compose on today's engine, and why.</summary>
     private static readonly IReadOnlyDictionary<(string Package, string Deliverable), string> NeverComposed =
-        new Dictionary<(string Package, string Deliverable), string>
-        {
-            [("example-macros", "consult_note")] = FailsAtSummary,
-            [("example-macros", "patient_letter")] = FailsAtSummary,
-            [("example-macros-warnings", "consult_note")] = FailsAtSummary,
-            [("example-macros-warnings", "patient_letter")] = FailsAtSummary,
-        };
+        new Dictionary<(string Package, string Deliverable), string>();
 
-    /// <summary>A prompt node no scenario of its package can reach on today's engine, and why.</summary>
+    /// <summary>A prompt node no scenario of its package can reach on today's engine, and why. Empty, as above.</summary>
     private static readonly IReadOnlyDictionary<(string Package, string Node), string> NeverPrompted =
-        new Dictionary<(string Package, string Node), string>
-        {
-            [("example-macros", "narrative_draft")] = FailsAtSummary,
-            [("example-macros", "table_draft")] = FailsAtSummary,
-            [("example-macros", "patient_line")] = FailsAtSummary,
-            [("example-macros-warnings", "narrative_draft")] = FailsAtSummary,
-            [("example-macros-warnings", "table_draft")] = FailsAtSummary,
-            [("example-macros-warnings", "patient_line")] = FailsAtSummary,
-        };
+        new Dictionary<(string Package, string Node), string>();
 
     private static string ScenarioRoot => Path.Combine(ByteEquivalenceFixtures.Root, "scenarios");
 

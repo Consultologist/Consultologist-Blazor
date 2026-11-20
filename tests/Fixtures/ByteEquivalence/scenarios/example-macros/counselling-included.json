@@ -4,9 +4,7 @@
     "the node's counselling instance gate (item.id == \"assessment_plan\") suppresses the read on the",
     "other items, so only standing_draft:assessment_plan's prompt carries the counselling instruction.",
     "follow_up_reminder default; one narrative and one table section.",
-    "Today's engine fails the job at node summary (its prompt renders macro.notes/<item>.prompt, which the",
-    "package's walk does not reach). In this harness summary is dispatched before the requested",
-    "sections, so no requested section, patient line or deliverable is reached."
+    "The job completes: every requested section, the summary and both deliverables are composed."
   ],
   "inputs": {
     "consult_draft": "Margaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)",

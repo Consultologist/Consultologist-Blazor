@@ -1212,7 +1212,7 @@ noun "Macro" for the index's sentences) — and `Materialise` resolves them thro
 its body as content; null below 26 and when none. **The render's folders** (`TemplateRenderScope.MacroFolders`,
 filled by the scope builder): each item a macro source with the header's label, instruction and `if`, the body
 as text, in the index's order — the renderer iterates the array and keys the direct read by item id; the
-mechanics sentence names the item's id, as the library's test pinned. **The gates by key**: one helper
+mechanics sentence names the item's direct read, `macro.<folder>.<item>` (corrected 2026-11-20: it named the bare item id, a read the reply cannot render, so every node whose prompt read a folder item failed at completion). **The gates by key**: one helper
 (`ConsultGatedScope.InertMacroKeys`) judges the flat macros by id and a folder's items by `<folder>/<item>`,
 the key the renderer and the walk use — the prompt activity, the completion and the deliverable-macro render
 all go through it; an inert item stays in the loop with empty prompt and content (a macro's gate is a render
