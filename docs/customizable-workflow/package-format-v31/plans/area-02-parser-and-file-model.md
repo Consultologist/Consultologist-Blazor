@@ -202,7 +202,7 @@ public void Split_RefusesAnythingElse(string text)                  // null
   - Order of work: drop `resolve.json` and `lock.json` at the root; per file, byte-order mark (S01-014), strict UTF-8 decode (A02-002), `\r\n` → `\n`, a remaining `\r` (S01-015 with its 1-based line); then the bounds on the normalised bytes in the table's order, every exceeded one reported: files (S01-037), each file's bytes (S01-038), total bytes (S01-039), each path's length in characters (S01-040). Numbers per D3; `1,000`-style grouping is not used here.
   - Test helper `internal static class SourceFixture`: `static Dictionary<string, byte[]> Minimal()` (manifest, the nine folders with empty indexes except one agent node `plan` and one deliverable `note`, all members written; fictional text); `static Dictionary<string, byte[]> Full()` (adds a `for` with a nested `for`, a `while`, an `if`, a `case` with an empty branch, a function with a `call`, a check loop, a snippet folder with a format, a macro folder, a renderer, a delivery folder, a test, a `README.md`; modelled on part 04 § 7.11's `example-functions` and part 01 § 3's trees); `With(this …, string path, string text)`, `Without(…, string path)`, `WithJson(…, string path, Action<JsonObject> edit)` (edits a plain JSON file or a header, keeping the body), `Utf8(string)`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 [Fact] public void Intake_NormalisesCrLf_BeforeTheFenceIsRead()   // "---\r\n{}\r\n---\r\nA\r\n" → Files[path] == "---\n{}\n---\nA\n", Normalised == [path]
@@ -219,10 +219,10 @@ public void Split_RefusesAnythingElse(string text)                  // null
 [Fact] public void EveryIntakeSentence_IsTheDesigns()             // AssertSentence on each
 ```
 
-- [ ] **Step 2: Run**; expected: build fails.
-- [ ] **Step 3: Implement** `SourceIntake` and the fixture. `SourceFixture.Full()` is written by hand against the member tables; Tasks 4 to 8 prove it valid and correct it where the parser, read against the spec, says it is wrong.
-- [ ] **Step 4: Run**; expected: PASS.
-- [ ] **Step 5: Commit** `PackageFormat (#1499): intake — UTF-8, line endings and the size bounds`, push.
+- [x] **Step 2: Run**; expected: build fails.
+- [x] **Step 3: Implement** `SourceIntake` and the fixture. `SourceFixture.Full()` is written by hand against the member tables; Tasks 4 to 8 prove it valid and correct it where the parser, read against the spec, says it is wrong.
+- [x] **Step 4: Run**; expected: PASS.
+- [x] **Step 5: Commit** `PackageFormat (#1499): intake — UTF-8, line endings and the size bounds`, push.
 
 ### Task 4: Member tables and the member rules
 
