@@ -446,7 +446,7 @@ public static partial class FormatDialect
     }
 
     /// <summary>The <c>&lt;name&gt;</c> of <c>#/$defs/&lt;name&gt;</c>: not empty, no <c>/</c>; null for any other reference.</summary>
-    private static string? DefinitionName(string reference) =>
+    internal static string? DefinitionName(string reference) =>
         reference.StartsWith(DefsPrefix, StringComparison.Ordinal)
         && reference.Length > DefsPrefix.Length
         && reference.IndexOf('/', DefsPrefix.Length) < 0
