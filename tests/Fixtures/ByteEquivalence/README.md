@@ -243,14 +243,35 @@ fixture packages, then one or more per row of § 2.2's table, then one or more p
     element;
   - `pass.number`; and, beyond the brief's list, `run.date` (`date`) and `profile.name` (`text`).
 
-  `APackageExpressionsReads_AreItsPackagesDeclarations` holds a package expression's input and
-  node reads to its package: an input's type, values and fields as declared, a node's type as the
-  engine types its format (`ConsultRenderPayload.FormatTypeOf`), a classifier's values, an object
-  node's schema its format's.
+  An input or a field may carry `"required": true`, and a node read `"settled": true`; either
+  takes the absent value away (below). A property a node's schema lists in `required` is required
+  too: a reply without it is refused by the node's format.
+- `note`, optional: why a read is `settled`.
+
+  `APackageExpressionsReads_AreItsPackagesDeclarations` holds a package expression's reads to its
+  package: an input's type, values, `required` and fields (each field's type, values and
+  `required`) as declared; an `item.value`'s fields as the input its loop runs over declares them;
+  a node's type as the engine types its format (`ConsultRenderPayload.FormatTypeOf`), a
+  classifier's values, an object node's schema its format's; and a `note` beside every `settled`.
+
+#### `required` and `settled`
+
+A package expression's `required` is its package's declaration: the start refuses a run without a
+required input or field, so no condition ever sees one absent. A § 2.2 or § 2.3 expression's reads
+are the fixture's own, all optional, so they keep their absent cases.
+
+A node read is `settled` when the engine only judges that site after the node has an output. The
+package reads marked so, each with its `note`: `node.judge` by `composer-sources`' `until` (an
+`until` is judged after a pass); `node.judge` by `example-nested-note`'s `while` (no `checkFirst`,
+so its check comes after a pass); `node.read_letter` by `example-prior-letters`' `until` (judged
+per item once that item's body has settled); `node.plan` and `node.topic_loop` read by a `let` (a
+let runs once its reads have settled). A node a run can really meet without an output stays
+unsettled: a classifier a deliverable's or snippet's `if` reads (when it failed or was skipped),
+a node gated by an `if`, a `while` body under `checkFirst`.
 
 ### The scopes
 
-Each read's values (the absent value written `"<absent>"`):
+Each read's values (the absent value written `"<absent>"`; a `required` or `settled` read has none):
 
 | Type | Values |
 |---|---|
@@ -265,12 +286,12 @@ Each read's values (the absent value written `"<absent>"`):
 | `pass.number` | `1`, `2`, `3` |
 | `run.date`, `profile.name` | the type's values but absent: the run's and profile's facts are always there |
 
-The cases are the product over the reads in order, the first 200.
+The cases are the product over the reads in order, the first 200
+(`TheCases_AreTheProductInDeclaredOrder_CutAt200`).
 
 Each case's scope is built by the engine's own functions (`ConditionScopes.Build`): a package
-declaring exactly what is read (every input optional, so its absence reaches the condition; a
-required input is never absent there, the start refuses the run), and `consult_draft` supplied so
-the start has an input. The inputs pass through `ConsultGenerationJobStarter.NormalizeInputs` and
+declaring exactly what is read, required as the read says, and `consult_draft` supplied so the
+start has an input. The inputs pass through `ConsultGenerationJobStarter.NormalizeInputs` and
 `ConsultGenerationJobStarter.ResolveEffectiveInputs`; the scope is
 `ConsultRenderPayload.ScopeFor` over that effective map, typed by `ConsultConditionScope.TypesOf`.
 So:
@@ -279,7 +300,8 @@ So:
   (number, date, boolean), an empty array or an empty object
   (`AnAbsentInput_ReadsAsTheEngineMakesIt` pins each);
 - an input is normalised first: trailing whitespace is cut, so a supplied `" "` reaches the
-  condition as `""` (an input never carries whitespace-only text);
+  condition as `""` (an input never carries whitespace-only text); a required text field of an
+  element supplied `""` or `" "` is accepted by the start and reads `""`;
 - a node is `prose` (text) or `classification` from the bundled catalogue, or a package-local
   object format with the read's schema; an absent node is on the skipped list, as the engine
   carries a flow that took no branch or a while's body before its first pass: `.content` and
@@ -294,30 +316,55 @@ So:
 Per expression, in order: `id`; `refused`, 30's sentence when the expression is not one (a
 template as the walk refuses it, anything else as `WorkflowConditionAt25.TryParse` does), else
 `null`; and `cases`, none when refused. Each case has its `scope` (read to value), its `result`
-and its `error` (the sentence today's engine throws, else `null`):
+and its `error`:
 
 - a `condition`: `WorkflowConditionAt25.Holds`'s boolean, the subject `Condition '<id>'`;
-- a `case`: the evaluated value as JSON; `error` is `WorkflowFlowDecision.Decide`'s sentence when
-  it is not a text (`Node '<id>' case must yield a declared value; it yields nothing.`);
+- a `case`: the value it switches on, as JSON. `WorkflowFlowDecision` does not expose that value,
+  so it is evaluated with `WorkflowLetAt30.Evaluate` in the same context (the same parse, scope
+  and pipes), not taken from the decision itself; `error` is `WorkflowFlowDecision.Decide`'s
+  sentence when it is not a text (`Node '<id>' case must yield a declared value; it yields …`);
 - a `let`: what `WorkflowLetAt30.ValueOf` stores, as JSON (a text bare, as a JSON string), the
   subject `Let '<id>'`; `error` is its errors joined as the activity joins them. A format-typed
   `let` here has no schema, so only its being an object is checked.
 
-The renderer pipes are the engine's (`TemplatePipes.Engine`).
+An `error` (else `null`) is the sentence 30 throws when it judges this expression over this scope;
+`result` is then `null` (a `case` keeps its value). The renderer pipes are the engine's
+(`TemplatePipes.Engine`).
+
+A `let` cannot be a bare list at 30, so `[x, y]` appears here only inside an object
+(`row.let-array`): the walk refuses a list it can type against every declared type (`Let '<id>'
+yields an array; it declares type <type>.`), and `ValueOf` fails any list
+(`Let '<id>' yielded a list; it declares type <type>.`); `ABareListLet_IsRefusedAt30` pins both.
 
 ### What area 10 does with them
 
-Convert each `expression` with `WorkflowConditionConverter.FromScriban` (part 10 § 2.1); a refused one, and
-every § 2.3 one, converts to no logic. For every other, evaluate the JSON Logic on each case's
-`scope` and compare with `result` (a case with an `error` is one 30 fails on). They must agree,
-except the expected difference of § 2.3:
+Convert each `expression` with `WorkflowConditionConverter.FromScriban` (part 10 § 2.1); a refused
+one, and every § 2.3 one, converts to no logic. For every other, evaluate the JSON Logic on each
+case's `scope` and compare with `result`. A case with an `error` is not an equivalence
+requirement: area 10 reports 31's result beside 30's sentence.
 
-- `row.not-text.node`, the case `"node.summary": " "`: 30 answers `false` (a whitespace-only text
-  is present); `blank(" ")` is true (`AWhitespaceOnlyText_IsTruthyAt30` pins 30's side).
+### `!x` on a text, at 30
 
-Observed, and not among § 2.3's expected differences: at 30 the empty text is truthy too, so
-`!node.summary.content` is `false` for `""` (only an absent node, read null, gives `true`), and
-`!input.reason` is `false` in every case (an absent text input reads `""`).
+At 30 only null, `false`, an empty array or object and a skipped node are falsy
+(`PromptTemplateRenderer.RenderingContext.ToBool`); a text is truthy whatever it holds. So `!x` on a
+text holds only when `x` is null. Against a `blank(x)`, value by value:
+
+| `x` | 30's `!x` | `blank(x)` | |
+|---|---|---|---|
+| null | true | true | agree |
+| `""` | false | true | differ |
+| whitespace-only | false | true | differ |
+| other text | false | false | agree |
+
+Which reads can carry each value: an input's text is never null (absent reads `""`) and never
+whitespace-only (trimmed to `""`), so `!input.x` on a text is `false` in every case
+(`row.not-text.input`); a node's text, an item's and a `let`'s value can be null (a node with no
+output), `""` or whitespace-only (`row.not-text.node`). `AWhitespaceOnlyText_IsTruthyAt30`,
+`AnEmptyText_IsTruthyAt30_Too` and `OnlyANullText_IsFalsyAt30` pin 30's side.
+
+Part 10 § 2.3 names only the whitespace-only case as a difference. That contradicts today's
+engine, which differs on `""` too. This area records the contradiction and raises it for the user;
+area 10 must not resolve it by itself.
 
 ### Regenerating
 
