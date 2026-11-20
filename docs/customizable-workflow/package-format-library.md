@@ -75,3 +75,86 @@ reference, retiring the mirror — a follow-up decided on its own evidence
 (WASM payload, trimming, Scriban in the browser). #261's preferred split
 remedy — publish the validator as a package — is now one `dotnet pack`
 away.
+
+## specVersion 31: the source reader (preview)
+
+*Area 02 of the Milestone 39 build (#1499). Built from
+[files and scopes](package-format-v31/01-files-and-scopes.md) and the file shapes of
+[loops and functions](package-format-v31/04-loops-and-functions.md).*
+
+`Consultologist.PackageFormat.V31` reads a 31 package **source** — the files of an upload — and
+says what it holds, or every way it is wrong. It reads the files and their shape. It does not
+judge what the files mean.
+
+`SourceParser.Parse(upload, registry)` takes the upload as a path-to-bytes dictionary and a
+`SourceRegistry`: the built-in and catalogue format names and the built-in renderer names, which
+the caller owns, so the reader holds no list of its own. It returns a `SourceParseResult`: a
+`SourcePackage` or a list of refusals, never both, and `Normalised`, the files whose `\r\n`
+intake turned into `\n` (the publish report notes them). It throws only for a null argument;
+nothing an upload holds throws.
+
+### The steps
+
+1. **Intake** (`SourceIntake`): bytes to text, the encoding and the four size bounds
+   (`SourceBounds`). Any intake refusal ends the parse, so a hostile package costs a count, not
+   a parse.
+2. **Strict JSON and front matter** (`StrictJson`, `FrontMatter`): duplicate members, depth
+   (`jsonDepth`) and the split of a file into header and body.
+3. **Layout** (`SourceLayout`, `SourceIds`): the manifest, the nine folders, each folder's
+   `index.json` against the files and folders beside it, ids, and the files nobody listed.
+4. **Declarations** (`SourceShapes`, `SourceMembers`): each declaration's member table, which
+   members are required, allowed or forbidden, and their types.
+5. **Flow nodes and functions** (`SourceParser`, in its `Nodes`, `Flow` and `Functions` files):
+   leaves, `for`, `while`, `if`, `case`, `ret`, and a function's folder.
+6. **Scopes and keys** (`SourceScopes`): ids judged per scope (`nodes/`, `checks/`, each
+   function) and never across them, and the expression-size bound. This step runs on whatever
+   tree the earlier steps built, so a scope fault comes with independent faults elsewhere.
+
+### The model
+
+| `SourcePackage` holds | |
+|---|---|
+| `Manifest` | name, version, `derivedFrom`, title, description, tags, inputs; the whole file as `Json` |
+| `Nodes`, `Checks` | bodies of `SourceNode`s in listed order: `SourceLeaf`, `SourceFor`, `SourceWhile`, `SourceIf`, `SourceCase`, each with its rooted key |
+| `Functions` | `SourceFunction`: index, parameters, body and its own definitions |
+| `Definitions` | renderers, snippets, macros, formats |
+| `Deliverables`, `Tests` | deliverables (one level of folders) and tests |
+| `Readmes` | every `README.md`, path to text |
+
+Kept as raw JSON for later areas: every header (`JsonObject`), a manifest input, a format's
+schema, a test, and an expression (`until`, `while`, `if`) as a `JsonNode`. Bodies are kept
+byte for byte after line-ending normalisation.
+
+### Refusals
+
+A `SourceRefusal(Id, Sentence, Path)` carries the id of a row of the format registry's
+`v31/sentences.json`, the sentence, and the file it is about (`""` for the package as a whole).
+The `A02-NNN` sentences exist for rules the design gives no sentence of its own; the list is in
+the conformance README,
+`external/consultologist-package-format/v31/conformance/README.md`. One fault gives one
+sentence, said once. Refusals are ordered by path (ordinal), then in the order found.
+
+### What it leaves to later areas
+
+Types and formats (03); JSON Logic (04); the resolver and the derived values — `reproducible`,
+`modelDerived`, `runDependent`, `profileCarrying`, a flow node's format, call depth (05); prompt
+members and macros (07); checks, deliverables and the profile (08); names and versions (11).
+The reader types the members that carry these and holds their values; it does not compare them.
+
+### The conformance cases
+
+`tests/V31Source/RefusalPackages*.cs` generates the `refusal-packages` family: for each rule, a
+valid and an invalid package with the parser's own result as `expect.json`. They are pinned
+under `external/consultologist-package-format/v31/conformance/refusal-packages/`. After a
+sentence changes, re-export into the content repository's checkout and commit it there:
+
+```
+CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~RefusalPackagesExport"
+```
+
+The export deletes and rewrites the family and the `cases` of `v31/conformance/index.json`;
+without the variable the test does nothing.
+
+### Not wired in
+
+Nothing in the engine calls the reader yet. 31 stays outside `AcceptedSpecVersions`.
