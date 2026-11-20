@@ -257,6 +257,22 @@ public class FormatDialectTests
         AssertOne(Check(format), "S02-029", $"{Verdict} at /$defs/sectionRow/properties/title declares type \"strin\"; a type array is one type plus \"null\".");
     }
 
+    [Theory]
+    [InlineData(SchemaSite.RegistryFormat, """{ "type": "string", "contentMediaType": "text/plain", "items": { "type": "string" } }""", "items", "a list")]
+    [InlineData(SchemaSite.RegistryFormat, """{ "type": "array", "items": { "type": "string" }, "required": [] }""", "required", "an object")]
+    [InlineData(SchemaSite.Inline, """{ "type": "string", "required": [] }""", "required", "an object")]
+    [InlineData(SchemaSite.Inline, """{ "type": "number", "enum": ["a"] }""", "enum", "a string")]
+    public void AKeywordOnTheWrongType_IsRefusedAtTheRoot(SchemaSite site, string schema, string keyword, string belongs) =>
+        AssertOne(Check(schema, site), "A03-004", $"{Verdict} at the root uses '{keyword}', which belongs on {belongs}.");
+
+    [Fact]
+    public void AnUndefinedDefinition_IsRefusedInARegistryFormat()
+    {
+        AssertOne(Check(Field("""{ "$ref": "#/$defs/row" }"""), SchemaSite.RegistryFormat),
+            "A03-002", $"{Verdict} at /properties/a refers to #/$defs/row, which the file doesn't define.");
+        Assert.Empty(Check("""{ "type": "array", "items": { "$ref": "#/$defs/row" }, "$defs": { "row": { "type": "string" } } }""", SchemaSite.RegistryFormat));
+    }
+
     [Fact]
     public void AnInlineSchema_HasNoDefinitions()
     {

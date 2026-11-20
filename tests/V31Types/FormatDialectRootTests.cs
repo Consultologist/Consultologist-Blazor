@@ -254,19 +254,31 @@ public class FormatDialectRootTests
         var places = sources.SelectMany((source, s) => Members(source, "").Select(member => (Source: s, Member: member))).ToList();
         Assert.NotEmpty(places);
 
+        // First every member with every mutation in turn, then what is left of the budget as seeded random picks.
+        const int Modes = 8;
+        const int Budget = 4_000;
+        var exhaustive = places.SelectMany(place => Enumerable.Range(0, Modes).Select(how => (place.Source, place.Member, How: how))).ToList();
         var random = new Random(1500);
-        for (var i = 0; i < 2_000; i++)
+        var picks = exhaustive.Concat(Enumerable.Range(0, Math.Max(0, Budget - exhaustive.Count))
+            .Select(_ => places[random.Next(places.Count)])
+            .Select(place => (place.Source, place.Member, How: random.Next(Modes))));
+
+        var checkedCount = 0;
+        foreach (var (s, member, how) in picks)
         {
-            var (s, member) = places[i % places.Count];
             var mutated = sources[s].DeepClone();
-            Mutate(mutated, member, random.Next(8));
+            Mutate(mutated, member, how);
 
             foreach (var site in (SchemaSite[])[SchemaSite.PackageFormat, SchemaSite.RegistryFormat, SchemaSite.Inline])
             {
                 var refusals = FormatDialect.Check(mutated, site, Verdict, "verdict", "formats/verdict.json");
-                Assert.NotNull(refusals);
+                Assert.All(refusals, V31Contract.AssertSentence);
             }
+
+            checkedCount++;
         }
+
+        Assert.Equal(Math.Max(Budget, exhaustive.Count), checkedCount);
     }
 
     /// <summary>Part 02 § 8.4's <c>sections</c> input format.</summary>

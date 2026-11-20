@@ -34,10 +34,9 @@ public class TypePinsTests
         var bounds = System.Text.Json.Nodes.JsonNode.Parse(
             File.ReadAllText(TypeFixture.RepoFile("external", "consultologist-package-format", "v31", "bounds.json")))!["formatBounds"]!;
 
-        Assert.Equal((int)bounds["passes"]!, FormatBounds.Passes);
-        Assert.Equal((int)bounds["depth"]!, FormatBounds.Depth);
-        Assert.Equal((int)bounds["parallel"]!, FormatBounds.Parallel);
-        Assert.Equal([15, 15, 15], [FormatBounds.Passes, FormatBounds.Depth, FormatBounds.Parallel]);
+        int[] code = [FormatBounds.Passes, FormatBounds.Depth, FormatBounds.Parallel];
+        Assert.Equal([(int)bounds["passes"]!, (int)bounds["depth"]!, (int)bounds["parallel"]!], code);
+        Assert.Equal([15, 15, 15], code);
     }
 
     [Fact]

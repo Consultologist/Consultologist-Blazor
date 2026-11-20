@@ -76,6 +76,22 @@ public class AgentBindingsTests
         badRejects["agents"]!["test-json"]!["48"]!["strictRejects"] = "format";
         Assert.Throws<FormatException>(() => AgentBindings.Read(Bindings(), badRejects));
 
+        var fractionalVersion = Bindings();
+        fractionalVersion["formats"]!["plaintext"]!["generated"]!["agentVersion"] = JsonNode.Parse("48.5");
+        Assert.Contains("not an integer", Assert.Throws<FormatException>(() => AgentBindings.Read(fractionalVersion, Agents())).Message);
+
+        var textVersion = Bindings();
+        textVersion["formats"]!["plaintext"]!["generated"]!["agentVersion"] = "48";
+        Assert.Contains("not an integer", Assert.Throws<FormatException>(() => AgentBindings.Read(textVersion, Agents())).Message);
+
+        var namedVersion = Agents();
+        namedVersion["agents"]!["test-json"]!.AsObject().Add("v1", JsonNode.Parse("""{ "strictRejects": [] }"""));
+        Assert.Contains("v1 is not a version number", Assert.Throws<FormatException>(() => AgentBindings.Read(Bindings(), namedVersion)).Message);
+
+        var badId = Bindings();
+        badId["formats"]!.AsObject().Add("Plain-Text", badId["formats"]!["plaintext"]!.DeepClone());
+        Assert.Contains("Plain-Text is not a format id", Assert.Throws<FormatException>(() => AgentBindings.Read(badId, Agents())).Message);
+
         var otherProducer = Bindings();
         otherProducer["custom"] = new JsonObject { ["computed"] = otherProducer["custom"]!["generated"]!.DeepClone() };
         Assert.Throws<FormatException>(() => AgentBindings.Read(otherProducer, Agents()));

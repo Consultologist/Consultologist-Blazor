@@ -175,6 +175,24 @@ public class FormatReadsTests
     }
 
     [Fact]
+    public void AnInlineObjectField_WhosePropertyRefersToDefs_KeepsTheDefs()
+    {
+        var format = JsonNode.Parse("""
+            { "$defs": { "x": { "type": "object", "required": ["q"], "additionalProperties": false, "properties": { "q": { "type": "number" } } } },
+              "type": "object", "required": ["o"], "additionalProperties": false, "properties": {
+                "o": { "type": "object", "required": ["p"], "additionalProperties": false, "properties": { "p": { "$ref": "#/$defs/x" } } } } }
+            """);
+
+        var o = Read(format, "value", "o");
+        Assert.Equal(ReadFault.None, o.Fault);
+        Assert.NotNull(o.Format!["$defs"]?["x"]);
+        Assert.Equal("{ p: { q: number } }", Print(o));
+        Assert.Equal("{ q: number }", Print(Read(o.Format, "value", "p")));
+        Assert.Equal("number", Print(Read(o.Format, "value", "p", "q")));
+        Assert.Equal("number", Print(Read(format, "value", "o", "p", "q")));
+    }
+
+    [Fact]
     public void ANameField_InAFileWithDefs_StaysExactlyTheName()
     {
         var format = JsonNode.Parse("""
