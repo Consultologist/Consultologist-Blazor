@@ -498,6 +498,50 @@ public class SourceParserFlowTests
     }
 
     [Fact]
+    public void ABoundWrittenAsAWholeDecimalOrExponent_IsItsWholeNumber()
+    {
+        // 1.0 and 2e0 are whole numbers, read as 1 and 2, for maxParallel, a for's max and a while's max.
+        var two = Edit(Standards, json => json["maxParallel"] = JsonNode.Parse("2e0")).Parse();
+        Assert.Empty(two.Refusals);
+        Assert.Equal(2, ((SourceFor)two.Package!.Nodes.Nodes[6]).MaxParallel);
+        Assert.Equal("S04-019", Only(Edit(Standards, json => json["maxParallel"] = JsonNode.Parse("1.0")).Parse()).Id);
+        Assert.Equal(
+            "Loop 'standards' declares maxParallel 2e0 with parallel false; a sequential loop runs one item at a time: write \"maxParallel\": null.",
+            Only(Edit(Standards, json => { json["maxParallel"] = JsonNode.Parse("2e0"); json["parallel"] = false; }).Parse()).Sentence);
+
+        foreach (var (written, expected) in new[] { ("1.0", 1L), ("2e0", 2L) })
+        {
+            var loop = Edit(Sections, json => json["max"] = JsonNode.Parse(written)).Parse();
+            Assert.Empty(loop.Refusals);
+            Assert.Equal(expected, ((SourceFor)loop.Package!.Nodes.Nodes[2]).Max);
+
+            var pass = Edit(Refine, json => json["max"] = JsonNode.Parse(written)).Parse();
+            Assert.Empty(pass.Refusals);
+            Assert.Equal((int)expected, ((SourceWhile)pass.Package!.Nodes.Nodes[4]).Max);
+        }
+    }
+
+    [Fact]
+    public void OneE30_IsNotAWholeNumber_ToTheFlowReaderEither()
+    {
+        // As SourceMembers judges it (A02-001): 1e30 is past what the reader holds exactly, so it is not a whole number.
+        Assert.Equal(
+            "While 'refine' declares 'max' as a number; it is a whole number.",
+            Only(Edit(Refine, json => json["max"] = JsonNode.Parse("1e30")).Parse()).Sentence);
+        Assert.Equal(
+            "Loop 'sections' declares 'max' as a number; it is a whole number.",
+            Only(Edit(Sections, json => json["max"] = JsonNode.Parse("1e30")).Parse()).Sentence);
+        // maxParallel's own sentence covers a number that is not whole (S04-021).
+        Assert.Equal(
+            "Loop 'standards' declares maxParallel 1e30; the least is 2, or null for no cap of its own.",
+            Only(Edit(Standards, json => json["maxParallel"] = JsonNode.Parse("1e30")).Parse()).Sentence);
+
+        var members = new List<SourceRefusal>();
+        SourceMembers.CheckType(JsonNode.Parse("1e30"), MemberType.Integer, "While 'refine'", "max", Refine, members);
+        Assert.Equal("While 'refine' declares 'max' as a number; it is a whole number.", Assert.Single(members).Sentence);
+    }
+
+    [Fact]
     public void AnIfWithoutThen_IsRefused()
     {
         var refusal = Only(Edit(Gate, json => json["then"] = null).Parse());

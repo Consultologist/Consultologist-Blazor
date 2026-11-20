@@ -134,7 +134,12 @@ public static class SourceMembers
 
     private static JsonValueKind Kind(JsonNode node) => node.GetValueKind();
 
-    private static bool IsWhole(JsonNode value)
+    /// <summary>
+    /// A number with no fraction, judged on what the reader holds exactly: a value <see cref="decimal"/>
+    /// holds (so <c>1.0</c> and <c>2e0</c> are whole), or one written without a point or an exponent.
+    /// <c>1e30</c> is past both, so it is not a whole number. The flow reader judges its bounds by this too.
+    /// </summary>
+    internal static bool IsWhole(JsonNode value)
     {
         if (value is JsonValue v && v.TryGetValue<decimal>(out var d))
             return d == decimal.Truncate(d);

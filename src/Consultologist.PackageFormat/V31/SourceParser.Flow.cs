@@ -429,19 +429,20 @@ public static partial class SourceParser
     }
 
     /// <summary>
-    /// A JSON number: its value, whether it is whole, and its text as the JSON wrote it (invariant).
-    /// Null for anything else. A number past <see cref="decimal"/>'s range is read as a double, and
-    /// one past a double's as a whole number of that sign.
+    /// A JSON number: its value, whether it is whole (as <see cref="SourceMembers.IsWhole"/> judges it,
+    /// so <c>1e30</c> is not), and its text as the JSON wrote it (invariant). Null for anything else. A
+    /// number past <see cref="decimal"/>'s range is read as a double.
     /// </summary>
     private static (double Value, bool Whole, string Written)? Number(JsonNode? node)
     {
         if (node is not JsonValue value || value.GetValueKind() != JsonValueKind.Number)
             return null;
         var written = value.ToJsonString();
+        var whole = SourceMembers.IsWhole(value);
         if (value.TryGetValue<decimal>(out var exact))
-            return ((double)exact, exact == decimal.Truncate(exact), written);
+            return ((double)exact, whole, written);
         if (double.TryParse(written, NumberStyles.Float, CultureInfo.InvariantCulture, out var near))
-            return (near, !double.IsFinite(near) || Math.Floor(near) == near, written);
+            return (near, whole, written);
         return null;
     }
 
