@@ -431,6 +431,25 @@ public class SourceParserFlowTests
     }
 
     [Fact]
+    public void ALoopMax_IsHeldAsWritten_UpToWhatALongHolds()
+    {
+        foreach (var (written, expected) in new (string, long)[] { ("3000000000", 3000000000L), ("9223372036854775807", long.MaxValue), ("2147483648", 2147483648L), ("1e3", 1000L) })
+        {
+            var result = Edit(Sections, json => json["max"] = JsonNode.Parse(written)).Parse();
+
+            Assert.Empty(result.Refusals);
+            Assert.Equal(expected, ((SourceFor)result.Package!.Nodes.Nodes[2]).Max);
+        }
+
+        foreach (var past in new[] { "9223372036854775808", "1e30", "100000000000000000000000000000000" })
+        {
+            var refusal = Only(Edit(Sections, json => json["max"] = JsonNode.Parse(past)).Parse());
+
+            Assert.Equal("A02-001", refusal.Id);
+        }
+    }
+
+    [Fact]
     public void ALoopMaxOfZero_IsRefused()
     {
         var refusal = Only(Edit(Sections, json => json["max"] = 0).Parse());

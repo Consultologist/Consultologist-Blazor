@@ -262,10 +262,11 @@ public class SourceParserFunctionsTests
             {
                 var result = Edit(json => json[member] = value?.DeepClone()).Parse();
                 Assert.Equal(result.Refusals.Count == 0, result.Package != null);
+                // A text ret is valid only when it names a child (S04-012), which no sweep value does.
                 var valid = (member, value) switch
                 {
                     ("description", null) => true,
-                    ("label" or "ret" or "format", JsonValue v) => v.GetValueKind() == System.Text.Json.JsonValueKind.String,
+                    ("label" or "format", JsonValue v) => v.GetValueKind() == System.Text.Json.JsonValueKind.String,
                     ("format" or "inputs", JsonObject) => true,
                     _ => false,
                 };
