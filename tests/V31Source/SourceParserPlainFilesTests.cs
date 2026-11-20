@@ -386,6 +386,15 @@ public class SourceParserPlainFilesTests
             Assert.NotEmpty(spec.Parse().Refusals);
         }
 
+        // A lone surrogate escape parses but cannot be read back as text.
+        var surrogate = SourceFixture.Full();
+        surrogate
+            .With("nodes/index.json", "{ \"description\": [\"\\ud800\"], \"items\": [\"\\ud800\", \"plan\"] }")
+            .With("snippets/index.json", "{ \"description\": null, \"items\": [\"\\udc00/\"] }")
+            .With("manifest.json", SourceFixture.Text(surrogate, "manifest.json")
+                .Replace("\"consult_draft\": {", "\"\\ud800\": null, \"consult_draft\": {"));
+        Assert.NotEmpty(surrogate.Parse().Refusals);
+
         foreach (var text in new[] { "", "null", "1", "[]", "---", "---\n---\n", "---\nnull\n---\n", "{" })
         {
             foreach (var path in new[] { "manifest.json", "renderers/term_bullets.md", "formats/verdict.json", "tests/note_basic.json", "deliverables/note.md", "snippets/standards/hpi.md" })
