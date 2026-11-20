@@ -45,14 +45,16 @@ a loop's text in its prompt or expression; the composer still reads each as one 
 One deliverable per kind of source: `single` (one prose node), `pair` (two), `topics` (a `for`
 over an input with an `if` inside), `sections` (a `for` over a node's list, `labelField` and
 `max: 3`, with a `for` inside), `summary` (a `while` with `checkFirst`, `until` and `max: 3`),
-`plan` (an `if`), `tone_line` (a `case`) and `tally` (a `let` of type text).
+`plan` (an `if`), `tone_line` (a `case`), `tally` (a `let` of type text), and
+`summary_then_opening` and `topics_then_opening` (the `while` and the `for`, each followed by
+`opening`). The input's label (`Requested topics`) differs from its loop's (`Topics`).
 
 | Scenario | Rules it reaches |
 |---|---|
-| `every-source` | one scalar source verbatim; two joined by one blank line in `sources` order; a `for` as `## <name>` blocks in item order, named by `labelField`, an item whose inner `if` took no branch left out; a nested `for` (a section heading, then its points' blocks); a `while`'s last pass's text (two passes); an `if` and a `case` that took a branch, as their returned node's text; a `let` of type text as its plain text |
-| `branches-not-taken` | a `for` whose every item's inner `if` took no branch, composed empty; a `for` over a node's list pinned empty (zero items), composed empty; a `while` that ran no pass (`checkFirst`), composed empty; an `if` and a `case` that took no branch: the deliverable is skipped, `source node.<flow> took no branch` |
+| `every-source` | one scalar source verbatim; two joined by one blank line in `sources` order; a `for` as `## <name>` blocks in item order, named by `labelField`, an item whose inner `if` took no branch left out; a nested `for` (a section heading, then its points' blocks); a `while`'s last pass's text (two passes); an `if` and a `case` that took a branch, as their returned node's text; a `let` of type text as its plain text; a `while` and a `for` each joined to a following source |
+| `branches-not-taken` | a `for` whose every item's inner `if` took no branch, composed empty; a `for` over a node's list pinned empty (zero items), composed empty; a `while` that ran no pass (`checkFirst`), composed empty; an `if` and a `case` that took no branch: the deliverable is skipped, `source node.<flow> took no branch`; beside another source, the zero-pass `while` contributes no part (the text is the other source alone) but the all-skipped `for` contributes an empty part (the text starts with a blank line) |
 | `awkward-texts` | an empty source (composed empty; in a join it still takes its place, so the text starts with a blank line); leading and trailing newlines and spaces trimmed from each part; a part holding its own `##` headings, verbatim; a reply holding `{{` rendered as a template before it composes (`{{ 3 * 2 }}` → `6`, `{{ "{{" }}` → `{{`) |
-| `item-names-and-bounds` | `labelField` text trimmed, cut to 120 characters with `…`, and a blank one falling back to label plus position; an inner `for` with zero items inside an outer item (its block is the heading and an empty text); a `for`'s `max` leaving an item unrun and without a block; a `while` stopped at its bound, the third pass's text |
+| `item-names-and-bounds` | `labelField` text trimmed, cut to 120 characters with `…` (mid-word, and where the character before the cut is a space, which is trimmed: 119 characters), and a blank one falling back to the input's label plus position (`Requested topics 4`) for an input fan and the loop's label (`Sections 2`, `Points 1`) for a node's list; an inner `for` with zero items inside an outer item (its block is the heading and an empty text); a `for`'s `max` leaving an item unrun and without a block; a `while` stopped at its bound, the third pass's text |
 | `unparseable-reply` | a reply whose `{{` reads what the scope does not hold fails the node and the job; deliverables not yet released are unsettled |
 | `failed-item` | a loop item that failed (`failIfEmpty`): the composer's `<label> could not assemble: <key> did not complete` fails the job |
 
@@ -63,27 +65,34 @@ an input whose body node places `section_intro` before and `section_close` after
 item): `prepended`, `appended`, `both` (two prepends, two appends), `gated` (a macro's own `if`,
 a placement's `if`, a macro that renders empty), `optional` (`followup_offer`, default on;
 `leaflet_offer`, default off), `authored` (reads `profile.name`, `profile.signature` and
-`run.date`) and `signed_letter` (`signature: true` after an appended macro).
+`run.date`), `signed_letter` (`signature: true` after an appended macro), `signed_only`
+(`signature: true`, no macro), `review_summary` (an `if` on `input.visit`, a prepended
+letterhead) and `echoes`, whose placed macros read `node.letter_body.content` (`body_echo`),
+`macro.new_visit_note.content` (`visit_echo`) and `deliverable.review_summary.content`
+(`quoted_review`, optional, default off). `letter_body` is pinned with a trailing blank line.
 
 | Scenario | Rules it reaches |
 |---|---|
-| `new-visit-defaults` | prepend, append and both, each one blank line from the sections; two at one place in placement order; a macro's own `if` holding and a placement's `if` not (not placed); a placed macro rendering empty, its empty piece still joined (four newlines); optional macros defaulted (on placed, off not); `profile.name`, `profile.signature` and `run.date` (`2026-11-10`) in one macro; node macros before and after a loop item's reply, the after one gated off for one item, the reply's own trailing blank line kept inside the item; the signature block appended last |
-| `review-visit-choices` | a macro's own `if` not holding and a placement's `if` holding; the empty-rendering macro rendering text; optional macros chosen on (default off) and off (default on) |
+| `new-visit-defaults` | prepend, append and both, each one blank line from the sections; two at one place in placement order; a macro's own `if` holding and a placement's `if` not (not placed); a placed macro rendering empty, its empty piece still joined (four newlines); optional macros defaulted (on placed, off not); `profile.name`, `profile.signature` and `run.date` (`2026-11-10`) in one macro; node macros before and after a loop item's reply, the after one gated off for one item, the reply's own trailing blank line kept inside the item; the signature block appended last, after a macro and with none; a placed macro reading a source node's text untrimmed (the composed part is trimmed); a placed macro reading a live macro's `.content` (with its file's trailing newline); a deliverable skipped by its `if` |
+| `review-visit-choices` | a macro's own `if` not holding and a placement's `if` holding; the empty-rendering macro rendering text; optional macros chosen on (default off) and off (default on); a placed macro reading an inert macro's `.content` as empty; a placed macro reading another deliverable's composed text (its sections, without that deliverable's own macros) |
 | `no-signature` | `signature: true` with no signature on the profile: nothing appended, never refused; `profile.signature` rendering empty, the macro's trailing whitespace trimmed |
+| `empty-body` | macros and signature around empty sections: a prepend leaves a trailing blank line, an append and the signature a leading one, prepends and appends four newlines apart |
+| `skipped-deliverable-read` | a placed macro reading `deliverable.<id>.content` of a deliverable skipped by its `if` fails the macro's render and the job (`Cannot get the member … for a null object`); the deliverables waiting on it are unsettled |
 
 The validator refuses `signature: true` beside a placed macro that reads `profile.signature`
 ("a deliverable is signed once"), so `authored` is not signed.
 
 ### `composer-gates`
 
-`note` and `record_copy` source the same nodes (a `for` over a text array, then a prose node),
+`note` and `record_copy` source the same nodes (a `for` over a text array whose label, `Problem
+list`, differs from the loop's, `Problems`, then a prose node),
 each gated by a `terms_subset` check; `patient_copy` has an `if` on `input.audience`;
 `cover_letter`'s node reads `deliverable.note.content` (and `deliverable.patient_copy.content`
 under the same `if`) in its prompt.
 
 | Scenario | Rules it reaches |
 |---|---|
-| `clinician-checks-pass` | two deliverables over the same nodes, the same bytes; both checks passing; a deliverable whose `if` is false, `skipped` with ``needs `input.audience == "patient"`; it does not hold``; a prompt reading another deliverable's composed text |
+| `clinician-checks-pass` | two deliverables over the same nodes, the same bytes; input items named by the input's label plus position (`Problem list 1`); both checks passing; a deliverable whose `if` is false, `skipped` with ``needs `input.audience == "patient"`; it does not hold``; a prompt reading another deliverable's composed text |
 | `patient-copy-check-fails` | one check passing and one refusing, `failed` with its `failWith` sentence; the `if` holding |
 | `note-check-fails` | the other deliverable's check refusing; a prompt reading a deliverable whose check refused it still reads its composed text |
 
