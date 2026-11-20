@@ -35,6 +35,11 @@ public interface IJsonLogicRule
 /// <summary>
 /// #1501 (specVersion 31, area 04): the evaluator of part 03 § 9. The engine, the validator's probe, the Editor and
 /// the in-package tests evaluate through it; Corvus is behind it.
+/// <para>
+/// Ownership: one evaluator per compiled package version (part 03 § 9, "compiled once per package version"), never a
+/// process-wide singleton. Every call into Corvus is serialised per evaluator, so a slow rule (a <c>matches</c> over a
+/// large text) stalls every other rule run on the same evaluator, and its compiled-rule cache lives as long as it does.
+/// </para>
 /// </summary>
 public interface IJsonLogicEvaluator
 {
@@ -56,6 +61,11 @@ public interface IJsonLogicEvaluator
 /// an accepted rule is rewritten for Corvus (D16's <c>object</c>; each <c>plain</c> carries its D14 choice as a second,
 /// literal operand) and cached by its JSON text as written plus the <c>plain</c> list. Safe to share between threads:
 /// calls into Corvus are serialised, since its evaluator is not.
+/// <para>
+/// Ownership (as <see cref="IJsonLogicEvaluator"/> says): one instance per compiled package version, never a process-wide
+/// singleton. The lock is per instance, so a slow <c>matches</c> stalls every other rule run on that instance, and the
+/// compiled-rule cache is never emptied: it lives, and grows with the rules compiled, as long as the instance does.
+/// </para>
 /// </summary>
 public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
 {
