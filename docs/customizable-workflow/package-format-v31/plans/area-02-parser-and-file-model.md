@@ -592,4 +592,47 @@ public void CountExpressionNodes_FollowsD1(string json, int expected)
 
 ## Where the build departed from this plan
 
-Nothing yet: this section is filled in during the build, as tasks finish.
+Each task was built by one implementer and reviewed against its brief; Task 8 took one fix round.
+The whole branch was then reviewed once, and its findings fixed in one wave. What differs from the
+tasks above:
+
+- **Files.** `SourceParser` is four partial files, not two: `SourceParser.Flow.cs` and
+  `SourceParser.Functions.cs` hold what Task 7 put in `SourceParser.Nodes.cs`. `SourceLayout`'s
+  entry points are `Read`, `ReadIndex` and `ReadList` around an internal `SourceWalk`, not one
+  `ReadFolder`.
+- **One sentence per fault.** `SourceMembers.Check` takes the members its caller speaks for
+  (`leave`), so the part 04 sentences replace the general ones without filtering by text.
+- **The result.** `SourceParseResult` also carries `Files`, the normalised text of every file intake
+  accepted, since
+  later areas hash and write those bytes (part 07 § 2.6). The scope rules run on a partial tree, so
+  a scope fault is reported beside independent faults; `Package` is still null whenever anything
+  is refused.
+- **`ret` (S04-012)** is judged in the walk, against the ids as written, not in `SourceScopes.Check`.
+- **`SourceFor.Max` is a `long?`** holding the written value.
+- **A flow node's `producer`** is held to its kind (S01-028), as part 01 § 5.1 says of every node;
+  Task 7's table did not list it.
+- **S01-017's parser message** is `line <n>, column <m>` of the file, in our own words, not the
+  JSON library's message.
+- **A publish report in the upload is dropped unread** with `resolve.json` and `lock.json`
+  (part 07 § 5 step 0; part 01 § 2 names only the two).
+- **D4, refined.** A file refused for its encoding is still measured against the size bounds, by
+  its raw bytes, and intake's refusals keep intake's order (the bounds in the table's order).
+- **D14, refined.** An id used k times inside one `while` gives k−1 sentences, each against the
+  first occurrence.
+- **A listed id that fails the id rules accounts for no file,** so a file under such an entry is
+  judged on its own.
+- **D1.** An object with no key or several counts as one node plus its values, so a malformed
+  expression is still bounded; whether it is an expression is area 04's.
+- **S04-009** is produced with the kind's word (`While`, `If`, `Case`), as part 04 § 10.1 says,
+  though the published row prints `Loop`; **S04-024** is used as written ("max 0") whatever number
+  below 1 was written, since its row has no `<n>`.
+- **Task 9.** Every invalid case gives exactly one sentence. The cases are built on
+  `SourceFixture.Minimal()` plus the one construct each rule needs, not on `Full()`: 65 cases,
+  about 1,880 files. Where two published rows hold the same words (S01-003 and S04-032, S01-005 and
+  S04-020, S01-028 and S02-009) the part 01 id is produced, and the suite has a case under that id
+  only; S04-071 has none (D12).
+- **Left to other areas, beyond D16:** the closed values other parts own (a renderer's and a
+  deliverable's `kind`, a check's `format`, `whenEmpty`, delivery kinds, `channel`); that a `when`
+  value appears in one branch only (S04-046); whether a reference string names something readable.
+- **Three commits** (`f1f44495`, `eed5cc06`, `ed334f17`) carry the trailer `Claude Sonnet 5.5`
+  where the others carry `Claude`.
