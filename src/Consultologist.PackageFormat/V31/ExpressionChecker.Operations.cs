@@ -407,15 +407,18 @@ public static partial class ExpressionChecker
         return ops.Any(o => c.FamilyOf(o) == Family.Free && !o.IsNull) ? Unknown : Named("string");
     }
 
-    /// <summary><c>lower</c>, <c>trim</c>: text-like; the operand's format as written (an enum gives <c>string</c>), nullable as the operand.</summary>
+    /// <summary>
+    /// <c>lower</c>, <c>trim</c>: text-like; the operand's format as written (an enum gives <c>string</c>). Never nullable
+    /// for typing, whatever the operand (D25): like every operation's result, it can be <c>null</c> only at run time.
+    /// </summary>
     private static ExpressionType LowerOrTrim(string name, Operand o, Context c)
     {
         if (c.FamilyOf(o) == Family.Free)
-            return new ExpressionType(null, o.Type.Nullable);
+            return Unknown;
         if (!c.TextLike(o))
             return Each(name, [o], c, _ => false, "text", Unknown);
         var format = FormatTypes.Shape(o.Type.Format, c.Formats) == FormatShape.Enum ? JsonValue.Create("string") : o.Type.Format;
-        return new ExpressionType(format, o.Type.Nullable);
+        return new ExpressionType(format, false);
     }
 
     /// <summary><c>add_days</c>: a date and a number (A04-001 for each that is not); <c>date</c>.</summary>

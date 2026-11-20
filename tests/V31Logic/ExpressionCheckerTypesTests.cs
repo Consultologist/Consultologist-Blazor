@@ -47,6 +47,7 @@ public class ExpressionCheckerTypesTests
         ["input.specialty"] = LogicFixture.FormatHead(
             """{"type":"string","oneOf":[{"const":"med_onc","title":"Medical oncology"},{"const":"rad_onc","title":"Radiation oncology"}]}"""),
         ["input.consult_draft"] = LogicFixture.FormatHead("plaintext"),
+        ["input.optional_note"] = LogicFixture.FormatHead("plaintext", nullable: true),
         ["input.age"] = LogicFixture.FormatHead("number"),
         ["input.include_billing"] = LogicFixture.FormatHead("boolean"),
         ["input.note_type"] = LogicFixture.FormatHead(NoteType),
@@ -237,6 +238,21 @@ public class ExpressionCheckerTypesTests
             Assert.Empty(check.Refusals);
         else
             OneRefusal(check, "S03-026", "Computed node 'total' yields string {consult, follow_up}; it declares string.");
+    }
+
+    /// <summary>D25: an operation's result is never nullable for typing, <c>lower</c> and <c>trim</c> as much as <c>plain</c>.</summary>
+    [Theory]
+    [InlineData("""{"trim":[{"var":"input.optional_note.content"}]}""")]
+    [InlineData("""{"lower":[{"var":"input.optional_note.content"}]}""")]
+    [InlineData("""{"plain":[{"var":"input.optional_note.content"}]}""")]
+    public void AnOperationOnANullableRead_IsNotNullable(string rule)
+    {
+        var check = Check(rule, ExpressionSiteKind.Expression, "\"plaintext\"");
+        Assert.Equal("plaintext", TypeOf(check));
+        Assert.False(check.Type!.Nullable);
+
+        // the read itself is nullable, and held to its declaration
+        OneRefusal(Check("""{"var":"input.optional_note.content"}""", ExpressionSiteKind.Expression, "\"plaintext\""), "S03-026");
     }
 
     public static TheoryData<string, string, string?, string?> ObjectRows => new()
