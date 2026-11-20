@@ -210,3 +210,117 @@ from this file.
 Regenerate: delete the file and run
 `dotnet test tests/Consultologist.Api.Tests.csproj --filter FullyQualifiedName~ConceptRendererCaptureTests`.
 The first test writes it and fails once; review it and commit it.
+
+## `conditions/`
+
+What today's condition and `let` evaluator answers, for the converter from 30's Scriban
+expressions to JSON Logic (Part 10 § 2.4). `expressions.json` is hand-written; `vectors.json` is
+written by `ConditionVectorTests` from today's evaluator.
+
+### `expressions.json`
+
+One entry per expression, in this order: every condition, `case` and `let` of the vendored and
+fixture packages, then one or more per row of § 2.2's table, then one or more per refusal of
+§ 2.3. Each has:
+
+- `id`; `kind`, one of `condition`, `case` (the expression a `case` node switches on: a value,
+  not a boolean) and `let`; `expression`, the text as written; `letType`, a `let`'s declared type
+  (`text`, `number`, `boolean` or a format id), else `null`.
+- `origin`: `package <name>, <site>` for a package's, the site one of `node <id>, if|when|while|until|case|let`,
+  `node <id> macro <macro>, if`, `deliverable <id>, if`, `deliverable <id> macro <macro>, if`, or
+  `file <path>, if` (the header of a snippet, folder item, macro or macro-folder item file);
+  `§ 2.2: <the row's left cell>` (a cell's `\|` written `|`); `§ 2.3: <the bullet>` (without its
+  closing `;` or `.`). `EveryConditionAndLetOfThePackages_IsInTheExpressions` finds the package
+  sites from the files (the typed manifest and the text headers) and fails on a site the file
+  lacks or an entry naming no site; `EveryRowOf2_2_AndEveryRefusalOf2_3_HasAnExpression` holds
+  the origins to the table's sixteen cells and the four bullets.
+- `reads`: what the expression reads, in order, each with its type. A type is a name or an object:
+  - `input.<id>`: `text`, `enum` (`values`), `number`, `boolean`, `date`, `array` (`items`, a type)
+    or `object` (`fields`, name to type);
+  - `node.<id>`: `text` (its content), `classification` (`values`) or `object` with `schema`, the
+    node's format's JSON Schema (its fields are read from the schema);
+  - `item`: `{ "id": "text" }`, a snippet folder's item, or `{ "value": <type> }`, an input fan's
+    element;
+  - `pass.number`; and, beyond the brief's list, `run.date` (`date`) and `profile.name` (`text`).
+
+  `APackageExpressionsReads_AreItsPackagesDeclarations` holds a package expression's input and
+  node reads to its package: an input's type, values and fields as declared, a node's type as the
+  engine types its format (`ConsultRenderPayload.FormatTypeOf`), a classifier's values, an object
+  node's schema its format's.
+
+### The scopes
+
+Each read's values (the absent value written `"<absent>"`):
+
+| Type | Values |
+|---|---|
+| `text` | absent, `""`, `" "`, `"lorem"`, each quoted string literal of the expression |
+| `enum`, `classification` | absent, each value |
+| `number` | absent, `0`, and `n - 1`, `n`, `n + 1` for each number in the expression |
+| `boolean` | absent, `true`, `false` |
+| `date` | absent, `"2026-11-09"`, `"2026-11-10"`, `"2026-11-11"` |
+| `array` | absent, `[]`, one item, three items (the item type's present values in order, repeated as needed) |
+| `object` | absent, every field at its first present value, then each field through its own values (absent is the field left out) with the others there |
+| `item` | an id: `"1"` and each quoted literal; a value: the value type's present values (an element is never absent; its fields may be) |
+| `pass.number` | `1`, `2`, `3` |
+| `run.date`, `profile.name` | the type's values but absent: the run's and profile's facts are always there |
+
+The cases are the product over the reads in order, the first 200.
+
+Each case's scope is built by the engine's own functions (`ConditionScopes.Build`): a package
+declaring exactly what is read (every input optional, so its absence reaches the condition; a
+required input is never absent there, the start refuses the run), and `consult_draft` supplied so
+the start has an input. The inputs pass through `ConsultGenerationJobStarter.NormalizeInputs` and
+`ConsultGenerationJobStarter.ResolveEffectiveInputs`; the scope is
+`ConsultRenderPayload.ScopeFor` over that effective map, typed by `ConsultConditionScope.TypesOf`.
+So:
+
+- an absent input is the effective map's `""`, which the render reads as `""` (text, enum), null
+  (number, date, boolean), an empty array or an empty object
+  (`AnAbsentInput_ReadsAsTheEngineMakesIt` pins each);
+- an input is normalised first: trailing whitespace is cut, so a supplied `" "` reaches the
+  condition as `""` (an input never carries whitespace-only text);
+- a node is `prose` (text) or `classification` from the bundled catalogue, or a package-local
+  object format with the read's schema; an absent node is on the skipped list, as the engine
+  carries a flow that took no branch or a while's body before its first pass: `.content` and
+  `.value` read null, and a member of its value fails (`Cannot get the member … for a null object`);
+- an item is the fan's: an input fan's element through `WorkflowInputFans.Items` over
+  `input.items`, a snippet folder's item over `snippet.sections`;
+- the pass is pass `n` after `n - 1` earlier ones; the run date is `2026-11-10` unless read; the
+  profile name is `Dr A. Sample` unless read.
+
+### `vectors.json`
+
+Per expression, in order: `id`; `refused`, 30's sentence when the expression is not one (a
+template as the walk refuses it, anything else as `WorkflowConditionAt25.TryParse` does), else
+`null`; and `cases`, none when refused. Each case has its `scope` (read to value), its `result`
+and its `error` (the sentence today's engine throws, else `null`):
+
+- a `condition`: `WorkflowConditionAt25.Holds`'s boolean, the subject `Condition '<id>'`;
+- a `case`: the evaluated value as JSON; `error` is `WorkflowFlowDecision.Decide`'s sentence when
+  it is not a text (`Node '<id>' case must yield a declared value; it yields nothing.`);
+- a `let`: what `WorkflowLetAt30.ValueOf` stores, as JSON (a text bare, as a JSON string), the
+  subject `Let '<id>'`; `error` is its errors joined as the activity joins them. A format-typed
+  `let` here has no schema, so only its being an object is checked.
+
+The renderer pipes are the engine's (`TemplatePipes.Engine`).
+
+### What area 10 does with them
+
+Convert each `expression` with `WorkflowConditionConverter.FromScriban` (part 10 § 2.1); a refused one, and
+every § 2.3 one, converts to no logic. For every other, evaluate the JSON Logic on each case's
+`scope` and compare with `result` (a case with an `error` is one 30 fails on). They must agree,
+except the expected difference of § 2.3:
+
+- `row.not-text.node`, the case `"node.summary": " "`: 30 answers `false` (a whitespace-only text
+  is present); `blank(" ")` is true (`AWhitespaceOnlyText_IsTruthyAt30` pins 30's side).
+
+Observed, and not among § 2.3's expected differences: at 30 the empty text is truthy too, so
+`!node.summary.content` is `false` for `""` (only an absent node, read null, gives `true`), and
+`!input.reason` is `false` in every case (an absent text input reads `""`).
+
+### Regenerating
+
+Edit `expressions.json`, delete `vectors.json`, and run
+`dotnet test tests/Consultologist.Api.Tests.csproj --filter FullyQualifiedName~ConditionVectorTests`.
+The vectors are written and the test fails once; review them and commit them.
