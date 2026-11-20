@@ -539,7 +539,7 @@ Rules, for every node of `nodes/`, `checks/` and each function's body (in that f
 
 A `call`'s format against its function's, a `computed` node's against its expression, a check's `check_result` and a loop's `in` are areas 05, 04 and 08. To derive a flow node's format, a `call` child contributes its declared format, as every child does.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // SourceTypesNodesTests
@@ -563,8 +563,8 @@ A `call`'s format against its function's, a `computed` node's against its expres
 [Fact] public void AnyOneFormatBroken_IsRefused_AndNeverThrows()   // Review Focus 2: every format file and every inline format of Full() in turn replaced by {}, [], null, 5, "x", true, or its members deleted one at a time: Run returns, with at least one refusal wherever the replacement is not a valid format
 ```
 
-- [ ] **Step 2–4:** Run (fail), implement, run the `~V31` filter (pass).
-- [ ] **Step 5: Commit** `PackageFormat (#1500): agents are bound, rendered nodes return text, and a flow node's format is what its ret gives`, `PackageFormat (#1500): SourceCheck runs the reader, then the type rules`; push.
+- [x] **Step 2–4:** Run (fail), implement, run the `~V31` filter (pass).
+- [x] **Step 5: Commit** `PackageFormat (#1500): agents are bound, rendered nodes return text, and a flow node's format is what its ret gives`, `PackageFormat (#1500): SourceCheck runs the reader, then the type rules`; push.
 
 ### Task 11: The suite's refusal packages for part 02
 
