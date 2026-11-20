@@ -8,7 +8,7 @@ namespace Consultologist.Api.Tests.V31Source;
 /// repository named by <c>CONFORMANCE_EXPORT_V31</c> (its root): it deletes and rewrites
 /// <c>v31/conformance/refusal-packages/</c> — each case's <c>valid/</c> and <c>invalid/</c>, a
 /// <c>package/</c> of the case's files byte for byte and the <c>expect.json</c> that
-/// <see cref="SourceCheck.Run"/> (the reader, then the type rules; #1500, area 03) gives — then sets the <c>refusal-packages</c> family's <c>cases</c> in
+/// <see cref="SourceCheck.Run"/> (the reader, then the type rules, #1500, area 03, then the expressions, #1501, area 04) gives — then sets the <c>refusal-packages</c> family's <c>cases</c> in
 /// <c>v31/conformance/index.json</c>, leaving every other byte of that file as it was. A no-op
 /// without the variable, as <see cref="ConformanceFixtureExport"/> is: it is a generator, not a check.
 /// </summary>
@@ -48,20 +48,22 @@ public class RefusalPackagesExport
         }
 
         var index = Path.Combine(root, "v31", "conformance", "index.json");
-        File.WriteAllText(index, WithCases(File.ReadAllText(index, Utf8NoBom), cases.Order(StringComparer.Ordinal).ToList()), Utf8NoBom);
+        File.WriteAllText(index, WithCases(File.ReadAllText(index, Utf8NoBom), "refusal-packages", cases.Order(StringComparer.Ordinal).ToList()), Utf8NoBom);
     }
 
     /// <summary>
-    /// <paramref name="index"/> with the <c>refusal-packages</c> family's <c>cases</c> array replaced by
+    /// <paramref name="index"/> with the <paramref name="family"/> family's <c>cases</c> array replaced by
     /// <paramref name="cases"/>, one per line, indented as the <c>schemas</c> family's are; nothing
-    /// else changes.
+    /// else changes. #1501 (area 04): the family is named, so the JSON Logic families are written the same way, and its
+    /// <c>cases</c> is looked for in its own object only (before the next family's <c>id</c>).
     /// </summary>
-    internal static string WithCases(string index, IReadOnlyList<string> cases)
+    internal static string WithCases(string index, string family, IReadOnlyList<string> cases)
     {
-        var family = index.IndexOf("\"id\": \"refusal-packages\"", StringComparison.Ordinal);
-        Assert.True(family >= 0, "index.json has no refusal-packages family.");
-        var member = index.IndexOf("\"cases\": [", family, StringComparison.Ordinal);
-        Assert.True(member >= 0, "the refusal-packages family has no cases array.");
+        var at = index.IndexOf($"\"id\": \"{family}\"", StringComparison.Ordinal);
+        Assert.True(at >= 0, $"index.json has no {family} family.");
+        var next = index.IndexOf("\"id\":", at + 1, StringComparison.Ordinal);
+        var member = index.IndexOf("\"cases\": [", at, StringComparison.Ordinal);
+        Assert.True(member >= 0 && (next < 0 || member < next), $"the {family} family has no cases array.");
 
         var open = member + "\"cases\": ".Length;
         var close = index.IndexOf(']', open);

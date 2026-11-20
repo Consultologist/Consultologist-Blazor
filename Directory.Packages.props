@@ -23,6 +23,10 @@
          repository, which validates a value against a format. Exact, not floated: what it accepts
          is what a run accepts, and lock.json records this version. -->
     <PackageVersion Include="Corvus.Text.Json.Validator" Version="5.8.12" />
+    <!-- #1501 (specVersion 31, area 04, D1): the JSON Logic evaluator of the same repository, which
+         runs a rule with our operations registered over its own. Exact, not floated: what a rule
+         gives is what a run records, and lock.json records this version. -->
+    <PackageVersion Include="Corvus.Text.Json.JsonLogic" Version="5.8.12" />
     <PackageVersion Include="AngleSharp" Version="1.5.2" />
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.13.1" />
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="4.13.1" />

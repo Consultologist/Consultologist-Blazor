@@ -14,6 +14,8 @@ namespace Consultologist.Api.Tests.V31Source;
 /// #1500 (specVersion 31, area 03): every case is judged by <see cref="SourceCheck.Run"/>, the reader
 /// and then the type rules, and every sentence of <see cref="FormatSentences"/> a package can reach
 /// has a case too.
+/// #1501 (specVersion 31, area 04): every case is judged on its expressions too, the third step, and every sentence of
+/// <see cref="ExpressionSentences"/> a package can reach has a case, except <c>LogicNotShipped</c>.
 /// </summary>
 public class RefusalPackagesTests
 {
@@ -39,6 +41,24 @@ public class RefusalPackagesTests
     /// <summary>The two ids of <see cref="TypesNotShipped"/> that no method of <see cref="FormatSentences"/> gives (S01-028's words; areas 04 and 05's flags).</summary>
     private static readonly string[] TypesWithNoMethod = ["S02-009", "S02-011"];
 
+    /// <summary>
+    /// #1501 (area 04): the expression sentences the suite has no case for.
+    /// S03-001: the reason sentence of a decision (<c>skipped: … is false</c>), which the record holds; not a refusal.
+    /// S03-036 and S03-044 (D28): the three flags are worked out from the compiled package's edges and from what
+    /// templates read, areas 05 and 07's; no caller gives <see cref="LineageFlags"/> a graph yet.
+    /// S03-037 and S03-038: warnings, and S03-039 a note; a package that gets them is accepted.
+    /// S03-040, S03-041 and A04-011: failures at run time, said when a rule is evaluated, never at publish.
+    /// </summary>
+    private static readonly string[] LogicNotShipped =
+        ["S03-001", "S03-036", "S03-037", "S03-038", "S03-039", "S03-040", "S03-041", "S03-044", "A04-011"];
+
+    /// <summary>
+    /// The ids of <see cref="LogicNotShipped"/> that no public method of <see cref="ExpressionSentences"/> returning a
+    /// refusal gives: S03-001 (the record's), S03-036 (the flags', internal), S03-039 (a note, text) and the run-time
+    /// sentences (<see cref="ExpressionSentences.RunTime"/>, text).
+    /// </summary>
+    private static readonly string[] LogicWithNoMethod = ["S03-001", "S03-036", "S03-039", "S03-040", "S03-041", "A04-011"];
+
     [Fact]
     public void EveryCase_SaysWhatItClaims()
     {
@@ -60,12 +80,14 @@ public class RefusalPackagesTests
     [Fact]
     public void EverySentence_TheCheckerCanSay_HasACase()
     {
-        // Each method of SourceSentences and FormatSentences that returns a refusal makes one sentence
+        // Each method of SourceSentences, FormatSentences and ExpressionSentences that returns a refusal makes one sentence
         // with a fixed id; calling it with any arguments gives that id (FormatSentences.Subject, which
-        // returns text, is not one).
-        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences))
+        // returns text, is not one; nor is ExpressionSentences.Shape, which gives the sentence of a fault of the
+        // written form by calling the others).
+        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences))
             .Except(NotShipped)
             .Except(TypesNotShipped)
+            .Except(LogicNotShipped)
             .Order(StringComparer.Ordinal)
             .ToList();
 
@@ -85,6 +107,16 @@ public class RefusalPackagesTests
 
         Assert.All(TypesNotShipped, id => Assert.Contains(id, known));
         Assert.All(TypesWithNoMethod, id => Assert.DoesNotContain(id, said));
+    }
+
+    [Fact]
+    public void EveryLogicNotShipped_IsASentenceTheCheckerHas_OrOneOfThoseWithNoMethod()
+    {
+        var said = SaidBy(typeof(ExpressionSentences));
+        var known = said.Concat(LogicWithNoMethod).ToHashSet(StringComparer.Ordinal);
+
+        Assert.All(LogicNotShipped, id => Assert.Contains(id, known));
+        Assert.All(LogicWithNoMethod, id => Assert.DoesNotContain(id, said));
     }
 
     [Fact]
@@ -158,7 +190,7 @@ public class RefusalPackagesTests
     private static List<string> SaidBy(params Type[] types) =>
         types
             .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Static))
-            .Where(m => m.ReturnType == typeof(SourceRefusal))
+            .Where(m => m.ReturnType == typeof(SourceRefusal) && m.GetParameters().All(p => p.ParameterType != typeof(ShapeFault)))
             .Select(m => ((SourceRefusal)m.Invoke(null, m.GetParameters().Select(Argument).ToArray())!).Id)
             .Distinct()
             .ToList();
@@ -168,6 +200,7 @@ public class RefusalPackagesTests
         var t when t == typeof(int) => 1,
         var t when t == typeof(long) => 1L,
         var t when t == typeof(bool) => true,
+        var t when t == typeof(ExpressionSite) => new ExpressionSite(ExpressionSiteKind.NodeIf, "x", "if", "x", null, null),
         _ => "x",
     };
 }
