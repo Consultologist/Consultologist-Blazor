@@ -12,10 +12,10 @@ namespace Consultologist.PackageFormat.V31;
 /// still walked for its layout.
 /// </summary>
 /// <remarks>
-/// This file reads the root, the manifest, the definitions, the deliverables and the tests.
-/// <c>nodes/</c>, <c>checks/</c> and <c>functions/</c> are walked for their layout by
-/// <see cref="ReadBody"/>, <see cref="ReadFlowFolder"/> and <see cref="ReadFunctionFolder"/>; the
-/// nodes' own content is read in <c>SourceParser.Nodes.cs</c>.
+/// This file reads the root, the manifest, the definitions, the deliverables and the tests, and
+/// the top of <c>nodes/</c> and <c>checks/</c>. Their leaves are read in <c>SourceParser.Nodes.cs</c>,
+/// their flow nodes in <c>SourceParser.Flow.cs</c>, and <c>functions/</c> in
+/// <c>SourceParser.Functions.cs</c>.
 /// </remarks>
 public static partial class SourceParser
 {
@@ -153,7 +153,7 @@ public static partial class SourceParser
         walk.Refuse(SourceSentences.SpecVersionNotRead(written));
     }
 
-    // ---- nodes/, checks/ and functions/: the layout -----------------------------------------------
+    // ---- nodes/ and checks/ ----------------------------------------------------------------------
 
     /// <summary><c>nodes/</c> or <c>checks/</c>: the index, then the top-level body.</summary>
     private static SourceBody ReadBodyFolder(SourceWalk walk, string folder)
@@ -166,11 +166,10 @@ public static partial class SourceParser
     }
 
     /// <summary>
-    /// The members of one body, in listed order: each listed leaf is read and judged
-    /// (<c>SourceParser.Nodes.cs</c>). A listed flow folder is walked through its own index, so its
-    /// leaves and strays at any depth are found, and is absent from the result until the flow nodes are
-    /// built. <paramref name="root"/> is <c>node</c> or <c>check</c>; <paramref name="enclosing"/> the
-    /// dotted ids of the folders around the body (<c>""</c> at the top, or at a function's top).
+    /// The members of one body, in listed order: each listed leaf or flow folder is read and judged
+    /// (<c>SourceParser.Nodes.cs</c>, <c>SourceParser.Flow.cs</c>); one that was refused is left out.
+    /// <paramref name="root"/> is <c>node</c> or <c>check</c>; <paramref name="enclosing"/> the dotted
+    /// ids of the flow folders around the body (<c>""</c> at the top, or at a function's top).
     /// </summary>
     private static IReadOnlyList<SourceNode> ReadBody(
         SourceWalk walk, IReadOnlyList<ListedMember> members, string root, string enclosing)
@@ -183,108 +182,6 @@ public static partial class SourceParser
         }
 
         return nodes;
-    }
-
-    /// <summary>
-    /// A flow node's folder, for its layout: its index's lists are <c>nodes</c> for a <c>for</c> or a
-    /// <c>while</c>, <c>then.nodes</c> and <c>else.nodes</c> for an <c>if</c>, every branch's
-    /// <c>nodes</c> and <c>else.nodes</c> for a <c>case</c>, all flat in the one folder. Where the index
-    /// cannot be read that far, the folder is read without its list.
-    /// </summary>
-    private static void ReadFlowFolder(SourceWalk walk, string folder, string root, string enclosing)
-    {
-        var index = SourceLayout.ReadIndex(walk, folder);
-        if (index == null)
-            return;
-
-        var path = SourceLayout.Join(folder, "index.json");
-        var lists = new List<(string Name, JsonNode? Ids)>();
-        var complete = true;
-        switch (SourceLayout.Text(index["kind"]))
-        {
-            case "for" or "while":
-                lists.Add(("nodes", index["nodes"]));
-                break;
-            case "if":
-                complete &= AddBody(lists, "then.nodes", index["then"], nullable: false);
-                complete &= AddBody(lists, "else.nodes", index["else"], nullable: true);
-                break;
-            case "case":
-                if (index["branches"] is JsonArray branches)
-                {
-                    for (var i = 0; i < branches.Count; i++)
-                        complete &= AddBody(lists, $"branch {i + 1} nodes", branches[i], nullable: false);
-                }
-                else
-                {
-                    complete = false;
-                }
-
-                complete &= AddBody(lists, "else.nodes", index["else"], nullable: true);
-                break;
-            default:
-                complete = false;
-                break;
-        }
-
-        var members = new List<ListedMember>();
-        foreach (var (name, ids) in lists)
-        {
-            if (ids is not JsonArray)
-                complete = false;
-            else
-                members.AddRange(SourceLayout.ReadList(walk, folder, $"{path} {name}", ids, MemberForm.FileOrFolder));
-        }
-
-        if (!complete)
-            walk.MarkUnreadable(folder);
-
-        // The branches of an if or a case sit flat in one folder, so two lists may name one member.
-        ReadBody(walk, members.DistinctBy(m => m.Path).ToList(), root, enclosing);
-    }
-
-    /// <summary>
-    /// Adds the <c>nodes</c> list of a body object to <paramref name="lists"/> under
-    /// <paramref name="name"/> (<c>then.nodes</c>, <c>else.nodes</c>, <c>branch 2 nodes</c>). False when
-    /// the body cannot be read: not an object, or null where it may not be.
-    /// </summary>
-    private static bool AddBody(List<(string, JsonNode?)> lists, string name, JsonNode? node, bool nullable)
-    {
-        if (node is null)
-            return nullable;
-        if (node is not JsonObject body)
-            return false;
-        lists.Add((name, body["nodes"]));
-        return true;
-    }
-
-    /// <summary><c>functions/</c>: each listed function folder, for its layout and its own definitions.</summary>
-    private static SourceIndex<SourceFunction> ReadFunctions(SourceWalk walk)
-    {
-        var read = Open(walk, "functions", SourceShapes.Index, MemberForm.Folder);
-        if (read == null)
-            return new SourceIndex<SourceFunction>("functions", null, []);
-
-        foreach (var member in read.Members)
-            ReadFunctionFolder(walk, member.Path);
-        return new SourceIndex<SourceFunction>("functions", SourceLayout.Lines(read.Index["description"]), []);
-    }
-
-    /// <summary>
-    /// One function's folder (part 04 § 7.1): its index's <c>nodes</c> and their flow folders, and its
-    /// four definition folders, read in full as the package's are (S01-007 when one is missing).
-    /// </summary>
-    private static SourceDefinitions ReadFunctionFolder(SourceWalk walk, string folder)
-    {
-        var index = SourceLayout.ReadIndex(walk, folder);
-        if (index != null)
-        {
-            var path = SourceLayout.Join(folder, "index.json");
-            var members = SourceLayout.ReadList(walk, folder, $"{path} nodes", index["nodes"], MemberForm.FileOrFolder);
-            ReadBody(walk, members, "node", "");
-        }
-
-        return ReadDefinitions(walk, folder);
     }
 
     // ---- The definitions (part 01 § 2; part 05) ---------------------------------------------------

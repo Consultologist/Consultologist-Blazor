@@ -170,9 +170,17 @@ internal static class SourceLayout
     /// disk, accounting for their files. <paramref name="list"/> is the sentences' <c>&lt;list&gt;</c>:
     /// the index's path, then the member for a body (<c>nodes/sections/index.json nodes</c>). A list
     /// that is not a JSON array leaves the folder read without its list; an entry that is not text is
-    /// skipped (its type is the shape's refusal).
+    /// skipped (its type is the shape's refusal: a list of text, A02-001).
     /// </summary>
-    public static IReadOnlyList<ListedMember> ReadList(SourceWalk walk, string folder, string list, JsonNode? ids, MemberForm form)
+    /// <param name="body">
+    /// For a flow node's or a function's body (part 04): the ids the folder's earlier bodies listed,
+    /// shared by them all (the bodies of an <c>if</c> or a <c>case</c> sit flat in one folder), and
+    /// the sentence for an id listed twice, in this body or in an earlier one (S04-013, in place of
+    /// S01-010). An id an earlier body listed is said once here and not read again.
+    /// </param>
+    public static IReadOnlyList<ListedMember> ReadList(
+        SourceWalk walk, string folder, string list, JsonNode? ids, MemberForm form,
+        (HashSet<string> Listed, Func<string, SourceRefusal> Twice)? body = null)
     {
         var members = new List<ListedMember>();
         if (ids is not JsonArray array)
@@ -196,10 +204,10 @@ internal static class SourceLayout
                 walk.Refuse(SourceSentences.ListedWithSlash(list, id));
             }
 
-            if (!seen.Add(id))
+            if (!seen.Add(id) || (body is { } earlier && !earlier.Listed.Add(id)))
             {
                 if (twice.Add(id))
-                    walk.Refuse(SourceSentences.ListedTwice(list, id));
+                    walk.Refuse(body is { } b ? b.Twice(id) : SourceSentences.ListedTwice(list, id));
                 continue;
             }
 

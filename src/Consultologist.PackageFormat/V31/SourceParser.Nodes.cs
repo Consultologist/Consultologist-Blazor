@@ -12,38 +12,20 @@ public static partial class SourceParser
     private static readonly string[] FlowKinds = ["for", "while", "if", "case"];
 
     /// <summary>
-    /// One listed child of a body. A file is a leaf and is read here. A folder is a flow node: its
-    /// layout is walked, and it is not yet in the model (the flow nodes build it, from the index they
-    /// read); the hook is here so that they only wrap what <see cref="ReadFlowFolder"/> reads.
+    /// One listed child of a body: a file is a leaf, read here; a folder is a flow node, read through
+    /// its <c>index.json</c> (<c>SourceParser.Flow.cs</c>). Null when the child was refused.
     /// </summary>
-    private static SourceNode? ReadChild(SourceWalk walk, string root, string enclosing, ListedMember member)
-    {
-        if (member.IsFolder)
-        {
-            ReadFlowFolder(walk, member.Path, root, enclosing.Length == 0 ? member.Id : $"{enclosing}.{member.Id}");
-            return null;
-        }
-
-        return ReadLeaf(walk, root, enclosing, member);
-    }
+    private static SourceNode? ReadChild(SourceWalk walk, string root, string enclosing, ListedMember member) =>
+        member.IsFolder ? ReadFlowNode(walk, root, enclosing, member) : ReadLeaf(walk, root, enclosing, member);
 
     /// <summary>
-    /// A leaf file: split and parsed as every header file; then <c>kind</c> (missing, null, not text,
-    /// unknown, or a flow kind ends the read); then the members of the kind's shape, the producer, the
-    /// kind's own members and the body.
+    /// A node's <c>kind</c>, read before anything else: missing (S01-021), <c>null</c> (S01-022), not text
+    /// (A02-001), none of the eight (S02-007), or the wrong form for where it is written (a flow kind
+    /// in a file, A02-006; a leaf kind in a folder, A02-007, D21). Each ends the read: null.
     /// </summary>
-    private static SourceLeaf? ReadLeaf(SourceWalk walk, string root, string enclosing, ListedMember member)
+    private static string? ReadKind(SourceWalk walk, JsonObject header, string word, string id, string path, bool inFolder)
     {
-        if (SourceLayout.ReadHeaderFile(walk, member.Path) is not { } file)
-            return null;
-        var (header, body) = file;
-
-        var isCheck = root == "check";
-        var word = isCheck ? "Check" : "Node";
-        var declaration = $"{word} '{member.Id}'";
-        var path = member.Path;
-        var key = enclosing.Length == 0 ? $"{root}.{member.Id}" : $"{root}.{enclosing}.{member.Id}";
-
+        var declaration = $"{word} '{id}'";
         if (!header.TryGetPropertyValue("kind", out var kindNode))
         {
             walk.Refuse(SourceSentences.MemberMissing(declaration, "kind", path));
@@ -62,17 +44,45 @@ public static partial class SourceParser
             return null;
         }
 
-        if (FlowKinds.Contains(kind))
+        if (!LeafKinds.Contains(kind) && !FlowKinds.Contains(kind))
         {
-            walk.Refuse(SourceSentences.FlowKindInFile(member.Id, kind, path));
+            walk.Refuse(SourceSentences.UnknownKind(id, kind, path));
             return null;
         }
 
-        if (!LeafKinds.Contains(kind))
+        if (!inFolder && FlowKinds.Contains(kind))
         {
-            walk.Refuse(SourceSentences.UnknownKind(member.Id, kind, path));
+            walk.Refuse(SourceSentences.FlowKindInFile(id, kind, path));
             return null;
         }
+
+        if (inFolder && LeafKinds.Contains(kind))
+        {
+            walk.Refuse(SourceSentences.LeafKindInFolder(id, kind, path));
+            return null;
+        }
+
+        return kind;
+    }
+
+    /// <summary>
+    /// A leaf file: split and parsed as every header file; then <c>kind</c> (<see cref="ReadKind"/>);
+    /// then the members of the kind's shape, the producer, the kind's own members and the body.
+    /// </summary>
+    private static SourceLeaf? ReadLeaf(SourceWalk walk, string root, string enclosing, ListedMember member)
+    {
+        if (SourceLayout.ReadHeaderFile(walk, member.Path) is not { } file)
+            return null;
+        var (header, body) = file;
+
+        var isCheck = root == "check";
+        var word = isCheck ? "Check" : "Node";
+        var declaration = $"{word} '{member.Id}'";
+        var path = member.Path;
+        var key = Key(root, enclosing, member.Id);
+
+        if (ReadKind(walk, header, word, member.Id, path, inFolder: false) is not { } kind)
+            return null;
 
         var shape = kind switch
         {

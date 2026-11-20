@@ -154,6 +154,104 @@ internal static class SourceSentences
     public static SourceRefusal LeafKindInFolder(string id, string kind, string path) =>
         new("A02-007", $"Node '{id}' is kind {kind} in a folder; a {kind} node is a file, {id}.md.", path);
 
+    /// <summary>
+    /// S04-009: a flow node's <c>label</c> is <c>null</c> (in place of S01-022). The row is written for
+    /// <c>Loop</c>; <paramref name="word"/> is the kind's (<c>Loop</c>, <c>While</c>, <c>If</c>, <c>Case</c>), as § 10.1 says.
+    /// </summary>
+    public static SourceRefusal FlowLabelNull(string word, string id, string path) =>
+        new("S04-009", $"{word} '{id}' declares label null; a loop's or branch's label is what the rail, History and the diagram show: write one.", path);
+
+    /// <summary>S04-010: a member that is another flow kind's own (in place of S01-023); <paramref name="owner"/> is <c>a for</c>, <c>a while</c>, <c>an if</c> or <c>a case</c>.</summary>
+    public static SourceRefusal MemberOfAnotherKind(string word, string id, string member, string owner, string path) =>
+        new("S04-010", $"{word} '{id}' declares {member}, which belongs to {owner}.", path);
+
+    /// <summary>S04-011: a body's <c>ret</c> is <c>null</c>; <paramref name="subject"/> is § 10.1's (<c>If 'x' then</c>).</summary>
+    public static SourceRefusal ReturnsNothing(string subject, string path) =>
+        new("S04-011", $"{subject} returns nothing; name the body node the outside reads with ret.", path);
+
+    /// <summary>S04-013: a body lists an id twice, or an id another body of the same node lists (in place of S01-010).</summary>
+    public static SourceRefusal BodyListsTwice(string subject, string id, string path) =>
+        new("S04-013", $"{subject} lists node '{id}' twice; a body is a set.", path);
+
+    /// <summary>S04-018: a <c>for</c>'s <c>nodes</c> is <c>[]</c>.</summary>
+    public static SourceRefusal LoopHasNoBody(string id, string path) =>
+        new("S04-018", $"Loop '{id}' has no body; name the nodes that run per item in nodes.", path);
+
+    /// <summary>S04-019: <c>parallel</c> true with <c>maxParallel</c> 1.</summary>
+    public static SourceRefusal ParallelOfOne(string id, string path) =>
+        new("S04-019", $"Loop '{id}' declares parallel true with maxParallel 1, which runs one item at a time; declare \"parallel\": false and \"maxParallel\": null instead.", path);
+
+    /// <summary>S01-005 (S04-020 has the same words): <c>maxParallel</c> above <see cref="FormatBounds.Parallel"/>; <paramref name="written"/> as the JSON wrote it.</summary>
+    public static SourceRefusal MaxParallelTooHigh(string id, string written, string path) =>
+        new("S01-005", $"Loop '{id}' declares maxParallel {written}; the most is FormatBounds.parallel (15).", path);
+
+    /// <summary>S04-021: <c>maxParallel</c> 0, negative, or not a whole number; <paramref name="written"/> as the JSON wrote it.</summary>
+    public static SourceRefusal MaxParallelTooLow(string id, string written, string path) =>
+        new("S04-021", $"Loop '{id}' declares maxParallel {written}; the least is 2, or null for no cap of its own.", path);
+
+    /// <summary>S04-022: <c>maxParallel</c> not <c>null</c> with <c>parallel</c> false.</summary>
+    public static SourceRefusal MaxParallelWhenSequential(string id, string written, string path) =>
+        new("S04-022", $"Loop '{id}' declares maxParallel {written} with parallel false; a sequential loop runs one item at a time: write \"maxParallel\": null.", path);
+
+    /// <summary>S04-023: <c>until</c> not <c>null</c> with <c>parallel</c> true.</summary>
+    public static SourceRefusal UntilWhenParallel(string id, string path) =>
+        new("S04-023", $"Loop '{id}' declares until with parallel true; until stops after the item where it holds, which needs items in order: declare \"parallel\": false and \"maxParallel\": null.", path);
+
+    /// <summary>S04-024: a <c>for</c>'s <c>max</c> below 1. The row's text is fixed ("max 0") and is used as written, whatever the number.</summary>
+    public static SourceRefusal LoopMaxTooLow(string id, string path) =>
+        new("S04-024", $"Loop '{id}' declares max 0; the least is 1.", path);
+
+    /// <summary>S04-031: a <c>while</c>'s <c>max</c> is <c>null</c> (in place of S01-022).</summary>
+    public static SourceRefusal WhileMaxNull(string id, string path) =>
+        new("S04-031", $"While '{id}' declares max null; a while must declare its bound (1 to 15).", path);
+
+    /// <summary>S01-003 (S04-032 has the same words): a <c>while</c>'s <c>max</c> above <see cref="FormatBounds.Passes"/>.</summary>
+    public static SourceRefusal WhileMaxTooHigh(string id, string written, string path) =>
+        new("S01-003", $"While '{id}' declares max {written}; a while runs at most FormatBounds.passes (15) passes.", path);
+
+    /// <summary>S04-033: a <c>while</c>'s <c>max</c> below 1.</summary>
+    public static SourceRefusal WhileMaxTooLow(string id, string written, string path) =>
+        new("S04-033", $"While '{id}' declares max {written}; the least is 1.", path);
+
+    /// <summary>S04-034: a <c>while</c>'s <c>nodes</c> is <c>[]</c>.</summary>
+    public static SourceRefusal WhileHasNoBody(string id, string path) =>
+        new("S04-034", $"While '{id}' has no body; name the nodes that run per pass in nodes.", path);
+
+    /// <summary>S04-041: an <c>if</c>'s <c>then</c> is <c>null</c> (in place of S01-022).</summary>
+    public static SourceRefusal ThenNull(string id, string path) =>
+        new("S04-041", $"If '{id}' declares then null; an if runs a then body.", path);
+
+    /// <summary>S04-042: a <c>case</c>'s <c>branches</c> is <c>[]</c>.</summary>
+    public static SourceRefusal NoBranches(string id, string path) =>
+        new("S04-042", $"Case '{id}' has no branches; a case runs one branch per set of values.", path);
+
+    /// <summary>S04-043: a branch's <c>when</c> is <c>[]</c>; <paramref name="branch"/> counts from 1.</summary>
+    public static SourceRefusal BranchListsNoValue(string id, int branch, string path) =>
+        new("S04-043", $"Case '{id}' branch {branch} lists no value; a branch's when names one or more values.", path);
+
+    /// <summary>
+    /// S04-048: a branch with <c>nodes</c> <c>[]</c> and a <c>ret</c>, or <c>nodes</c> and a <c>null</c>
+    /// <c>ret</c>. <paramref name="nodes"/> is <c>[]</c> or the ids joined by <c>, </c>; <paramref name="ret"/> the written value or <c>null</c>.
+    /// </summary>
+    public static SourceRefusal EmptyBranchHalfWritten(string id, int branch, string nodes, string ret, string path) =>
+        new("S04-048", $"Case '{id}' branch {branch} writes nodes {nodes} with ret {ret}; an empty branch writes nodes [] and ret null together.", path);
+
+    /// <summary>S04-076: a branch's <c>when</c> holds <c>null</c>.</summary>
+    public static SourceRefusal BranchListsNull(string id, int branch, string path) =>
+        new("S04-076", $"Case '{id}' branch {branch} lists null; a null subject goes to the else.", path);
+
+    /// <summary>S04-062: a function folder holds <c>checks/</c> or <c>deliverables/</c>; the refusal's path is that folder.</summary>
+    public static SourceRefusal FunctionHoldsTopLevelFolder(string function, string folder, string path) =>
+        new("S04-062", $"Function '{function}' holds a {folder} folder; checks and deliverables live only at the package's top level: return a check_result or a value instead.", path);
+
+    /// <summary>S04-067: a function parameter declares <c>required</c> or <c>channel</c> (in place of S01-023).</summary>
+    public static SourceRefusal ParameterDeclaresInputMember(string function, string parameter, string member, string path) =>
+        new("S04-067", $"Function '{function}' parameter '{parameter}' declares {member}; a parameter has label, description and format, and every one is passed.", path);
+
+    /// <summary>A02-008 (D22): a <c>then</c>, an <c>else</c>, a non-empty branch or a function whose <c>nodes</c> is <c>[]</c>.</summary>
+    public static SourceRefusal NoBody(string subject, string path) =>
+        new("A02-008", $"{subject} has no body; name the nodes that run in nodes.", path);
+
     /// <summary>S01-034: a package format named like a <c>built-in</c> or <c>catalogue</c> one.</summary>
     public static SourceRefusal FormatReusesName(string id, string builtInOrCatalogue, string path) =>
         new("S01-034", $"Format '{id}' reuses the name of a {builtInOrCatalogue} format: rename it.", path);

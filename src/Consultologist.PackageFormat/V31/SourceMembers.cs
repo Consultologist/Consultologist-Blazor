@@ -16,15 +16,29 @@ public static class SourceMembers
     /// <paramref name="refusals"/>. <paramref name="name"/> is the <c>&lt;Declaration&gt;</c> of D9 and
     /// <paramref name="path"/> the file. Returns true when it added nothing.
     /// </summary>
-    public static bool Check(JsonObject declaration, DeclarationShape shape, string name, string path, List<SourceRefusal> refusals)
+    /// <param name="leave">
+    /// Members whose fault has a sentence of its own, which the caller says instead (part 04 § 10.1:
+    /// a flow node's <c>null</c> label, a member of another flow kind, a parameter's <c>required</c>).
+    /// For a member of the shape, only its absence is still said here (S01-021); its <c>null</c> and
+    /// its type are the caller's (<see cref="CheckType"/>). A member outside the shape is not said
+    /// to be unknown (S01-023).
+    /// </param>
+    public static bool Check(
+        JsonObject declaration, DeclarationShape shape, string name, string path, List<SourceRefusal> refusals,
+        IReadOnlyCollection<string>? leave = null)
     {
         var before = refusals.Count;
+        leave ??= [];
 
         foreach (var member in shape.Members)
         {
             if (!declaration.TryGetPropertyValue(member.Name, out var value))
             {
                 refusals.Add(SourceSentences.MemberMissing(name, member.Name, path));
+            }
+            else if (leave.Contains(member.Name))
+            {
+                continue;
             }
             else if (value is null)
             {
@@ -39,7 +53,7 @@ public static class SourceMembers
 
         foreach (var (key, _) in declaration)
         {
-            if (shape.Members.All(m => m.Name != key))
+            if (shape.Members.All(m => m.Name != key) && !leave.Contains(key))
                 refusals.Add(SourceSentences.MemberUnknown(name, path, key, Closest(shape, key)));
         }
 
@@ -67,6 +81,18 @@ public static class SourceMembers
         }
 
         return refusals.Count == before;
+    }
+
+    /// <summary>
+    /// The type rule alone (A02-001) for one member the caller left out of <see cref="Check"/>:
+    /// nothing for <c>null</c> or a missing member, which the caller judges. True when it added nothing.
+    /// </summary>
+    public static bool CheckType(JsonNode? value, MemberType type, string name, string member, string path, List<SourceRefusal> refusals)
+    {
+        if (value is null || Fits(value, type))
+            return true;
+        refusals.Add(SourceSentences.MemberWrongType(name, member, Describe(value), MustBe(type), path));
+        return false;
     }
 
     // A string with a lone surrogate escape ("\ud800") parses but cannot be read back; it counts as one
