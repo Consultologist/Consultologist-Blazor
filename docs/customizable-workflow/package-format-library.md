@@ -89,9 +89,17 @@ judge what the files mean.
 `SourceParser.Parse(upload, registry)` takes the upload as a path-to-bytes dictionary and a
 `SourceRegistry`: the built-in and catalogue format names and the built-in renderer names, which
 the caller owns, so the reader holds no list of its own. It returns a `SourceParseResult`: a
-`SourcePackage` or a list of refusals, never both, and `Normalised`, the files whose `\r\n`
-intake turned into `\n` (the publish report notes them). It throws only for a null argument;
-nothing an upload holds throws.
+`SourcePackage` or a list of refusals, never both; `Normalised`, the files whose `\r\n`
+intake turned into `\n` (the publish report notes them); and `Files`, every file's text as
+intake read it (after line-ending normalisation, without the dropped compiled copies), whatever
+the outcome, for the steps that hash and write back the files (`dag.mmd` among them). It throws
+only for a null argument; nothing an upload holds throws.
+
+**The upload's contract.** Each key is a `/`-separated path from the package root, and only
+files are keys. The import layer strips a zip's directory entries and a top-level folder that
+wraps the whole package before it calls the reader; anything else it passes through is read as
+written, so an unexpected folder prefix makes every file a stray. `resolve.json`, `lock.json`
+and `publish-report.json` at the root are dropped unread.
 
 ### The steps
 
@@ -110,6 +118,10 @@ nothing an upload holds throws.
    function) and never across them, and the expression-size bound. This step runs on whatever
    tree the earlier steps built, so a scope fault comes with independent faults elsewhere.
 
+Only intake is a gate. Steps 2 to 5 are not passes over the whole package: they interleave file
+by file as the walk reaches each folder, so a fault in one file does not stop the others from
+being read and judged.
+
 ### The model
 
 | `SourcePackage` holds | |
@@ -121,9 +133,11 @@ nothing an upload holds throws.
 | `Deliverables`, `Tests` | deliverables (one level of folders) and tests |
 | `Readmes` | every `README.md`, path to text |
 
-Kept as raw JSON for later areas: every header (`JsonObject`), a manifest input, a format's
-schema, a test, and an expression (`until`, `while`, `if`) as a `JsonNode`. Bodies are kept
-byte for byte after line-ending normalisation.
+Kept as raw JSON for later areas: every header (`JsonObject`), a manifest input, a function's
+parameter, a format's schema, a test, and an expression (`until`, `while`, `if`) as a
+`JsonNode`. Bodies are kept byte for byte after line-ending normalisation. Treat the JSON in the
+model as read-only: it is the parsed file, shared by the records that point into it. A
+`JsonNode` belongs to one parent, so to place one elsewhere, `DeepClone()` it first.
 
 ### Refusals
 
@@ -132,7 +146,15 @@ A `SourceRefusal(Id, Sentence, Path)` carries the id of a row of the format regi
 The `A02-NNN` sentences exist for rules the design gives no sentence of its own; the list is in
 the conformance README,
 `external/consultologist-package-format/v31/conformance/README.md`. One fault gives one
-sentence, said once. Refusals are ordered by path (ordinal), then in the order found.
+sentence, said once. Refusals are ordered by path (ordinal), then in the order found; when intake
+refuses, its refusals keep its own order (each file's, then the bounds in the table's order).
+The reader does not cap how many refusals it returns or how long a sentence is (a sentence may
+quote a long id or path), so a caller that shows them caps them.
+
+S01-017's `<parser message>` is this reader's own: `line <n>, column <m>`, the 1-based line of
+the file (a header's first line is the file's line 2) and the 1-based column in characters,
+for example *"The header of 'renderers/x.md' is not valid JSON: line 2, column 14."* An empty or
+truncated header is placed where it ends.
 
 ### What it leaves to later areas
 
