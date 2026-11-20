@@ -135,6 +135,25 @@ internal static class SourceSentences
     public static SourceRefusal HasBody(string declaration, string what, string path) =>
         new("S01-020", $"{declaration} has a body; a {what} keeps everything in its header.", path);
 
+    /// <summary>
+    /// S01-028: a producer the kind does not have. <paramref name="node"/> is <c>Node</c> or <c>Check</c>;
+    /// the template's article is kept, so it reads "a agent node's" (ruled on).
+    /// </summary>
+    public static SourceRefusal ProducerDisagrees(string node, string key, string kind, string value, string expected, string path) =>
+        new("S01-028", $"{node} '{key}' is kind {kind} and declares producer '{value}'; a {kind} node's producer is {expected}.", path);
+
+    /// <summary>S02-007: a <c>kind</c> that is none of the eight; the declaration word is <c>Node</c> in a check too (as written).</summary>
+    public static SourceRefusal UnknownKind(string id, string kind, string path) =>
+        new("S02-007", $"Node '{id}' declares unknown kind '{kind}' (accepted: agent, rendered, computed, for, while, if, case, call).", path);
+
+    /// <summary>A02-006 (D21): a <c>.md</c> leaf that declares a flow kind.</summary>
+    public static SourceRefusal FlowKindInFile(string id, string kind, string path) =>
+        new("A02-006", $"Node '{id}' is kind {kind} in a file; a {kind} is a folder with an index.json.", path);
+
+    /// <summary>A02-007 (D21): a folder's <c>index.json</c> that declares a leaf kind.</summary>
+    public static SourceRefusal LeafKindInFolder(string id, string kind, string path) =>
+        new("A02-007", $"Node '{id}' is kind {kind} in a folder; a {kind} node is a file, {id}.md.", path);
+
     /// <summary>S01-034: a package format named like a <c>built-in</c> or <c>catalogue</c> one.</summary>
     public static SourceRefusal FormatReusesName(string id, string builtInOrCatalogue, string path) =>
         new("S01-034", $"Format '{id}' reuses the name of a {builtInOrCatalogue} format: rename it.", path);

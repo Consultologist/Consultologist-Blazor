@@ -161,18 +161,28 @@ public static partial class SourceParser
         var read = Open(walk, folder, SourceShapes.Index, MemberForm.FileOrFolder);
         if (read == null)
             return new SourceBody(folder, null, []);
-        return new SourceBody(folder, SourceLayout.Lines(read.Index["description"]), ReadBody(walk, read.Members));
+        var root = folder == "nodes" ? "node" : "check";
+        return new SourceBody(folder, SourceLayout.Lines(read.Index["description"]), ReadBody(walk, read.Members, root, ""));
     }
 
     /// <summary>
-    /// The members of one body. Here only the layout: each listed flow folder is walked through its
-    /// own index, so strays at any depth are found; the leaves are accounted for and not yet read.
+    /// The members of one body, in listed order: each listed leaf is read and judged
+    /// (<c>SourceParser.Nodes.cs</c>). A listed flow folder is walked through its own index, so its
+    /// leaves and strays at any depth are found, and is absent from the result until the flow nodes are
+    /// built. <paramref name="root"/> is <c>node</c> or <c>check</c>; <paramref name="enclosing"/> the
+    /// dotted ids of the folders around the body (<c>""</c> at the top, or at a function's top).
     /// </summary>
-    private static IReadOnlyList<SourceNode> ReadBody(SourceWalk walk, IReadOnlyList<ListedMember> members)
+    private static IReadOnlyList<SourceNode> ReadBody(
+        SourceWalk walk, IReadOnlyList<ListedMember> members, string root, string enclosing)
     {
-        foreach (var member in members.Where(m => m.IsFolder))
-            ReadFlowFolder(walk, member.Path);
-        return [];
+        var nodes = new List<SourceNode>();
+        foreach (var member in members)
+        {
+            if (ReadChild(walk, root, enclosing, member) is { } node)
+                nodes.Add(node);
+        }
+
+        return nodes;
     }
 
     /// <summary>
@@ -181,7 +191,7 @@ public static partial class SourceParser
     /// <c>nodes</c> and <c>else.nodes</c> for a <c>case</c>, all flat in the one folder. Where the index
     /// cannot be read that far, the folder is read without its list.
     /// </summary>
-    private static void ReadFlowFolder(SourceWalk walk, string folder)
+    private static void ReadFlowFolder(SourceWalk walk, string folder, string root, string enclosing)
     {
         var index = SourceLayout.ReadIndex(walk, folder);
         if (index == null)
@@ -230,7 +240,7 @@ public static partial class SourceParser
             walk.MarkUnreadable(folder);
 
         // The branches of an if or a case sit flat in one folder, so two lists may name one member.
-        ReadBody(walk, members.DistinctBy(m => m.Path).ToList());
+        ReadBody(walk, members.DistinctBy(m => m.Path).ToList(), root, enclosing);
     }
 
     /// <summary>
@@ -271,7 +281,7 @@ public static partial class SourceParser
         {
             var path = SourceLayout.Join(folder, "index.json");
             var members = SourceLayout.ReadList(walk, folder, $"{path} nodes", index["nodes"], MemberForm.FileOrFolder);
-            ReadBody(walk, members);
+            ReadBody(walk, members, "node", "");
         }
 
         return ReadDefinitions(walk, folder);
