@@ -434,7 +434,7 @@ public class V26NodeGatesTests
         var rendered = ConsultRenderPayload.RenderAt25(input, package, package.TextOf("prompts/assessment.md"), trace);
 
         Assert.Equal(
-            "Assess. [hpi|HPI notes|" + WorkflowMacroMechanics.Prompt("hpi", "Note the history.") + "|History noted: Dr Example.][plan|Plan notes|" + WorkflowMacroMechanics.Prompt("plan", "Note the plan.") + "|Plan noted.] History noted: Dr Example.",
+            "Assess. [hpi|HPI notes|" + WorkflowMacroMechanics.Prompt("section_notes.hpi", "Note the history.") + "|History noted: Dr Example.][plan|Plan notes|" + WorkflowMacroMechanics.Prompt("section_notes.plan", "Note the plan.") + "|Plan noted.] History noted: Dr Example.",
             rendered);
         Assert.Equal(new[] { "section_notes/hpi", "section_notes/plan" }, trace.PromptReads);
         Assert.Empty(ConsultGatedScope.Judge(input, package).InertMacros!);
@@ -448,7 +448,7 @@ public class V26NodeGatesTests
 
         var rendered = ConsultRenderPayload.RenderAt25(input, package, package.TextOf("prompts/assessment.md"));
 
-        Assert.Equal("Assess. [hpi|HPI notes|" + WorkflowMacroMechanics.Prompt("hpi", "Note the history.") + "|History noted: Dr Example.][plan|Plan notes||] History noted: Dr Example.", rendered);
+        Assert.Equal("Assess. [hpi|HPI notes|" + WorkflowMacroMechanics.Prompt("section_notes.hpi", "Note the history.") + "|History noted: Dr Example.][plan|Plan notes||] History noted: Dr Example.", rendered);
         Assert.Equal(new[] { "section_notes/plan" }, ConsultGatedScope.Judge(input, package).InertMacros!.Order());
     }
 

@@ -219,7 +219,7 @@ public class WorkflowV26MacroFolderTests
 
         var rendered = TemplateRenderer.Render("Prompt 'p'", "{{ for m in macro.section_notes }}[{{ m.id }}|{{ m.content }}|{{ m.prompt }}]{{ end }}", scope, null, trace);
 
-        Assert.Equal("[hpi|History noted.|" + WorkflowMacroMechanics.Prompt("hpi", "Note the history.") + "][plan||]", rendered);
+        Assert.Equal("[hpi|History noted.|" + WorkflowMacroMechanics.Prompt("section_notes.hpi", "Note the history.") + "][plan||]", rendered);
         Assert.Equal(new[] { "section_notes/hpi" }, trace.PromptReads);
         Assert.Equal(new[] { "section_notes/hpi" }, trace.ContentReads);
     }
