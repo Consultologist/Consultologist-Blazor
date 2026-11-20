@@ -81,7 +81,7 @@ differ fails.
 
 ### Coverage
 
-Every deliverable of a package with scenarios is `composed` in at least one of its captures, and
+Every vendored package has a `default` scenario. Every deliverable of a package with scenarios is `composed` in at least one of its captures, and
 every node with a prompt has a `prompts` or `renders` entry in one. A deliverable or node no
 scenario can reach on today's engine goes in the test's exception table with the reason.
 
@@ -92,3 +92,15 @@ Its capture has `status` `Refused` (the runner's word, not a job status), `failu
 deliverable `unsettled`. Any other start error (inputs that do not fit the manifest, an undeclared
 macro choice, a rate limit) throws, so a mistake in a scenario is never frozen as a refusal. A
 refused capture composes nothing, so it adds nothing to the coverage rules.
+
+### Known failure: `example-macros` and `example-macros-warnings`
+
+Today's engine fails both packages (v2026.11.3) in every scenario, at node `summary`, with
+`Closing summary failed: Node 'summary' rendered macro.notes/red_flags.prompt, which the package's
+walk does not reach from its prompt; the walk and the render disagree.` The summary prompt reads
+the `notes/` macro folder (`{{ for m in macro.notes }}… {{ m.prompt }}`); the render records those
+`.prompt` reads, and `ConsultNodeCompletion.SanctionedBy` — the walk that cross-checks them — does
+not reach them. The captures hold status `Failed`, that sentence, and the prompts sent before it
+(the three standing sections and the summary); the requested sections, the patient line and both
+deliverables are never reached, and the test's exception tables say so. This is the engine as it
+is; it is captured, not worked around.

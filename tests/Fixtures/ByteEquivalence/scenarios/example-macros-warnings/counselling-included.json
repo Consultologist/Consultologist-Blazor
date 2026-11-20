@@ -1,0 +1,31 @@
+{
+  "description": [
+    "note_type consult, include_counselling true: standing_draft reads macro.counselling.prompt, but",
+    "the node's counselling instance gate (item.id == \"assessment_plan\") suppresses the read on the",
+    "other items, so only standing_draft:assessment_plan's prompt carries the counselling instruction.",
+    "follow_up_reminder default; one narrative and one table section.",
+    "Today's engine fails the job at node summary (its prompt renders macro.notes/<item>.prompt, which the",
+    "package's walk does not reach), so no requested section, patient line or deliverable is reached."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for newly diagnosed ER-positive breast cancer. Letrozole 2.5 mg daily started. Red flags reviewed; advised to return if new bone pain. (Fictional.)",
+    "note_type": "consult",
+    "include_counselling": true,
+    "sections": [
+      {
+        "title": "History",
+        "kind": "narrative"
+      },
+      {
+        "title": "Medications",
+        "kind": "table"
+      }
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

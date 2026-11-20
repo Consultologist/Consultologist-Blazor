@@ -1,0 +1,279 @@
+{
+  "package": "example-v12-constructs",
+  "tag": "example-v12-constructs-v2026.11.3",
+  "scenario": "followup-chosen",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "tone": {
+      "value": "formal"
+    },
+    "extract_patient_concepts": {
+      "concepts": [
+        {
+          "term": "stub f8b50212",
+          "type": "stub 1071fd4c",
+          "id": "stub 469ab3cf",
+          "isSnomedConcept": false,
+          "isActive": true,
+          "support": "stub 141ecebb"
+        },
+        {
+          "term": "stub 0547a967",
+          "type": "stub a701ca91",
+          "id": "stub bd8f2e9d",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub 0f38c33a"
+        }
+      ]
+    },
+    "extract_input_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "HbA1c 71 mmol/mol",
+          "type": "finding",
+          "id": null,
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": null
+        }
+      ]
+    },
+    "identify_problem": {
+      "concepts": [
+        {
+          "term": "stub e132a9bc",
+          "type": "stub deacd03b",
+          "id": "stub 4fa42a07",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "stub 93752d54"
+        },
+        {
+          "term": "stub 851b0a53",
+          "type": "stub f60a30b3",
+          "id": "stub 11a7c17e",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub f852e128"
+        },
+        {
+          "term": "stub 78ce8965",
+          "type": "stub d19ee467",
+          "id": "stub 6aa154b8",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub 3f441f5d"
+        }
+      ]
+    },
+    "create_typical_trajectory": {
+      "concepts": [
+        {
+          "term": "stub 95938e90",
+          "type": "stub 0b17caec",
+          "id": "stub 45649cfe",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "stub 45982888"
+        },
+        {
+          "term": "stub ce5dfdae",
+          "type": "stub ffd4cc21",
+          "id": "stub 40650ddb",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "stub f3c7f759"
+        }
+      ]
+    },
+    "create_patient_trajectory": {
+      "concepts": [
+        {
+          "term": "stub 088c2d1a",
+          "type": "stub c5c41dae",
+          "id": "stub 8fbabc27",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": "stub 9e67a4ba"
+        },
+        {
+          "term": "stub b5c1d5a9",
+          "type": "stub 67b61770",
+          "id": "stub bed766fb",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub 6185cbfc"
+        }
+      ]
+    },
+    "standard_section_draft:hpi": "Stub reply for standard_section_draft:hpi (f16cfb99).",
+    "standard_section_draft:pmh": "Stub reply for standard_section_draft:pmh (6505f574).",
+    "patient_section_draft:hpi": "Stub reply for patient_section_draft:hpi (73c39151).",
+    "section_instructions:hpi": "Stub reply for section_instructions:hpi (66922c01).",
+    "extract_letter_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "patient_section_draft:pmh": "Stub reply for patient_section_draft:pmh (d39e8d2a).",
+    "section_instructions:pmh": "Stub reply for section_instructions:pmh (76d1da90).",
+    "extract_note_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    }
+  },
+  "prompts": [
+    {
+      "key": "tone",
+      "hash": "sha256:d50ec2634bc3557505fc7caef628ab54b5cea8220a4f212a7aba317d8370740b",
+      "text": "Is this referral's tone formal or friendly? Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n\nAnswer with exactly one of: formal, friendly."
+    },
+    {
+      "key": "extract_patient_concepts",
+      "hash": "sha256:0e42f5ec27d77e2c9e57f1e1e3c01c1547d77284a6c10cd509c1cf61d23ec7be",
+      "text": "Use short SNOMED search terms.\n\nconsult_draft block:\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)"
+    },
+    {
+      "key": "extract_input_terms",
+      "hash": "sha256:bbda3c51570ce8b120f3a5387ece350a55eba7b69d319b5ddb66bdf2ddb2d9c6",
+      "text": "Extract the clinical terms as concept-list JSON: Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)"
+    },
+    {
+      "key": "identify_problem",
+      "hash": "sha256:6523e9cf8d812c7c3ee0b852233267b7ccafd73469400b3c8e79d7f113c639cf",
+      "text": "Use short SNOMED search terms.\n\npatient_concepts block:\n- stub f8b50212 [not SNOMED concept]\n- stub 0547a967 [not SNOMED concept]"
+    },
+    {
+      "key": "create_typical_trajectory",
+      "hash": "sha256:eb2125d0d0f1fdc5b204443a73966563aa24ec3b14c3bdb4979c659c8e4ae42c",
+      "text": "Use short SNOMED search terms.\n\nproblem_concepts block:\n- stub e132a9bc (stub deacd03b) - stub 4fa42a07\n- stub 851b0a53 [not SNOMED concept]\n- stub 78ce8965 [not SNOMED concept]"
+    },
+    {
+      "key": "create_patient_trajectory",
+      "hash": "sha256:0633ea91f71df8c70c0ae9e9a2e769f8298ccaad134a40eedfe9e08b99ad85c1",
+      "text": "Use short SNOMED search terms.\n\nproblem_concepts block:\n- stub e132a9bc (stub deacd03b) - stub 4fa42a07\n- stub 851b0a53 [not SNOMED concept]\n- stub 78ce8965 [not SNOMED concept]\n\npatient_concepts block:\n- stub f8b50212 [not SNOMED concept]\n- stub 0547a967 [not SNOMED concept]\n\ntypical_trajectory_concepts block:\n- stub 95938e90 (stub 0b17caec) - stub 45649cfe\n- stub ce5dfdae (stub ffd4cc21) - stub 40650ddb"
+    },
+    {
+      "key": "standard_section_draft:hpi",
+      "hash": "sha256:3dd49d0c7a460cf4139239e6fbb3f82e4c7c398eecae1ce25990dbad56f47b3d",
+      "text": "section_name block:\nHistory of Present Illness\n\npatient_trajectory_concepts block:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc"
+    },
+    {
+      "key": "standard_section_draft:pmh",
+      "hash": "sha256:73e0da7bbd101ac6fe69e78b0a805fbb253a4dd974fb952d8c53908300a1e131",
+      "text": "section_name block:\nPast Medical History\n\npatient_trajectory_concepts block:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc"
+    },
+    {
+      "key": "patient_section_draft:hpi",
+      "hash": "sha256:7ebaeab27e693db5d7eac78b786a1c900e49a46663c69e9fa4314e21b01177b9",
+      "text": "standard_section_draft block:\nStub reply for standard_section_draft:hpi (f16cfb99).\n\nconsult_draft block:\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n\nsection_name block:\nHistory of Present Illness"
+    },
+    {
+      "key": "section_instructions:hpi",
+      "hash": "sha256:0dd7f7b58d34f4979d4e256e4b10a795fa5a85c67b3cff71b9d630b3556e6ac9",
+      "text": "patient_section_draft block:\nStub reply for patient_section_draft:hpi (73c39151).\n\nsection_name block:\nHistory of Present Illness\n\nsection_standard block:\nDocument the presenting illness."
+    },
+    {
+      "key": "extract_letter_terms",
+      "hash": "sha256:d5127a96fe933000f05ac3d5c9047b68006d4fd5e5d3f9b1686856f96bfc7f7c",
+      "text": "Extract the clinical terms as concept-list JSON: ## History of Present Illness\n\nWe have received this referral and will be in touch with an appointment.\n\n## Past Medical History\n\nWe have received this referral and will be in touch with an appointment."
+    },
+    {
+      "key": "patient_section_draft:pmh",
+      "hash": "sha256:f35d87ece8807e519ea4a33e3c1c07366e93eaf4b913f876f542d2303994687d",
+      "text": "standard_section_draft block:\nStub reply for standard_section_draft:pmh (6505f574).\n\nconsult_draft block:\nMargaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)\n\nsection_name block:\nPast Medical History"
+    },
+    {
+      "key": "section_instructions:pmh",
+      "hash": "sha256:534c8231d13c22d963b7e5e74b0519e359c120b241381eb60e52674ff2b19d94",
+      "text": "patient_section_draft block:\nStub reply for patient_section_draft:pmh (d39e8d2a).\n\nsection_name block:\nPast Medical History\n\nsection_standard block:\nList prior conditions with dates."
+    },
+    {
+      "key": "extract_note_terms",
+      "hash": "sha256:b1dedc6cf2879a5f5136112a2505f19495f8ff80ee862976c30f4ac83441cfc1",
+      "text": "Extract the clinical terms as concept-list JSON: ## History of Present Illness\n\nStub reply for section_instructions:hpi (66922c01).\n\n## Past Medical History\n\nStub reply for section_instructions:pmh (76d1da90).\n\nThis document was generated with decision support; the signing clinician reviewed it.\n\nPrepared regarding the consultation of 09 Nov 2026."
+    }
+  ],
+  "renders": [
+    {
+      "key": "patient_header",
+      "hash": "sha256:2a9b137ad5ede911e766d74ba3cf8086be5176fcc46aa7045a008a6d875faebb",
+      "text": "This document was generated with decision support; the signing clinician reviewed it.\n\nPrepared regarding the consultation of 09 Nov 2026."
+    },
+    {
+      "key": "letter_body:hpi",
+      "hash": "sha256:1aa2f1a04e7ee09950611d5bff5c712f8e331b3e671a04561d4c05bbd14acc2f",
+      "text": "We have received this referral and will be in touch with an appointment."
+    },
+    {
+      "key": "letter_body:pmh",
+      "hash": "sha256:1aa2f1a04e7ee09950611d5bff5c712f8e331b3e671a04561d4c05bbd14acc2f",
+      "text": "We have received this referral and will be in touch with an appointment."
+    }
+  ],
+  "deliverables": [
+    {
+      "id": "consult",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:a3f3683774bc109b085f9f37ee6c4a06ba27bcc133e0af85a7b286f66fa06a98",
+      "text": "## History of Present Illness\n\nStub reply for section_instructions:hpi (66922c01).\n\n## Past Medical History\n\nStub reply for section_instructions:pmh (76d1da90).\n\nThis document was generated with decision support; the signing clinician reviewed it.\n\nPrepared regarding the consultation of 09 Nov 2026.\n\nWe remain at your disposal for any further questions.\n\nA follow-up appointment will be arranged within three months.\n\nSincerely,\n\nDr A. Sample\nInternal Medicine"
+    },
+    {
+      "id": "ack_letter",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:0a15ad3cba7a68858fdee107f4ef0785745b4c1158c8ce75188ad0ebc065bffe",
+      "text": "## History of Present Illness\n\nWe have received this referral and will be in touch with an appointment.\n\n## Past Medical History\n\nWe have received this referral and will be in touch with an appointment."
+    }
+  ]
+}

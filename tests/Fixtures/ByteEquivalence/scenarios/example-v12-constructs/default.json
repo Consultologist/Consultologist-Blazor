@@ -1,0 +1,35 @@
+{
+  "description": [
+    "Every input supplied, nothing pinned. tone's stub is friendly. The stubbed concept lists do not",
+    "agree: extract_input_terms holds one codable concept that neither extract_note_terms nor",
+    "extract_letter_terms holds, so note_coverage and letter_coverage both fail; the consult and the",
+    "acknowledgement letter are failed with their failWith sentences and the job fails."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "seen_on": "2026-11-09",
+    "encounter_kind": "new_patient",
+    "billable": true,
+    "length_of_stay": 2,
+    "patient": {
+      "family_name": "Okafor",
+      "age": 58,
+      "sex": "female"
+    },
+    "prior_notes": [
+      "2026-08-14, GP letter: HbA1c 68 mmol/mol; metformin increased to 1 g twice daily. (Fictional.)"
+    ],
+    "medications": [
+      {
+        "name": "Metformin",
+        "dose": "1 g twice daily"
+      }
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

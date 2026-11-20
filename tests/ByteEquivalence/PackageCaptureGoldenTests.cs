@@ -13,13 +13,35 @@ namespace Consultologist.Api.Tests.ByteEquivalence;
 /// </summary>
 public class PackageCaptureGoldenTests
 {
+    /// <summary>
+    /// Why the two macros packages compose nothing: every scenario fails at node <c>summary</c>,
+    /// whose prompt renders the <c>notes/</c> folder's <c>.prompt</c> reads, which the walk that
+    /// sanctions a node's inline reads does not see. Captured as it is, not worked around.
+    /// </summary>
+    private const string FailsAtSummary =
+        "today's engine fails this package at node 'summary': the walk does not reach macro.notes/<item>.prompt (ConsultNodeCompletion.SanctionedBy)";
+
     /// <summary>A deliverable no scenario of its package can compose on today's engine, and why.</summary>
     private static readonly IReadOnlyDictionary<(string Package, string Deliverable), string> NeverComposed =
-        new Dictionary<(string Package, string Deliverable), string>();
+        new Dictionary<(string Package, string Deliverable), string>
+        {
+            [("example-macros", "consult_note")] = FailsAtSummary,
+            [("example-macros", "patient_letter")] = FailsAtSummary,
+            [("example-macros-warnings", "consult_note")] = FailsAtSummary,
+            [("example-macros-warnings", "patient_letter")] = FailsAtSummary,
+        };
 
     /// <summary>A prompt node no scenario of its package can reach on today's engine, and why.</summary>
     private static readonly IReadOnlyDictionary<(string Package, string Node), string> NeverPrompted =
-        new Dictionary<(string Package, string Node), string>();
+        new Dictionary<(string Package, string Node), string>
+        {
+            [("example-macros", "narrative_draft")] = FailsAtSummary,
+            [("example-macros", "table_draft")] = FailsAtSummary,
+            [("example-macros", "patient_line")] = FailsAtSummary,
+            [("example-macros-warnings", "narrative_draft")] = FailsAtSummary,
+            [("example-macros-warnings", "table_draft")] = FailsAtSummary,
+            [("example-macros-warnings", "patient_line")] = FailsAtSummary,
+        };
 
     private static string ScenarioRoot => Path.Combine(ByteEquivalenceFixtures.Root, "scenarios");
 
@@ -88,6 +110,17 @@ public class PackageCaptureGoldenTests
                 Directory.Delete(root, recursive: true);
             }
         }
+    }
+
+    [Fact]
+    public void EveryVendoredPackage_HasADefaultScenario()
+    {
+        var missing = ByteEquivalenceFixtures.Vendored
+            .Select(vendored => vendored.Name)
+            .Where(name => !File.Exists(ScenarioPath(name, "default")))
+            .ToList();
+
+        Assert.True(missing.Count == 0, $"No scenarios/<package>/default.json for: {string.Join(", ", missing)}.");
     }
 
     [Fact]

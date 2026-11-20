@@ -1,0 +1,108 @@
+{
+  "description": [
+    "tone pinned formal; the three concept lists pinned so the referral's two codable terms (type 2",
+    "diabetes, metformin) are in both the note's and the letter's lists, the uncodable HbA1c finding",
+    "untested: note_coverage and letter_coverage pass. followup left to its default (on). The consult",
+    "is the two sections and the patient header, then formal_note, followup and the signature",
+    "closing appended; friendly_note is held back by its if. The acknowledgement letter is composed."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "seen_on": "2026-11-09",
+    "encounter_kind": "new_patient",
+    "billable": true,
+    "length_of_stay": 2,
+    "patient": {
+      "family_name": "Okafor",
+      "age": 58,
+      "sex": "female"
+    },
+    "prior_notes": [
+      "2026-08-14, GP letter: HbA1c 68 mmol/mol; metformin increased to 1 g twice daily. (Fictional.)"
+    ],
+    "medications": [
+      {
+        "name": "Metformin",
+        "dose": "1 g twice daily"
+      }
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "tone": {
+      "value": "formal"
+    },
+    "extract_input_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "HbA1c 71 mmol/mol",
+          "type": "finding",
+          "id": null,
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": null
+        }
+      ]
+    },
+    "extract_note_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "extract_letter_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,304 @@
+{
+  "package": "example-two-documents",
+  "tag": "example-two-documents-v2026.11.3",
+  "scenario": "default",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "extract_patient_concepts": {
+      "concepts": [
+        {
+          "term": "stub f8b50212",
+          "type": "stub 1071fd4c",
+          "id": "stub 469ab3cf",
+          "isSnomedConcept": false,
+          "isActive": true,
+          "support": "stub 141ecebb"
+        },
+        {
+          "term": "stub 0547a967",
+          "type": "stub a701ca91",
+          "id": "stub bd8f2e9d",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub 0f38c33a"
+        }
+      ]
+    },
+    "identify_problem": {
+      "concepts": [
+        {
+          "term": "stub e132a9bc",
+          "type": "stub deacd03b",
+          "id": "stub 4fa42a07",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "stub 93752d54"
+        },
+        {
+          "term": "stub 851b0a53",
+          "type": "stub f60a30b3",
+          "id": "stub 11a7c17e",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub f852e128"
+        },
+        {
+          "term": "stub 78ce8965",
+          "type": "stub d19ee467",
+          "id": "stub 6aa154b8",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub 3f441f5d"
+        }
+      ]
+    },
+    "create_typical_trajectory": {
+      "concepts": [
+        {
+          "term": "stub 95938e90",
+          "type": "stub 0b17caec",
+          "id": "stub 45649cfe",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "stub 45982888"
+        },
+        {
+          "term": "stub ce5dfdae",
+          "type": "stub ffd4cc21",
+          "id": "stub 40650ddb",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": "stub f3c7f759"
+        }
+      ]
+    },
+    "create_patient_trajectory": {
+      "concepts": [
+        {
+          "term": "stub 088c2d1a",
+          "type": "stub c5c41dae",
+          "id": "stub 8fbabc27",
+          "isSnomedConcept": true,
+          "isActive": false,
+          "support": "stub 9e67a4ba"
+        },
+        {
+          "term": "stub b5c1d5a9",
+          "type": "stub 67b61770",
+          "id": "stub bed766fb",
+          "isSnomedConcept": false,
+          "isActive": false,
+          "support": "stub 6185cbfc"
+        }
+      ]
+    },
+    "standard_section_draft:hpi": "Stub reply for standard_section_draft:hpi (f16cfb99).",
+    "standard_section_draft:pmh": "Stub reply for standard_section_draft:pmh (6505f574).",
+    "standard_section_draft:medications": "Stub reply for standard_section_draft:medications (b625e1d6).",
+    "standard_section_draft:allergies": "Stub reply for standard_section_draft:allergies (ffc32bd7).",
+    "standard_section_draft:social_history": "Stub reply for standard_section_draft:social_history (c4155490).",
+    "standard_section_draft:family_history": "Stub reply for standard_section_draft:family_history (823b581f).",
+    "standard_section_draft:exam": "Stub reply for standard_section_draft:exam (f72e61ea).",
+    "standard_section_draft:investigations": "Stub reply for standard_section_draft:investigations (32a1ad59).",
+    "standard_section_draft:assessment_plan": "Stub reply for standard_section_draft:assessment_plan (30ae867b).",
+    "patient_section_draft:hpi": "Stub reply for patient_section_draft:hpi (73c39151).",
+    "section_instructions:hpi": "Stub reply for section_instructions:hpi (66922c01).",
+    "patient_section_draft:pmh": "Stub reply for patient_section_draft:pmh (d39e8d2a).",
+    "section_instructions:pmh": "Stub reply for section_instructions:pmh (76d1da90).",
+    "patient_section_draft:medications": "Stub reply for patient_section_draft:medications (7214f577).",
+    "section_instructions:medications": "Stub reply for section_instructions:medications (be63b4b4).",
+    "patient_section_draft:allergies": "Stub reply for patient_section_draft:allergies (30f5fa1c).",
+    "section_instructions:allergies": "Stub reply for section_instructions:allergies (c5a88030).",
+    "patient_section_draft:social_history": "Stub reply for patient_section_draft:social_history (fea84be0).",
+    "section_instructions:social_history": "Stub reply for section_instructions:social_history (0a8382a2).",
+    "patient_section_draft:family_history": "Stub reply for patient_section_draft:family_history (ca4009bf).",
+    "section_instructions:family_history": "Stub reply for section_instructions:family_history (df17442d).",
+    "patient_section_draft:exam": "Stub reply for patient_section_draft:exam (8fb5ef56).",
+    "section_instructions:exam": "Stub reply for section_instructions:exam (9661031e).",
+    "patient_section_draft:investigations": "Stub reply for patient_section_draft:investigations (bcfeaa3c).",
+    "section_instructions:investigations": "Stub reply for section_instructions:investigations (b4e40a7d).",
+    "patient_section_draft:assessment_plan": "Stub reply for patient_section_draft:assessment_plan (1b77619b).",
+    "section_instructions:assessment_plan": "Stub reply for section_instructions:assessment_plan (c4ce8ee5).",
+    "draft_patient_letter": "Stub reply for draft_patient_letter (7efcb963)."
+  },
+  "prompts": [
+    {
+      "key": "extract_patient_concepts",
+      "hash": "sha256:6e53727e3245e6722bdd4188753c4ebe845a5f29dd08f6bcdbdaf4e0922702bf",
+      "text": "When calling SNOMED terminology tools such as search_concepts, look up one short clinical term per call (a few words, 3-250 characters) - never a sentence or passage. If a tool returns an error message, adjust the call as the message directs and retry.\n\n\nExtract patient-specific clinical concepts from the draft consult note.\n\nOutput only SNOMED concept bullets in these exact forms:\n- term (type) - id number\n- term [not SNOMED concept]\n- term (type) - id number [not active SNOMED concept]\n\nInclude inactive SNOMED concepts when relevant. Include clinically important findings that are not SNOMED concepts using [not SNOMED concept].\nDo not include commentary, headings, JSON, or non-bullet lines.\n\nDraft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "identify_problem",
+      "hash": "sha256:3f3b15f64c4e6d05e20f64ebe2f242b3c4593bcf25b6dfba625946c5834e46cb",
+      "text": "When calling SNOMED terminology tools such as search_concepts, look up one short clinical term per call (a few words, 3-250 characters) - never a sentence or passage. If a tool returns an error message, adjust the call as the message directs and retry.\n\n\nIdentify the primary disease or problem concept from the validated patient concepts.\n\nOutput only one or more SNOMED concept bullets in these exact forms:\n- term (type) - id number\n- term [not SNOMED concept]\n- term (type) - id number [not active SNOMED concept]\n\nPrefer the disease/problem driving the oncology consult. Do not include commentary, headings, JSON, or non-bullet lines.\n\nValidated patient concepts:\n- stub f8b50212 [not SNOMED concept]\n- stub 0547a967 [not SNOMED concept]\n"
+    },
+    {
+      "key": "create_typical_trajectory",
+      "hash": "sha256:b7ea6c5c81801401c0efe7bb1e4df509a30b254ccce378e76d2fa97c81c319b4",
+      "text": "When calling SNOMED terminology tools such as search_concepts, look up one short clinical term per call (a few words, 3-250 characters) - never a sentence or passage. If a tool returns an error message, adjust the call as the message directs and retry.\n\n\nBuild a typical clinical trajectory for the disease/problem concept.\n\nOutput only SNOMED concept bullets in these exact forms:\n- term (type) - id number\n- term [not SNOMED concept]\n- term (type) - id number [not active SNOMED concept]\n\nInclude a concise support phrase after the accepted bullet only when needed by appending \" -- support: ...\".\nDo not include commentary, headings, JSON, or non-bullet lines.\n\nDisease/problem concept:\n- stub e132a9bc (stub deacd03b) - stub 4fa42a07\n- stub 851b0a53 [not SNOMED concept]\n- stub 78ce8965 [not SNOMED concept]\n"
+    },
+    {
+      "key": "create_patient_trajectory",
+      "hash": "sha256:b02467817f611d50abcb67562e0be6bb246032e42d5f6db5cc7a3e13e415e538",
+      "text": "When calling SNOMED terminology tools such as search_concepts, look up one short clinical term per call (a few words, 3-250 characters) - never a sentence or passage. If a tool returns an error message, adjust the call as the message directs and retry.\n\n\nReconcile a patient-specific trajectory from the validated patient concepts and typical trajectory.\n\nOutput only SNOMED concept bullets in these exact forms:\n- term (type) - id number\n- term [not SNOMED concept]\n- term (type) - id number [not active SNOMED concept]\n\nInclude only patient-specific trajectory details supported by validated patient concepts. Do not add typical trajectory details unless supported by patient concepts.\nInclude a concise support phrase after the accepted bullet only when needed by appending \" -- support: ...\".\nDo not include commentary, headings, JSON, or non-bullet lines.\n\nDisease/problem concept:\n- stub e132a9bc (stub deacd03b) - stub 4fa42a07\n- stub 851b0a53 [not SNOMED concept]\n- stub 78ce8965 [not SNOMED concept]\n\nValidated patient concepts:\n- stub f8b50212 [not SNOMED concept]\n- stub 0547a967 [not SNOMED concept]\n\nTypical trajectory concepts:\n- stub 95938e90 (stub 0b17caec) - stub 45649cfe\n- stub ce5dfdae (stub ffd4cc21) - stub 40650ddb\n"
+    },
+    {
+      "key": "standard_section_draft:hpi",
+      "hash": "sha256:7ba8a22a8536c81f84060954ef41ec5319fecaa0949834b634cab9d032d714a8",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nHistory of Present Illness\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:pmh",
+      "hash": "sha256:1b66f68dd649a577cd75d49eda0818b9d7ee7f76f7ed52f9b6a5c33b40aabc7f",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPast Medical History\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:medications",
+      "hash": "sha256:d7d199c5ca3188868263353497285f7ecf252799fd9e92bfd8f564b812100c92",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nMedications\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:allergies",
+      "hash": "sha256:c7271af7d4572e2ce284cf5e6f2427d41761f53f7dc09848447f3723a08a5a1a",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAllergies\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:social_history",
+      "hash": "sha256:65f7337f740c5eaa0b17744038da33e00f76ac0f00bbeb7f22f066ee14e92dea",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nSocial History\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:family_history",
+      "hash": "sha256:d817898dc464e55967dc431982bb48e6d8b1fa28b569298322e95055603074bf",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nFamily History\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:exam",
+      "hash": "sha256:b8569c8e3dab059644276f65f63e98263fed28e4ca5cce6d88abe1e449a43cca",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPhysical Exam\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:investigations",
+      "hash": "sha256:d6779dc33ae3f206c4ae791df6c7097ab41cafca60a70f65ba3e607f2ae8205f",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nInvestigations\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "standard_section_draft:assessment_plan",
+      "hash": "sha256:593661697b08448e18c317c511ff9d9a1673653e6c1248916430908a5396511a",
+      "text": "You are writing one standard section of an oncology consult note.\n\nTask:\nWrite a standard draft for the requested section using the validated patient trajectory as organizing context.\n\nGuardrail:\nDo not add typical trajectory details unless they are present in the validated patient trajectory. This is a draft to be reconciled with the original consult note in the next step.\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment and Plan\n\nValidated patient trajectory:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n"
+    },
+    {
+      "key": "patient_section_draft:hpi",
+      "hash": "sha256:b43a86c9f029d02ba81fb55f229ae32a861b0dc1eadbbf06d8ad66fec8e85b9b",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nHistory of Present Illness\n\nStandard section draft:\nStub reply for standard_section_draft:hpi (f16cfb99).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:hpi",
+      "hash": "sha256:3ff87c6271131008df927740ecae5e6b90eb71f10b993466aaa10ca211f4d34b",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nHistory of Present Illness\n\nPatient-updated section draft:\nStub reply for patient_section_draft:hpi (73c39151).\n\nSection standard and section-specific instructions:\nChronological prose narrative. Open with a one-sentence orientation to the patient (age, sex, and referral reason) using placeholders where details are not documented. Trace the presenting problem from first symptom or screening finding through diagnostic workup to the current presentation, keeping oncologic milestones (biopsy, pathology, staging) in the order they occurred. Include clinically relevant negatives that are documented. Close with the patient's current status and the reason for this consultation. No headings or lists; paragraphs only.\n\n"
+    },
+    {
+      "key": "patient_section_draft:pmh",
+      "hash": "sha256:9b58ab99d39fdef91dda44b13caa6319085e750caebcbba241378fe6a4874022",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPast Medical History\n\nStandard section draft:\nStub reply for standard_section_draft:pmh (6505f574).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:pmh",
+      "hash": "sha256:d9d2feb9027e5a1627e21b183b5d34c68af5bf8ea06b3b530a5804868d21efc6",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPast Medical History\n\nPatient-updated section draft:\nStub reply for patient_section_draft:pmh (d39e8d2a).\n\nSection standard and section-specific instructions:\nConcise sentence-form enumeration of documented conditions, each with the approximate year of diagnosis when documented. Group related conditions together. Include prior surgeries and hospitalizations only if documented. If no past medical history is documented, state \"not documented.\"\n\n"
+    },
+    {
+      "key": "patient_section_draft:medications",
+      "hash": "sha256:a0089d2c8f398d136b11a74047112c47c1e15f7ae5ac4575f55d215fee909b89",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nMedications\n\nStandard section draft:\nStub reply for standard_section_draft:medications (b625e1d6).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:medications",
+      "hash": "sha256:4d9cfb9cd67b15cc4388bdc50ace9981312cf04549b7fec60a887040e89cef84",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nMedications\n\nPatient-updated section draft:\nStub reply for patient_section_draft:medications (7214f577).\n\nSection standard and section-specific instructions:\nList each documented medication in sentence form with dose, route, and frequency exactly as documented; omit any attribute that is not documented rather than inferring it. Note documented recent changes or discontinuations. If no medications are documented, state \"not documented.\"\n\n"
+    },
+    {
+      "key": "patient_section_draft:allergies",
+      "hash": "sha256:48fa21f627e164f1cf48d8b51e164a161041eed43c072f477ee156c2a929eaec",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAllergies\n\nStandard section draft:\nStub reply for standard_section_draft:allergies (ffc32bd7).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:allergies",
+      "hash": "sha256:fb057a7d23c76db1bbb2f0b531ee390f493838d59a31ae1f818cda5308dc869c",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAllergies\n\nPatient-updated section draft:\nStub reply for patient_section_draft:allergies (30f5fa1c).\n\nSection standard and section-specific instructions:\nState each documented allergy with the reaction if documented. If the draft documents no known drug allergies, state that explicitly. If allergy status is not documented at all, state \"not documented.\"\n\n"
+    },
+    {
+      "key": "patient_section_draft:social_history",
+      "hash": "sha256:89c5297eabe08ac13620040feeb847c98382a93ba07ed00e746bef7a62a078ea",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nSocial History\n\nStandard section draft:\nStub reply for standard_section_draft:social_history (c4155490).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:social_history",
+      "hash": "sha256:91360cad8dd5eb5ec6dfbed06e7879e9bcdc68e96280f3151948af073824583f",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nSocial History\n\nPatient-updated section draft:\nStub reply for patient_section_draft:social_history (fea84be0).\n\nSection standard and section-specific instructions:\nShort paragraph covering only documented items, in this order where present: smoking (quantified as pack-years when possible), alcohol, other substances, occupation, living situation and supports, and functional or performance status. Do not speculate about undocumented habits.\n\n"
+    },
+    {
+      "key": "patient_section_draft:family_history",
+      "hash": "sha256:f72d901e7757ad8d9ff279c5f5d7dc5c8e43972ba233b262df0cd44157c13008",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nFamily History\n\nStandard section draft:\nStub reply for standard_section_draft:family_history (823b581f).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:family_history",
+      "hash": "sha256:c8bbcbc7a487b83aa5945c5448d6ad0c896133ce2557087252c090f16c11f7ba",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nFamily History\n\nPatient-updated section draft:\nStub reply for patient_section_draft:family_history (ca4009bf).\n\nSection standard and section-specific instructions:\nSentence-form summary of documented family history, naming the relative, the condition, and age at diagnosis when documented, with cancer history first. If family history is not documented, state \"not documented.\"\n\n"
+    },
+    {
+      "key": "patient_section_draft:exam",
+      "hash": "sha256:85c52b6b0d78418d6f753313501d7b28b75357c6f38bc5345111c32d129a4927",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPhysical Exam\n\nStandard section draft:\nStub reply for standard_section_draft:exam (f72e61ea).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:exam",
+      "hash": "sha256:774f4d2982d924f73f69b287acb19231787aa6f944bdee946cd0b25543d37ad4",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nPhysical Exam\n\nPatient-updated section draft:\nStub reply for patient_section_draft:exam (8fb5ef56).\n\nSection standard and section-specific instructions:\nBegin with documented vital signs and performance status, then documented findings by system in conventional head-to-toe order. Report only findings present in the draft; do not supply normal findings that are not documented. Keep it compact prose, one region or system per sentence.\n\n"
+    },
+    {
+      "key": "patient_section_draft:investigations",
+      "hash": "sha256:d93ff41b9f3fca24a426a4ee5b4625b191931f1c6eec1b4fa4f4a80be10d10c0",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nInvestigations\n\nStandard section draft:\nStub reply for standard_section_draft:investigations (32a1ad59).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:investigations",
+      "hash": "sha256:bdee51277d690543fdf43a11cb4e879074207c46532878a89e124db0859e5f1d",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nInvestigations\n\nPatient-updated section draft:\nStub reply for patient_section_draft:investigations (bcfeaa3c).\n\nSection standard and section-specific instructions:\nChronological summary of documented investigations with dates where documented: laboratory results first, then imaging, then pathology and molecular findings. Quote key values and results precisely as documented. Flag documented pending results at the end.\n\n"
+    },
+    {
+      "key": "patient_section_draft:assessment_plan",
+      "hash": "sha256:4ad3b78c829cfc8ad38179d3b5399ddb4053a44dd276b64c4650ea4a3c14b8f5",
+      "text": "You are updating one oncology consult note section with patient information.\n\nSource of truth:\nUse only the clinical facts contained in the original draft consult note below.\n\nTask:\nRewrite the standard section draft so it reflects the patient information in the original draft consult note.\n\nMissing information rule:\nDo not invent missing pathology, dates, staging, receptor status, genomic scores, medications, allergies, physical exam findings, or treatment decisions.\nIf a detail is not present in the original draft, omit it unless the section would be misleading without it, in which case write \"not documented.\"\n\nOutput rule:\nReturn only prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment and Plan\n\nStandard section draft:\nStub reply for standard_section_draft:assessment_plan (30ae867b).\n\nOriginal draft consult note:\nMargaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No known drug allergies. (Fictional.)\n"
+    },
+    {
+      "key": "section_instructions:assessment_plan",
+      "hash": "sha256:76cce2d62eb91c41e192611f2d22a299a6fc0ef5cd50421770f92ad133406651",
+      "text": "You are applying section-specific writing standards and user instructions to one oncology consult note section.\n\nTask:\nRevise the patient-updated section draft to follow the section standard and section-specific user instructions.\n\nGuardrail:\nPreserve the clinical facts already present in the patient-updated draft. Do not add new clinical facts from the standard or instructions.\n\nOutput rule:\nReturn only final prose for the requested section. Do not include a heading, JSON, markdown, bullets, or commentary.\n\nRequested section:\nAssessment and Plan\n\nPatient-updated section draft:\nStub reply for patient_section_draft:assessment_plan (1b77619b).\n\nSection standard and section-specific instructions:\nOpen with a single synthesizing paragraph: who the patient is, the working or confirmed diagnosis with stage and relevant markers exactly as documented, and the central clinical question. Follow with the plan as short single-item paragraphs in priority order, using placeholders for decisions that require discussion or missing information. End with documented follow-up arrangements and any items explicitly deferred.\n\n"
+    },
+    {
+      "key": "draft_patient_letter",
+      "hash": "sha256:561aaf9143eb7f46f1690cdc7724023829cfb868cf0753c618cf7a8dc13cc9b5",
+      "text": "You are writing a short plain-language letter to the patient, summarizing the consult note that was just assembled.\n\nTask:\nWrite a letter the patient can read without clinical training: what was assessed, what it means, and what happens next.\n\nGuardrails:\nUse only facts present in the assembled sections, the trajectory concepts, and the prior notes. Do not add new clinical facts, do not restate the note section by section, and do not give instructions the sections do not support. Where the sections are uncertain, say so plainly rather than resolving the uncertainty.\n\nStyle:\nSecond person, short paragraphs, everyday words. Expand or avoid clinical jargon. No headings, no bullets, no salutation or signature block — the letter body only.\n\nOutput rule:\nReturn only the letter prose. No JSON, no markdown, no commentary.\n\nAssembled consult sections:\n## History of Present Illness\n\nStub reply for section_instructions:hpi (66922c01).\n\n## Past Medical History\n\nStub reply for section_instructions:pmh (76d1da90).\n\n## Medications\n\nStub reply for section_instructions:medications (be63b4b4).\n\n## Allergies\n\nStub reply for section_instructions:allergies (c5a88030).\n\n## Social History\n\nStub reply for section_instructions:social_history (0a8382a2).\n\n## Family History\n\nStub reply for section_instructions:family_history (df17442d).\n\n## Physical Exam\n\nStub reply for section_instructions:exam (9661031e).\n\n## Investigations\n\nStub reply for section_instructions:investigations (b4e40a7d).\n\n## Assessment and Plan\n\nStub reply for section_instructions:assessment_plan (c4ce8ee5).\n\nPatient trajectory concepts:\n- stub 088c2d1a (stub c5c41dae) - stub 8fbabc27; active: False; source: patient-trajectory support: stub 9e67a4ba\n- stub b5c1d5a9 (stub 67b61770) - stub bed766fb; active: False; source: patient-trajectory support: stub 6185cbfc\n\nPrior notes supplied with the referral:\nNone were supplied. Write the letter from the sections and concepts alone.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "consult_note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:813055aacfefb10683482459318fb833fd3e15e5a7f97e6ecda99c4ea41e9203",
+      "text": "## History of Present Illness\n\nStub reply for section_instructions:hpi (66922c01).\n\n## Past Medical History\n\nStub reply for section_instructions:pmh (76d1da90).\n\n## Medications\n\nStub reply for section_instructions:medications (be63b4b4).\n\n## Allergies\n\nStub reply for section_instructions:allergies (c5a88030).\n\n## Social History\n\nStub reply for section_instructions:social_history (0a8382a2).\n\n## Family History\n\nStub reply for section_instructions:family_history (df17442d).\n\n## Physical Exam\n\nStub reply for section_instructions:exam (9661031e).\n\n## Investigations\n\nStub reply for section_instructions:investigations (b4e40a7d).\n\n## Assessment and Plan\n\nStub reply for section_instructions:assessment_plan (c4ce8ee5)."
+    },
+    {
+      "id": "patient_letter",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:5fbbad4ca63d5726420c906146607b3f7feed09321f46a1133b89f3122d80cd0",
+      "text": "Stub reply for draft_patient_letter (7efcb963)."
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "description": [
+    "One consult draft. The four concept-list nodes build the trajectory, then the standards loop",
+    "drafts, applies patient information to and finishes each of the nine standard sections in",
+    "the snippet folder's order; the consult is the nine sections under their headings. No macros,",
+    "no signature."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. No family history of breast cancer. On amlodipine 5 mg daily. No known drug allergies. (Fictional.)"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}

@@ -1,0 +1,21 @@
+{
+  "description": [
+    "Medical oncology consult, one consult_draft entry. The specialty and note type are written into",
+    "the prompts; because note_type is consult, the assessment-and-plan standard asks for the",
+    "letrozole counselling (macro.letrozole_prescription_text.prompt). The test macro is appended",
+    "to the consult as its last line."
+  ],
+  "inputs": {
+    "consult_specialty": "medical_oncology",
+    "note_type": "consult",
+    "consult_draft": [
+      "Margaret Okafor, 58, referred after a screening mammogram showed a 14 mm mass in the left breast. Core biopsy: invasive ductal carcinoma, grade 2, ER positive, HER2 negative. Letrozole 2.5 mg daily started today. (Fictional.)"
+    ]
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {}
+}
