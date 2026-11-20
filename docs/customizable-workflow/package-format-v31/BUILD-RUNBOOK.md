@@ -73,9 +73,25 @@ step whose done line does not hold yet is where you start.
    task, so a lost session loses at most one task.
    *Done:* every task's checkbox is ticked and its review passed.
 
-6. **Verify** with `superpowers:verification-before-completion`: `dotnet build Consultologist.sln`
-   and `dotnet test Consultologist.sln` from the worktree, both green, output read.
-   *Done:* both commands pass on the pushed head.
+6. **Verify** with `superpowers:verification-before-completion`, from the worktree:
+   - `dotnet build Consultologist.sln`;
+   - `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`;
+   - the browser suite, served as CI serves it, in **one** shell command (the server lives only
+     as long as that command):
+     ```bash
+     dotnet publish src/Consultologist.Web -c Release -o publish -p:E2E=true \
+       && { python3 tests/Consultologist.Web.E2E.Tests/serve.py 5000 publish/wwwroot & srv=$!; } \
+       && curl -sf --retry 30 --retry-connrefused --retry-delay 1 http://localhost:5000/ >/dev/null \
+       && E2E_BASE_URL=http://localhost:5000 dotnet test tests/Consultologist.Web.E2E.Tests -c Release; \
+       rc=$?; kill $srv 2>/dev/null; exit $rc
+     ```
+     Stop the server by its process id, as above, never with `pkill -f serve.py`: that pattern also
+     matches the shell running the command, and kills it.
+
+   All green, output read. A browser-suite failure that names the browser itself (*"Executable
+   doesn't exist"*, a missing shared library) is the server's setup, not the code: record it as a
+   **block**.
+   *Done:* all three pass on the pushed head.
 
 7. **Open the PR** into `m39-build`, ready for review (not a draft), with the body below. Comment the
    PR's link on the area issue. Wait for the checks (`gh pr checks <n> --watch`); when one goes red,
