@@ -66,6 +66,26 @@ internal static class ByteEquivalenceFixtures
         return (ReadText(Path.Combine(directory, "manifest.json")), files);
     }
 
+    /// <summary>
+    /// The golden check: the file at <paramref name="relativePath"/> under the fixture root (or
+    /// <paramref name="root"/>) must hold exactly <paramref name="actual"/>, byte for byte. A
+    /// missing file is written and the test fails, so a new golden is always looked at before it
+    /// is committed; an existing one is never rewritten.
+    /// </summary>
+    public static void Matches(string relativePath, string actual, string? root = null)
+    {
+        var path = Path.Combine([root ?? Root, .. relativePath.Split('/')]);
+
+        if (!File.Exists(path))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, Strict.GetBytes(actual));
+            Assert.Fail($"Wrote {path}; review it and commit it.");
+        }
+
+        Assert.Equal(ReadText(path), actual);
+    }
+
     /// <summary>Today's engine's loading of a package: the manifest read, then the files materialised against the bundled catalogues.</summary>
     public static WorkflowPackage Load(string name)
     {
