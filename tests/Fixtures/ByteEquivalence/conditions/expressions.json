@@ -6,7 +6,7 @@
       "expression": "input.audience == \"patient\"",
       "letType": null,
       "origin": "package composer-gates, deliverable patient_copy, if",
-      "reads": { "input.audience": { "type": "enum", "values": ["clinician", "patient"] } }
+      "reads": { "input.audience": { "type": "enum", "values": ["clinician", "patient"], "required": true } }
     },
     {
       "id": "composer-macros.section_draft.section_close.if",
@@ -14,7 +14,7 @@
       "expression": "item.value.title != \"Plan\"",
       "letType": null,
       "origin": "package composer-macros, node section_draft macro section_close, if",
-      "reads": { "item": { "value": { "type": "object", "fields": { "title": "text" } } } }
+      "reads": { "item": { "value": { "type": "object", "fields": { "title": { "type": "text", "required": true } } } } }
     },
     {
       "id": "composer-macros.gated.review_note.if",
@@ -22,7 +22,7 @@
       "expression": "input.visit == \"review\"",
       "letType": null,
       "origin": "package composer-macros, deliverable gated macro review_note, if",
-      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"] } }
+      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"], "required": true } }
     },
     {
       "id": "composer-macros.review_summary.if",
@@ -30,7 +30,7 @@
       "expression": "input.visit == \"review\"",
       "letType": null,
       "origin": "package composer-macros, deliverable review_summary, if",
-      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"] } }
+      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"], "required": true } }
     },
     {
       "id": "composer-macros.new_visit_note.md.if",
@@ -38,7 +38,7 @@
       "expression": "input.visit == \"new\"",
       "letType": null,
       "origin": "package composer-macros, file macros/new_visit_note.md, if",
-      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"] } }
+      "reads": { "input.visit": { "type": "enum", "values": ["new", "review"], "required": true } }
     },
     {
       "id": "composer-sources.topic_gate.if",
@@ -46,7 +46,7 @@
       "expression": "item.value.kind == \"drafted\"",
       "letType": null,
       "origin": "package composer-sources, node topic_gate, if",
-      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["drafted", "left_out"] } } } } }
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["drafted", "left_out"], "required": true } } } } }
     },
     {
       "id": "composer-sources.refine.while",
@@ -62,7 +62,8 @@
       "expression": "node.judge.value.verdict == \"good\"",
       "letType": null,
       "origin": "package composer-sources, node refine, until",
-      "reads": { "node.judge": { "type": "object", "schema": { "type": "object", "additionalProperties": false, "required": ["verdict", "feedback"], "properties": { "verdict": { "type": "string", "enum": ["good", "revise"] }, "feedback": { "type": "string" } } } } }
+      "note": "node.judge is settled: judge is a body node of the while refine, and its until is judged only after a pass (DecideFlowItemActivity: pass.Number > 0).",
+      "reads": { "node.judge": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["verdict", "feedback"], "properties": { "verdict": { "type": "string", "enum": ["good", "revise"] }, "feedback": { "type": "string" } } } } }
     },
     {
       "id": "composer-sources.plan_gate.if",
@@ -78,7 +79,7 @@
       "expression": "input.tone",
       "letType": null,
       "origin": "package composer-sources, node tone_case, case",
-      "reads": { "input.tone": { "type": "enum", "values": ["formal", "plain", "none"] } }
+      "reads": { "input.tone": { "type": "enum", "values": ["formal", "plain", "none"], "required": true } }
     },
     {
       "id": "composer-sources.topic_tally.let",
@@ -86,7 +87,8 @@
       "expression": "\"Topic section length: \" | string.append (node.topic_loop.content | string.size)",
       "letType": "text",
       "origin": "package composer-sources, node topic_tally, let",
-      "reads": { "node.topic_loop": "text" }
+      "note": "node.topic_loop is settled: a let runs once the nodes it reads have settled.",
+      "reads": { "node.topic_loop": { "type": "text", "settled": true } }
     },
     {
       "id": "example-classifier-scope.plan.if",
@@ -134,7 +136,7 @@
       "expression": "item.value.kind",
       "letType": null,
       "origin": "package example-conditional-sections, node route, case",
-      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"] } } } } }
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
     },
     {
       "id": "example-conditional-sections.narrative_only.if",
@@ -142,7 +144,7 @@
       "expression": "item.value.kind == \"narrative\"",
       "letType": null,
       "origin": "package example-conditional-sections, node narrative_only, if",
-      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"] } } } } }
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
     },
     {
       "id": "example-conditional-sections.applies.if",
@@ -166,7 +168,7 @@
       "expression": "item.value.kind",
       "letType": null,
       "origin": "package example-macros, node route, case",
-      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"] } } } } }
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
     },
     {
       "id": "example-macros.narrative_draft.section_caveat.if",
@@ -174,7 +176,7 @@
       "expression": "input.note_type == \"consult\"",
       "letType": null,
       "origin": "package example-macros, node narrative_draft macro section_caveat, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros.consult_note.header_line.if",
@@ -182,7 +184,7 @@
       "expression": "input.note_type != \"discharge_summary\"",
       "letType": null,
       "origin": "package example-macros, deliverable consult_note macro header_line, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros.consult_note.followup_only.if",
@@ -190,7 +192,7 @@
       "expression": "input.note_type == \"follow_up\"",
       "letType": null,
       "origin": "package example-macros, deliverable consult_note macro followup_only, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros.brief_plan.md.if",
@@ -198,7 +200,7 @@
       "expression": "(input.note_type == \"consult\" || input.note_type == \"follow_up\") && input.include_counselling != true",
       "letType": null,
       "origin": "package example-macros, file macros/brief_plan.md, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] }, "input.include_counselling": "boolean" }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true }, "input.include_counselling": "boolean" }
     },
     {
       "id": "example-macros.counselling.md.if",
@@ -206,7 +208,7 @@
       "expression": "input.note_type == \"consult\"",
       "letType": null,
       "origin": "package example-macros, file macros/counselling.md, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros.followup_only.md.if",
@@ -214,7 +216,7 @@
       "expression": "input.note_type == \"consult\"",
       "letType": null,
       "origin": "package example-macros, file macros/followup_only.md, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros-warnings.standing_draft.counselling.if",
@@ -230,7 +232,7 @@
       "expression": "item.value.kind",
       "letType": null,
       "origin": "package example-macros-warnings, node route, case",
-      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"] } } } } }
+      "reads": { "item": { "value": { "type": "object", "fields": { "kind": { "type": "enum", "values": ["narrative", "table", "omit"], "required": true } } } } }
     },
     {
       "id": "example-macros-warnings.narrative_draft.section_caveat.if",
@@ -238,7 +240,7 @@
       "expression": "input.note_type == \"consult\"",
       "letType": null,
       "origin": "package example-macros-warnings, node narrative_draft macro section_caveat, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros-warnings.consult_note.header_line.if",
@@ -246,7 +248,7 @@
       "expression": "input.note_type != \"discharge_summary\"",
       "letType": null,
       "origin": "package example-macros-warnings, deliverable consult_note macro header_line, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros-warnings.consult_note.followup_only.if",
@@ -254,7 +256,7 @@
       "expression": "input.note_type == \"follow_up\"",
       "letType": null,
       "origin": "package example-macros-warnings, deliverable consult_note macro followup_only, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros-warnings.brief_plan.md.if",
@@ -262,7 +264,7 @@
       "expression": "(input.note_type == \"consult\" || input.note_type == \"follow_up\") && input.include_counselling != true",
       "letType": null,
       "origin": "package example-macros-warnings, file macros/brief_plan.md, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] }, "input.include_counselling": "boolean" }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true }, "input.include_counselling": "boolean" }
     },
     {
       "id": "example-macros-warnings.counselling.md.if",
@@ -270,7 +272,7 @@
       "expression": "input.note_type == \"consult\"",
       "letType": null,
       "origin": "package example-macros-warnings, file macros/counselling.md, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-macros-warnings.followup_only.md.if",
@@ -278,7 +280,7 @@
       "expression": "input.note_type == \"consult\"",
       "letType": null,
       "origin": "package example-macros-warnings, file macros/followup_only.md, if",
-      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"] } }
+      "reads": { "input.note_type": { "type": "enum", "values": ["consult", "follow_up", "discharge_summary"], "required": true } }
     },
     {
       "id": "example-nested-note.section_count.let",
@@ -286,7 +288,8 @@
       "expression": "node.plan.value.sections | array.size",
       "letType": "number",
       "origin": "package example-nested-note, node section_count, let",
-      "reads": { "node.plan": { "type": "object", "schema": { "type": "object", "additionalProperties": false, "required": ["summary", "sections"], "properties": { "summary": { "type": "string" }, "sections": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["title", "purpose"], "properties": { "title": { "type": "string" }, "purpose": { "type": "string" } } } } } } } }
+      "note": "node.plan is settled: a let runs once the nodes it reads have settled.",
+      "reads": { "node.plan": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["summary", "sections"], "properties": { "summary": { "type": "string" }, "sections": { "type": "array", "items": { "type": "object", "additionalProperties": false, "required": ["title", "purpose"], "properties": { "title": { "type": "string" }, "purpose": { "type": "string" } } } } } } } }
     },
     {
       "id": "example-nested-note.refine.while",
@@ -294,7 +297,8 @@
       "expression": "node.judge.value.verdict != \"good\"",
       "letType": null,
       "origin": "package example-nested-note, node refine, while",
-      "reads": { "node.judge": { "type": "object", "schema": { "type": "object", "additionalProperties": false, "required": ["verdict", "feedback"], "properties": { "verdict": { "type": "string", "enum": ["good", "revise"] }, "feedback": { "type": "string" } } } } }
+      "note": "node.judge is settled: judge is a body node of the while refine, which has no checkFirst, so its check is judged only after a pass.",
+      "reads": { "node.judge": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["verdict", "feedback"], "properties": { "verdict": { "type": "string", "enum": ["good", "revise"] }, "feedback": { "type": "string" } } } } }
     },
     {
       "id": "example-prior-letters.letters.until",
@@ -302,7 +306,8 @@
       "expression": "node.read_letter.value.answers_question == true",
       "letType": null,
       "origin": "package example-prior-letters, node letters, until",
-      "reads": { "node.read_letter": { "type": "object", "schema": { "type": "object", "additionalProperties": false, "required": ["answers_question", "note"], "properties": { "answers_question": { "type": "boolean" }, "note": { "type": "string" } } } } }
+      "note": "node.read_letter is settled: read_letter is a body node of the loop letters, whose until is judged per item once that item's body has settled.",
+      "reads": { "node.read_letter": { "type": "object", "settled": true, "schema": { "type": "object", "additionalProperties": false, "required": ["answers_question", "note"], "properties": { "answers_question": { "type": "boolean" }, "note": { "type": "string" } } } } }
     },
     {
       "id": "example-problem-list.follow_up_plan.md.if",
@@ -318,7 +323,7 @@
       "expression": "input.patient.age >= 65",
       "letType": null,
       "origin": "package example-structured-intake, deliverable senior_review, if",
-      "reads": { "input.patient": { "type": "object", "fields": { "age": "number" } } }
+      "reads": { "input.patient": { "type": "object", "fields": { "age": { "type": "number", "required": true } } } }
     },
     {
       "id": "example-structured-intake.long_stay_summary.if",
@@ -358,7 +363,7 @@
       "expression": "node.triage.value.priority == \"high\"",
       "letType": null,
       "origin": "§ 2.2: a read: `node.x.value.y`, `node.x.content`, `item.id`, `item.value.y`, `pass.number`, `run.x`",
-      "reads": { "node.triage": { "type": "object", "schema": { "type": "object", "required": ["priority", "score"], "properties": { "priority": { "type": "string", "enum": ["low", "high"] }, "score": { "type": "number" } } } } }
+      "reads": { "node.triage": { "type": "object", "schema": { "type": "object", "properties": { "priority": { "type": "string", "enum": ["low", "high"] }, "score": { "type": "number" } } } } }
     },
     {
       "id": "row.read.node-content",
@@ -537,6 +542,14 @@
       "reads": { "input.age": "number" }
     },
     {
+      "id": "row.divide.half",
+      "kind": "condition",
+      "expression": "input.age / 2 == 1.5",
+      "letType": null,
+      "origin": "§ 2.2: `+ - * / %` on numbers",
+      "reads": { "input.age": "number" }
+    },
+    {
       "id": "row.modulo",
       "kind": "condition",
       "expression": "input.age % 2 == 0",
@@ -662,7 +675,7 @@
       "expression": "{ priority: node.triage.value.priority, age: input.age }",
       "letType": "triage_summary",
       "origin": "§ 2.2: `{ a: x, b: y }` (a `let`'s object)",
-      "reads": { "node.triage": { "type": "object", "schema": { "type": "object", "required": ["priority", "score"], "properties": { "priority": { "type": "string", "enum": ["low", "high"] }, "score": { "type": "number" } } } }, "input.age": "number" }
+      "reads": { "node.triage": { "type": "object", "schema": { "type": "object", "properties": { "priority": { "type": "string", "enum": ["low", "high"] }, "score": { "type": "number" } } } }, "input.age": "number" }
     },
     {
       "id": "row.let-array",

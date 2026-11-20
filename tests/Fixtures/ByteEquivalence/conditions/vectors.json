@@ -6,13 +6,6 @@
       "cases": [
         {
           "scope": {
-            "input.audience": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
             "input.audience": "clinician"
           },
           "result": false,
@@ -37,15 +30,6 @@
               "value": {
                 "title": ""
               }
-            }
-          },
-          "result": true,
-          "error": null
-        },
-        {
-          "scope": {
-            "item": {
-              "value": {}
             }
           },
           "result": true,
@@ -92,13 +76,6 @@
       "cases": [
         {
           "scope": {
-            "input.visit": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
             "input.visit": "new"
           },
           "result": false,
@@ -119,13 +96,6 @@
       "cases": [
         {
           "scope": {
-            "input.visit": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
             "input.visit": "new"
           },
           "result": false,
@@ -144,13 +114,6 @@
       "id": "composer-macros.new_visit_note.md.if",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "input.visit": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
         {
           "scope": {
             "input.visit": "new"
@@ -180,15 +143,6 @@
             }
           },
           "result": true,
-          "error": null
-        },
-        {
-          "scope": {
-            "item": {
-              "value": {}
-            }
-          },
-          "result": false,
           "error": null
         },
         {
@@ -237,13 +191,6 @@
       "cases": [
         {
           "scope": {
-            "node.judge": "<absent>"
-          },
-          "result": null,
-          "error": "Condition 'composer-sources.refine.until' failed to evaluate: <input>(1,18) : error : Cannot get the member node.judge.value.verdict for a null object."
-        },
-        {
-          "scope": {
             "node.judge": {
               "verdict": "good",
               "feedback": ""
@@ -255,29 +202,11 @@
         {
           "scope": {
             "node.judge": {
-              "feedback": ""
-            }
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.judge": {
               "verdict": "revise",
               "feedback": ""
             }
           },
           "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.judge": {
-              "verdict": "good"
-            }
-          },
-          "result": true,
           "error": null
         },
         {
@@ -345,13 +274,6 @@
       "cases": [
         {
           "scope": {
-            "input.tone": "<absent>"
-          },
-          "result": "",
-          "error": null
-        },
-        {
-          "scope": {
             "input.tone": "formal"
           },
           "result": "formal",
@@ -377,13 +299,6 @@
       "id": "composer-sources.topic_tally.let",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "node.topic_loop": "<absent>"
-          },
-          "result": "Topic section length: 0",
-          "error": null
-        },
         {
           "scope": {
             "node.topic_loop": ""
@@ -588,15 +503,6 @@
         {
           "scope": {
             "item": {
-              "value": {}
-            }
-          },
-          "result": null,
-          "error": "Node 'example-conditional-sections.route.case' case must yield a declared value; it yields nothing."
-        },
-        {
-          "scope": {
-            "item": {
               "value": {
                 "kind": "table"
               }
@@ -631,15 +537,6 @@
             }
           },
           "result": true,
-          "error": null
-        },
-        {
-          "scope": {
-            "item": {
-              "value": {}
-            }
-          },
-          "result": false,
           "error": null
         },
         {
@@ -774,15 +671,6 @@
         {
           "scope": {
             "item": {
-              "value": {}
-            }
-          },
-          "result": null,
-          "error": "Node 'example-macros.route.case' case must yield a declared value; it yields nothing."
-        },
-        {
-          "scope": {
-            "item": {
               "value": {
                 "kind": "table"
               }
@@ -808,13 +696,6 @@
       "id": "example-macros.narrative_draft.section_caveat.if",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
         {
           "scope": {
             "input.note_type": "consult"
@@ -844,13 +725,6 @@
       "cases": [
         {
           "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": true,
-          "error": null
-        },
-        {
-          "scope": {
             "input.note_type": "consult"
           },
           "result": true,
@@ -878,13 +752,6 @@
       "cases": [
         {
           "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
             "input.note_type": "consult"
           },
           "result": false,
@@ -910,30 +777,6 @@
       "id": "example-macros.brief_plan.md.if",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "input.note_type": "<absent>",
-            "input.include_counselling": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "input.note_type": "<absent>",
-            "input.include_counselling": true
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "input.note_type": "<absent>",
-            "input.include_counselling": false
-          },
-          "result": false,
-          "error": null
-        },
         {
           "scope": {
             "input.note_type": "consult",
@@ -1014,13 +857,6 @@
       "cases": [
         {
           "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
             "input.note_type": "consult"
           },
           "result": true,
@@ -1046,13 +882,6 @@
       "id": "example-macros.followup_only.md.if",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
         {
           "scope": {
             "input.note_type": "consult"
@@ -1118,15 +947,6 @@
         {
           "scope": {
             "item": {
-              "value": {}
-            }
-          },
-          "result": null,
-          "error": "Node 'example-macros-warnings.route.case' case must yield a declared value; it yields nothing."
-        },
-        {
-          "scope": {
-            "item": {
               "value": {
                 "kind": "table"
               }
@@ -1152,13 +972,6 @@
       "id": "example-macros-warnings.narrative_draft.section_caveat.if",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
         {
           "scope": {
             "input.note_type": "consult"
@@ -1188,13 +1001,6 @@
       "cases": [
         {
           "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": true,
-          "error": null
-        },
-        {
-          "scope": {
             "input.note_type": "consult"
           },
           "result": true,
@@ -1222,13 +1028,6 @@
       "cases": [
         {
           "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
             "input.note_type": "consult"
           },
           "result": false,
@@ -1254,30 +1053,6 @@
       "id": "example-macros-warnings.brief_plan.md.if",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "input.note_type": "<absent>",
-            "input.include_counselling": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "input.note_type": "<absent>",
-            "input.include_counselling": true
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "input.note_type": "<absent>",
-            "input.include_counselling": false
-          },
-          "result": false,
-          "error": null
-        },
         {
           "scope": {
             "input.note_type": "consult",
@@ -1358,13 +1133,6 @@
       "cases": [
         {
           "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
             "input.note_type": "consult"
           },
           "result": true,
@@ -1390,13 +1158,6 @@
       "id": "example-macros-warnings.followup_only.md.if",
       "refused": null,
       "cases": [
-        {
-          "scope": {
-            "input.note_type": "<absent>"
-          },
-          "result": false,
-          "error": null
-        },
         {
           "scope": {
             "input.note_type": "consult"
@@ -1426,24 +1187,8 @@
       "cases": [
         {
           "scope": {
-            "node.plan": "<absent>"
-          },
-          "result": null,
-          "error": "Let 'example-nested-note.section_count.let' failed to evaluate: <input>(1,17) : error : Cannot get the member node.plan.value.sections for a null object."
-        },
-        {
-          "scope": {
             "node.plan": {
               "summary": "",
-              "sections": []
-            }
-          },
-          "result": 0,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.plan": {
               "sections": []
             }
           },
@@ -1465,15 +1210,6 @@
             "node.plan": {
               "summary": "lorem",
               "sections": []
-            }
-          },
-          "result": 0,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.plan": {
-              "summary": ""
             }
           },
           "result": 0,
@@ -1504,10 +1240,11 @@
                   "purpose": ""
                 },
                 {
+                  "title": " ",
                   "purpose": ""
                 },
                 {
-                  "title": " ",
+                  "title": "lorem",
                   "purpose": ""
                 }
               ]
@@ -1524,13 +1261,6 @@
       "cases": [
         {
           "scope": {
-            "node.judge": "<absent>"
-          },
-          "result": null,
-          "error": "Condition 'example-nested-note.refine.while' failed to evaluate: <input>(1,18) : error : Cannot get the member node.judge.value.verdict for a null object."
-        },
-        {
-          "scope": {
             "node.judge": {
               "verdict": "good",
               "feedback": ""
@@ -1542,29 +1272,11 @@
         {
           "scope": {
             "node.judge": {
-              "feedback": ""
-            }
-          },
-          "result": true,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.judge": {
               "verdict": "revise",
               "feedback": ""
             }
           },
           "result": true,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.judge": {
-              "verdict": "good"
-            }
-          },
-          "result": false,
           "error": null
         },
         {
@@ -1605,13 +1317,6 @@
       "cases": [
         {
           "scope": {
-            "node.read_letter": "<absent>"
-          },
-          "result": null,
-          "error": "Condition 'example-prior-letters.letters.until' failed to evaluate: <input>(1,24) : error : Cannot get the member node.read_letter.value.answers_question for a null object."
-        },
-        {
-          "scope": {
             "node.read_letter": {
               "answers_question": true,
               "note": ""
@@ -1623,29 +1328,11 @@
         {
           "scope": {
             "node.read_letter": {
-              "note": ""
-            }
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.read_letter": {
               "answers_question": false,
               "note": ""
             }
           },
           "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "node.read_letter": {
-              "answers_question": true
-            }
-          },
-          "result": true,
           "error": null
         },
         {
@@ -1713,13 +1400,6 @@
             "input.patient": {
               "age": 0
             }
-          },
-          "result": false,
-          "error": null
-        },
-        {
-          "scope": {
-            "input.patient": {}
           },
           "result": false,
           "error": null
@@ -3572,6 +3252,68 @@
             "input.age": 31
           },
           "result": true,
+          "error": null
+        }
+      ]
+    },
+    {
+      "id": "row.divide.half",
+      "refused": null,
+      "cases": [
+        {
+          "scope": {
+            "input.age": "<absent>"
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 3
+          },
+          "result": true,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 0.5
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 1.5
+          },
+          "result": false,
+          "error": null
+        },
+        {
+          "scope": {
+            "input.age": 2.5
+          },
+          "result": false,
           "error": null
         }
       ]

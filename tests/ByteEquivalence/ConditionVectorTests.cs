@@ -14,7 +14,8 @@ namespace Consultologist.Api.Tests.ByteEquivalence;
 /// table and per refusal of § 2.3, each with what it reads. <c>conditions/vectors.json</c> is
 /// written here: per expression, 30's refusal or, over scopes generated from the reads
 /// (<see cref="ConditionScopes"/>), 30's answer. Area 10 converts each expression to JSON Logic and
-/// must give the same answers, the whitespace-only text of <c>!a</c> on text excepted.
+/// compares its answers with these; where 30's <c>!a</c> on a text and a <c>blank(a)</c> differ is
+/// recorded here, not decided (the README's <c>!x</c> section).
 /// </summary>
 public class ConditionVectorTests
 {
@@ -61,7 +62,7 @@ public class ConditionVectorTests
         NewLine = "\n",
     };
 
-    private sealed record Expression(string Id, string Kind, string Text, string? LetType, string Origin, IReadOnlyList<(string Read, ConditionScopes.ReadType Type)> Reads);
+    private sealed record Expression(string Id, string Kind, string Text, string? LetType, string Origin, string? Note, IReadOnlyList<(string Read, ConditionScopes.ReadType Type)> Reads);
 
     private static IReadOnlyList<Expression> Expressions()
     {
@@ -73,6 +74,7 @@ public class ConditionVectorTests
             entry["expression"]!.GetValue<string>(),
             entry["letType"]?.GetValue<string>(),
             entry["origin"]!.GetValue<string>(),
+            entry["note"]?.GetValue<string>(),
             ConditionScopes.ReadsOf(entry["reads"]!.AsObject()))).ToList();
     }
 
@@ -161,11 +163,12 @@ public class ConditionVectorTests
     }
 
     /// <summary>
-    /// A package expression's reads are what its package declares: an input's type (and values,
-    /// fields) as the declaration gives them, a node's as the engine types its format
-    /// (<see cref="ConsultRenderPayload.FormatTypeOf"/>), an object node's schema its format's.
-    /// The scope builder declares what the reads say, so this is what makes a package's scopes mean
-    /// what the engine means.
+    /// A package expression's reads are what its package declares: an input's type, values,
+    /// required and fields (each field's type, values and required) as the declaration gives them,
+    /// an item's value fields as its loop's input declares them, a node's type as the engine types
+    /// its format (<see cref="ConsultRenderPayload.FormatTypeOf"/>), an object node's schema its
+    /// format's; a read marked settled says why in the entry's note. The scope builder declares
+    /// what the reads say, so this is what makes a package's scopes mean what the engine means.
     /// </summary>
     [Fact]
     public void APackageExpressionsReads_AreItsPackagesDeclarations()
@@ -183,7 +186,8 @@ public class ConditionVectorTests
                 var problem = parts[0] switch
                 {
                     "input" => InputMismatch(package, parts[1], type),
-                    "node" => NodeMismatch(package, parts[1], type),
+                    "node" => NodeMismatch(package, parts[1], type) ?? (type.Settled && expression.Note is null ? "settled, with no note saying why" : null),
+                    "item" when type.Fields is [("value", var value)] => ItemMismatch(package, expression.Origin, value),
                     _ => null,
                 };
 
@@ -211,10 +215,30 @@ public class ConditionVectorTests
             : $"declared {Describe(declared, null)}, read as {Describe(read, null)}";
     }
 
-    /// <summary>An input's type, values and (the read's) fields with theirs, as one string.</summary>
-    private static string Describe(WorkflowInputSpec input, ISet<string>? onlyFields) =>
-        $"{WorkflowInputTypes.Of(input)} [{string.Join(",", input.Values ?? [])}] items:{input.Items?.Type} {{"
-        + string.Join(", ", (input.Fields ?? []).Where(f => onlyFields?.Contains(f.Id) != false).Select(f => $"{f.Id}: {f.Type ?? "text"} [{string.Join(",", f.Values ?? [])}]"))
+    /// <summary>An item value's fields against the input its loop runs over (the loop whose body holds the site's node).</summary>
+    private static string? ItemMismatch(WorkflowPackage package, string origin, ConditionScopes.ReadType value)
+    {
+        var nodeId = origin.Split(", ")[1].Split(' ')[1];
+        var loop = package.Manifest.Nodes?.FirstOrDefault(n => n.For is { } f && f.StartsWith("item in input.", StringComparison.Ordinal) && n.Nodes?.Contains(nodeId) == true);
+        if (loop is null)
+        {
+            return $"node {nodeId} is in no loop over an input";
+        }
+
+        var collection = loop.For!["item in input.".Length..];
+        var declared = package.Manifest.Inputs!.Single(input => input.Id == collection);
+        var read = ConditionScopes.Declaration(collection, new ConditionScopes.ReadType("array", Items: value));
+        var fields = value.Fields?.Select(f => f.Name).ToHashSet();
+        return Describe(read, fields, withRequired: false) == Describe(declared, fields, withRequired: false)
+            ? null
+            : $"input {collection} declares {Describe(declared, fields, withRequired: false)}, read as {Describe(read, fields, withRequired: false)}";
+    }
+
+    /// <summary>An input's type, values, required and (the read's) fields with theirs, as one string.</summary>
+    private static string Describe(WorkflowInputSpec input, ISet<string>? onlyFields, bool withRequired = true) =>
+        $"{WorkflowInputTypes.Of(input)} [{string.Join(",", input.Values ?? [])}]{(withRequired ? $" required:{input.Required}" : "")} items:{input.Items?.Type} {{"
+        + string.Join(", ", (input.Fields ?? []).Where(f => onlyFields?.Contains(f.Id) != false)
+            .Select(f => $"{f.Id}: {f.Type ?? "text"} [{string.Join(",", f.Values ?? [])}] required:{f.Required}"))
         + "}";
 
     private static string? NodeMismatch(WorkflowPackage package, string id, ConditionScopes.ReadType type)
@@ -272,18 +296,86 @@ public class ConditionVectorTests
         ByteEquivalenceFixtures.Matches(VectorsPath, new JsonObject { ["vectors"] = vectors }.ToJsonString(Style) + "\n");
     }
 
-    [Fact]
-    public void AWhitespaceOnlyText_IsTruthyAt30()
+    // ---- !a on a text, at 30 ------------------------------------------------------------
+    // 30's truthiness: only null, false, an empty array or object and a skipped node are falsy
+    // (PromptTemplateRenderer.RenderingContext.ToBool). So !x on a text holds only for null —
+    // a text "" and a whitespace-only text are both present. The README says where a blank(x)
+    // would differ; the fixture records 30 and takes no side.
+
+    /// <summary>The case of the !a-on-text expression whose read has this value (the string, or <see cref="ConditionScopes.Absent"/>).</summary>
+    private static JsonNode NotOnTextCase(string value)
     {
         var notOnText = Expressions().Single(e => e.Id == NotOnTextId);
         var (read, _) = Assert.Single(notOnText.Reads);
 
-        var whitespace = Vector(notOnText)["cases"]!.AsArray()
-            .Single(c => c!["scope"]![read] is JsonValue value && value.TryGetValue<string>(out var text) && text == " ");
+        return Vector(notOnText)["cases"]!.AsArray()
+            .Single(c => c!["scope"]![read] is JsonValue v && v.TryGetValue<string>(out var text) && text == value)!;
+    }
 
-        // blank(" ") is true at 31; at 30 " " is a present text, so !" " is false.
-        Assert.False(whitespace!["result"]!.GetValue<bool>());
+    [Fact]
+    public void AWhitespaceOnlyText_IsTruthyAt30()
+    {
+        var whitespace = NotOnTextCase(" ");
+
+        Assert.False(whitespace["result"]!.GetValue<bool>());
         Assert.Null(whitespace["error"]);
+    }
+
+    [Fact]
+    public void AnEmptyText_IsTruthyAt30_Too()
+    {
+        var empty = NotOnTextCase("");
+
+        Assert.False(empty["result"]!.GetValue<bool>());
+        Assert.Null(empty["error"]);
+    }
+
+    [Fact]
+    public void OnlyANullText_IsFalsyAt30()
+    {
+        // An absent node reads its content as null — the one text value !x holds for.
+        Assert.True(NotOnTextCase(ConditionScopes.Absent)["result"]!.GetValue<bool>());
+        Assert.False(NotOnTextCase("lorem")["result"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public void TheCases_AreTheProductInDeclaredOrder_CutAt200()
+    {
+        // Four text reads, four values each (absent, "", " ", "lorem"): 256 in the product.
+        var text = new ConditionScopes.ReadType("text");
+        var reads = new[] { "a", "b", "c", "d" }.Select(id => ($"input.{id}", text)).ToList();
+
+        var cases = ConditionScopes.Cases(reads, "input.a == input.b");
+
+        Assert.Equal(ConditionScopes.MaxCases, cases.Count);
+        Assert.All(cases[0], value => Assert.Null(value));
+        // Case 199 is 3·64 + 0·16 + 1·4 + 3 in the product, the first read slowest: lorem, absent, "", lorem.
+        Assert.Equal(["\"lorem\"", "null", "\"\"", "\"lorem\""], cases[199].Select(value => value?.ToJsonString() ?? "null"));
+    }
+
+    /// <summary>
+    /// A let has no bare list at 30, so <c>[x, y]</c> appears in the fixture only inside an object:
+    /// the walk refuses a list whose kind it knows against every type, and a list it cannot type
+    /// fails <see cref="WorkflowLetAt30.ValueOf"/> whatever the type.
+    /// </summary>
+    [Theory]
+    [InlineData("text")]
+    [InlineData("number")]
+    [InlineData("boolean")]
+    [InlineData("pair_format")]
+    public void ABareListLet_IsRefusedAt30(string type)
+    {
+        var docs = ConditionScopes.Declaration("docs", new ConditionScopes.ReadType("array", Items: new ConditionScopes.ReadType("text")));
+        var context = TemplateReferenceContext.Empty with
+        {
+            Inputs = new Dictionary<string, WorkflowDeclarationNode> { ["docs"] = WorkflowDeclarationNode.Of(docs) },
+        };
+
+        var walk = WorkflowLetAt30.Walk("Let 'pair'", "input.docs", type, context);
+        var (_, errors) = WorkflowLetAt30.ValueOf("Let 'pair'", type, new Scriban.Runtime.ScriptArray { "a", "b" });
+
+        Assert.Equal([$"Let 'pair' yields an array; it declares type {type}."], walk.References.Errors);
+        Assert.Equal([$"Let 'pair' yielded a list; it declares type {type}."], errors);
     }
 
     /// <summary>

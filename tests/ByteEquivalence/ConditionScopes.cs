@@ -42,14 +42,22 @@ internal static class ConditionScopes
     /// A read's declared type: <c>text</c>, <c>enum</c> and <c>classification</c> (with
     /// <c>values</c>), <c>number</c>, <c>boolean</c>, <c>date</c>, <c>array</c> (with <c>items</c>),
     /// <c>object</c> (with <c>fields</c>, or a node's JSON Schema read into fields), and
-    /// <c>item</c> (its <c>id</c> or its <c>value</c>).
+    /// <c>item</c> (its <c>id</c> or its <c>value</c>). <c>required</c> (an input or a field the
+    /// package requires, or a property the node's schema requires) and <c>settled</c> (a node the
+    /// site is only ever judged after) take the absent value away.
     /// </summary>
     internal sealed record ReadType(
         string Type,
         IReadOnlyList<string>? Values = null,
         ReadType? Items = null,
         IReadOnlyList<(string Name, ReadType Type)>? Fields = null,
-        JsonObject? Schema = null);
+        JsonObject? Schema = null,
+        bool Required = false,
+        bool Settled = false)
+    {
+        /// <summary>Whether the read is never absent where it is judged.</summary>
+        public bool NeverAbsent => Required || Settled;
+    }
 
     /// <summary>One expression's reads, in declared order.</summary>
     public static IReadOnlyList<(string Read, ReadType Type)> ReadsOf(JsonObject reads) =>
@@ -63,9 +71,10 @@ internal static class ConditionScopes
         }
 
         var declared = node.AsObject();
+        var settled = declared["settled"]?.GetValue<bool>() == true;
         if (declared["schema"] is JsonObject schema)
         {
-            return FromSchema(schema) with { Schema = schema };
+            return FromSchema(schema) with { Schema = schema, Settled = settled };
         }
 
         if (!declared.ContainsKey("type"))
@@ -78,13 +87,19 @@ internal static class ConditionScopes
             declared["type"]!.GetValue<string>(),
             declared["values"]?.AsArray().Select(value => value!.GetValue<string>()).ToList(),
             declared["items"] is { } items ? TypeOf(items) : null,
-            declared["fields"]?.AsObject().Select(pair => (pair.Key, TypeOf(pair.Value!))).ToList());
+            declared["fields"]?.AsObject().Select(pair => (pair.Key, TypeOf(pair.Value!))).ToList(),
+            Required: declared["required"]?.GetValue<bool>() == true,
+            Settled: settled);
     }
 
     private static ReadType FromSchema(JsonObject schema) => schema["type"]?.GetValue<string>() switch
     {
+        // A property the schema requires is in every reply the format accepts.
         "object" => new ReadType("object", Fields: (schema["properties"]?.AsObject() ?? new JsonObject())
-            .Select(pair => (pair.Key, FromSchema(pair.Value!.AsObject()))).ToList()),
+            .Select(pair => (pair.Key, FromSchema(pair.Value!.AsObject()) with
+            {
+                Required = schema["required"]?.AsArray().Any(name => name!.GetValue<string>() == pair.Key) == true,
+            })).ToList()),
         "array" => new ReadType("array", Items: FromSchema(schema["items"]!.AsObject())),
         "string" when schema["enum"] is JsonArray values => new ReadType("enum", values.Select(value => value!.GetValue<string>()).ToList()),
         "string" => new ReadType("text"),
@@ -143,7 +158,7 @@ internal static class ConditionScopes
         _ => ValuesOf(type, literals),
     };
 
-    /// <summary>A type's values, absent (null) first.</summary>
+    /// <summary>A type's values, absent (null) first unless the read is never absent.</summary>
     private static IReadOnlyList<JsonNode?> ValuesOf(ReadType type, Literals literals)
     {
         IEnumerable<JsonNode?> values = type.Type switch
@@ -158,7 +173,7 @@ internal static class ConditionScopes
             var other => throw new InvalidOperationException($"A read of type '{other}' has no generated values."),
         };
 
-        return values.Prepend(null).ToList();
+        return type.NeverAbsent ? values.ToList() : values.Prepend(null).ToList();
     }
 
     private static IEnumerable<JsonNode?> ArraysOf(ReadType items, Literals literals)
@@ -321,13 +336,13 @@ internal static class ConditionScopes
         return (scope, null);
     }
 
-    /// <summary>A read input as the manifest declares it — optional, so its absence reaches the condition (a required input is never absent there: the start refuses the run).</summary>
+    /// <summary>A read input as the manifest declares it: required as the read says (a required input or field is never absent; the start refuses the run).</summary>
     internal static WorkflowInputSpec Declaration(string id, ReadType type) =>
         JsonSerializer.Deserialize<WorkflowInputSpec>(DeclarationJson(id, type).ToJsonString(), WorkflowPackageManifestJson.ReadOptions)!;
 
     private static JsonObject DeclarationJson(string id, ReadType type)
     {
-        var declaration = new JsonObject { ["id"] = id, ["label"] = id, ["required"] = false, ["type"] = type.Type };
+        var declaration = new JsonObject { ["id"] = id, ["label"] = id, ["required"] = type.Required, ["type"] = type.Type };
         if (type.Values is { } values)
         {
             declaration["values"] = new JsonArray(values.Select(value => (JsonNode?)value).ToArray());
