@@ -65,6 +65,8 @@ public class ExpressionSentencesTests
         ExpressionSentences.LiteralNotText(Gate, "matches", "pattern", "a number"),
         ExpressionSentences.RunDependentDecision(Gate, "date"),
         ExpressionSentences.RunDependentValue("total", "run.id", "nodes/total.md"),
+        ExpressionSentences.FlagDisagrees("gate", "modelDerived", false, new LineageValue(true, "node.draft.content"), "nodes/gate.md"),
+        ExpressionSentences.ReadsProfileText(Gate, "node.letterhead.content"),
     ];
 
     private static IEnumerable<string> Ids(string prefix, int from, int to) =>
@@ -80,7 +82,7 @@ public class ExpressionSentencesTests
             : r.Id == "S03-022" ? "macros/footer.md"
             : r.Id is "S03-026" or "S03-027" or "S03-028" or "S03-038" or "A04-009" ? "nodes/total.md" : "nodes/gate.md", r.Path));
         Assert.Equal(
-            Ids("S03", 2, 35).Concat(["S03-037", "S03-038", "S03-042", "S03-043"]).Concat(Ids("A04", 1, 10)).Order(StringComparer.Ordinal),
+            Ids("S03", 2, 35).Concat(["S03-036", "S03-037", "S03-038", "S03-042", "S03-043", "S03-044"]).Concat(Ids("A04", 1, 10)).Order(StringComparer.Ordinal),
             every.Select(r => r.Id).Order(StringComparer.Ordinal));
     }
 

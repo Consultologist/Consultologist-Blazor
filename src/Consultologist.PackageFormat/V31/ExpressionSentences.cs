@@ -10,8 +10,8 @@ namespace Consultologist.PackageFormat.V31;
 /// § 11) or the area's own <c>A04-NNN</c> with its placeholders filled in, character for character. <c>&lt;site&gt;</c>
 /// is <see cref="ExpressionSite.Subject"/> (D4), <c>&lt;member&gt;</c> its <see cref="ExpressionSite.Member"/>, and
 /// every refusal names the site's file. No sentence carries a value from an input or a model: only ids, paths,
-/// operation names, type strings, counts, limits and package text (a literal, a pattern). Task 9 adds
-/// S03-036, S03-039 and S03-044.
+/// operation names, type strings, counts, limits and package text (a literal, a pattern). S03-036, S03-039 and
+/// S03-044 are the flags' (<see cref="LineageFlags"/>).
 /// </summary>
 internal static class ExpressionSentences
 {
@@ -193,6 +193,22 @@ internal static class ExpressionSentences
     /// <summary>S03-035: Markdown given to <c>cat</c>.</summary>
     public static SourceRefusal CatsMarkdown(ExpressionSite site, string path, string format) =>
         Say(site, "S03-035", $"{site.Subject} cats {path} ({format}); convert Markdown with plain first.");
+
+    /// <summary>
+    /// S03-036: node <paramref name="id"/> declares <paramref name="member"/> as <paramref name="declared"/>, but its reads make
+    /// it <paramref name="derived"/>'s value; the read is <see cref="LineageValue.Because"/>, or <c>none</c>. <paramref name="path"/> is the node's file.
+    /// </summary>
+    internal static SourceRefusal FlagDisagrees(string id, string member, bool declared, LineageValue derived, string path) =>
+        new("S03-036", $"Node '{id}' declares {member} {Json(declared)}, but its reads make it {Json(derived.Value)}: {derived.Because ?? "none"}.", path);
+
+    /// <summary>S03-039 (a note, § 11.2): the words shown beside a node whose text is computed from model text.</summary>
+    public static string ModelDerivedNote(string nodeId) => $"computed from model text: node.{nodeId}";
+
+    /// <summary>S03-044: a prompt, part or condition that reads <paramref name="readPath"/>, which carries profile text.</summary>
+    public static SourceRefusal ReadsProfileText(ExpressionSite site, string readPath) =>
+        Say(site, "S03-044", $"{site.Subject} reads {readPath}, which carries profile text; prompts, parts and conditions don't read profile text.");
+
+    private static string Json(bool value) => value ? "true" : "false";
 
     /// <summary>S03-037 (a warning, § 11.2): a condition that reads the run fact <paramref name="fact"/> itself.</summary>
     public static SourceRefusal RunDependentDecision(ExpressionSite site, string fact) =>
