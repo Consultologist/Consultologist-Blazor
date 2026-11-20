@@ -6,7 +6,8 @@ namespace Consultologist.PackageFormat.V31;
 /// #1499 (specVersion 31, area 02): what <see cref="SourceParser.Parse"/> made of an upload.
 /// <see cref="Package"/> is null exactly when <see cref="Refusals"/> is not empty; the refusals are
 /// said once each and ordered by <see cref="SourceRefusal.Path"/> (ordinal), then in the order the
-/// reader found them. <see cref="Normalised"/> lists the files whose <c>\r\n</c> intake turned into
+/// reader found them, except intake's (D4), which keep intake's order: each file's, in path order,
+/// then the bounds in the table's order. <see cref="Normalised"/> lists the files whose <c>\r\n</c> intake turned into
 /// <c>\n</c>, whatever the outcome (part 01 § 2.4: the publish report notes them). <see cref="Files"/>
 /// is what intake read, whatever the outcome: every file's text after line-ending normalisation,
 /// keyed by its path and ordinal-sorted, without the compiled copies intake dropped and without a

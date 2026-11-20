@@ -32,9 +32,10 @@ public static partial class SourceParser
         ArgumentNullException.ThrowIfNull(upload);
         ArgumentNullException.ThrowIfNull(registry);
 
+        // Intake's refusals keep intake's order: each file's in path order, then the bounds in the table's.
         var intake = SourceIntake.Read(upload);
         if (intake.Refusals.Count > 0)
-            return new SourceParseResult(null, Order(intake.Refusals), intake.Normalised, intake.Files);
+            return new SourceParseResult(null, intake.Refusals, intake.Normalised, intake.Files);
 
         var walk = new SourceWalk(intake.Files, registry);
         ReadRoot(walk);

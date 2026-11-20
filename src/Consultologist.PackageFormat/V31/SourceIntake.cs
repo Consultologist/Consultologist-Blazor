@@ -35,7 +35,7 @@ public static class SourceIntake
     /// <c>\r\n</c> into <c>\n</c> and refuses a remaining <c>\r</c> (S01-015); then measures the
     /// normalised files against the bounds, reporting every one exceeded in the order of the
     /// table: files (S01-037), each file's bytes (S01-038), the total (S01-039), each path's
-    /// length (S01-040). A file that is refused is not measured for its bytes. Never throws.
+    /// length (S01-040). A file refused for its encoding is measured by its raw bytes. Never throws.
     /// </summary>
     public static SourceIntakeResult Read(IReadOnlyDictionary<string, byte[]> upload)
     {
@@ -59,7 +59,9 @@ public static class SourceIntake
             var refusal = ReadFile(path, bytes, out var text, out var changed);
             if (refusal != null)
             {
+                // Refused for its encoding, it is still measured, by the bytes uploaded, so every bound it exceeds is said.
                 refusals.Add(refusal);
+                sizes.Add((path, bytes.LongLength));
                 continue;
             }
 

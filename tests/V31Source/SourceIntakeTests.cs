@@ -265,6 +265,46 @@ public class SourceIntakeTests
     }
 
     [Fact]
+    public void Intake_MeasuresARefusedFile_ByItsRawBytes()
+    {
+        // A byte-order mark and 307197 'a': 307200 bytes, 300 KiB.
+        var bom = new byte[] { 0xEF, 0xBB, 0xBF }.Concat(SourceFixture.Utf8(new string('a', 300 * 1024 - 3))).ToArray();
+
+        var result = SourceIntake.Read(One(Path, bom));
+
+        Assert.Equal(["S01-014", "S01-038"], result.Refusals.Select(r => r.Id));
+        Assert.Equal("File 'nodes/plan.md' is 300 KiB; the most is SourceBounds.fileBytes (256 KiB).", result.Refusals[1].Sentence);
+    }
+
+    [Fact]
+    public void Intake_CountsARefusedFile_InThePackagesTotal()
+    {
+        var nine = Enumerable.Range(0, 9)
+            .ToDictionary(i => $"nodes/f{i}.md", _ => SourceFixture.Utf8(new string('a', SourceBounds.FileBytes)));
+        nine["nodes/f0.md"][0] = 0xFF;
+        nine["nodes/f1.md"][5] = (byte)'\r';
+
+        var result = SourceIntake.Read(nine);
+
+        Assert.Equal(["A02-002", "S01-015", "S01-039"], result.Refusals.Select(r => r.Id));
+    }
+
+    [Fact]
+    public void Parse_ReturnsIntakesRefusals_InIntakesOrder()
+    {
+        // By path, S01-040's path ("aaa…") would come first; intake says the files, then the bounds in table order.
+        var upload = SourceFixture.Minimal();
+        upload["nodes/b.md"] = [0xEF, 0xBB, 0xBF];
+        upload["nodes/zz.md"] = SourceFixture.Utf8(new string('a', SourceBounds.FileBytes + 1));
+        upload[new string('a', SourceBounds.PathLength + 1)] = SourceFixture.Utf8("x");
+
+        var result = upload.Parse();
+
+        Assert.Null(result.Package);
+        Assert.Equal(["S01-014", "S01-038", "S01-040"], result.Refusals.Select(r => r.Id));
+    }
+
+    [Fact]
     public void Intake_NeverThrows_OnAnyInput()
     {
         Assert.Empty(SourceIntake.Read(new Dictionary<string, byte[]>()).Refusals);
