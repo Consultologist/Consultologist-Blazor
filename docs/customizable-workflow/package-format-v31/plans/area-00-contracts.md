@@ -246,9 +246,9 @@ then "How to read this document" (MUST-level words are not used; every rule is a
 - "At 30 …" stays only in the "What changes from 30" tables and chapter 10 (migration).
 - Each schema is linked where its file kind is defined.
 
-- [ ] **Step 1:** Add check group `document`: the file exists, contains "specVersion 31", has `## N.` headings for the chapters written so far in order, every relative link target exists, no link contains `/blob/main/` or `/tree/main/`, every in-document anchor resolves to a heading (GitHub's slug rule), and every sentence of `v31/sentences.json` whose `part` is a chapter already written appears in the document verbatim (compare after undoing Markdown escapes and emphasis). Run: fails.
-- [ ] **Step 2:** Write the front matter and chapters 1–4 from parts 01–04 (read each part in full before writing its chapter).
-- [ ] **Step 3:** Check passes for parts 01–04. Commit per chapter, push.
+- [x] **Step 1:** Add check group `document`: the file exists, contains "specVersion 31", has `## N.` headings for the chapters written so far in order, every relative link target exists, no link contains `/blob/main/` or `/tree/main/`, every in-document anchor resolves to a heading (GitHub's slug rule), and every sentence of `v31/sentences.json` whose `part` is a chapter already written appears in the document verbatim (compare after undoing Markdown escapes and emphasis). Run: fails.
+- [x] **Step 2:** Write the front matter and chapters 1–4 from parts 01–04 (read each part in full before writing its chapter).
+- [x] **Step 3:** Check passes for parts 01–04. Commit per chapter, push.
 
 ### Task 8: the normative text, chapters 5–6, and the Scriban dialect document
 
@@ -256,9 +256,9 @@ then "How to read this document" (MUST-level words are not used; every rule is a
 
 **Interfaces — Produces:** chapters `## 5. Templates and macros` (part 05) and `## 6. Checks, deliverables and the profile` (part 06). `v31/scriban-dialect.md`: "The Consultologist Scriban dialect, version 1.0.0 (`scriban-dialect@1.0.0`)": the engine (Scriban 7.2.5, the invariant culture), the allowed statements, the refused ones, the built-ins with signatures and null behaviour, the limits, the placement and whitespace forms, the body-`if` rule, the marker, each with its refusal sentence ids (R-D1 … as the design labels them, beside the `Sxx-nnn` id), and a closing table "Feature → allowed or refused → sentence". Chapter 5 states the same rules in full and links the dialect document as their versioned form.
 
-- [ ] **Step 1:** Extend `document`'s chapter list to 6 and add: `v31/scriban-dialect.md` exists, names `scriban-dialect@1.0.0`, and its links resolve. Run: fails.
-- [ ] **Step 2:** Write chapter 5, the dialect document, chapter 6.
-- [ ] **Step 3:** Check passes. Commit per file, push.
+- [x] **Step 1:** Extend `document`'s chapter list to 6 and add: `v31/scriban-dialect.md` exists, names `scriban-dialect@1.0.0`, and its links resolve. Run: fails.
+- [x] **Step 2:** Write chapter 5, the dialect document, chapter 6.
+- [x] **Step 3:** Check passes. Commit per file, push.
 
 ### Task 9: the normative text, chapter 7 (the compiled documents)
 
@@ -266,7 +266,7 @@ then "How to read this document" (MUST-level words are not used; every rule is a
 
 **Interfaces — Produces:** `## 7. The compiled documents` restating part 07 in full: both documents and their common rules, `resolve.json` member by member, `requires` and `needs`, `lock.json`, versioning of operations and machinery (naming `v31/constants.json` as where each version is declared), the corpus re-render and break points, the publish pipeline's steps and write order, where the files live, evidence and views, in-package tests, the publish report, the sentences. Links `v31/schemas/resolve.schema.json`, `lock.schema.json`, `publish-report.schema.json`, `test.schema.json`.
 
-- [ ] **Step 1:** Extend the chapter list to 7. **Step 2:** Write. **Step 3:** Check passes; commit, push.
+- [x] **Step 1:** Extend the chapter list to 7. **Step 2:** Write. **Step 3:** Check passes; commit, push.
 
 ### Task 10: the normative text, chapters 8–11, and the conformance frame
 
@@ -280,9 +280,9 @@ then "How to read this document" (MUST-level words are not used; every rule is a
 - `## 12. Conformance`: part 10 § 5's list, each item with where it lives under `v31/` and **which build area exports it**: schemas, constants and sentences (here, now); the valid and invalid package for every sentence (areas 02–08, each for its parts' sentences); operation, printer, null, text, number and date vectors (area 04); Markdown escape vectors and built-in renderer goldens (areas 07, 08); compiled-document fixtures (areas 05, 11); migration vectors (area 10).
 - `v31/conformance/index.json`: `{ "specVersion": 31, "families": [ { "id", "path", "about", "exportedBy", "cases": [] } ] }` with one family per item of § 5 (`schemas` has `"cases"` listing the example files of Tasks 3–5; the others are empty until their area exports them). `v31/conformance/README.md`: the layout, what a case file of each family will look like at the level part 10 § 5 fixes (a package folder plus `expect.json` with `valid` and the sentences), the rule that expectations are exported by the library's generators and never hand-written, and "Open points found while writing" collected from Tasks 3–5.
 
-- [ ] **Step 1:** Extend `document` to chapters 8–12 and every sentence of every part; add: chapter 11's table equals `render-sentences.py`'s output; `conformance/index.json`'s `schemas` cases equal the example files on disk. Run: fails.
-- [ ] **Step 2:** Write the chapters and the two conformance files.
-- [ ] **Step 3:** `python3 scripts/check-v31.py` exits 0. Also run the three structural checks of `.github/workflows/validate.yml` by hand (copy each embedded Python block to `/tmp` and run it from the repo root): all pass unchanged. Commit, push.
+- [x] **Step 1:** Extend `document` to chapters 8–12 and every sentence of every part; add: chapter 11's table equals `render-sentences.py`'s output; `conformance/index.json`'s `schemas` cases equal the example files on disk. Run: fails.
+- [x] **Step 2:** Write the chapters and the two conformance files.
+- [x] **Step 3:** `python3 scripts/check-v31.py` exits 0. Also run the three structural checks of `.github/workflows/validate.yml` by hand (copy each embedded Python block to `/tmp` and run it from the repo root): all pass unchanged. Commit, push.
 
 ### Task 11: agents — the catalogue at 31
 
@@ -368,10 +368,10 @@ then "How to read this document" (MUST-level words are not used; every rule is a
 // agents/formats.json still names exactly classification, concept_list, prose, rendered, terms_subset.
 ```
 
-- [ ] **Step 1:** Write the tests; run `dotnet test tests/Consultologist.Api.Tests.csproj --filter V31ContractsTests` before the agents and provenance pins move: FAIL (files missing).
-- [ ] **Step 2:** Move the three pins to the pushed heads of `m39-build`.
-- [ ] **Step 3:** The filter passes. Then `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln`: both green, output read.
-- [ ] **Step 4:** Commit the pins (`PackageFormat (#1497): the contracts at specVersion 31, pinned as preview`) and the tests (`Tests (#1497): the 31 contracts are published as preview, word for word, and the engine at 30 sees its own sets`) separately; push.
+- [x] **Step 1:** Write the tests; run `dotnet test tests/Consultologist.Api.Tests.csproj --filter V31ContractsTests` before the agents and provenance pins move: FAIL (files missing).
+- [x] **Step 2:** Move the three pins to the pushed heads of `m39-build`.
+- [x] **Step 3:** The filter passes. Then `dotnet build Consultologist.sln` and `dotnet test Consultologist.sln`: both green, output read.
+- [x] **Step 4:** Commit the pins (`PackageFormat (#1497): the contracts at specVersion 31, pinned as preview`) and the tests (`Tests (#1497): the 31 contracts are published as preview, word for word, and the engine at 30 sees its own sets`) separately; push.
 
 ---
 
