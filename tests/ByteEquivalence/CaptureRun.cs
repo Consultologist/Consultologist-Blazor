@@ -19,7 +19,11 @@ using NSubstitute;
 
 namespace Consultologist.Api.Tests.ByteEquivalence;
 
-/// <summary>#1498: one deliverable as the run left it — <c>composed</c> with its final text, or <c>skipped</c> or <c>failed</c> with the engine's sentence.</summary>
+/// <summary>
+/// #1498: one deliverable as the run left it — <c>composed</c> with its final text; <c>skipped</c>
+/// or <c>failed</c> with the engine's sentence; or, in a job that failed first, <c>unsettled</c>,
+/// with the held reason when it was held and null otherwise.
+/// </summary>
 internal sealed record CapturedDeliverable(string Id, string State, string? Reason, string? Text);
 
 /// <summary>
@@ -31,7 +35,9 @@ internal sealed record CapturedDeliverable(string Id, string State, string? Reas
 /// replaced by a reply: the scenario's pinned output, or a stub made from the node's format
 /// (<see cref="WorkflowStubOutputs"/>, seeded by the instance key). What is captured is what
 /// production would have SENT and what the entity holds at the end. A job that fails is a
-/// result; a pin that never ran, or a generated stub the engine flags, is refused.
+/// result. Refused, whatever the job's status: an activity the runner does not answer, a fault
+/// of the runner's own (only production's exceptions reach the orchestrator as failures), a pin
+/// that never ran, a generated stub the engine flags, and a capture that holds the job's id.
 /// </summary>
 internal sealed class CaptureRun
 {
@@ -41,6 +47,16 @@ internal sealed class CaptureRun
     private static readonly DateTime Now = new(2026, 11, 10, 12, 0, 0, DateTimeKind.Utc);
 
     private static readonly DateTimeOffset SignatureUpdated = new(2026, 11, 1, 0, 0, 0, TimeSpan.Zero);
+
+    /// <summary>The activities the runner answers; any other the orchestrator calls refuses the run.</summary>
+    internal static readonly IReadOnlySet<string> Answered = new HashSet<string>(StringComparer.Ordinal)
+    {
+        ConsultGenerationActivityNames.RunPromptNode,
+        ConsultGenerationActivityNames.RunComputedNode,
+        ConsultGenerationActivityNames.DecideFlowItem,
+        ConsultGenerationActivityNames.RenderDeliverableMacros,
+        ConsultGenerationActivityNames.DecideDeliverables,
+    };
 
     private readonly ConsultGenerationJobEntity _entity;
 
@@ -84,11 +100,15 @@ internal sealed class CaptureRun
     /// <summary>Each rendered node's output — its render — by instance key in order.</summary>
     public IReadOnlyList<(string Key, string Text)> Renders { get; }
 
-    /// <summary>The deliverables the run settled, in the manifest's order.</summary>
+    /// <summary>Every deliverable of the manifest, in its order.</summary>
     public IReadOnlyList<CapturedDeliverable> Deliverables { get; }
 
     /// <summary>Starts <paramref name="package"/> as <paramref name="scenario"/> says and runs it to the end.</summary>
-    public static async Task<CaptureRun> StartAsync(WorkflowPackage package, CaptureScenario scenario)
+    public static Task<CaptureRun> StartAsync(WorkflowPackage package, CaptureScenario scenario) =>
+        StartAsync(package, scenario, new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App));
+
+    /// <summary>The same, through another door — how a test reaches an activity the runner does not answer.</summary>
+    internal static async Task<CaptureRun> StartAsync(WorkflowPackage package, CaptureScenario scenario, ConsultGenerationJobOrigin origin)
     {
         // ---- the starter, its stores substituted (EngineRun's wiring) ------------------------------
         var packageStore = Substitute.For<IWorkflowPackageStore>();
@@ -156,7 +176,7 @@ internal sealed class CaptureRun
             : null;
 
         var outcome = await starter.StartAsync(client, new ConsultGenerationRequest(null, Inputs: inputs, MacroChoices: macroChoices), "user-1",
-            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App), CancellationToken.None);
+            origin, CancellationToken.None);
         if (outcome.Error is not null || input is null || initialize is null)
         {
             throw new InvalidOperationException($"The job did not start: {outcome.Error}.");
@@ -176,26 +196,28 @@ internal sealed class CaptureRun
         var prompts = new List<(string Key, string Text)>();
         var renders = new List<(string Key, string Text)>();
         var flagged = new List<(string Key, string Sentence)>();
+        var faults = new List<string>();
         var context = new FakeOrchestrationContext(jobId, FakeOrchestrationContext.RoundTrip<ConsultGenerationOrchestrationInput>(input), entity, Now)
             .On(ConsultGenerationActivityNames.RunPromptNode, payload =>
-                RunPromptNode((ConsultPromptNodeActivityInput)payload!, package, scenario, outputs, prompts, renders, flagged))
+                Guard<ConsultPromptNodeActivityInput, NodeRunResult>(ConsultGenerationActivityNames.RunPromptNode, payload, faults,
+                    node => RunPromptNode(node, package, scenario, outputs, prompts, renders, flagged)))
             .On(ConsultGenerationActivityNames.RunComputedNode, payload =>
-            {
-                // A let alone resolves its package (RunComputedNodeActivity.RunAsync).
-                var node = (ConsultComputedNodeActivityInput)payload!;
-                return RunComputedNodeActivity.Compute(node, node.Op == WorkflowLetAt30.Op ? package : null);
-            })
+                Guard<ConsultComputedNodeActivityInput, NodeRunResult>(ConsultGenerationActivityNames.RunComputedNode, payload, faults,
+                    // A let alone resolves its package (RunComputedNodeActivity.RunAsync).
+                    node => RunComputedNodeActivity.Compute(node, node.Op == WorkflowLetAt30.Op ? package : null)))
             .On(ConsultGenerationActivityNames.DecideFlowItem, payload =>
-                DecideFlowItemActivity.Decide(package, (ConsultDecideFlowItemInput)payload!))
+                Guard<ConsultDecideFlowItemInput, ConsultFlowItemDecision>(ConsultGenerationActivityNames.DecideFlowItem, payload, faults,
+                    decide => DecideFlowItemActivity.Decide(package, decide)))
             .On(ConsultGenerationActivityNames.RenderDeliverableMacros, payload =>
-                RenderDeliverableMacrosActivity.Render((ConsultDeliverableMacrosActivityInput)payload!, package))
+                Guard<ConsultDeliverableMacrosActivityInput, ConsultDeliverableMacrosResult>(ConsultGenerationActivityNames.RenderDeliverableMacros, payload, faults,
+                    macros => RenderDeliverableMacrosActivity.Render(macros, package)))
             .On(ConsultGenerationActivityNames.DecideDeliverables, payload =>
-            {
-                var decide = (ConsultDecideActivityInput)payload!;
-                var supplied = decide.SuppliedInputs?.ToDictionary(pair => pair.Key, pair => ConsultInputValue.FromJson(pair.Value), StringComparer.Ordinal);
-                return DecideActivity.Decide(package, supplied, decide.Classifications, TestFormats.Catalog,
-                    decide.EffectiveInputs, decide.NodeTexts, decide.Run, decide.Profile);
-            });
+                Guard<ConsultDecideActivityInput, ConsultDecisionResult>(ConsultGenerationActivityNames.DecideDeliverables, payload, faults, decide =>
+                {
+                    var supplied = decide.SuppliedInputs?.ToDictionary(pair => pair.Key, pair => ConsultInputValue.FromJson(pair.Value), StringComparer.Ordinal);
+                    return DecideActivity.Decide(package, supplied, decide.Classifications, TestFormats.Catalog,
+                        decide.EffectiveInputs, decide.NodeTexts, decide.Run, decide.Profile);
+                }));
 
         try
         {
@@ -207,7 +229,17 @@ internal sealed class CaptureRun
             // for Durable to record. The job's failure is the capture's; nothing is lost.
         }
 
-        var run = new CaptureRun(context, entity, outputs, prompts, renders, Settled(package, (ConsultGenerationJobState)StateProperty.GetValue(entity)!));
+        // The orchestrator's own catches can swallow the fake's refusal of an unanswered
+        // activity (stage one's, the reply leg's), so the calls are read back, whatever the status.
+        if (context.Calls.FirstOrDefault(call => call.Kind == "activity" && !Answered.Contains(call.Name)) is { Name: { } unanswered })
+        {
+            throw new InvalidOperationException($"The test answers no activity '{unanswered}'.");
+        }
+
+        if (faults.Count > 0)
+        {
+            throw new InvalidOperationException($"The capture runner failed, not the engine: {faults[0]}");
+        }
 
         foreach (var key in scenario.Outputs.Keys)
         {
@@ -222,7 +254,69 @@ internal sealed class CaptureRun
             throw new InvalidOperationException($"Generated stub for {flagged[0].Key} is not valid for its format: {flagged[0].Sentence}");
         }
 
+        var run = new CaptureRun(context, entity, outputs, prompts, renders, Settled(package, (ConsultGenerationJobState)StateProperty.GetValue(entity)!));
+
+        if (WhereTheJobIdIs(run, jobId) is { } where)
+        {
+            throw new InvalidOperationException($"The capture holds the job's id ({where}), which differs on every run; a package read run.job.");
+        }
+
         return run;
+    }
+
+    /// <summary>
+    /// One activity answered: the payload taken as its type and the result checked to survive
+    /// the fake's JSON round trip — the runner's own faults, recorded and refused after the run —
+    /// around <paramref name="production"/>, whose exceptions reach the orchestrator untouched
+    /// as the activity's failure, the way production's would.
+    /// </summary>
+    internal static TResult Guard<TInput, TResult>(string activity, object? payload, List<string> faults, Func<TInput, TResult> production)
+    {
+        if (payload is not TInput input)
+        {
+            throw Fault(faults, $"activity '{activity}' was handed {payload?.GetType().Name ?? "null"}, not {typeof(TInput).Name}.");
+        }
+
+        TResult result;
+        try
+        {
+            result = production(input);
+        }
+        catch (HarnessFault fault)
+        {
+            throw Fault(faults, fault.Message);
+        }
+
+        try
+        {
+            FakeOrchestrationContext.RoundTrip<TResult>(result);
+        }
+        catch (Exception ex)
+        {
+            throw Fault(faults, $"activity '{activity}''s result does not survive the JSON round trip: {ex.Message}");
+        }
+
+        return result;
+    }
+
+    private static HarnessFault Fault(List<string> faults, string sentence)
+    {
+        faults.Add(sentence);
+        return new HarnessFault(sentence);
+    }
+
+    /// <summary>Where a captured text holds the job's id, whole or as its first eight characters; null when none does.</summary>
+    private static string? WhereTheJobIdIs(CaptureRun run, string jobId)
+    {
+        bool Holds(string? text) => text is not null
+            && (text.Contains(jobId, StringComparison.OrdinalIgnoreCase) || text.Contains(jobId[..8], StringComparison.OrdinalIgnoreCase));
+
+        return run.Prompts.Where(prompt => Holds(prompt.Text)).Select(prompt => $"prompt {prompt.Key}")
+            .Concat(run.Renders.Where(render => Holds(render.Text)).Select(render => $"render {render.Key}"))
+            .Concat(run.Outputs.Where(output => Holds(output.Value?.ToJsonString())).Select(output => $"output {output.Key}"))
+            .Concat(run.Deliverables.Where(deliverable => Holds(deliverable.Text) || Holds(deliverable.Reason)).Select(deliverable => $"deliverable {deliverable.Id}"))
+            .Concat(Holds(run.Failure) ? ["failure"] : Array.Empty<string>())
+            .FirstOrDefault();
     }
 
     /// <summary>
@@ -241,7 +335,7 @@ internal sealed class CaptureRun
     {
         if (node.Format is null)
         {
-            throw new NotSupportedException($"Prompt node '{node.NodeId}' carries no format; the capture runs the 25-and-later path only.");
+            throw new HarnessFault($"prompt node '{node.NodeId}' carries no format; the capture runs the 25-and-later path only.");
         }
 
         if (package.Prompts is null || !package.Prompts.TryGetValue(node.PromptId, out var prompt))
@@ -294,7 +388,10 @@ internal sealed class CaptureRun
         return ConsultNodeCompletion.Complete(settled, node, package, trace.PromptReads.ToHashSet(StringComparer.Ordinal));
     }
 
-    /// <summary>Each deliverable of the manifest the run settled — composed, skipped or failed — in the manifest's order.</summary>
+    /// <summary>
+    /// Every deliverable of the manifest, in its order: composed, skipped or failed as the record
+    /// says; in a job that failed first, unsettled. A completed job leaves none unsettled.
+    /// </summary>
     private static List<CapturedDeliverable> Settled(WorkflowPackage package, ConsultGenerationJobState state)
     {
         var deliverables = new List<CapturedDeliverable>();
@@ -313,10 +410,22 @@ internal sealed class CaptureRun
             {
                 deliverables.Add(new CapturedDeliverable(deliverable.Id, "failed", failed.Reason, null));
             }
+            else if (state.Status == ConsultGenerationJobStatuses.Completed)
+            {
+                throw new InvalidOperationException($"Deliverable '{deliverable.Id}' is neither composed, skipped nor failed in a completed job.");
+            }
+            else
+            {
+                var held = state.HeldDocuments?.FirstOrDefault(d => d.ResultId == deliverable.Id);
+                deliverables.Add(new CapturedDeliverable(deliverable.Id, "unsettled", held?.Reason, null));
+            }
         }
 
         return deliverables;
     }
+
+    /// <summary>A refusal of the runner's own: it never reaches the orchestrator as an engine failure.</summary>
+    private sealed class HarnessFault(string message) : Exception(message);
 
     private static bool IsUnanswered(Exception ex) =>
         ex is InvalidOperationException && ex.Message.StartsWith("The test answers no activity '", StringComparison.Ordinal);

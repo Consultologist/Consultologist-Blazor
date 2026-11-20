@@ -202,6 +202,61 @@ public class CaptureRunTests
         Assert.Contains(run.Prompts, prompt => prompt.Key == "extract");
         Assert.Contains(run.Prompts, prompt => prompt.Key == "assessment");
         Assert.Contains(run.Outputs, output => output.Key == "assessment" && output.Value!.GetValue<string>() == "");
+        // Every deliverable has its row: the job failed before this one settled.
+        Assert.Equal(new CapturedDeliverable("consult", "unsettled", null, null), Assert.Single(run.Deliverables));
+    }
+
+    [Fact]
+    public async Task AnActivityTheRunnerDoesNotAnswer_IsRefused_EvenWhenProductionSwallowsIt()
+    {
+        // A reply address makes the orchestrator call the reply leg at the end; production's own
+        // catch swallows its failure, so only the calls read back can say it was not answered.
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CaptureRun.StartAsync(Minimal(), Scenario(),
+            new ConsultGenerationJobOrigin(ConsultGenerationJobSources.App, ReplyToAddress: "margaret.okafor@example.org")));
+
+        Assert.Equal($"The test answers no activity '{Email.SendEmailIntakeReplyActivity.Name}'.", refused.Message);
+    }
+
+    [Fact]
+    public void AFaultOfTheRunner_IsRecorded_AndProductionsExceptionsPassUntouched()
+    {
+        var faults = new List<string>();
+
+        Assert.ThrowsAny<Exception>(() =>
+            CaptureRun.Guard<ConsultPromptNodeActivityInput, NodeRunResult>("run-prompt-node", "not a payload", faults, _ => throw new InvalidOperationException("unreached")));
+        Assert.Equal(["activity 'run-prompt-node' was handed String, not ConsultPromptNodeActivityInput."], faults);
+
+        faults.Clear();
+        var production = new InvalidOperationException("Node 'plan' reply is empty: No plan.");
+        var thrown = Assert.Throws<InvalidOperationException>(() =>
+            CaptureRun.Guard<string, NodeRunResult>("run-prompt-node", "payload", faults, _ => throw production));
+        Assert.Same(production, thrown);
+        Assert.Empty(faults);
+        Assert.Equal("ok", CaptureRun.Guard<string, string>("run-computed-node", "payload", faults, _ => "ok"));
+        Assert.Empty(faults);
+    }
+
+    [Fact]
+    public async Task APromptReadingTheRunsJob_IsRefused()
+    {
+        var package = Minimal(files: files => files["prompts/plan.md"] = "Plan the sections this referral needs (run {{ run.job }}): {{ input.notes }}");
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CaptureRun.StartAsync(package, Scenario()));
+
+        Assert.Equal("The capture holds the job's id (prompt plan), which differs on every run; a package read run.job.", refused.Message);
+    }
+
+    [Theory]
+    [InlineData("""{ "description": [1], "inputs": {}, "profile": { "name": null, "signature": null }, "macroChoices": {}, "outputs": {} }""", "description[0]")]
+    [InlineData("""{ "description": null, "inputs": {}, "profile": { "name": 7, "signature": null }, "macroChoices": {}, "outputs": {} }""", "profile.name")]
+    [InlineData("""{ "description": null, "inputs": {}, "profile": { "name": null, "signature": true }, "macroChoices": {}, "outputs": {} }""", "profile.signature")]
+    [InlineData("""{ "description": null, "inputs": {}, "profile": { "name": null, "signature": null }, "macroChoices": { "closing": "yes" }, "outputs": {} }""", "macroChoices.closing")]
+    [InlineData("""{ "description": null, "inputs": {}, "profile": { "name": null, "signature": null }, "macroChoices": {}, "outputs": { "plan": null } }""", "outputs.plan is null; pin a value or remove the key.")]
+    public void AMemberOfTheWrongType_IsRefusedByName(string json, string named)
+    {
+        var refused = Assert.Throws<InvalidDataException>(() => CaptureScenario.Read(json));
+
+        Assert.Contains(named, refused.Message, StringComparison.Ordinal);
     }
 
     [Fact]

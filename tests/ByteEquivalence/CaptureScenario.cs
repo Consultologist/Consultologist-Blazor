@@ -31,14 +31,25 @@ internal sealed record CaptureScenario(
             root["description"] switch
             {
                 null => null,
-                JsonArray lines => lines.Select(line => line?.GetValue<string>() ?? throw new InvalidDataException("A description line is a string.")).ToList(),
+                JsonArray lines => lines.Select((line, i) => Text(line, $"description[{i}]") ?? throw new InvalidDataException($"The scenario's description[{i}] is a string.")).ToList(),
                 _ => throw new InvalidDataException("The scenario's description is an array of lines, or null."),
             },
-            Map(root, "inputs", value => value?.DeepClone()),
-            new CaptureProfile(profile["name"]?.GetValue<string>(), profile["signature"]?.GetValue<string>()),
-            Map(root, "macroChoices", value => value?.GetValue<bool>() ?? throw new InvalidDataException("A macro choice is true or false.")),
-            Map(root, "outputs", value => value?.DeepClone()));
+            Map(root, "inputs", (_, value) => value?.DeepClone()),
+            new CaptureProfile(Text(profile["name"], "profile.name"), Text(profile["signature"], "profile.signature")),
+            Map(root, "macroChoices", (id, value) => value is JsonValue choice && choice.TryGetValue(out bool chosen)
+                ? chosen
+                : throw new InvalidDataException($"The scenario's macroChoices.{id} is true or false.")),
+            Map<JsonNode?>(root, "outputs", (key, value) => value?.DeepClone()
+                ?? throw new InvalidDataException($"The scenario's outputs.{key} is null; pin a value or remove the key.")));
     }
+
+    /// <summary>A string member, or null; anything else is refused by name.</summary>
+    private static string? Text(JsonNode? value, string member) => value switch
+    {
+        null => null,
+        JsonValue text when text.TryGetValue(out string? s) => s,
+        _ => throw new InvalidDataException($"The scenario's {member} is a string or null."),
+    };
 
     private static void Exactly(JsonObject obj, string[] members, string what)
     {
@@ -59,9 +70,9 @@ internal sealed record CaptureScenario(
         }
     }
 
-    private static IReadOnlyDictionary<string, T> Map<T>(JsonObject root, string member, Func<JsonNode?, T> read) =>
+    private static IReadOnlyDictionary<string, T> Map<T>(JsonObject root, string member, Func<string, JsonNode?, T> read) =>
         (root[member] as JsonObject ?? throw new InvalidDataException($"The scenario's {member} is an object."))
-            .ToDictionary(pair => pair.Key, pair => read(pair.Value), StringComparer.Ordinal);
+            .ToDictionary(pair => pair.Key, pair => read(pair.Key, pair.Value), StringComparer.Ordinal);
 }
 
 /// <summary>#1498: the fixed fictional profile a scenario runs under — the display name and the chosen signature block's text.</summary>
