@@ -12,16 +12,14 @@ namespace Consultologist.Api.Tests;
 /// (Scriban 7.2.5, the invariant culture, the JSON member names, <c>value</c> the piped value) and
 /// compared byte for byte with <see cref="ConceptRenderers"/> on the same concepts.
 ///
-/// <c>concept_context</c> prints the concept's <c>source</c>, which the C# renderer takes from the
-/// node (ConceptOutputContract.Deserialize stamps it) and which a concept_list value does not
-/// carry; a template reads only <c>value</c>, so it prints nothing there. The reference is
-/// therefore called with an empty source (see <see cref="ContextSource"/>).
+/// <c>concept_context</c> prints each concept's <c>source</c>, which the stored concept list carries
+/// (ConceptOutputContract.Deserialize stamps it from the producing node) though the concept_list
+/// format does not declare it. Each case holds the source per concept, and the template and the C#
+/// renderer both see that same source.
 /// </summary>
 public class V31BuiltInRenderersTests
 {
-    private const string ContextSource = "";
-
-    private sealed record Concept(string Term, string? Type, string? Id, bool IsSnomedConcept, bool IsActive, string? Support);
+    private sealed record Concept(string Term, string? Type, string? Id, bool IsSnomedConcept, bool IsActive, string? Support, string Source = ConceptSamples.Source);
 
     private static readonly IReadOnlyDictionary<string, Concept[]> Cases = new Dictionary<string, Concept[]>
     {
@@ -33,10 +31,13 @@ public class V31BuiltInRenderersTests
         ["without support"] = [new("Tamoxifen therapy", "procedure", "75367002", true, true, null)],
         ["empty support"] = [new("Tamoxifen therapy", "procedure", "75367002", true, true, "")],
         ["whitespace support"] = [new("Tamoxifen therapy", "procedure", "75367002", true, true, " \t ")],
+        ["tab and newline only support"] = [new("Tamoxifen therapy", "procedure", "75367002", true, true, "\t\r\n\t")],
+        ["different source"] = [new("Tamoxifen therapy", "procedure", "75367002", true, true, "adjuvant", "typical")],
+        ["empty source"] = [new("Tamoxifen therapy", "procedure", "75367002", true, true, null, "")],
         ["three mixed"] =
         [
             new("Malignant neoplasm of breast", "disorder", "254837009", true, true, "stage II"),
-            new("Diabetes mellitus", "disorder", "73211009", true, false, "  long-standing  "),
+            new("Diabetes mellitus", "disorder", "73211009", true, false, "  long-standing  ", "draft"),
             new("Family support strong", null, null, false, false, null),
         ],
         ["markdown characters"] = [new("*Bold* _term_ `code` [link](x) # | <b>", "dis*order*", "123", true, true, "> quote {{ not a tag }}")],
@@ -55,7 +56,7 @@ public class V31BuiltInRenderersTests
         Assert.Equal(ConceptRenderers.Context(ToConcepts(Cases[name])), Render("concept_context", Cases[name]));
 
     private static List<ClinicalConcept> ToConcepts(Concept[] concepts) => concepts
-        .Select(c => new ClinicalConcept(c.Term, c.Type ?? "", c.Id ?? "", c.IsSnomedConcept, c.IsActive, ContextSource, c.Support))
+        .Select(c => new ClinicalConcept(c.Term, c.Type ?? "", c.Id ?? "", c.IsSnomedConcept, c.IsActive, c.Source, c.Support))
         .ToList();
 
     private static string Render(string rendererId, Concept[] concepts)
@@ -71,6 +72,7 @@ public class V31BuiltInRenderersTests
                 ["isSnomedConcept"] = c.IsSnomedConcept,
                 ["isActive"] = c.IsActive,
                 ["support"] = c.Support,
+                ["source"] = c.Source,
             });
         }
 
