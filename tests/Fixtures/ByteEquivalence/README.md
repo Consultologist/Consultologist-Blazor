@@ -85,5 +85,10 @@ Every deliverable of a package with scenarios is `composed` in at least one of i
 every node with a prompt has a `prompts` or `renders` entry in one. A deliverable or node no
 scenario can reach on today's engine goes in the test's exception table with the reason.
 
-A start the engine refuses (no deliverable applies, or a fanned input has no entries) is not a
-run, so it has no capture.
+A start the engine refuses is captured too, when it is the refusal a well-formed request can get:
+`NoApplicableDeliverable` (no deliverable's condition holds, or a fanned input has no entries).
+Its capture has `status` `Refused` (the runner's word, not a job status), `failure`
+`NoApplicableDeliverable: <the starter's sentence>`, no outputs, prompts or renders, and every
+deliverable `unsettled`. Any other start error (inputs that do not fit the manifest, an undeclared
+macro choice, a rate limit) throws, so a mistake in a scenario is never frozen as a refusal. A
+refused capture composes nothing, so it adds nothing to the coverage rules.

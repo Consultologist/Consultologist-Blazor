@@ -38,6 +38,15 @@ internal sealed record CapturedDeliverable(string Id, string State, string? Reas
 /// result. Refused, whatever the job's status: an activity the runner does not answer, a fault
 /// of the runner's own (only production's exceptions reach the orchestrator as failures), a pin
 /// that never ran, a generated stub the engine flags, and a capture that holds the job's id.
+/// A start the engine refuses is a result too, but only the refusal a well-formed request can
+/// get from the engine itself: <c>NoApplicableDeliverable</c> (no deliverable's condition holds,
+/// or a fanned input has no entries — #434, the one refusal that is recorded as a job born
+/// Failed). It is captured as <see cref="Refused"/>. Every other start error throws, because it
+/// is the scenario's or the harness's: the inputs' shape or content (<c>InputsMismatch</c>,
+/// <c>InputWithoutContent</c>, <c>InputTooLong</c>, the input and form references), a macro
+/// choice the package does not offer (<c>MacroChoiceMismatch</c>), and the account or the
+/// release (<c>RateLimited</c>, <c>Held</c>) — so a typo in a scenario is never frozen as a
+/// refusal.
 /// </summary>
 internal sealed class CaptureRun
 {
@@ -58,38 +67,52 @@ internal sealed class CaptureRun
         ConsultGenerationActivityNames.DecideDeliverables,
     };
 
-    private readonly ConsultGenerationJobEntity _entity;
+    /// <summary>
+    /// The runner's status for a start the engine refused. Not a <see cref="ConsultGenerationJobStatuses"/>
+    /// value: no orchestration ran, so there is no job status to read.
+    /// </summary>
+    public const string Refused = "Refused";
+
+    private readonly FakeOrchestrationContext? _context;
+
+    private readonly ConsultGenerationJobEntity? _entity;
+
+    private readonly string? _refusal;
 
     private CaptureRun(
-        FakeOrchestrationContext context,
-        ConsultGenerationJobEntity entity,
+        FakeOrchestrationContext? context,
+        ConsultGenerationJobEntity? entity,
+        string? refusal,
         IReadOnlyList<(string Key, JsonNode? Value)> outputs,
         IReadOnlyList<(string Key, string Text)> prompts,
         IReadOnlyList<(string Key, string Text)> renders,
         IReadOnlyList<CapturedDeliverable> deliverables)
     {
-        Context = context;
+        _context = context;
         _entity = entity;
+        _refusal = refusal;
         Outputs = outputs;
         Prompts = prompts;
         Renders = renders;
         Deliverables = deliverables;
     }
 
-    public FakeOrchestrationContext Context { get; }
+    public FakeOrchestrationContext Context => _context ?? throw new InvalidOperationException("A refused start ran no orchestration.");
 
-    public ConsultGenerationJobState State => (ConsultGenerationJobState)StateProperty.GetValue(_entity)!;
+    public ConsultGenerationJobState State =>
+        (ConsultGenerationJobState)StateProperty.GetValue(_entity ?? throw new InvalidOperationException("A refused start has no job entity."))!;
 
-    /// <summary>The job's status (<see cref="ConsultGenerationJobStatuses"/>).</summary>
-    public string Status => State.Status;
+    /// <summary>The job's status (<see cref="ConsultGenerationJobStatuses"/>), or <see cref="Refused"/> when the start was refused.</summary>
+    public string Status => _refusal is null ? State.Status : Refused;
 
     /// <summary>
     /// The job's failure sentence, null unless it failed: the failed node's (<c>MarkNodeFailed</c>),
-    /// else the finalised job's, else the deciding stage's.
+    /// else the finalised job's, else the deciding stage's. For a refused start, the starter's
+    /// error and its sentence, <c>&lt;error&gt;: &lt;detail&gt;</c>.
     /// </summary>
-    public string? Failure => Status == ConsultGenerationJobStatuses.Failed
+    public string? Failure => _refusal ?? (Status == ConsultGenerationJobStatuses.Failed
         ? State.AnalysisError ?? State.FailureError ?? State.StartFailure
-        : null;
+        : null);
 
     /// <summary>Every reply served to a prompt node, pinned or generated, by instance key in served order.</summary>
     public IReadOnlyList<(string Key, JsonNode? Value)> Outputs { get; }
@@ -177,6 +200,11 @@ internal sealed class CaptureRun
 
         var outcome = await starter.StartAsync(client, new ConsultGenerationRequest(null, Inputs: inputs, MacroChoices: macroChoices), "user-1",
             origin, CancellationToken.None);
+        if (outcome.Error == ConsultGenerationJobStartError.NoApplicableDeliverable)
+        {
+            return Checked(Refusal(package, scenario, $"{outcome.Error}: {outcome.ErrorDetail}"), outcome.JobId);
+        }
+
         if (outcome.Error is not null || input is null || initialize is null)
         {
             throw new InvalidOperationException($"The job did not start: {outcome.Error}.");
@@ -254,9 +282,29 @@ internal sealed class CaptureRun
             throw new InvalidOperationException($"Generated stub for {flagged[0].Key} is not valid for its format: {flagged[0].Sentence}");
         }
 
-        var run = new CaptureRun(context, entity, outputs, prompts, renders, Settled(package, (ConsultGenerationJobState)StateProperty.GetValue(entity)!));
+        return Checked(new CaptureRun(context, entity, null, outputs, prompts, renders,
+            Settled(package, (ConsultGenerationJobState)StateProperty.GetValue(entity)!)), jobId);
+    }
 
-        if (WhereTheJobIdIs(run, jobId) is { } where)
+    /// <summary>
+    /// A start the engine refused: no reply served, no prompt sent, nothing rendered, and every
+    /// deliverable of the manifest unsettled. A pin can never have run, so any pin is refused.
+    /// </summary>
+    private static CaptureRun Refusal(WorkflowPackage package, CaptureScenario scenario, string refusal)
+    {
+        if (scenario.Outputs.Keys.FirstOrDefault() is { } key)
+        {
+            throw new InvalidOperationException($"Scenario pins {key}, which did not run.");
+        }
+
+        return new CaptureRun(null, null, refusal, [], [], [],
+            package.Manifest.EffectiveDeliverables.Select(deliverable => new CapturedDeliverable(deliverable.Id, "unsettled", null, null)).ToList());
+    }
+
+    /// <summary>The run, unless a captured text holds the job's id.</summary>
+    private static CaptureRun Checked(CaptureRun run, string? jobId)
+    {
+        if (jobId is not null && WhereTheJobIdIs(run, jobId) is { } where)
         {
             throw new InvalidOperationException($"The capture holds the job's id ({where}), which differs on every run; a package read run.job.");
         }

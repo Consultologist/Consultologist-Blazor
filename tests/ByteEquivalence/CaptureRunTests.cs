@@ -207,6 +207,39 @@ public class CaptureRunTests
     }
 
     [Fact]
+    public async Task AStartTheEngineRefuses_IsCaptured_WithEveryDeliverableUnsettled()
+    {
+        // No deliverable's condition holds for these inputs: the starter refuses the job before
+        // any model call (#434). That refusal is today's engine's answer, so it is a result.
+        var package = Minimal(root => root["deliverables"]![0]!["if"] = "input.kind == \"follow_up\"");
+
+        var run = await CaptureRun.StartAsync(package, Scenario());
+
+        Assert.Equal(CaptureRun.Refused, run.Status);
+        Assert.StartsWith("NoApplicableDeliverable: No document applies to these inputs. ", run.Failure, StringComparison.Ordinal);
+        Assert.Empty(run.Outputs);
+        Assert.Empty(run.Prompts);
+        Assert.Empty(run.Renders);
+        Assert.Equal(new CapturedDeliverable("consult", "unsettled", null, null), Assert.Single(run.Deliverables));
+        var root = JsonNode.Parse(PackageCapture.Write("general", null, "refused", run))!;
+        Assert.Equal("Refused", root["status"]!.GetValue<string>());
+        Assert.Equal(run.Failure, root["failure"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public async Task AStartRefusedForTheScenariosInputs_Throws()
+    {
+        // A required input left out is the scenario's mistake, not the engine's refusal.
+        var scenario = CaptureScenario.Read("""
+            { "description": null, "inputs": { "kind": "new" }, "profile": { "name": "Dr A. Sample", "signature": null }, "macroChoices": {}, "outputs": {} }
+            """);
+
+        var refused = await Assert.ThrowsAsync<InvalidOperationException>(() => CaptureRun.StartAsync(Minimal(), scenario));
+
+        Assert.StartsWith("The job did not start: InputsMismatch", refused.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task AnActivityTheRunnerDoesNotAnswer_IsRefused_EvenWhenProductionSwallowsIt()
     {
         // A reply address makes the orchestrator call the reply leg at the end; production's own
