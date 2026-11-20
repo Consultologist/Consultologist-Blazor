@@ -1,4 +1,3 @@
-using System.Security.Cryptography;
 using System.Text.Json;
 
 namespace Consultologist.Api.Tests.ByteEquivalence;
@@ -61,7 +60,7 @@ public class VendoredPackagesTests
                 var path = Path.Combine(ByteEquivalenceFixtures.Root, "vendored", package.Name, relative);
 
                 Assert.True(File.Exists(path), $"{package.Name}/{relative} is indexed but not on disk.");
-                Assert.Equal(hash, "sha256:" + Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path))));
+                Assert.Equal(hash, ByteEquivalenceFixtures.HashOf(File.ReadAllBytes(path)));
             }
         }
     }

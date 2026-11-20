@@ -1,4 +1,3 @@
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Jobs;
@@ -19,7 +18,6 @@ namespace Consultologist.Api.Tests.ByteEquivalence;
 /// </summary>
 public class ConditionVectorTests
 {
-    private const string ExpressionsPath = "conditions/expressions.json";
     private const string VectorsPath = "conditions/vectors.json";
 
     /// <summary>The left cells of § 2.2's table, as written (a cell's <c>\|</c> is the table's escape of <c>|</c>).</summary>
@@ -54,13 +52,6 @@ public class ConditionVectorTests
 
     /// <summary>The § 2.2 expression whose whitespace-only case is the documented difference from <c>blank(x)</c>.</summary>
     private const string NotOnTextId = "row.not-text.node";
-
-    private static readonly JsonSerializerOptions Style = new()
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        NewLine = "\n",
-    };
 
     private sealed record Expression(string Id, string Kind, string Text, string? LetType, string Origin, string? Note, IReadOnlyList<(string Read, ConditionScopes.ReadType Type)> Reads);
 
@@ -293,7 +284,7 @@ public class ConditionVectorTests
     {
         var vectors = new JsonArray(Expressions().Select(e => (JsonNode?)Vector(e)).ToArray());
 
-        ByteEquivalenceFixtures.Matches(VectorsPath, new JsonObject { ["vectors"] = vectors }.ToJsonString(Style) + "\n");
+        ByteEquivalenceFixtures.Matches(VectorsPath, ByteEquivalenceFixtures.WriteJson(new JsonObject { ["vectors"] = vectors }));
     }
 
     // ---- !a on a text, at 30 ------------------------------------------------------------

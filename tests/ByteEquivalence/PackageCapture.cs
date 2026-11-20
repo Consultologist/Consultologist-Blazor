@@ -1,5 +1,3 @@
-using System.Text.Encodings.Web;
-using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Consultologist.Api.Tests.ByteEquivalence;
@@ -12,13 +10,6 @@ namespace Consultologist.Api.Tests.ByteEquivalence;
 /// </summary>
 internal static class PackageCapture
 {
-    private static readonly JsonSerializerOptions Style = new()
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        NewLine = "\n",
-    };
-
     /// <summary>The capture document, in the capture JSON style: members in order, <c>\n</c> newlines, one trailing <c>\n</c>.</summary>
     public static string Write(string package, string? tag, string scenario, CaptureRun run)
     {
@@ -48,7 +39,7 @@ internal static class PackageCapture
             }).ToArray()),
         };
 
-        return document.ToJsonString(Style) + "\n";
+        return ByteEquivalenceFixtures.WriteJson(document);
     }
 
     private static JsonArray Texts(IReadOnlyList<(string Key, string Text)> texts) =>

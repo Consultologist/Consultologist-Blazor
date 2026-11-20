@@ -1,4 +1,3 @@
-using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.PackageFormat;
@@ -17,13 +16,6 @@ namespace Consultologist.Api.Tests.ByteEquivalence;
 public class ConceptRendererCaptureTests
 {
     private const string FixturePath = "renderers/concept-renderers.json";
-
-    private static readonly JsonSerializerOptions Style = new()
-    {
-        WriteIndented = true,
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-        NewLine = "\n",
-    };
 
     private static readonly IReadOnlyList<(string Name, V31BuiltInRenderersTests.Concept[] Concepts)> AllCases =
     [
@@ -90,7 +82,7 @@ public class ConceptRendererCaptureTests
 
         var document = new JsonObject { ["cases"] = cases };
 
-        ByteEquivalenceFixtures.Matches(FixturePath, document.ToJsonString(Style) + "\n");
+        ByteEquivalenceFixtures.Matches(FixturePath, ByteEquivalenceFixtures.WriteJson(document));
     }
 
     [Theory]
@@ -115,7 +107,7 @@ public class ConceptRendererCaptureTests
     /// <summary>The cases as the fixture file holds them: concepts and each renderer's captured string.</summary>
     private static List<(string Name, V31BuiltInRenderersTests.Concept[] Concepts, Dictionary<string, string> Expected)> FixtureCases()
     {
-        using var document = JsonDocument.Parse(ByteEquivalenceFixtures.ReadText(Path.Combine(ByteEquivalenceFixtures.Root, "renderers", "concept-renderers.json")));
+        using var document = JsonDocument.Parse(ByteEquivalenceFixtures.ReadText(Path.Combine([ByteEquivalenceFixtures.Root, .. FixturePath.Split('/')])));
 
         return document.RootElement.GetProperty("cases").EnumerateArray()
             .Select(c => (

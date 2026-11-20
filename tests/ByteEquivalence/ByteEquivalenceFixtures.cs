@@ -1,7 +1,9 @@
 using System.Runtime.CompilerServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Encodings.Web;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 
@@ -35,7 +37,21 @@ internal static class ByteEquivalenceFixtures
     public static string ReadText(string path) => Strict.GetString(File.ReadAllBytes(path));
 
     /// <summary><c>sha256:</c> and the lowercase hex of SHA-256 over the text's UTF-8 bytes.</summary>
-    public static string HashOf(string text) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(Strict.GetBytes(text)));
+    public static string HashOf(string text) => HashOf(Strict.GetBytes(text));
+
+    /// <summary><c>sha256:</c> and the lowercase hex of SHA-256 over the bytes, as a file holds them.</summary>
+    public static string HashOf(byte[] bytes) => "sha256:" + Convert.ToHexStringLower(SHA256.HashData(bytes));
+
+    /// <summary>The capture JSON style: indented, relaxed escaping, <c>\n</c> newlines.</summary>
+    internal static readonly JsonSerializerOptions Style = new()
+    {
+        WriteIndented = true,
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        NewLine = "\n",
+    };
+
+    /// <summary>A fixture document's text in the capture JSON style, ending with one <c>\n</c>.</summary>
+    public static string WriteJson(JsonNode document) => document.ToJsonString(Style) + "\n";
 
     /// <summary>
     /// A package's manifest text and its other files keyed by path relative to the package, looked
