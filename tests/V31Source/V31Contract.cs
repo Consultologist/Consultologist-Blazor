@@ -26,6 +26,22 @@ internal static class V31Contract
         ["A02-008"] = "<subject> has no body; name the nodes that run in nodes.",
     };
 
+    /// <summary>Area 03's own sentences (<c>A03-NNN</c>), as plan area-03-types lists them.</summary>
+    private static readonly Dictionary<string, string> TypeAreaSentences = new()
+    {
+        ["A03-001"] = "Package format '<id>' is neither an object nor a list; a package defines object and array formats, and refers to built-in and catalogue formats by name.",
+        ["A03-002"] = "<Format> at <path> refers to #/$defs/<name>, which the file doesn't define.",
+        ["A03-003"] = "<Format> at <path> writes '<keyword>' as <what it is>; it is <what it must be>.",
+        ["A03-004"] = "<Format> at <path> uses '<keyword>', which belongs on <an object | a list | a string>.",
+        ["A03-005"] = "<Format> at <path> declares no type; write type, $ref or anyOf.",
+        ["A03-006"] = "<Format> at <path> is an object without '<keyword>'; every object writes properties, required and additionalProperties: false.",
+        ["A03-007"] = "<Format> at <path> is a list without items; write the one schema its items follow.",
+        ["A03-008"] = "<Format> at <path> writes anyOf with <n> member; a union has two or more.",
+        ["A03-009"] = "<Format> declares <keyword> '<value>' (accepted: <list>).",
+        ["A03-010"] = "<Subject> lists null but is not nullable; write \"type\": [\"string\", \"null\"], or remove null.",
+        ["A03-011"] = "Format '<id>' expands to more than 10,000 schemas through the formats it refers to; refer to fewer.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -61,6 +77,25 @@ internal static class V31Contract
         Items(JsonNode.Parse(File.ReadAllText(AgentsFormatsIndex()))!),
         Items(Json("renderers", "index.json")));
 
+    /// <summary>
+    /// #1500 (specVersion 31, area 03): the published <see cref="TypeRegistry"/>, read off the two
+    /// submodules: the built-in formats and renderers of <c>v31/</c>, and the agents catalogue's
+    /// formats, bindings and agents (<c>external/consultologist-agents/agents/v31/</c>). The type
+    /// tests and the refusal packages share it.
+    /// </summary>
+    public static TypeRegistry PublishedTypes()
+    {
+        var contract = System.IO.Path.GetDirectoryName(Path("bounds.json"))!;
+        var agents = System.IO.Path.GetDirectoryName(AgentsFormatsIndex())!;
+        var catalogue = System.IO.Path.GetDirectoryName(agents)!;
+        return TypeRegistry.Read(
+            System.IO.Path.Combine(contract, "formats"),
+            agents,
+            System.IO.Path.Combine(contract, "renderers", "index.json"),
+            System.IO.Path.Combine(catalogue, "bindings.json"),
+            System.IO.Path.Combine(catalogue, "agents.json"));
+    }
+
     /// <summary>The folder of the pinned suite's refusal packages; fails when the submodule is not checked out.</summary>
     public static string RefusalPackagesFolder()
     {
@@ -89,6 +124,11 @@ internal static class V31Contract
         if (refusal.Id.StartsWith("A02-", StringComparison.Ordinal))
         {
             Assert.True(AreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A03-", StringComparison.Ordinal))
+        {
+            Assert.True(TypeAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

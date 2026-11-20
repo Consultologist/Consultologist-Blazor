@@ -1,0 +1,13 @@
+<Project>
+  <!-- #1500 (specVersion 31, area 03): Corvus.Text.Json.Validator (referenced by
+       Consultologist.PackageFormat for value validation) brings the Corvus.Text.Json analyzers
+       (CTJ001 and the like) to every project that references the library, as style suggestions
+       about the code those projects already had. ExcludeAssets on the reference does not stop them
+       (the package also arrives through the Validator), so they are taken off the compiler's list
+       here, before it runs. -->
+  <Target Name="DropCorvusAnalyzers" BeforeTargets="CoreCompile">
+    <ItemGroup>
+      <Analyzer Remove="@(Analyzer)" Condition="'%(Analyzer.NuGetPackageId)' == 'Corvus.Text.Json'" />
+    </ItemGroup>
+  </Target>
+</Project>

@@ -12,6 +12,12 @@ public static partial class SourceParser
     private static readonly string[] FlowKinds = ["for", "while", "if", "case"];
 
     /// <summary>
+    /// #1500 (area 03, D14): the producers <c>constants.json</c> reserves for a later version
+    /// (<c>producers.reserved</c>); a node that declares one is S02-010, not S01-028.
+    /// </summary>
+    internal static readonly string[] ReservedProducers = ["grounded", "extracted", "attention"];
+
+    /// <summary>
     /// One listed child of a body: a file is a leaf, read here; a folder is a flow node, read through
     /// its <c>index.json</c> (<c>SourceParser.Flow.cs</c>). Null when the child was refused.
     /// </summary>
@@ -20,8 +26,9 @@ public static partial class SourceParser
 
     /// <summary>
     /// A node's <c>kind</c>, read before anything else: missing (S01-021), <c>null</c> (S01-022), not text
-    /// (A02-001), none of the eight (S02-007), or the wrong form for where it is written (a flow kind
-    /// in a file, A02-006; a leaf kind in a folder, A02-007, D21). Each ends the read: null.
+    /// (A02-001), <c>let</c> (S02-008, area 03's D14), none of the eight (S02-007), or the wrong form
+    /// for where it is written (a flow kind in a file, A02-006; a leaf kind in a folder, A02-007, D21).
+    /// Each ends the read: null.
     /// </summary>
     private static string? ReadKind(SourceWalk walk, JsonObject header, string word, string id, string path, bool inFolder)
     {
@@ -41,6 +48,12 @@ public static partial class SourceParser
         if (SourceLayout.Text(kindNode) is not { } kind)
         {
             walk.Refuse(SourceSentences.MemberWrongType(declaration, "kind", SourceMembers.Describe(kindNode), "text", path));
+            return null;
+        }
+
+        if (kind == "let")
+        {
+            walk.Refuse(FormatSentences.KindLet(id, path));
             return null;
         }
 
@@ -91,12 +104,19 @@ public static partial class SourceParser
             "computed" => isCheck ? SourceShapes.Check : SourceShapes.NodeComputed,
             _ => SourceShapes.NodeCall,
         };
-        SourceMembers.Check(header, shape, declaration, path, walk.Refusals);
+        // An inline format has part 02's own sentence, not A02-001 (area 03's D15): an agent's is S02-014
+        // here; a rendered node's (not a check's: area 08) is read on, and the type rules say S02-013.
+        var inlineFormat = header["format"] is JsonObject && (kind == "agent" || (kind == "rendered" && !isCheck));
+        SourceMembers.Check(header, shape, declaration, path, walk.Refusals, inlineFormat ? ["format"] : null);
+        if (inlineFormat && kind == "agent")
+            walk.Refuse(FormatSentences.AgentInlineFormat(member.Id, path));
 
         if (SourceLayout.Text(header["producer"]) is { } producer)
         {
             var expected = kind == "agent" ? "generated" : "computed";
-            if (producer != expected)
+            if (ReservedProducers.Contains(producer))
+                walk.Refuse(FormatSentences.ReservedProducer(member.Id, producer, path));
+            else if (producer != expected)
                 walk.Refuse(SourceSentences.ProducerDisagrees(word, key, kind, producer, expected, path));
         }
 

@@ -98,7 +98,10 @@ public static partial class SourceParser
         foreach (var other in foreign)
             walk.Refuse(SourceSentences.MemberOfAnotherKind(word, id, other, FlowOwners[other], path));
 
-        if (SourceLayout.Text(index["producer"]) is { } producer && producer != "computed")
+        var producer = SourceLayout.Text(index["producer"]);
+        if (producer != null && ReservedProducers.Contains(producer))
+            walk.Refuse(FormatSentences.ReservedProducer(id, producer, path));
+        else if (producer != null && producer != "computed")
             walk.Refuse(SourceSentences.ProducerDisagrees(isCheck ? "Check" : "Node", key, kind, producer, "computed", path));
 
         var bodies = new List<BodyList>();

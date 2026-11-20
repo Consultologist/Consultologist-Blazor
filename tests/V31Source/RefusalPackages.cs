@@ -25,10 +25,12 @@ internal sealed record RefusalCase(string Id, string About, Dictionary<string, b
 /// is its valid side with one change (and, where the change empties a body, its children's files
 /// removed so they are not strays), so it gives exactly one refusal; every edit is a text replacement
 /// that must match exactly once, so a fixture change cannot quietly empty a case.
-/// The suite's <c>expect.json</c> files are written from what the parser says
-/// (<see cref="RefusalPackagesExport"/>), never by hand.
+/// The suite's <c>expect.json</c> files are written from what <see cref="SourceCheck.Run"/> says
+/// (<see cref="RefusalPackagesExport"/>), never by hand. #1500 (specVersion 31, area 03): every case
+/// is held to the reader and the type rules together, and chapter 2's cases are
+/// <c>RefusalPackages.Types.cs</c>'s.
 /// </summary>
-internal static class RefusalPackages
+internal static partial class RefusalPackages
 {
     private static readonly JsonSerializerOptions ExpectOptions = new()
     {
@@ -38,18 +40,18 @@ internal static class RefusalPackages
     };
 
     /// <summary>
-    /// A case's <c>expect.json</c>, from what the parser said: <c>about</c>, <c>valid</c> and the
-    /// sentences in the parser's order; 2-space indented, <c>\n</c> line ends and a final newline.
+    /// A case's <c>expect.json</c>, from what <see cref="SourceCheck.Run"/> said: <c>about</c>,
+    /// <c>valid</c> and the sentences in its order; 2-space indented, <c>\n</c> line ends and a final newline.
     /// </summary>
-    public static string Expect(string about, SourceParseResult result)
+    public static string Expect(string about, IReadOnlyList<SourceRefusal> refusals)
     {
         var sentences = new JsonArray();
-        foreach (var refusal in result.Refusals)
+        foreach (var refusal in refusals)
             sentences.Add(refusal.Sentence);
         var expect = new JsonObject
         {
             ["about"] = about,
-            ["valid"] = result.Refusals.Count == 0,
+            ["valid"] = refusals.Count == 0,
             ["sentences"] = sentences,
         };
         return expect.ToJsonString(ExpectOptions) + "\n";
@@ -59,6 +61,7 @@ internal static class RefusalPackages
     public static IReadOnlyList<RefusalCase> All() =>
         Intake().Concat(Layout()).Concat(Headers()).Concat(Members()).Concat(Ids()).Concat(Kinds())
             .Concat(Loops()).Concat(Branches()).Concat(Functions()).Concat(Scopes()).Concat(Registry())
+            .Concat(Types())
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
 

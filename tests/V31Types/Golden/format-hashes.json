@@ -1,0 +1,57 @@
+{
+  "boolean": {
+    "typeHash": "sha256:f8058d20fbca1aa5533ac212496c72cef0e25dba2e898ef66d39162703e00e35",
+    "formatHash": "sha256:651469441306ca8aae5532242b97c22bdc6f53392586b9b187f0a83be78e4355",
+    "typeString": "boolean"
+  },
+  "check_result": {
+    "typeHash": "sha256:28e30339df0f95551ea9982ede796c7011776f10a21cb422925d471bbd0d5bd1",
+    "formatHash": "sha256:a02e05afd840c7487744f57ba538d24d9d1b9fa0a8a93e20adca177e4641ad29",
+    "typeString": "{ pass: boolean, message: string | null, uncovered: list<string> | null, untested: list<string> | null, passed: integer | null, total: integer | null }"
+  },
+  "classification": {
+    "typeHash": "sha256:f37365189943e74794a4d6f150f95ca3cf1168ed95035177c687e3444e345438",
+    "formatHash": "sha256:22166c7cc68f182fee3484348c957c76378ae53c8ad648078ae3f5c9893d2613",
+    "typeString": "{ value: string }"
+  },
+  "concept_list": {
+    "typeHash": "sha256:2274315e4d49e60a53446ee874fe0ff8db754659594bb8ff8b1314b6a4e6037f",
+    "formatHash": "sha256:2d3fc9ed9be99c3c29b3ac44f3f6e8dcfc24b8488792789623037b871b68fc46",
+    "typeString": "{ concepts: list<{ term: string, type: string, id: string | null, isSnomedConcept: boolean, isActive: boolean, support: string | null }> }"
+  },
+  "date": {
+    "typeHash": "sha256:406c66553617fc391a3b55374ca199952920f8f66408a8345cae2b3ae35c6593",
+    "formatHash": "sha256:596cbc586887ea633e7eb1e633d12b3280943e43c7a270f22160fc6f39ad9d93",
+    "typeString": "date"
+  },
+  "judgement": {
+    "typeHash": "sha256:8bba93387aa6680415ae18c91d8b552a6ecf8196bfb0b6c121627956905f0484",
+    "formatHash": "sha256:97ce9c482b0d111fc23df7d321e86be56510a736d137d5069e57ba0f3e3bbe68",
+    "typeString": "{ answer: boolean, reason: plaintext }"
+  },
+  "markdown_block": {
+    "typeHash": "sha256:58c76228066bb97086313c812f807ebcfb90e04012b7782910d9d7c23ead6d5d",
+    "formatHash": "sha256:d45076bf91bdaac6c42faa9db854423f1f001a6454d6a2e6be7e564003a43b91",
+    "typeString": "markdown_block"
+  },
+  "markdown_inline": {
+    "typeHash": "sha256:c240f737df040bf44a496670814b5cb881068b34b2b4a5757b97931fef91ac22",
+    "formatHash": "sha256:22384920161d352a5f5612e45c5fb9c4512c280f1e696043183b44cc7ff171f6",
+    "typeString": "markdown_inline"
+  },
+  "number": {
+    "typeHash": "sha256:cd4a3ab837b5f825b6d5307134044c372031e93c3628a33e8bdc5bcdcc5ba7bc",
+    "formatHash": "sha256:022c36612bbb1a825d84551f250176f2d737aaa723cd7b117729bd3d23c0a64c",
+    "typeString": "number"
+  },
+  "plaintext": {
+    "typeHash": "sha256:7ebaaa39ccd27449a5f552e624980bca750a8ee83f48621b85cfb6e229178b56",
+    "formatHash": "sha256:657c017a5c11998ed8cbb8c6774e14c3b98a6ac9eefeaf2c2101413de8e3e4ea",
+    "typeString": "plaintext"
+  },
+  "string": {
+    "typeHash": "sha256:6cf8f6c697f94e45171a8778995f3e5ce90d5f309862d41080c09fe0cad0f52c",
+    "formatHash": "sha256:777bb9a17b9b536354794b7f362217ab95a467b265db0133314f113ef604ae4b",
+    "typeString": "string"
+  }
+}

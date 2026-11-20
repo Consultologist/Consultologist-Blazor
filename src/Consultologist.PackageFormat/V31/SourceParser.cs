@@ -120,7 +120,10 @@ public static partial class SourceParser
                     walk.Refuse(bad);
                 if (value is JsonObject input)
                 {
-                    SourceMembers.Check(input, SourceShapes.Input, $"Input '{id}'", ManifestPath, walk.Refusals);
+                    // A default has part 02's own sentence (S02-046, area 03's D16), not S01-023.
+                    SourceMembers.Check(input, SourceShapes.Input, $"Input '{id}'", ManifestPath, walk.Refusals, ["default"]);
+                    if (input.ContainsKey("default"))
+                        walk.Refuse(FormatSentences.InputDefault(id));
                     inputs.Add(new SourceInput(id, input));
                 }
                 else

@@ -7,8 +7,8 @@ namespace Consultologist.Api.Tests.V31Source;
 /// #1499 (specVersion 31, area 02): exports <see cref="RefusalPackages.All"/> into the content
 /// repository named by <c>CONFORMANCE_EXPORT_V31</c> (its root): it deletes and rewrites
 /// <c>v31/conformance/refusal-packages/</c> — each case's <c>valid/</c> and <c>invalid/</c>, a
-/// <c>package/</c> of the case's files byte for byte and the <c>expect.json</c> the parser's own
-/// result gives — then sets the <c>refusal-packages</c> family's <c>cases</c> in
+/// <c>package/</c> of the case's files byte for byte and the <c>expect.json</c> that
+/// <see cref="SourceCheck.Run"/> (the reader, then the type rules; #1500, area 03) gives — then sets the <c>refusal-packages</c> family's <c>cases</c> in
 /// <c>v31/conformance/index.json</c>, leaving every other byte of that file as it was. A no-op
 /// without the variable, as <see cref="ConformanceFixtureExport"/> is: it is a generator, not a check.
 /// </summary>
@@ -27,7 +27,7 @@ public class RefusalPackagesExport
         if (Directory.Exists(family))
             Directory.Delete(family, recursive: true);
 
-        var registry = V31Contract.PublishedRegistry();
+        var registry = V31Contract.PublishedTypes();
         var cases = new List<string>();
         foreach (var refusalCase in RefusalPackages.All())
         {
@@ -41,8 +41,8 @@ public class RefusalPackagesExport
                     File.WriteAllBytes(file, bytes);
                 }
 
-                var result = SourceParser.Parse(files, registry);
-                File.WriteAllText(Path.Combine(folder, "expect.json"), RefusalPackages.Expect(refusalCase.About, result), Utf8NoBom);
+                var result = SourceCheck.Run(files, registry);
+                File.WriteAllText(Path.Combine(folder, "expect.json"), RefusalPackages.Expect(refusalCase.About, result.Refusals), Utf8NoBom);
                 cases.Add($"{refusalCase.Id}/{side}");
             }
         }

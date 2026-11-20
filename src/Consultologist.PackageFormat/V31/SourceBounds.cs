@@ -30,18 +30,19 @@ public static class SourceBounds
 }
 
 /// <summary>
-/// The bounds on what a format may do, published in <c>v31/bounds.json</c> under
-/// <c>formatBounds</c>.
+/// The bounds on what a format's engine features may do, published in <c>v31/bounds.json</c> under
+/// <c>formatBounds</c> and stated in part 01 § 8. Each starts at 15, may be raised on its own by a
+/// deployment, and is never written in a package.
 /// </summary>
 public static class FormatBounds
 {
-    /// <summary>The most passes a format may make.</summary>
+    /// <summary>The most a <c>while</c> may loop: its <c>max</c> is 1 to this.</summary>
     public const int Passes = 15;
 
-    /// <summary>The deepest a format may nest.</summary>
+    /// <summary>The deepest function calls may nest: 0 to this.</summary>
     public const int Depth = 15;
 
-    /// <summary>The most a format may run in parallel.</summary>
+    /// <summary>The most a loop's <c>maxParallel</c> may be: 2 to this, or null.</summary>
     public const int Parallel = 15;
 }
 
