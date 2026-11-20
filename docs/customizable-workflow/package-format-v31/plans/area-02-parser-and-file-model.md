@@ -239,7 +239,7 @@ public void Split_RefusesAnythingElse(string text)                  // null
   - `public static class SourceShapes` with one `DeclarationShape` per file kind, named as the published schema is: `Manifest`, `Input`, `Index`, `DeliverablesIndex`, `SnippetFolderIndex`, `MacroFolderIndex`, `NodeAgent`, `NodeRendered`, `NodeComputed`, `NodeCall`, `Check`, `FlowFor`, `FlowWhile`, `FlowIf`, `FlowCase`, `Body` (`nodes`, `ret`), `Branch` (`when`, `nodes`, `ret`), `FunctionIndex`, `Parameter`, `Uses`, `Renderer`, `Snippet`, `Macro`, `Deliverable`, `Test`; and `static DeclarationShape? ForSchema(string schemaName)` (`"node-agent"` → `NodeAgent`, …). Members, order and nullability are read off `external/consultologist-package-format/v31/schemas/<name>.schema.json` and the tables of part 01 § 3 and § 5, part 04 §§ 1, 2.1, 3.1, 5.1, 5.2, 7.2, 7.2.1, 7.7.
   - `public static class SourceMembers { public static bool Check(JsonObject declaration, DeclarationShape shape, string name, string path, List<SourceRefusal> refusals); }` — `name` is the `<Declaration>` of D9. Reports, in the shape's member order then the object's: a missing member (S01-021), a `null` in a member that is not nullable (S01-022), a wrong type (A02-001), and each unknown member (S01-023, D20). Then, where present and well-typed: `description` `[]` (S01-024) or over 500 code points joined with `\n` (S01-025, counting code points, not UTF-16 units); `label` empty or whitespace (S01-026). Returns true when it added nothing.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```csharp
 // SourceShapesTests
@@ -261,10 +261,10 @@ public void EveryMissingOrUnknownExample_IsRefused(string file)            // at
 [Fact] public void EveryMemberSentence_IsTheDesigns()
 ```
 
-- [ ] **Step 2: Run**; expected: build fails.
-- [ ] **Step 3: Implement.** Where a schema and a design table disagree, the schema wins (D18).
-- [ ] **Step 4: Run**; expected: PASS.
-- [ ] **Step 5: Commit** `PackageFormat (#1499): the member tables of 31 and the every-member-written rules`, push.
+- [x] **Step 2: Run**; expected: build fails.
+- [x] **Step 3: Implement.** Where a schema and a design table disagree, the schema wins (D18).
+- [x] **Step 4: Run**; expected: PASS.
+- [x] **Step 5: Commit** `PackageFormat (#1499): the member tables of 31 and the every-member-written rules`, push.
 
 ### Task 5: The model, the layout and the plain files
 
