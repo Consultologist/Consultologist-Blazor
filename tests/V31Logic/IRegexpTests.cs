@@ -152,6 +152,48 @@ public class IRegexpTests
         Assert.Same(IRegexp.Check("letrozole"), IRegexp.Check("letrozole"));
     }
 
+    /// <summary>A distinct valid pattern for each number: a literal word, then the number's digits.</summary>
+    private static string Distinct(string prefix, int i) => $"{prefix}{i.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
+    [Fact]
+    public void Cache_IsCapped()
+    {
+        for (var i = 0; i < 3_000; i++)
+            Assert.Equal(IRegexpFault.None, IRegexp.Check(Distinct("capped", i)).Fault);
+        Assert.InRange(IRegexp.CachedCount, 0, IRegexp.MaxCachedPatterns);
+        Assert.Equal(1_024, IRegexp.MaxCachedPatterns);
+    }
+
+    [Fact]
+    public void Cache_HoldsNoPatternTooLong_OrNotIRegexp()
+    {
+        var tooLong = new string('a', IRegexp.MaxCodePoints + 1);
+        Assert.Equal(IRegexpFault.TooLong, IRegexp.Check(tooLong).Fault);
+        Assert.False(IRegexp.IsCached(tooLong));
+
+        Assert.Equal(IRegexpFault.NotIRegexp, IRegexp.Check("(uncached").Fault);
+        Assert.False(IRegexp.IsCached("(uncached"));
+
+        Assert.Equal(IRegexpFault.None, IRegexp.Check("cached").Fault);
+        Assert.True(IRegexp.IsCached("cached"));
+    }
+
+    [Fact]
+    public void Cache_AfterAClear_ResultsStayCorrect()
+    {
+        var before = IRegexp.Check("letrozole|femara");
+        for (var i = 0; i <= IRegexp.MaxCachedPatterns; i++)
+            IRegexp.Check(Distinct("cleared", i));
+
+        var after = IRegexp.Check("letrozole|femara");
+        Assert.Equal(IRegexpFault.None, after.Fault);
+        Assert.True(IRegexp.IsMatch(after.Regex!, "started letrozole"));
+        Assert.False(IRegexp.IsMatch(after.Regex!, "started tamoxifen"));
+        Assert.Equal(before.Regex!.ToString(), after.Regex!.ToString());
+        Assert.Equal(IRegexpFault.Repeats, IRegexp.Check("a{101}").Fault);
+        Assert.Equal(IRegexpFault.NotIRegexp, IRegexp.Check("(a").Fault);
+    }
+
     [Fact]
     public void TooLong_CountsUtf8Bytes()
     {

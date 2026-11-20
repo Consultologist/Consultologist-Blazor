@@ -79,14 +79,45 @@ public static class IRegexp
         "C", "Cc", "Cf", "Cn", "Co",
     };
 
+    // Keyed by package text, so bounded: it holds only patterns that got as far as a compile (a pattern too long or
+    // not I-Regexp is cheap to judge again), at most MaxCachedPatterns of them; adding one more clears it first.
+    // Reads are lock-free; adds take the lock, so the count never passes the cap.
     private static readonly ConcurrentDictionary<string, IRegexpCheck> Checked = new(StringComparer.Ordinal);
+    private static readonly Lock CacheGate = new();
+
+    /// <summary>The most patterns the cache holds.</summary>
+    internal const int MaxCachedPatterns = 1_024;
+
+    /// <summary>The patterns the cache holds now.</summary>
+    internal static int CachedCount => Checked.Count;
+
+    /// <summary>Whether the cache holds <paramref name="pattern"/>.</summary>
+    internal static bool IsCached(string pattern) => Checked.ContainsKey(pattern ?? string.Empty);
 
     /// <summary>
     /// Checks <paramref name="pattern"/> in D10's order (length, grammar, repetition, compile) and stops
-    /// at the first fault. The result is cached by pattern. Never throws; a <c>null</c> pattern is the
+    /// at the first fault. A result past the grammar (compiled, or refused for its repetition or its
+    /// compile) is cached by pattern, up to 1,024 patterns. Never throws; a <c>null</c> pattern is the
     /// empty one.
     /// </summary>
-    public static IRegexpCheck Check(string pattern) => Checked.GetOrAdd(pattern ?? string.Empty, Run);
+    public static IRegexpCheck Check(string pattern)
+    {
+        pattern ??= string.Empty;
+        if (Checked.TryGetValue(pattern, out var known))
+            return known;
+        var check = Run(pattern);
+        if (check.Fault is IRegexpFault.TooLong or IRegexpFault.NotIRegexp)
+            return check;
+        lock (CacheGate)
+        {
+            if (Checked.TryGetValue(pattern, out known))
+                return known;
+            if (Checked.Count >= MaxCachedPatterns)
+                Checked.Clear();
+            Checked[pattern] = check;
+        }
+        return check;
+    }
 
     /// <summary>
     /// The .NET pattern <paramref name="pattern"/> translates to (D11), or <c>null</c> when it is longer
