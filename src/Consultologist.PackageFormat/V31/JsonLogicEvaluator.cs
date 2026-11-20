@@ -62,6 +62,17 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
     private static readonly JsonLogicFailure NotARule = Declined("it is not a rule of this format");
     private static readonly JsonLogicFailure Failed = new(JsonLogicFailureKind.Fault, "the evaluator failed");
 
+    /// <summary>
+    /// The deepest JSON written or read on the way through Corvus: a rule (about two levels per operation, so
+    /// <see cref="JsonLogicShape.MaxDepth"/> operations is some 130), its data, and every value. The libraries' default is 64;
+    /// data deeper than this is <see cref="JsonLogicFailureKind.Fault"/>.
+    /// </summary>
+    private const int MaxJsonDepth = 512;
+
+    private static readonly JsonSerializerOptions Writing = new() { MaxDepth = MaxJsonDepth };
+    private static readonly JsonDocumentOptions Reading = new() { MaxDepth = MaxJsonDepth };
+    private static readonly Corvus.Text.Json.JsonDocumentOptions CorvusReading = new() { MaxDepth = MaxJsonDepth };
+
     private readonly JsonLogicEvaluator corvus = new(Compilers());
 
     // Corvus 5.8.12 remembers the last rule it ran as two fields written one after the other
@@ -81,7 +92,7 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
         try
         {
             // As written: ToJsonString keeps an object's field order, which object's result keeps.
-            text = rule?.ToJsonString() ?? "null";
+            text = rule?.ToJsonString(Writing) ?? "null";
         }
         catch (Exception)
         {
@@ -107,12 +118,12 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
         try
         {
             var plains = 0;
-            var element = Element(Rewrite(rule, plainConverts, ref plains)?.ToJsonString() ?? "null");
+            var element = Element(Rewrite(rule, plainConverts, ref plains)?.ToJsonString(Writing) ?? "null");
             return new Rule(this, new JsonLogicRule(in element), null);
         }
         catch (Exception)
         {
-            return new Rule(this, null, NotARule);
+            return new Rule(this, null, Failed); // the rule is the format's; the failure is ours
         }
     }
 
@@ -172,9 +183,9 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
                 return new JsonLogicValue(null, Declined ?? NotARule);
             try
             {
-                var text = data?.ToJsonString() ?? "null";
+                var text = data?.ToJsonString(Writing) ?? "null";
                 using var workspace = CorvusWorkspace.Create();
-                using var document = Corvus.Text.Json.ParsedJsonDocument<CorvusElement>.Parse(text);
+                using var document = Corvus.Text.Json.ParsedJsonDocument<CorvusElement>.Parse(text, CorvusReading);
                 var root = document.RootElement;
                 CorvusElement result;
                 lock (owner.gate)
@@ -333,7 +344,7 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
     }
 
     private static JsonNode? Node(CorvusElement element) =>
-        element.ValueKind is CorvusKind.Undefined or CorvusKind.Null ? null : JsonNode.Parse(element.GetRawText());
+        element.ValueKind is CorvusKind.Undefined or CorvusKind.Null ? null : JsonNode.Parse(element.GetRawText(), documentOptions: Reading);
 
     private static EvalResult Boolean(bool value)
     {
@@ -347,15 +358,15 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
         if (value is null)
             element = JsonLogicHelpers.NullElement();
         else if (value is JsonValue v && v.GetValueKind() == JsonValueKind.Number)
-            element = JsonLogicHelpers.NumberFromSpan(Encoding.UTF8.GetBytes(v.ToJsonString()), workspace);
+            element = JsonLogicHelpers.NumberFromSpan(Encoding.UTF8.GetBytes(v.ToJsonString(Writing)), workspace);
         else
-            element = Element(value.ToJsonString());
+            element = Element(value.ToJsonString(Writing));
         return EvalResult.FromElement(in element);
     }
 
     private static CorvusElement Element(string json)
     {
-        using var document = Corvus.Text.Json.ParsedJsonDocument<CorvusElement>.Parse(json);
+        using var document = Corvus.Text.Json.ParsedJsonDocument<CorvusElement>.Parse(json, CorvusReading);
         return document.RootElement.Clone();
     }
 }

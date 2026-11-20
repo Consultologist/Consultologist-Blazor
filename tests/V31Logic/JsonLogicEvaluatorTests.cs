@@ -275,6 +275,53 @@ public class JsonLogicEvaluatorTests
         Assert.Equal(new JsonLogicFailure(JsonLogicFailureKind.Fault, "the evaluator failed"), value.Failure);
     }
 
+    private static readonly System.Text.Json.JsonDocumentOptions Deep = new() { MaxDepth = 1024 };
+
+    [Fact]
+    public void ARuleAsDeepAsTheFormatAllows_Runs_AndOneDeeper_IsDeclined()
+    {
+        var deepest = JsonNode.Parse(Nested(JsonLogicShape.MaxDepth), documentOptions: Deep);
+        var tooDeep = JsonNode.Parse(Nested(JsonLogicShape.MaxDepth + 1), documentOptions: Deep);
+        Assert.Empty(JsonLogicShape.Check(deepest));
+        Assert.NotEmpty(JsonLogicShape.Check(tooDeep));
+
+        var rule = Evaluator.Compile(deepest);
+        Assert.Null(rule.Declined);
+        var value = rule.Evaluate(null);
+        Assert.Null(value.Failure);
+        Assert.Equal("true", value.Value!.ToJsonString()); // 64 negations of true
+        Assert.Equal("false", Evaluator.Compile(JsonNode.Parse(Nested(JsonLogicShape.MaxDepth - 1), documentOptions: Deep)).Evaluate(null).Value!.ToJsonString());
+
+        var declined = Evaluator.Compile(tooDeep);
+        Assert.Equal(new JsonLogicFailure(JsonLogicFailureKind.Declined, "it is not a rule of this format"), declined.Declined);
+    }
+
+    private static JsonNode DeepData(int levels)
+    {
+        JsonNode node = JsonValue.Create(5);
+        for (var i = 0; i < levels; i++)
+            node = new JsonObject { ["a"] = node };
+        return node;
+    }
+
+    [Fact]
+    public void DataNestedDeep_IsRead_AndDeeperThanTheLimit_IsAFault()
+    {
+        var path = string.Join('.', Enumerable.Repeat("a", 100));
+        var rule = Evaluator.Compile(JsonNode.Parse($$"""{"var":"{{path}}"}"""));
+
+        var value = rule.Evaluate(DeepData(100));
+        Assert.Null(value.Failure);
+        Assert.Equal("5", value.Value!.ToJsonString());
+
+        var whole = Evaluator.Compile(JsonNode.Parse("""{"var":"a"}""")).Evaluate(DeepData(100));
+        Assert.Null(whole.Failure);
+        Assert.Equal(DeepData(99).ToJsonString(new System.Text.Json.JsonSerializerOptions { MaxDepth = 1024 }),
+            whole.Value!.ToJsonString(new System.Text.Json.JsonSerializerOptions { MaxDepth = 1024 }));
+
+        Assert.Equal(new JsonLogicFailure(JsonLogicFailureKind.Fault, "the evaluator failed"), rule.Evaluate(DeepData(600)).Failure);
+    }
+
     [Fact]
     public void CompiledOnce()
     {
