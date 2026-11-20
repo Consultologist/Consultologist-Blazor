@@ -190,7 +190,7 @@ Rules, each at every depth, in document order, all reported (part 02 § 3.1–3.
 | `anyOf` of exactly a scalar schema (`{ "type": "string" \| "number" \| "integer" \| "boolean" }` and nothing else but annotations) and `{ "type": "null" }` | S02-028, `<type>` the scalar's |
 | a `#/$defs` chain that reaches its own definition | S02-032 (cycles through named formats are Task 4's) |
 
-- [ ] **Step 1: Write the failing tests** — one `[Fact]` or `[Theory]` row per table row, each asserting the exact sentence, for example:
+- [x] **Step 1: Write the failing tests** — one `[Fact]` or `[Theory]` row per table row, each asserting the exact sentence, for example:
 
 ```csharp
 [Fact] public void AMissingRequiredEntry_IsRefused() =>
