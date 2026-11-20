@@ -81,6 +81,16 @@ internal static class SourceFixture
         return files.With(path, json.ToJsonString(RelaxedIndented) + "\n");
     }
 
+    /// <summary>A registry with no built-in or catalogue names.</summary>
+    public static SourceRegistry EmptyRegistry() => new(
+        new HashSet<string>(StringComparer.Ordinal),
+        new HashSet<string>(StringComparer.Ordinal),
+        new HashSet<string>(StringComparer.Ordinal));
+
+    /// <summary>Parses <paramref name="files"/> with <paramref name="registry"/> (the empty one when none is given).</summary>
+    public static SourceParseResult Parse(this Dictionary<string, byte[]> files, SourceRegistry? registry = null) =>
+        SourceParser.Parse(files, registry ?? EmptyRegistry());
+
     // ---- Minimal -------------------------------------------------------------------------------
 
     /// <summary>A manifest, the nine folders with empty indexes except one agent node and one deliverable.</summary>
@@ -317,16 +327,18 @@ internal static class SourceFixture
 
     private static void AddDeliverables(Dictionary<string, byte[]> files)
     {
-        files.With("deliverables/index.json", Index(["note", "patient"],
-            extra: ", \"delivery\": [\"emr\"], \"bundle\": null"));
+        files.With("deliverables/index.json", Index(["note", "emr"],
+            extra: ", \"delivery\": [\"email\"], \"bundle\": null"));
         files.With("deliverables/note.md", Md(
             Deliverable("Consultation note", "\"markdown_block\"", "\"check.all_sections\"", "hold"),
             "## Summary\n\n{{ node.refine.content }}\n"));
-        files.With("deliverables/patient/index.json", Index(["letter"],
-            extra: ", \"delivery\": [\"email\"], \"bundle\": null"));
-        files.With("deliverables/patient/letter.md", Md(
-            Deliverable("Letter to the patient", Plain, "null", "release"),
-            "Dear Ms Okafor,\n\n{{ node.refine.content }}\n\nDr A. Sample\n"));
+
+        // A delivery folder: its deliverable's key is deliverable.emr.consult (part 01 § 9.3).
+        files.With("deliverables/emr/index.json", Index(["consult"],
+            extra: ", \"delivery\": [\"emr\"], \"bundle\": null"));
+        files.With("deliverables/emr/consult.md", Md(
+            Deliverable("Consult letter", Plain, "null", "release"),
+            "Re: Margaret Okafor\n\n{{ node.refine.content }}\n\nDr A. Sample\n"));
     }
 
     private static void AddTests(Dictionary<string, byte[]> files)
