@@ -241,8 +241,11 @@ internal static class SourceLayout
             }
             else
             {
-                // The sentence names .md or a folder as written, in formats/ and tests/ too.
-                walk.Refuse(SourceSentences.ListedButMissing(list, id, folder));
+                // S01-009 names .md or a folder as written, in tests/ and a function's formats/ too; the
+                // package's formats/ has part 02's own sentence (S02-039, area 03's D13).
+                walk.Refuse(folder == "formats"
+                    ? FormatSentences.FormatFileMissing(id)
+                    : SourceSentences.ListedButMissing(list, id, folder));
             }
         }
 

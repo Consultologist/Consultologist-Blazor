@@ -265,7 +265,7 @@ public class SourceParserLeavesTests
     [Theory]
     [InlineData("nodes/plan.md", "computed", "Node", "node.plan", "agent", "generated")]
     [InlineData("nodes/section_count.md", "generated", "Node", "node.section_count", "computed", "computed")]
-    [InlineData("nodes/billing_gate/billing_text.md", "grounded", "Node", "node.billing_gate.billing_text", "rendered", "computed")]
+    [InlineData("nodes/billing_gate/billing_text.md", "generated", "Node", "node.billing_gate.billing_text", "rendered", "computed")]
     [InlineData("nodes/standards/section.md", "generated", "Node", "node.standards.section", "call", "computed")]
     [InlineData("checks/all_sections.md", "generated", "Check", "check.all_sections", "computed", "computed")]
     public void AProducerThatDisagreesWithItsKind_IsRefused(

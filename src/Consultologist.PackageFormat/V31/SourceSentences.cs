@@ -92,7 +92,10 @@ internal static class SourceSentences
     public static SourceRefusal NoTopFolder(string folder) =>
         new("S01-008", $"The package has no {folder}/ folder; all nine top-level folders are always present.", folder + "/index.json");
 
-    /// <summary>S01-009: a listed id with no member of the kind its folder holds; <paramref name="list"/> is the index's path (and member, for a body).</summary>
+    /// <summary>
+    /// S01-009: a listed id with no member of the kind its folder holds; <paramref name="list"/> is the index's path (and member, for a body).
+    /// The package's <c>formats/</c> says S02-039 instead (<see cref="FormatSentences.FormatFileMissing"/>, area 03's D13).
+    /// </summary>
     public static SourceRefusal ListedButMissing(string list, string id, string folder) =>
         new("S01-009", $"{list} lists '{id}', but {folder} has no {id}.md or {id}/.", IndexPath(list));
 
@@ -141,12 +144,16 @@ internal static class SourceSentences
 
     /// <summary>
     /// S01-028: a producer the kind does not have. <paramref name="node"/> is <c>Node</c> or <c>Check</c>;
-    /// the template's article is kept, so it reads "a agent node's" (ruled on).
+    /// the template's article is kept, so it reads "a agent node's" (ruled on). A reserved producer
+    /// says S02-010 instead (<see cref="FormatSentences.ReservedProducer"/>, area 03's D14).
     /// </summary>
     public static SourceRefusal ProducerDisagrees(string node, string key, string kind, string value, string expected, string path) =>
         new("S01-028", $"{node} '{key}' is kind {kind} and declares producer '{value}'; a {kind} node's producer is {expected}.", path);
 
-    /// <summary>S02-007: a <c>kind</c> that is none of the eight; the declaration word is <c>Node</c> in a check too (as written).</summary>
+    /// <summary>
+    /// S02-007: a <c>kind</c> that is none of the eight; the declaration word is <c>Node</c> in a check too (as written).
+    /// <c>let</c> says S02-008 instead (<see cref="FormatSentences.KindLet"/>, area 03's D14).
+    /// </summary>
     public static SourceRefusal UnknownKind(string id, string kind, string path) =>
         new("S02-007", $"Node '{id}' declares unknown kind '{kind}' (accepted: agent, rendered, computed, for, while, if, case, call).", path);
 

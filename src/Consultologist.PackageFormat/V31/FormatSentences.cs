@@ -189,5 +189,27 @@ internal static class FormatSentences
     public static SourceRefusal TooDeep(string name, int n, string where, int limit, string path) =>
         new("S02-056", $"Format '{name}' nests {n} levels deep at {where}; a format sent to a model nests at most {limit}.", path);
 
+    /// <summary>S02-008 (D14): <c>kind: "let"</c>, in place of S02-007; the word is <c>Node</c> in a check too, as S02-007's is.</summary>
+    public static SourceRefusal KindLet(string id, string path) =>
+        new("S02-008", $"Node '{id}' declares kind let; a let is now kind computed, with its JSON Logic in expression.", path);
+
+    /// <summary>S02-010 (D14): a producer <c>constants.json</c> reserves, on any node or flow node, in place of S01-028.</summary>
+    public static SourceRefusal ReservedProducer(string id, string producer, string path) =>
+        new("S02-010", $"Node '{id}' declares producer '{producer}', which is reserved for a later version (accepted at 31: generated, computed).", path);
+
+    /// <summary>S02-014 (D15): an agent whose <c>format</c> is an object, in place of A02-001.</summary>
+    public static SourceRefusal AgentInlineFormat(string id, string path) =>
+        new("S02-014", $"Node '{id}' is kind agent and declares an inline format; an agent's format is named, in formats/.", path);
+
+    /// <summary>S02-039 (D13): the package's <c>formats/index.json</c> lists an id with no file, in place of S01-009.</summary>
+    public static SourceRefusal FormatFileMissing(string id) =>
+        new("S02-039", $"formats/index.json lists '{id}', but formats/ has no {id}.json.", "formats/index.json");
+
+    /// <summary>S02-046 (D16): an input that declares <c>default</c>, in place of S01-023.</summary>
+    public static SourceRefusal InputDefault(string id) =>
+        new("S02-046", $"Input '{id}' declares default; inputs have no default at 31.", ManifestPath);
+
+    private const string ManifestPath = "manifest.json";
+
     private static string Where(string pointer) => pointer.Length == 0 ? "the root" : pointer;
 }
