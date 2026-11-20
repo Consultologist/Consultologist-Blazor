@@ -17,6 +17,10 @@ internal static class FormatSentences
     public static string Subject(string format, string pointer) =>
         $"{format} at {Where(pointer)}";
 
+    /// <summary>S02-017: a format name that is no built-in, catalogue or visible package format.</summary>
+    public static SourceRefusal UnknownFormat(string name, string path) =>
+        new("S02-017", $"Format '{name}' is not a built-in, catalogue or package format.", path);
+
     /// <summary>S02-021: a keyword outside the dialect, or <c>$schema</c>, <c>$id</c> or <c>$defs</c> anywhere but a format file's root.</summary>
     public static SourceRefusal OutsideDialect(string format, string pointer, string keyword, string path) =>
         new("S02-021", $"{format} uses keyword '{keyword}' at {Where(pointer)}, which is outside the formats dialect.", path);

@@ -172,7 +172,7 @@ public static partial class FormatDialect
     private static string? Text(JsonNode? value) =>
         value is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
 
-    private static string Escape(string name) => name.Replace("~", "~0").Replace("/", "~1");
+    internal static string Escape(string name) => name.Replace("~", "~0").Replace("/", "~1");
 
     /// <summary>
     /// What a <c>type</c> declares: one of the seven, or one of them plus <c>"null"</c> in either
