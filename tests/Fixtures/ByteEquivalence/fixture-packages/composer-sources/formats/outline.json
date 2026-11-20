@@ -1,0 +1,34 @@
+{
+  "type": "object",
+  "producer": "custom",
+  "outputMacros": false,
+  "description": "The points one section makes, in order, each with a short heading.",
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "points"
+    ],
+    "properties": {
+      "points": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "heading",
+            "point"
+          ],
+          "properties": {
+            "heading": {
+              "type": "string"
+            },
+            "point": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    }
+  }
+}

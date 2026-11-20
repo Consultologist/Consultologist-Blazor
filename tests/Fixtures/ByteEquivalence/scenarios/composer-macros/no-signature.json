@@ -1,0 +1,30 @@
+{
+  "description": [
+    "The profile has no signature block. signed_letter: signature true, but there is no block to",
+    "append, so its text ends at the appended macro (unsigned, never refused). authored: profile.signature",
+    "renders empty and the macro's trailing whitespace is trimmed, so the text ends at the date line.",
+    "Everything else as new-visit-defaults."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)",
+    "sections": [
+      {
+        "title": "History"
+      },
+      {
+        "title": "Plan"
+      }
+    ],
+    "visit": "new"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": null
+  },
+  "macroChoices": {},
+  "outputs": {
+    "section_draft:0": "History paragraph: palpitations for two months.\n\n",
+    "section_draft:1": "Plan paragraph: apixaban started.",
+    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation."
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "description": [
+    "A review visit, both optional macros chosen against their defaults. gated: new_visit_note's own",
+    "if does not hold, so it is not placed; review_note's placement if holds; review_leaflet renders",
+    "its text. optional: followup_offer refused (default on, chosen off) and leaflet_offer chosen",
+    "(default off, chosen on). both: reference_line reads input.visit. The rest as",
+    "new-visit-defaults: prepend, append, signature, and the node macros around each item."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)",
+    "sections": [
+      {
+        "title": "History"
+      },
+      {
+        "title": "Plan"
+      }
+    ],
+    "visit": "review"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {
+    "followup_offer": false,
+    "leaflet_offer": true
+  },
+  "outputs": {
+    "section_draft:0": "History paragraph: palpitations for two months.\n\n",
+    "section_draft:1": "Plan paragraph: apixaban started.",
+    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation."
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "description": [
+    "A loop item that fails: draft_topic has failIfEmpty and Examination's reply is pinned empty, so",
+    "that item fails. The composer does not compose topics without it: its sentence, '<deliverable",
+    "label> could not assemble: <the loop's returned node and item> did not complete' ('A for over an",
+    "input could not assemble: topic_gate:2 did not complete', naming the if the loop returns, not",
+    "draft_topic), fails the job, so topics and every deliverable still waiting are unsettled; the",
+    "nodes reading the topics never run. sections, which reads none of it, is composed."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
+    "topics": [
+      {
+        "title": "History",
+        "kind": "drafted"
+      },
+      {
+        "title": "Social history",
+        "kind": "left_out"
+      },
+      {
+        "title": "Examination",
+        "kind": "drafted"
+      }
+    ],
+    "include_plan": true,
+    "tone": "formal",
+    "redraft": true
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "draft_topic:0": "History paragraph: breathless on exertion for a year.",
+    "draft_topic:2": "",
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        },
+        {
+          "title": "Plan",
+          "purpose": "What happens next."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "heading": "Valve",
+          "point": "Mild aortic stenosis on echo."
+        }
+      ]
+    },
+    "outline:2": {
+      "points": [
+        {
+          "heading": "Review",
+          "point": "Review in six months."
+        },
+        {
+          "heading": "Advice",
+          "point": "Report chest pain or fainting."
+        }
+      ]
+    },
+    "draft_point:1/1": "Valve paragraph for the assessment.",
+    "draft_point:2/1": "Review paragraph for the plan.",
+    "draft_point:2/2": "Advice paragraph for the plan."
+  }
+}

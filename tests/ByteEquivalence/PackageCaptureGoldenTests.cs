@@ -1,10 +1,12 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.PackageFormat;
 
 namespace Consultologist.Api.Tests.ByteEquivalence;
 
 /// <summary>
-/// #1498: what today's engine (specVersion 30) does with each public package, frozen. Every
+/// #1498: what today's engine (specVersion 30) does with each public package and each composer
+/// fixture package, frozen. Every
 /// <c>scenarios/&lt;package&gt;/&lt;scenario&gt;.json</c> is run by <see cref="CaptureRun"/> and its
 /// capture document must equal <c>captures/&lt;package&gt;/&lt;scenario&gt;.json</c> byte for byte; a
 /// missing capture is written and fails once, to be read and committed. The coverage rules hold
@@ -82,6 +84,44 @@ public class PackageCaptureGoldenTests
         var run = await CaptureRun.StartAsync(loaded, read);
 
         ByteEquivalenceFixtures.Matches($"captures/{package}/{scenario}.json", PackageCapture.Write(package, tag, scenario, run));
+    }
+
+    /// <summary>
+    /// The hand-written packages under <c>fixture-packages/</c>: each exercises the deliverable
+    /// composer's rules one at a time, so a generated deliverable template has today's bytes to
+    /// reproduce rule by rule (Part 10 § 3.3).
+    /// </summary>
+    private static readonly string[] ComposerPackages = ["composer-gates", "composer-macros", "composer-sources"];
+
+    /// <summary>Every package under <c>fixture-packages/</c>.</summary>
+    public static TheoryData<string> FixturePackages()
+    {
+        var rows = new TheoryData<string>();
+
+        foreach (var name in ByteEquivalenceFixtures.FixturePackages)
+        {
+            rows.Add(name);
+        }
+
+        return rows;
+    }
+
+    [Fact]
+    public void TheFixturePackages_AreTheThreeComposerPackages()
+    {
+        Assert.Equal(ComposerPackages, ByteEquivalenceFixtures.FixturePackages);
+    }
+
+    [Theory]
+    [MemberData(nameof(FixturePackages))]
+    public void EveryFixturePackage_IsAtSpecVersion30_AndLoads(string name)
+    {
+        var (manifestJson, _) = ByteEquivalenceFixtures.ReadPackage(name);
+        using var document = JsonDocument.Parse(manifestJson);
+
+        Assert.Equal(30, document.RootElement.GetProperty("specVersion").GetInt32());
+        Assert.Equal(name, document.RootElement.GetProperty("name").GetString());
+        Assert.Equal(30, ByteEquivalenceFixtures.Load(name).Manifest.SpecVersion);
     }
 
     [Fact]

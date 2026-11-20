@@ -1,0 +1,92 @@
+{
+  "description": [
+    "Audience clinician. note and record_copy source the same two nodes (the problem loop, then",
+    "note_body) and compose to the same bytes: the input's items named label plus position",
+    "('Problems 1'), then the scalar after a blank line. Both checks pass (each extracted list holds",
+    "every coded term of the draft's), so both are composed. patient_copy: its if does not hold, so",
+    "it is skipped with the reason 'needs `input.audience == \"patient\"`; it does not hold'.",
+    "cover_letter: cover_note's prompt reads deliverable.note.content (the composed note, before its",
+    "check settles) and its patient-copy line is gated off by input.audience. patient_line still runs:",
+    "the cover prompt's read of deliverable.patient_copy keeps it in the run."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 58, seen for type 2 diabetes with an HbA1c of 71 mmol/mol on metformin. (Fictional.)",
+    "problems": [
+      "Type 2 diabetes with an HbA1c of 71 mmol/mol (fictional)",
+      "Metformin 1 g twice daily, continued (fictional)"
+    ],
+    "audience": "clinician"
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "problem_draft:0": "Diabetes paragraph: HbA1c 71 mmol/mol.",
+    "problem_draft:1": "Medication paragraph: metformin continued.",
+    "note_body": "Closing paragraph: review in three months.",
+    "extract_input_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "extract_note_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "extract_copy_terms": {
+      "concepts": [
+        {
+          "term": "Type 2 diabetes mellitus",
+          "type": "disorder",
+          "id": "44054006",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        },
+        {
+          "term": "Metformin",
+          "type": "substance",
+          "id": "372567009",
+          "isSnomedConcept": true,
+          "isActive": true,
+          "support": null
+        }
+      ]
+    },
+    "patient_line": "Your sugar levels are high; we will review your tablets.",
+    "cover_note": "Please find the clinic note enclosed."
+  }
+}

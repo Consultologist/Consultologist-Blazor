@@ -24,6 +24,73 @@ dotnet run -v q --file scripts/vendor-public-packages.cs -- <path to consultolog
 The script deletes `vendored/` first, so a file removed upstream cannot linger, and writes nothing
 if a tag does not resolve. Move a pin by editing the tag list in the script, then re-run it.
 
+## `fixture-packages/`
+
+Three hand-written specVersion 30 packages (`v2026.11.1`, fictional text) that exercise the
+deliverable composer's rules one at a time (`ConsultDeliverableComposition`,
+`ConsultAggregateRenderer`, `RenderDeliverableMacrosActivity` with `ComposeAt25`,
+`ConsultSignatureAppend`, and the release in `ConsultGenerationEngine`), so a generated
+deliverable template has today's bytes to reproduce rule by rule (Part 10 § 3.3). Each package
+gives every rule its own deliverable, so one capture shows each rule's bytes beside the others.
+`ByteEquivalenceFixtures.Load` finds them after `vendored/`; their captures have `"tag": null`.
+They have no `dag.mmd`. Validate one with
+`dotnet run -v q --file scripts/validate-workflow-package.cs -- tests/Fixtures/ByteEquivalence/fixture-packages/<name>`.
+
+At 30 the validator refuses a deliverable that does not transitively include a `for`, so every
+"scalar" source here (a prose node, the while's body, the if's and case's nodes, the let) reads
+a loop's text in its prompt or expression; the composer still reads each as one scalar part.
+
+### `composer-sources`
+
+One deliverable per kind of source: `single` (one prose node), `pair` (two), `topics` (a `for`
+over an input with an `if` inside), `sections` (a `for` over a node's list, `labelField` and
+`max: 3`, with a `for` inside), `summary` (a `while` with `checkFirst`, `until` and `max: 3`),
+`plan` (an `if`), `tone_line` (a `case`) and `tally` (a `let` of type text).
+
+| Scenario | Rules it reaches |
+|---|---|
+| `every-source` | one scalar source verbatim; two joined by one blank line in `sources` order; a `for` as `## <name>` blocks in item order, named by `labelField`, an item whose inner `if` took no branch left out; a nested `for` (a section heading, then its points' blocks); a `while`'s last pass's text (two passes); an `if` and a `case` that took a branch, as their returned node's text; a `let` of type text as its plain text |
+| `branches-not-taken` | a `for` whose every item's inner `if` took no branch, composed empty; a `for` over a node's list pinned empty (zero items), composed empty; a `while` that ran no pass (`checkFirst`), composed empty; an `if` and a `case` that took no branch: the deliverable is skipped, `source node.<flow> took no branch` |
+| `awkward-texts` | an empty source (composed empty; in a join it still takes its place, so the text starts with a blank line); leading and trailing newlines and spaces trimmed from each part; a part holding its own `##` headings, verbatim; a reply holding `{{` rendered as a template before it composes (`{{ 3 * 2 }}` → `6`, `{{ "{{" }}` → `{{`) |
+| `item-names-and-bounds` | `labelField` text trimmed, cut to 120 characters with `…`, and a blank one falling back to label plus position; an inner `for` with zero items inside an outer item (its block is the heading and an empty text); a `for`'s `max` leaving an item unrun and without a block; a `while` stopped at its bound, the third pass's text |
+| `unparseable-reply` | a reply whose `{{` reads what the scope does not hold fails the node and the job; deliverables not yet released are unsettled |
+| `failed-item` | a loop item that failed (`failIfEmpty`): the composer's `<label> could not assemble: <key> did not complete` fails the job |
+
+### `composer-macros`
+
+One deliverable per macro rule, all over `node.letter_body` except `sections_note` (a `for` over
+an input whose body node places `section_intro` before and `section_close` after, gated by the
+item): `prepended`, `appended`, `both` (two prepends, two appends), `gated` (a macro's own `if`,
+a placement's `if`, a macro that renders empty), `optional` (`followup_offer`, default on;
+`leaflet_offer`, default off), `authored` (reads `profile.name`, `profile.signature` and
+`run.date`) and `signed_letter` (`signature: true` after an appended macro).
+
+| Scenario | Rules it reaches |
+|---|---|
+| `new-visit-defaults` | prepend, append and both, each one blank line from the sections; two at one place in placement order; a macro's own `if` holding and a placement's `if` not (not placed); a placed macro rendering empty, its empty piece still joined (four newlines); optional macros defaulted (on placed, off not); `profile.name`, `profile.signature` and `run.date` (`2026-11-10`) in one macro; node macros before and after a loop item's reply, the after one gated off for one item, the reply's own trailing blank line kept inside the item; the signature block appended last |
+| `review-visit-choices` | a macro's own `if` not holding and a placement's `if` holding; the empty-rendering macro rendering text; optional macros chosen on (default off) and off (default on) |
+| `no-signature` | `signature: true` with no signature on the profile: nothing appended, never refused; `profile.signature` rendering empty, the macro's trailing whitespace trimmed |
+
+The validator refuses `signature: true` beside a placed macro that reads `profile.signature`
+("a deliverable is signed once"), so `authored` is not signed.
+
+### `composer-gates`
+
+`note` and `record_copy` source the same nodes (a `for` over a text array, then a prose node),
+each gated by a `terms_subset` check; `patient_copy` has an `if` on `input.audience`;
+`cover_letter`'s node reads `deliverable.note.content` (and `deliverable.patient_copy.content`
+under the same `if`) in its prompt.
+
+| Scenario | Rules it reaches |
+|---|---|
+| `clinician-checks-pass` | two deliverables over the same nodes, the same bytes; both checks passing; a deliverable whose `if` is false, `skipped` with ``needs `input.audience == "patient"`; it does not hold``; a prompt reading another deliverable's composed text |
+| `patient-copy-check-fails` | one check passing and one refusing, `failed` with its `failWith` sentence; the `if` holding |
+| `note-check-fails` | the other deliverable's check refusing; a prompt reading a deliverable whose check refused it still reads its composed text |
+
+A prompt that reads `deliverable.<id>.content` of a deliverable skipped by its `if`, unguarded,
+fails the job today (`Cannot get the member deliverable.<id>.content for a null object`), and a
+bare `deliverable.<id>` is refused at publish; `cover_note` gates the read on the same input.
+
 ## `scenarios/` and `captures/`
 
 `scenarios/<package>/<scenario>.json` says how to run one package; `captures/<package>/<scenario>.json`
@@ -47,7 +114,7 @@ A scenario has exactly these members, each present:
 - `inputs` names every declared input; `null` leaves an optional one unset. Values are what the
   starter accepts, and always fictional.
 - `profile` is the display name and the chosen signature block's text. Every scenario uses the
-  one above.
+  one above, except `composer-macros/no-signature`, whose `signature` is `null` (no block chosen).
 - `macroChoices` sets optional macros on or off by id; `{}` takes the defaults.
 - `outputs` pins a reply by instance key: `node`, or `node:path`, where the path is item ids and
   while passes joined by `/` (`draft_paragraph:2/3`, `judge:2`, `read_letter:0`; a text array's

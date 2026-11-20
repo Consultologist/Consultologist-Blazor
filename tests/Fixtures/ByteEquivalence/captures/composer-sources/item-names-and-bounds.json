@@ -1,0 +1,222 @@
+{
+  "package": "composer-sources",
+  "tag": null,
+  "scenario": "item-names-and-bounds",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        },
+        {
+          "title": "   ",
+          "purpose": "A section with a blank title."
+        },
+        {
+          "title": "Plan",
+          "purpose": "What happens next."
+        },
+        {
+          "title": "Fourth section",
+          "purpose": "Past the loop's max."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": []
+    },
+    "outline:2": {
+      "points": [
+        {
+          "heading": "  ",
+          "point": "A point with a blank heading."
+        }
+      ]
+    },
+    "outline:3": {
+      "points": [
+        {
+          "heading": "Review",
+          "point": "Review in six months."
+        }
+      ]
+    },
+    "draft_point:2/1": "Blank-headed point paragraph.",
+    "draft_point:3/1": "Review paragraph for the plan.",
+    "draft_topic:0": "Padded history paragraph.",
+    "draft_topic:1": "Long-titled topic paragraph.",
+    "draft_topic:2": "Blank-titled topic paragraph.",
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note.",
+    "draft_summary:1": "Summary, pass one.",
+    "formal_line": "We remain at your disposal for any questions.",
+    "judge:1": {
+      "verdict": "revise",
+      "feedback": "Shorter."
+    },
+    "draft_summary:2": "Summary, pass two.",
+    "judge:2": {
+      "verdict": "revise",
+      "feedback": "Shorter still."
+    },
+    "draft_summary:3": "Summary, pass three.",
+    "judge:3": {
+      "verdict": "revise",
+      "feedback": "Still too long."
+    }
+  },
+  "prompts": [
+    {
+      "key": "plan",
+      "hash": "sha256:4bb43077788990d6a1eb50075aad4279730c29aacedea54fa4fefafdd30892e2",
+      "text": "Plan the sections of a clinic note, each with a title and its purpose, from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"sections\"],\"properties\":{\"sections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"purpose\"],\"properties\":{\"title\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:1",
+      "hash": "sha256:e8143dcd1963abe05b4bd0f2b4853bba0000d66bb9321bee6a2b7f0af3c7a72e",
+      "text": "List the points the section \"Assessment\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:2",
+      "hash": "sha256:9c35b17c0cd5a2b8375f31b2cced4c4de4f1b8408e8bcf6f5df466f2ef887782",
+      "text": "List the points the section \"   \" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:3",
+      "hash": "sha256:30c78bfed39b3d2575a5015d4658dc1b4300cb569336d249a50ae064287f8a4a",
+      "text": "List the points the section \"Plan\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "draft_point:2/1",
+      "hash": "sha256:ef5487d8b2e75735876504baee184846c09cba8ecae04bd442a58308c9c16c19",
+      "text": "Write one paragraph making this point in the section \"   \": A point with a blank heading.\n"
+    },
+    {
+      "key": "draft_point:3/1",
+      "hash": "sha256:227c907f55b61a3a3d8ce3288a7fe68a48bc37ac14dc232eefacf49e32ed3a27",
+      "text": "Write one paragraph making this point in the section \"Plan\": Review in six months.\n"
+    },
+    {
+      "key": "draft_topic:0",
+      "hash": "sha256:226d2bf6b82afdf0475650ef8b82515c970537e4f4456e4d9ea017e4752b7adf",
+      "text": "Write one paragraph on the topic \"  Padded history\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "draft_topic:1",
+      "hash": "sha256:c795cdea1bfadacb13945f4b9bd502326e81cd8116851dee77a916884872d4fc",
+      "text": "Write one paragraph on the topic \"A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cut short\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "draft_topic:2",
+      "hash": "sha256:6ba7d7678cde288b3834ae2967140f03388e6ad2140dc0e58c4cb61aa08adf0e",
+      "text": "Write one paragraph on the topic \"\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "opening",
+      "hash": "sha256:23f2aff4ee6019d12a53f7d3042c7e28f591e88f1ace21d85296dec6f5d8bc28",
+      "text": "Write one opening line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+    },
+    {
+      "key": "closing",
+      "hash": "sha256:bdebf9d91cbd57cb4281d4ca11122c6e7b5a3c99998b9a867d4a017eb8b3e777",
+      "text": "Write one closing line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+    },
+    {
+      "key": "draft_summary:1",
+      "hash": "sha256:589cd6e908bd259275fd04262514ddec8d207389d13f8a5c9be2888459343573",
+      "text": "Write a two-sentence summary of this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+    },
+    {
+      "key": "formal_line",
+      "hash": "sha256:d06cf12cac62cf468ad713f422ab406b94c47ba489a72d02aeaf963d17fc188a",
+      "text": "Write one line in a formal tone closing this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+    },
+    {
+      "key": "judge:1",
+      "hash": "sha256:a8e5fb7aa9c531c73fea8981c87bacb96cac98b93eb75cbb5bc665640804cd58",
+      "text": "Is this summary good, or should it be revised? Say why in one sentence.\nSummary, pass one.\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"verdict\",\"feedback\"],\"properties\":{\"verdict\":{\"type\":\"string\",\"enum\":[\"good\",\"revise\"]},\"feedback\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "draft_summary:2",
+      "hash": "sha256:9159f63bf1d219cd1b3f7119d44e0b220d5f759aba85b3c75f8ce6cfecc087c6",
+      "text": "Write a two-sentence summary of this draft. Revise the previous draft: Shorter.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+    },
+    {
+      "key": "judge:2",
+      "hash": "sha256:f2d2eba5f9b98bdc0792b8f9f5956cbdb424315ade54c94dcdd6081460d1f854",
+      "text": "Is this summary good, or should it be revised? Say why in one sentence.\nSummary, pass two.\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"verdict\",\"feedback\"],\"properties\":{\"verdict\":{\"type\":\"string\",\"enum\":[\"good\",\"revise\"]},\"feedback\":{\"type\":\"string\"}}}"
+    },
+    {
+      "key": "draft_summary:3",
+      "hash": "sha256:810600cab4a88e8fe38046f39e0fd8d826533195ac8010c157c23597f11daf9e",
+      "text": "Write a two-sentence summary of this draft. Revise the previous draft: Shorter still.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph.\n"
+    },
+    {
+      "key": "judge:3",
+      "hash": "sha256:29b69d2bb711064d61ba59d6d4ce7fb816759a97ecc3b31bfc9cf68024d0f63c",
+      "text": "Is this summary good, or should it be revised? Say why in one sentence.\nSummary, pass three.\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"verdict\",\"feedback\"],\"properties\":{\"verdict\":{\"type\":\"string\",\"enum\":[\"good\",\"revise\"]},\"feedback\":{\"type\":\"string\"}}}"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "single",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:914c8cbe0692a3f743391dca67ed7716fe5ea819e90134e3a793f8cf2baaf8b7",
+      "text": "Opening line for the note."
+    },
+    {
+      "id": "pair",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:0c3f6548ba4714c5292c7720f3351b6e94c336284424f7b1afe5885e7c7169b6",
+      "text": "Opening line for the note.\n\nClosing line for the note."
+    },
+    {
+      "id": "topics",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:418d8982a4b3b59864da8c9ceb1100fc84b09adbcd0c0e18469354368782b20c",
+      "text": "## Padded history\n\nPadded history paragraph.\n\n## A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cu…\n\nLong-titled topic paragraph.\n\n## Topics 3\n\nBlank-titled topic paragraph."
+    },
+    {
+      "id": "sections",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:73748733a0b53680b19f428afac286e1777519bcbb522029e3eb36bce258daf8",
+      "text": "## Assessment\n\n\n\n## Sections 2\n\n## Points 1\n\nBlank-headed point paragraph.\n\n## Plan\n\n## Review\n\nReview paragraph for the plan."
+    },
+    {
+      "id": "summary",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:7fe7c117ec4829723fe542d4027bf4d39d04a521f234874592b1dbaaa8037600",
+      "text": "Summary, pass three."
+    },
+    {
+      "id": "plan",
+      "state": "skipped",
+      "reason": "source node.plan_gate took no branch",
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "tone_line",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:c7cfec14846bdcca434bfbe9a65edc5e7deea04b3d51644fda4fd577b4029c31",
+      "text": "We remain at your disposal for any questions."
+    },
+    {
+      "id": "tally",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:4cf55d54739080bea3c264418220a0e07f1abdf20f0858bf648fbb8f3b52936a",
+      "text": "Topic section length: 243"
+    }
+  ]
+}

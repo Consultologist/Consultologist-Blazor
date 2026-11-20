@@ -1,0 +1,88 @@
+{
+  "package": "composer-macros",
+  "tag": null,
+  "scenario": "review-visit-choices",
+  "status": "Completed",
+  "failure": null,
+  "outputs": {
+    "section_draft:0": "History paragraph: palpitations for two months.\n\n",
+    "section_draft:1": "Plan paragraph: apixaban started.",
+    "letter_body": "Letter body: palpitations from paroxysmal atrial fibrillation."
+  },
+  "prompts": [
+    {
+      "key": "section_draft:0",
+      "hash": "sha256:edb3bd2e0d9470256d859f0b86800e6fee063780d5ad3a519f32daf25213c2de",
+      "text": "Write the section \"History\" of a clinic letter from this draft.\nMargaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)\n"
+    },
+    {
+      "key": "section_draft:1",
+      "hash": "sha256:c8cac09994e1ed7b1eea8035061f6b1a9e23a24817856f6539b69bd030f7350f",
+      "text": "Write the section \"Plan\" of a clinic letter from this draft.\nMargaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)\n"
+    },
+    {
+      "key": "letter_body",
+      "hash": "sha256:4bfe1d9e2270232d7504dc441071429ec49171dbd834dd699277882c483104da",
+      "text": "Write the body of a clinic letter from this draft and its sections.\nMargaret Okafor, 71, seen for palpitations. Holter shows paroxysmal atrial fibrillation. Started apixaban. (Fictional.)\n## History\n\nThe History section follows.\n\nHistory paragraph: palpitations for two months.\n\n\n\nEnd of the History section.\n\n## Plan\n\nThe Plan section follows.\n\nPlan paragraph: apixaban started.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "prepended",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:cf9271152d91c4a44cf267e130c3c3ae8266f358a1e997e648b3c55473b827b7",
+      "text": "Riverside Clinic (fictional)\n\nLetter body: palpitations from paroxysmal atrial fibrillation."
+    },
+    {
+      "id": "appended",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:a1e50af2dfe3572f6b2688bba1dd3316f0577d3c5a8b9b83f90203c0fd363abf",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\nFirst closing paragraph."
+    },
+    {
+      "id": "both",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e4bb5dc1c7187709a9b22607c274b70624284437a5c8215c400a5111a03c0005",
+      "text": "Riverside Clinic (fictional)\n\nReference: review visit\n\nLetter body: palpitations from paroxysmal atrial fibrillation.\n\nFirst closing paragraph.\n\nSecond closing paragraph."
+    },
+    {
+      "id": "gated",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:dfc3520b6fd5c9fa096a57bf9633b4fa6a628bc28dcc0fcb96a029c54a73b8a9",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\nSeen again for review.\n\nReview leaflet enclosed.\n\nFirst closing paragraph."
+    },
+    {
+      "id": "optional",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e7a7e125931af88f260c88bdaf405eea2d88c0e999c444e74cbea4ee84ed0a6c",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\nA leaflet on the condition is enclosed."
+    },
+    {
+      "id": "authored",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:05162869d2c174ac383c849333d25f5bd856f51d424efd5b3295ebe1ae67c535",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\nWritten by Dr A. Sample on 2026-11-10.\nDr A. Sample\nInternal Medicine"
+    },
+    {
+      "id": "sections_note",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:d107854cba9457afd737752a8ccd05ad1ca35ce9bf0d40f18bd2c9e315567710",
+      "text": "## History\n\nThe History section follows.\n\nHistory paragraph: palpitations for two months.\n\n\n\nEnd of the History section.\n\n## Plan\n\nThe Plan section follows.\n\nPlan paragraph: apixaban started."
+    },
+    {
+      "id": "signed_letter",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:bd62eda1136bd601eb8e001da79e073237d1efaf5b60ffba66913d84c295b6b0",
+      "text": "Letter body: palpitations from paroxysmal atrial fibrillation.\n\ncc: the referring practice (fictional)\n\nDr A. Sample\nInternal Medicine"
+    }
+  ]
+}

@@ -1,0 +1,204 @@
+{
+  "package": "composer-sources",
+  "tag": null,
+  "scenario": "unparseable-reply",
+  "status": "Failed",
+  "failure": "Drafting the plan failed: Node 'draft_plan' reply failed to render: <input>(1,23) : error : The variable or function `months` was not found",
+  "outputs": {
+    "plan": {
+      "sections": [
+        {
+          "title": "stub 100f4302",
+          "purpose": "stub d1c908e8"
+        },
+        {
+          "title": "stub eec677ff",
+          "purpose": "stub debbf7cf"
+        },
+        {
+          "title": "stub 746c715a",
+          "purpose": "stub fadce096"
+        }
+      ]
+    },
+    "outline:1": {
+      "points": [
+        {
+          "heading": "stub a213ba25",
+          "point": "stub 196f0ecf"
+        }
+      ]
+    },
+    "outline:2": {
+      "points": [
+        {
+          "heading": "stub 5c8fb175",
+          "point": "stub ad3b4e54"
+        },
+        {
+          "heading": "stub a1908cc8",
+          "point": "stub 514438cc"
+        },
+        {
+          "heading": "stub b7c32710",
+          "point": "stub 3cb46a03"
+        }
+      ]
+    },
+    "outline:3": {
+      "points": [
+        {
+          "heading": "stub 4fb8c2be",
+          "point": "stub c151d71f"
+        }
+      ]
+    },
+    "draft_point:1/1": "Stub reply for draft_point:1/1 (91117478).",
+    "draft_point:2/1": "Stub reply for draft_point:2/1 (76850a19).",
+    "draft_point:2/2": "Stub reply for draft_point:2/2 (37b700e8).",
+    "draft_point:2/3": "Stub reply for draft_point:2/3 (0038c34c).",
+    "draft_point:3/1": "Stub reply for draft_point:3/1 (7b80198f).",
+    "draft_topic:0": "History paragraph.",
+    "draft_topic:1": "Examination paragraph.",
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note.",
+    "draft_plan": "Repeat the echo in {{ months }} months.",
+    "plain_line": "Any questions, just ask."
+  },
+  "prompts": [
+    {
+      "key": "plan",
+      "hash": "sha256:4bb43077788990d6a1eb50075aad4279730c29aacedea54fa4fefafdd30892e2",
+      "text": "Plan the sections of a clinic note, each with a title and its purpose, from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"sections\"],\"properties\":{\"sections\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"title\",\"purpose\"],\"properties\":{\"title\":{\"type\":\"string\"},\"purpose\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:1",
+      "hash": "sha256:50693d2da320a2d05c0222620e1febf503e85ff2b101724aa726565db32e4292",
+      "text": "List the points the section \"stub 100f4302\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:2",
+      "hash": "sha256:283cfb7525dcadfef5aa753b1c45fbd97b83db5da28e11d0e1c3d42a4efcf7ef",
+      "text": "List the points the section \"stub eec677ff\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "outline:3",
+      "hash": "sha256:3fa8299386b20e159ba7b48b5ff056ff776387a681e0e3fb0359fb7ab1834dfe",
+      "text": "List the points the section \"stub 746c715a\" makes, each with a short heading.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n\nAnswer with one JSON object conforming to this schema.\n{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"points\"],\"properties\":{\"points\":{\"type\":\"array\",\"items\":{\"type\":\"object\",\"additionalProperties\":false,\"required\":[\"heading\",\"point\"],\"properties\":{\"heading\":{\"type\":\"string\"},\"point\":{\"type\":\"string\"}}}}}}"
+    },
+    {
+      "key": "draft_point:1/1",
+      "hash": "sha256:724a14bf30978bdd07e2444ecfa69b78e12cc8905fc7c35d88fa53062e7b211a",
+      "text": "Write one paragraph making this point in the section \"stub 100f4302\": stub 196f0ecf\n"
+    },
+    {
+      "key": "draft_point:2/1",
+      "hash": "sha256:7d81b18b363cb8dbe5b79f33f22e1fe5b35fb13c2b6c8359dc67a3a54da45cdd",
+      "text": "Write one paragraph making this point in the section \"stub eec677ff\": stub ad3b4e54\n"
+    },
+    {
+      "key": "draft_point:2/2",
+      "hash": "sha256:9400f2292a06f636bd2ced1f1e742c1f0d5f80769a811e10ca6e748249e3a728",
+      "text": "Write one paragraph making this point in the section \"stub eec677ff\": stub 514438cc\n"
+    },
+    {
+      "key": "draft_point:2/3",
+      "hash": "sha256:9fb2812dbfb4b635a8483e31a2cf2979275ac075d44107da3fa30e6ee85ce26e",
+      "text": "Write one paragraph making this point in the section \"stub eec677ff\": stub 3cb46a03\n"
+    },
+    {
+      "key": "draft_point:3/1",
+      "hash": "sha256:9f9e4f920a6fac529f99a94393622bace2854194bdafcfb861f8080aa239ec1d",
+      "text": "Write one paragraph making this point in the section \"stub 746c715a\": stub c151d71f\n"
+    },
+    {
+      "key": "draft_topic:0",
+      "hash": "sha256:79708dfeb90f329f96e0cca98d869b918e5fae1595333d7969a0dbe4213be4d0",
+      "text": "Write one paragraph on the topic \"History\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "draft_topic:1",
+      "hash": "sha256:3a1ee80d9e48d95b1459e945c0549f25a3dd54e9d3b5af9f791b8e59fa87c4fd",
+      "text": "Write one paragraph on the topic \"Examination\" from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\n"
+    },
+    {
+      "key": "opening",
+      "hash": "sha256:ff70120be8ae6c5aba09180f5ca76abeb4a09beb97765d8d47fe1de373089fb6",
+      "text": "Write one opening line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph.\n"
+    },
+    {
+      "key": "closing",
+      "hash": "sha256:cf2785d679c93b6eeccb6f14d1a9f5e4ff5c09e1b7d7f35f6f69cbe0146a98c2",
+      "text": "Write one closing line for a clinic note from this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph.\n"
+    },
+    {
+      "key": "draft_plan",
+      "hash": "sha256:9e0d7871162204b96bdad01995d457e645c4fc9bb059ec38b6ceffe4b6aef483",
+      "text": "Write the plan for this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph.\n"
+    },
+    {
+      "key": "plain_line",
+      "hash": "sha256:18d630e80c57763b6e5f0871c84eb664d91494e30515285c02fb3fd464dc56af",
+      "text": "Write one line in a plain tone closing this draft.\nMargaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)\nTopics so far: ## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph.\n"
+    }
+  ],
+  "renders": [],
+  "deliverables": [
+    {
+      "id": "single",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "pair",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "topics",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:176f32efdc32318cc677b0d2265fa4852532fb8b05e5901beeaee82e65c03d68",
+      "text": "## History\n\nHistory paragraph.\n\n## Examination\n\nExamination paragraph."
+    },
+    {
+      "id": "sections",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:1a404eb5807ad40ac05aaf4a2b4ec4521336f7d78b863ee09d94d03c89386998",
+      "text": "## stub 100f4302\n\n## stub a213ba25\n\nStub reply for draft_point:1/1 (91117478).\n\n## stub eec677ff\n\n## stub 5c8fb175\n\nStub reply for draft_point:2/1 (76850a19).\n\n## stub a1908cc8\n\nStub reply for draft_point:2/2 (37b700e8).\n\n## stub b7c32710\n\nStub reply for draft_point:2/3 (0038c34c).\n\n## stub 746c715a\n\n## stub 4fb8c2be\n\nStub reply for draft_point:3/1 (7b80198f)."
+    },
+    {
+      "id": "summary",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "text": ""
+    },
+    {
+      "id": "plan",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    },
+    {
+      "id": "tone_line",
+      "state": "composed",
+      "reason": null,
+      "hash": "sha256:c083c29a00fa507e36c11d74e370380037001fad037694dbc807d44ef6007b54",
+      "text": "Any questions, just ask."
+    },
+    {
+      "id": "tally",
+      "state": "unsettled",
+      "reason": null,
+      "hash": null,
+      "text": null
+    }
+  ]
+}

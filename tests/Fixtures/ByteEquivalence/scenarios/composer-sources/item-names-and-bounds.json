@@ -1,0 +1,101 @@
+{
+  "description": [
+    "Item names and loop bounds. topics: a labelField title is trimmed ('  Padded history  '), cut",
+    "to 120 characters ending in '…', and a blank title falls back to label plus position ('Topics",
+    "3'). sections: a blank title falls back to 'Sections 2' and a blank point heading to 'Points 1';",
+    "section 1's outline is pinned with no points, so its inner for composes empty and its block is",
+    "its heading followed by an empty text ('## Assessment\\n\\n' then the join); the for's max of 3",
+    "leaves the fourth planned section unrun and without a block. summary: the judge never says good,",
+    "so the while stops at its bound of 3 and the third pass's text composes. plan: no branch",
+    "(skipped)."
+  ],
+  "inputs": {
+    "consult_draft": "Margaret Okafor, 64, seen for breathlessness on exertion. Echo shows mild aortic stenosis. Review in six months. (Fictional.)",
+    "topics": [
+      {
+        "title": "  Padded history  ",
+        "kind": "drafted"
+      },
+      {
+        "title": "A deliberately long topic title that runs past the one hundred and twenty characters an item name keeps before it is cut short",
+        "kind": "drafted"
+      },
+      {
+        "title": "   ",
+        "kind": "drafted"
+      }
+    ],
+    "include_plan": false,
+    "tone": "formal",
+    "redraft": true
+  },
+  "profile": {
+    "name": "Dr A. Sample",
+    "signature": "Dr A. Sample\nInternal Medicine"
+  },
+  "macroChoices": {},
+  "outputs": {
+    "plan": {
+      "sections": [
+        {
+          "title": "Assessment",
+          "purpose": "What the echo shows."
+        },
+        {
+          "title": "   ",
+          "purpose": "A section with a blank title."
+        },
+        {
+          "title": "Plan",
+          "purpose": "What happens next."
+        },
+        {
+          "title": "Fourth section",
+          "purpose": "Past the loop's max."
+        }
+      ]
+    },
+    "outline:1": {
+      "points": []
+    },
+    "outline:2": {
+      "points": [
+        {
+          "heading": "  ",
+          "point": "A point with a blank heading."
+        }
+      ]
+    },
+    "outline:3": {
+      "points": [
+        {
+          "heading": "Review",
+          "point": "Review in six months."
+        }
+      ]
+    },
+    "judge:1": {
+      "verdict": "revise",
+      "feedback": "Shorter."
+    },
+    "judge:2": {
+      "verdict": "revise",
+      "feedback": "Shorter still."
+    },
+    "judge:3": {
+      "verdict": "revise",
+      "feedback": "Still too long."
+    },
+    "draft_summary:1": "Summary, pass one.",
+    "draft_summary:2": "Summary, pass two.",
+    "draft_summary:3": "Summary, pass three.",
+    "opening": "Opening line for the note.",
+    "closing": "Closing line for the note.",
+    "draft_topic:0": "Padded history paragraph.",
+    "draft_topic:1": "Long-titled topic paragraph.",
+    "draft_topic:2": "Blank-titled topic paragraph.",
+    "draft_point:2/1": "Blank-headed point paragraph.",
+    "draft_point:3/1": "Review paragraph for the plan.",
+    "formal_line": "We remain at your disposal for any questions."
+  }
+}
