@@ -43,8 +43,8 @@ public static class PublishNotes
         ArgumentNullException.ThrowIfNull(limits);
 
         var walk = new Walk(resolution, limits);
-        walk.Body(package.Nodes.Nodes, 1, null);
-        walk.Body(package.Checks.Nodes, 1, null);
+        walk.Body(package.Nodes.Nodes);
+        walk.Body(package.Checks.Nodes);
         var total = Add(walk.Total(package.Nodes.Nodes), walk.Total(package.Checks.Nodes));
 
         var notes = new List<SourceRefusal>();
@@ -68,54 +68,61 @@ public static class PublishNotes
 
     private static long Times(long a, long b) => a != 0 && b > long.MaxValue / a ? long.MaxValue : a * b;
 
-    /// <summary>One walk of the nesting paths: the largest product of caps, the unbounded loops, and each body's calls.</summary>
+    /// <summary>
+    /// One walk of the nesting paths: the largest product of caps, the unbounded loops, and each body's calls. Each
+    /// function is worked out once (<see cref="Facts"/>) and applied at every call of it, so the walk is linear in the
+    /// package however wide the calls fan out; a function already on the path (a ring, refused before) adds nothing.
+    /// </summary>
     private sealed class Walk(Resolution resolution, PublishLimits limits)
     {
         private readonly HashSet<SourceFunction> path = new(ReferenceEqualityComparer.Instance);
 
-        private readonly HashSet<SourceFor> unbounded = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<SourceFunction, Facts> facts = new(ReferenceEqualityComparer.Instance);
 
         private readonly HashSet<SourceFor> bounding = new(ReferenceEqualityComparer.Instance);
 
-        public long AtOnce { get; private set; }
+        private readonly Scan top = new();
 
-        public List<SourceFor> Unbounded { get; } = [];
+        public long AtOnce => top.AtOnce;
+
+        public List<SourceFor> Unbounded => top.Unbounded;
 
         private ScopeTree Tree => resolution.Tree;
 
+        /// <summary>The caps along every path through <paramref name="nodes"/> at the top of the package.</summary>
+        public void Body(IReadOnlyList<SourceNode> nodes) => Body(nodes, 1, null, top);
+
         /// <summary>
-        /// The caps along every path through <paramref name="nodes"/>, at <paramref name="caps"/> so far;
-        /// <paramref name="open"/> are the unbounded loops around them.
+        /// The caps along every path through <paramref name="nodes"/>, at <paramref name="caps"/> so far, into
+        /// <paramref name="scan"/>; <paramref name="open"/> are the unbounded loops around them.
         /// </summary>
-        public void Body(IReadOnlyList<SourceNode> nodes, long caps, List<SourceFor>? open)
+        private void Body(IReadOnlyList<SourceNode> nodes, long caps, List<SourceFor>? open, Scan scan)
         {
             foreach (var node in nodes)
             {
                 switch (node)
                 {
                     case SourceLeaf { Kind: "agent" }:
-                        AtOnce = Math.Max(AtOnce, caps);
-                        foreach (var loop in open ?? [])
+                        scan.Agent(caps, open ?? []);
+                        break;
+                    case SourceLeaf { Kind: "call" } call:
+                        if (Function(call) is { } function && Of(function) is { Agent: true } inside)
                         {
-                            if (unbounded.Add(loop))
-                                Unbounded.Add(loop);
+                            scan.Agent(Times(caps, inside.Caps), open ?? []);
+                            scan.Agent(Times(caps, inside.Caps), inside.Unbounded);
                         }
 
-                        break;
-                    case SourceLeaf { Kind: "call" } call when Function(call) is { } function && path.Add(function):
-                        Body(function.Body.Nodes, caps, open);
-                        path.Remove(function);
                         break;
                     case SourceFor loop:
                         var cap = Cap(loop);
                         var inner = open;
                         if (cap == null)
                             inner = [.. open ?? [], loop];
-                        Body(loop.Body.Nodes, Times(caps, cap ?? 1), inner);
+                        Body(loop.Body.Nodes, Times(caps, cap ?? 1), inner, scan);
                         break;
                     default:
-                        foreach (var block in Blocks(node))
-                            Body(block.Nodes, caps, open);
+                        foreach (var block in ScopeTree.Blocks(node))
+                            Body(block.Nodes, caps, open, scan);
                         break;
                 }
             }
@@ -130,10 +137,10 @@ public static class PublishNotes
                 total = Add(total, node switch
                 {
                     SourceLeaf { Kind: "agent" } => 1,
-                    SourceLeaf { Kind: "call" } call when Function(call) is { } function && path.Add(function) => Inside(function),
+                    SourceLeaf { Kind: "call" } call => Function(call) is { } function && Of(function) is { } inside ? inside.Total : 0,
                     SourceFor loop => Times(Bound(loop), Total(loop.Body.Nodes)),
                     SourceWhile loop => Times(Math.Max(loop.Max, 0), Total(loop.Body.Nodes)),
-                    SourceIf or SourceCase => Blocks(node).Select(b => Total(b.Nodes)).DefaultIfEmpty(0).Max(),
+                    SourceIf or SourceCase => ScopeTree.Blocks(node).Select(b => Total(b.Nodes)).DefaultIfEmpty(0).Max(),
                     _ => 0,
                 });
             }
@@ -141,11 +148,18 @@ public static class PublishNotes
             return total;
         }
 
-        private long Inside(SourceFunction function)
+        /// <summary><paramref name="function"/>'s facts, worked out the first time it is asked for; null while it is on the path.</summary>
+        private Facts? Of(SourceFunction function)
         {
+            if (facts.TryGetValue(function, out var known))
+                return known;
+            if (!path.Add(function))
+                return null;
+            var scan = new Scan();
+            Body(function.Body.Nodes, 1, null, scan);
             var total = Total(function.Body.Nodes);
             path.Remove(function);
-            return total;
+            return facts[function] = new Facts(scan.Holds, scan.AtOnce, scan.Unbounded, total);
         }
 
         /// <summary>S04-079's rule: the loop's list could hold more than the limit.</summary>
@@ -192,14 +206,35 @@ public static class PublishNotes
 
         private SourceFunction? Function(SourceLeaf call) =>
             resolution.Calls.TryGetValue(call, out var binding) ? binding.Function : null;
+    }
 
-        private static IEnumerable<SourceBlock> Blocks(SourceNode node) => node switch
+    /// <summary>
+    /// What one function holds, its body walked from a product of 1: whether an agent is beneath it; the largest
+    /// product of caps to one; its unbounded loops with an agent beneath them, in the order found; its agent calls.
+    /// </summary>
+    private sealed record Facts(bool Agent, long Caps, IReadOnlyList<SourceFor> Unbounded, long Total);
+
+    /// <summary>What one walk of a body has found: whether it reached an agent, the largest product of caps, the unbounded loops.</summary>
+    private sealed class Scan
+    {
+        private readonly HashSet<SourceFor> seen = new(ReferenceEqualityComparer.Instance);
+
+        public bool Holds { get; private set; }
+
+        public long AtOnce { get; private set; }
+
+        public List<SourceFor> Unbounded { get; } = [];
+
+        /// <summary>An agent reached at <paramref name="caps"/>, beneath <paramref name="open"/>.</summary>
+        public void Agent(long caps, IEnumerable<SourceFor> open)
         {
-            SourceFor loop => [loop.Body],
-            SourceWhile loop => [loop.Body],
-            SourceIf branch => branch.Else == null ? [branch.Then] : [branch.Then, branch.Else],
-            SourceCase choice => choice.Branches.Select(b => b.Body).Concat(choice.Else == null ? [] : [choice.Else]),
-            _ => [],
-        };
+            Holds = true;
+            AtOnce = Math.Max(AtOnce, caps);
+            foreach (var loop in open)
+            {
+                if (seen.Add(loop))
+                    Unbounded.Add(loop);
+            }
+        }
     }
 }

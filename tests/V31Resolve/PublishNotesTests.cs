@@ -118,6 +118,62 @@ public class PublishNotesTests
         Assert.Empty(Said(Notes(files, Engine with { CallsPerJob = 612 }), "S04-080"));
     }
 
+    /// <summary>
+    /// Minimal with the call <c>start</c> of <c>f01</c>; each of the <paramref name="functions"/> functions holds
+    /// <paramref name="calls"/> calls of the next, and the last the agent <c>draft</c>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Chain(int functions, int calls)
+    {
+        static string Id(int i) => $"f{i:00}";
+        static string Call(string function) => Md(SourceFixture.Node("call", "Calling the next step", Plain, false, true,
+            $"\"if\": null, \"function\": \"{function}\", \"with\": {{}}"), "");
+
+        var files = Minimal()
+            .With("nodes/index.json", Index(["plan", "start"]))
+            .With("nodes/start.md", Call(Id(1)))
+            .With("functions/index.json", Index(Enumerable.Range(1, functions).Select(Id)));
+        for (var i = 1; i <= functions; i++)
+        {
+            var last = i == functions;
+            var nodes = last ? ["draft"] : Enumerable.Range(1, calls).Select(c => $"c{c}").ToArray();
+            files.With($"functions/{Id(i)}/index.json", Json(
+                $"{{ \"label\": \"Step {i}\", \"description\": [\"One step of a chain of calls.\"], \"inputs\": {{}}, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                + $"\"nodes\": [{string.Join(", ", nodes.Select(n => $"\"{n}\""))}], \"ret\": \"node.{nodes[0]}\", \"format\": \"plaintext\" }}"));
+            foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
+                files.With($"functions/{Id(i)}/{folder}/index.json", Index([]));
+            if (last)
+                files.With($"functions/{Id(i)}/draft.md", Agent("Drafting a sentence", Plain, "Write one sentence for Dr A. Sample.\n"));
+            else
+            {
+                foreach (var node in nodes)
+                    files.With($"functions/{Id(i)}/{node}.md", Call(Id(i + 1)));
+            }
+        }
+
+        return files;
+    }
+
+    [Fact]
+    public void AWideChainOfCalls_IsWalkedOncePerFunction()
+    {
+        // 14 functions, each calling the next 6 times: 6^13 runs of the agent at the bottom (and the plan), one at a time. Walked again
+        // at every call site this never returns; each function is worked out once.
+        var files = Chain(14, 6);
+        var check = SourceCheck.Run(files, ResolveFixture.Published());
+        Assert.True(check.Refusals.Count == 0, ResolveFixture.Said(check));
+
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var notes = PublishNotes.Of(check.Parse.Package!, check.Resolution!, Engine);
+        clock.Stop();
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"The notes took {clock.Elapsed}.");
+
+        Assert.Empty(Said(notes, "S04-072"));
+        Assert.Empty(Said(notes, "S04-073"));
+        Assert.Equal(["Up to 13060694017 agent calls could run in one job; this engine runs at most 500 per job, and fails the job beyond that."],
+            Said(notes, "S04-080"));
+    }
+
     [Fact]
     public void NoLimits_NoNotes()
     {
