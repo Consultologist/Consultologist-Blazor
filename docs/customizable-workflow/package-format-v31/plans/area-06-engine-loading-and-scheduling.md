@@ -121,16 +121,16 @@ consultologist-package-format (m39-build)   v31/conformance/refusal-packages/**,
 
 `matches`: the pattern is run with the instance's limit as the `Regex` match time-out (a limited evaluator keeps its own pattern cache, since the time-out is part of a compiled `Regex`); a `RegexMatchTimeoutException` becomes the failure. `has_word`: the ordinal search checks a `Stopwatch` every 4,096 candidate positions. The failure is returned in the result as every failure is; nothing throws.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `ASlowPattern_FailsWithA06001`: `(.*a.{100}){3}b` on 1 MiB of `a`, limit 50 ms → `Decide` gives `Failure.Kind == MatchTooSlow`, within 2 s of wall time; `RunTime("Node 'x'", "if", failure)` passes `V31Contract.AssertSentence` and reads `… matches took longer than 0.05 seconds on this text. Use a simpler pattern.`
   - `AFastPattern_IsUnchangedByALimit`: every vector of `tests/V31Logic`'s `matches` and `has_word` cases gives the same result with a 2 s limit as with none.
   - `NoLimit_NeverTimesOut`: the default constructor has `MatchTimeLimit == null`.
   - `HasWord_HonoursTheLimit`: a `has_word` over 1 MiB with a limit of `TimeSpan.FromTicks(1)` fails `MatchTooSlow` with detail `has_word`.
   - `TwoEvaluators_WithDifferentLimits_DoNotShareACache`: the same pattern through a limited and an unlimited instance; the unlimited one never fails.
-- [ ] **Step 2: Run them; they fail.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run `--filter "FullyQualifiedName~V31"`; all pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): matches and has_word stop at the engine's time limit`
+- [x] **Step 2: Run them; they fail.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run `--filter "FullyQualifiedName~V31"`; all pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): matches and has_word stop at the engine's time limit`
 
 ### Task 2: Two rulings at publish, and `plainConverts` in the compiled document (R3, R4, D3)
 
