@@ -45,24 +45,40 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | D2 | part 09 § 1.2 step 4 "break points … as configuration" | The break points are compiled in (`EngineBreakPoints.All`, empty today): they change only by an upgrade that went through the corpus re-render, which is a code change. |
 | D3 | 04-D14 `plainConverts` | `resolve.json` keeps it: every node, check and deliverable entry gains `plainConverts`, an object from each rule member the entry has non-null (`if`, `expression`, `while`, `until`) to its list of booleans (`[]` when the rule has no `plain`). `RunPlan` compiles each rule with its list. The schema's `entry` is open, so no schema change; the goldens and the `compiled-documents` family are regenerated. A part's, a macro's and a snippet's `if` are area 07's and follow the same member. |
 | D4 | part 09 § 1.2 step 4 `requires.spec`; 05-D47(7) | The store refuses a pair whose `requires.spec` is not `"31"` or whose `specVersion` is not 31 with S09-001's sentence, and one whose `package` does not name the folder it was read from with S07-006. |
-| D5 | part 09 § 9 against part 07 § 10 | A hash or lock mismatch is said with part 07's rows as `CompiledPackage.Verify` gives them (S07-006, S07-017); part 09's S09-009 and S09-014 word the same refusals for the clinician and are what the job's start failure shows. The record keeps the S07 sentence in the operator's log, the S09 one on the job. |
-| D6 | part 09 § 1.2 step 6, § 7.2 | The account's time zone is the account setting `account.timeZone` (an IANA name); the profile fields are `profile.credentials`, `profile.organisation`, `profile.closing` (settings), `name` the account's display name, `signature` the chosen signature block. Area 12's pages write these keys. `run.date` is the orchestration's start (`startedAtUtc`) in that zone. |
-| D7 | part 09 § 3.4 retries, Durable | A retry is the orchestrator's: the activity makes one attempt and answers `Throttled` or `ServiceFailure` with the wait it worked out (the response's `retry-after`, else the back-off with its jitter), the runner waits on a durable timer and calls again, holding the slot. So every wait is in the history and a replay repeats it. The activity's Durable retry policy is none at 31. |
+| D5 | part 09 § 9 against part 07 § 10 | A hash or lock mismatch is said with part 07's rows as `CompiledPackage.Verify` gives them (S07-006, S07-017); part 09's S09-009 and S09-014 word the same refusals for the clinician and are what the job's start failure shows. The record keeps the S07 sentence in the operator's log, the S09 one on the job. *As taken:* every S07-006 the load meets is shown as S09-009: a hash mismatch, a document whose `package` names another folder (D4), a document that does not declare its spec version as publish writes it, and one `RunPlan.Build` refuses. A lock that is not the job's at run time is S09-014. |
+| D6 | part 09 § 1.2 step 6, § 7.2 | The account's time zone is the account setting `account.timeZone` (an IANA name); the profile fields are `profile.credentials`, `profile.organisation`, `profile.closing` (settings), `name` the account's display name, `signature` the chosen signature block. Area 12's pages write these keys. `run.date` is the orchestration's start (`startedAtUtc`) in that zone. *As taken:* the run facts are worked out in the activity `load-run-inputs-v31` (`V31StartChecks.RunFacts`), not in the orchestrator, so the orchestration never reads the time-zone database; `run.id` and `run.engine` come from the start. |
+| D7 | part 09 § 3.4 retries, Durable | A retry is the orchestrator's: the activity makes one attempt and answers `Throttled` or `ServiceFailure` with the wait it worked out (the response's `retry-after`, else the back-off with its jitter), the runner waits on a durable timer and calls again, holding the slot. So every wait is in the history and a replay repeats it. The activity's Durable retry policy is none at 31. *As taken:* a wait of 0 or less is taken as 5,000 ms; a call that cannot be made (`plan`, `steps`, `compose`) is `AgentOutcomeKind.Failed` and fails the node at once; an empty model reply is a completed attempt with `""`; one attempt holds only while `AzureAI__MaxRetries` is 0. `check-drain`, which is no agent call, has a retry policy of 3 attempts. |
 | D8 | part 08 § 3 `limits` | The header's `limits` has exactly the nine members part 08 lists; the regex time limit of R2 is an engine setting beside them and is not in the record. |
-| D9 | part 09 § 3.6 the drain | `POST Admin/Drain` and `POST Admin/Resume` are authorised as the `Operator/*` endpoints are. While draining, every door still answers a new job with its id; the starter records the job and parks its orchestration input in a queue (one blob per job) instead of scheduling it, and Resume schedules what is parked, oldest first. A scheduled job whose timer ends during a drain waits for Resume before it starts (an orchestration started by this build carries `DrainAware`; one already in flight never meets the new check, so its replay is unchanged). `GET Admin/Drain` says how many orchestrations are producing or delivering; the release workflow polls it and enforces the 60 minutes. `Jobs__HoldNewJobs` keeps working as today. **The release workflow's two calls and its credential are the user's** (`.github/` is protected). |
+| D9 | part 09 § 3.6 the drain | `POST Admin/Drain` and `POST Admin/Resume` are authorised as the `Operator/*` endpoints are. While draining, every door still answers a new job with its id; the starter records the job and parks its orchestration input in a queue (one blob per job) instead of scheduling it, and Resume schedules what is parked, oldest first. A scheduled job whose timer ends during a drain waits for Resume before it starts (an orchestration started by this build carries `DrainAware`; one already in flight never meets the new check, so its replay is unchanged). `GET Admin/Drain` says how many orchestrations are producing or delivering; the release workflow polls it and enforces the 60 minutes. `Jobs__HoldNewJobs` keeps working as today. **The release workflow's two calls and its credential are the user's** (`.github/` is protected). *As taken:* `IEngineDrain` also has `ForgetAsync` (a parked blob is deleted only after its orchestration is scheduled) and `ParkedCountAsync`; Resume schedules a parked job only when no orchestration with its id exists; a start that parks re-reads the flag and starts the job itself if the drain ended; a waiting orchestration rechecks every 5 minutes; `producing` counts pending orchestrations too; the flag is in `personal-job-outputs`, a parked job in its account kind's outputs container; the instance queries fetch inputs and outputs so the custom status comes back. |
 | D10 | part 09 § 3.3 | `host.json`'s `maxConcurrentActivityFunctions` and the instance count are not set here: their values are sized to the model deployment's quota, which is the user's to state. `docs/` says how to size them. |
 | D11 | part 04 § 2.5 `.content`; § 7.6 | A loop's `.content` is built by the runner as § 2.5 words it (`## <item name>`, a blank line, the item's text; items joined by a blank line; completed items only); an object or list value's `.content` is its canonical JSON. Area 07 owns anything richer. |
-| D12 | part 09 § 3.1; the seams | Until area 07, `IBodyComposer`'s default renders a body with Scriban as it stands, over the scope the runner built, and is marked as the seam. Until area 09, `IRunRecorder`'s engine implementation keeps the header and progress on the job's entity and sends each finished row to telemetry as key, state and hashes only. |
+| D12 | part 09 § 3.1; the seams | Until area 07, `IBodyComposer`'s default renders a body with Scriban as it stands, over the scope the runner built, and is marked as the seam. Until area 09, `IRunRecorder`'s engine implementation keeps the header and progress on the job's entity and sends each finished row to telemetry as key, state and hashes only. *As taken:* the default composer uses strict variables, and any other render failure is A06-008; the recorder signals `RecordV31Progress` (counts and the current key). |
 | D13 | record keys, part 04 §§ 2.6, 7.9 | An instance's key is its entry's key (through the call for a function's node), then `:` and its item ids from the outermost loop inward joined by `/`; a `while` pass is `#<n>` after its while's position in that path (`node.refine.judge#2`, `node.sections.paragraphs.draft_paragraph:2/1`). Area 09 owns the final form; one function, `RunKeys.Of`, writes it. |
+| D14 | part 08 § 4; part 09 § 3.4 (Task 5's ruling) | A row's retries and repair use part 08 § 4's names, not the brief's: `retries: [{ atUtc, waitMs, kind, error }]` and `invalid: { reason, action, attempts }`. `IRunHost.DelayAsync` takes a `CancellationToken`, and the run cancels every timer it made when it ends (an orchestration does not complete while a durable timer is outstanding). |
+| D15 | part 04 §§ 2.2, 2.3, 8 (Task 6's rulings) | Item ids are 0-based only for an array input and 1-based for every other list; a loop over `.items` takes the production ids. `maxParallel` caps the open items of each loop instance, so caps multiply along nesting; this supersedes Task 4's "its loops' caps allow" at dispatch. |
+| D16 | part 04 §§ 3, 5; part 08 § 5.2 (Task 7's rulings) | The check is decided before `until` and wins a tie. A `checkFirst` while at its bound is checked once more, at `pass.<max+1>`, with no pass row. Pass records are shallow (`previous` one level, `history` `{ number, node }`), holding the body's and its branches' nodes. A while's `until` site is `until.<n>`; a `case`'s branch is its 1-based position or `else`. |
+| D17 | part 04 § 7.7; part 08 § 7 (Task 8's rulings) | A call's read form is its `ret`'s whole read form. `depth` on rows is the call depth. `RunPlan.Build` accepts the literal `null` argument. |
+| D18 | part 09 § 1.2 steps 4, 5 (Task 11's rulings) | The plan cache is keyed by the resolved `name@version`, and each plan carries its `resolveHash`. The engine runs the features `parallel` and `check-loops`; `parts`, `macro-markers` and `run-spots` are refused (S07-004) until area 07. `Agents` are the catalogues the engine already attests; the 31 agents catalogue is not loaded, so an agent only it lists is S07-005. |
+| D19 | part 09 § 3.4; Global Constraints (Task 12's rulings) | An empty model reply is answered `Completed` with `""`, so the node's `onInvalid` and `failIfEmpty` decide it ("never throw on model output" outranks "anything else propagates"). A 31 job's inputs document lives in its held inputs (`org-job-inputs` / `personal-job-inputs`), so the retention drop sweeps it; `AccountKind` is a required member of the orchestration input. A fault the run cannot say as a node's sentence fails the job with A06-010, and held inputs that are gone with A06-009. |
+| D20 | job start (Task 13's ruling) | Inputs sent by reference (previous-run references, form-response references and files, `MacroChoices`) are not read at 31 by this area: the plan's Task 13 names typed inputs and extracted documents only. Reruns and the pages that send references are area 12's, macro choices area 07's. |
 
 **Area sentences** (ids not in `sentences.json`):
 
 | Id | Sentence |
 |---|---|
-| A06-001 | `<site> <member> could not be decided: <matches \| has_word> took longer than <n> seconds on this text. Use a simpler pattern.` |
-| A06-002 | `While '<id>' declares checkFirst true, but its check reads node '<n>' of its own body, which has no value before the first pass: declare "checkFirst": false, or read something that runs before the while.` |
-| A06-003 | `Node '<id>' computed a value that isn't <format>.` (a computed value that does not fit its format at run time, 04-D49; use a row of part 03 § 11.3 or part 02 if one says it) |
-| A06-004 | `Workflow <package>@<version> isn't published.` (a folder with no stamp, or a stamp that cannot be read) |
+| A06-001 | `<site> <member> could not be decided: <matches \| has_word> took longer than <n> seconds on this text. Use a simpler pattern.` (R2: an evaluation past `ConsultGeneration__RegexMilliseconds`, at run time) |
+| A06-002 | `While '<id>' declares checkFirst true, but its check reads node '<n>' of its own body, which has no value before the first pass: declare "checkFirst": false, or read something that runs before the while.` (R3, at publish) |
+| A06-003 | `Node '<id>' computed a value that isn't <format>.` (a computed value that does not fit its format at run time, 04-D49; `<format>` the bundle key, else `its format`) |
+| A06-004 | `Workflow <package>@<version> isn't published.` (a version stamped 31 whose `resolve.json` or `lock.json` is absent, at load; and a job's plan whose version is no longer stamped 31. A folder with no stamp, or a stamp that cannot be read, is today's path, D1) |
+| A06-005 | `Node '<id>' gave a reply that isn't <format>.` (an agent's reply that does not fit its format, after `onInvalid`) |
+| A06-006 | `Loop '<id>' was given <reference>, which isn't a list.` (a loop's source that is not a list at run time; `<reference>` the `in` as written) |
+| A06-007 | `Case '<id>' was given <reference>, which no branch lists, and it has no else.` (a value that escaped its format, at run time) |
+| A06-008 | `<Subject> couldn't be rendered.` (a body that fails to render for a reason other than its step budget; never the template engine's message) |
+| A06-009 | `This job's inputs are no longer held, so it can't run. Run the workflow again.` (the job's held inputs are gone when its orchestration reads them) |
+| A06-010 | `The engine couldn't finish this job. Tell the operator.` (a fault the run cannot say as a node's sentence; never the exception's message) |
+| A06-011 | `Input '<id>' is required; fill it in to run this workflow.` (a required input absent, `null` or blank at the start, R5) |
+| A06-012 | `Input '<id>' was given a value that isn't <format>.` (an input's value that does not fit its format at the start, R4) |
+| A06-013 | `Unknown input(s) <ids> (declared: <ids>).` (an input the package does not declare, at the start, in today's start's wording) |
 
 ## Files
 
@@ -485,34 +501,34 @@ public sealed class EngineCapabilitiesFactory { public EngineCapabilities Curren
 
 ## Spec coverage
 
-| Section | Task |
-|---|---|
-| part 09 § 1.1 two load paths; no source tree read at 31 | 11 (D1), 13 |
-| § 1.2 step 1 the pin | 13 (the starter's, unchanged) |
-| § 1.2 steps 2, 3 read and verify; the stamp | 3, 11 |
-| § 1.2 step 4 `requires`, break points | 11 (D2, D4) |
-| § 1.2 step 5 the plan, in memory, cached | 3, 11 |
-| § 1.2 step 6 profile, time zone, hashes recorded before any node | 12, 13 |
-| § 1.3 which versions are admitted; S09-001 | 10, 13 |
-| § 2.1 the preview setting; startup stop; the attestation | 10 (publish, import and `Current` ask `SpecVersionAdmission` in area 11) |
-| § 3.1 order from `resolve.json`; computed, conditions inline | 3, 4 |
-| § 3.1 a call's body inline | 8, 12 |
-| § 3.1 `matches` and the clock | 1 (R2 replaces "no time-out"), 4 (decision times from the host's clock) |
-| § 3.1 check loops per item | 6 |
-| § 3.2 the ceiling, what counts, `maxParallel`, the fixed order | 4, 6, 8, 9, 10 |
-| § 3.2 the record holds the ceiling | 12, 13 (the header's `limits`); peak in telemetry: 12 |
-| § 3.3 deployment-wide limits | 15 (D10) |
-| § 3.4 429s, other failures, the job limit, cancelled rows | 5, 12 |
-| § 3.4 total-work limits | 4 (calls, render steps), 6 (items) |
-| § 3.4 settings recorded in `limits`; retries on the row | 10, 5 |
-| § 3.6 the drain | 14 (D9) |
-| § 9 the sentences for the above | with each task |
-| part 04 § 2 `for` | 6 |
-| § 3 `while` | 7; R3 in 2 |
-| § 4 reading across levels | 4 (`RunScope`), 6, 7 |
-| § 5 `if`, `case` | 7 |
-| § 7 functions and `call` | 8 |
-| § 8 concurrency | 4, 6, 8, 9 |
-| #1503 rulings: empty list; regex limit | 6 and 13 (R1); 1 (R2) |
-| #1507 rulings 4, 5, 6 | 2 (R3, R4), 13 (R4, R5) |
-| 04-D14 `plainConverts`; 04-D49 computed values validated | 2 (D3), 4 |
+| Section | Task | Commits |
+|---|---|---|
+| part 09 § 1.1 two load paths; no source tree read at 31 | 11 (D1), 13 | `2766c5d6` (the stamp), `418e3d6c`, `a299fe08` (the store), `ecaa835d` (the starter's branch) |
+| § 1.2 step 1 the pin | 13 (the starter's, unchanged) | `418e3d6c`, `6f744d20` (`latest` through the 5–30 store's pointer), `ecaa835d` |
+| § 1.2 steps 2, 3 read and verify; the stamp | 3, 11 | `2766c5d6`, `418e3d6c`, `a299fe08`; again at run time `b1cda754`, `2f3d8690` |
+| § 1.2 step 4 `requires`, break points | 11 (D2, D4) | `0087b576` (the built-ins' versions), `418e3d6c` (`EngineBreakPoints`, `EngineCapabilitiesFactory`, D4), `a299fe08` |
+| § 1.2 step 5 the plan, in memory, cached | 3, 11 | `2766c5d6`, `c8831643` (the plan); `418e3d6c` (the store's cache); `b1cda754`, `fbb3e7ac` (the orchestrator's cache) |
+| § 1.2 step 6 profile, time zone, hashes recorded before any node | 12, 13 | `b1cda754` (`RecordV31Header`), `ecaa835d` (`V31StartChecks.Account`, `Initialize`), `fbb3e7ac` (run facts in the inputs activity) |
+| § 1.3 which versions are admitted; S09-001 | 10, 13 | `235f3089`, `418e3d6c`, `a299fe08`, `ecaa835d` |
+| § 2.1 the preview setting; startup stop; the attestation | 10 (publish, import and `Current` ask `SpecVersionAdmission` in area 11) | `235f3089` |
+| § 3.1 order from `resolve.json`; computed, conditions inline | 3, 4 | `2766c5d6`, `2b586197`, `a9f73f73` |
+| § 3.1 a call's body inline | 8, 12 | `925b5eca`, `df4068d6`, `b1cda754` |
+| § 3.1 `matches` and the clock | 1 (R2 replaces "no time-out"), 4 (decision times from the host's clock) | `614318bc`, `fd0a3a30` (R2); `2b586197` (decision times from the host's clock) |
+| § 3.1 check loops per item | 6 | `a715b2c1`, `634dfd13` |
+| § 3.2 the ceiling, what counts, `maxParallel`, the fixed order | 4, 6, 8, 9, 10 | `2b586197`, `a715b2c1`, `925b5eca`, `df4068d6`, `8e4ffdbc`, `1b43a7b6`, `235f3089` |
+| § 3.2 the record holds the ceiling | 12, 13 (the header's `limits`); peak in telemetry: 12 | `b1cda754` (the header's `limits`, peak in telemetry), `0dca9780`, `ecaa835d` |
+| § 3.3 deployment-wide limits | 15 (D10) | `8fa05ca7` (`engine-v31.md`, "Sizing the deployment-wide limits"); nothing set in `host.json` (D10) |
+| § 3.4 429s, other failures, the job limit, cancelled rows | 5, 12 | `71cd61bb`, `d8ffe58a`, `53925d84`, `b1cda754`, `8b233ef7`, `639852ff`, `18b52a6e` |
+| § 3.4 total-work limits | 4 (calls, render steps), 6 (items) | `2b586197` (calls, render steps), `a715b2c1` (items) |
+| § 3.4 settings recorded in `limits`; retries on the row | 10, 5 | `235f3089`, `0dca9780`; `71cd61bb`, `d8ffe58a` (retries in part 08's shape) |
+| § 3.6 the drain | 14 (D9) | `4588b6f2`, `733c7285`, `3551cdab`, `e1ebf658`, `811c1389` |
+| § 9 the sentences for the above | with each task | with each task; A06-001 `fd0a3a30`, A06-002 `1fdd36f5`, A06-003 `2b586197`, A06-004 `418e3d6c`, A06-005 `71cd61bb`, A06-006 `a715b2c1`, A06-007 `ee1886ce`, A06-008 `b1cda754`, A06-009 and A06-010 `fbb3e7ac`, A06-011 to A06-013 `ecaa835d` |
+| part 04 § 2 `for` | 6 | `a715b2c1`, `634dfd13` |
+| § 3 `while` | 7; R3 in 2 | `ee1886ce`, `ad3e4c57`; R3 `1fdd36f5` |
+| § 4 reading across levels | 4 (`RunScope`), 6, 7 | `2b586197`, `a9f73f73`, `a715b2c1`, `ee1886ce`, `ad3e4c57` |
+| § 5 `if`, `case` | 7 | `ee1886ce`, `ad3e4c57` |
+| § 7 functions and `call` | 8 | `925b5eca`, `df4068d6` |
+| § 8 concurrency | 4, 6, 8, 9 | `2b586197`, `a715b2c1`, `925b5eca`, `8e4ffdbc`, `1b43a7b6` |
+| #1503 rulings: empty list; regex limit | 6 and 13 (R1); 1 (R2) | R1 `a715b2c1`, `ecaa835d`; R2 `614318bc`, `235f3089`, `72829161`, `418e3d6c` |
+| #1507 rulings 4, 5, 6 | 2 (R3, R4), 13 (R4, R5) | R3 `1fdd36f5`; R4 `1fdd36f5`, `8f98cf4f`, `ecaa835d`; R5 `ecaa835d` |
+| 04-D14 `plainConverts`; 04-D49 computed values validated | 2 (D3), 4 | `1fdd36f5`, `c5e37c2f`, `2766c5d6` (D3); `2b586197` (04-D49) |
