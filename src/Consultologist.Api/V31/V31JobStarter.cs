@@ -76,7 +76,7 @@ public sealed class V31JobStarter(
             var refusal = load.Refusal ?? CompiledPackageStore.HashMismatch(packageRef.Name, packageRef.Version);
             return await RecordStartFailureAsync(
                 client, entityId, Header(jobId, appUserId, $"{packageRef.Name}@{packageRef.Version}", origin, request, null), refusal,
-                ConsultGenerationJobStartError.PackageContentRejected, senderSafe: true);
+                ConsultGenerationJobStartError.PackageContentRejected, senderSafe: refusal);
         }
 
         // Documents become text as today's start makes them: a document sent to a text input arrives as its text.
@@ -103,10 +103,12 @@ public sealed class V31JobStarter(
             logger.LogWarning(
                 "Rejected 31 job start: the account or the inputs were refused. JobId={JobId}, Package={Package}@{Version}, Refusals={Refusals}",
                 jobId, plan.Package, plan.Version, string.Join(", ", refusals.Select(r => r.Id)));
-            // A06-013 quotes the caller's own ids, which on the email door can be a file name: never the sender's.
+            // A06-013 quotes the caller's own ids, which on the email door can be a file name: the sender is told every
+            // other sentence, and nothing when that one is all there is.
+            var senderSafe = refusals.Where(r => r.Id != "A06-013").Select(r => r.Sentence).ToList();
             return await RecordStartFailureAsync(
                 client, entityId, header, string.Join("\n", refusals.Select(r => r.Sentence)),
-                ConsultGenerationJobStartError.InputsMismatch, senderSafe: refusals.All(r => r.Id != "A06-013"));
+                ConsultGenerationJobStartError.InputsMismatch, senderSafe.Count > 0 ? string.Join("\n", senderSafe) : null);
         }
 
         var accountKind = await accounts.GetAccountKindAsync(appUserId, cancellationToken);
@@ -248,19 +250,22 @@ public sealed class V31JobStarter(
             EngineCommit: engine.Commit,
             EngineRelease: engine.Release);
 
-    /// <summary>A job born Failed (#434's shape): no node runs, the record holds <paramref name="reason"/>, the door gets the job's id with it.</summary>
+    /// <summary>
+    /// A job born Failed (#434's shape): no node runs, the record holds <paramref name="reason"/>, the door gets the job's id
+    /// with it, and the email sender is told <paramref name="senderSafe"/> (the sentences that quote nothing the caller sent).
+    /// </summary>
     private static async Task<ConsultGenerationJobStartOutcome> RecordStartFailureAsync(
         DurableTaskClient client,
         EntityInstanceId entityId,
         ConsultGenerationJobInitialize header,
         string reason,
         ConsultGenerationJobStartError error,
-        bool senderSafe)
+        string? senderSafe)
     {
         await client.Entities.SignalEntityAsync(
             entityId,
             nameof(ConsultGenerationJobEntity.RecordStartFailure),
             new ConsultGenerationJobStartFailure(header, reason));
-        return new ConsultGenerationJobStartOutcome(header.JobId, error, reason, SenderSafeDetail: senderSafe ? reason : null);
+        return new ConsultGenerationJobStartOutcome(header.JobId, error, reason, SenderSafeDetail: senderSafe);
     }
 }

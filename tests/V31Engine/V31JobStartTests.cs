@@ -200,6 +200,23 @@ public class V31JobStartTests
     }
 
     [Fact]
+    public async Task AnUndeclaredInput_AndNoTimeZone_TellTheSenderOnlyTheZone()
+    {
+        // the record holds every sentence; the sender is told every one but the undeclared ids' (A06-013), which quotes them
+        var start = new Start(preview: "31", timeZone: null);
+        var packageRef = start.Put("nested-note");
+        var inputs = Text(Draft);
+        inputs["Okafor_referral"] = ConsultInputValue.OfText(Draft);
+
+        var outcome = await start.RunAsync(packageRef, inputs);
+
+        Assert.Equal(ConsultGenerationJobStartError.InputsMismatch, outcome.Error);
+        Assert.Equal($"{V31StartChecks.NoTimeZone}\nUnknown input(s) 'Okafor_referral' (declared: consult_draft).", outcome.ErrorDetail);
+        Assert.Equal(V31StartChecks.NoTimeZone, outcome.SenderSafeDetail);
+        AssertStartFailure(start, outcome.JobId!, outcome.ErrorDetail!);
+    }
+
+    [Fact]
     public async Task ADocumentSentToATextInput_ArrivesAsItsText()
     {
         var start = new Start(preview: "31");
