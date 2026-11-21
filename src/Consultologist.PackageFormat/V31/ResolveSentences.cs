@@ -190,5 +190,12 @@ internal static class ResolveSentences
     public static SourceRefusal ReadInACircle(string a, string chain, string path) =>
         new("A05-003", $"Node '{a}' reads node '{chain}', which reads node '{a}': nodes can't read each other in a circle. Break the circle.", path);
 
+    /// <summary>
+    /// A05-004 (D5): the function <paramref name="function"/>'s own format <paramref name="id"/> is bundled as
+    /// <c>&lt;function&gt;__&lt;id&gt;</c>, a key another format the package uses already has.
+    /// </summary>
+    public static SourceRefusal BundleKeyTaken(string function, string id, string path) =>
+        new("A05-004", $"Function '{function}' format '{id}' is compiled as '{function}__{id}', which the package already uses: rename one.", path);
+
     private static string Bool(bool value) => value ? "true" : "false";
 }

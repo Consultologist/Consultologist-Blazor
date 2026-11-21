@@ -56,9 +56,11 @@ public class RefusalPackagesTests
     /// #1502 (area 05): the resolver's sentences the suite has no case for. S04-074: a warning (a format a function lists
     /// in uses and never names); a package that gets it is accepted. S04-063: a macro placed in a function, whose if
     /// reads a node the function lacks; where a macro is placed is what a body reads, which only the seam
-    /// (<c>ITemplateReads</c>, area 07's) says, and <c>SourceCheck.Run</c> without it never judges it (D1).
+    /// (<c>ITemplateReads</c>, area 07's) says, and <c>SourceCheck.Run</c> without it never judges it (D1). A05-004: a
+    /// function's own format whose bundle key another used format has; the bundle is built at compile
+    /// (<c>CompiledFormats.Build</c>), which <c>SourceCheck.Run</c> does not reach until <c>resolve.json</c> is compiled (Task 7).
     /// </summary>
-    private static readonly string[] ResolveNotShipped = ["S04-063", "S04-074"];
+    private static readonly string[] ResolveNotShipped = ["S04-063", "S04-074", "A05-004"];
 
     /// <summary>
     /// The ids of <see cref="LogicNotShipped"/> that no public method of <see cref="ExpressionSentences"/> returning a
