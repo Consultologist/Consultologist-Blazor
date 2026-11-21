@@ -396,15 +396,15 @@ public sealed class EngineCapabilitiesFactory { public EngineCapabilities Curren
 ```
 `TryLoadAsync`, in order: the version is resolved as today for `latest` (reuse the store's pointer read; do not duplicate its cache); read `{name}/{version}/publish.json`; `PublishedStamp.TryRead` null → return null **without reading anything else**; read `resolve.json` and `lock.json` (either absent → A06-004); `CompiledPackage.Verify(name, version, resolve, lock, stamp.ResolveHash, stamp.LockHash)` → on S07-006 the refusal is S09-009's sentence, on S07-017 S09-014's, the S07 sentence in `OperatorDetail` (D5); D4's checks; `RequiresCheck.Engine(resolve, lock, capabilities)` → its first sentence is the refusal, all of them in `OperatorDetail`; `RunPlan.Build` with the settings' regex limit. A plan is cached in memory per `name@version` and `resolveHash`, never stored; a refusal is not cached. `EngineCapabilitiesFactory.Current()`: `Evaluator` `JsonLogicOperations.EvaluatorVersion`; `Scriban` and `Libraries` from the loaded assemblies as `Toolchain.Current` reads them; `Operations` from `JsonLogicOperations`; `Kinds` and `Features` what this build runs (`constants.json`'s lists: a test holds the factory to them, less any feature this area does not run, each named with its reason); `Agents` from the attested agents catalogue the engine already loads (name → versions); `Builtins` the built-in machinery versions as `LockCompiler` writes them; `BreakPoints` `EngineBreakPoints.All`.
 
-- [ ] **Step 1: Write the failing tests** (`FakeRegistry : IRegistryFiles` over a dictionary, counting reads; a published golden put with `Put(GoldenCase)`):
+- [x] **Step 1: Write the failing tests** (`FakeRegistry : IRegistryFiles` over a dictionary, counting reads; a published golden put with `Put(GoldenCase)`):
   - `AStamped31Version_Loads` (plan's hashes are the stamp's); `ASecondLoad_ReadsNothing` (cache); `AVersionWithNoStamp_IsNotThisPaths` (null, exactly one read, `publish.json`); `A30Stamp_IsNotThisPaths`.
   - `Verify_AcceptsOnlyTheBytesPublished` (theory: `resolve.json` re-indented, one byte changed, a trailing newline → S09-009; `lock.json` changed, a lock naming another hash → S09-014; each `OperatorDetail` passes `V31Contract.AssertSentence` as S07-006 / S07-017).
   - `AStampWithoutItsDocuments_IsNotPublished` (A06-004); `ADocumentForAnotherPackage_IsRefused` (D4); `RequiresSpecOtherThan31_IsS09001`.
   - `APackageNeedingWhatTheEngineLacks_IsRefused` (theory: Scriban `^99.0.0` → S07-003; a kind `teleport` → S07-004; an agent version the catalogue lacks → S07-005; a break point after the locked Scriban with the engine past it → S07-003), each a stamped pair re-published with the mutated `requires` so `Verify` passes.
   - `ARefusal_IsNotCached` (fix the registry, load again, it loads).
   - `EngineCapabilitiesFactoryTests.TheGoldens_AreAdmitted` (`RequiresCheck.Engine` on each golden pair gives nothing, with the agents the goldens bind present); `Kinds_AndFeatures_AreTheContracts`.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement; register in `Program.cs`.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `Api (#1503): a 31 package is loaded from its stamped resolve.json and lock.json, verified and checked`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement; register in `Program.cs`.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `Api (#1503): a 31 package is loaded from its stamped resolve.json and lock.json, verified and checked`
 
 ### Task 12: The orchestration at 31
 
