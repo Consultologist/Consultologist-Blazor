@@ -389,11 +389,11 @@ The agent activity: load the plan, find the entry and its binding, `AgentTurn.Pr
 
 **R7 (#1504 ruling 5; #1502 ruling 2):** a manifest whose `title` is `null` compiles `resolve.title` to the package's **name**, not `name@version` (`ResolveCompiler.cs` near line 89). Add a test.
 
-- [ ] **Step 1: Write the failing tests:** `RequiresAgents_AreIntegerVersions` (the compiled `requires.agents` of a fixture binding `judgement` 1 is the number 1; the document fits the pinned `resolve.schema.json` once the pin moves); `TwoVersionsOfOneAgent_AreRefusedAtPublish` (the sentence, held by `V31Contract.AssertSentence`); `RequiresCheck_ReadsIntegerVersions` (a plan requiring an agent version the engine lacks is refused as today, S07-005; a text version in an edited document is S07-006); `ANullTitle_CompilesToThePackagesName`.
-- [ ] **Step 2: Run them; they fail.**
-- [ ] **Step 3: Implement,** edit the spec example and the content repo (schema, chapter 7), regenerate the goldens (`GOLDEN_UPDATE_V31=1`) and read each diff: only `requires.agents` values (text to integer), `title` where a fixture's manifest title is null, and the hashes that follow may change. Re-export `compiled-documents` and `refusal-packages`, `check-v31.py`, commit, push, move the pin.
-- [ ] **Step 4: Run** `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`: green.
-- [ ] **Step 5: Commit** by concern, push.
+- [x] **Step 1: Write the failing tests:** `RequiresAgents_AreIntegerVersions` (the compiled `requires.agents` of a fixture binding `judgement` 1 is the number 1; the document fits the pinned `resolve.schema.json` once the pin moves); `TwoVersionsOfOneAgent_AreRefusedAtPublish` (the sentence, held by `V31Contract.AssertSentence`); `RequiresCheck_ReadsIntegerVersions` (a plan requiring an agent version the engine lacks is refused as today, S07-005; a text version in an edited document is S07-006); `ANullTitle_CompilesToThePackagesName`.
+- [x] **Step 2: Run them; they fail.**
+- [x] **Step 3: Implement,** edit the spec example and the content repo (schema, chapter 7), regenerate the goldens (`GOLDEN_UPDATE_V31=1`) and read each diff: only `requires.agents` values (text to integer), `title` where a fixture's manifest title is null, and the hashes that follow may change. Re-export `compiled-documents` and `refusal-packages`, `check-v31.py`, commit, push, move the pin.
+- [x] **Step 4: Run** `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`: green.
+- [x] **Step 5: Commit** by concern, push.
 
 ### Task 12c: The owner's later rulings on `pass.node` and `MacroChoices` (R8, R9)
 
