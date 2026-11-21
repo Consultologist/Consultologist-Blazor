@@ -33,10 +33,16 @@ public sealed class EngineLimitSettings(IConfiguration configuration)
         JobAgentCalls: Read(configuration, "JobAgentCalls", Defaults.JobAgentCalls),
         RenderSteps: Read(configuration, "RenderSteps", Defaults.RenderSteps));
 
-    /// <summary>R2: the time one evaluation of <c>matches</c> or <c>has_word</c> may take (<c>ConsultGeneration__RegexMilliseconds</c>).</summary>
-    public TimeSpan RegexLimit { get; } = TimeSpan.FromMilliseconds(Read(configuration, "RegexMilliseconds", DefaultRegexMilliseconds));
+    /// <summary>The longest regex time-out .NET accepts, so the evaluator's: <see cref="int.MaxValue"/> - 1 milliseconds.</summary>
+    private const int MaxRegexMilliseconds = int.MaxValue - 1;
 
-    private static int Read(IConfiguration configuration, string name, int fallback)
+    /// <summary>
+    /// R2: the time one evaluation of <c>matches</c> or <c>has_word</c> may take (<c>ConsultGeneration__RegexMilliseconds</c>),
+    /// at most what the evaluator accepts as a match time-out.
+    /// </summary>
+    public TimeSpan RegexLimit { get; } = TimeSpan.FromMilliseconds(Read(configuration, "RegexMilliseconds", DefaultRegexMilliseconds, MaxRegexMilliseconds));
+
+    private static int Read(IConfiguration configuration, string name, int fallback, int max = int.MaxValue)
     {
         ArgumentNullException.ThrowIfNull(configuration);
         var value = configuration[$"{Section}:{name}"];
@@ -45,8 +51,10 @@ public sealed class EngineLimitSettings(IConfiguration configuration)
             return fallback;
         }
 
-        return int.TryParse(value.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1
+        return int.TryParse(value.Trim(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var parsed) && parsed >= 1 && parsed <= max
             ? parsed
-            : throw new InvalidOperationException($"{Section}__{name} is '{value}'; it is an integer from 1 upward, or unset for {fallback.ToString(CultureInfo.InvariantCulture)}.");
+            : throw new InvalidOperationException(max == int.MaxValue
+                ? $"{Section}__{name} is '{value}'; it is an integer from 1 upward, or unset for {fallback.ToString(CultureInfo.InvariantCulture)}."
+                : $"{Section}__{name} is '{value}'; it is an integer from 1 to {max.ToString(CultureInfo.InvariantCulture)}, or unset for {fallback.ToString(CultureInfo.InvariantCulture)}.");
     }
 }

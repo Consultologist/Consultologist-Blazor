@@ -67,11 +67,22 @@ public class EngineLimitSettingsTests
     [InlineData("JobAgentCalls", "99999999999")]
     [InlineData("RenderSteps", "0")]
     [InlineData("RegexMilliseconds", "0")]
+    [InlineData("RegexMilliseconds", "2147483647")]
     public void AValueBelowOne_OrNotANumber_Throws(string key, string value)
     {
         var thrown = Assert.Throws<InvalidOperationException>(() => With((key, value)));
 
         Assert.Contains($"ConsultGeneration__{key}", thrown.Message, StringComparison.Ordinal);
         Assert.Contains($"'{value}'", thrown.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheRegexLimit_IsCappedAtWhatTheEvaluatorAccepts()
+    {
+        var settings = With(("RegexMilliseconds", "2147483646"));
+
+        Assert.Equal(TimeSpan.FromMilliseconds(2147483646), settings.RegexLimit);
+        Assert.Equal(settings.RegexLimit, new Consultologist.PackageFormat.V31.CorvusJsonLogicEvaluator(settings.RegexLimit).MatchTimeLimit);
+        Assert.Throws<ArgumentOutOfRangeException>(() => new Consultologist.PackageFormat.V31.CorvusJsonLogicEvaluator(TimeSpan.FromMilliseconds(2147483647)));
     }
 }
