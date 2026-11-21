@@ -65,7 +65,7 @@ public static class RequiresCheck
     /// operation is missing, the locked version is not a version, or the package is locked before one of the
     /// component's break points with the engine at or past it; S07-003 for another locked library (ordinal) locked before
     /// one of its break points with the engine's version of it (<see cref="EngineCapabilities.Libraries"/>) at or past it,
-    /// or not given, naming that library and the engine's version of it (or <c>unknown</c>); S07-004 for each kind, then
+    /// or not given as a version, naming that library and the engine's version of it (or <c>unknown</c>); S07-004 for each kind, then
     /// each feature, the engine does not support; S07-005 for each agent (ordinal) at a version the engine does not have.
     /// At most one refusal per component. A null argument is the caller's error.
     /// </summary>
@@ -107,12 +107,13 @@ public static class RequiresCheck
         }
 
         // The other locked libraries (Markdig, the two Corvus libraries) have no range: only their break points hold them,
-        // each against the engine's own version of the library; an engine that does not say its version is held to it.
+        // each against the engine's own version of the library; an engine that does not say it, or says what is no version,
+        // is held to it.
         foreach (var point in (engine.BreakPoints ?? []).Where(p => p?.Component is { } c && c != Scriban && LockCompiler.Member(libraries, c) != null)
                      .GroupBy(p => p.Component, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
             var locked = Text(libraries, point.Key);
-            var running = engine.Libraries?.GetValueOrDefault(point.Key) is { Length: > 0 } v ? v : null;
+            var running = engine.Libraries?.GetValueOrDefault(point.Key) is { } v && CaretRange.IsVersion(v) ? v : null;
             if (point.Any(p => CaretRange.Compare(locked ?? "", p.Version) < 0 && (running == null || CaretRange.Compare(running, p.Version) >= 0)))
             {
                 refusals.Add(ResolveSentences.ComponentOutOfRange(

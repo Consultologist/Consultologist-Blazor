@@ -147,6 +147,14 @@ public class RequiresCheckTests
         unsaid["Corvus.JsonSchema"] = "4.9.0";
         var refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints, libraries: unsaid))));
         Assert.Contains("needs Markdig ^0.41.3; this engine runs Markdig unknown.", refusal.Sentence);
+
+        // A version the engine gives that is no version (it would compare as lowest, before the break point) is not one.
+        foreach (var written in new[] { "", "0.42", "latest", "0.42.1-beta" })
+        {
+            var malformed = new Dictionary<string, string>(unsaid, StringComparer.Ordinal) { ["Markdig"] = written };
+            refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints, libraries: malformed))));
+            Assert.Contains("needs Markdig ^0.41.3; this engine runs Markdig unknown.", refusal.Sentence);
+        }
     }
 
     [Fact]
