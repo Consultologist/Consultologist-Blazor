@@ -8,7 +8,10 @@ namespace Consultologist.PackageFormat.V31;
 /// § 4.1 is present, in its order; there is no time. The operations are the names <c>requires.operations</c> lists, each
 /// at its exact version; the built-ins are the machinery every package is checked with and each built-in renderer an
 /// entry renders through (§ 4.3), at the versions <c>constants.json</c> declares. Never throws on the document: a member
-/// it reads that is missing or of another shape gives nothing.
+/// it reads that is missing or of another shape gives null or nothing. A resolve with no <c>package</c> (or one whose
+/// name or version is not text) is written <c>"package": { "name": null, "version": null }</c>, the missing one null;
+/// with no <c>requires.operations</c>, <c>operations</c> is <c>{}</c>; with no entry rendering through a built-in
+/// renderer, <c>builtins</c> is the machinery alone.
 /// </summary>
 public static class LockCompiler
 {

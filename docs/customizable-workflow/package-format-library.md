@@ -927,10 +927,12 @@ publish report are not in it.
 
 **`lock.json`.** `LockCompiler.Compile(resolve, resolveHash, toolchain)` returns the document as a
 `JsonObject` (`CanonicalJson.Write` gives its bytes). It never refuses, and has § 4.1's members in
-order: `package`, the `Toolchain`'s release, dialect, libraries, evaluator, runtime and catalogues,
-`operations` (each name of `requires.operations` at its exact version), `builtins` (`formats`,
-`markdown_escape`, `plain_conversion`, `printer`, plus each built-in renderer an entry `renders`
-through), `culture` `invariant`, and `resolve.hash`.
+§ 4.1's order: `documentVersion` (`1`), `package` (`resolve.json`'s name and version), `resolve.hash`,
+`resolver` (the `Toolchain`'s package format release and dialect), `libraries` (ordinal), `evaluator`,
+`operations` (each custom operation `requires.operations` names, at its exact version),
+`builtins` (`formats`, `markdown_escape`, `plain_conversion`, `printer`, plus each built-in renderer
+an entry `renders` through; ordinal), `culture` `invariant`, `runtime` (`dotnet`, `unicode`) and
+`catalogues` (`agents`, `formats`, `outputContracts`).
 
 `Toolchain.Current(packageFormat, formatsCatalogue, agentsCatalogue, outputContracts = null)` reads
 the four library versions off the loaded assemblies (`Scriban`, `Markdig`,
