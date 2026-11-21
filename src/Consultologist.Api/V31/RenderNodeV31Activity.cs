@@ -23,7 +23,7 @@ public sealed class RenderNodeV31Activity(ICompiledPackageStore store, IBodyComp
     public async Task<RenderOutcome> RunAsync([ActivityTrigger] RenderNodeV31Input input, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(input);
-        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, cancellationToken);
+        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, logger, cancellationToken);
         if (plan == null)
             return new RenderOutcome(null, false, refusal);
 
@@ -50,7 +50,7 @@ internal static class V31Plans
     /// that could not be read throws <see cref="InvalidOperationException"/> (the operator's detail, no value).
     /// </summary>
     public static async Task<(RunPlan? Plan, string? Refusal)> LoadAsync(
-        ICompiledPackageStore store, string name, string version, string resolveHash, CancellationToken cancellationToken)
+        ICompiledPackageStore store, string name, string version, string resolveHash, ILogger logger, CancellationToken cancellationToken)
     {
         var load = await store.TryLoadAsync(new WorkflowPackageRef(name, version), cancellationToken);
         if (load == null)
@@ -60,7 +60,13 @@ internal static class V31Plans
         if (load.Unreadable)
             throw new InvalidOperationException(load.OperatorDetail);
         if (load.Plan == null)
+        {
+            // D5: the job shows the S09 sentence; the operator's log keeps the store's (the S07 sentence: package text and hashes).
+            logger.LogWarning(
+                "V31 plan refused at run. Package={Package}@{Version}, RefusalId={RefusalId}, Detail={Detail}",
+                name, version, load.RefusalId, load.OperatorDetail ?? load.Refusal);
             return (null, load.Refusal ?? HashMismatch(name, version));
+        }
         if (!string.Equals(load.Plan.ResolveHash, resolveHash, StringComparison.Ordinal))
             return (null, HashMismatch(name, version));
         return (load.Plan, null);

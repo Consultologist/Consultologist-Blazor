@@ -2,6 +2,8 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Consultologist.Api.V31;
 
@@ -66,7 +68,7 @@ public sealed record LoadRunInputsV31Result(JsonObject? Document, JsonObject? Ru
 /// store's cache, held to its <c>resolveHash</c>). A document that is gone (the retention drop deleted it) is A06-009; a plan
 /// that is not the job's is the load's sentence.
 /// </summary>
-public sealed class LoadRunInputsV31Activity(IRunInputsStore inputs, ICompiledPackageStore store)
+public sealed class LoadRunInputsV31Activity(IRunInputsStore inputs, ICompiledPackageStore store, ILogger<LoadRunInputsV31Activity>? logger = null)
 {
     [Function(ConsultGenerationActivityNames.LoadRunInputsV31)]
     public async Task<LoadRunInputsV31Result> RunAsync([ActivityTrigger] LoadRunInputsV31Input input, CancellationToken cancellationToken)
@@ -75,7 +77,8 @@ public sealed class LoadRunInputsV31Activity(IRunInputsStore inputs, ICompiledPa
         if (await inputs.ReadAsync(input.InputsBlob, cancellationToken) is not { } document)
             return new LoadRunInputsV31Result(null, null, NoLongerHeld);
 
-        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, cancellationToken);
+        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash,
+            (ILogger?)logger ?? NullLogger.Instance, cancellationToken);
         if (plan == null)
             return new LoadRunInputsV31Result(null, null, refusal);
 

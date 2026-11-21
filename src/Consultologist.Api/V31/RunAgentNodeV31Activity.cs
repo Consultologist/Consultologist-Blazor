@@ -47,7 +47,7 @@ public sealed class RunAgentNodeV31Activity(
         var call = input.Call;
         var stopwatch = Stopwatch.StartNew();
 
-        var (plan, _) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, cancellationToken);
+        var (plan, _) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, logger, cancellationToken);
         var entry = plan == null ? null : V31Entries.Find(plan, call.EntryKey, call.Function);
         if (plan == null || entry == null || Binding(plan, entry) is not { } binding)
             return CouldNotCall(call, "plan");

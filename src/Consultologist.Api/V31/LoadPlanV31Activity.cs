@@ -3,6 +3,8 @@ using System.Text;
 using Consultologist.Api.Jobs;
 using Consultologist.PackageFormat.V31;
 using Microsoft.Azure.Functions.Worker;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Consultologist.Api.V31;
 
@@ -22,13 +24,14 @@ public sealed record LoadPlanV31Result(string? Resolve, string? Refusal);
 /// the plan's document written canonically, which is the verified bytes; its one copy in the history counts toward the 10 MB
 /// gate (index § 5).
 /// </summary>
-public sealed class LoadPlanV31Activity(ICompiledPackageStore store)
+public sealed class LoadPlanV31Activity(ICompiledPackageStore store, ILogger<LoadPlanV31Activity>? logger = null)
 {
     [Function(ConsultGenerationActivityNames.LoadPlanV31)]
     public async Task<LoadPlanV31Result> RunAsync([ActivityTrigger] LoadPlanV31Input input, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(input);
-        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, cancellationToken);
+        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash,
+            (ILogger?)logger ?? NullLogger.Instance, cancellationToken);
         if (plan == null)
             return new LoadPlanV31Result(null, refusal);
         if (!string.Equals(plan.LockHash, input.LockHash, StringComparison.Ordinal))
