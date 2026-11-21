@@ -55,10 +55,11 @@ public class PlanRunnerAgentsTests
 
         var row = recorder.Row("node.plan");
         Assert.Equal(RowState.Completed, row.State);
-        Assert.True((bool)row.Detail["repaired"]!);
+        Assert.Equal(Invalid("retry", 2), row.Detail["invalid"]!.ToJsonString());
         Assert.Empty(row.Detail["retries"]!.AsArray());
         Assert.Equal(3, result.Values["node.plan"]!["value"]!["sections"]!.AsArray().Count);
-        Assert.False((bool)recorder.Row("node.summary").Detail["repaired"]!);
+        Assert.Null(recorder.Row("node.summary").Detail["invalid"]);
+        Assert.True(recorder.Row("node.summary").Detail.ContainsKey("invalid"));
     }
 
     [Fact]
@@ -78,7 +79,7 @@ public class PlanRunnerAgentsTests
         var row = recorder.Row("node.plan");
         Assert.Equal(RowState.Failed, row.State);
         Assert.Equal(result.Sentence, row.Reason);
-        Assert.False((bool)row.Detail["repaired"]!);
+        Assert.Equal(Invalid("fail", 1), row.Detail["invalid"]!.ToJsonString());
     }
 
     [Fact]
@@ -96,53 +97,62 @@ public class PlanRunnerAgentsTests
         Assert.Equal(2, host.Calls.Count);
         Assert.True(host.Calls[1].Repair);
         Assert.Equal(1, result.AgentCalls);
-        Assert.True((bool)recorder.Row("node.plan").Detail["repaired"]!);
+        Assert.Equal(Invalid("retry", 2), recorder.Row("node.plan").Detail["invalid"]!.ToJsonString());
         Assert.DoesNotContain("History", result.Sentence);
+        Assert.DoesNotContain("History", recorder.Row("node.plan").Detail.ToJsonString());
     }
 
-    public static TheoryData<string, string?> Replies() => new()
+    /// <summary>A reply for a format, the reply its repair gets (null: the same again), and how the node ends.</summary>
+    public static TheoryData<string, string?, string?, string> Replies() => new()
     {
-        { "section_plan", "" },
-        { "section_plan", " \n\t " },
-        { "section_plan", "not json" },
-        { "section_plan", new string('[', 600) + new string(']', 600) },
-        { "section_plan", "\"" + new string('a', 2 * 1024 * 1024) + "\"" },
-        { "section_plan", "null" },
-        { "section_plan", null },
-        { "section_plan", """[{"title":"History","kind":"narrative"}]""" },
-        { "section_plan", """{"sections":[],"sections":[]}""" },
-        { "plaintext", "" },
-        { "plaintext", " \n\t " },
-        { "plaintext", new string('a', 2 * 1024 * 1024) },
-        { "plaintext", null },
+        { "section_plan", "", null, "failed" },
+        { "section_plan", " \n\t ", ThreeSections, "repaired" },
+        { "section_plan", "not json", null, "failed" },
+        { "section_plan", new string('[', 600) + new string(']', 600), ThreeSections, "repaired" },
+        { "section_plan", "\"" + new string('a', 2 * 1024 * 1024) + "\"", null, "failed" },
+        { "section_plan", "null", ThreeSections, "repaired" },
+        { "section_plan", null, null, "failed" },
+        { "section_plan", """[{"title":"History","kind":"narrative"}]""", ThreeSections, "repaired" },
+        { "section_plan", """{"sections":[],"sections":[]}""", null, "failed" },
+        { "section_plan", ThreeSections, null, "completed" },
+        { "plaintext", "", null, "completed" },
+        { "plaintext", " \n\t ", null, "completed" },
+        { "plaintext", new string('a', 2 * 1024 * 1024), null, "completed" },
+        { "plaintext", null, null, "completed" },
     };
 
     [Theory]
     [MemberData(nameof(Replies))]
-    public async Task AnyReply_SettlesTheNode(string format, string? reply)
+    public async Task AnyReply_SettlesTheNode(string format, string? reply, string? repair, string expected)
     {
         var plan = RunFixture.Plan(Planned(format: $"\"{format}\""), StubTemplates.Empty());
-        var host = new FakeRunHost(auto: true).Agent("node.plan", new AgentOutcome(AgentOutcomeKind.Completed, reply, 0, null));
+        var first = new AgentOutcome(AgentOutcomeKind.Completed, reply, 0, null);
+        var host = new FakeRunHost(auto: true).Agent("node.plan", first, repair == null ? first : Reply(repair));
         var recorder = new ListRecorder();
 
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
 
         var row = recorder.Row("node.plan");
-        if (result.State == RunState.Completed)
+        switch (expected)
         {
-            Assert.Equal(RowState.Completed, row.State);
+            case "completed":
+                Assert.Equal(RunState.Completed, result.State);
+                Assert.Single(host.Calls);
+                Assert.Null(row.Detail["invalid"]);
+                break;
+            case "repaired":
+                Assert.Equal(RunState.Completed, result.State);
+                Assert.Equal(2, host.Calls.Count);
+                Assert.Equal(Invalid("retry", 2, format), row.Detail["invalid"]!.ToJsonString());
+                break;
+            default:
+                Assert.Equal(RunState.Failed, result.State);
+                Assert.Equal(RowState.Failed, row.State);
+                Assert.Equal($"Node 'plan' gave a reply that isn't {format}.", result.Sentence);
+                V31Contract.AssertSentence(new SourceRefusal("A06-005", result.Sentence!, ""));
+                Assert.Equal(2, host.Calls.Count);
+                break;
         }
-        else
-        {
-            Assert.Equal(RunState.Failed, result.State);
-            Assert.Equal(RowState.Failed, row.State);
-            Assert.Equal($"Node 'plan' gave a reply that isn't {format}.", result.Sentence);
-            V31Contract.AssertSentence(new SourceRefusal("A06-005", result.Sentence!, ""));
-            Assert.Equal(2, host.Calls.Count); // repaired once, under onInvalid: "retry"
-        }
-
-        if (format == "plaintext")
-            Assert.Equal(RunState.Completed, result.State); // a text format's reply is its text
     }
 
     [Fact]
@@ -208,14 +218,14 @@ public class PlanRunnerAgentsTests
                 new JsonObject
                 {
                     ["atUtc"] = FakeRunHost.Start.AddSeconds(i).ToString("O", System.Globalization.CultureInfo.InvariantCulture),
-                    ["waitMilliseconds"] = 1000,
-                    ["for"] = "capacity",
-                    ["errorKind"] = null,
+                    ["waitMs"] = 1000,
+                    ["kind"] = "capacity",
+                    ["error"] = null,
                 }.ToJsonString(),
                 retries[i]!.ToJsonString());
         }
 
-        Assert.False((bool)recorder.Row("node.plan").Detail["repaired"]!);
+        Assert.Null(recorder.Row("node.plan").Detail["invalid"]);
         Assert.Empty(recorder.Row("node.summary").Detail["retries"]!.AsArray());
     }
 
@@ -248,10 +258,10 @@ public class PlanRunnerAgentsTests
     }
 
     [Theory]
-    [InlineData("timeout", "timed out")]
-    [InlineData("error", "returned an error")]
-    [InlineData("unreachable", "couldn't be reached")]
-    public async Task AFailingService_FailsAfterFiveAttempts(string kind, string words)
+    [InlineData("timeout", "timed out", "timeout")]
+    [InlineData("error", "returned an error", "5xx")]
+    [InlineData("unreachable", "couldn't be reached", "connection")]
+    public async Task AFailingService_FailsAfterFiveAttempts(string kind, string words, string recorded)
     {
         var plan = RunFixture.Plan(Planned(), StubTemplates.Empty());
         var host = new FakeRunHost(auto: true).Agent("node.plan", new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, kind));
@@ -274,10 +284,58 @@ public class PlanRunnerAgentsTests
         Assert.Equal(4, retries.Count);
         Assert.All(retries, r =>
         {
-            Assert.Equal("service", (string?)r!["for"]);
-            Assert.Equal(kind, (string?)r["errorKind"]);
-            Assert.Equal(5000, (int)r["waitMilliseconds"]!);
+            Assert.Equal("service", (string?)r!["kind"]);
+            Assert.Equal(recorded, (string?)r["error"]);
+            Assert.Equal(5000, (int)r["waitMs"]!);
         });
+    }
+
+    [Fact]
+    public async Task AThrottledCall_WithNoWait_WaitsTheBackOffsStart_AndCountsIt()
+    {
+        var plan = RunFixture.Plan(Planned(), StubTemplates.Empty());
+        var host = new FakeRunHost(auto: true).Agent("node.plan", Throttled(0), Throttled(-1));
+        var recorder = new ListRecorder();
+        var runner = new PlanRunner(plan, new RunLimits(CapacityWaitMinutes: 1), host, recorder);
+
+        var result = await FakeRunHost.Drive(() =>
+        {
+            var run = runner.RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+            Assert.Single(host.Calls); // no call again at once
+            for (var wait = 1; wait <= 12; wait++)
+                host.Advance(TimeSpan.FromSeconds(5));
+            return run;
+        });
+
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal("The model service stayed busy for 1 minutes. Run the workflow again later.", result.Sentence);
+        V31Contract.AssertSentence(new SourceRefusal("S09-010", result.Sentence!, ""));
+        Assert.Equal(13, host.Calls.Count); // twelve waits of 5 s make the minute; the thirteenth would pass it
+        Assert.All(recorder.Row("node.plan").Detail["retries"]!.AsArray(), r => Assert.Equal(5000, (int)r!["waitMs"]!));
+    }
+
+    [Fact]
+    public async Task AFailingCall_WithNoWait_WaitsTheBackOffsStart()
+    {
+        var plan = RunFixture.Plan(Planned(), StubTemplates.Empty());
+        var host = new FakeRunHost(auto: true)
+            .Agent("node.plan", new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 0, "timeout"), Reply(ThreeSections));
+        var recorder = new ListRecorder();
+        var runner = new PlanRunner(plan, new RunLimits(), host, recorder);
+
+        var result = await FakeRunHost.Drive(() =>
+        {
+            var run = runner.RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+            Assert.Single(host.Calls);
+            host.Advance(TimeSpan.FromMilliseconds(4999));
+            Assert.Single(host.Calls);
+            host.Advance(TimeSpan.FromMilliseconds(1));
+            return run;
+        });
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(2, host.Calls.Count);
+        Assert.Equal(5000, (int)recorder.Row("node.plan").Detail["retries"]![0]!["waitMs"]!);
     }
 
     // ---- the job limit --------------------------------------------------------------------------
@@ -358,7 +416,60 @@ public class PlanRunnerAgentsTests
         Assert.Empty(recorder.Rows);
     }
 
+    [Theory]
+    [InlineData("completes")]
+    [InlineData("fails")]
+    [InlineData("times out")]
+    public async Task WhenTheRunEnds_NoTimerIsLeftOutstanding(string ending)
+    {
+        var plan = RunFixture.Plan(PlanRunnerCeilingTests.Independent(2), StubTemplates.Empty());
+        var host = new FakeRunHost(auto: true);
+        var limits = new RunLimits(JobMinutes: 1);
+        switch (ending)
+        {
+            case "completes":
+                host.Agent("node.n1", Throttled(1000), Reply("A first part for Margaret Okafor."));
+                break;
+            case "fails":
+                // node.n1 is waiting to retry when node.n2 fails the job.
+                host.Agent("node.n1", Throttled(60_000));
+                host.Agent("node.n2", new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 1000, "error"));
+                limits = limits with { ServiceAttempts = 1 };
+                break;
+            default:
+                host.Agent("node.n1", Throttled(120_000));
+                break;
+        }
+
+        var runner = new PlanRunner(plan, limits, host, new ListRecorder());
+        var result = await FakeRunHost.Drive(() =>
+        {
+            var run = runner.RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+            if (ending != "fails")
+            {
+                Assert.Equal(2, host.OutstandingDelays); // the job's timer and node.n1's wait
+                host.Advance(TimeSpan.FromSeconds(ending == "completes" ? 1 : 60));
+            }
+
+            return run;
+        });
+
+        Assert.Equal(
+            ending switch { "completes" => RunState.Completed, "fails" => RunState.Failed, _ => RunState.TimedOut },
+            result.State);
+        Assert.True(host.DelaysMade >= 2);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
     // ---- fixtures -------------------------------------------------------------------------------
+
+    /// <summary>Part 08 § 4's <c>invalid</c> for <c>plan</c>'s reply under <paramref name="action"/>, after <paramref name="attempts"/> replies.</summary>
+    private static string Invalid(string action, int attempts, string format = "section_plan") => new JsonObject
+    {
+        ["reason"] = $"Node 'plan' gave a reply that isn't {format}.",
+        ["action"] = action,
+        ["attempts"] = attempts,
+    }.ToJsonString();
 
     private static AgentOutcome Reply(string reply) => new(AgentOutcomeKind.Completed, reply, 0, null);
 

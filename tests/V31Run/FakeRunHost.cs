@@ -8,7 +8,8 @@ namespace Consultologist.Api.Tests.V31Run;
 /// outcome, the last repeating); an unscripted agent replies <c>"Text of &lt;key&gt;."</c>
 /// and an unscripted render gives <c>"Rendered &lt;key&gt;."</c>. In auto mode every answer is given at once; otherwise each
 /// is held until the test releases it (<see cref="Release"/>, <see cref="ReleaseAll"/>, <see cref="ReleaseInOrder"/>).
-/// The clock is manual (<see cref="Advance"/>), and a delay ends when the clock passes it. Releasing completes the task
+/// The clock is manual (<see cref="Advance"/>), and a delay ends when the clock passes it, or ends cancelled when its token is
+/// cancelled first (<see cref="OutstandingDelays"/> counts those still waiting). Releasing completes the task
 /// inline, so a test driving the runner off any synchronization context sees each release's effects before it goes on
 /// (<see cref="Drive"/>).
 /// </summary>
@@ -110,11 +111,27 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
         return Hold(call.Key, () => answer.SetResult(outcome), answer.Task);
     }
 
+    /// <summary>The delays asked for, cancelled or not.</summary>
+    public int DelaysMade { get; private set; }
+
+    /// <summary>The delays neither ended nor cancelled.</summary>
+    public int OutstandingDelays => timers.Count;
+
     /// <inheritdoc/>
-    public Task DelayAsync(TimeSpan wait)
+    public Task DelayAsync(TimeSpan wait, CancellationToken cancel)
     {
+        DelaysMade++;
+        if (cancel.IsCancellationRequested)
+            return Task.FromCanceled(cancel);
+
         var done = new TaskCompletionSource();
-        timers.Add((UtcNow + wait, done));
+        var timer = (UtcNow + wait, done);
+        timers.Add(timer);
+        cancel.Register(() =>
+        {
+            timers.Remove(timer);
+            done.TrySetCanceled(cancel);
+        });
         return done.Task;
     }
 
@@ -125,7 +142,7 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
         foreach (var timer in timers.Where(t => t.Due <= UtcNow).ToList())
         {
             timers.Remove(timer);
-            timer.Done.SetResult();
+            timer.Done.TrySetResult();
         }
     }
 
