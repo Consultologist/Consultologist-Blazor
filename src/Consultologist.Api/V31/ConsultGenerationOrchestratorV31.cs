@@ -114,7 +114,7 @@ public sealed class ConsultGenerationOrchestratorV31
             }
 
             var inputs = InputsOf(document, held.RunFacts ?? new JsonObject());
-            var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input), new EntityRunRecorder(context, input))
+            var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input, limits), new EntityRunRecorder(context, input))
                 .RunAsync(inputs, startedAtUtc);
 
             logger.LogInformation(

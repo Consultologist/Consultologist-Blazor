@@ -119,6 +119,23 @@ public class OrchestratorV31Tests
     }
 
     [Fact]
+    public async Task EachAgentCall_IsGivenTheJobsRecordedStepBudget()
+    {
+        // the activity composes with the renderSteps the job's start recorded, never the live setting
+        var job = V31Job.Of("nested-note");
+        job.Limits = new RunLimits(RenderSteps: 777);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        var budgets = context.Calls.Where(c => c.Kind == "activity" && c.Name == ConsultGenerationActivityNames.RunAgentNodeV31)
+            .Select(c => JsonSerializer.Deserialize<RunAgentNodeV31Input>(c.InputJson)!.RenderSteps)
+            .ToList();
+        Assert.NotEmpty(budgets);
+        Assert.All(budgets, budget => Assert.Equal(777, budget));
+    }
+
+    [Fact]
     public async Task APlanWhoseHashIsNotTheJobs_FailsTheJob_WithS09009()
     {
         var job = V31Job.Of("nested-note");

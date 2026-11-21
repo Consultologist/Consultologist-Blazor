@@ -3,7 +3,6 @@ using Consultologist.Api.Agents;
 using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31.Run;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Consultologist.Api.Tests.V31Engine;
@@ -127,6 +126,7 @@ public class RunAgentNodeV31ActivityTests
     [Fact]
     public async Task AnyOtherFailure_Propagates()
     {
+        // as today (the brief): a 401 is not a service failure a 31 call retries; the orchestration fails the job with A06-010
         var (activity, agent, job) = Activity("nested-note");
         agent.Throw = AgentAttemptTests.Failed(401);
 
@@ -134,28 +134,94 @@ public class RunAgentNodeV31ActivityTests
     }
 
     [Fact]
-    public async Task APlanThatIsNotTheJobs_FailsTheActivity_WithS09009()
+    public async Task TheHostsOwnCancellation_Propagates()
     {
-        var (activity, _, job) = Activity("nested-note");
+        var (activity, agent, job) = Activity("nested-note");
+        agent.Throw = new TaskCanceledException();
+
+        await Assert.ThrowsAsync<TaskCanceledException>(() => activity.RunAsync(Input(job, Plan(1)), new CancellationToken(canceled: true)));
+    }
+
+    [Fact]
+    public async Task APlanThatIsNotTheJobs_IsACallThatCouldNotBeMade_Plan()
+    {
+        var (activity, agent, job) = Activity("nested-note");
         var input = Input(job, Plan(1)) with { ResolveHash = "sha256:" + new string('1', 64) };
 
-        var failed = await Assert.ThrowsAsync<InvalidOperationException>(() => activity.RunAsync(input, CancellationToken.None));
+        var outcome = await activity.RunAsync(input, CancellationToken.None);
 
-        Assert.Equal($"The compiled workflow {job.Ref.Name}@{job.Ref.Version} doesn't match its published hash, so it can't be run. Tell the operator.", failed.Message);
+        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"), outcome);
+        Assert.Empty(agent.Sent);
+    }
+
+    [Fact]
+    public async Task AnEntryThePlanLacks_IsACallThatCouldNotBeMade_Plan()
+    {
+        var (activity, agent, job) = Activity("nested-note");
+
+        var outcome = await activity.RunAsync(Input(job, new AgentCall("node.letter", "node.letter", null, 1, false, DraftScope)), CancellationToken.None);
+
+        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"), outcome);
+        Assert.Empty(agent.Sent);
+    }
+
+    [Fact]
+    public async Task ABodyPastTheJobsStepBudget_IsACallThatCouldNotBeMade_Steps()
+    {
+        var (activity, agent, job) = Activity("nested-note", composer: new Fixed(new ComposedBody(null, true, null)));
+
+        var outcome = await activity.RunAsync(Input(job, Plan(1)) with { RenderSteps = 7 }, CancellationToken.None);
+
+        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "steps"), outcome);
+        Assert.Empty(agent.Sent);
+    }
+
+    [Fact]
+    public async Task TheBody_IsComposedWithTheJobsStepBudget()
+    {
+        var composer = new Fixed(new ComposedBody("Plan the note.", false, null));
+        var (activity, _, job) = Activity("nested-note", composer: composer);
+
+        await activity.RunAsync(Input(job, Plan(1)) with { RenderSteps = 7 }, CancellationToken.None);
+
+        Assert.Equal(7, composer.StepLimit);
+    }
+
+    [Fact]
+    public async Task ABodyThatCannotBeComposed_IsACallThatCouldNotBeMade_Compose()
+    {
+        var (activity, agent, job) = Activity("nested-note");
+
+        var outcome = await activity.RunAsync(Input(job, Plan(1) with { Scope = new JsonObject() }), CancellationToken.None);
+
+        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "compose"), outcome);
+        Assert.Empty(agent.Sent);
     }
 
     private static AgentCall Plan(int attempt) => new("node.plan", "node.plan", null, attempt, false, DraftScope);
 
     private static RunAgentNodeV31Input Input(V31Job job, AgentCall call) =>
-        new(job.Ref.Name, job.Ref.Version, job.Pair.ResolveHash, call);
+        new(job.Ref.Name, job.Ref.Version, job.Pair.ResolveHash, new RunLimits().RenderSteps, call);
 
-    private static (RunAgentNodeV31Activity Activity, FakeAttempts Agent, V31Job Job) Activity(string golden, Random? random = null)
+    private static (RunAgentNodeV31Activity Activity, FakeAttempts Agent, V31Job Job) Activity(string golden, Random? random = null, IBodyComposer? composer = null)
     {
         var job = V31Job.Of(golden);
         var agent = new FakeAttempts();
-        var activity = new RunAgentNodeV31Activity(job.Store, agent, new ScribanBodyComposer(),
-            new EngineLimitSettings(new ConfigurationBuilder().Build()), NullLogger<RunAgentNodeV31Activity>.Instance, random);
+        var activity = new RunAgentNodeV31Activity(job.Store, agent, composer ?? new ScribanBodyComposer(),
+            NullLogger<RunAgentNodeV31Activity>.Instance, random);
         return (activity, agent, job);
+    }
+
+    /// <summary>A composer that gives <paramref name="body"/>, remembering the step budget it was given.</summary>
+    private sealed class Fixed(ComposedBody body) : IBodyComposer
+    {
+        public int? StepLimit { get; private set; }
+
+        public ComposedBody Compose(RunPlan plan, string entryKey, string? function, JsonObject scope, int stepLimit)
+        {
+            StepLimit = stepLimit;
+            return body;
+        }
     }
 
     /// <summary>

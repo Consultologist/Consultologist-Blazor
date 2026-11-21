@@ -12,8 +12,11 @@ using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api.V31;
 
-/// <summary>#1503 (specVersion 31, area 06): an activity's input: the job's package version, its <c>resolveHash</c>, and the call.</summary>
-public sealed record RunAgentNodeV31Input(string PackageName, string PackageVersion, string ResolveHash, AgentCall Call);
+/// <summary>
+/// #1503 (specVersion 31, area 06): an activity's input: the job's package version, its <c>resolveHash</c>, the step budget
+/// of its body (the job's recorded <c>renderSteps</c>, never the live setting), and the call.
+/// </summary>
+public sealed record RunAgentNodeV31Input(string PackageName, string PackageVersion, string ResolveHash, int RenderSteps, AgentCall Call);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 §§ 3.1, 3.4; D7): one attempt of a 31 agent call. The plan comes from the store's
@@ -23,14 +26,15 @@ public sealed record RunAgentNodeV31Input(string PackageName, string PackageVers
 /// another service failure is answered with the wait before the next attempt: the service's, else
 /// <see cref="AgentBackoff.Wait"/> with jitter from <paramref name="random"/> (<see cref="Random.Shared"/> unless a test
 /// gives one; the wait is in the history, so a replay repeats it). There is no Durable retry policy: the orchestration
-/// retries. A plan that is not the job's, an entry or binding it lacks, or a body that cannot be composed fails the
-/// activity with its sentence. Telemetry: the key, the attempt, lengths and hashes, never text.
+/// retries. A call that cannot be made answers <see cref="AgentOutcomeKind.Failed"/>, so the runner fails the node with a
+/// row and a sentence: <c>plan</c> (a plan that is not the job's, an entry or binding it lacks), <c>steps</c> (the body
+/// passed the job's step budget), <c>compose</c> (it could not be composed). Telemetry: the key, the attempt, lengths and
+/// hashes, never text.
 /// </summary>
 public sealed class RunAgentNodeV31Activity(
     ICompiledPackageStore store,
     IAgentAttempts agent,
     IBodyComposer composer,
-    EngineLimitSettings limits,
     ILogger<RunAgentNodeV31Activity> logger,
     Random? random = null)
 {
@@ -43,23 +47,18 @@ public sealed class RunAgentNodeV31Activity(
         var call = input.Call;
         var stopwatch = Stopwatch.StartNew();
 
-        var (plan, refusal) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, cancellationToken);
-        if (plan == null)
-            throw new InvalidOperationException(refusal);
+        var (plan, _) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, cancellationToken);
+        var entry = plan == null ? null : V31Entries.Find(plan, call.EntryKey, call.Function);
+        if (plan == null || entry == null || Binding(plan, entry) is not { } binding)
+            return CouldNotCall(call, "plan");
 
-        var notPublished = ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence;
-        var entry = V31Entries.Find(plan, call.EntryKey, call.Function) ?? throw new InvalidOperationException(notPublished);
-        var (agentName, agentVersion) = Binding(plan, entry) ?? throw new InvalidOperationException(notPublished);
+        var (agentName, agentVersion) = binding;
 
-        var composed = composer.Compose(plan, call.EntryKey, call.Function, call.Scope, limits.Limits.RenderSteps);
+        var composed = composer.Compose(plan, call.EntryKey, call.Function, call.Scope, input.RenderSteps);
         if (composed.TooManySteps)
-        {
-            throw new InvalidOperationException(
-                $"{V31Entries.Subject(entry, call.Function)} stopped rendering: it took more than {limits.Limits.RenderSteps.ToString("N0", CultureInfo.InvariantCulture)} steps.");
-        }
-
+            return CouldNotCall(call, "steps");
         if (composed.Text is not { } body)
-            throw new InvalidOperationException(composed.Failure ?? notPublished);
+            return CouldNotCall(call, "compose");
 
         var attempt = await agent.TryPromptOnceAsync(call.Key, body, agentName, agentVersion, cancellationToken);
         var outcome = attempt.Kind == AgentOutcomeKind.Completed
@@ -84,6 +83,13 @@ public sealed class RunAgentNodeV31Activity(
             attempt.Tokens?.Output,
             stopwatch.ElapsedMilliseconds);
         return outcome;
+    }
+
+    /// <summary>A call that could not be made, of <paramref name="kind"/>; logged by key and kind only.</summary>
+    private AgentOutcome CouldNotCall(AgentCall call, string kind)
+    {
+        logger.LogWarning("V31 agent call could not be made. Key={Key}, Attempt={Attempt}, Kind={Kind}", call.Key, call.Attempt, kind);
+        return new AgentOutcome(AgentOutcomeKind.Failed, null, 0, kind);
     }
 
     /// <summary>
