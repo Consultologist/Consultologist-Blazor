@@ -195,8 +195,71 @@ public class DrainDoorsTests
         Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
         Assert.DoesNotContain(context.Calls, c => c.Name == ConsultGenerationActivityNames.CheckDrain);
         Assert.Equal(awareContext.Calls, context.Calls);
-        Assert.Equal(awareContext.CustomStatuses, context.CustomStatuses);
+        // the drain-aware run's only extra status is the one it publishes before it checks the drain
+        Assert.Equal(awareContext.CustomStatuses.Where(status => status != Starting), context.CustomStatuses);
+        Assert.Equal(Starting, Assert.Single(awareContext.CustomStatuses, status => status == Starting));
     }
+
+    private const string Starting = """{"status":"Queued"}""";
+
+    [Fact]
+    public Task AScheduledJob_IsNotAsleep_WhileItChecksTheDrain() => Task.Run(async () =>
+    {
+        // a drain begun just after the check reads "not draining" must count the job as producing: so by the time the
+        // check is made the orchestration no longer says it sleeps on its schedule
+        var job = V31Job.Of("nested-note");
+        var seen = new List<string>();
+        var context = job.Context(job.Input() with { ScheduledAtUtc = new DateTimeOffset(V31Job.Now.AddMinutes(1), TimeSpan.Zero) });
+        context.On(ConsultGenerationActivityNames.CheckDrain, _ =>
+        {
+            seen.Add(context.CustomStatuses.Last());
+            return false;
+        });
+        await V31Job.RunAsync(context);
+        Assert.Equal([Starting], seen);
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+
+        var seen30 = new List<string>();
+        var run = await EngineRun.PrepareAsync(Package29(), Notes, Outputs,
+            input => input with { Request = input.Request with { ScheduledAtUtc = new DateTimeOffset(Now30.AddMinutes(1), TimeSpan.Zero) } });
+        run.Context.On(ConsultGenerationActivityNames.CheckDrain, _ =>
+        {
+            seen30.Add(run.Context.CustomStatuses.Last());
+            return false;
+        });
+        await run.RunAsync();
+        Assert.Equal([Starting], seen30);
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, run.State.Status);
+    });
+
+    [Fact]
+    public Task AResumedJob_ChecksTheDrainAgain_AndWaitsBehindASecondDrain() => Task.Run(async () =>
+    {
+        // Resume wakes the job, and a second drain begins at once: the job checks again (no longer saying it waits),
+        // sees the second drain, and waits behind it too
+        var job = V31Job.Of("nested-note");
+        var draining = true;
+        var seen = new List<string>();
+        var context = job.Context().HoldTimersLongerThan(TimeSpan.FromMinutes(2));
+        context.On(ConsultGenerationActivityNames.CheckDrain, _ =>
+        {
+            seen.Add(context.CustomStatuses.Last());
+            return draining;
+        });
+
+        var run = V31Job.RunAsync(context);
+        Assert.Equal(1, context.RaiseEvent(EngineDrain.ResumedEvent));
+        Assert.False(run.IsCompleted);
+        Assert.Equal([Starting, Starting], seen);
+        Assert.Equal([EngineDrain.ResumedEvent], context.AwaitedEvents);
+        Assert.DoesNotContain(context.Calls, c => c.Name == nameof(ConsultGenerationJobEntity.RecordV31Header));
+
+        draining = false;
+        Assert.Equal(1, context.RaiseEvent(EngineDrain.ResumedEvent));
+        await run;
+        Assert.Equal(3, seen.Count);
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+    });
 
     [Fact]
     public async Task HoldNewJobs_StillRefusesAsToday()

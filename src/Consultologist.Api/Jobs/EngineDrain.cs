@@ -255,14 +255,17 @@ public static class EngineDrainJobs
     }
 
     /// <summary>
-    /// A drain-aware orchestration's step after its schedule wait: while check-drain says the engine drains, it publishes
-    /// the waiting status (and marks its job waiting, once) and waits for <see cref="EngineDrain.ResumedEvent"/>, checking
-    /// again every <see cref="Recheck"/> in case Resume came before it began to wait. Every step is in the history, so a
-    /// replay repeats it.
+    /// A drain-aware orchestration's step after its schedule wait. It first publishes <c>Queued</c>, so a drain begun from
+    /// here on counts it as producing, not as asleep on its schedule. Then, while check-drain says the engine drains, it
+    /// publishes the waiting status (and marks its job waiting, once) and waits for <see cref="EngineDrain.ResumedEvent"/>
+    /// or <see cref="Recheck"/>, whichever comes first (Resume may come before it began to wait); either way it publishes
+    /// <c>Queued</c> again and checks again, so a second drain begun just after a Resume holds it too. It goes on only once
+    /// a check reads not draining. Every step is in the history, so a replay repeats it.
     /// </summary>
     internal static async Task WaitWhileDrainingAsync(TaskOrchestrationContext context, EntityInstanceId entityId)
     {
         var marked = false;
+        context.SetCustomStatus(new { status = ConsultGenerationJobStatuses.Queued });
         while (await context.CallActivityAsync<bool>(ConsultGenerationActivityNames.CheckDrain, options: CheckDrainRetry))
         {
             context.SetCustomStatus(new { status = ConsultGenerationJobStatuses.WaitingForUpdate });
@@ -275,12 +278,9 @@ public static class EngineDrainJobs
             using var wait = new CancellationTokenSource();
             var resumed = context.WaitForExternalEvent<object?>(EngineDrain.ResumedEvent, wait.Token);
             var recheck = context.CreateTimer(context.CurrentUtcDateTime.Add(Recheck), wait.Token);
-            var first = await Task.WhenAny(resumed, recheck);
+            await Task.WhenAny(resumed, recheck);
             wait.Cancel();
-            if (first == resumed)
-            {
-                return;
-            }
+            context.SetCustomStatus(new { status = ConsultGenerationJobStatuses.Queued });
         }
     }
 
