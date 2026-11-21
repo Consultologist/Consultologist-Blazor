@@ -95,7 +95,13 @@ internal static class TemplateFixture
         files.With("deliverables/note.md", Md(Deliverable("Consultation note", Plain, "null", "hold"), body));
 
     /// <summary>The reader, the types, the resolver and the expressions (each asserted to accept), then the dialect.</summary>
-    public static TemplateCheck Check(Dictionary<string, byte[]> files)
+    public static TemplateCheck Check(Dictionary<string, byte[]> files) => Check(files, null);
+
+    /// <summary>
+    /// As <see cref="Check(Dictionary{string, byte[]})"/>, with <paramref name="alter"/> given the package the steps
+    /// accepted before the dialect reads it (to reach a rule an earlier step would otherwise stand in front of).
+    /// </summary>
+    public static TemplateCheck Check(Dictionary<string, byte[]> files, Action<SourcePackage>? alter)
     {
         var registry = ResolveFixture.Published();
         var parsed = SourceParser.Parse(files, registry.Names);
@@ -106,7 +112,27 @@ internal static class TemplateFixture
         Assert.True(resolution != null, "The resolver refused: " + Said(refusals));
         var expressions = SourceExpressions.Check(parsed.Package!, types.Types!, resolution!.Scopes);
         Assert.True(expressions.Expressions != null, "The expressions were refused: " + Said(expressions.Refusals));
+        alter?.Invoke(parsed.Package!);
         return SourceTemplates.Check(parsed.Package!, types.Types!, resolution, registry);
+    }
+
+    /// <summary>The refusals of the first of the reader, the types, the resolver, the expressions and the dialect that refuses; empty when none does.</summary>
+    public static IReadOnlyList<SourceRefusal> RefusalsOf(Dictionary<string, byte[]> files)
+    {
+        var registry = ResolveFixture.Published();
+        var parsed = SourceParser.Parse(files, registry.Names);
+        if (parsed.Package == null)
+            return parsed.Refusals;
+        var types = SourceTypes.Check(parsed.Package, registry);
+        if (types.Types == null)
+            return types.Refusals;
+        var (refusals, resolution) = SourceResolve.Check(parsed.Package, types.Types);
+        if (resolution == null)
+            return refusals;
+        var expressions = SourceExpressions.Check(parsed.Package, types.Types, resolution.Scopes);
+        if (expressions.Expressions == null)
+            return expressions.Refusals;
+        return SourceTemplates.Check(parsed.Package, types.Types, resolution, registry).Refusals;
     }
 
     /// <summary>The checked body of the file <paramref name="path"/>; the check is asserted to refuse nothing.</summary>

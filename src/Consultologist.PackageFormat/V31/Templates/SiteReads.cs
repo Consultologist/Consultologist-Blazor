@@ -108,13 +108,19 @@ internal sealed class PathTyping
     private readonly FormatSet formats;
     private readonly SourcePackage package;
     private readonly JsonNode? rendererInput;
+    private readonly TemplateSite reads;
 
-    public PathTyping(TemplateHost host, ScopeTree tree, FormatSet formats, SourcePackage package)
+    /// <summary>
+    /// The typing of <paramref name="host"/>'s reads; <paramref name="reads"/> is the row of § 3.1 they are held to: the
+    /// host's own site, or for a snippet's body the site of the template that places it (§ 3.2).
+    /// </summary>
+    public PathTyping(TemplateHost host, ScopeTree tree, FormatSet formats, SourcePackage package, TemplateSite reads)
     {
         this.host = host;
         this.tree = tree;
         this.formats = formats;
         this.package = package;
+        this.reads = reads;
         // A renderer's input that is no format this package can read is refused by the type rules (S02-017); its reads stay untyped here.
         rendererInput = host.Declaration is SourceText { Header: var header } && host.Site == TemplateSite.Renderer
             && FormatTypes.Shape(header["input"], formats) != FormatShape.Unknown
@@ -153,13 +159,13 @@ internal sealed class PathTyping
             };
         }
 
-        var row = SiteReads.Of(host.Site);
+        var row = SiteReads.Of(reads);
         // An unknown root, or a root alone that names nothing by itself (`{{ profile }}`; `item` and `pass` do).
         if (!SiteReads.Known.Contains(root) || (s.Length == 1 && root is not ("item" or "pass")))
             return Refuse(DialectSentences.ReadsWhatIsNotThere(host.Subject, written, line, row.Words, host.Path));
         if (!row.Roots.Contains(root))
         {
-            if (root == "profile" && SiteReads.SaysProfileOfTheNode(host.Site) && host.Declaration is SourceNode node)
+            if (root == "profile" && SiteReads.SaysProfileOfTheNode(reads) && host.Declaration is SourceNode node)
                 return Refuse(DialectSentences.ReadsProfileInPrompt(node.Id, s.Length > 1 ? s[1] : string.Empty, host.Path));
             return Refuse(DialectSentences.ReadsRoot(host.Subject, SiteReads.AsWritten(root), line, row.Words, row.Allowed, host.Path));
         }
@@ -194,20 +200,20 @@ internal sealed class PathTyping
     /// <summary>
     /// <c>snippet.&lt;id&gt;.content</c> (text of the snippet's <c>format</c>), <c>snippet.&lt;folder&gt;.&lt;id&gt;.content</c>
     /// (<c>markdown_block</c>, as a folder item's <c>.content</c> is in a loop) and <c>.value</c> of a folder item (its
-    /// header, of the folder's <c>format</c>); a bare snippet is S05-037. A snippet the package does not define is
-    /// recorded untyped: Task 5 says S05-035 of it.
+    /// header, of the folder's <c>format</c>); a bare snippet is S05-037, and one neither the function nor the package
+    /// defines S05-035.
     /// </summary>
     private (TypedRead?, SourceRefusal?) Snippet(string written, int line, string[] s)
     {
         if (s.Length < 2)
-            return Refuse(DialectSentences.ReadsWhatIsNotThere(host.Subject, written, line, SiteReads.Of(host.Site).Words, host.Path));
+            return Refuse(DialectSentences.ReadsWhatIsNotThere(host.Subject, written, line, SiteReads.Of(reads).Words, host.Path));
 
         var entry = host.Function?.Definitions.Snippets.Items.FirstOrDefault(e => e.Id == s[1])
             ?? package.Definitions.Snippets.Items.FirstOrDefault(e => e.Id == s[1]);
         switch (entry)
         {
             case null:
-                return (Read(written, line, null, null, null, false), null);
+                return Refuse(DialectSentences.PlacesUndefinedSnippet(host.Subject, s[1], host.Path));
             case SourceSingleText single:
                 if (s.Length == 2)
                     return Refuse(DialectSentences.ReadsBareSnippet(host.Subject, s[1], line, host.Path));
@@ -234,7 +240,7 @@ internal sealed class PathTyping
     private (TypedRead?, SourceRefusal?) Profile(string written, int line, string[] s)
     {
         if (s.Length < 2)
-            return Refuse(DialectSentences.ReadsWhatIsNotThere(host.Subject, written, line, SiteReads.Of(host.Site).Words, host.Path));
+            return Refuse(DialectSentences.ReadsWhatIsNotThere(host.Subject, written, line, SiteReads.Of(reads).Words, host.Path));
         if (!SourceResolve.ProfileFields.TryGetValue(s[1], out var format))
             return Refuse(DialectSentences.ReadsNoProfileField(host.Subject, s[1], host.Path));
         return Steps(written, line, $"profile.{s[1]}", null, JsonValue.Create(format), s.Skip(2).ToList(), nullable: false);

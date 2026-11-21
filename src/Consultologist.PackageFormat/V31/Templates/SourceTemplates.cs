@@ -33,7 +33,9 @@ public sealed record Placement(string Unit, string Kind, bool Block, int Line);
 /// <summary>
 /// #1504 (specVersion 31, area 07): one body held to the dialect at its host's place: its syntax, its reads typed in
 /// source order, its placements, its pipes into renderers (one per pipe step into a renderer, in source order; a later
-/// step of a chain has the source <c>render:&lt;n&gt;</c> of the step before it) and its run spots (part 05 § 4, D4).
+/// step of a chain has the source <c>render:&lt;n&gt;</c> of the step before it), its run spots (part 05 § 4, D4) and
+/// the units it places (<see cref="PlacedUnit"/>; part 05 §§ 3.2, 6.3, 7.2, D2): every part and snippet it places, in
+/// order of appearance, each followed by the units its own text places (expanded in place).
 /// </summary>
 public sealed record CheckedBody(
     TemplateHost Host,
@@ -41,7 +43,19 @@ public sealed record CheckedBody(
     IReadOnlyList<TypedRead> Reads,
     IReadOnlyList<Placement> Placements,
     IReadOnlyList<TemplateRender> Renders,
-    IReadOnlyList<TemplateRunSpot> RunSpots);
+    IReadOnlyList<TemplateRunSpot> RunSpots,
+    IReadOnlyList<PlacedUnit> Units);
+
+/// <summary>
+/// #1504 (specVersion 31, area 07; part 05 §§ 3.2, 6.3, 7.2; D2): one unit a body places, as D2's <c>placements</c>
+/// lists it. <paramref name="Site"/> is the unit (<c>snippet.tone</c>, <c>snippet.standards.hpi</c>,
+/// <c>part.brief</c>), <paramref name="Within"/> the unit whose text places it (<c>null</c> for the body itself),
+/// <paramref name="Body"/> its text checked where it is placed (a snippet's body at the placer's place, with its
+/// reads; a part's text at its node's) and <paramref name="If"/> its header rule as written (a snippet's or a part's
+/// <c>if</c>; <c>null</c> for always, and for a folder item, which has none). Macros are Task 6's: it adds what a
+/// placed macro carries (its marker, its instruction and its body).
+/// </summary>
+public sealed record PlacedUnit(string Site, string? Within, CheckedBody Body, JsonNode? If);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07): what <see cref="SourceTemplates.Check"/> made of a package: its refusals and its
@@ -68,7 +82,10 @@ public sealed class PackageTemplates
 /// body at the node's place (in <c>nodes/</c>, <c>checks/</c> and each function), each deliverable's at the top of
 /// <c>nodes/</c>, and each renderer's (reading only its <c>value</c>, typed by its <c>input</c>). A body Scriban's reading
 /// already faults (<see cref="TemplateSyntax.Parse"/>) is reported and not typed. Every pipe into a renderer is typed
-/// against the renderer's <c>input</c> and recorded (<see cref="CheckedBody.Renders"/>). Never throws on package content.
+/// against the renderer's <c>input</c> and recorded (<see cref="CheckedBody.Renders"/>). Each snippet a body places is
+/// checked there, and each part a prompt places is its node's text (<see cref="CheckedBody.Units"/>; part 05 §§ 3.2, 6, 7);
+/// every snippet is held to the dialect whether placed or not. Never throws on package content; every walk over
+/// snippets is bounded (a chain of 15, each cycle cut and said once, <see cref="UnitLimit"/> units a template).
 /// </summary>
 public static partial class SourceTemplates
 {
@@ -84,20 +101,21 @@ public static partial class SourceTemplates
         ArgumentNullException.ThrowIfNull(resolution);
         ArgumentNullException.ThrowIfNull(registry);
 
-        var refusals = new List<SourceRefusal>();
-        var warnings = new List<SourceRefusal>();
+        var context = new Context(package, resolution, registry);
         var bodies = new List<CheckedBody>();
-        var producers = new Producers(resolution);
         foreach (var (host, text) in Hosts(package, resolution.Tree))
         {
-            if (Body(host, text, package, resolution, registry, producers, refusals, warnings) is { } body)
+            if (context.Top(host, text) is { } body)
                 bodies.Add(body);
         }
 
-        var said = refusals.Distinct().OrderBy(r => r.Path, StringComparer.Ordinal).ToList();
+        context.Definitions();
+        context.PartsOffAgents();
+
+        var said = context.Refusals.Distinct().OrderBy(r => r.Path, StringComparer.Ordinal).ToList();
         return new TemplateCheck(
             said,
-            warnings.Distinct().OrderBy(w => w.Path, StringComparer.Ordinal).ToList(),
+            context.Warnings.Distinct().OrderBy(w => w.Path, StringComparer.Ordinal).ToList(),
             said.Count == 0 ? new PackageTemplates(bodies) : null);
     }
 
@@ -144,34 +162,87 @@ public static partial class SourceTemplates
     private static IEnumerable<SourceDeliverable> Deliverables(SourceDeliveryFolder folder) =>
         folder.Deliverables.Concat(folder.Folders.SelectMany(f => f.Deliverables));
 
-    /// <summary>One body: its syntax faults (and nothing more), or its reads, <c>if</c>s, placements and run spots.</summary>
-    private static CheckedBody? Body(
-        TemplateHost host, string text, SourcePackage package, Resolution resolution, TypeRegistry registry, Producers producers,
-        List<SourceRefusal> refusals, List<SourceRefusal> warnings)
+    /// <summary>
+    /// The check of one package: what it has said so far, and the bodies of the units placed (each snippet checked once
+    /// per place it is placed in, <see cref="Snippet"/>).
+    /// </summary>
+    private sealed partial class Context
     {
-        var syntax = TemplateSyntax.Parse(text);
-        var body = new BodyCheck(host, syntax, package, resolution, registry, producers);
-        refusals.AddRange(body.Header());
-        if (syntax.Faults.Count > 0)
+        private readonly SourcePackage package;
+        private readonly Resolution resolution;
+        private readonly TypeRegistry registry;
+        private readonly Producers producers;
+
+        public Context(SourcePackage package, Resolution resolution, TypeRegistry registry)
         {
-            refusals.AddRange(body.Faults());
-            return null;
+            this.package = package;
+            this.resolution = resolution;
+            this.registry = registry;
+            producers = new Producers(resolution);
         }
 
-        var checkedBody = body.Run();
-        refusals.AddRange(body.Refusals);
-        warnings.AddRange(body.Warnings);
-        return checkedBody;
+        public List<SourceRefusal> Refusals { get; } = [];
+
+        public List<SourceRefusal> Warnings { get; } = [];
+
+        /// <summary>
+        /// A body of a template leaf, a deliverable or a renderer, with the units it places (a prompt's parts held to
+        /// part 05 § 7 first); <c>null</c> when its syntax is faulted.
+        /// </summary>
+        public CheckedBody? Top(TemplateHost host, string text)
+        {
+            var leaf = host is { Site: TemplateSite.Prompt, Declaration: SourceLeaf agent } ? agent : null;
+            var parts = leaf is null ? null : Parts(leaf, host);
+            if (Body(host, TemplateSyntax.Parse(text), null) is not { } body)
+                return null;
+            if (leaf is not null)
+                CountParts(body, leaf, parts!);
+            return body with { Units = Expand(body, null, host.Site, parts, 0, null, null) };
+        }
+
+        /// <summary>
+        /// One body: its syntax faults (and nothing more), or its reads, <c>if</c>s, placements and run spots;
+        /// <paramref name="placed"/> says where a snippet's body is placed, whose reads it is held to.
+        /// </summary>
+        private CheckedBody? Body(TemplateHost host, TemplateSyntax syntax, PlacedAt? placed)
+        {
+            var body = new BodyCheck(host, syntax, package, resolution, registry, producers, placed);
+            Refusals.AddRange(body.Header());
+            if (syntax.Faults.Count > 0)
+            {
+                Refusals.AddRange(body.Faults());
+                return null;
+            }
+
+            var checkedBody = body.Run();
+            Refusals.AddRange(body.Refusals);
+            Warnings.AddRange(body.Warnings);
+            return checkedBody;
+        }
     }
+
+    /// <summary>
+    /// Where a snippet's body is checked: the row of § 3.1 its placer reads by (<paramref name="Reads"/>: the prompt's,
+    /// a part's text's, …; a snippet placed in a snippet reads by its placer's), the snippet as sentences name it
+    /// (<c>tone</c>, <c>standards/hpi</c>), and the placer's subject, line of the placement and file.
+    /// </summary>
+    private sealed record PlacedAt(TemplateSite Reads, string Snippet, string Subject, int Line, string Path);
 
     /// <summary>The check of one body: its scope, its reads in source order, and what it says.</summary>
     private sealed partial class BodyCheck
     {
+        /// <summary>What a snippet body's read is refused with whatever its place: said of the snippet, not as S05-022.</summary>
+        private static readonly IReadOnlySet<string> OfTheText = new HashSet<string>(StringComparer.Ordinal)
+        {
+            "S05-030", "S05-035", "S05-037", "S06-028", "A07-008", "S02-019",
+        };
+
         private readonly TemplateHost host;
         private readonly TemplateSyntax syntax;
         private readonly SourcePackage package;
         private readonly TypeRegistry registry;
         private readonly Producers producers;
+        private readonly PlacedAt? placed;
         private readonly FormatSet formats;
         private readonly PathTyping typing;
         private readonly List<(int Start, int Depth, TemplateFor? For)> constructs;
@@ -181,15 +252,18 @@ public static partial class SourceTemplates
         private readonly List<TemplateRender> renders = [];
         private readonly List<TemplateRunSpot> spots = [];
 
-        public BodyCheck(TemplateHost host, TemplateSyntax syntax, SourcePackage package, Resolution resolution, TypeRegistry registry, Producers producers)
+        public BodyCheck(
+            TemplateHost host, TemplateSyntax syntax, SourcePackage package, Resolution resolution, TypeRegistry registry, Producers producers,
+            PlacedAt? placed = null)
         {
             this.host = host;
             this.syntax = syntax;
             this.package = package;
             this.registry = registry;
             this.producers = producers;
+            this.placed = placed;
             formats = resolution.Tree.FormatsOf(host.Frame);
-            typing = new PathTyping(host, resolution.Tree, formats, package);
+            typing = new PathTyping(host, resolution.Tree, formats, package, placed?.Reads ?? host.Site);
             constructs = syntax.Fors.Select(f => (f.Tag.Start, f.Depth, (TemplateFor?)f))
                 .Concat(syntax.Ifs.Select(i => (i.Tag.Start, i.Depth, (TemplateFor?)null)))
                 .OrderBy(c => c.Item1)
@@ -227,9 +301,20 @@ public static partial class SourceTemplates
             {
                 var scope = Scope(output.Tag.Start, output.Depth);
                 TypedRead? head = null;
+                // A part or a macro a snippet places is judged where the snippet is placed (Context.Expand), not read here.
+                var unplaced = host.Site == TemplateSite.SnippetBody && Unit(output) is { Kind: "part" or "macro" };
                 foreach (var path in output.Paths)
                 {
-                    var read = Record(output.Tag.Start, order++, typing.Type(path, output.Tag.Line, scope));
+                    if (unplaced)
+                        continue;
+                    if (host.Site == TemplateSite.PartText && path.Split('.')[0] == "part" && scope.All(v => v.Name != "part"))
+                    {
+                        // Part 05 § 7.1 (A07-002): a part's text places no part.
+                        Refusals.Add(DialectSentences.PartOnlyPresents(host.PartId ?? string.Empty, NodeId, path, host.Path));
+                        continue;
+                    }
+
+                    var read = Record(output.Tag.Start, order++, Typed(path, output.Tag.Line, scope));
                     if (path == output.Path)
                         head ??= read;
                     if (path == output.Path && output.Pipes.Count == 0 && read?.Format is { } format)
@@ -241,14 +326,22 @@ public static partial class SourceTemplates
                 Place(output);
             }
 
-            foreach (var chain in syntax.Ifs)
-                If(chain, ref order);
+            if (host.Site == TemplateSite.PartText && syntax.Ifs.Count > 0)
+            {
+                // Part 05 § 7.1 (A07-002): a part has no if of its own; its own header if decides it.
+                Refusals.Add(DialectSentences.PartOnlyPresents(host.PartId ?? string.Empty, NodeId, "if", host.Path));
+            }
+            else
+            {
+                foreach (var chain in syntax.Ifs)
+                    If(chain, ref order);
+            }
 
             RendererPipesInTests();
             RunSpots();
 
             return new CheckedBody(
-                host, syntax, reads.OrderBy(r => r.Start).ThenBy(r => r.Order).Select(r => r.Read).ToList(), placements, renders, spots);
+                host, syntax, reads.OrderBy(r => r.Start).ThenBy(r => r.Order).Select(r => r.Read).ToList(), placements, renders, spots, []);
         }
 
         // ---- scope -----------------------------------------------------------------------------------
@@ -302,11 +395,27 @@ public static partial class SourceTemplates
         /// <summary>A <c>for</c>'s source typed at the <c>for</c>'s place: a list (S05-006 otherwise, with the source as written).</summary>
         private (TypedRead?, SourceRefusal?) Type(string source, int line, int start, int depth)
         {
-            var typed = typing.Type(source, line, Scope(start, depth));
+            var typed = Typed(source, line, Scope(start, depth));
             if (typed.Item1 is { Format: { } format } && FormatTypes.Shape(format, formats) != FormatShape.List)
                 return (null, DialectSentences.ForOverNotAList(host.Subject, source, line, host.Path));
             return typed;
         }
+
+        /// <summary>
+        /// <paramref name="path"/> typed at this body's place; in a placed snippet's body a read its placer's place does
+        /// not give is S05-022, naming the placer and the line of the placement (what is wrong whatever the place, a bare
+        /// read or an unknown snippet, is said of the snippet).
+        /// </summary>
+        private (TypedRead?, SourceRefusal?) Typed(string path, int line, List<ForVariable> scope)
+        {
+            var typed = typing.Type(path, line, scope);
+            if (placed is { } at && typed.Refusal is { } refusal && !OfTheText.Contains(refusal.Id))
+                return (null, DialectSentences.SnippetReadsUnavailable(at.Snippet, path, at.Subject, at.Line, at.Path));
+            return typed;
+        }
+
+        /// <summary>The id of the node whose prompt, part or <c>rendered</c> body this is.</summary>
+        private string NodeId => host.Declaration is SourceNode node ? node.Id : host.Subject;
 
         private TypedRead? Record(int start, int order, (TypedRead? Read, SourceRefusal? Refusal) typed)
         {
@@ -359,7 +468,7 @@ public static partial class SourceTemplates
             var handled = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
             foreach (var test in chain.Tests)
             {
-                var read = test.Path is { } path ? typing.Type(path, test.Line, scope) : (null, null);
+                var read = test.Path is { } path ? Typed(path, test.Line, scope) : (null, null);
                 Record(test.Start, order++, read);
                 if (read.Item2 != null || host.Site == TemplateSite.Renderer)
                     continue;
