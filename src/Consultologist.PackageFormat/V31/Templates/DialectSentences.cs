@@ -118,6 +118,38 @@ public static class DialectSentences
     public static SourceRefusal ReadsRunDependentWithMore(string subject, string other, string value, int line, string path) =>
         new("S05-025", $"{subject} reads {other} and the run-dependent {value} in one output at line {Line(line)}; an output that reads a run fact reads nothing else.", path);
 
+    /// <summary>
+    /// S05-026 (R-N1): a value piped into renderer <paramref name="id"/> that is not of its <c>input</c>;
+    /// <paramref name="source"/> is what is piped as written (<c>node.plan.value</c>, or with the built-in steps before
+    /// the renderer: <c>node.a.value.items | array.size</c>), <paramref name="format"/> and <paramref name="input"/> the type strings.
+    /// </summary>
+    public static SourceRefusal PipesWrongFormat(string subject, string source, string format, string id, string input, string path) =>
+        new("S05-026", $"{subject} pipes {source} ({format}) into renderer.{id}, which renders {input}.", path);
+
+    /// <summary>S05-028 (R-N2): a renderer whose <c>format</c> is not one of the three text formats; <paramref name="format"/> its type string.</summary>
+    public static SourceRefusal RendererFormatNotText(string id, string format, string path) =>
+        new("S05-028", $"Renderer '{id}' declares format {format}; a renderer returns plaintext, markdown_block or markdown_inline.", path);
+
+    /// <summary>S05-029 (R-N3): a renderer's body reading <paramref name="root"/> (as part 05 § 3.1's table writes it: <c>node.*</c>, <c>item</c>), not its <c>value</c>.</summary>
+    public static SourceRefusal RendererReadsRoot(string id, string root, string path) =>
+        new("S05-029", $"Renderer '{id}' reads {root}; a renderer reads only the value piped into it.", path);
+
+    /// <summary>S05-031 (R-N5): a pipe into renderer <paramref name="id"/>, which is neither the package's, the function's own nor a built-in.</summary>
+    public static SourceRefusal PipesUndefinedRenderer(string subject, string id, string path) =>
+        new("S05-031", $"{subject} pipes into renderer.{id}, which this package doesn't define.", path);
+
+    /// <summary>S05-033 (R-N7): renderer <paramref name="id"/>'s body piping into renderer <paramref name="other"/>.</summary>
+    public static SourceRefusal RendererPipesIntoRenderer(string id, string other, int line, string path) =>
+        new("S05-033", $"Renderer '{id}' pipes into renderer.{other} at line {Line(line)}; chain renderers where they're used, not inside a renderer.", path);
+
+    /// <summary>S05-034: a chain step whose renderer <paramref name="id"/> returns <paramref name="format"/>, not the <c>input</c> of the next renderer <paramref name="next"/>.</summary>
+    public static SourceRefusal ChainWrongFormat(string subject, string id, string format, string next, string input, string path) =>
+        new("S05-034", $"{subject} pipes renderer.{id} ({format}) into renderer.{next}, which renders {input}.", path);
+
+    /// <summary>S05-061 (W-2), a warning: a <c>markdown_block</c> renderer <paramref name="id"/> piped in a tag with text before or after it on its line.</summary>
+    public static SourceRefusal BlockRendererInsideALine(string subject, string id, int line, string path) =>
+        new("S05-061", $"{subject} pipes renderer.{id}, a markdown_block, inside a line at line {Line(line)}.", path);
+
     /// <summary>S05-037 (R-S3): a bare <c>snippet.&lt;id&gt;</c>; <paramref name="id"/> as written (<c>tone</c>, <c>standards.hpi</c>).</summary>
     public static SourceRefusal ReadsBareSnippet(string subject, string id, int line, string path) =>
         new("S05-037", $"{subject} reads snippet.{id} at line {Line(line)}; read its text as snippet.{id}.content.", path);

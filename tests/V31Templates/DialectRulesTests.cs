@@ -269,6 +269,13 @@ public class DialectRulesTests
     [InlineData("ReadsBare", "A07-008")]
     [InlineData("PlacesInsideAnIfOrFor", "A07-009")]
     [InlineData("ReadsRunFact", "S05-060")]
+    [InlineData("PipesWrongFormat", "S05-026")]
+    [InlineData("RendererFormatNotText", "S05-028")]
+    [InlineData("RendererReadsRoot", "S05-029")]
+    [InlineData("PipesUndefinedRenderer", "S05-031")]
+    [InlineData("RendererPipesIntoRenderer", "S05-033")]
+    [InlineData("ChainWrongFormat", "S05-034")]
+    [InlineData("BlockRendererInsideALine", "S05-061")]
     public void EachSentenceMethod_SaysItsRow(string method, string id)
     {
         var info = typeof(DialectSentences).GetMethod(method)!;
