@@ -248,6 +248,33 @@ public class MacroTests
     }
 
     [Fact]
+    public void ASnippetInAMacroBody_IsCheckedAsTheBody()
+    {
+        // Fix round 1 (I2): a snippet a macro's body places is held to the macro-body row: profile.* is read there, while the
+        // same snippet in a prompt is refused (S05-022); placing a part or a macro through it is S05-042 or S05-043.
+        var inBody = Check(Package()
+            .WithSnippet("sign", "{{ profile.signature }}")
+            .WithMacro("m", "With thanks, {{ snippet.sign.content }}\n")
+            .WithAgent("draft", "Draft the note.\n{{~ macro.m }}\n")
+            .WithJson("nodes/draft.md", h => h["profileCarrying"] = true));
+        Assert.Empty(inBody.Refusals);
+        Assert.Equal(["profile.signature"], Assert.Single(Unit(inBody, "nodes/draft.md").MacroBody!.Units).Body.Reads.Select(r => r.Written));
+
+        var inPrompt = TemplateFixture.Single(Check(Package()
+            .WithSnippet("sign", "{{ profile.signature }}")
+            .WithAgent("draft", "Draft the note.\n{{~ snippet.sign.content }}\n")));
+        Assert.Equal("S05-022", inPrompt.Id);
+
+        var placing = TemplateFixture.Single(Check(Package()
+            .WithMacro("other", "Other text.\n")
+            .WithSnippet("sign", "{{ macro.other }}")
+            .WithMacro("m", "With thanks, {{ snippet.sign.content }}\n")
+            .WithAgent("draft", "Draft the note.\n{{~ macro.m }}\n")));
+        Assert.Equal("S05-042", placing.Id);
+        V31Contract.AssertSentence(placing);
+    }
+
+    [Fact]
     public void AMacro_IsCheckedOncePerPlace_NotPerPlacer()
     {
         var files = Package().WithMacro("m", string.Concat(Enumerable.Repeat("{{ input.consult_draft.content }}\n", 2_000)));

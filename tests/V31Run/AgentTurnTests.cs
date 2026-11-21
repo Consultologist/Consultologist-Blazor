@@ -205,6 +205,35 @@ public class AgentTurnTests
     }
 
     [Fact]
+    public void ASnippetInAMacroBody_IsRenderedWhenDecided_AndItsProfileReadOnlyThen()
+    {
+        // Fix round 1 (I2): the macro body's snippets are decided as placements are; one not placed writes and reads nothing.
+        const string signature = "Dr A. Sample, consultant physician";
+        var plan = RunFixture.Plan(CompiledTemplatesTests.MacroBodySnippets());
+        var scope = Scope(("item.value.title", "Assessment"), ("profile.signature", signature));
+        PreparedPrompt PreparedWith(bool sign) => Prepared(AgentTurn.Prepare(plan, Call("node.sections.draft", scope, new Dictionary<string, bool>
+        {
+            ["macro.m"] = true, ["snippet.sign"] = sign, ["snippet.name"] = true, ["snippet.where"] = true,
+        }, key: "node.sections.draft:1"), 100_000, Rejects));
+
+        var placed = PreparedWith(true);
+        var not = PreparedWith(false);
+
+        Assert.Equal("Draft the section 'Assessment'.\nPlace {{ macro.m.content }} in the plan.\n", placed.Text);
+        Assert.DoesNotContain(signature, placed.Text, StringComparison.Ordinal);
+        var offered = Assert.Single(placed.Composition.Macros);
+        Assert.Equal($"Reviewed. Signed, {signature}", offered.Body);
+        Assert.Equal([new ProfileRead("signature", CanonicalJson.HashText(signature))], offered.ProfileReads);
+        Assert.Equal(["snippet.where", "snippet.sign", "snippet.name"], placed.Composition.Units.Select(u => u.Site));
+
+        var bare = Assert.Single(not.Composition.Macros);
+        Assert.Equal("Reviewed. ", bare.Body);
+        Assert.Empty(bare.ProfileReads);
+        Assert.Empty(not.Detail["profileReads"]!.AsArray());
+        Assert.Equal(["snippet.where"], not.Composition.Units.Select(u => u.Site));
+    }
+
+    [Fact]
     public void AMacroBodysRunFact_IsFilledDirectly()
     {
         // D5: a macro body is substituted into the reply, which has no run-neutral form: its run.* read is no run spot.

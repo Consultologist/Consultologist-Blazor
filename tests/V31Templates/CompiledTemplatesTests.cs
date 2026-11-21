@@ -54,6 +54,54 @@ public class CompiledTemplatesTests
                 + "\"text\": [\"Close the section.\", \"{{~ macro.f.m }}\"] } }"));
 
     [Fact]
+    public void AMacroBodysSnippets_ArePlacements_AfterTheMacro_WithinIt()
+    {
+        // Fix round 1 (I2; part 05 § 6.3): the snippets a macro's body places, and those they place, are listed after the
+        // macro's own entry, within it, with each if rooted for the place; the instruction's snippet follows.
+        var files = MacroBodySnippets();
+
+        var placements = Resolve(files)["nodes"]!["node.sections.draft"]!["placements"]!;
+
+        Assert.Equal(
+            CanonicalJson.Write(JsonNode.Parse("""
+                [
+                  { "site": "macro.m", "within": null, "if": null, "plainConverts": [], "form": "inline" },
+                  { "site": "snippet.sign", "within": "macro.m",
+                    "if": { "!": [ { "blank": [ { "var": "node.sections.classify.value.reason" } ] } ] }, "plainConverts": [], "form": null },
+                  { "site": "snippet.name", "within": "snippet.sign", "if": null, "plainConverts": [], "form": null },
+                  { "site": "snippet.where", "within": "macro.m", "if": null, "plainConverts": [], "form": null }
+                ]
+                """)),
+            CanonicalJson.Write(placements));
+    }
+
+    /// <summary>
+    /// The loop <c>sections</c> of the classifier <c>classify</c> and the agent <c>draft</c> placing the macro <c>m</c>, whose
+    /// body places the snippet <c>sign</c> (decided on the classifier's reason, and placing <c>name</c>, which reads the
+    /// profile) and whose instruction places <c>where</c>.
+    /// </summary>
+    internal static Dictionary<string, byte[]> MacroBodySnippets() =>
+        Package()
+            .WithSnippet("where", "in the plan")
+            .WithSnippet("name", "{{ profile.signature }}")
+            .Listed("snippets/index.json", "sign")
+            .With("snippets/sign.md", SourceFixture.Md(
+                "{ \"label\": \"Signature\", \"description\": null, "
+                + "\"if\": { \"!\": [ { \"blank\": [ { \"var\": \"node.classify.value.reason\" } ] } ] }, \"format\": \"plaintext\" }",
+                "Signed, {{ snippet.name.content }}"))
+            .WithMacroOf("m", "Reviewed. {{ snippet.sign.content }}\n", ["Place {{ macro.m.content }} {{ snippet.where.content }}."])
+            .Listed("nodes/index.json", "sections")
+            .With("nodes/sections/index.json", SourceFixture.Json(SourceFixture.Node("for", "Sections", SourceFixture.ArrayOf(Plain), false, true,
+                "\"in\": \"node.plan.value.sections\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"classify\", \"draft\"], \"ret\": \"node.sections.draft\"")))
+            .With("nodes/sections/classify.md", SourceFixture.Agent("Classifying the section", "\"judgement\"",
+                "Does the section '{{ item.value.title }}' need a signature?\n"))
+            .With("nodes/sections/draft.md", SourceFixture.Agent("Drafting the section", Plain,
+                "Draft the section '{{ item.value.title }}'.\n{{~ macro.m }}\n"))
+            .WithJson("nodes/sections/draft.md", h => h["profileCarrying"] = true)
+            .WithJson("nodes/sections/index.json", h => h["profileCarrying"] = true);
+
+    [Fact]
     public void Placements_AreInOrder_WithEachIfRooted()
     {
         var document = Resolve(Placing());
