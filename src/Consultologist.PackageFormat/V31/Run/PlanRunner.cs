@@ -378,7 +378,7 @@ public sealed partial class PlanRunner
         {
             if (outcome.TooManySteps)
             {
-                await FailAsync(instance, $"{Subject(instance)} stopped rendering: it took more than {Count(limits.RenderSteps)} steps.");
+                await FailAsync(instance, RunSentences.StoppedRendering(Subject(instance), limits.RenderSteps));
                 return;
             }
 
@@ -445,14 +445,7 @@ public sealed partial class PlanRunner
         }
 
         /// <summary>D4's <c>&lt;site&gt;</c> for an instance's <c>if</c> and its render: <c>Node 'id'</c>, <c>Check 'id'</c> or <c>Deliverable 'id'</c>, with <c> in function 'f'</c> inside one.</summary>
-        private static string Subject(RunInstance instance)
-        {
-            var entry = instance.Entry;
-            var word = entry.Kind == PlanKind.Deliverable ? "Deliverable"
-                : entry.Key.StartsWith("check.", StringComparison.Ordinal) ? "Check"
-                : "Node";
-            return $"{word} '{entry.Id}'{InFunction(instance)}";
-        }
+        private static string Subject(RunInstance instance) => RunSentences.Subject(instance.Entry, instance.Frame.Function);
 
         /// <summary>D4's <c>&lt;site&gt;</c> for a computed node's <c>expression</c>.</summary>
         private static string ComputedSubject(RunInstance instance) => $"Computed node '{instance.Entry.Id}'{InFunction(instance)}";

@@ -290,6 +290,31 @@ public class PlanRunnerAgentsTests
         });
     }
 
+    [Theory]
+    [InlineData("steps", "S05-062", "Node 'plan' stopped rendering: it took more than 100,000 steps.")]
+    [InlineData("compose", "A06-008", "Node 'plan' couldn't be rendered.")]
+    [InlineData("plan", "S07-006", null)]
+    public async Task ACallThatCouldNotBeMade_FailsTheNodeAtOnce_WithItsSentence(string kind, string id, string? expected)
+    {
+        var plan = RunFixture.Plan(Planned(), StubTemplates.Empty());
+        var host = new FakeRunHost(auto: true).Agent("node.plan", new AgentOutcome(AgentOutcomeKind.Failed, null, 0, kind));
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal("node.plan", result.FailedKey);
+        Assert.Equal(expected ?? ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence, result.Sentence);
+        V31Contract.AssertSentence(new SourceRefusal(id, result.Sentence!, ""));
+        // no retry: the one attempt, the row failed with the sentence
+        Assert.Single(host.Calls);
+        Assert.Equal(1, host.DelaysMade); // the job's timer only
+        var row = recorder.Row("node.plan");
+        Assert.Equal(RowState.Failed, row.State);
+        Assert.Equal(result.Sentence, row.Reason);
+        Assert.Empty(row.Detail["retries"]!.AsArray());
+    }
+
     [Fact]
     public async Task AThrottledCall_WithNoWait_WaitsTheBackOffsStart_AndCountsIt()
     {

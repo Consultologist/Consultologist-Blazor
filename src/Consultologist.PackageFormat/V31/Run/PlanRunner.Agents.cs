@@ -56,7 +56,9 @@ public sealed partial class PlanRunner
         /// An attempt's outcome (part 09 § 3.4, D7). A reply goes to <see cref="RepliedAsync"/>. A 429 adds its wait to the
         /// node's: past <see cref="RunLimits.CapacityWaitMinutes"/> the node fails with S09-010, else it waits on the host's
         /// timer and calls again. Another service failure counts: at <see cref="RunLimits.ServiceAttempts"/> the node fails with
-        /// S09-011, else it waits and calls again. The slot is held throughout, and a retry is part of its call.
+        /// S09-011, else it waits and calls again. The slot is held throughout, and a retry is part of its call. A call that could
+        /// not be made (<see cref="AgentOutcomeKind.Failed"/>) fails the node at once: S05-062 for <c>steps</c>, A06-008 for
+        /// <c>compose</c>, S07-006 for <c>plan</c> (and any other kind).
         /// </summary>
         private async Task AgentAsync(RunInstance instance, AgentOutcome outcome)
         {
@@ -77,6 +79,15 @@ public sealed partial class PlanRunner
 
                     state.CapacityWaited += wait;
                     Retry(instance, wait, "capacity", null);
+                    return;
+                case AgentOutcomeKind.Failed:
+                    // Not the model service's: no retry changes it, so the node fails with the sentence for its kind.
+                    await FailAsync(instance, outcome.ErrorKind switch
+                    {
+                        "steps" => RunSentences.StoppedRendering(Subject(instance), limits.RenderSteps),
+                        "compose" => RunSentences.CouldNotRender(Subject(instance)),
+                        _ => ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence,
+                    });
                     return;
                 default:
                     state.ServiceFailures++;

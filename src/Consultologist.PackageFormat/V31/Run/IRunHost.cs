@@ -13,6 +13,13 @@ public enum AgentOutcomeKind
 
     /// <summary>Another service failure: a 5xx, a time-out, no connection.</summary>
     ServiceFailure,
+
+    /// <summary>
+    /// The call could not be made, for a reason not the model service's, which no retry changes: its <c>ErrorKind</c> is
+    /// <c>"steps"</c> (its body passed the step budget, S05-062), <c>"compose"</c> (its body could not be composed,
+    /// A06-008) or <c>"plan"</c> (its plan is not the job's, or lacks its entry or its agent: S07-006). The node fails.
+    /// </summary>
+    Failed,
 }
 
 /// <summary>
@@ -29,7 +36,8 @@ public sealed record AgentCall(string Key, string EntryKey, string? Function, in
 /// <summary>
 /// #1503 (specVersion 31, area 06; D7): what one attempt gave: the reply, or the wait the activity worked out
 /// (<c>retry-after</c>, else the back-off with its jitter) and the error's kind (<c>"timeout"</c>, <c>"error"</c> or
-/// <c>"unreachable"</c>), never its content.
+/// <c>"unreachable"</c>; for <see cref="AgentOutcomeKind.Failed"/> <c>"steps"</c>, <c>"compose"</c> or <c>"plan"</c>), never
+/// its content.
 /// </summary>
 public sealed record AgentOutcome(AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind);
 
