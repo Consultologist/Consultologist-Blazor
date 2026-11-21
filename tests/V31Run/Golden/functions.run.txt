@@ -1,0 +1,53 @@
+# dispatched
+node.plan
+node.standards.section.standard_draft:hpi
+node.standards.section.standard_draft:assessment_plan
+node.standards.section.patient_draft:hpi
+node.standards.section.patient_draft:assessment_plan
+node.extract_input_terms
+node.standards.section.apply_instructions:hpi
+node.standards.section.apply_instructions:assessment_plan
+node.extract_note_terms
+
+# rows
+node.plan | completed | - | sha256:bf8fe1b2e1afa48ac12eb4ca2d2c0f14c81e8e947046c767f87776dad105a75e
+node.standards.section.standard_draft:hpi | completed | - | sha256:ea6eab2d5d1cffedb7cffd98a327cb040494293a9c53397a82e83cad5ebb0af3
+node.standards.section.standard_draft:assessment_plan | completed | - | sha256:39b88afd7c3bbd9dd5d6aa5ffb4ff4a7871ea2a945ab4b166c6f3d11f282f8b1
+node.standards.section.patient_draft:hpi | completed | - | sha256:7edbb4406903699a29ef288b642e9b9c2c3f7ca4ddea4bdc9d2dfd5235c82333
+node.standards.section.patient_draft:assessment_plan | completed | - | sha256:c44fa9cf630e2b499c607c799e80c9aa8d10057c89f57c82d149f3d248060257
+node.extract_input_terms | completed | - | sha256:3978555fb00a32cc57fddfb936fb5216a9793d5fb2187915d02dd4cee443409e
+node.standards.section.apply_instructions:hpi | completed | - | sha256:5960edaac8663a01b306a90730445661973d943233030984fb161a667d33813e
+node.standards.section:hpi | completed | - | sha256:5960edaac8663a01b306a90730445661973d943233030984fb161a667d33813e
+node.standards:hpi | completed | - | sha256:5960edaac8663a01b306a90730445661973d943233030984fb161a667d33813e
+node.standards.section.apply_instructions:assessment_plan | completed | - | sha256:9011ac805b82014c1401e2e8bc469e62edb312c7f639a4604097d38b9cc52547
+node.standards.section:assessment_plan | completed | - | sha256:9011ac805b82014c1401e2e8bc469e62edb312c7f639a4604097d38b9cc52547
+node.standards:assessment_plan | completed | - | sha256:9011ac805b82014c1401e2e8bc469e62edb312c7f639a4604097d38b9cc52547
+node.standards | completed | - | sha256:40239c57d0322a97e852b612f686494360f4ca932e94d774024f3dd996923572
+node.extract_note_terms | completed | - | sha256:9e2739920f70e6d139d9e85bde310dda7aaaf182c669249c462ee94496ce3c4e
+check.section_coverage.coverage:hpi | completed | - | sha256:0ae958b89419b2c013f5115b04e2e7e4a24d31153f695b9633ecc4a8bbe104ff
+check.section_coverage.coverage:assessment_plan | completed | - | sha256:0ae958b89419b2c013f5115b04e2e7e4a24d31153f695b9633ecc4a8bbe104ff
+check.section_coverage:hpi | completed | - | sha256:0ae958b89419b2c013f5115b04e2e7e4a24d31153f695b9633ecc4a8bbe104ff
+check.section_coverage:assessment_plan | completed | - | sha256:0ae958b89419b2c013f5115b04e2e7e4a24d31153f695b9633ecc4a8bbe104ff
+check.section_coverage | completed | - | sha256:6a6d44be69d9d0fb17d93b7eaa4f7bc0fab354500f5106118f7ad0549159223d
+check.all_sections | completed | - | sha256:cbcff544c0c6a87d405b5fe381e1f32f9108f2bf73159c4cdbcaca040f8e1271
+deliverable.emr.consult | composed | - | sha256:1f13b0a28390318422908f80004b86d3618bef049b612ed2de73919ac54d5d7d
+
+# decisions
+node.standards.section.standard_draft:hpi | self | not blank(param.standard.value.title) | true
+node.standards.section.standard_draft:assessment_plan | self | not blank(param.standard.value.title) | true
+check.section_coverage.coverage:hpi | self | item.state = "completed" | true
+check.section_coverage.coverage:assessment_plan | self | item.state = "completed" | true
+
+# result
+state | completed
+sentence | -
+failed | -
+agentCalls | 9
+peakInFlight | 6
+value | check.all_sections | sha256:2d05066d899539afbf00c434cd0a604c6cc6c333073a7af3f9d61aece58cb05c
+value | check.section_coverage | sha256:34498b8f1720f49bc5f6011a6e0536608bc97853d9dc732f4e30856ede55494e
+value | deliverable.emr.consult | sha256:fdc0ee7a2fd9eb6399c95de2b5f6d5d8aaf6c0a6dd8983a40912e84bc6e5ed42
+value | node.extract_input_terms | sha256:392a02ef4bc81da77f4e791213ce2b66bdccd8f1cede5da1977b116d8928c7fc
+value | node.extract_note_terms | sha256:995b1ca872fa873f32afe6b8bcb3675d1f31166c1e308101822e4bf8103e9046
+value | node.plan | sha256:a53173b62e9ea748eb5cd35a302e3690483a9e7000d7789bc33346240a945003
+value | node.standards | sha256:f58078429ad50582c9649ba03a2294968f86e088c5684cd83b55083ed753dd12

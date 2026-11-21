@@ -1,0 +1,51 @@
+# dispatched
+node.plan
+node.refine.draft_summary#1
+node.sections.outline:1
+node.refine.judge#1
+node.sections.paragraphs.draft_paragraph:1/1
+node.sections.paragraphs.draft_paragraph:1/2
+node.sections.paragraphs.draft_paragraph:1/3
+node.refine.draft_summary#2
+node.refine.judge#2
+
+# rows
+node.plan | completed | - | sha256:1e36b1c33e150e36e107596caae4824ddbec54a02aa34d86975cdf8c54103b48
+node.section_count | completed | - | sha256:6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b
+node.refine.draft_summary#1 | completed | - | sha256:4e5813f9a560124d2645d1fd0bba318c3d98cb35c01918104124f46789fdcde5
+node.sections.outline:1 | completed | - | sha256:58c06297ff094e222c6465043d9aea328968706241c0d17cf4ef0d6bd8f08d59
+node.refine.judge#1 | completed | - | sha256:08145fa856e08236da6191b8f63141dbd341e659896d3e22377224ee933af4c2
+node.refine#1 | completed | - | sha256:4e5813f9a560124d2645d1fd0bba318c3d98cb35c01918104124f46789fdcde5
+node.sections.paragraphs.draft_paragraph:1/1 | completed | - | sha256:b799375f309586188a667547e5e0a47c58b50441a4f8bb0f1ea67267ac09073f
+node.sections.paragraphs:1/1 | completed | - | sha256:b799375f309586188a667547e5e0a47c58b50441a4f8bb0f1ea67267ac09073f
+node.sections.paragraphs.draft_paragraph:1/2 | completed | - | sha256:7f299d344fd4c7f23671c372cefbb0012a65e74cf7f3b0eefccbab180c087af1
+node.sections.paragraphs:1/2 | completed | - | sha256:7f299d344fd4c7f23671c372cefbb0012a65e74cf7f3b0eefccbab180c087af1
+node.sections.paragraphs.draft_paragraph:1/3 | completed | - | sha256:74f0fc4fb8c6a369d2cae640cabc2c3bfef6c323f9f473bfb8ef87d48afc07dc
+node.sections.paragraphs:1/3 | completed | - | sha256:74f0fc4fb8c6a369d2cae640cabc2c3bfef6c323f9f473bfb8ef87d48afc07dc
+node.sections.paragraphs:1 | completed | - | sha256:6a118b47369e30f66f33b5acaf38ee01cb59e826112e2e9db0d767e5ae50fb87
+node.sections:1 | completed | - | sha256:6a118b47369e30f66f33b5acaf38ee01cb59e826112e2e9db0d767e5ae50fb87
+node.sections | completed | - | sha256:eedbb0afb16984da15c90345edfeb02d126119f842d312ae626ebf5ab0cf3ae6
+node.refine.draft_summary#2 | completed | - | sha256:5fc27c15141cc4668dbbdc53e78903df15d2d2e01b874ebf104693d65fa4b885
+node.refine.judge#2 | completed | - | sha256:456328b7e806a6cde21e75c1e60d84f587bff881ef2a64fb781f1b92976c453c
+node.refine#2 | completed | - | sha256:5fc27c15141cc4668dbbdc53e78903df15d2d2e01b874ebf104693d65fa4b885
+node.refine | completed | - | sha256:5fc27c15141cc4668dbbdc53e78903df15d2d2e01b874ebf104693d65fa4b885
+deliverable.note | composed | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
+
+# decisions
+node.sections.paragraphs.draft_paragraph:1/1 | self | not blank(item.parent.value.title) | true
+node.sections.paragraphs.draft_paragraph:1/2 | self | not blank(item.parent.value.title) | true
+node.sections.paragraphs.draft_paragraph:1/3 | self | not blank(item.parent.value.title) | true
+node.refine | pass.1 | node.refine.judge.value.verdict ≠ "good" | true
+node.refine | pass.2 | node.refine.judge.value.verdict ≠ "good" | false
+
+# result
+state | completed
+sentence | -
+failed | -
+agentCalls | 9
+peakInFlight | 4
+value | deliverable.note | sha256:e93d2b0c68cd11c6095ca032a4743b508c36ac940bdfa5b221f799e0533d0744
+value | node.plan | sha256:145b8a68b700b590052bc2ae4770c58e4d2b6d9e46abeb19ca09026ceadb240c
+value | node.refine | sha256:56436b4848d94a75afb907d95dd2e2422efd39d3b8fba593306eab2f35263392
+value | node.section_count | sha256:7b4025c17edaa16d6024737d284568d64136cd35b011993bae320e7f6317185e
+value | node.sections | sha256:b0e59a475c298339d3efac8c2a06db5510ac7e10d142d4f132d9f4397041ba42

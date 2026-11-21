@@ -1,0 +1,62 @@
+# dispatched
+node.plan
+node.sections_draft.route.narrative_draft:0
+node.sections_draft.route.table_draft:1
+node.patient_summaries.narrative_only.patient_summary:0
+node.standing_sections.applies.standing_draft:0
+node.standing_sections.applies.standing_draft:1
+node.standing_sections.applies.standing_draft:2
+
+# rows
+node.sections_draft.route:2 | skipped | case 'route': arm for omit does nothing | -
+node.patient_summaries.narrative_only:1 | skipped | skipped: item.value.kind = "narrative" is false | -
+node.patient_summaries.narrative_only:2 | skipped | skipped: item.value.kind = "narrative" is false | -
+node.sections_draft:2 | skipped | case 'route': arm for omit does nothing | -
+node.patient_summaries:1 | skipped | skipped: item.value.kind = "narrative" is false | -
+node.patient_summaries:2 | skipped | skipped: item.value.kind = "narrative" is false | -
+node.plan | completed | - | sha256:bf8fe1b2e1afa48ac12eb4ca2d2c0f14c81e8e947046c767f87776dad105a75e
+node.sections_draft.route.narrative_draft:0 | completed | - | sha256:b47ead3422b09b3196f63cbd29096ebad3b2683642005fffc396f867c4a689f8
+node.sections_draft.route:0 | completed | - | sha256:b47ead3422b09b3196f63cbd29096ebad3b2683642005fffc396f867c4a689f8
+node.sections_draft:0 | completed | - | sha256:b47ead3422b09b3196f63cbd29096ebad3b2683642005fffc396f867c4a689f8
+node.sections_draft.route.table_draft:1 | completed | - | sha256:cf9d51ff9d4d35a6b5c07d94cb1b5410fc9100e93f87031f03a0c01f51bfa323
+node.sections_draft.route:1 | completed | - | sha256:cf9d51ff9d4d35a6b5c07d94cb1b5410fc9100e93f87031f03a0c01f51bfa323
+node.sections_draft:1 | completed | - | sha256:cf9d51ff9d4d35a6b5c07d94cb1b5410fc9100e93f87031f03a0c01f51bfa323
+node.sections_draft | completed | - | sha256:227f4baceec1770ce9647053d95a04e422915635fae809c45115554196b7cddd
+node.patient_summaries.narrative_only.patient_summary:0 | completed | - | sha256:ca135237e53c4e1b7b6c39e32aeb4dac7c837e84bdc22c408a6570288f62d7be
+node.patient_summaries.narrative_only:0 | completed | - | sha256:ca135237e53c4e1b7b6c39e32aeb4dac7c837e84bdc22c408a6570288f62d7be
+node.patient_summaries:0 | completed | - | sha256:ca135237e53c4e1b7b6c39e32aeb4dac7c837e84bdc22c408a6570288f62d7be
+node.patient_summaries | completed | - | sha256:2f30244ae4056558d43d1b9aa445ac45af0ed7028a455d4365c762ff1cf5afc6
+node.standing_sections.applies.standing_draft:0 | completed | - | sha256:e848dfa1e191055949538b0f8249055fd41e29a2f8d531a4b14449ce4ed1c060
+node.standing_sections.applies:0 | completed | - | sha256:e848dfa1e191055949538b0f8249055fd41e29a2f8d531a4b14449ce4ed1c060
+node.standing_sections:0 | completed | - | sha256:e848dfa1e191055949538b0f8249055fd41e29a2f8d531a4b14449ce4ed1c060
+node.standing_sections.applies.standing_draft:1 | completed | - | sha256:35c039e7c0b48858df66261eed55ad2fda47244332ec1802a7d26ad8f1b27b75
+node.standing_sections.applies:1 | completed | - | sha256:35c039e7c0b48858df66261eed55ad2fda47244332ec1802a7d26ad8f1b27b75
+node.standing_sections:1 | completed | - | sha256:35c039e7c0b48858df66261eed55ad2fda47244332ec1802a7d26ad8f1b27b75
+node.standing_sections.applies.standing_draft:2 | completed | - | sha256:11ab79c8593d9e292887d024c3d72ae5e2bd4d94b79e9e92d6d6dad1126ee867
+node.standing_sections.applies:2 | completed | - | sha256:11ab79c8593d9e292887d024c3d72ae5e2bd4d94b79e9e92d6d6dad1126ee867
+node.standing_sections:2 | completed | - | sha256:11ab79c8593d9e292887d024c3d72ae5e2bd4d94b79e9e92d6d6dad1126ee867
+node.standing_sections | completed | - | sha256:67cfdaa8f29c56d4d40c588f59a28ae9cb6b630584bb2f364ccb397abb72f581
+deliverable.note | composed | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
+
+# decisions
+node.sections_draft.route:0 | case | item.value.kind | branch 1
+node.sections_draft.route:1 | case | item.value.kind | branch 2
+node.sections_draft.route:2 | case | item.value.kind | branch 3
+node.patient_summaries.narrative_only:0 | self | item.value.kind = "narrative" | true
+node.patient_summaries.narrative_only:1 | self | item.value.kind = "narrative" | false
+node.patient_summaries.narrative_only:2 | self | item.value.kind = "narrative" | false
+node.standing_sections.applies:0 | self | item.id ≠ "billing" or input.include_billing.value = true | true
+node.standing_sections.applies:1 | self | item.id ≠ "billing" or input.include_billing.value = true | true
+node.standing_sections.applies:2 | self | item.id ≠ "billing" or input.include_billing.value = true | true
+
+# result
+state | completed
+sentence | -
+failed | -
+agentCalls | 7
+peakInFlight | 7
+value | deliverable.note | sha256:e93d2b0c68cd11c6095ca032a4743b508c36ac940bdfa5b221f799e0533d0744
+value | node.patient_summaries | sha256:acf1e72a139699b8b5dc3de118321fc9926f612e7cea80c47e9edcd782bf2837
+value | node.plan | sha256:a53173b62e9ea748eb5cd35a302e3690483a9e7000d7789bc33346240a945003
+value | node.sections_draft | sha256:4c7597dcfbf9094ec32c24252e83f81d3c5f69b5b36c2c3988b170db43e95a3a
+value | node.standing_sections | sha256:3ea57d74c32fbeb4b7a55a8b3702f7632981e8cf9d8581f9e61d137b7474cd74

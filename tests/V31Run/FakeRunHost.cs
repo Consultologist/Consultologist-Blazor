@@ -5,7 +5,7 @@ namespace Consultologist.Api.Tests.V31Run;
 /// <summary>
 /// #1503 (specVersion 31, area 06): a scripted <see cref="IRunHost"/>. An agent call's outcome and a render's are scripted
 /// by the call's <c>Key</c> or, failing that, its <c>EntryKey</c>, an agent's as a sequence (each attempt takes the next
-/// outcome, the last repeating); an unscripted agent replies <c>"Text of &lt;key&gt;."</c>
+/// outcome, the last repeating); an unscripted agent replies what <see cref="Stub"/> gives, else <c>"Text of &lt;key&gt;."</c>,
 /// and an unscripted render gives <c>"Rendered &lt;key&gt;."</c>. In auto mode every answer is given at once; otherwise each
 /// is held until the test releases it (<see cref="Release"/>, <see cref="ReleaseAll"/>, <see cref="ReleaseInOrder"/>).
 /// The clock is manual (<see cref="Advance"/>), and a delay ends when the clock passes it, or ends cancelled when its token is
@@ -22,6 +22,7 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
     private readonly List<(string Key, Action Answer)> held = [];
     private readonly List<(DateTime Due, TaskCompletionSource Done)> timers = [];
     private readonly List<(string Key, bool Starts)> events = [];
+    private Func<AgentCall, string>? stub;
 
     /// <summary>The time the clock starts at.</summary>
     public static readonly DateTime Start = new(2026, 11, 16, 14, 0, 0, DateTimeKind.Utc);
@@ -52,6 +53,13 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
     {
         Assert.NotEmpty(outcomes);
         agentScript[key] = outcomes;
+        return this;
+    }
+
+    /// <summary>Makes <paramref name="reply"/> the reply of every agent call not scripted otherwise.</summary>
+    public FakeRunHost Stub(Func<AgentCall, string> reply)
+    {
+        stub = reply;
         return this;
     }
 
@@ -107,7 +115,7 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
         Calls.Add(call);
         events.Add((call.Key, true));
         var outcome = Next(call.Key) ?? Next(call.EntryKey)
-            ?? new AgentOutcome(AgentOutcomeKind.Completed, $"Text of {call.Key}.", 0, null);
+            ?? new AgentOutcome(AgentOutcomeKind.Completed, stub?.Invoke(call) ?? $"Text of {call.Key}.", 0, null);
         var answer = new TaskCompletionSource<AgentOutcome>();
         return Hold(call.Key, () =>
         {

@@ -536,10 +536,10 @@ public class PlanRunnerCallsTests
     public async Task EachCompiledGolden_RunsToCompleted(string name)
     {
         var plan = RunFixture.Plan(name);
-        var host = Stubbed(plan);
+        var host = RunFixture.Stubbed(plan);
         var recorder = new ListRecorder();
 
-        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(GoldenInputs(), FakeRunHost.Start);
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(RunFixture.GoldenInputs(), FakeRunHost.Start);
 
         Assert.True(result.State == RunState.Completed, $"{result.State}: {result.FailedKey} {result.Sentence}");
         Assert.Equal(plan.TopLevel.Order(StringComparer.Ordinal), result.Values.Keys.Order(StringComparer.Ordinal));
@@ -688,50 +688,5 @@ public class PlanRunnerCallsTests
             };
             functions[names[i]] = link;
         }
-    }
-
-    /// <summary>The inputs every golden needs: the consult draft, two sections, and billing.</summary>
-    private static RunInputs GoldenInputs()
-    {
-        var given = PlanRunnerLeavesTests.Inputs(includeBilling: true);
-        return given with
-        {
-            Inputs = new Dictionary<string, JsonNode?>(given.Inputs, StringComparer.Ordinal)
-            {
-                ["sections"] = new JsonObject
-                {
-                    ["value"] = JsonNode.Parse("""[{"title":"History","kind":"narrative"},{"title":"Results","kind":"table"},{"title":"Coding","kind":"omit"}]"""),
-                    ["content"] = null,
-                    ["title"] = null,
-                },
-            },
-        };
-    }
-
-    /// <summary>
-    /// An auto host whose every agent of <paramref name="plan"/> (the package's and its functions') replies a value valid for
-    /// its format, scripted by entry key; a text format takes the host's default text.
-    /// </summary>
-    private static FakeRunHost Stubbed(RunPlan plan)
-    {
-        var host = new FakeRunHost(auto: true);
-        var agents = plan.Entries.Values.Concat(plan.Functions.Values.SelectMany(f => f.Entries.Values)).Where(e => e.Kind == PlanKind.Agent);
-        foreach (var agent in agents)
-        {
-            var reply = (string?)agent.Format?["$ref"] switch
-            {
-                "#/$defs/section_plan" => """{"sections":[{"title":"History","kind":"narrative"},{"title":"Plan","kind":"table"}]}""",
-                "#/$defs/outline" => """{"points":["Onset","Tests"]}""",
-                "#/$defs/verdict" => """{"verdict":"good"}""",
-                "#/$defs/concept_list" => Concepts,
-                _ => null,
-            };
-            if (reply != null)
-                host.Reply(agent.Key, reply);
-            else
-                Assert.True(plan.Formats.IsText(agent.Format), $"{agent.Key} has no stub for its format");
-        }
-
-        return host;
     }
 }
