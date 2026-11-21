@@ -74,6 +74,7 @@ public static partial class ResolveCompiler
     /// <summary>
     /// The members of part 07 § 2.2, in its order, with the manifest's <c>derivedFrom</c> after <c>package</c>: a member
     /// that only steers publish, carried under its own name (§ 2.2; part 01 § 3), the name@version or null.
+    /// #1504 (specVersion 31, area 07; ruling 5, R7): a manifest whose <c>title</c> is null gives the package's name as the title.
     /// </summary>
     private static JsonObject Document(Context context, string scribanVersion, IReadOnlyList<SourceRefusal> warnings)
     {
@@ -87,7 +88,7 @@ public static partial class ResolveCompiler
             ["specVersion"] = SpecVersion,
             ["package"] = new JsonObject { ["name"] = manifest.Name, ["version"] = manifest.Version },
             ["derivedFrom"] = manifest.DerivedFrom,
-            ["title"] = manifest.Title ?? $"{manifest.Name}@{manifest.Version}",
+            ["title"] = manifest.Title ?? manifest.Name,
             ["description"] = manifest.Description == null ? null : string.Join('\n', manifest.Description),
             ["tags"] = new JsonArray(manifest.Tags.Select(t => (JsonNode?)t).ToArray()),
             ["sourceHash"] = SourceHash.Of(context.Check.Parse.Files),
