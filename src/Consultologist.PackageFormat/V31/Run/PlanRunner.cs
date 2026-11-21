@@ -412,6 +412,7 @@ public sealed partial class PlanRunner
             instance.Settle(state, read, reason);
             pending.Remove(instance);
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
+            ItemNameDetail(instance.Frame, detail);
             if (instance.Entry.Kind == PlanKind.Agent)
                 AgentDetail(instance, detail);
             else if (instance.Entry.Kind == PlanKind.For)

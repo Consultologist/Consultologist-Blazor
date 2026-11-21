@@ -92,6 +92,9 @@ public sealed partial class PlanRunner
         /// <summary>Each loop instance once its source is read, by instance (reference equality: only looked up, never iterated).</summary>
         private readonly Dictionary<RunInstance, LoopState> loops = new(ReferenceEqualityComparer.Instance);
 
+        /// <summary>Each loop item's frame and its item, by frame (reference equality: only looked up, never iterated).</summary>
+        private readonly Dictionary<RunFrame, LoopItem> itemFrames = new(ReferenceEqualityComparer.Instance);
+
         /// <summary>The key of the loop whose <c>.items</c> an entry iterates, or null, by entry (looked up only).</summary>
         private readonly Dictionary<PlanEntry, string?> itemsSources = new(ReferenceEqualityComparer.Instance);
 
@@ -360,9 +363,18 @@ public sealed partial class PlanRunner
                     continue;
 
                 loop.Open.Remove(item);
+
+                // RunPlan.Build refuses a ret that is not one of the loop's own body nodes, and every body node gets an
+                // instance in the item's frame; a for whose ret is null is not what publish writes (part 04 § 2.1: never
+                // null). Either is the document's fault, said as S07-006, never an item completed with no value.
                 var ret = entry.Ret is { } key ? frame.Instances.FirstOrDefault(i => i.Entry.Key == key) : null;
-                var state = ret?.State ?? RowState.Completed;
-                await SettleItemAsync(instance, loop, item, state, state == RowState.Completed ? null : ret?.Reason, ret?.Read);
+                if (ret is not { State: { } state })
+                {
+                    await FailAsync(instance, ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
+                    return true;
+                }
+
+                await SettleItemAsync(instance, loop, item, state, state == RowState.Completed ? null : ret.Reason, ret.Read);
                 moved = true;
 
                 if (loop.Parallel || entry.Until is not { } until || loop.StopAt != null)
@@ -432,10 +444,36 @@ public sealed partial class PlanRunner
         private static string? NotRunReason(LoopState loop, LoopItem item)
         {
             if (loop.Max is { } max && item.Position >= max)
-                return $"not run: beyond max {Count(max)}";
+                return BeyondMax(max);
             if (loop.StopAt is { } at)
-                return $"stopped early at {PositionName(loop, at - 1)}";
+                return StoppedEarly(loop, at);
             return null;
+        }
+
+        /// <summary>S04-002: <c>not run: beyond max &lt;n&gt;</c>.</summary>
+        private static string BeyondMax(int max) => $"not run: beyond max {Count(max)}";
+
+        /// <summary>S04-001 with the position name of the item (1-based <paramref name="at"/>) after which the <c>until</c> held, never a drawn name.</summary>
+        private static string StoppedEarly(LoopState loop, int at) => $"stopped early at {PositionName(loop, at - 1)}";
+
+        /// <summary>
+        /// What <c>item</c> reads for <paramref name="item"/> in its frame, and what its <c>.items</c> element holds as
+        /// <c>item</c> (part 04 § 2.6, "an item, as above"): <c>{ id, value[, content] }</c>, or for a loop over <c>.items</c>
+        /// the production item's element with its <c>id</c>. The frame's binding adds <c>parent</c>.
+        /// </summary>
+        private static JsonObject ItemOf(LoopState loop, LoopItem item)
+        {
+            if (loop.Production != null && item.Value is JsonObject element)
+            {
+                var chained = element.DeepClone().AsObject();
+                chained["id"] = item.Id;
+                return chained;
+            }
+
+            var plain = new JsonObject { ["id"] = item.Id, ["value"] = item.Value?.DeepClone() };
+            if (item.HasContent)
+                plain["content"] = item.Content;
+            return plain;
         }
 
         /// <summary>
@@ -446,25 +484,14 @@ public sealed partial class PlanRunner
         private void Open(RunInstance instance, LoopState loop, LoopItem item)
         {
             var frame = instance.Frame;
-            JsonObject binding;
-            if (loop.Production != null && item.Value is JsonObject element)
-            {
-                binding = element.DeepClone().AsObject();
-                binding["id"] = item.Id;
-            }
-            else
-            {
-                binding = new JsonObject { ["id"] = item.Id, ["value"] = item.Value?.DeepClone() };
-                if (item.HasContent)
-                    binding["content"] = item.Content;
-            }
-
+            var binding = ItemOf(loop, item);
             if (frame.Binding(f => f.Item != null)?.Item is { } parent)
                 binding["parent"] = parent.DeepClone();
 
             item.Frame = frame.Open(instance, frame.Map, frame.Function, [.. frame.ItemPath, item.Id], [.. frame.ItemPositions, item.Position],
                 frame.Passes, binding, null, null);
             loop.Open.Add(item);
+            itemFrames[item.Frame] = item;
             foreach (var key in instance.Entry.Body)
             {
                 if (frame.Map.TryGetValue(key, out var body))
@@ -482,12 +509,9 @@ public sealed partial class PlanRunner
             loop.Settled++;
             var completed = state == RowState.Completed;
             var content = completed ? SourceLayout.Text(ret?["content"]) : null;
-            var source = new JsonObject { ["id"] = item.Id, ["value"] = item.Value?.DeepClone() };
-            if (item.HasContent)
-                source["content"] = item.Content;
             item.Element = new JsonObject
             {
-                ["item"] = source,
+                ["item"] = ItemOf(loop, item),
                 ["label"] = item.Name,
                 ["state"] = StateWord(state),
                 ["reason"] = reason,
@@ -555,20 +579,34 @@ public sealed partial class PlanRunner
         /// </summary>
         private void LoopDetail(RunInstance instance, JsonObject detail)
         {
-            var json = instance.Entry.Json;
-            var loop = loops.GetValueOrDefault(instance);
-            detail["parallel"] = json["parallel"] is JsonValue parallel && parallel.GetValueKind() == JsonValueKind.True;
-            detail["maxParallel"] = Whole(json["maxParallel"]);
-            detail["itemLabel"] = SourceLayout.Text(json["itemLabel"]);
-            detail["count"] = loop?.Count;
-            detail["stopped"] = loop?.Stopped;
+            var read = loops.GetValueOrDefault(instance);
+            var loop = read ?? new LoopState(instance.Entry); // a loop that never read its source has its members as written
+            detail["parallel"] = loop.Parallel;
+            detail["maxParallel"] = loop.MaxParallel;
+            detail["itemLabel"] = loop.ItemLabel;
+            detail["count"] = read?.Count;
+            detail["stopped"] = loop.Stopped;
             detail["reason"] = loop switch
             {
                 { NullReason: { } nullReason } => nullReason,
-                { Stopped: "until", StopAt: { } at } => $"stopped early at {PositionName(loop, at - 1)}",
-                { Stopped: "bound", Max: { } max } => $"not run: beyond max {Count(max)}",
+                { Stopped: "until", StopAt: { } at } => StoppedEarly(loop, at),
+                { Stopped: "bound", Max: { } max } => BeyondMax(max),
                 _ => null,
             };
+        }
+
+        /// <summary>
+        /// Part 08 § 4's <c>itemName</c> on a row written in <paramref name="frame"/>: the name of the innermost loop item it
+        /// runs in (through any frame between, a while's or a call's), with whether it is the position name; <c>null</c> and
+        /// <c>false</c> outside every loop.
+        /// </summary>
+        private void ItemNameDetail(RunFrame frame, JsonObject detail)
+        {
+            LoopItem? item = null;
+            for (var at = frame; at != null && item == null; at = at.Parent)
+                item = itemFrames.GetValueOrDefault(at);
+            detail["itemName"] = item?.Name;
+            detail["positionName"] = item?.PositionName ?? false;
         }
 
         /// <summary>A row state as a reader reads it (part 04 § 2.6).</summary>
