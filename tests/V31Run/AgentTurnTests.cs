@@ -211,13 +211,14 @@ public class AgentTurnTests
         const string signature = "Dr A. Sample, consultant physician";
         var plan = RunFixture.Plan(CompiledTemplatesTests.MacroBodySnippets());
         var scope = Scope(("item.value.title", "Assessment"), ("profile.signature", signature));
-        PreparedPrompt PreparedWith(bool sign) => Prepared(AgentTurn.Prepare(plan, Call("node.sections.draft", scope, new Dictionary<string, bool>
+        PreparedPrompt PreparedWith(bool sign, bool name = true) => Prepared(AgentTurn.Prepare(plan, Call("node.sections.draft", scope, new Dictionary<string, bool>
         {
-            ["macro.m"] = true, ["snippet.sign"] = sign, ["snippet.name"] = true, ["snippet.where"] = true,
+            ["macro.m"] = true, ["snippet.sign"] = sign, ["snippet.name"] = name, ["snippet.where"] = true,
         }, key: "node.sections.draft:1"), 100_000, Rejects));
 
         var placed = PreparedWith(true);
         var not = PreparedWith(false);
+        var unnamed = PreparedWith(true, name: false);
 
         Assert.Equal("Draft the section 'Assessment'.\nPlace {{ macro.m.content }} in the plan.\n", placed.Text);
         Assert.DoesNotContain(signature, placed.Text, StringComparison.Ordinal);
@@ -231,6 +232,27 @@ public class AgentTurnTests
         Assert.Empty(bare.ProfileReads);
         Assert.Empty(not.Detail["profileReads"]!.AsArray());
         Assert.Equal(["snippet.where"], not.Composition.Units.Select(u => u.Site));
+
+        // A snippet placed by the body's snippet is decided too: not placed, the profile it would read is not read.
+        var signedOnly = Assert.Single(unnamed.Composition.Macros);
+        Assert.Equal("Reviewed. Signed, ", signedOnly.Body);
+        Assert.Empty(signedOnly.ProfileReads);
+        Assert.Equal(["snippet.where", "snippet.sign"], unnamed.Composition.Units.Select(u => u.Site));
+    }
+
+    [Fact]
+    public void AFolderMacrosBodySnippet_IsRenderedWhenDecided()
+    {
+        // Fix round 1 (I2): a folder's macro placed by a part; its body's snippet is decided within macro.f.m.
+        var plan = RunFixture.Plan(CompiledTemplatesTests.FolderMacroBodySnippet());
+        var scope = Scope(("item.value.title", "Assessment"));
+        string BodyWith(bool when) => Assert.Single(Prepared(AgentTurn.Prepare(plan, Call("node.sections.draft", scope, new Dictionary<string, bool>
+        {
+            ["part.p"] = true, ["macro-folder.f"] = true, ["macro.f.m"] = true, ["snippet.when"] = when,
+        }, key: "node.sections.draft:1"), 100_000, Rejects)).Composition.Macros).Body;
+
+        Assert.Equal("Follow up with Dr A. Sample in six weeks.", BodyWith(true));
+        Assert.Equal("Follow up with Dr A. Sample .", BodyWith(false));
     }
 
     [Fact]

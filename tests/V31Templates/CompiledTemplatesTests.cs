@@ -75,6 +75,40 @@ public class CompiledTemplatesTests
             CanonicalJson.Write(placements));
     }
 
+    [Fact]
+    public void AFolderMacrosBodySnippets_FollowIt_WithinIt()
+    {
+        // Fix round 1 (I2): a folder's macro placed by a part: its body's snippet follows the macro, within macro.f.m, its
+        // if rooted for the loop's agent.
+        var files = FolderMacroBodySnippet();
+
+        var draft = Resolve(files)["nodes"]!["node.sections.draft"]!;
+
+        Assert.Equal(
+            ["part.p", "macro-folder.f", "macro.f.m", "snippet.when"],
+            draft["placements"]!.AsArray().Select(p => (string)p!["site"]!));
+        Assert.Equal(
+            CanonicalJson.Write(JsonNode.Parse("""
+                { "site": "snippet.when", "within": "macro.f.m",
+                  "if": { "!": [ { "blank": [ { "var": "node.sections.classify.value.reason" } ] } ] }, "plainConverts": [], "form": null }
+                """)),
+            CanonicalJson.Write(draft["placements"]![3]));
+    }
+
+    /// <summary><see cref="Placing"/> with the folder macro's body placing the snippet <c>when</c> (decided on the classifier's reason).</summary>
+    internal static Dictionary<string, byte[]> FolderMacroBodySnippet() =>
+        Placing()
+            .Listed("snippets/index.json", "when")
+            .With("snippets/when.md", SourceFixture.Md(
+                "{ \"label\": \"When\", \"description\": null, "
+                + "\"if\": { \"!\": [ { \"blank\": [ { \"var\": \"node.classify.value.reason\" } ] } ] }, \"format\": \"plaintext\" }",
+                "in six weeks"))
+            .With("macros/f/m.md", SourceFixture.Md(
+                "{ \"label\": \"Follow-up\", \"description\": null, "
+                + "\"if\": { \"===\": [ { \"var\": \"node.classify.value.answer\" }, true ] }, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place the follow-up line alone after the plan:\", \"{{~ macro.f.m.content }}\"] }",
+                "Follow up with Dr A. Sample {{ snippet.when.content }}.\n"));
+
     /// <summary>
     /// The loop <c>sections</c> of the classifier <c>classify</c> and the agent <c>draft</c> placing the macro <c>m</c>, whose
     /// body places the snippet <c>sign</c> (decided on the classifier's reason, and placing <c>name</c>, which reads the
@@ -267,7 +301,7 @@ public class CompiledTemplatesTests
     {
         var resolve = Schema("resolve");
         var @lock = Schema("lock");
-        foreach (var files in new[] { Placing(), Spotted(), ResolveFixture.NestedNote(), ResolveFixture.Functions(), ResolveFixture.Conditional() })
+        foreach (var files in new[] { Placing(), Spotted(), ResolveFixture.NestedNote(), ResolveFixture.Functions(), ResolveFixture.Conditional(), MacroBodySnippets() })
         {
             var compiled = Published(files);
             Assert.True(resolve.Validate(compiled.Resolve, null), "resolve.json does not fit resolve.schema.json.");
