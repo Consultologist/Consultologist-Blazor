@@ -36,7 +36,8 @@ public class RequiresCheckTests
         IReadOnlyList<BreakPoint>? breakPoints = null,
         IEnumerable<string>? kinds = null,
         IReadOnlyDictionary<string, IReadOnlySet<int>>? agents = null,
-        IReadOnlyDictionary<string, string>? libraries = null)
+        IReadOnlyDictionary<string, string>? libraries = null,
+        IReadOnlyDictionary<string, string>? builtins = null)
     {
         var required = Pair.Value.Resolve["requires"]!["agents"]!.AsObject()
             .ToDictionary(
@@ -51,7 +52,8 @@ public class RequiresCheckTests
             AllFeatures.ToHashSet(StringComparer.Ordinal),
             agents ?? required,
             breakPoints ?? [],
-            libraries ?? Pair.Value.Lock["libraries"]!.AsObject().ToDictionary(l => l.Key, l => (string)l.Value!, StringComparer.Ordinal));
+            libraries ?? Pair.Value.Lock["libraries"]!.AsObject().ToDictionary(l => l.Key, l => (string)l.Value!, StringComparer.Ordinal),
+            builtins ?? Pair.Value.Lock["builtins"]!.AsObject().ToDictionary(b => b.Key, b => (string)b.Value!, StringComparer.Ordinal));
     }
 
     private static IReadOnlyList<SourceRefusal> Said(IReadOnlyList<SourceRefusal> refusals)
@@ -178,6 +180,44 @@ public class RequiresCheckTests
 
         // The evaluator's and an operation's break points are not a library's: no lock key holds them.
         Assert.Empty(RequiresCheck.Engine(Resolve(), without, Engine(breakPoints: [new BreakPoint("the evaluator", "1.0.1"), new BreakPoint("matches", "1.1.0")])));
+    }
+
+    [Fact]
+    public void ABreakPointOfABuiltin_IsHeldToTheLocksVersionOfIt()
+    {
+        // The lock is at printer 1.0.0 (constants.json); the engine's printer changed its output at 1.1.0.
+        var breakPoints = new[] { new BreakPoint("printer", "1.1.0") };
+        var running = Engine().Builtins.ToDictionary(b => b.Key, b => b.Key == "printer" ? "1.1.0" : b.Value, StringComparer.Ordinal);
+        Assert.Equal("1.0.0", (string)Lock()["builtins"]!["printer"]!);
+
+        var refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints, builtins: running))));
+        Assert.Equal(("S07-003", "lock.json"), (refusal.Id, refusal.Path));
+        Assert.Contains("needs printer ^1.0.0; this engine runs printer 1.1.0.", refusal.Sentence);
+
+        // A lock at the break point is admitted; so is an engine still before it.
+        var at = Lock();
+        at["builtins"]!["printer"] = "1.1.0";
+        Assert.Empty(RequiresCheck.Engine(Resolve(), at, Engine(breakPoints: breakPoints, builtins: running)));
+        Assert.Empty(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints)));
+
+        // An engine that does not state its printer is held to the break point, naming its version unknown.
+        var unsaid = running.Where(b => b.Key != "printer").ToDictionary(b => b.Key, b => b.Value, StringComparer.Ordinal);
+        refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints, builtins: unsaid))));
+        Assert.Contains("needs printer ^1.0.0; this engine runs printer unknown.", refusal.Sentence);
+    }
+
+    [Fact]
+    public void ABreakPointOfWhatThePackageDoesNotUse_IsNotHeld_AndOfNothingKnown_IsRefused()
+    {
+        // The nested note renders through no built-in renderer, and uses no matches.
+        Assert.Null(Lock()["builtins"]!["concept_bullets"]);
+        Assert.Empty(RequiresCheck.Engine(Resolve(), Lock(),
+            Engine(breakPoints: [new BreakPoint("concept_bullets", "1.1.0"), new BreakPoint("matches", "1.1.0")])));
+
+        // A component neither the engine nor the lock knows fails closed.
+        var refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: [new BreakPoint("Markdgi", "1.0.0")]))));
+        Assert.Equal(("S07-003", "lock.json"), (refusal.Id, refusal.Path));
+        Assert.Contains("needs Markdgi unknown; this engine runs Markdgi unknown.", refusal.Sentence);
     }
 
     [Fact]

@@ -37,6 +37,9 @@ public static class LockCompiler
         ["concept_context"] = "1.0.0",
     };
 
+    /// <summary>Every name <c>builtins</c> may hold: the machinery and each built-in renderer.</summary>
+    internal static IEnumerable<string> BuiltinNames => Machinery.Select(m => m.Name).Concat(Renderers.Keys);
+
     /// <summary>The flat maps of <c>resolve.json</c> whose entries may render (§ 2.5), and a function's own.</summary>
     private static readonly string[] Maps = ["nodes", "checks", "renderers", "snippets", "macros", "deliverables"];
 

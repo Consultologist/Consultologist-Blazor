@@ -976,15 +976,18 @@ missing or of another shape is refused.
     - the locked version is not a version;
     - or the package is locked before one of the component's break points, with the engine at or
       past it.
-  - S07-003 for another locked library (Markdig, the two Corvus libraries: any break point that is
-    not Scriban's, the evaluator's or an operation's) only when all of these hold:
+  - Every other break point is classed by where the lock holds its component: a library of
+    `libraries` (Markdig, the two Corvus libraries), held against `EngineCapabilities.Libraries`, or a
+    member of `builtins` (the machinery, a built-in renderer), held against
+    `EngineCapabilities.Builtins`. S07-003 for such a component only when all of these hold:
     - the engine has a break point for it;
     - the locked version is before that break point (a missing locked version counts as before);
-    - the engine's own version of it (`EngineCapabilities.Libraries`) is at or past the break
-      point, or is missing or not a version.
+    - the engine's own version of it is at or past the break point, or is missing or not a version.
 
-    A missing or invalid version is said as `unknown`. With no break point for a library, nothing is
-    said of it.
+    A component the lock holds nowhere: a library the engine lists in `Libraries` is refused (the
+    lock is before every break point of it); an operation or a builtin the package does not use is
+    not held; a name neither knows is refused. A missing or invalid version is said as `unknown`.
+    With no break point for a component, nothing is said of it.
   - S07-004 for each kind or feature the engine lacks, and S07-005 for each agent version it lacks.
   - At most one refusal per component. Where the document says nothing, the sentence says `unknown`.
     A document that cannot be read (parsed from text that repeats a member, which throws when first
