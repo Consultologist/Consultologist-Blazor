@@ -167,9 +167,13 @@ truncated header is placed where it ends.
 
 Types and formats, with a leaf's `reproducible` and a flow node's format (03, the next section);
 JSON Logic (04); the resolver and the derived values — a flow node's and a `call`'s
-`reproducible`, `modelDerived`, `runDependent`, `profileCarrying`, call depth (05); prompt
-members and macros (07); checks, deliverables and the profile (08); names and versions (11).
-The reader types the members that carry these and holds their values; it does not compare them.
+`reproducible`, `modelDerived`, `runDependent`, `profileCarrying`, call depth (05, now built: see
+"the resolver and the lock" below); prompt members and macros (07); checks, deliverables and the
+profile (08); names and versions (11). The reader types the members that carry these and holds
+their values; it does not compare them. Since area 05 the reader says part 04's sentence for an
+`in`, a `case` or a `with` value written as an object or a list (S04-017), and A05-005 for a `with`
+value of another JSON kind, where it said A02-001. `SourceParseResult.Dropped` names the compiled
+copies it dropped.
 
 ### The conformance cases
 
@@ -352,17 +356,21 @@ ids, member names, keywords, JSON pointers, counts, limits and package text. A
 ### What it leaves to later areas
 
 - **A flow node's and a `call`'s `reproducible`, and the three flags** (part 02 § 1.1, § 1.2; D5):
-  they follow from what a node reads, so areas 04 and 05.
-- **Finding the reads** (D6): JSON Logic `var`, templates and reference strings are areas 04, 05
-  and 07's. `FormatReads` types a read when asked, so no package reaches S02-018, S02-019 or
-  S02-020 yet.
+  they follow from what a node reads. Area 05 derives them and holds them against every header
+  (`SourceDerived`, in "the resolver and the lock" below), with S04-015, S04-016 and S03-036.
+- **Finding the reads** (D6): JSON Logic `var` (area 04) and reference strings (area 05) are now
+  found and typed; templates' reads are area 07's. A bare `input.<id>` as a loop's source, a
+  `case` subject or a call's argument is S02-018, which now has a case. No package reaches S02-019
+  or S02-020 yet.
 - **A check's format** (D15): area 08's (S06-009). A rendered check's inline format is still
   A02-001.
 - **The envelope** (D22): `SentFormat` stops before it. The envelope, and so the exact bytes of
   `sentFormatHash` if it is part of them, belongs to the area that sends (06 or 07).
-- **`uses.formats` listing a built-in or catalogue name** (D36): part 04 § 7.3's rule, area 05's.
+- **`uses.formats` listing a built-in or catalogue name** (D36): part 04 § 7.3's rule. Area 05
+  allows it, and warns with S04-074, as for any other name, when the function never names it
+  (05-D12).
 - **The other kinds' formats** (part 02 § 2.2): a renderer's, a deliverable's and a macro's (07,
-  08), a `computed` node's (04), a `call`'s (05).
+  08), a `computed` node's (04), a `call`'s (05: S04-070, the call's against its function's).
 
 The suite's cases for these sentences are in the `refusal-packages` family, beside area 02's (see
 the reader's section above).
@@ -481,10 +489,14 @@ and site rules of part 03 (S03-013, S03-015, S03-018 to S03-022) are judged befo
 
 `PackageScope` is the scope of this area: `input.<id>` and `run.<fact>` are typed; every other root
 (`node`, `check`, `item`, `pass`, `param`), and every root inside a function, is `Deferred`. Area 05
-supplies the real scope, through `IExpressionScopes` (`SourceExpressions.Check(package, types,
-scopes)`), and until then a read through those roots is not judged. A read of `run.<fact>` at a site
-gives S03-037 (a condition) or S03-038 (a computed node) as a warning, in
-`PackageExpressions.Warnings`; a function's site that reads `run.*` warns the same way.
+supplies the real scope through `IExpressionScopes` (`SourceExpressions.Check(package, types,
+scopes)`): `SourceCheck.Run` passes `ResolvedScopes`, so every read is now judged where it is
+written. `PackageScope` stays the scope when no scopes are given, and for a macro's or a snippet's
+`if`, which is read where it is placed (area 07's). A read of `run.<fact>` at a site gives S03-037
+(a condition) or S03-038 (a computed node) as a warning, in `PackageExpressions.Warnings`; a
+function's site that reads `run.*` warns the same way. `resolve.json` takes the derived step's
+warnings in their place: they name every run-dependent decision and value, not only the direct
+readers.
 
 ### Where a rule is written
 
@@ -503,8 +515,9 @@ for the `null` literal) and its `ExpressionCheck`. Refusals are said once and or
 graph of `LineageNode`s the caller supplies, in rounds against a snapshot of the one before; a cycle
 ends. A flag's cause (`LineageValue.Because`) is the read that made it true first. `OfReads` gives a
 decision's flags, and `Disagreement` gives S03-036 when a node's declared flag is not what its
-reads make it. No caller gives it a graph yet: the compiled package's edges are area 05's and what
-templates read is area 07's (D28), so no package reaches S03-036 or S03-044.
+reads make it. Area 05's `SourceDerived` gives it the package's graph, so S03-036 and S03-044 are
+now said, and each has a case. What templates read is area 07's (D28): until a provider is given,
+a flag that depends on a body is not judged.
 
 ### Sentences
 
@@ -517,9 +530,9 @@ at publish.
 ### What it leaves to later areas
 
 - **The scope of `node`, `check`, `item`, `pass` and `param`, and the rules of what a site may see**
-  (D2): area 05's. Until then those reads are `Deferred`.
-- **The edges the flags spread along, and the header check** (D28): area 05's, and the reads of
-  templates, area 07's.
+  (D2): built by area 05 (`ResolvedScopes`). Only a macro's and a snippet's `if` stay `Deferred`.
+- **The edges the flags spread along, and the header check** (D28): built by area 05
+  (`SourceDerived`). The reads of templates are area 07's.
 - **Recording a run's facts and the record's rows**: area 09's.
 
 ### The conformance cases
@@ -545,3 +558,499 @@ Each export deletes and rewrites its folders and the `cases` of `v31/conformance
 ### Not wired in
 
 Nothing in the engine calls any of it yet. 31 stays outside `AcceptedSpecVersions`.
+
+## specVersion 31: the resolver and the lock (preview)
+
+*Area 05 of the Milestone 39 build (#1502). Built from
+[compiled documents](package-format-v31/07-compiled-documents.md) §§ 1 to 4 and 7,
+[loops and functions](package-format-v31/04-loops-and-functions.md) §§ 2 to 7 and 10, § 9 of
+[files and scopes](package-format-v31/01-files-and-scopes.md), with
+[expressions](package-format-v31/03-expressions.md) §§ 4.1 to 4.6 and
+[types and inputs](package-format-v31/02-types-and-inputs.md) § 1 for what is derived, and
+[the plan](package-format-v31/plans/area-05-resolver-and-lock.md) for the decisions (D1 to D15, and
+those taken during the build).*
+
+The resolver of 31 sits beside the JSON Logic code in `Consultologist.PackageFormat.V31`. It resolves
+every reference of a package source to its rooted key and types it, holds the source to part 04's
+publish-time rules, derives `reproducible` and the three flags and holds them against every header,
+and writes the two compiled documents, `resolve.json` and `lock.json`. It also holds the checks an
+engine makes of the stored pair at load and before a job.
+
+`SourceCheck.Run(upload, registry, templates = null)` now has five steps, each run only when the
+ones before it refused nothing: the reader, the type rules, the resolve step
+(`SourceResolve.Check`), the expressions (`SourceExpressions.Check`, each site read in the scope the
+resolution gives), and the derived step (`SourceDerived.Check`). `Refusals` is the first refusing
+step's. `SourceCheckResult` gains two members:
+
+- `Resolution` is null when the reader, the type rules or the resolve step refused. It stays set
+  when only an expression or the derived step refuses.
+- `Derived`, a `PackageDerived`, is null exactly when there is a refusal.
+
+`Expressions` stays set when only the derived step refuses. `templates` is the seam of D1 (below).
+Without it, the check is right but not complete.
+
+After the check, `ResolveCompiler.Compile` writes `resolve.json` and `LockCompiler.Compile` writes
+`lock.json`. `CompiledPackage.Publish` runs the check and both compilers in one call.
+`CompiledPackage.Verify` and `RequiresCheck` are what an engine asks of the stored pair.
+
+### The types
+
+- **`ReferenceString`**: a reference string (`in`, `case`, `with`) parsed into `Text` and
+  `Segments`. `Parse` gives null for anything that is not a path by `JsonLogicShape.IsPath`, for a
+  position segment, and for white space or a control character in a name (D13).
+- **`ScopeTree`**, **`ScopeFrame`**, **`Resolved`**, **`LoopSource`**: who encloses whom, and what a
+  reference names at a place (below). The static `ScopeTree.AlwaysValued(node)` and
+  `ScopeTree.EmptyValues(case)` give part 04 § 7.6's "always valued" and a `case`'s empty branches.
+- **`ResolvedScope`**, **`ResolvedScopes`**: the real `IExpressionScope` and `IExpressionScopes` of
+  area 04, over the tree.
+- **`SourceResolve`**, **`Resolution`**, **`CallBinding`**: the resolve step. A `Resolution` holds
+  the `Tree`, the `Scopes`, every node's key (`SourceKeys`; inside a function the key is local to
+  it), every `call` bound to its function (`Calls`), and the step's `Warnings`.
+- **`ITemplateReads`**, **`TemplateReads`**, **`TemplateRender`**, **`TemplateRunSpot`**: the seam
+  through which area 07 says what a Scriban body reads.
+- **`SourceDerived`**, **`DerivedEntry`**, **`PackageDerived`**: the derived step and what it gives.
+- **`CompiledFormats`**, **`SourceHash`**: the formats bundle, its hashes and the bindings (part 07
+  § 2.4), and `sourceHash` (§ 2.6).
+- **`ResolveCompiler`**, **`ResolveResult`**, **`PublishNotes`**, **`PublishLimits`**: `resolve.json`
+  and part 04 § 10.2's notes.
+- **`Toolchain`**, **`CaretRange`**, **`LockCompiler`**, **`CompiledPackage`**: `lock.json`, the
+  pair and its hashes, and `Verify`.
+- **`RequiresCheck`**, **`EngineCapabilities`**, **`BreakPoint`**: `requires`, the lock and
+  `needs.profile` held against an engine and an account.
+- **`SourceParseResult.Dropped`** (and `SourceIntakeResult.Dropped`): the compiled copies and the
+  publish report that intake dropped from an upload, ordinal-sorted, whatever the outcome.
+
+### The scope
+
+`ScopeTree.Build(package, types)` makes one `ScopeFrame` per body: the top of `nodes/`
+(`PackageRoot`), the top of `checks/` (`ChecksRoot`), each function's root (`FunctionRoot`), each
+`for` and `while` body, and each branch of an `if` or a `case`. `FrameOf(node)` is the body a node
+is listed in. A frame has `Parent` (null at a root, a function's root included), `Function`,
+`Owner` (the flow node whose body it is) and `Nodes`.
+
+- **`Visible(root, id)`** looks for the node in this body, then in each enclosing body, and stops at
+  the function's root. In `checks/`, `node.<id>` sees the top level of `nodes/`. In `nodes/`,
+  `check.<id>` sees the top of `checks/`. No check is visible inside a function.
+- **`Loop(up)`** and **`While(up)`** give the loop that `item`, `item.parent`, … names (skipping
+  whiles) and the while that `pass`, `pass.parent`, … names (skipping loops).
+- **`Hidden(root, id)`** gives a node of that id that exists inside a loop or while the reader is
+  outside of. Reading one is S04-039.
+
+**`Resolve(reference, frame, subject, path, condition, reader = null)`** is the one resolution every
+caller uses: a `var` or `missing` path, an `in`, a `case`, a `with`. It gives a `Resolved`:
+
+- `Kind`: area 04's `ScopeHeadKind` (`Format`, `Value`, `Deferred`, `Unknown`, `Refused`).
+- `Key`: the rooted key for `node`, `check`, `input` (`input.<id>`) and `param` (`param.<id>`);
+  null for the other roots.
+- `Length`: how many segments the head took. For a `Format` head the rest go to `FormatReads.Read`;
+  for a `Value` head they are fields.
+- `Format`, `Nullable`, and `Refusal` (set exactly for `Refused`).
+
+`reader` is the node that reads, whose id S04-050 and S04-051 name. `condition` does not change the
+resolution: callers use it to tell a rule's read from a reference string.
+
+**Members and their types** (D14):
+
+- `.state` is `string {completed, skipped, not_run}`.
+- A `for`'s `.stopped` is `string {until, bound, end}`; a `while`'s is `string {check, until, bound}`.
+- `.passes` and `pass.number` are `integer`; `pass.previous.number` is a nullable `integer`.
+- `.history` and `pass.history` are lists, read only through `size`.
+- `item.id` is `string`. `item.value` is the element of the loop's source (`ScopeTree.Source`, below).
+  `item.content` exists only over a snippet folder.
+- A loop over another loop's `.items` gets the element of part 04 § 2.6 as its `item`: `item.state`,
+  `item.value`, `item.label`, `item.nodes.<id>.value`, ….
+- `pass.node.<id>` and `pass.previous.node.<id>` read as `node.<id>` does, for any node in the while.
+  `pass.previous…` is nullable.
+- A `.value` or `.content` is nullable when its node is not `AlwaysValued`: a leaf with an `if`, an
+  `if` with no `else`, a `case` with an empty branch, a `checkFirst` while, or such a node down a
+  `ret`.
+
+**Refusals of a read.**
+
+- `pass.number` with no while is S04-036. `pass.parent` past the outermost while is S04-037.
+  `pass.previous.node.<id>` naming a node outside the while is S04-038. `item.parent` past the
+  outermost loop is S04-040.
+- Inside a function the scope is sealed. `input.*` is S04-050. `run.*`, `check.*`, `profile.*` (as an
+  argument), a node outside the function, and an outer `item` or `pass` are S04-051.
+- Any other `item` or `pass` with no loop or while, an unknown head, or a member the thing does not
+  have is `Unknown`, which the checker words as S03-014. There is no A05-002.
+
+**`ScopeTree.Source(loop)`** gives a `LoopSource`, cached per loop:
+
+- `Resolved`: the loop's `in`, resolved at the frame outside the loop.
+- `Element`: the list's element. Over `snippet.<folder>` it is the folder's `format`, looked up in
+  the function's own folders first, then the package's.
+- `KnownLength`: a snippet folder's item count.
+- `OverItems` and `Production`: set when the loop iterates a loop's `.items`.
+
+A loop whose source reads itself is not typed (its `item.value` is `Deferred`), and A05-003 refuses
+it later.
+
+**`ResolvedScopes.For(site)`** reads each expression site at its place:
+
+- A node's rule is read at the node's frame.
+- A `while`'s `while` and `until`, and a `for`'s `until`, are read in their own body's frame.
+- A deliverable's `if` is read at the top of `nodes/`.
+- A macro's and a snippet's `if` are read where they are placed, which only a body says. Their
+  sites stay in `PackageScope`, deferred; with the seam, the derived step judges them where each
+  body places them (below).
+
+### The resolve step
+
+`SourceResolve.Check(package, types)` runs these rules, then sorts its refusals by path. `Resolution`
+is null exactly when there is one.
+
+- **Loops** (`SourceResolve.Loops.cs`). For a loop's `in`:
+  - A05-001 when it is not a reference; S03-014 when it names nothing (`Loop 'x' reads …`);
+    S02-018 for a bare `input.<id>`; `Resolve`'s refusals.
+  - S04-025 when it is not a list, a single snippet included. S04-026 for `item.value.…` with no
+    loop. S04-027 for `node.<y>.value.…` where `y` runs inside another loop.
+  - `itemLabel` (S04-028 to S04-030), judged only when the source is typed. Over `.items`, `label`
+    is accepted.
+  - S04-035 for a while body node that nothing reads. Without the seam it is judged only for a while
+    with no agent or rendered node in its body.
+- **Branches** (`SourceResolve.Branches.cs`). A `case` subject is read as an `in` is.
+  - S04-044 when the subject is not an enumerated string (`enum`, or a `oneOf` of `const`s; nullable
+    allowed).
+  - Then S04-045 for a value that is not the subject's, and S04-046 for a value in two branches. A
+    value listed twice in one branch names that branch twice.
+  - Then, with no `else`, S04-047 for values no branch lists and S04-075 for a subject that can be
+    null.
+- **Calls** (`SourceResolve.Calls.cs`, typing in `ScopeTree.Calls.cs`), in source order:
+  - S04-064 when the function is unknown, and nothing else is said of that call.
+  - S04-065 and S04-066 for a parameter left out or one too many.
+  - Each argument held to part 04 § 7.7's heads: `node.<id>`, `check.<id>`, `item` (whole, as their
+    `.value`), `snippet.<folder>.<item>`, `run.<fact>`, `profile.<field>` (typed by `v31/profile.json`),
+    `param.<id>`, with fields. Its own refusal comes first; then S04-068 when it does not fit by
+    `FormatTypes.Fits` (in the caller's scope; a literal `null` needs a nullable parameter).
+  - S04-070 for the call's `format` against the function's, by `Same`.
+  - The reader now says S04-017 for an `in`, `case` or `with` written as an object or list, and
+    A05-005 for a `with` value of another JSON kind.
+- **Functions** (`SourceResolve.Functions.cs`):
+  - S04-053 for an own definition that `uses` also lists. S04-052 for a package snippet a header
+    reads that `uses.snippets` does not list.
+  - The `ret` rules, each only when none before it was said: S04-057, S04-059 or S04-058, then
+    S04-060, then S04-061.
+  - S04-074 (a warning, in `Resolution.Warnings`) for a `uses.formats` entry no format member of the
+    function names, directly or through another format. A built-in or catalogue name may be listed
+    (D12).
+  - The call graph. One S04-055 or S04-054 per strongly connected set, named as the shortest ring
+    through its ordinal-first function. With no ring, `CallBinding.Depth` is 0 outside every function
+    and *d*+1 inside a function reached at *d*; S04-056 goes on each outside call deeper than
+    `FormatBounds.Depth`.
+  - The profile. A parameter bound to `profile.<field>`, or to a parameter that is, carries it. A
+    condition inside its function reading it is S04-069 (`a condition`); a part's `if`, S04-069
+    (`a part`).
+- **The bundle.** A function's own format whose key `<function>__<id>` another used format has is
+  A05-004 (`CompiledFormats.Collisions`), so the check says it, not only the compiler.
+
+### The derived values and the seam
+
+`SourceDerived.Check(package, types, resolution, expressions, templates = null)` builds a graph with
+one vertex per entry: each node, check and deliverable, and each renderer, snippet and macro (folders
+and their items included). Each read is resolved with `ScopeTree.Resolve` where it is read.
+
+**Content reads** are what a value is made from. They are what the flags spread along:
+
+- a computed node's expression;
+- a body's reads (through the seam);
+- a call's arguments;
+- a flow node's `ret`, and a loop's `in`.
+
+A condition (`if`, `while`, `until`, a `case` subject, a part's `if`) is never content. Nor is a
+read through `pass.previous…` or `pass.history`. A read of `.state`, `.stopped`, `.passes`, `item.id`
+or `item.state` carries no flag: those are the engine's facts about a run.
+
+**Inside a function each entry is worked out twice:**
+
+- With its parameters reading nothing: what a call takes from the function
+  (`PackageDerived.Functions`, by function id).
+- With each parameter standing for the union of its arguments across every call:
+  `PackageDerived.FunctionEntries`.
+
+So a call's flags are its arguments' plus its function's own, and a second call that passes nothing
+run-dependent stays clean.
+
+**The flags** come from `LineageFlags.Derive`. Starts:
+
+- an agent is model-derived;
+- a body whose `TemplateReads.PlacesProfileMacro` is set is profile-carrying;
+- `profile.<field>` is profile-carrying and `run.<fact>` run-dependent, where read or passed.
+
+A flag derived `true` is final. A flag derived `false` whose value reaches a body the seam did not
+say is not known (`FlagsKnown` false). It is then not judged, and it takes the header's declared
+value.
+
+**`reproducible`**:
+
+- A flow node's is true only if everything in its body that its result depends on is reproducible
+  (part 04 § 1), earlier passes included.
+- A call's is its function's `ret`'s.
+- It is set for every node and check, null for other entries.
+
+**Held against the headers**, in this order:
+
+1. A05-003 for nodes that read each other in a circle, said first and alone. A loop iterating its
+   own `.items` is one; a while reading its own passes is not.
+2. S03-036 for a leaf's or check's flag. S04-016 for a flow node's or call's flag. S04-015 for a
+   flow node's or call's `reproducible`.
+3. S03-044 for a decision reading a profile-carrying value. Through the seam, a prompt reading one is
+   S04-069 (`a prompt`) when it is a profile-carrying parameter, else S03-044.
+
+**Warnings** (`PackageDerived.Warnings`): S03-037 for every run-dependent decision and S03-038 for
+every run-dependent computed node, not only those that read a run fact directly, each with the fact
+traced through its causes. These replace `PackageExpressions.Warnings` in `resolve.json`.
+
+`DerivedEntry` holds, for each entry:
+
+- `Key`.
+- `Reads`: D4's canonical form, distinct and sorted. A read through `node`, `check`, `input` or
+  `param` is the key and its first member (`node.plan.value`); through `item`, `pass`, `run` or
+  `profile` it is the path as written.
+- `ContentReads` and `ConditionReads`: `LineageRead`s with the key read. These also hold the
+  structural reads (a `ret`, a call's `function.<id>`, a folder's items, a renderer piped into, a
+  macro placed) that the graph's edges come from.
+- `BodyKnown`, `Reproducible`, the three flags, `FlagsKnown`, and `Body` (what the seam said).
+
+`PackageDerived` also holds `RunFacts` (`run.date`, …), `ProfileFields` (bare names, for
+`needs.profile`) and `Complete`.
+
+**The seam (D1).** `ITemplateReads.Of(declaration, function)` says what one body reads. The
+declaration is a `SourceNode` (an agent's prompt, a rendered node's template), a
+`SourceDeliverable`, or a `SourceText` (a renderer, a snippet, a macro, a folder's item), as
+`SiteContext.Declaration` names them. It returns a `TemplateReads`, or null for not known:
+
+- `Reads`: paths as written; the resolver resolves them where the body is.
+- `Places`: rooted macro ids.
+- `Renders`: one `TemplateRender(N, Source, Renderer)` per pipe step.
+- `RunSpots`: one `TemplateRunSpot(Site, At, Reads)` per run spot.
+- `PlacesProfileMacro`.
+
+An empty or white-space body is known and reads nothing (`TemplateReads.None`).
+
+**Without the seam (this area's state), the derived values are incomplete:**
+
+- Every non-empty body's reads are unknown. An entry's `reads` hold its header's reads only, and
+  `places`, `renders` and `runSpots` are `[]`.
+- A flag that depends on a body is written as declared, not derived. A declared `true` is never
+  refused.
+- `PackageDerived.Complete`, `ResolveResult.Complete` and `CompiledPackage.Complete` are `false`.
+- These rules are not judged:
+  - S04-035 for a while holding an agent or rendered node;
+  - S04-052 and the S04-074 warning for snippets, macros and renderers;
+  - S04-063 (a macro placed in a function, reading a node that is not there);
+  - S03-044 and S04-069 for a prompt;
+  - the `node.*` and `check.*` reads of a macro's or snippet's `if` (S03-044, and S03-037 beyond a
+    direct `run.*` read, which is still warned of);
+  - A05-003 through a body.
+- These are missing from `resolve.json` and `lock.json`: `needs.profile` and `run` from bodies; the
+  features `macro-markers` and `run-spots`; the built-in renderers in `lock.builtins`.
+
+With a provider, `SourceDerived` re-judges S04-035, applies S04-052, S04-074 and S04-063 to bodies,
+and reads each placed macro's or snippet's `if` in the placing body's frame. A provider that knows
+only node bodies still leaves `Complete` false, because `Complete` counts every body: snippets,
+macros, renderers and deliverables too.
+
+### The two documents
+
+**`resolve.json`.** `ResolveCompiler.Compile(check, registry, scribanVersion, limits = null)` gives a
+`ResolveResult`:
+
+- `Document`, a `JsonObject`;
+- `Canonical`, its RFC 8785 text: the bytes to store;
+- `Hash`, its `sha256:`;
+- `Refusals`, `Warnings`, `Complete`.
+
+A check with refusals comes back with them and no document. The document has every member of part
+07 § 2.2, in that order, with the manifest's `derivedFrom` (`name@version` or null) after `package`
+(see the plan's contract corrections). `title` is the manifest's, or `<name>@<version>` when that is
+null. There is no time anywhere: the same source and toolchain give the same bytes, whatever the
+upload's order or line ends.
+
+- **Formats** (`CompiledFormats.Build`, D5). The bundle holds every format a `format` member names
+  (or a renderer's `input`), and every format those reach, each with its `$id` and `$schema`.
+  - A package format's `$id` is `urn:consultologist:package:<name>@<version>:format:<id>`.
+  - A function's own format is keyed `<function>__<id>`, with `$id`
+    `…:function:<function>:format:<id>`.
+  - Names inside are rewritten to `#/$defs/<key>` (`CompiledFormats.Rewrite`).
+  - `formatHashes` and `typeHashes` are the type services' hashes of each format in its own scope.
+  - `bindings` is format key, then `generated`, then `{ agentName, agentVersion, via }`.
+- **Entries.** Every entry is its header as written, cloned, with:
+  - every `format` rewritten in the scope that owns it;
+  - every `var` and `missing` path, and every `in`, `case` and `with`, that starts `node.<id>` or
+    `check.<id>` written with the resolved key (D3). A macro's or snippet's `if` stays as written.
+  - then the derived members: `id`, `parent`, `reads` and the three flags on every entry.
+
+  The members that depend on the kind:
+  - Every node also gets `body`, `bodyHash` (null for kinds with no body), `renders`, `runSpots`,
+    `formatHash` and `typeHash`; an agent also gets `parts` and `places`.
+  - A `for` or `while` gets `nodes` and `ret` as keys. An `if` or a `case` keeps `then`, `else` and
+    `branches` as written with keys inside, gets a derived `nodes` (every child, in order), and has
+    `"ret": null`.
+  - A deliverable carries `delivery` and `bundle` as its folder's `index.json` writes them (`[]` and
+    `null` when absent; D15).
+- **Functions** (D6 as amended). Each is its index as written (`inputs` and `format` rewritten in
+  its scope), with `inputOrder`, `ret`, `body` (its top-level keys), `nodes` (its own flat map, keys
+  local to it), and its own `renderers`, `snippets` and `macros`. It also has the members of every
+  entry:
+  - `id`, and `parent` (null);
+  - `reads`: its `param.*` and definition reads;
+  - the three flags of `PackageDerived.Functions`;
+  - `formatHash` and `typeHash`.
+
+  It has no `reproducible`.
+- **`graph`** (D7 as amended).
+  - `edges` go from what is read to its reader: `reads`, `if`, `for`, `aligned` (a production loop to
+    the loop over its `.items`, beside the `for`), `ret`, `calls` (`function.<id>` to each call
+    outside every function), `placed` (through the seam) and `gates` (a deliverable's `check`).
+  - There are no edges between a function's own nodes.
+  - `order` is level by level: a flow node before its body, each level in a topological order, ties
+    by source order.
+- **`requires`** (D8 as amended). `evaluator` is `^1.0.0` and `scriban` is `^` plus the locked
+  version. `operations` holds each custom operation any rule calls (part 07 § 3.1). `kinds` and
+  `features` follow `constants.json`'s order. `agents` is each bound agent, name to version as text.
+- **`needs.profile`** and **`run`** are `PackageDerived`'s.
+- **`warnings`** are `{ sentence, at }`, `at` null for the package as a whole. They come from the
+  derived step, the resolve step's S04-074, and, when `limits` are given, `PublishNotes.Of`: S04-072
+  or S04-073, S04-079, S04-080, measured against the caller's
+  `PublishLimits(Ceiling, ItemsPerLoop, CallsPerJob)` (D11). They are distinct, and sorted by `at`
+  with null first.
+
+`SourceHash.Of(files)` hashes the listing of § 2.6: `manifest.json`, every `README.md` and every file
+under the nine folders, each hash taken after `\r\n` → `\n`. `dag.mmd`, the compiled copies and the
+publish report are not in it.
+
+**`lock.json`.** `LockCompiler.Compile(resolve, resolveHash, toolchain)` writes § 4.1's members in
+order: `package`, the `Toolchain`'s release, dialect, libraries, evaluator, runtime and catalogues,
+`operations` (each name of `requires.operations` at its exact version), `builtins` (`formats`,
+`markdown_escape`, `plain_conversion`, `printer`, plus each built-in renderer an entry `renders`
+through), `culture` `invariant`, and `resolve.hash`.
+
+`Toolchain.Current(packageFormat, formatsCatalogue, agentsCatalogue, outputContracts = null)` reads
+the four library versions off the loaded assemblies (`Scriban`, `Markdig`,
+`Corvus.Text.Json.JsonLogic`, and `Corvus.Text.Json.Validator` under `Corvus.JsonSchema`).
+`Environment.Version` is the runtime, and `Unicode` is `16.0` on .NET 10 (`unknown` otherwise). A test
+builds a `Toolchain` by hand, as the goldens do.
+
+**The pair.** `CompiledPackage.Publish(upload, registry, toolchain, limits = null, templates = null)`
+is steps 1, 2 and 4.1 to 4.3 of part 07 § 5. It checks, compiles `resolve.json` and hashes it, then
+builds `lock.json` with that hash and hashes it. It gives a `CompiledPackage`: `Resolve`,
+`ResolveHash`, `Lock`, `LockHash`, `SourceHash`, `Warnings` and `Complete`. Any refusal comes back with
+nothing compiled. It returns the pair even when `Complete` is false: the caller decides, and a pair
+that is not complete is not the one to store. The rules run over the source model before compiling,
+not over the compiled document (part 07 § 5 step 2 reads the other way). The source's in-package
+tests are not run here.
+
+### What an engine checks
+
+All of these are pure functions here. None throws on a document or on bytes; a member that is
+missing or of another shape is refused.
+
+- **At load, `CompiledPackage.Verify(package, version, resolve, lock, stampedResolveHash,
+  stampedLockHash)`.**
+  - S07-006 when the resolve bytes are not exactly the UTF-8 of their own canonical text (no BOM, no
+    re-indent, no repeated member, no trailing newline), or do not hash to the stamp.
+  - Else S07-017 when the lock fails the same test, or its `resolve.hash` is not the resolve's hash,
+    or the resolve's `lock` is not `lock.json`.
+  - Else null.
+  - It does not compare the document's `package` with the arguments.
+- **At job start, `RequiresCheck.Engine(resolve, lock, engine)`.** The checks are D10's.
+  - S07-003 for Scriban, the evaluator and each operation of `requires.operations` when:
+    - the engine's version is outside the caret range;
+    - the operation is missing (the engine's version is then said as `none`);
+    - the locked version is not a version;
+    - or the package is locked before one of the component's break points, with the engine at or
+      past it.
+  - S07-003 for a break point of another locked library (Markdig, the two Corvus libraries), held to
+    `EngineCapabilities.Libraries`. An engine version that is missing or not a version is `unknown`,
+    and is refused.
+  - S07-004 for each kind or feature the engine lacks, and S07-005 for each agent version it lacks.
+  - At most one refusal per component. Where the document says nothing, the sentence says `unknown`.
+
+  `CaretRange.Admits("^a.b.c", v)` admits `>= a.b.c` and `< (a+1).0.0`. A version is three numeric
+  parts; anything else never admits, and compares lowest. `requires.spec` is not read here.
+- **At job start, `RequiresCheck.Profile(resolve, profile)`.** For each field of `needs.profile`
+  that is missing, empty or white space: S06-031 for the signature, S06-032 with the field's label
+  (`closing line`) for any other. A `needs.profile` that is not a list of names is read as needing
+  every field.
+- **At import, `ResolveSentences.ImportIgnored(dropped)`** gives S07-016 when `resolve.json` or
+  `lock.json` was dropped. **In CI, `EvidenceCommitted(path)`** gives S07-015. `ResolveSentences` is
+  internal, so the Api and the tests can call these, but the Editor cannot.
+
+### Sentences
+
+`ResolveSentences` (internal) has one method per sentence the area says:
+
+- S03-014 for reference strings;
+- S04-015 to S04-017, S04-025 to S04-030, S04-035 to S04-040, S04-044 to S04-047, S04-050 to
+  S04-061, S04-063 to S04-066, S04-068 to S04-070, S04-072 to S04-075, S04-079 and S04-080;
+- S06-031, S06-032, S07-003 to S07-006 and S07-015 to S07-017;
+- the area sentences `A05-001`, `A05-003`, `A05-004` and `A05-005`. The area sentences are listed in the conformance README; there is no
+`A05-002` (D13's "a member the thing does not have" is S03-014). Where two rows state one rule,
+D2 says which is said. S03-036 and S03-044 are now said, in `ExpressionSentences`' words.
+
+The sentences no source package reaches are listed in `RefusalPackagesTests.ResolveNotShipped`, each
+with its reason:
+
+- S04-063: it needs the seam.
+- S04-072, S04-073, S04-079, S04-080 and S04-074: notes and warnings.
+- Part 07 § 10's: job start, load, import, CI.
+
+### What it leaves to later areas
+
+- **Area 07, the seam.** An `ITemplateReads` built on the dialect, passed to `SourceCheck.Run` and
+  `CompiledPackage.Publish`. Until then, everything in "Without the seam" above holds. The goldens
+  are compiled with stub reads (`ResolveFixture.*Reads()`), so area 07 regenerates them and reads the
+  diff. Also area 07's:
+  - a renderer's, a macro's and a deliverable's formats;
+  - where a macro or a snippet is placed;
+  - the envelope.
+- **Area 08: a check's and a deliverable's rules.** A check's format is S06-009. The `gates` edge is
+  written here from a deliverable's `check`, and D15's `delivery` and `bundle` on each deliverable
+  entry are for areas 06 and 08 to confirm.
+- **Area 06: calling the checks.**
+  - `Verify` at load.
+  - `RequiresCheck.Engine` and `Profile` when the Create page asks and when a job starts.
+  - Building `EngineCapabilities`: `Libraries` is required, so the engine must give its own library
+    versions.
+  - Comparing `package` and `version` if it wants that.
+  - Reading `requires.spec`.
+  - Running loops, whiles and calls as `resolve.json` describes them.
+  - Loading only `resolve.json`.
+- **Area 11: tests and writing.** Step 3 of part 07 § 5 (the in-package tests against the in-memory
+  `resolve.json`), the publish report, writing the folder and the stamp, storing only a pair that is
+  `Complete`, `Toolchain.Current` with the release's names, `PublishLimits` from the engine's
+  numbers, and § 4.4's corpus re-render. The break points belong to the engine's configuration and
+  are checked here.
+- **Area 13: `dag.mmd`.** Generating it, and failing a committed one that differs. `SourceHash`
+  leaves it out. `graph` has no edges inside a function; a diagram that needs them would add them
+  with function-prefixed keys.
+- **Area 09: the record.** Sub-row keys and recording run facts.
+- **The sentence review (#1483).** S07-003 for a break point names a caret range the package never
+  declared, and an engine version that can look in range. The `unknown` and `none` fillers also
+  need a look.
+
+### The conformance cases
+
+- **`refusal-packages`** gains a case for each sentence of this area that a source reaches:
+  `tests/V31Source/RefusalPackages.Resolve.cs`, exported as before (see the reader's section). Some
+  earlier cases changed so that their valid side reads what the real scope now types.
+- **`compiled-documents`** is new: `tests/V31Resolve/CompiledDocumentsExport.cs`. For each of
+  `nested-note`, `conditional` and `functions` it writes a folder with the upload's `source/`,
+  `toolchain.json`, `resolve.json`, `lock.json` and `about.txt` (with both hashes). The cases are
+  compiled with a fixed toolchain and stub reads. `ThePinnedFamily_IsWhatPublishGives` holds the pin
+  to what `Publish` gives.
+
+  The same bytes are the goldens in `tests/V31Resolve/Golden/`: canonical, one line, no final
+  newline. `GOLDEN_UPDATE_V31=1` rewrites them. The content repository's `scripts/check-v31.py` has
+  a `compiled-documents` group. It validates each pair against `resolve.schema.json` and
+  `lock.schema.json`, and recomputes `lock.resolve.hash` from the resolve's bytes.
+
+```
+CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~RefusalPackagesExport|FullyQualifiedName~CompiledDocumentsExport"
+```
+
+### Not wired in
+
+Nothing in the engine calls any of it yet. No publish path compiles a 31 package, and no engine
+loads one. 31 stays outside `AcceptedSpecVersions`.
