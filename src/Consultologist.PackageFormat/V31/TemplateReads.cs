@@ -9,13 +9,18 @@ namespace Consultologist.PackageFormat.V31;
 /// appearance (<c>macro.letrozole</c>, <c>macro.tone.formal</c>); <paramref name="Renders"/> each pipe step into a
 /// renderer; <paramref name="RunSpots"/> each run spot; <paramref name="PlacesProfileMacro"/> whether a macro it places
 /// reads the profile (part 03 § 4.6: where profile-carrying starts).
+/// #1504 (specVersion 31, area 07; part 05 §§ 3.2, 8.6): <paramref name="Substituted"/> are the paths of
+/// <paramref name="Reads"/> that only a placed macro's body (or a snippet placed in it) reads: that text is substituted
+/// into the model's reply and never sent to the model, so the rules of what a prompt may read do not judge them (null
+/// or empty: none).
 /// </summary>
 public sealed record TemplateReads(
     IReadOnlyList<string> Reads,
     IReadOnlyList<string> Places,
     IReadOnlyList<TemplateRender> Renders,
     IReadOnlyList<TemplateRunSpot> RunSpots,
-    bool PlacesProfileMacro)
+    bool PlacesProfileMacro,
+    IReadOnlyList<string>? Substituted = null)
 {
     /// <summary>A body that reads nothing, places nothing and renders nothing (an empty body's).</summary>
     public static TemplateReads None { get; } = new([], [], [], [], false);
@@ -24,8 +29,22 @@ public sealed record TemplateReads(
 /// <summary>#1502 (specVersion 31, area 05, D1): one pipe step into a renderer (part 07 § 2.5 <c>renders</c>): its 1-based position <paramref name="N"/>, the path it renders and the renderer's id.</summary>
 public sealed record TemplateRender(int N, string Source, string Renderer);
 
-/// <summary>#1502 (specVersion 31, area 05, D1): one run spot (part 07 § 2.5 <c>runSpots</c>, part 05 § 4): its 1-based position, where it is (<c>line:column</c>) and the path it reads.</summary>
-public sealed record TemplateRunSpot(int Site, string At, string Reads);
+/// <summary>
+/// #1502 (specVersion 31, area 05, D1): one run spot (part 07 § 2.5 <c>runSpots</c>, part 05 § 4): its 1-based position,
+/// where it is (<c>line:column</c>) and the path it reads. #1504 (specVersion 31, area 07; D4): <paramref name="Unit"/>
+/// is the site whose text holds it (<c>snippet.when</c>, <c>part.p</c>, <c>macro.m</c>; <c>null</c> for the body itself,
+/// <paramref name="At"/> being in that text), and <paramref name="Neutral"/> what stands for it in the run-neutral render:
+/// <see cref="Marker"/> (a run fact, a run-dependent <c>computed</c> value or <c>for</c>) or <see cref="Text"/> (a
+/// run-dependent <c>rendered</c> node's own run-neutral text, or a flow node's or call's whose <c>ret</c> is one).
+/// </summary>
+public sealed record TemplateRunSpot(int Site, string At, string Reads, string? Unit = null, string Neutral = TemplateRunSpot.Marker)
+{
+    /// <summary>D4: the literal <c>{{run:&lt;n&gt;}}</c> stands for the spot in the run-neutral render.</summary>
+    public const string Marker = "marker";
+
+    /// <summary>D4: the read node's run-neutral text stands for the spot in the run-neutral render.</summary>
+    public const string Text = "text";
+}
 
 /// <summary>
 /// #1502 (specVersion 31, area 05, D1): the seam through which area 07 tells the resolver what each Scriban body reads.
