@@ -16,7 +16,7 @@ public sealed partial class PlanRunner
         /// <summary>
         /// Moves a call instance on (part 04 § 7.7; part 09 § 3.1): once ready, its <c>if</c> decided as a leaf's, it binds
         /// each parameter from its argument and opens its function's body inline, in a frame of its own with every body
-        /// instance at once (keys through the call node, ranked under the call, scheduled by the same rounds); once that
+        /// instance at once (keys through the call node, ranked under the call's order, scheduled by the same rounds); once that
         /// frame has finished it settles as the function's <c>ret</c>: the same state, reason and read form. A function or a
         /// <c>ret</c> that is not there, or a chain of calls deeper than publish allows (<see cref="FormatBounds.Depth"/>), is
         /// not what publish wrote, and fails the call with S07-006. False when nothing moved.
@@ -31,7 +31,9 @@ public sealed partial class PlanRunner
                 // RunPlan.Build refuses a call naming no function or a function with no ret in its body, and a ring of
                 // calls; publish bounds the depth, so a chain past it (S04-056) is a document publish did not write.
                 if (instance.Entry.Function is not { } id || !plan.Functions.TryGetValue(id, out var function)
-                    || function.Ret == null || instance.Frame.Depth + 1 > FormatBounds.Depth + 1)
+                    || function.Ret == null
+                    // a call's depth is at most FormatBounds.Depth (15): sixteen function frames on one chain (part 04 § 7.8)
+                    || instance.Frame.Depth > FormatBounds.Depth)
                 {
                     await FailAsync(instance, ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
                     return true;

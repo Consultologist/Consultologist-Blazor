@@ -213,17 +213,13 @@ internal sealed class RunFrame
             // A call's frame: its keys go through the call node, its instances rank under the call, one call deeper.
             Depth = parent.Depth + 1;
             KeyPrefix = parent.Rooted(owner.Entry.Key);
-            RankBase = owner.Rank;
-            ItemsFrom = itemPositions.Count;
-            PassesFrom = passes.Count;
+            CallOrders = [.. parent.CallOrders, owner.Entry.Order];
         }
         else if (parent != null)
         {
             Depth = parent.Depth;
             KeyPrefix = parent.KeyPrefix;
-            RankBase = parent.RankBase;
-            ItemsFrom = parent.ItemsFrom;
-            PassesFrom = parent.PassesFrom;
+            CallOrders = parent.CallOrders;
         }
     }
 
@@ -266,14 +262,12 @@ internal sealed class RunFrame
     /// <summary>The rooted key of the call node its keys go through (part 04 § 7.9), or null at the package's level.</summary>
     public string? KeyPrefix { get; }
 
-    /// <summary>The rank of the call it runs under (its instances rank after it, in the function's body order); empty at the package's level.</summary>
-    public IReadOnlyList<int> RankBase { get; } = [];
-
-    /// <summary>How many of <see cref="ItemPositions"/> are the caller's, ranked already in <see cref="RankBase"/>.</summary>
-    private int ItemsFrom { get; }
-
-    /// <summary>How many of <see cref="Passes"/> are the caller's, ranked already in <see cref="RankBase"/>.</summary>
-    private int PassesFrom { get; }
+    /// <summary>
+    /// The <see cref="PlanEntry.Order"/> of each call it runs under, outermost first (empty at the package's level): the
+    /// node part of its instances' rank, before their own entry's order (part 09 § 3.2: the node's place, then the item
+    /// path, then the passes).
+    /// </summary>
+    public IReadOnlyList<int> CallOrders { get; } = [];
 
     /// <summary>Its instances, in the order they were added (body order).</summary>
     public IReadOnlyList<RunInstance> Instances => inOrder;
@@ -299,7 +293,7 @@ internal sealed class RunFrame
     /// The frame of <paramref name="function"/>'s body run by the call <paramref name="owner"/> inside this one, empty: its
     /// map is the function's own (so it is sealed from this one: <see cref="Find"/> and <see cref="Binding"/> stop at it),
     /// it binds <c>param</c> to <paramref name="parameters"/> and no <c>item</c> or <c>pass</c>, its keys go through the
-    /// call node with this frame's items and passes, and its instances rank under the call.
+    /// call node with this frame's items and passes, and its instances rank under the call's order.
     /// </summary>
     public RunFrame OpenCall(RunInstance owner, PlanFunction function, IReadOnlyDictionary<string, JsonNode?> parameters) =>
         new(this, function.Entries, function.Id, ItemPath, ItemPositions, Passes, null, null, parameters, owner, call: true);
@@ -329,16 +323,17 @@ internal sealed class RunFrame
 
     /// <summary>
     /// A new instance of <paramref name="entry"/> in this frame, keyed by the frame's items and passes (through the call
-    /// node inside a function), and ranked under the call it runs in, if any: the call's rank, then the entry's order, then
-    /// the items and passes inside the function.
+    /// node inside a function), and ranked as part 09 § 3.2 orders: the node's place (the orders of the calls it runs
+    /// under, then its entry's order within its function's body), then its whole item path (outermost first, the
+    /// caller's then the function's own), then its passes.
     /// </summary>
     public RunInstance Add(PlanEntry entry)
     {
-        var rank = new List<int>(RankBase.Count + 1 + ItemPositions.Count + Passes.Count);
-        rank.AddRange(RankBase);
+        var rank = new List<int>(CallOrders.Count + 1 + ItemPositions.Count + Passes.Count);
+        rank.AddRange(CallOrders);
         rank.Add(entry.Order);
-        rank.AddRange(ItemPositions.Skip(ItemsFrom));
-        rank.AddRange(Passes.Skip(PassesFrom).Select(p => p.Pass));
+        rank.AddRange(ItemPositions);
+        rank.AddRange(Passes.Select(p => p.Pass));
         var instance = new RunInstance(entry, this, RunKeys.Of(Rooted(entry.Key), ItemPath, Passes), rank);
         instances.Add(entry.Key, instance);
         inOrder.Add(instance);
