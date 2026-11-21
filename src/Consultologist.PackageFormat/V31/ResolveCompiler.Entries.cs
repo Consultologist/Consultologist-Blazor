@@ -415,7 +415,9 @@ public static partial class ResolveCompiler
         /// <summary>
         /// D2 and D1 on a templated entry (an agent's, a <c>rendered</c> node's, a deliverable's): <c>placements</c>, every
         /// unit its body places in order of appearance, placed units expanded in place (a macro's body's snippets right
-        /// after the macro's own entry), a folder macro preceded once by its folder; each with the site that places it (<c>within</c>), its rule with keys rooted for this entry's
+        /// after the macro's own entry), a folder macro preceded by its folder once per unit that places one of its macros (so
+        /// the folder is decided wherever one of its macros may be, and once for the row: the runner decides a site once);
+        /// each with the site that places it (<c>within</c>), its rule with keys rooted for this entry's
         /// place (<paramref name="frame"/>, read by <paramref name="reader"/>) and that rule's <c>plainConverts</c>, and a
         /// macro's marker form. Then <c>names</c>, each head the body writes to the rooted key it names, where they differ.
         /// </summary>
@@ -423,11 +425,11 @@ public static partial class ResolveCompiler
         {
             var templates = context.Check.Templates;
             var placements = new JsonArray();
-            var folders = new HashSet<string>(StringComparer.Ordinal);
+            var folders = new HashSet<(string Id, string? Within)>();
             void Add(PlacedUnit unit)
             {
                 var s = unit.Site.Split('.');
-                if (unit.Instruction is not null && s is ["macro", var id, _] && folders.Add(id) && MacroFolder(id, function) is { } folder)
+                if (unit.Instruction is not null && s is ["macro", var id, _] && folders.Add((id, unit.Within)) && MacroFolder(id, function) is { } folder)
                     placements.Add(Placement($"macro-folder.{id}", unit.Within, folder.Index["if"], folder, "if", null, frame, reader));
 
                 var (holder, member) = s[0] switch

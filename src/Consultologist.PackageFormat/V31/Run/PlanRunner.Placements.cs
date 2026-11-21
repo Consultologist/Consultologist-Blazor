@@ -57,10 +57,13 @@ public sealed partial class PlanRunner
                 detail[name] = member?.DeepClone();
         }
 
-        /// <summary>Whether <paramref name="site"/> is placed: decided true, and for a folder's macro (<c>macro.&lt;f&gt;.&lt;id&gt;</c>) its folder too.</summary>
+        /// <summary>
+        /// Whether <paramref name="site"/> is placed: decided true, and for a folder's macro (<c>macro.&lt;f&gt;.&lt;id&gt;</c>) its
+        /// folder too, as the composer offers it (publish lists the folder before its macro in each unit that places one).
+        /// </summary>
         private static bool Holds(Dictionary<string, bool> placed, string site) =>
             placed.GetValueOrDefault(site)
-            && (site.Split('.') is not ["macro", var folder, _] || placed.GetValueOrDefault($"macro-folder.{folder}", true));
+            && (site.Split('.') is not ["macro", var folder, _] || placed.GetValueOrDefault($"macro-folder.{folder}"));
 
         /// <summary>
         /// Publish's subject of a unit's <c>if</c> (part 03 § 11.3): <c>Part 'p' of node 'x'</c>, <c>Snippet 's'</c>,
