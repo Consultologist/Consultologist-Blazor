@@ -86,7 +86,7 @@ public sealed class AdminDrain(
         }
 
         var woken = 0;
-        await foreach (var instance in client.GetAllInstancesAsync(new OrchestrationQuery(Statuses: [OrchestrationRuntimeStatus.Running])))
+        await foreach (var instance in client.GetAllInstancesAsync(QueryOf(OrchestrationRuntimeStatus.Running)).WithCancellation(cancellationToken))
         {
             if (Orchestrators.Contains(instance.Name) && StatusOf(instance) == ConsultGenerationJobStatuses.WaitingForUpdate)
             {
@@ -108,7 +108,7 @@ public sealed class AdminDrain(
     {
         var producing = 0;
         await foreach (var instance in client.GetAllInstancesAsync(
-            new OrchestrationQuery(Statuses: [OrchestrationRuntimeStatus.Running, OrchestrationRuntimeStatus.Pending])))
+            QueryOf(OrchestrationRuntimeStatus.Running, OrchestrationRuntimeStatus.Pending)).WithCancellation(cancellationToken))
         {
             if (!Orchestrators.Contains(instance.Name))
             {
@@ -125,6 +125,16 @@ public sealed class AdminDrain(
 
         return (await drain.IsDrainingAsync(cancellationToken), producing, await drain.ParkedCountAsync(cancellationToken));
     }
+
+    /// <summary>
+    /// The orchestrations in <paramref name="statuses"/>, their inputs and outputs fetched. The drain tells a producing
+    /// orchestration from a sleeping or waiting one by its custom status, and the client's documentation ties what a query
+    /// returns beyond the instance's metadata only to <see cref="OrchestrationQuery.FetchInputsAndOutputs"/>; nothing shows
+    /// the custom status comes back without it. Fetching costs reading the inputs of the few orchestrations running during
+    /// a drain; none is logged or kept.
+    /// </summary>
+    internal static OrchestrationQuery QueryOf(params OrchestrationRuntimeStatus[] statuses) =>
+        new(Statuses: statuses, FetchInputsAndOutputs: true);
 
     /// <summary>The <c>status</c> an orchestration published (its custom status), or null.</summary>
     private static string? StatusOf(OrchestrationMetadata instance)
