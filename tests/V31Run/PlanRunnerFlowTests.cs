@@ -596,6 +596,103 @@ public class PlanRunnerFlowTests
         Assert.All(recorder.Rows, r => Assert.True(r.State is RowState.Completed or RowState.Composed, $"{r.Key} is {r.State}"));
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task APassRecord_HoldsTheNodesInsideItsBranches(bool billing)
+    {
+        // checked before each pass on the judge one pass back, which sits in the if gate of the body
+        var plan = RunFixture.Plan(Gated(), GatedReads("pass.previous.node.gate.content"));
+        var host = NestedHost().Reply("node.refine.gate.judge", Good);
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(includeBilling: billing), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        var read = result.Values["node.refine"]!;
+        var first = read["history"]!.AsArray()[0]!["node"]!;
+        if (billing)
+        {
+            // the judge said good on pass 1: the check before pass 2 reads it there, and stops
+            Assert.Equal(1, (int)read["passes"]!);
+            Assert.Equal("check", (string?)read["stopped"]);
+            Assert.Equal("good", (string?)first["judge"]!["value"]!["verdict"]);
+            Assert.Equal("completed", (string?)first["judge"]!["state"]);
+            Assert.Equal("completed", (string?)first["gate"]!["state"]);
+            Assert.Equal([true, false], recorder.Decisions.Where(d => d.Site == "node.refine").Select(d => d.Result));
+        }
+        else
+        {
+            // the branch not taken: the judge never ran (not_run), the if inside the body was skipped
+            Assert.Equal("bound", (string?)read["stopped"]);
+            Assert.Equal("not_run", (string?)first["judge"]!["state"]);
+            Assert.Null(first["judge"]!["value"]);
+            Assert.Equal("skipped", (string?)first["gate"]!["state"]);
+        }
+
+        Assert.Equal(["draft_summary", "gate", "judge"], first.AsObject().Select(p => p.Key));
+        Assert.Equal("Text of node.refine.draft_summary#1.", (string?)first["draft_summary"]!["content"]);
+    }
+
+    [Fact]
+    public async Task APassNodeRead_OfAFlowNodeEnclosingTheReader_IsNoEdge_AndReadsNotRun()
+    {
+        // publish lets the judge read its own enclosing if as pass.node.gate (node.gate is A05-003): no edge that could
+        // never be met, and the read gives the if not yet settled
+        var plan = RunFixture.Plan(Gated(), GatedReads("pass.previous.node.gate.content", judge: "pass.node.gate.content"));
+        Assert.Empty(plan.Entries["node.refine.gate.judge"].Depends);
+        var host = NestedHost().Reply("node.refine.gate.judge", Good);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(PlanRunnerLeavesTests.Inputs(includeBilling: true), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal("""{"pass":{"node":{"gate":{"content":null}}}}""", host.Calls.Single(c => c.Key == "node.refine.gate.judge#1").Scope.ToJsonString());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PassParent_ReadsTheEnclosingWhilesPass(bool forBetween)
+    {
+        // the while rounds (2 passes) holds review and, directly or through the loop sections, the while drafts
+        // (2 passes) of draft, which reads pass.parent.number and pass.parent.node.review
+        var plan = RunFixture.Plan(NestedWhiles(forBetween), NestedWhilesReads(forBetween));
+        var draft = forBetween ? "node.rounds.sections.drafts.draft" : "node.rounds.drafts.draft";
+        Assert.Contains("node.rounds.review", plan.Entries[draft].Depends);
+        var host = new FakeRunHost(auto: true);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(Supplied("sections", new JsonArray(Section("History"))), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        var key = forBetween ? $"{draft}#2:0#1" : $"{draft}#2#1";
+        Assert.Equal("""{"pass":{"number":1,"parent":{"node":{"review":{"content":"Text of node.rounds.review#2."}},"number":2}}}""",
+            host.Calls.Single(c => c.Key == key).Scope.ToJsonString());
+        Assert.Equal(6, host.Dispatched.Count(k => k.StartsWith("node.rounds.", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task APassNodeRead_OfANodeInsideAnInnerLoop_WaitsForTheLoop_AndReadsNotRun()
+    {
+        // publish resolves pass.node.<id> anywhere in the while, an inner loop's body too; from outside that loop no
+        // instance is visible, so the reader waits for the loop and reads not_run (read the loop instead, part 04 § 4)
+        var reads = new StubTemplates(new Dictionary<string, string[]>
+        {
+            ["node.plan"] = ["input.consult_draft.content"],
+            ["node.refine.notes.note"] = ["item.value.title"],
+            ["node.refine.judge"] = ["node.notes.content", "pass.node.note.state"],
+            ["deliverable.note"] = ["node.refine.content"],
+        }, everyBody: false);
+        var plan = RunFixture.Plan(LoopInWhile(), reads);
+        Assert.Equal(["node.refine.notes", "node.refine.notes.note"], plan.Entries["node.refine.judge"].Depends);
+        var host = new FakeRunHost(auto: true).Reply("node.refine.judge", Good);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(Supplied("sections", new JsonArray(Section("History"))), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal("""{"node":{"refine":{"notes":{"content":"## History\n\nText of node.refine.notes.note#1:0."}}},"pass":{"node":{"note":{"state":"not_run"}}}}""",
+            host.Calls.Single(c => c.Key == "node.refine.judge#1").Scope.ToJsonString());
+    }
+
     // ---- fixtures -----------------------------------------------------------------------------------
 
     /// <summary>A host for the nested note: its plan has the sections History and Plan, each outline one or two points.</summary>
@@ -608,6 +705,75 @@ public class PlanRunnerFlowTests
     private static Dictionary<string, byte[]> DraftOnly() => ResolveFixture.NestedNote()
         .Without("nodes/refine/judge.md")
         .WithJson("nodes/refine/index.json", j => j["nodes"] = new JsonArray("draft_summary"));
+
+    /// <summary>
+    /// The nested note, its while <c>refine</c> checked first on <c>pass.previous.node.judge</c>, whose body is
+    /// <c>draft_summary</c> (its ret) and the if <c>gate</c> on <c>include_billing</c>, holding <c>judge</c>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Gated() => WithBilling(ResolveFixture.NestedNote())
+        .Without("nodes/refine/judge.md")
+        .WithJson("nodes/refine/index.json", j =>
+        {
+            j["nodes"] = new JsonArray("draft_summary", "gate");
+            j["checkFirst"] = true;
+            j["while"] = JsonNode.Parse("""{ "!==": [{ "var": "pass.previous.node.judge.value.verdict" }, "good"] }""");
+        })
+        .With("nodes/refine/gate/index.json", Json(SourceFixture.Node("if", "Judging when asked", "\"verdict\"", false, true,
+            "\"if\": { \"===\": [{ \"var\": \"input.include_billing.value\" }, true] }, "
+            + "\"then\": { \"nodes\": [\"judge\"], \"ret\": \"node.refine.gate.judge\" }, \"else\": null")))
+        .With("nodes/refine/gate/judge.md", Agent("Judging the summary", "\"verdict\"", "Say whether the summary is good.\n"));
+
+    private static StubTemplates GatedReads(string draft, string? judge = null) => new(new Dictionary<string, string[]>
+    {
+        ["node.plan"] = ["input.consult_draft.content"],
+        ["node.sections.outline"] = ["item.value.title"],
+        ["node.sections.paragraphs.draft_paragraph"] = ["item.parent.value.title", "item.value"],
+        ["node.refine.draft_summary"] = [draft],
+        ["node.refine.gate.judge"] = judge == null ? [] : [judge],
+        ["deliverable.note"] = ["node.refine.content"],
+    }, everyBody: false);
+
+    /// <summary>
+    /// The list input <c>sections</c> and the while <c>rounds</c> (while <c>pass.number &lt; 2</c>) of <c>review</c> and
+    /// the while <c>drafts</c> (the same check) of <c>draft</c>; with <paramref name="forBetween"/>, <c>drafts</c> sits in
+    /// the loop <c>sections</c> over the input.
+    /// </summary>
+    private static Dictionary<string, byte[]> NestedWhiles(bool forBetween)
+    {
+        const string Twice = "\"while\": { \"<\": [{ \"var\": \"pass.number\" }, 2] }, \"max\": 3, \"until\": null, \"checkFirst\": false, ";
+        var inner = forBetween ? "nodes/rounds/sections/drafts" : "nodes/rounds/drafts";
+        var innerKey = forBetween ? "node.rounds.sections.drafts" : "node.rounds.drafts";
+        var files = ResolveFixture.WithFormats(Minimal(), "section_request")
+            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
+                "{ \"label\": \"Sections\", \"description\": null, "
+                + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
+            .With("nodes/index.json", Index(["plan", "rounds"]))
+            .With("nodes/rounds/index.json", Json(SourceFixture.Node("while", "Rounds", forBetween ? ArrayOf(Plain) : Plain, false, true,
+                Twice + $"\"nodes\": [\"review\", \"{(forBetween ? "sections" : "drafts")}\"], \"ret\": \"node.rounds.{(forBetween ? "sections" : "drafts")}\"")))
+            .With("nodes/rounds/review.md", Agent("Reviewing the round", Plain, "Review the round.\n"))
+            .With($"{inner}/index.json", Json(SourceFixture.Node("while", "Drafts", Plain, false, true,
+                Twice + $"\"nodes\": [\"draft\"], \"ret\": \"{innerKey}.draft\"")))
+            .With($"{inner}/draft.md", Agent("Drafting", Plain,
+                "Draft {{ pass.number }} of round {{ pass.parent.number }} after {{ pass.parent.node.review.content }}.\n"))
+            .With("deliverables/note.md", Md(Deliverable("Consultation note", Plain, "null", "hold"), "{{ node.rounds.content }}\n"));
+        if (forBetween)
+        {
+            files.With("nodes/rounds/sections/index.json", Json(SourceFixture.Node("for", "Sections", ArrayOf(Plain), false, true,
+                "\"in\": \"input.sections.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, "
+                + "\"max\": null, \"itemLabel\": \"title\", \"nodes\": [\"drafts\"], \"ret\": \"node.rounds.sections.drafts\"")));
+        }
+
+        return files;
+    }
+
+    private static StubTemplates NestedWhilesReads(bool forBetween) => new(new Dictionary<string, string[]>
+    {
+        ["node.plan"] = ["input.consult_draft.content"],
+        ["node.rounds.review"] = [],
+        [forBetween ? "node.rounds.sections.drafts.draft" : "node.rounds.drafts.draft"] =
+            ["pass.number", "pass.parent.number", "pass.parent.node.review.content"],
+        ["deliverable.note"] = ["node.rounds.content"],
+    }, everyBody: false);
 
     /// <summary>A <c>section_plan</c> reply with a narrative section for each title.</summary>
     private static string SectionPlan(params string[] titles) =>
