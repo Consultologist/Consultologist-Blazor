@@ -427,7 +427,7 @@ Families, each case a folder with `about.txt`, its inputs, and the bytes the cod
 
 **Files:** `docs/customizable-workflow/package-format-library.md` (a new section "specVersion 31: templates (preview)" after "the run": the step, the types of `Templates/`, what each site reads, the placement and marker rules as built, `placements` and `names`, the composer and its limits, run spots, the reply's processing, the envelope, the A07 table, what is left to areas 08 to 12, the conformance cases; and the earlier sections' "left to area 07" lines brought up to date), `docs/customizable-workflow/engine-v31.md` (the features now run; the 31 agents catalogue; `AzureAI__MaxRetries`; what a retry sends), `docs/README.md` if a link is new.
 
-- [ ] **Step 1: Write the sections** from the code as built, not from this plan; every type and member named is checked against the source. - [ ] **Step 2: Run** `dotnet build Consultologist.sln` (doc comments compile) and the solution filter. - [ ] **Step 3: Commit**, push.
+- [x] **Step 1: Write the sections** from the code as built, not from this plan; every type and member named is checked against the source. - [x] **Step 2: Run** `dotnet build Consultologist.sln` (doc comments compile) and the solution filter. - [x] **Step 3: Commit**, push.
 
 ---
 
