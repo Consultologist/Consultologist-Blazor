@@ -16,7 +16,7 @@ namespace Consultologist.Api.V31;
 /// <paramref name="Limits"/> is the header's <c>limits</c> (<see cref="RunLimits.ToJson"/>) and <paramref name="RegexMilliseconds"/>
 /// R2's limit, both as the job's start read them, so a replay never depends on a setting that changed.
 /// <paramref name="RunFactsBase"/> holds the run facts only the start knows (<c>id</c>, <c>engine</c>), by name;
-/// <see cref="V31RunFacts.Of"/> adds the rest. <paramref name="DrainAware"/> marks an orchestration started by a build that
+/// <see cref="V31StartChecks.RunFacts"/> adds the rest. <paramref name="DrainAware"/> marks an orchestration started by a build that
 /// drains (D9). <paramref name="AccountKind"/> picks the held inputs' container, and the outputs container at completion, as a
 /// 5–30 job's does.
 /// </summary>

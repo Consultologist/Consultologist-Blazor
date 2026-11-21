@@ -766,7 +766,7 @@ public class PlanRunnerLoopsTests
     /// each letter (<c>read_letter</c>, of <c>letter_reading</c>) and summarising it (<c>letter_summary</c>, its ret),
     /// until a letter answers the referral question.
     /// </summary>
-    private static Dictionary<string, byte[]> PriorLetters() => Minimal()
+    internal static Dictionary<string, byte[]> PriorLetters() => Minimal()
         .WithJson("manifest.json", m => m["inputs"]!.AsObject()["prior_letters"] = JsonNode.Parse(
             "{ \"label\": \"Prior letters\", \"description\": null, "
             + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"plaintext\" } }, \"required\": true, \"channel\": null }"))
@@ -785,7 +785,7 @@ public class PlanRunnerLoopsTests
         .With("nodes/letters/letter_summary.md", Agent("Summarising a letter", Plain,
             "Summarise this letter in one sentence.\n\n{{ item.value }}\n"));
 
-    private static StubTemplates PriorLettersReads() => new(new Dictionary<string, string[]>
+    internal static StubTemplates PriorLettersReads() => new(new Dictionary<string, string[]>
     {
         ["node.plan"] = ["input.consult_draft.content"],
         ["node.letters.read_letter"] = ["item.value"],

@@ -127,6 +127,22 @@ public static class AccountSettingKeys
 
     /// <summary>#1063: the minimum mean phrase confidence, a whole-number percent (0–100); absent = the default.</summary>
     public const string SttMinConfidence = "stt.minConfidence";
+
+    /// <summary>
+    /// #1503 (specVersion 31, part 09 § 7.2; D6): the account's time zone, an IANA name (<c>America/Toronto</c>). An
+    /// account setting, never a <c>profile.*</c> read: it sets what <c>run.date</c> means, and a 31 job is refused at its
+    /// start until it is set. Area 12's Profile page writes it.
+    /// </summary>
+    public const string TimeZone = "account.timeZone";
+
+    /// <summary>#1503 (specVersion 31, part 09 § 7.1; D6): <c>profile.credentials</c>, a single line; blank is not set.</summary>
+    public const string ProfileCredentials = "profile.credentials";
+
+    /// <summary>#1503 (specVersion 31, part 09 § 7.1; D6): <c>profile.organisation</c>, a single line; blank is not set.</summary>
+    public const string ProfileOrganisation = "profile.organisation";
+
+    /// <summary>#1503 (specVersion 31, part 09 § 7.1; D6): <c>profile.closing</c>, plain text; blank is not set.</summary>
+    public const string ProfileClosing = "profile.closing";
 }
 
 /// <summary>#517: the two ways a delivery address gets verified.</summary>

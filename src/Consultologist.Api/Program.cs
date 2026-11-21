@@ -163,6 +163,7 @@ builder.Services.AddSingleton<Consultologist.Api.V31.ICompiledPackageStore, Cons
 builder.Services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
 builder.Services.AddSingleton<Consultologist.Api.V31.IBodyComposer, Consultologist.Api.V31.ScribanBodyComposer>();
 builder.Services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
+builder.Services.AddSingleton<Consultologist.Api.V31.V31JobStarter>();
 // #449/#398: the build's attestation, computed once — served at Public/Engine
 // and stamped on every record's packageFormatRef/provenanceRef.
 builder.Services.AddSingleton(sp => EngineAttestation.Current(

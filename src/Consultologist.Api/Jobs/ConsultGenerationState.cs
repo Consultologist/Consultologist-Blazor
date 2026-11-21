@@ -236,7 +236,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // ran stamps at its first document; nothing here will stamp it later.
         Stamp(state, 7);
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
-        state.History.Add(new JobHistoryEvent("failure", "No document applies", input.Reason, DateTimeOffset.UtcNow));
+        // #1503: a 31 job refused at its start (its load, its account or its inputs) did not start; 5–30 keep their line.
+        state.History.Add(new JobHistoryEvent(
+            "failure", input.Initialize.PackageSpecVersion >= 31 ? "Not started" : "No document applies", input.Reason, DateTimeOffset.UtcNow));
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -326,6 +328,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Value,
             StringComparer.Ordinal);
         State.ExcludedMacros ??= input.ExcludedMacros?.ToList();
+        // #1503 (specVersion 31): the header as the start read it; RecordV31Header fills what is still unset.
+        State.ResolveHash ??= input.ResolveHash;
+        State.LockHash ??= input.LockHash;
+        State.Limits ??= input.Limits?.ToDictionary(member => member.Key, member => member.Value!.GetValue<int>(), StringComparer.Ordinal);
+        State.StartedAtUtc ??= input.StartedAtUtc;
 
         // v10 (#496): a job that starts deciding has no count yet — the
         // boundary stamps it. Every other job is decided at start, as it always
@@ -373,19 +380,16 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// <summary>
     /// #1503 (specVersion 31, area 06; part 08 § 3; part 09 § 1.2 step 6): a 31 job's header, recorded by its orchestration
     /// once, before any node runs: the <c>resolveHash</c> and <c>lockHash</c> it runs, the limits in force, and when its
-    /// orchestration started (the job limit is timed from it). Write-once: a second call (a replay's, say) changes nothing.
+    /// orchestration started (the job limit is timed from it). The start's <c>Initialize</c> records the same hashes and
+    /// limits (the orchestration input carries what the start read); each member is written once, by whichever comes
+    /// first, so a second call (a replay's, say) changes nothing.
     /// </summary>
     public void RecordV31Header(ConsultGenerationV31Header input)
     {
         var state = EnsureState();
-        if (state.ResolveHash != null)
-        {
-            return;
-        }
-
-        state.ResolveHash = input.ResolveHash;
-        state.LockHash = input.LockHash;
-        state.Limits = new Dictionary<string, int>(input.Limits, StringComparer.Ordinal);
+        state.ResolveHash ??= input.ResolveHash;
+        state.LockHash ??= input.LockHash;
+        state.Limits ??= new Dictionary<string, int>(input.Limits, StringComparer.Ordinal);
         state.StartedAtUtc ??= input.StartedAtUtc;
         State = state;
     }
@@ -1551,7 +1555,21 @@ public sealed record ConsultGenerationJobInitialize(
     string? FormatsRef = null,
     // v29 (#1303, design § 1.1): the loops whose count is not yet known —
     // written once; ResolveLoop removes each as it settles. Appended last.
-    IReadOnlyList<string>? UnresolvedLoops = null);
+    IReadOnlyList<string>? UnresolvedLoops = null,
+    // #1503 (specVersion 31, part 09 § 1.2 step 6): a 31 job's header as its start
+    // read it — the resolveHash and lockHash it runs and the limits in force
+    // (RunLimits.ToJson's nine members) — and when its orchestration started, null
+    // at the start (the orchestration's RecordV31Header writes it). All null below
+    // 31, so every stored payload reads as before; not written when null, so every
+    // 5–30 payload writes the bytes it always wrote. Appended last, same rule.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? ResolveHash = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? LockHash = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    System.Text.Json.Nodes.JsonObject? Limits = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    DateTimeOffset? StartedAtUtc = null);
 
 /// <summary>
 /// v29 (#1303, design § 1.2): a loop over a node's value, settled — the loop,

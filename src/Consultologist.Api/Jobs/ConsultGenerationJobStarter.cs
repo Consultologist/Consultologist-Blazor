@@ -193,6 +193,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly IDocumentOcr _ocr;
     private readonly ISpeechToText? _speechToText;
     private readonly IJobIntakeHold? _hold;
+    private readonly V31.V31JobStarter? _v31;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -215,8 +216,11 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // #1063: speech-to-text for recordings; null (a test) reads as unconfigured.
         ISpeechToText? speechToText = null,
         // #1302: the release hold; null (a test) reads as never held.
-        IJobIntakeHold? hold = null)
+        IJobIntakeHold? hold = null,
+        // #1503 (specVersion 31): the 31 branch; null (a test) runs no 31 job.
+        V31.V31JobStarter? v31 = null)
     {
+        _v31 = v31;
         _speechToText = speechToText;
         _hold = hold;
         _logger = logger;
@@ -320,6 +324,17 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 null,
                 ConsultGenerationJobStartError.ForeignPackageRef,
                 "Workflow package is not accessible from this account.");
+        }
+
+        // #1503 (specVersion 31, area 06): a version stamped 31 starts from its compiled package, and only on a
+        // deployment that runs 31; anything else (null) continues on today's path, unchanged.
+        if (_v31 != null
+            && await _v31.StartAsync(
+                client, request, appUserId, origin, packageRef!, jobId,
+                (v31Request, manifest) => ExtractFor31Async(v31Request, manifest, origin, appUserId, cancellationToken),
+                cancellationToken) is { } started31)
+        {
+            return started31;
         }
 
         WorkflowPackage package;
@@ -1141,6 +1156,22 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
             items.Count);
 
         return new ConsultGenerationJobStartOutcome(instanceId);
+    }
+
+    /// <summary>
+    /// #1503 (specVersion 31): a 31 request's documents read as today's start reads them — the account's OCR and
+    /// speech-to-text gates, the door's wait — against <paramref name="manifest"/>, the plan's inputs.
+    /// </summary>
+    private async Task<InputFileExtraction> ExtractFor31Async(
+        ConsultGenerationRequest request, WorkflowPackageManifest manifest, ConsultGenerationJobOrigin origin, string appUserId, CancellationToken cancellationToken)
+    {
+        var ocrGate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrConfidenceGate, cancellationToken);
+        var ocrMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.OcrMinConfidence, cancellationToken);
+        var sttGate = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttConfidenceGate, cancellationToken);
+        var sttMin = await _settingsStore.GetAsync(appUserId, AccountSettingKeys.SttMinConfidence, cancellationToken);
+        return await ExtractInputFilesAsync(
+            request, manifest, GateWaitFor(origin), _ocr, OcrConfidenceSettings.EffectiveMinConfidence(ocrGate?.Value, ocrMin?.Value), cancellationToken,
+            speechToText: _speechToText, sttMinConfidence: SttConfidenceSettings.EffectiveMinConfidence(sttGate?.Value, sttMin?.Value));
     }
 
     /// <summary>

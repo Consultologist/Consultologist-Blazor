@@ -62,7 +62,7 @@ public sealed record LoadRunInputsV31Result(JsonObject? Document, JsonObject? Ru
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 03 § 4.3; D6): reads a 31 job's inputs document for its orchestration and works out
 /// its run facts there, so they are in the history and the orchestration never reads the time zone database: the start's
-/// (<see cref="LoadRunInputsV31Input.RunFactsBase"/>), then <see cref="V31RunFacts.Of"/>'s over the job's plan (from the
+/// (<see cref="LoadRunInputsV31Input.RunFactsBase"/>), then <see cref="V31StartChecks.RunFacts"/>'s over the job's plan (from the
 /// store's cache, held to its <c>resolveHash</c>). A document that is gone (the retention drop deleted it) is A06-009; a plan
 /// that is not the job's is the load's sentence.
 /// </summary>
@@ -80,7 +80,7 @@ public sealed class LoadRunInputsV31Activity(IRunInputsStore inputs, ICompiledPa
             return new LoadRunInputsV31Result(null, null, refusal);
 
         var facts = (JsonObject)input.RunFactsBase.DeepClone();
-        foreach (var (name, value) in V31RunFacts.Of(plan, input.StartedAtUtc, input.TimeZone))
+        foreach (var (name, value) in V31StartChecks.RunFacts(plan, input.StartedAtUtc, input.TimeZone))
             facts[name] = value?.DeepClone();
         return new LoadRunInputsV31Result(document, facts, null);
     }
