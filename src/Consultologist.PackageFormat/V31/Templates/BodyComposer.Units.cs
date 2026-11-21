@@ -94,7 +94,7 @@ public static partial class BodyComposer
         /// <summary>
         /// The macro <paramref name="placement"/> places, offered when its site and its folder's (<c>macro-folder.&lt;id&gt;</c>,
         /// for a folder's macro) are placed (the units around it are, or this text would not be rendering): its instruction
-        /// rendered where it stands, and its body rendered in the same data (<c>profile.*</c> readable, a <c>run.*</c> read
+        /// rendered where it stands, and its body (less its file's last line ending) rendered in the same data (<c>profile.*</c> readable, a <c>run.*</c> read
         /// filled directly, D5) and escaped as plain text when a <c>plaintext</c> macro stands in a Markdown node (D14),
         /// recorded as an <see cref="OfferedMacro"/>; <c>null</c>, which writes nothing, when it is not offered. A macro the
         /// plan lacks, with no body, or with no <c>form</c> in the entry's <c>placements</c> is not what publish wrote.
@@ -114,11 +114,12 @@ public static partial class BodyComposer
                 throw Stopped(new ComposeStop(NotPublished));
 
             var instruction = Render(placement.Text, Globals(), out var spots);
-            if (Plan(body, site + ".content", 1) is not { } bodyPlan)
+
+            // The file's last line ending is not the body's (it would end a line mid-sentence): dropped from the source,
+            // so a line ending a value writes at the end stays.
+            if (Plan(body.EndsWith('\n') ? body[..^1] : body, site + ".content", 1) is not { } bodyPlan)
                 throw Stopped(new ComposeStop(NotPublished));
             var text = Render(bodyPlan, Globals());
-            if (text.EndsWith('\n'))
-                text = text[..^1]; // the file's last line ending is not the body's: it would end a line mid-sentence
             if (RunPlan.Formats.TextFormat(macro!["format"]) == "plaintext" && RunPlan.Formats.TextFormat(Entry.Format) is "markdown_block" or "markdown_inline")
                 text = MarkdownEscape.Escape(text);
 
