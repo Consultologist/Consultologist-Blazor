@@ -54,7 +54,7 @@ public static class IRegexp
     /// <summary>The longest text searched, in bytes of UTF-8 (<c>limits.matchesTextBytes</c>, D12).</summary>
     public const int MaxTextBytes = 1048576;
 
-    /// <summary>The engine's options (part 03 § 5.3); no time-out, so a replay decides alike.</summary>
+    /// <summary>The engine's options (part 03 § 5.3); the time-out is the evaluator's (#1503 R2), none by default.</summary>
     private const RegexOptions Options = RegexOptions.NonBacktracking | RegexOptions.CultureInvariant;
 
     private const int LastBmp = 0xFFFF;
@@ -79,20 +79,20 @@ public static class IRegexp
         "C", "Cc", "Cf", "Cn", "Co",
     };
 
-    // Keyed by package text, so bounded: it holds only patterns that got as far as a compile (a pattern too long or
-    // not I-Regexp is cheap to judge again), at most MaxCachedPatterns of them; adding one more clears it first.
-    // Reads are lock-free; adds take the lock, so the count never passes the cap.
-    private static readonly ConcurrentDictionary<string, IRegexpCheck> Checked = new(StringComparer.Ordinal);
-    private static readonly Lock CacheGate = new();
+    /// <summary>
+    /// The engine's shared cache: patterns compiled with no time-out, which publish-time checks and an evaluator
+    /// without a time limit use (#1503 R2: an evaluator with a limit keeps its own, <see cref="IRegexpPatterns"/>).
+    /// </summary>
+    private static readonly IRegexpPatterns Unlimited = new(Regex.InfiniteMatchTimeout);
 
     /// <summary>The most patterns the cache holds.</summary>
-    internal const int MaxCachedPatterns = 1_024;
+    internal const int MaxCachedPatterns = IRegexpPatterns.MaxCachedPatterns;
 
     /// <summary>The patterns the cache holds now.</summary>
-    internal static int CachedCount => Checked.Count;
+    internal static int CachedCount => Unlimited.CachedCount;
 
     /// <summary>Whether the cache holds <paramref name="pattern"/>.</summary>
-    internal static bool IsCached(string pattern) => Checked.ContainsKey(pattern ?? string.Empty);
+    internal static bool IsCached(string pattern) => Unlimited.IsCached(pattern);
 
     /// <summary>
     /// Checks <paramref name="pattern"/> in D10's order (length, grammar, repetition, compile) and stops
@@ -100,24 +100,7 @@ public static class IRegexp
     /// compile) is cached by pattern, up to 1,024 patterns. Never throws; a <c>null</c> pattern is the
     /// empty one.
     /// </summary>
-    public static IRegexpCheck Check(string pattern)
-    {
-        pattern ??= string.Empty;
-        if (Checked.TryGetValue(pattern, out var known))
-            return known;
-        var check = Run(pattern);
-        if (check.Fault is IRegexpFault.TooLong or IRegexpFault.NotIRegexp)
-            return check;
-        lock (CacheGate)
-        {
-            if (Checked.TryGetValue(pattern, out known))
-                return known;
-            if (Checked.Count >= MaxCachedPatterns)
-                Checked.Clear();
-            Checked[pattern] = check;
-        }
-        return check;
-    }
+    public static IRegexpCheck Check(string pattern) => Unlimited.Check(pattern);
 
     /// <summary>
     /// The .NET pattern <paramref name="pattern"/> translates to (D11), or <c>null</c> when it is longer
@@ -140,7 +123,8 @@ public static class IRegexp
         return regex.IsMatch(text ?? string.Empty);
     }
 
-    private static IRegexpCheck Run(string pattern)
+    /// <summary>The check of <paramref name="pattern"/>, compiled with <paramref name="matchTimeout"/> (<see cref="Regex.InfiniteMatchTimeout"/> for none).</summary>
+    internal static IRegexpCheck Run(string pattern, TimeSpan matchTimeout)
     {
         var parsed = Parse(pattern);
         if (parsed.Fault != IRegexpFault.None)
@@ -150,7 +134,7 @@ public static class IRegexp
 
         try
         {
-            return new IRegexpCheck(IRegexpFault.None, "", 0, new Regex(Write(parsed.Tree!), Options, Regex.InfiniteMatchTimeout));
+            return new IRegexpCheck(IRegexpFault.None, "", 0, new Regex(Write(parsed.Tree!), Options, matchTimeout));
         }
         catch (NotSupportedException)
         {
@@ -873,5 +857,51 @@ public static class IRegexp
 
         var (high, low) = Split(codePoint);
         return Unit(high) + Unit(low);
+    }
+}
+
+/// <summary>
+/// #1503 (specVersion 31, area 06; R2): checked patterns compiled with one match time-out, as <see cref="IRegexp.Check"/>
+/// caches them. The time-out is part of a compiled <see cref="Regex"/>, so an evaluator with a time limit keeps one of
+/// these of its own and never shares its compiled patterns with the engine's (which have none).
+/// </summary>
+internal sealed class IRegexpPatterns(TimeSpan matchTimeout)
+{
+    /// <summary>The most patterns one cache holds.</summary>
+    internal const int MaxCachedPatterns = 1_024;
+
+    // Keyed by package text, so bounded: it holds only patterns that got as far as a compile (a pattern too long or
+    // not I-Regexp is cheap to judge again), at most MaxCachedPatterns of them; adding one more clears it first.
+    // Reads are lock-free; adds take the lock, so the count never passes the cap.
+    private readonly ConcurrentDictionary<string, IRegexpCheck> checkedPatterns = new(StringComparer.Ordinal);
+    private readonly Lock cacheGate = new();
+
+    /// <summary>The time-out every pattern of this cache is compiled with.</summary>
+    public TimeSpan MatchTimeout { get; } = matchTimeout;
+
+    /// <summary>The patterns the cache holds now.</summary>
+    internal int CachedCount => checkedPatterns.Count;
+
+    /// <summary>Whether the cache holds <paramref name="pattern"/>.</summary>
+    internal bool IsCached(string pattern) => checkedPatterns.ContainsKey(pattern ?? string.Empty);
+
+    /// <summary>As <see cref="IRegexp.Check"/>, the regex compiled with <see cref="MatchTimeout"/>.</summary>
+    public IRegexpCheck Check(string pattern)
+    {
+        pattern ??= string.Empty;
+        if (checkedPatterns.TryGetValue(pattern, out var known))
+            return known;
+        var check = IRegexp.Run(pattern, MatchTimeout);
+        if (check.Fault is IRegexpFault.TooLong or IRegexpFault.NotIRegexp)
+            return check;
+        lock (cacheGate)
+        {
+            if (checkedPatterns.TryGetValue(pattern, out known))
+                return known;
+            if (checkedPatterns.Count >= MaxCachedPatterns)
+                checkedPatterns.Clear();
+            checkedPatterns[pattern] = check;
+        }
+        return check;
     }
 }
