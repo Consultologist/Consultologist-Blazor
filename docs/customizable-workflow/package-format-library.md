@@ -1187,11 +1187,14 @@ fits.
   `properties`, `items`, each member of `anyOf`, each entry or definition inlined), so a format file publish
   accepted is never past it at run. The schemas a site's format writes itself are counted apart from those of
   the entries it refers to.
-- **The node budget.** One expansion writes at most `PlanFormats.NodeBudget` nodes (1,048,576: half of
-  `SourceBounds.TotalBytes`, as many JSON nodes as a whole source can hold); past it, `false`. It stops a forged
-  document that repeats a very large `enum` from thousands of places. Publish has no such bound, so a package
-  can publish and still pass it: a record of 5,000 fields, each referring to a format with a 250-value `enum`,
-  is within the schema budget and writes about 1.3 million nodes. Such a format fits nothing at run.
+- **The node budget.** One expansion counts the nodes it copies against `PlanFormats.NodeBudget` (1,048,576:
+  half of `SourceBounds.TotalBytes`, as many JSON nodes as a whole source can hold); past it, `false`. The
+  object written for each inlined reference and an `allOf` list are not counted, so what is written can pass
+  the budget by a small multiple, never without bound. It stops a forged document that repeats a very large
+  `enum` from thousands of places. Publish has no such bound, so a package can publish and still pass it: a
+  record of 4,500 fields, each referring to a format with a 250-value `enum`, is within the schema budget and
+  writes about 1.1 million nodes. Such a format fits nothing at run.
+
 `Validate(value, format)` is `Expand` followed by `CorvusFormatValueValidator.ValidateExpanded`.
 `IsText(format)` is true for `plaintext`, `markdown_block` and `markdown_inline`, by their bundle `$id`.
 `Read(reply, format)` gives a text reply as a string. Any other reply is parsed as JSON, to 512 levels, with a
