@@ -370,6 +370,48 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; part 08 § 3; part 09 § 1.2 step 6): a 31 job's header, recorded by its orchestration
+    /// once, before any node runs: the <c>resolveHash</c> and <c>lockHash</c> it runs, the limits in force, and when its
+    /// orchestration started (the job limit is timed from it). Write-once: a second call (a replay's, say) changes nothing.
+    /// </summary>
+    public void RecordV31Header(ConsultGenerationV31Header input)
+    {
+        var state = EnsureState();
+        if (state.ResolveHash != null)
+        {
+            return;
+        }
+
+        state.ResolveHash = input.ResolveHash;
+        state.LockHash = input.LockHash;
+        state.Limits = new Dictionary<string, int>(input.Limits, StringComparer.Ordinal);
+        state.StartedAtUtc ??= input.StartedAtUtc;
+        State = state;
+    }
+
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; D12): a 31 job's progress: one finished row (its key and state) or, with no state, one
+    /// decision. Counts and the current key only; the rows themselves are area 09's.
+    /// </summary>
+    public void RecordV31Progress(ConsultGenerationV31Progress input)
+    {
+        var state = EnsureState();
+        var progress = state.V31Progress ??= new ConsultV31ProgressState();
+        if (input.State is { } rowState)
+        {
+            progress.Rows++;
+            progress.States[rowState] = progress.States.GetValueOrDefault(rowState) + 1;
+            progress.CurrentKey = input.Key;
+        }
+        else
+        {
+            progress.Decisions++;
+        }
+
+        State = state;
+    }
+
     public async Task CompleteBlock(BlockGenerationResult result)
     {
         var state = EnsureState();
@@ -1677,6 +1719,24 @@ public sealed record ConsultGenerationNodeFailure(
     string? ErrorType = null,
     string? ErrorStack = null);
 
+/// <summary>
+/// #1503 (specVersion 31, area 06; part 08 § 3): a 31 job's header as its orchestration records it: the hashes it runs, the
+/// nine limits in force (<c>RunLimits.ToJson</c>'s members), and when the orchestration started.
+/// </summary>
+public sealed record ConsultGenerationV31Header(string ResolveHash, string LockHash, IReadOnlyDictionary<string, int> Limits, DateTimeOffset StartedAtUtc);
+
+/// <summary>#1503 (specVersion 31, area 06; D12): a finished row (its key and part 08's state), or a decision (its site's key, no state).</summary>
+public sealed record ConsultGenerationV31Progress(string Key, string? State);
+
+/// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress: rows settled, by state, decisions made, and the last row's key.</summary>
+public sealed class ConsultV31ProgressState
+{
+    public int Rows { get; set; }
+    public Dictionary<string, int> States { get; set; } = new(StringComparer.Ordinal);
+    public int Decisions { get; set; }
+    public string? CurrentKey { get; set; }
+}
+
 public sealed record ConsultGenerationJobFinalize(
     string Status,
     string? Error = null,
@@ -2024,6 +2084,25 @@ public sealed class ConsultGenerationJobState
     /// below 30 and when the job has none.
     /// </summary>
     public List<ConsultLoopInstanceRow>? LoopInstances { get; set; }
+
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; part 08 § 3): the SHA-256 of the canonical <c>resolve.json</c> and <c>lock.json</c> a
+    /// 31 job ran, and the limits in force (exactly <c>RunLimits.ToJson</c>'s nine members), recorded once before any node
+    /// runs. Null, and not written, below 31.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ResolveHash { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? LockHash { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, int>? Limits { get; set; }
+
+    /// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress, counts and the current key only. Null, and not written, below 31.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ConsultV31ProgressState? V31Progress { get; set; }
+
     public Dictionary<string, ConsultNodeOutputState>? NodeOutputs { get; set; }
 
     // v6: the result aggregator's rendered output — the deliverable itself
@@ -2610,6 +2689,18 @@ public static class ConsultGenerationActivityNames
     // item, in an activity over the item's scope — the orchestrator stays
     // deterministic and reads the branch back on replay.
     public const string DecideFlowItem = "decide-flow-item";
+
+    /// <summary>#1503 (specVersion 31, area 06; D7): one attempt of a 31 agent call. No Durable retry policy: the orchestration retries.</summary>
+    public const string RunAgentNodeV31 = "run-agent-node-v31";
+
+    /// <summary>#1503 (specVersion 31, area 06): a 31 rendered node's or deliverable's render.</summary>
+    public const string RenderNodeV31 = "render-node-v31";
+
+    /// <summary>#1503 (specVersion 31, area 06): a 31 job's verified <c>resolve.json</c>, for its orchestration's plan.</summary>
+    public const string LoadPlanV31 = "load-plan-v31";
+
+    /// <summary>#1503 (specVersion 31, area 06): a 31 job's inputs, profile fields included, read by reference.</summary>
+    public const string LoadRunInputsV31 = "load-run-inputs-v31";
 }
 
 public static class ConsultGenerationItemSteps

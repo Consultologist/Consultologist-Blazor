@@ -14,7 +14,10 @@ namespace Consultologist.Api.Tests.Engine;
 /// on a real in-memory entity — its input and result round-trip through JSON, as
 /// they do through the Durable store. Every call is recorded, in order. Responders
 /// return completed tasks, so the orchestrator's <c>Task.WhenAny</c> picks the
-/// first in its list, every run.
+/// first in its list, every run. #1503: a test may hold activity answers
+/// (<see cref="HoldActivities"/>) and timers longer than a span
+/// (<see cref="HoldTimersLongerThan"/>), which then wait until cancelled, as
+/// durable timers do; by default neither is held, as before.
 /// </summary>
 internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
 {
@@ -23,6 +26,11 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     private readonly object? _input;
     private readonly Dictionary<string, Func<object?, object?>> _activities = new(StringComparer.Ordinal);
     private readonly FakeEntities _entities;
+    private readonly List<(string Name, Action Answer)> _heldActivities = new();
+    private readonly List<TaskCompletionSource> _heldTimers = new();
+    private readonly Dictionary<string, int> _peakHeld = new(StringComparer.Ordinal);
+    private bool _holdActivities;
+    private TimeSpan? _holdTimersLongerThan;
 
     public FakeOrchestrationContext(string instanceId, object? input, object entity, DateTime now)
     {
@@ -42,6 +50,43 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     {
         _activities[name] = respond;
         return this;
+    }
+
+    /// <summary>
+    /// #1503: holds every activity's answer until <see cref="ReleaseOldest"/> gives it, so a test can see what is in flight
+    /// at once (<see cref="PeakHeld"/>). Off by default: answers are given at once.
+    /// </summary>
+    public FakeOrchestrationContext HoldActivities()
+    {
+        _holdActivities = true;
+        return this;
+    }
+
+    /// <summary>
+    /// #1503: holds every timer that ends more than <paramref name="span"/> from now until it is cancelled (its task then
+    /// ends cancelled), as a durable timer would wait; a shorter one ends at once. Off by default: every timer ends at once.
+    /// </summary>
+    public FakeOrchestrationContext HoldTimersLongerThan(TimeSpan span)
+    {
+        _holdTimersLongerThan = span;
+        return this;
+    }
+
+    /// <summary>#1503: the activities whose answers are held.</summary>
+    public int HeldActivities => _heldActivities.Count;
+
+    /// <summary>#1503: the held timers neither ended nor cancelled.</summary>
+    public int PendingTimers => _heldTimers.Count;
+
+    /// <summary>#1503: the most answers of activity <paramref name="name"/> held at once.</summary>
+    public int PeakHeld(string name) => _peakHeld.GetValueOrDefault(name);
+
+    /// <summary>#1503: gives the oldest held answer.</summary>
+    public void ReleaseOldest()
+    {
+        var (_, answer) = _heldActivities[0];
+        _heldActivities.RemoveAt(0);
+        answer();
     }
 
     public override TaskName Name => new("ConsultGenerationOrchestrator");
@@ -71,20 +116,55 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
         }
 
         // A responder that throws is an activity that failed: the orchestrator awaits a faulted task.
-        try
+        if (!_holdActivities)
         {
-            return Task.FromResult(RoundTrip<TResult>(respond(input)));
+            try
+            {
+                return Task.FromResult(RoundTrip<TResult>(respond(input)));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException<TResult>(ex);
+            }
         }
-        catch (Exception ex)
+
+        var answer = new TaskCompletionSource<TResult>();
+        _heldActivities.Add((name.Name, () =>
         {
-            return Task.FromException<TResult>(ex);
-        }
+            try
+            {
+                answer.SetResult(RoundTrip<TResult>(respond(input)));
+            }
+            catch (Exception ex)
+            {
+                answer.SetException(ex);
+            }
+        }));
+        _peakHeld[name.Name] = Math.Max(_peakHeld.GetValueOrDefault(name.Name), _heldActivities.Count(held => held.Name == name.Name));
+        return answer.Task;
     }
 
     public override Task CreateTimer(DateTime fireAt, CancellationToken cancellationToken)
     {
         Calls.Add(("timer", "CreateTimer", JsonSerializer.Serialize(fireAt, Json)));
-        return Task.CompletedTask;
+        if (_holdTimersLongerThan is not { } span || fireAt - CurrentUtcDateTime <= span)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled(cancellationToken);
+        }
+
+        var timer = new TaskCompletionSource();
+        _heldTimers.Add(timer);
+        cancellationToken.Register(() =>
+        {
+            _heldTimers.Remove(timer);
+            timer.TrySetCanceled(cancellationToken);
+        });
+        return timer.Task;
     }
 
     public override void SetCustomStatus(object? customStatus) =>

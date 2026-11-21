@@ -157,6 +157,12 @@ builder.Services.AddSingleton<Consultologist.Api.V31.IRegistryFiles, Consultolog
 builder.Services.AddSingleton<Consultologist.Api.V31.EngineCapabilitiesFactory>();
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Consultologist.Api.V31.EngineCapabilitiesFactory>().Current());
 builder.Services.AddSingleton<Consultologist.Api.V31.ICompiledPackageStore, Consultologist.Api.V31.CompiledPackageStore>();
+// #1503 (part 09 §§ 3.1, 3.4): a 31 job's orchestration — one attempt per agent activity
+// (the orchestration retries), the default body composer until area 07, and the inputs
+// held by reference on the text account.
+builder.Services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
+builder.Services.AddSingleton<Consultologist.Api.V31.IBodyComposer, Consultologist.Api.V31.ScribanBodyComposer>();
+builder.Services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
 // #449/#398: the build's attestation, computed once — served at Public/Engine
 // and stamped on every record's packageFormatRef/provenanceRef.
 builder.Services.AddSingleton(sp => EngineAttestation.Current(
