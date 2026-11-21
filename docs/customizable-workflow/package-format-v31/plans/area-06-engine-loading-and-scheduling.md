@@ -265,15 +265,15 @@ Rules:
 - `ServiceFailure`: the node's service attempts count; at `ServiceAttempts` the node fails with S09-011 (`timed out` / `returned an error` / `couldn't be reached` by `ErrorKind`, `<n>` the attempts); else delay `WaitMilliseconds` and call again.
 - **The job limit:** when `host.UtcNow - startedAtUtc` reaches `JobMinutes` (checked whenever the runner wakes, with a `DelayAsync` for the time left among the awaited tasks), the run is `TimedOut` with S09-012; every instance in flight gets a `Cancelled` row with S08-009; nothing later is read.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `AnInvalidReply_IsRepairedOnce_InTheSameSlot` (ceiling 1: the repair is dispatched before any other waiting call; `AgentCalls == 1` for the node); `AnInvalidReply_WithOnInvalidFail_FailsTheNode`; `ASecondInvalidReply_FailsTheNode`.
   - `AnyReply_SettlesTheNode` (theory: `""`, white space, `not json` for a data format, valid JSON 600 levels deep, a 2 MiB string, `null`, a list where an object is due): the node completes, repairs or fails with a sentence; `RunAsync` never throws.
   - `AThrottledCall_WaitsAndRetries_HoldingItsSlot`: three `Throttled(1000)` then a reply → completed, `retries` has three `capacity` entries, the clock advanced 3 s, in flight never dropped below 1.
   - `ABusyService_FailsTheNodeAfterTenMinutes`: `Throttled(60000)` forever → S09-010 with `10`, after the eleventh wait is refused.
   - `AFailingService_FailsAfterFiveAttempts` (theory over the three kinds and their words) → S09-011 with `5`.
   - `AJobPastItsLimit_TimesOut_AndCancelsWhatIsRunning`: three calls never answered, clock advanced 30 minutes → `TimedOut`, S09-012 with `30`, three `Cancelled` rows with S08-009; releasing the calls afterwards changes nothing.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): repairs, retries with recorded waits, and the job limit`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): repairs, retries with recorded waits, and the job limit`
 
 ### Task 6: `for`
 
