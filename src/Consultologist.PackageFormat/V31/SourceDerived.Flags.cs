@@ -92,7 +92,7 @@ internal sealed class Derivation
         if (Graph.Of(flow, function, union: false) is not { } start)
             return true;
         var inside = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var block in Blocks(flow))
+        foreach (var block in ScopeTree.Blocks(flow))
         {
             foreach (var node in ScopeTree.Walk(block.Nodes))
             {
@@ -124,15 +124,6 @@ internal sealed class Derivation
 
         return true;
     }
-
-    private static IEnumerable<SourceBlock> Blocks(SourceNode node) => node switch
-    {
-        SourceFor loop => [loop.Body],
-        SourceWhile loop => [loop.Body],
-        SourceIf branch => branch.Else == null ? [branch.Then] : [branch.Then, branch.Else],
-        SourceCase choice => choice.Branches.Select(b => b.Body).Concat(choice.Else == null ? [] : [choice.Else]),
-        _ => [],
-    };
 }
 
 /// <summary>#1502 (specVersion 31, area 05): the header checks, the profile's rules and the warnings of the derived step.</summary>

@@ -210,7 +210,7 @@ public sealed record CompiledFormats(
 
         void Body(IReadOnlyList<SourceNode> nodes, FormatSet scope, SourceFunction? function)
         {
-            foreach (var node in Walk(nodes))
+            foreach (var node in ScopeTree.Walk(nodes))
             {
                 if (!types.Bindings.TryGetValue(node.Path, out var binding))
                     continue;
@@ -253,31 +253,6 @@ public sealed record CompiledFormats(
                 function.Definitions.Formats.Items,
                 SourceLayout.Lines((function.Index["uses"] as JsonObject)?["formats"]) ?? []);
 
-    /// <summary>Every node under <paramref name="nodes"/>, a flow node before its bodies' nodes.</summary>
-    private static IEnumerable<SourceNode> Walk(IReadOnlyList<SourceNode> nodes)
-    {
-        var pending = new Stack<SourceNode>(nodes.Reverse());
-        while (pending.Count > 0)
-        {
-            var node = pending.Pop();
-            yield return node;
-            foreach (var block in Blocks(node).Reverse())
-            {
-                for (var i = block.Nodes.Count - 1; i >= 0; i--)
-                    pending.Push(block.Nodes[i]);
-            }
-        }
-    }
-
-    private static IEnumerable<SourceBlock> Blocks(SourceNode node) => node switch
-    {
-        SourceFor loop => [loop.Body],
-        SourceWhile loop => [loop.Body],
-        SourceIf branch => branch.Else == null ? [branch.Then] : [branch.Then, branch.Else],
-        SourceCase choice => choice.Branches.Select(b => b.Body).Concat(choice.Else == null ? [] : [choice.Else]),
-        _ => [],
-    };
-
     /// <summary>One used format: its bundle key, the format, the scope its names resolve in, and its function if it is one's own.</summary>
     private sealed record Entry(string Key, NamedFormat Format, FormatSet Scope, SourceFunction? Function);
 
@@ -312,7 +287,7 @@ public sealed record CompiledFormats(
 
         private void Nodes(IReadOnlyList<SourceNode> nodes, FormatSet scope, SourceFunction? function)
         {
-            foreach (var node in Walk(nodes))
+            foreach (var node in ScopeTree.Walk(nodes))
                 Name(node.Header["format"], scope, function);
         }
 

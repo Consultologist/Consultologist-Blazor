@@ -490,7 +490,7 @@ public sealed partial class ScopeTree
         }
     }
 
-    /// <summary>The bodies of a flow node, in written order; none for a leaf.</summary>
+    /// <summary>The bodies of a flow node, in written order (a loop's, an <c>if</c>'s then and else, a <c>case</c>'s branches then else); none for a leaf. The one such walk every step uses.</summary>
     internal static IEnumerable<SourceBlock> Blocks(SourceNode node) => node switch
     {
         SourceFor loop => [loop.Body],

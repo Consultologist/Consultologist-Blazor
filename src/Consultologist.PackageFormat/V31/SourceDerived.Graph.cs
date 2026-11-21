@@ -332,11 +332,11 @@ internal sealed class DerivedGraph
                 Conditions(vertex, JsonLogicShape.Paths(loop.While).Concat(JsonLogicShape.Paths(loop.Until)), Tree.BodyOf(loop), loop);
                 break;
             case SourceIf branch:
-                Returns(vertex, prefix, branch.Else == null ? [branch.Then] : [branch.Then, branch.Else]);
+                Returns(vertex, prefix, ScopeTree.Blocks(branch));
                 Conditions(vertex, JsonLogicShape.Paths(branch.If), frame, branch);
                 break;
             case SourceCase choice:
-                Returns(vertex, prefix, choice.Branches.Select(b => b.Body).Concat(choice.Else == null ? [] : [choice.Else]));
+                Returns(vertex, prefix, ScopeTree.Blocks(choice));
                 Conditions(vertex, [choice.Case], frame, choice);
                 break;
         }

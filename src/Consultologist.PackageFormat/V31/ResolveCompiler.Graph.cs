@@ -69,7 +69,7 @@ public static partial class ResolveCompiler
     {
         if (context.Derive(key, null) is not { } entry)
             return;
-        var rets = node == null ? [] : Blocks(node).Select(b => b.Ret).OfType<string>().ToHashSet(StringComparer.Ordinal);
+        var rets = node == null ? [] : ScopeTree.Blocks(node).Select(b => b.Ret).OfType<string>().ToHashSet(StringComparer.Ordinal);
         var loop = node as SourceFor;
         foreach (var read in entry.ContentReads)
         {
@@ -166,7 +166,7 @@ public static partial class ResolveCompiler
         private void Nodes(SourceNode node, string? parent)
         {
             Place(node.Key, parent);
-            foreach (var block in Blocks(node))
+            foreach (var block in ScopeTree.Blocks(node))
                 foreach (var inner in block.Nodes)
                     Nodes(inner, node.Key);
         }

@@ -152,7 +152,7 @@ public static partial class ResolveCompiler
             foreach (var node in nodes)
             {
                 map[node.Key] = Node(node, function, parent);
-                foreach (var block in Blocks(node))
+                foreach (var block in ScopeTree.Blocks(node))
                     Body(block.Nodes, function, node.Key, map);
             }
         }
@@ -188,7 +188,7 @@ public static partial class ResolveCompiler
                     entry["if"] = Logic(branch.If, frame, branch);
                     entry["then"] = Branch(branch.Then);
                     entry["else"] = branch.Else == null ? null : Branch(branch.Else);
-                    entry["nodes"] = Strings(Blocks(node).SelectMany(b => b.Nodes).Select(n => n.Key));
+                    entry["nodes"] = Strings(ScopeTree.Blocks(node).SelectMany(b => b.Nodes).Select(n => n.Key));
                     entry["ret"] = null;
                     break;
                 case SourceCase choice:
@@ -200,7 +200,7 @@ public static partial class ResolveCompiler
                         return (JsonNode?)written;
                     }).ToArray());
                     entry["else"] = choice.Else == null ? null : Branch(choice.Else);
-                    entry["nodes"] = Strings(Blocks(node).SelectMany(b => b.Nodes).Select(n => n.Key));
+                    entry["nodes"] = Strings(ScopeTree.Blocks(node).SelectMany(b => b.Nodes).Select(n => n.Key));
                     entry["ret"] = null;
                     break;
             }
@@ -458,14 +458,4 @@ public static partial class ResolveCompiler
         private static IEnumerable<SourceDeliveryFolder> DeliveryFolders(SourceDeliveryFolder folder) =>
             folder.Folders.SelectMany(DeliveryFolders).Prepend(folder);
     }
-
-    /// <summary>The bodies of a flow node, in order: a loop's, an <c>if</c>'s then and else, a <c>case</c>'s branches then else.</summary>
-    private static IEnumerable<SourceBlock> Blocks(SourceNode node) => node switch
-    {
-        SourceFor loop => [loop.Body],
-        SourceWhile loop => [loop.Body],
-        SourceIf branch => branch.Else == null ? [branch.Then] : [branch.Then, branch.Else],
-        SourceCase choice => choice.Branches.Select(b => b.Body).Concat(choice.Else == null ? [] : [choice.Else]),
-        _ => [],
-    };
 }
