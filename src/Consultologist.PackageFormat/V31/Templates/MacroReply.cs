@@ -138,14 +138,29 @@ public static class MacroReply
         return text.Append(reply, at, reply.Length - at).ToString();
     }
 
-    /// <summary>Every marker occurrence in <paramref name="reply"/>, in order, none overlapping.</summary>
+    /// <summary>
+    /// Every marker occurrence in <paramref name="reply"/>, in order, none overlapping. The line each stands on (where it
+    /// starts, and whether anything but spaces and tabs stands before the marker on it) is tracked as the scan moves on,
+    /// so the scan is linear in the reply however many markers one line holds.
+    /// </summary>
     private static List<Occurrence> Scan(string reply)
     {
         var found = new List<Occurrence>();
+        var lineStart = 0;
+        var lastText = -1;
+        var read = 0;
         var at = 0;
         while (at < reply.Length && (at = reply.IndexOf(Open, at, StringComparison.Ordinal)) >= 0)
         {
-            if (Marker(reply, at) is { } occurrence)
+            for (; read < at; read++)
+            {
+                if (reply[read] == '\n')
+                    lineStart = read + 1;
+                else if (reply[read] is not (' ' or '\t'))
+                    lastText = read;
+            }
+
+            if (Marker(reply, at, lineStart, lastText >= lineStart) is { } occurrence)
             {
                 found.Add(occurrence);
                 at = occurrence.End;
@@ -159,8 +174,8 @@ public static class MacroReply
         return found;
     }
 
-    /// <summary>The marker that starts at <paramref name="start"/> (at its <c>{{</c>), or <c>null</c> when the text there is none.</summary>
-    private static Occurrence? Marker(string reply, int start)
+    /// <summary>The marker that starts at <paramref name="start"/> (at its <c>{{</c>) on the line starting at <paramref name="lineStart"/>, or <c>null</c> when the text there is none.</summary>
+    private static Occurrence? Marker(string reply, int start, int lineStart, bool textBefore)
     {
         var at = start + Open.Length;
         var block = at < reply.Length && reply[at] == '~';
@@ -191,10 +206,6 @@ public static class MacroReply
             return null;
         var stop = at + Close.Length;
 
-        var lineStart = start == 0 ? 0 : reply.LastIndexOf('\n', start - 1) + 1;
-        var textBefore = false;
-        for (var i = lineStart; i < start && !textBefore; i++)
-            textBefore = reply[i] is not (' ' or '\t');
         var afterSpaces = stop;
         while (afterSpaces < reply.Length && reply[afterSpaces] == ' ')
             afterSpaces++;
