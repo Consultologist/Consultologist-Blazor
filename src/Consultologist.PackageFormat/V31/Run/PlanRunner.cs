@@ -38,12 +38,13 @@ public sealed record RunResult(
 /// then it waits, by <see cref="Task.WhenAny(IEnumerable{Task})"/> over what is in flight, for one to finish, and settles
 /// it. A node that fails fails the job: nothing more is dispatched and nothing in flight is awaited. The run ends when
 /// nothing is in flight and nothing is ready, or when it reaches <see cref="RunLimits.JobMinutes"/> (it then times out, each
-/// call in flight recorded cancelled). An agent's reply, its repair and its retries are <c>PlanRunner.Agents.cs</c>'s.
+/// call in flight recorded cancelled). An agent's reply, its repair and its retries are <c>PlanRunner.Agents.cs</c>'s; a
+/// <c>for</c> loop, its item frames and its <c>maxParallel</c>, <c>PlanRunner.Loops.cs</c>'s.
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IRunHost"/>'s (and the recorder's), reads no clock but
 /// <see cref="IRunHost.UtcNow"/>, and iterates only in the fixed order or list order. It never throws on package content or
-/// model output; a fault of the host or the recorder is theirs and passes through. Tasks 6 to 8 add <c>for</c>,
+/// model output; a fault of the host or the recorder is theirs and passes through. Tasks 7 and 8 add
 /// <c>while</c>/<c>if</c>/<c>case</c> and <c>call</c> as the other parts of this partial class.
 /// </remarks>
 public sealed partial class PlanRunner
@@ -94,8 +95,14 @@ public sealed partial class PlanRunner
         private readonly RunScope scope = new(inputs);
         private readonly RunFrame top = RunFrame.Top(runner.plan);
 
-        /// <summary>Every instance of the run, in the order made.</summary>
-        private readonly List<RunInstance> instances = [];
+        /// <summary>
+        /// The instances not settled, in the fixed order (<see cref="FixedOrder"/>), kept as they are made and settled so that
+        /// a round never sorts the run again.
+        /// </summary>
+        private readonly SortedSet<RunInstance> pending = new(FixedOrder.Instance);
+
+        /// <summary>How many instances the run has made.</summary>
+        private int made;
 
         /// <summary>The calls in flight, in the order dispatched.</summary>
         private readonly List<Flight> flights = [];
@@ -190,13 +197,13 @@ public sealed partial class PlanRunner
         private RunInstance Add(RunFrame frame, PlanEntry entry)
         {
             var instance = frame.Add(entry);
-            instances.Add(instance);
+            instance.Sequence = made++;
+            pending.Add(instance);
             return instance;
         }
 
         /// <summary>The instances not settled, in the fixed order.</summary>
-        private IEnumerable<RunInstance> Unsettled() =>
-            instances.Where(i => !i.IsSettled).OrderBy(i => i.Rank, RankComparer.Instance);
+        private IEnumerable<RunInstance> Unsettled() => pending;
 
         /// <summary>Settles, in the fixed order, every ready instance that needs no call, until nothing more moves.</summary>
         private async Task SettleRoundAsync()
@@ -209,7 +216,9 @@ public sealed partial class PlanRunner
                 {
                     if (failure != null)
                         return;
-                    if (instance.IsReady() && await StepAsync(instance))
+                    if (!instance.WasReady)
+                        instance.WasReady = Ready(instance);
+                    if (instance.WasReady && await StepAsync(instance))
                         moved = true;
                 }
             }
@@ -217,8 +226,9 @@ public sealed partial class PlanRunner
         }
 
         /// <summary>
-        /// Moves a ready instance on with no call: decides its <c>if</c>, evaluates a computed node, and leaves an agent or
-        /// a render waiting for dispatch. False when it did not move (a flow node: Tasks 6 to 8).
+        /// Moves a ready instance on with no call: decides its <c>if</c>, evaluates a computed node, leaves an agent or a
+        /// render waiting for dispatch, and moves a loop on (<c>PlanRunner.Loops.cs</c>). False when it did not move (a loop
+        /// with nothing to do yet; the other flow nodes: Tasks 7 and 8).
         /// </summary>
         private async Task<bool> StepAsync(RunInstance instance)
         {
@@ -232,6 +242,8 @@ public sealed partial class PlanRunner
                     if (await GateAsync(instance))
                         await ComputeAsync(instance);
                     return true;
+                case PlanKind.For:
+                    return await LoopAsync(instance);
                 default:
                     return false;
             }
@@ -304,7 +316,7 @@ public sealed partial class PlanRunner
                     continue;
                 }
 
-                if (agentsInFlight >= limits.MaxAgentCalls || !CapsAllow(instance))
+                if (agentsInFlight >= limits.MaxAgentCalls)
                     continue;
                 if (agentCalls >= limits.JobAgentCalls)
                 {
@@ -329,9 +341,6 @@ public sealed partial class PlanRunner
         /// </summary>
         private static IEnumerable<string> CompiledReads(PlanEntry entry) =>
             entry.Json["reads"] is JsonArray reads ? reads.Select(r => SourceLayout.Text(r)).OfType<string>() : [];
-
-        /// <summary>Whether the <c>maxParallel</c> of every loop around <paramref name="instance"/> allows one more call (Task 6; at the top level there is none).</summary>
-        private static bool CapsAllow(RunInstance instance) => true;
 
         /// <summary>
         /// Moves on what finished: an agent call's attempt (its slot is freed once the node settles, a repair or a retry
@@ -400,10 +409,13 @@ public sealed partial class PlanRunner
         /// <summary>Settles <paramref name="instance"/> and records its row.</summary>
         private Task SettleAsync(RunInstance instance, RowState state, string? reason, JsonObject read, string? valueHash)
         {
-            instance.Settle(state, read);
+            instance.Settle(state, read, reason);
+            pending.Remove(instance);
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
             if (instance.Entry.Kind == PlanKind.Agent)
                 AgentDetail(instance, detail);
+            else if (instance.Entry.Kind == PlanKind.For)
+                LoopDetail(instance, detail);
             return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail));
         }
 

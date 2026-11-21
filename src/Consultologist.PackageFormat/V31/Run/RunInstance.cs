@@ -60,22 +60,36 @@ internal sealed class RunInstance
     /// <summary>The attempt its call is on (from 1); 0 before its first call.</summary>
     public int Attempt { get; set; }
 
+    /// <summary>Its row's reason once settled (the printed condition of a skip, a not-run reason, a failure), or null.</summary>
+    public string? Reason { get; private set; }
+
+    /// <summary>Its place among the run's instances in the order they were made: the fixed order's tie-break.</summary>
+    public int Sequence { get; set; }
+
+    /// <summary>Whether the run has found it ready once: readiness never goes back, so the run asks no more.</summary>
+    public bool WasReady { get; set; }
+
     /// <summary>Whether it has settled.</summary>
     public bool IsSettled => Phase == InstancePhase.Settled;
 
+    /// <summary><see cref="Entry"/>'s dependencies other than its own descendants, worked out once.</summary>
+    private IReadOnlyList<string>? outside;
+
     /// <summary>
     /// Whether it is ready: for every key its entry depends on, other than its own descendants (a flow node's rule reading
-    /// its body), the instance that stands for that key as seen from its frame has settled. That instance is the key's own
+    /// its body) and <paramref name="except"/> (a loop over that loop's <c>.items</c>, which follows it item by item), the
+    /// instance that stands for that key as seen from its frame has settled. That instance is the key's own
     /// when one is visible; otherwise the nearest ancestor of the key (along its <c>Parent</c> chain) that has a visible
     /// instance, since the key's own lives in a frame not yet opened, and a flow node settles only after its frames do. A
     /// key with neither (outside every frame the reader sees) does not hold it back, and reads <c>not_run</c>.
     /// </summary>
-    public bool IsReady()
+    public bool IsReady(string? except = null)
     {
         var map = Frame.Map;
-        foreach (var key in Entry.Depends)
+        outside ??= Entry.Depends.Where(key => !IsDescendant(map, key, Entry.Key)).ToList();
+        foreach (var key in outside)
         {
-            if (IsDescendant(map, key, Entry.Key))
+            if (key == except)
                 continue;
 
             RunInstance? standing = null;
@@ -102,12 +116,31 @@ internal sealed class RunInstance
         return false;
     }
 
-    /// <summary>Settles it as <paramref name="state"/>, read as <paramref name="read"/>.</summary>
-    public void Settle(RowState state, JsonObject read)
+    /// <summary>Settles it as <paramref name="state"/>, read as <paramref name="read"/>, with its row's <paramref name="reason"/>.</summary>
+    public void Settle(RowState state, JsonObject read, string? reason = null)
     {
         Phase = InstancePhase.Settled;
         State = state;
         Read = read;
+        Reason = reason;
+    }
+}
+
+/// <summary>#1503 (specVersion 31, area 06): the fixed order of instances: <see cref="RunInstance.Rank"/>, then the order they were made.</summary>
+internal sealed class FixedOrder : IComparer<RunInstance>
+{
+    public static readonly FixedOrder Instance = new();
+
+    public int Compare(RunInstance? x, RunInstance? y)
+    {
+        if (ReferenceEquals(x, y))
+            return 0;
+        if (x is null)
+            return -1;
+        if (y is null)
+            return 1;
+        var order = RankComparer.Instance.Compare(x.Rank, y.Rank);
+        return order != 0 ? order : x.Sequence.CompareTo(y.Sequence);
     }
 }
 
@@ -138,7 +171,7 @@ internal sealed class RankComparer : IComparer<IReadOnlyList<int>>
 /// <summary>
 /// #1503 (specVersion 31, area 06): one running of a body: the top level, a loop item, a while pass, a branch, a call. It
 /// holds an instance per body entry (in body order), its <c>item</c> and <c>pass</c> bindings, its parameters, and its
-/// parent frame. The top level is <see cref="Top"/>; the flow nodes open the others (Tasks 6 to 8) through
+/// parent frame. The top level is <see cref="Top"/>; the flow nodes open the others (a loop item, Tasks 7 and 8 the rest) through
 /// <see cref="Open"/>. A frame sees its own instances and its ancestors' that share its map: a function's frame is sealed
 /// from its caller's, as its keys are local to it.
 /// </summary>
@@ -212,7 +245,7 @@ internal sealed class RunFrame
     public static RunFrame Top(RunPlan plan) =>
         new(null, plan.Entries, null, [], [], [], null, null, null, null);
 
-    /// <summary>A frame opened by <paramref name="owner"/> inside this one, empty (for the flow nodes of Tasks 6 to 8).</summary>
+    /// <summary>A frame opened by <paramref name="owner"/> inside this one, empty (a loop item; the flow nodes of Tasks 7 and 8).</summary>
     public RunFrame Open(
         RunInstance owner,
         IReadOnlyDictionary<string, PlanEntry> map,
