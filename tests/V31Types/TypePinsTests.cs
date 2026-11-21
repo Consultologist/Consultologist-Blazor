@@ -50,12 +50,12 @@ public class TypePinsTests
         Assert.Equal(9, items.Length);
         Assert.Equal(items.Order(StringComparer.Ordinal), registry.BuiltInFormats.Keys.Order(StringComparer.Ordinal));
         Assert.Equal(["classification", "concept_list"], registry.CatalogueFormats.Keys.Order(StringComparer.Ordinal));
-        Assert.Equal(["concept_bullets", "concept_context"], registry.BuiltInRenderers.Order(StringComparer.Ordinal));
+        Assert.Equal(["concept_bullets", "concept_context"], registry.BuiltInRendererIds.Order(StringComparer.Ordinal));
         Assert.True(registry.Bindings.ContainsKey("formats"));
         Assert.True(registry.Agents.ContainsKey("agents"));
         Assert.Equal(registry.BuiltInFormats.Keys.ToHashSet(), registry.Names.BuiltInFormats);
         Assert.Equal(registry.CatalogueFormats.Keys.ToHashSet(), registry.Names.CatalogueFormats);
-        Assert.Equal(registry.BuiltInRenderers, registry.Names.BuiltInRenderers);
+        Assert.Equal(registry.BuiltInRendererIds, registry.Names.BuiltInRenderers);
     }
 
     [Fact]
