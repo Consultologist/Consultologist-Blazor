@@ -78,6 +78,8 @@ internal static class V31Contract
         ["A06-006"] = "Loop '<id>' was given <reference>, which isn't a list.",
         ["A06-007"] = "Case '<id>' was given <reference>, which no branch lists, and it has no else.",
         ["A06-008"] = "<Subject> couldn't be rendered.",
+        ["A06-009"] = "This job's inputs are no longer held, so it can't run. Run the workflow again.",
+        ["A06-010"] = "The engine couldn't finish this job. Tell the operator.",
     };
 
     private static string RepoRoot()
