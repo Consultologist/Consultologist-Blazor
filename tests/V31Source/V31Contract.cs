@@ -58,6 +58,15 @@ internal static class V31Contract
         ["A04-011"] = "<site> <member> could not be evaluated: <detail>.",
     };
 
+    /// <summary>#1502: area 05's own sentences (<c>A05-NNN</c>), as plan area-05-resolver-and-lock lists them; each is added as a task first says it.</summary>
+    private static readonly Dictionary<string, string> ResolveAreaSentences = new()
+    {
+        ["A05-001"] = "<Kind> '<id>' <member> '<text>' is not a reference; a reference is a root, then names joined by dots.",
+        ["A05-003"] = "Node '<a>' reads node '<b>', which reads node '<a>': nodes can't read each other in a circle. Break the circle.",
+        ["A05-004"] = "Function '<f>' format '<id>' is compiled as '<f>__<id>', which the package already uses: rename one.",
+        ["A05-005"] = "Call '<id>' with <param> is <what it is>; an argument is a reference, written as text, or null.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -77,6 +86,17 @@ internal static class V31Contract
         Assert.True(
             File.Exists(path),
             $"{path} is missing — the submodule is not checked out (git submodule update --init).");
+        return path;
+    }
+
+    /// <summary>#1502 (area 05): the folder of the pinned suite's <c>compiled-documents</c> family; fails when the pin has none.</summary>
+    public static string CompiledDocumentsFolder()
+    {
+        var path = System.IO.Path.Combine(
+            RepoRoot(), "external", "consultologist-package-format", "v31", "conformance", "compiled-documents");
+        Assert.True(
+            Directory.Exists(path),
+            $"{path} is missing — the submodule is not checked out (git submodule update --init), or its pin has no compiled documents.");
         return path;
     }
 
@@ -150,6 +170,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A04-", StringComparison.Ordinal))
         {
             Assert.True(LogicAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A05-", StringComparison.Ordinal))
+        {
+            Assert.True(ResolveAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

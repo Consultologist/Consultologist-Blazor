@@ -506,8 +506,11 @@ public static partial class ExpressionChecker
     /// </summary>
     private static JsonObject? Core(JsonNode? format, FormatSet formats) => CoreWithDefs(format, formats).Schema;
 
-    /// <summary><see cref="Core"/>, with the <c>$defs</c> the schema's own <c>#/$defs</c> references read.</summary>
-    private static (JsonObject? Schema, JsonObject? Defs) CoreWithDefs(JsonNode? format, FormatSet formats)
+    /// <summary>
+    /// <see cref="Core"/>, with the <c>$defs</c> the schema's own <c>#/$defs</c> references read.
+    /// #1502 (area 05): a loop's element is read the same way for its <c>itemLabel</c> (<see cref="SourceResolve"/>).
+    /// </summary>
+    internal static (JsonObject? Schema, JsonObject? Defs) CoreWithDefs(JsonNode? format, FormatSet formats)
     {
         var (schema, defs) = FormatTypes.Follow(format, FormatTypes.Defs(format), formats);
         if (schema?["anyOf"] is not JsonArray members)
@@ -519,12 +522,18 @@ public static partial class ExpressionChecker
         return others.Count == 1 ? others[0] : (null, null);
     }
 
-    /// <summary>A list format's <c>items</c>, taken out so that it reads alone (its <c>#/$defs</c> carried, as <see cref="FormatReads"/> does); null when none.</summary>
-    private static JsonNode? ItemsOf(JsonNode? format, FormatSet formats) =>
+    /// <summary>
+    /// A list format's <c>items</c>, taken out so that it reads alone (its <c>#/$defs</c> carried, as <see cref="FormatReads"/> does); null when none.
+    /// #1502 (area 05): a loop's element is read the same way (<see cref="ScopeTree"/>).
+    /// </summary>
+    internal static JsonNode? ItemsOf(JsonNode? format, FormatSet formats) =>
         CoreWithDefs(format, formats) is ({ } schema, var defs) && schema["items"] is { } items ? FormatReads.Carried(items, defs) : null;
 
-    /// <summary>An object format's properties in written order, each taken out so that it reads alone (its <c>#/$defs</c> carried).</summary>
-    private static OrderedDictionary<string, JsonNode?> PropertiesOf(JsonNode? format, FormatSet formats)
+    /// <summary>
+    /// An object format's properties in written order, each taken out so that it reads alone (its <c>#/$defs</c> carried).
+    /// #1502 (area 05): and a loop's element's, for its <c>itemLabel</c>.
+    /// </summary>
+    internal static OrderedDictionary<string, JsonNode?> PropertiesOf(JsonNode? format, FormatSet formats)
     {
         var properties = new OrderedDictionary<string, JsonNode?>(StringComparer.Ordinal);
         if (CoreWithDefs(format, formats) is ({ } schema, var defs) && schema["properties"] is JsonObject written)
@@ -535,6 +544,9 @@ public static partial class ExpressionChecker
 
         return properties;
     }
+
+    /// <summary>#1502 (area 05): the values of the enum <paramref name="format"/> (through names, <c>null</c> set aside), in order: what a <c>case</c>'s subject takes.</summary>
+    internal static List<string> ValuesOf(JsonNode? format, FormatSet formats) => EnumValues(Core(format, formats));
 
     /// <summary>An enum's values, its <c>enum</c> or its <c>oneOf</c>'s <c>const</c>s, in order, <c>null</c> set aside.</summary>
     private static List<string> EnumValues(JsonObject? schema)

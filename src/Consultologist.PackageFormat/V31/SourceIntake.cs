@@ -11,7 +11,11 @@ namespace Consultologist.PackageFormat.V31;
 public sealed record SourceIntakeResult(
     IReadOnlyDictionary<string, string> Files,
     IReadOnlyList<string> Normalised,
-    IReadOnlyList<SourceRefusal> Refusals);
+    IReadOnlyList<SourceRefusal> Refusals)
+{
+    /// <summary>#1502 (specVersion 31, area 05): the compiled copies and the publish report intake dropped unread at the root, sorted (part 07 § 7).</summary>
+    public IReadOnlyList<string> Dropped { get; init; } = [];
+}
 
 /// <summary>
 /// #1499 (specVersion 31, area 02): the first step of reading a package, bytes in and normalised
@@ -30,7 +34,8 @@ public static class SourceIntake
 
     /// <summary>
     /// Reads <paramref name="upload"/> (path to bytes; a path is used as given, nothing is
-    /// rewritten). Drops the compiled copies and the publish report at the root; then, for each file in path order,
+    /// rewritten). Drops the compiled copies and the publish report at the root, naming them in
+    /// <see cref="SourceIntakeResult.Dropped"/>; then, for each file in path order,
     /// refuses a byte-order mark (S01-014) and bytes that are not UTF-8 (A02-002), turns
     /// <c>\r\n</c> into <c>\n</c> and refuses a remaining <c>\r</c> (S01-015); then measures the
     /// normalised files against the bounds, reporting every one exceeded in the order of the
@@ -40,13 +45,17 @@ public static class SourceIntake
     public static SourceIntakeResult Read(IReadOnlyDictionary<string, byte[]> upload)
     {
         var paths = new List<string>();
+        var dropped = new List<string>();
         foreach (var path in upload.Keys)
         {
-            if (!CompiledCopies.Contains(path, StringComparer.Ordinal))
+            if (CompiledCopies.Contains(path, StringComparer.Ordinal))
+                dropped.Add(path);
+            else
                 paths.Add(path ?? "");
         }
 
         paths.Sort(StringComparer.Ordinal);
+        dropped.Sort(StringComparer.Ordinal);
 
         var files = new SortedDictionary<string, string>(StringComparer.Ordinal);
         var sizes = new List<(string Path, long Bytes)>();
@@ -90,7 +99,7 @@ public static class SourceIntake
                 refusals.Add(SourceSentences.PathTooLong(path));
         }
 
-        return new SourceIntakeResult(files, normalised, refusals);
+        return new SourceIntakeResult(files, normalised, refusals) { Dropped = dropped };
     }
 
     private static SourceRefusal? ReadFile(string path, byte[] bytes, out string? text, out bool changed)

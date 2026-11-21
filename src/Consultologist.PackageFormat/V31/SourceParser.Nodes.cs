@@ -131,13 +131,14 @@ public static partial class SourceParser
 
         if (kind == "call" && header["with"] is JsonObject with)
         {
+            // #1502 (area 05, D13): an argument is a reference string or null; an object or a list is an expression
+            // (S04-017), any other value no reference (A05-005), in place of A02-001.
             foreach (var (param, value) in with)
             {
-                if (value is not null && SourceLayout.Text(value) is null)
-                {
-                    walk.Refuse(SourceSentences.MemberWrongType(
-                        declaration, $"with.{param}", SourceMembers.Describe(value), "text", path));
-                }
+                if (value is JsonObject or JsonArray)
+                    walk.Refuse(ResolveSentences.IsAnExpression("Call", member.Id, $"with {param}", path));
+                else if (value is not null && SourceLayout.Text(value) is null)
+                    walk.Refuse(ResolveSentences.ArgumentNotAReference(member.Id, param, SourceMembers.Describe(value), path));
             }
         }
 

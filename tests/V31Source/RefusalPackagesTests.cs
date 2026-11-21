@@ -16,6 +16,7 @@ namespace Consultologist.Api.Tests.V31Source;
 /// has a case too.
 /// #1501 (specVersion 31, area 04): every case is judged on its expressions too, the third step, and every sentence of
 /// <see cref="ExpressionSentences"/> a package can reach has a case, except <c>LogicNotShipped</c>.
+/// #1502 (specVersion 31, area 05): and every sentence of <see cref="ResolveSentences"/>.
 /// </summary>
 public class RefusalPackagesTests
 {
@@ -25,9 +26,9 @@ public class RefusalPackagesTests
     /// <summary>
     /// #1500 (area 03): the type sentences no package reaches through <see cref="SourceCheck.Run"/>, so
     /// the suite has no case for them.
-    /// S02-018, S02-019 and S02-020 (D6): <see cref="FormatReads"/> says them when asked, but finding
+    /// S02-019 and S02-020 (D6): <see cref="FormatReads"/> says them when asked, but finding
     /// the reads (JSON Logic <c>var</c>, templates, reference strings) is areas 04, 05 and 07's; no
-    /// caller asks yet.
+    /// caller asks yet. (#1502, area 05: S02-018 is said of a loop's <c>in</c> that reads an input bare, and has its case.)
     /// S02-027, S02-035, S02-036 and A03-009: only a registry or catalogue format reaches them. A
     /// package format whose root is an <c>anyOf</c> is A03-001 and an agent's format is named, so no
     /// package's agent returns a union root (S02-027); the two annotations are judged only at a registry
@@ -36,7 +37,7 @@ public class RefusalPackagesTests
     /// S02-011: the three flags follow from what a node reads, areas 04 and 05's.
     /// </summary>
     private static readonly string[] TypesNotShipped =
-        ["S02-009", "S02-011", "S02-018", "S02-019", "S02-020", "S02-027", "S02-035", "S02-036", "A03-009"];
+        ["S02-009", "S02-011", "S02-019", "S02-020", "S02-027", "S02-035", "S02-036", "A03-009"];
 
     /// <summary>The two ids of <see cref="TypesNotShipped"/> that no method of <see cref="FormatSentences"/> gives (S01-028's words; areas 04 and 05's flags).</summary>
     private static readonly string[] TypesWithNoMethod = ["S02-009", "S02-011"];
@@ -44,20 +45,38 @@ public class RefusalPackagesTests
     /// <summary>
     /// #1501 (area 04): the expression sentences the suite has no case for.
     /// S03-001: the reason sentence of a decision (<c>skipped: … is false</c>), which the record holds; not a refusal.
-    /// S03-036 and S03-044 (D28): the three flags are worked out from the compiled package's edges and from what
-    /// templates read, areas 05 and 07's; no caller gives <see cref="LineageFlags"/> a graph yet.
+    /// (#1502, area 05: S03-036 and S03-044 are said of the resolver's graph, and have their cases.)
     /// S03-037 and S03-038: warnings, and S03-039 a note; a package that gets them is accepted.
     /// S03-040, S03-041 and A04-011: failures at run time, said when a rule is evaluated, never at publish.
     /// </summary>
     private static readonly string[] LogicNotShipped =
-        ["S03-001", "S03-036", "S03-037", "S03-038", "S03-039", "S03-040", "S03-041", "S03-044", "A04-011"];
+        ["S03-001", "S03-037", "S03-038", "S03-039", "S03-040", "S03-041", "A04-011"];
+
+    /// <summary>
+    /// #1502 (area 05): the resolver's sentences the suite has no case for. S04-074: a warning (a format a function lists
+    /// in uses and never names); a package that gets it is accepted. S04-063: a macro placed in a function, whose if
+    /// reads a node the function lacks; where a macro is placed is what a body reads, which only the seam
+    /// (<c>ITemplateReads</c>, area 07's) says, and <c>SourceCheck.Run</c> without it never judges it (D1). S04-072,
+    /// S04-073, S04-079 and S04-080: part 04 § 10.2's notes, measured against the engine's limits (<c>PublishNotes</c>,
+    /// D11); a package that gets them is accepted.
+    /// Part 07 § 10's sentences, none a publish refusal of a package source (D10): S07-003, S07-004 and S07-005 are said at
+    /// job start, of <c>requires</c> and the lock against an engine (<c>RequiresCheck.Engine</c>), and S06-031 and S06-032
+    /// at job start, of <c>needs.profile</c> against the account's profile (<c>RequiresCheck.Profile</c>); S07-006 and
+    /// S07-017 at load, of the stored pair against its stamp (<c>CompiledPackage.Verify</c>); S07-016 at import, of the
+    /// compiled copies intake drops; S07-015 by CI, of a compiled copy committed to the examples repository.
+    /// </summary>
+    private static readonly string[] ResolveNotShipped =
+    [
+        "S04-063", "S04-072", "S04-073", "S04-074", "S04-079", "S04-080",
+        "S06-031", "S06-032", "S07-003", "S07-004", "S07-005", "S07-006", "S07-015", "S07-016", "S07-017",
+    ];
 
     /// <summary>
     /// The ids of <see cref="LogicNotShipped"/> that no public method of <see cref="ExpressionSentences"/> returning a
-    /// refusal gives: S03-001 (the record's), S03-036 (the flags', internal), S03-039 (a note, text) and the run-time
-    /// sentences (<see cref="ExpressionSentences.RunTime"/>, text).
+    /// refusal gives: S03-001 (the record's), S03-039 (a note, text) and the run-time sentences
+    /// (<see cref="ExpressionSentences.RunTime"/>, text).
     /// </summary>
-    private static readonly string[] LogicWithNoMethod = ["S03-001", "S03-036", "S03-039", "S03-040", "S03-041", "A04-011"];
+    private static readonly string[] LogicWithNoMethod = ["S03-001", "S03-039", "S03-040", "S03-041", "A04-011"];
 
     [Fact]
     public void EveryCase_SaysWhatItClaims()
@@ -80,14 +99,15 @@ public class RefusalPackagesTests
     [Fact]
     public void EverySentence_TheCheckerCanSay_HasACase()
     {
-        // Each method of SourceSentences, FormatSentences and ExpressionSentences that returns a refusal makes one sentence
+        // Each method of SourceSentences, FormatSentences, ExpressionSentences and ResolveSentences that returns a refusal makes one sentence
         // with a fixed id; calling it with any arguments gives that id (FormatSentences.Subject, which
         // returns text, is not one; nor is ExpressionSentences.Shape, which gives the sentence of a fault of the
         // written form by calling the others).
-        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences))
+        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences))
             .Except(NotShipped)
             .Except(TypesNotShipped)
             .Except(LogicNotShipped)
+            .Except(ResolveNotShipped)
             .Order(StringComparer.Ordinal)
             .ToList();
 
@@ -201,6 +221,8 @@ public class RefusalPackagesTests
         var t when t == typeof(long) => 1L,
         var t when t == typeof(bool) => true,
         var t when t == typeof(ExpressionSite) => new ExpressionSite(ExpressionSiteKind.NodeIf, "x", "if", "x", null, null),
+        var t when t == typeof(LineageValue) => new LineageValue(true, "x"),
+        var t when t == typeof(IReadOnlyList<string>) => new[] { "resolve.json" },
         _ => "x",
     };
 }
