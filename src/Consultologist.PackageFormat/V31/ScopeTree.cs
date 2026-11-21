@@ -207,8 +207,8 @@ public sealed partial class ScopeTree
     /// <c>.content</c>; over a loop's <c>.items</c>, the element of § 2.6 itself (a Value head ending at <c>item</c>). No
     /// loop: unknown, S04-040 for <c>item.parent</c> in an outermost loop, S04-051 inside a function.</item>
     /// <item><c>pass</c>, <c>pass.parent</c>, …: <c>.number</c>, <c>.history</c>, <c>.node.&lt;id&gt;</c> (read as
-    /// <c>node.&lt;id&gt;</c> is, the id anywhere in the while) and <c>.previous</c> (nullable); S04-036, S04-037, S04-038,
-    /// S04-051 inside a function.</item>
+    /// <c>node.&lt;id&gt;</c> is, the id anywhere in the while; #1504: one hidden inside an inner loop is S04-039) and
+    /// <c>.previous</c> (nullable); S04-036, S04-037, S04-038, S04-051 inside a function.</item>
     /// </list>
     /// A null argument is the caller's error.
     /// </summary>
@@ -415,7 +415,14 @@ public sealed partial class ScopeTree
             case "node" when at + 1 < s.Count:
                 var id = s[at + 1];
                 if (Walk(loop.Body.Nodes).FirstOrDefault(n => n.Id == id) is { } node)
+                {
+                    // #1504 (ruled by the owner, ruling 7): this pass's node is read as node.<id> is, so one inside an
+                    // inner loop of the body that does not enclose the reader is a list from here (S04-039).
+                    if (!previous && HiddenFrom(frame, "node", id) is { } hidden && ReferenceEquals(hidden.Node, node))
+                        return Refused(ResolveSentences.NodeInsideLoop(read.Subject, id, hidden.Loop.Id, read.Path));
                     return Member(node, null, s, at + 1, previous);
+                }
+
                 return previous ? Refused(ResolveSentences.PassPreviousNotInWhile(read.Subject, id, loop.Id, read.Path)) : Unknown;
             default:
                 return Unknown;

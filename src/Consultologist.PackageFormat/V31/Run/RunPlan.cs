@@ -670,8 +670,9 @@ public sealed class RunPlan
                     if (root == "pass")
                     {
                         // part 04 § 3.3: this pass's node is a dependency edge; an earlier pass's (previous, history) is none.
-                        // Publish lets a node read a flow node that encloses it in this form (it refuses node.<id>, A05-003):
-                        // that is no edge, which could never be met; the read gives the ancestor not yet settled (not_run).
+                        // A node reading a flow node that encloses it in this form (publish refuses it, A05-003, as it
+                        // does node.<id>; #1504 ruling 7) is no edge, which could never be met; the read gives the
+                        // ancestor not yet settled (not_run).
                         if (PassNode(path, draft, map) is { } node && node != draft.Key
                             && !RunScope.Inside(map, d => d.Parent, draft.Key, node))
                         {
