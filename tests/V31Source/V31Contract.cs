@@ -85,6 +85,20 @@ internal static class V31Contract
         ["A06-013"] = "Unknown input(s) <ids> (declared: <ids>).",
     };
 
+    /// <summary>#1504: area 07's own sentences (<c>A07-NNN</c>), as plan area-07-prompts-and-macros lists them, all nine at once (later tasks say the rest).</summary>
+    private static readonly Dictionary<string, string> TemplateAreaSentences = new()
+    {
+        ["A07-001"] = "Snippet '<id>' places <part.* or macro.*>, and <subject> places it in <a part's text | a macro's instruction>; a snippet placed there doesn't place parts or macros.",
+        ["A07-002"] = "Part '<name>' of node '<id>' uses <if or part.*>; a part's text only presents.",
+        ["A07-003"] = "Macro '<id>' places <macro.* or part.*> in its instruction; combine instructions by placing each macro in the prompt.",
+        ["A07-004"] = "<Subject> uses <form> at line <n>; a for runs over a whole list in order and reads only for.first, for.last, for.index, for.even and for.odd.",
+        ["A07-005"] = "<Subject> can't be read as a template at line <n>: close every tag and every if and for.",
+        ["A07-006"] = "<Subject> stopped rendering: array.join met a list with an empty element.",
+        ["A07-007"] = "<Subject> writes <path> at line <n>, which is <an object | a list>; read a member, loop over it or pipe it into a renderer.",
+        ["A07-008"] = "<Subject> reads <path> at line <n>; read <.value | .content | .title> of it.",
+        ["A07-009"] = "<Subject> places <unit> at line <n> inside <an if | a for>; a part, a snippet or a macro is placed at the top level of its template, and its own if decides it.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -198,6 +212,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A06-", StringComparison.Ordinal))
         {
             Assert.True(EngineAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A07-", StringComparison.Ordinal))
+        {
+            Assert.True(TemplateAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else
