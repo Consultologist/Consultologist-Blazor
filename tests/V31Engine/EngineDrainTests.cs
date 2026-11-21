@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
+using Consultologist.Api.Auth;
 using Consultologist.Api.Jobs;
 
 namespace Consultologist.Api.Tests.V31Engine;
@@ -26,7 +27,7 @@ public class EngineDrainTests
         await drain.BeginAsync(CancellationToken.None);
         Assert.True(await drain.IsDrainingAsync(CancellationToken.None));
         Assert.True(await new EngineDrain(blobs).IsDrainingAsync(CancellationToken.None)); // read every call, never cached
-        Assert.True(blobs.Documents.ContainsKey(EngineDrain.StateBlob));
+        Assert.True(blobs.Documents.ContainsKey(("personal", EngineDrain.StateBlob)));
 
         Assert.Empty(await drain.EndAsync(CancellationToken.None));
         Assert.False(await drain.IsDrainingAsync(CancellationToken.None));
@@ -50,7 +51,7 @@ public class EngineDrainTests
         foreach (var job in new[] { late, early, same })
             await drain.ParkAsync(job, CancellationToken.None);
 
-        Assert.True(blobs.Documents.ContainsKey(EngineDrain.ParkedPrefix + "job-c.json"));
+        Assert.True(blobs.Documents.ContainsKey(("personal", EngineDrain.ParkedPrefix + "job-c.json")));
         Assert.Equal(3, await drain.ParkedCountAsync(CancellationToken.None));
 
         var ended = await new EngineDrain(blobs).EndAsync(CancellationToken.None);
@@ -78,7 +79,7 @@ public class EngineDrainTests
 
         Assert.Empty(await drain.EndAsync(CancellationToken.None));
         Assert.Equal(0, await drain.ParkedCountAsync(CancellationToken.None));
-        Assert.Equal([EngineDrain.StateBlob], blobs.Documents.Keys);
+        Assert.Equal([("personal", EngineDrain.StateBlob)], blobs.Documents.Keys);
     }
 
     [Fact]
@@ -94,30 +95,69 @@ public class EngineDrainTests
         Assert.Equal("job-a", Assert.Single(await drain.EndAsync(CancellationToken.None)).JobId);
     }
 
-    internal static ParkedJob Parked(string jobId, DateTimeOffset at) =>
-        new(jobId, nameof(ConsultGenerationOrchestrator), $$"""{"JobId":"{{jobId}}"}""", at);
+    [Fact]
+    public async Task Park_PutsEachJobInItsAccountKindsContainer()
+    {
+        // #557: an organisation's parked input (it can hold the request's text) is kept apart from a personal account's
+        var blobs = new MemoryDrainBlobs();
+        var drain = new EngineDrain(blobs);
+        await drain.BeginAsync(CancellationToken.None);
+        await drain.ParkAsync(Parked("job-org", At.AddMinutes(2), SignInKinds.Organisation), CancellationToken.None);
+        await drain.ParkAsync(Parked("job-personal", At.AddMinutes(1), SignInKinds.Personal), CancellationToken.None);
+        await drain.ParkAsync(Parked("job-unstamped", At.AddMinutes(3), null), CancellationToken.None);
 
-    /// <summary>An in-memory <see cref="IDrainBlobs"/>: each blob a JSON document, by name.</summary>
+        Assert.Equal(
+            [
+                ("org", EngineDrain.ParkedPrefix + "job-org.json"),
+                ("personal", EngineDrain.ParkedPrefix + "job-personal.json"),
+                ("personal", EngineDrain.ParkedPrefix + "job-unstamped.json"),
+                ("personal", EngineDrain.StateBlob),
+            ],
+            blobs.Documents.Keys.Order());
+        Assert.Equal(3, await drain.ParkedCountAsync(CancellationToken.None));
+
+        // the end reads both containers, oldest first, each job with its kind; forgetting clears it wherever it is
+        var ended = await drain.EndAsync(CancellationToken.None);
+        Assert.Equal(["job-personal", "job-org", "job-unstamped"], ended.Select(job => job.JobId));
+        Assert.Equal([SignInKinds.Personal, SignInKinds.Organisation, null], ended.Select(job => job.AccountKind));
+        foreach (var job in ended)
+            await drain.ForgetAsync(job.JobId, CancellationToken.None);
+        Assert.Equal([("personal", EngineDrain.StateBlob)], blobs.Documents.Keys);
+    }
+
+    internal static ParkedJob Parked(string jobId, DateTimeOffset at, string? accountKind = null) =>
+        new(jobId, nameof(ConsultGenerationOrchestrator), $$"""{"JobId":"{{jobId}}"}""", at, accountKind);
+
+    /// <summary>
+    /// An in-memory <see cref="IDrainBlobs"/>: each blob a JSON document, by its container (<c>org</c> for an organisation,
+    /// else <c>personal</c>, as <see cref="JobOutputsBlobStore"/> picks) and name.
+    /// </summary>
     internal sealed class MemoryDrainBlobs : IDrainBlobs
     {
-        public ConcurrentDictionary<string, string> Documents { get; } = new(StringComparer.Ordinal);
+        public ConcurrentDictionary<(string Container, string Name), string> Documents { get; } = new();
 
-        public Task<JsonObject?> ReadAsync(string name, CancellationToken ct) =>
-            Task.FromResult(Documents.TryGetValue(name, out var text) ? JsonNode.Parse(text)!.AsObject() : null);
+        public Task<JsonObject?> ReadAsync(string? accountKind, string name, CancellationToken ct) =>
+            Task.FromResult(Documents.TryGetValue((ContainerOf(accountKind), name), out var text) ? JsonNode.Parse(text)!.AsObject() : null);
 
-        public Task WriteAsync(string name, JsonObject document, CancellationToken ct)
+        public Task WriteAsync(string? accountKind, string name, JsonObject document, CancellationToken ct)
         {
-            Documents[name] = document.ToJsonString();
+            Documents[(ContainerOf(accountKind), name)] = document.ToJsonString();
             return Task.CompletedTask;
         }
 
-        public Task DeleteAsync(string name, CancellationToken ct)
+        public Task DeleteAsync(string? accountKind, string name, CancellationToken ct)
         {
-            Documents.TryRemove(name, out _);
+            Documents.TryRemove((ContainerOf(accountKind), name), out _);
             return Task.CompletedTask;
         }
 
-        public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct) =>
-            Task.FromResult<IReadOnlyList<string>>(Documents.Keys.Where(name => name.StartsWith(prefix, StringComparison.Ordinal)).Order(StringComparer.Ordinal).ToList());
+        public Task<IReadOnlyList<string>> ListAsync(string? accountKind, string prefix, CancellationToken ct) =>
+            Task.FromResult<IReadOnlyList<string>>(Documents.Keys
+                .Where(key => key.Container == ContainerOf(accountKind) && key.Name.StartsWith(prefix, StringComparison.Ordinal))
+                .Select(key => key.Name)
+                .Order(StringComparer.Ordinal)
+                .ToList());
+
+        private static string ContainerOf(string? accountKind) => accountKind == SignInKinds.Organisation ? "org" : "personal";
     }
 }

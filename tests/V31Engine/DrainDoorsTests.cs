@@ -65,9 +65,14 @@ public class DrainDoorsTests
         Assert.True(Assert.IsType<ConsultGenerationOrchestrationInputV31>(open.Admin.Scheduled[1].Input).DrainAware);
 
         // during a drain, every door answers with a job id, schedules nothing, and leaves the job waiting
-        var doors = new Doors();
+        var blobs = new EngineDrainTests.MemoryDrainBlobs();
+        var doors = new Doors(new EngineDrain(blobs));
         await doors.Admin.DrainAsync();
         var outcomes = await doors.StartEveryDoorAsync();
+
+        // each is parked in its account kind's container (the doors' account is an organisation's)
+        Assert.Equal(outcomes.Select(o => ("org", $"{EngineDrain.ParkedPrefix}{o.JobId}.json")).Order(),
+            blobs.Documents.Keys.Where(key => key.Name != EngineDrain.StateBlob).Order());
 
         foreach (var outcome in outcomes)
         {

@@ -938,13 +938,6 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     }
 
     /// <summary>
-    /// #202: called off before it ran. Its own operation rather than
-    /// FinalizeJob, whose body branches on Completed and Failed only — routed
-    /// through there a cancelled job would get no History event at all, and
-    /// would inherit the "section not reached" bookkeeping that belongs to a
-    /// failure. Nothing here ran, so there is nothing to reconcile.
-    /// </summary>
-    /// <summary>
     /// #1503 (part 09 § 3.6, S09-018; D9): the job waits behind a drain — its start parked its orchestration, or its
     /// orchestration met the drain after its schedule wait. A job already running or ended is left as it is.
     /// </summary>
@@ -983,6 +976,13 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
+    /// <summary>
+    /// #202: called off before it ran. Its own operation rather than
+    /// FinalizeJob, whose body branches on Completed and Failed only — routed
+    /// through there a cancelled job would get no History event at all, and
+    /// would inherit the "section not reached" bookkeeping that belongs to a
+    /// failure. Nothing here ran, so there is nothing to reconcile.
+    /// </summary>
     public async Task Cancel()
     {
         var state = EnsureState();

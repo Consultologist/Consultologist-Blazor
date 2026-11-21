@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Azure.Core;
+using Consultologist.Api.Auth;
 using Consultologist.Api.V31;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.DurableTask;
@@ -13,9 +14,10 @@ namespace Consultologist.Api.Jobs;
 
 /// <summary>
 /// #1503 (part 09 § 3.6; D9): a job started during a drain: its id, the orchestrator it runs on, its orchestration input
-/// as the starter built it (JSON, as Durable writes it), and when it was parked.
+/// as the starter built it (JSON, as Durable writes it), when it was parked, and its account's kind, which picks the
+/// container it is parked in (#557: an organisation's text and a personal account's are kept apart).
 /// </summary>
-public sealed record ParkedJob(string JobId, string OrchestratorName, string InputJson, DateTimeOffset ParkedAtUtc);
+public sealed record ParkedJob(string JobId, string OrchestratorName, string InputJson, DateTimeOffset ParkedAtUtc, string? AccountKind = null);
 
 /// <summary>
 /// #1503 (part 09 § 3.6; D9): the drain before a deploy. While the engine drains, every door still answers a new job with
@@ -32,40 +34,44 @@ public interface IEngineDrain
     Task BeginAsync(CancellationToken ct);
 
     /// <summary>
-    /// Ends the drain and returns every job still parked, oldest first (ties by job id, ordinally). A job stays parked
-    /// until <see cref="ForgetAsync"/>, which Resume calls once the job's orchestration is scheduled, so a Resume that
-    /// stopped part way leaves the rest to the next one.
+    /// Ends the drain and returns every job still parked, of every account kind, oldest first (ties by job id, ordinally).
+    /// A job stays parked until <see cref="ForgetAsync"/>, which Resume calls once the job's orchestration is scheduled, so a
+    /// Resume that stopped part way leaves the rest to the next one.
     /// </summary>
     Task<IReadOnlyList<ParkedJob>> EndAsync(CancellationToken ct);
 
-    /// <summary>Parks <paramref name="job"/>.</summary>
+    /// <summary>Parks <paramref name="job"/>, in its account kind's container.</summary>
     Task ParkAsync(ParkedJob job, CancellationToken ct);
 
-    /// <summary>Forgets the parked job <paramref name="jobId"/>: its orchestration is scheduled.</summary>
+    /// <summary>Forgets the parked job <paramref name="jobId"/>, whatever its kind: its orchestration is scheduled.</summary>
     Task ForgetAsync(string jobId, CancellationToken ct);
 
-    /// <summary>How many jobs are parked.</summary>
+    /// <summary>How many jobs are parked, of every account kind.</summary>
     Task<int> ParkedCountAsync(CancellationToken ct);
 }
 
-/// <summary>#1503 (D9): the blobs the drain keeps, as JSON documents by name.</summary>
+/// <summary>
+/// #1503 (D9): the blobs the drain keeps, as JSON documents by name, in the container an account kind names
+/// (<see cref="JobOutputsBlobStore"/>'s rule: <see cref="SignInKinds.Organisation"/>, else a personal account's).
+/// </summary>
 public interface IDrainBlobs
 {
-    /// <summary>The document named <paramref name="name"/>, or null when there is none.</summary>
-    Task<JsonObject?> ReadAsync(string name, CancellationToken ct);
+    /// <summary>The document named <paramref name="name"/> in <paramref name="accountKind"/>'s container, or null when there is none.</summary>
+    Task<JsonObject?> ReadAsync(string? accountKind, string name, CancellationToken ct);
 
-    Task WriteAsync(string name, JsonObject document, CancellationToken ct);
+    Task WriteAsync(string? accountKind, string name, JsonObject document, CancellationToken ct);
 
-    /// <summary>Deletes <paramref name="name"/>; one already gone is no error.</summary>
-    Task DeleteAsync(string name, CancellationToken ct);
+    /// <summary>Deletes <paramref name="name"/> from <paramref name="accountKind"/>'s container; one already gone is no error.</summary>
+    Task DeleteAsync(string? accountKind, string name, CancellationToken ct);
 
-    /// <summary>The names under <paramref name="prefix"/>, ordinally.</summary>
-    Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct);
+    /// <summary>The names under <paramref name="prefix"/> in <paramref name="accountKind"/>'s container, ordinally.</summary>
+    Task<IReadOnlyList<string>> ListAsync(string? accountKind, string prefix, CancellationToken ct);
 }
 
 /// <summary>
 /// #1503 (part 09 § 3.6; D9): the drain's state in the engine's own storage: the flag is <see cref="StateBlob"/>
-/// (<c>{ "draining": true|false }</c>) and each parked job is its own blob under <see cref="ParkedPrefix"/>.
+/// (<c>{ "draining": true|false }</c>, a personal account's container: it holds no account's text) and each parked job is
+/// its own blob under <see cref="ParkedPrefix"/>, in its account kind's container.
 /// </summary>
 public sealed class EngineDrain(IDrainBlobs blobs) : IEngineDrain
 {
@@ -78,24 +84,30 @@ public sealed class EngineDrain(IDrainBlobs blobs) : IEngineDrain
     /// <summary>The external event Resume raises for every orchestration waiting behind the drain.</summary>
     public const string ResumedEvent = "engine-resumed";
 
+    /// <summary>The kinds whose containers hold parked jobs: one per container.</summary>
+    internal static readonly string?[] Kinds = [SignInKinds.Organisation, SignInKinds.Personal];
+
     public async Task<bool> IsDrainingAsync(CancellationToken ct) =>
-        await blobs.ReadAsync(StateBlob, ct) is { } state
+        await blobs.ReadAsync(SignInKinds.Personal, StateBlob, ct) is { } state
         && state["draining"] is JsonValue draining
         && draining.TryGetValue<bool>(out var on)
         && on;
 
-    public Task BeginAsync(CancellationToken ct) => blobs.WriteAsync(StateBlob, new JsonObject { ["draining"] = true }, ct);
+    public Task BeginAsync(CancellationToken ct) => blobs.WriteAsync(SignInKinds.Personal, StateBlob, new JsonObject { ["draining"] = true }, ct);
 
     public async Task<IReadOnlyList<ParkedJob>> EndAsync(CancellationToken ct)
     {
-        await blobs.WriteAsync(StateBlob, new JsonObject { ["draining"] = false }, ct);
+        await blobs.WriteAsync(SignInKinds.Personal, StateBlob, new JsonObject { ["draining"] = false }, ct);
 
         var parked = new List<ParkedJob>();
-        foreach (var name in await blobs.ListAsync(ParkedPrefix, ct))
+        foreach (var kind in Kinds)
         {
-            if (await blobs.ReadAsync(name, ct) is { } document && document.Deserialize<ParkedJob>() is { } job)
+            foreach (var name in await blobs.ListAsync(kind, ParkedPrefix, ct))
             {
-                parked.Add(job);
+                if (await blobs.ReadAsync(kind, name, ct) is { } document && document.Deserialize<ParkedJob>() is { } job)
+                {
+                    parked.Add(job);
+                }
             }
         }
 
@@ -108,20 +120,36 @@ public sealed class EngineDrain(IDrainBlobs blobs) : IEngineDrain
     public Task ParkAsync(ParkedJob job, CancellationToken ct)
     {
         ArgumentNullException.ThrowIfNull(job);
-        return blobs.WriteAsync(NameOf(job.JobId), JsonSerializer.SerializeToNode(job)!.AsObject(), ct);
+        return blobs.WriteAsync(job.AccountKind, NameOf(job.JobId), JsonSerializer.SerializeToNode(job)!.AsObject(), ct);
     }
 
-    public Task ForgetAsync(string jobId, CancellationToken ct) => blobs.DeleteAsync(NameOf(jobId), ct);
+    public async Task ForgetAsync(string jobId, CancellationToken ct)
+    {
+        foreach (var kind in Kinds)
+        {
+            await blobs.DeleteAsync(kind, NameOf(jobId), ct);
+        }
+    }
 
-    public async Task<int> ParkedCountAsync(CancellationToken ct) => (await blobs.ListAsync(ParkedPrefix, ct)).Count;
+    public async Task<int> ParkedCountAsync(CancellationToken ct)
+    {
+        var count = 0;
+        foreach (var kind in Kinds)
+        {
+            count += (await blobs.ListAsync(kind, ParkedPrefix, ct)).Count;
+        }
+
+        return count;
+    }
 
     private static string NameOf(string jobId) => $"{ParkedPrefix}{jobId}.json";
 }
 
 /// <summary>
-/// #1503 (D9): the drain's blobs on the text account, in the container the job outputs use (a personal account's,
-/// <see cref="JobOutputsBlobStore"/>'s default), under <c>drain/</c>: a parked job's input can hold a request's text, so it
-/// lives where the produced text does. No account's prefix is <c>drain/</c>, so an account's closure never touches it.
+/// #1503 (D9): the drain's blobs on the text account, in the containers the job outputs use
+/// (<see cref="JobOutputsBlobStore.ContainerFor"/>: an organisation's, else a personal account's), under <c>drain/</c>: a
+/// parked job's input can hold a request's text, so it lives where that account's produced text does. No account's prefix
+/// is <c>drain/</c>, so an account's closure never touches it.
 /// </summary>
 public sealed class TextDrainBlobs : IDrainBlobs
 {
@@ -132,16 +160,17 @@ public sealed class TextDrainBlobs : IDrainBlobs
         _blobs = new TextBlobClientFactory(configuration, credential, logger, "Engine drain store");
     }
 
-    /// <summary>The container: the job outputs' (a personal account's).</summary>
-    internal static string Container => JobOutputsBlobStore.ContainerFor(null);
+    public Task<JsonObject?> ReadAsync(string? accountKind, string name, CancellationToken ct) =>
+        _blobs.ReadJsonAsync<JsonObject>(JobOutputsBlobStore.ContainerFor(accountKind), name, ct);
 
-    public Task<JsonObject?> ReadAsync(string name, CancellationToken ct) => _blobs.ReadJsonAsync<JsonObject>(Container, name, ct);
+    public Task WriteAsync(string? accountKind, string name, JsonObject document, CancellationToken ct) =>
+        _blobs.WriteJsonAsync(JobOutputsBlobStore.ContainerFor(accountKind), name, document, ct);
 
-    public Task WriteAsync(string name, JsonObject document, CancellationToken ct) => _blobs.WriteJsonAsync(Container, name, document, ct);
+    public Task DeleteAsync(string? accountKind, string name, CancellationToken ct) =>
+        _blobs.DeleteAsync(JobOutputsBlobStore.ContainerFor(accountKind), name, ct);
 
-    public Task DeleteAsync(string name, CancellationToken ct) => _blobs.DeleteAsync(Container, name, ct);
-
-    public Task<IReadOnlyList<string>> ListAsync(string prefix, CancellationToken ct) => _blobs.ListNamesAsync(Container, prefix, ct);
+    public Task<IReadOnlyList<string>> ListAsync(string? accountKind, string prefix, CancellationToken ct) =>
+        _blobs.ListNamesAsync(JobOutputsBlobStore.ContainerFor(accountKind), prefix, ct);
 }
 
 /// <summary>
@@ -160,10 +189,10 @@ public static class EngineDrainJobs
         new RetryPolicy(maxNumberOfAttempts: 3, firstRetryInterval: TimeSpan.FromSeconds(5), backoffCoefficient: 2.0));
 
     /// <summary>A job of <paramref name="orchestratorName"/> parked with <paramref name="input"/>, written as Durable writes an input.</summary>
-    public static ParkedJob Park(string jobId, string orchestratorName, object input, DateTimeOffset parkedAtUtc)
+    public static ParkedJob Park(string jobId, string orchestratorName, object input, DateTimeOffset parkedAtUtc, string? accountKind)
     {
         ArgumentNullException.ThrowIfNull(input);
-        return new ParkedJob(jobId, orchestratorName, JsonSerializer.Serialize(input, input.GetType()), parkedAtUtc);
+        return new ParkedJob(jobId, orchestratorName, JsonSerializer.Serialize(input, input.GetType()), parkedAtUtc, accountKind);
     }
 
     /// <summary>The parked input, typed as its orchestrator reads it, so it is scheduled exactly as the door would have.</summary>
@@ -184,14 +213,14 @@ public static class EngineDrainJobs
     /// between the check and the park (its Resume already past), the job is started at once. False when not draining.
     /// </summary>
     public static async Task<bool> ParkIfDrainingAsync(
-        IEngineDrain? drain, DurableTaskClient client, string jobId, string orchestratorName, object input, ILogger logger, CancellationToken ct)
+        IEngineDrain? drain, DurableTaskClient client, string jobId, string orchestratorName, object input, string? accountKind, ILogger logger, CancellationToken ct)
     {
         if (drain == null || !await drain.IsDrainingAsync(ct))
         {
             return false;
         }
 
-        var job = Park(jobId, orchestratorName, input, DateTimeOffset.UtcNow);
+        var job = Park(jobId, orchestratorName, input, DateTimeOffset.UtcNow, accountKind);
         await drain.ParkAsync(job, ct);
         await client.Entities.SignalEntityAsync(EntityOf(jobId), nameof(ConsultGenerationJobEntity.MarkWaitingForUpdate), null, null, ct);
         logger.LogInformation("Consult generation job parked behind a drain. JobId={JobId}, Orchestrator={Orchestrator}", jobId, orchestratorName);

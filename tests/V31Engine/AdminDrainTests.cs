@@ -82,6 +82,15 @@ public class AdminDrainTests
         Assert.Equal("""{"draining":true,"producing":0,"parked":1}""", FakeHttp.BodyOf(await admin.DrainAsync()));
         Assert.Empty(admin.Scheduled);
         Assert.Empty(admin.Raised);
+
+        // every query fetches inputs and outputs (so the custom status comes back) and reads with the request's token
+        Assert.All(admin.Queries, query =>
+        {
+            Assert.True(query.Query!.FetchInputsAndOutputs);
+            Assert.Equal([OrchestrationRuntimeStatus.Running, OrchestrationRuntimeStatus.Pending], query.Query.Statuses);
+            Assert.Equal(admin.RequestToken, query.Token);
+        });
+        Assert.Equal(4, admin.Queries.Count);
     }
 
     [Fact]
@@ -90,11 +99,11 @@ public class AdminDrainTests
         var admin = new Admin();
         await admin.DrainAsync();
         var v30 = new ConsultGenerationOrchestrationInput(new Models.ConsultGenerationRequest("A fictional referral for Margaret Okafor."), "user-1", "test@v1", DrainAware: true);
-        await admin.Drain.ParkAsync(EngineDrainJobs.Park("job-30", nameof(ConsultGenerationOrchestrator), v30, At.AddMinutes(2)), CancellationToken.None);
+        await admin.Drain.ParkAsync(EngineDrainJobs.Park("job-30", nameof(ConsultGenerationOrchestrator), v30, At.AddMinutes(2), SignInKinds.Personal), CancellationToken.None);
         var v31 = new ConsultGenerationOrchestrationInputV31("job-31", "user-1", "test", "v1", "sha256:r", "sha256:l", new JsonObject(), 2000,
             "user-1/job-31.json", new JsonObject { ["id"] = "job-31" }, "America/Toronto", null, true, SignInKinds.Organisation);
-        await admin.Drain.ParkAsync(EngineDrainJobs.Park("job-31", nameof(ConsultGenerationOrchestratorV31), v31, At.AddMinutes(1)), CancellationToken.None);
-        await admin.Drain.ParkAsync(EngineDrainJobs.Park("job-late", nameof(ConsultGenerationOrchestrator), v30, At.AddMinutes(3)), CancellationToken.None);
+        await admin.Drain.ParkAsync(EngineDrainJobs.Park("job-31", nameof(ConsultGenerationOrchestratorV31), v31, At.AddMinutes(1), SignInKinds.Organisation), CancellationToken.None);
+        await admin.Drain.ParkAsync(EngineDrainJobs.Park("job-late", nameof(ConsultGenerationOrchestrator), v30, At.AddMinutes(3), SignInKinds.Personal), CancellationToken.None);
         admin.Instances.Add(Admin.Instance(nameof(ConsultGenerationOrchestratorV31), "waiting", OrchestrationRuntimeStatus.Running, """{"status":"Waiting for an update to finish"}"""));
         admin.Instances.Add(Admin.Instance(nameof(ConsultGenerationOrchestrator), "asleep", OrchestrationRuntimeStatus.Running, """{"status":"Scheduled"}"""));
 
@@ -111,6 +120,9 @@ public class AdminDrainTests
         // each parked job's record stops waiting; the orchestration waiting behind the drain is woken; nothing else is
         Assert.Equal(["job-31", "job-30", "job-late"], admin.Signals.Where(s => s.Operation == nameof(ConsultGenerationJobEntity.EndWaitingForUpdate)).Select(s => s.Key));
         Assert.Equal([("waiting", EngineDrain.ResumedEvent)], admin.Raised);
+        var wake = Assert.Single(admin.Queries, query => query.Query!.Statuses!.SequenceEqual([OrchestrationRuntimeStatus.Running]));
+        Assert.True(wake.Query!.FetchInputsAndOutputs);
+        Assert.Equal(admin.RequestToken, wake.Token);
         Assert.Equal(0, await admin.Drain.ParkedCountAsync(CancellationToken.None));
 
         // a second Resume starts nothing twice
@@ -163,13 +175,20 @@ public class AdminDrainTests
                 });
             Client.GetInstanceAsync(Arg.Any<string>(), Arg.Any<bool>(), Arg.Any<CancellationToken>())
                 .Returns(call => Existing.Contains((string)call[0]) ? new OrchestrationMetadata("any", (string)call[0]) : null);
+            // The query answers as a backend that leaves the custom status out unless inputs and outputs are fetched would:
+            // the drain must ask for them, or every sleeping and waiting orchestration would read as producing.
             Client.GetAllInstancesAsync(Arg.Any<OrchestrationQuery?>())
-                .Returns(call => Pageable.Create((string? _, CancellationToken _) =>
+                .Returns(call => Pageable.Create((string? _, CancellationToken token) =>
                 {
                     var query = (OrchestrationQuery?)call[0];
+                    Queries.Add((query, token));
                     var wanted = query?.Statuses?.ToHashSet();
                     return Task.FromResult(new Page<OrchestrationMetadata>(
-                        Instances.Where(instance => wanted == null || wanted.Contains(instance.RuntimeStatus)).ToList(), null));
+                        Instances.Where(instance => wanted == null || wanted.Contains(instance.RuntimeStatus))
+                            .Select(instance => query?.FetchInputsAndOutputs == true
+                                ? instance
+                                : new OrchestrationMetadata(instance.Name, instance.InstanceId) { RuntimeStatus = instance.RuntimeStatus })
+                            .ToList(), null));
                 }));
             Client.RaiseEventAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<object?>(), Arg.Any<CancellationToken>())
                 .Returns(call =>
@@ -197,11 +216,17 @@ public class AdminDrainTests
 
         public List<(string InstanceId, string EventName)> Raised { get; } = new();
 
-        public Task<HttpResponseData> DrainAsync() => _functions.DrainAsync(FakeHttp.Request("POST"), Client);
+        /// <summary>Each instance query: its options and the token its pages were read with.</summary>
+        public List<(OrchestrationQuery? Query, CancellationToken Token)> Queries { get; } = new();
 
-        public Task<HttpResponseData> ResumeAsync() => _functions.ResumeAsync(FakeHttp.Request("POST"), Client);
+        /// <summary>The token every request is made with.</summary>
+        public CancellationToken RequestToken { get; } = new CancellationTokenSource().Token;
 
-        public Task<HttpResponseData> StatusAsync() => _functions.StatusAsync(FakeHttp.Request("GET"), Client);
+        public Task<HttpResponseData> DrainAsync() => _functions.DrainAsync(FakeHttp.Request("POST", RequestToken), Client);
+
+        public Task<HttpResponseData> ResumeAsync() => _functions.ResumeAsync(FakeHttp.Request("POST", RequestToken), Client);
+
+        public Task<HttpResponseData> StatusAsync() => _functions.StatusAsync(FakeHttp.Request("GET", RequestToken), Client);
 
         public static AppAccount Account(string appUserId)
         {
@@ -220,12 +245,13 @@ public class AdminDrainTests
 /// </summary>
 internal static class FakeHttp
 {
-    public static HttpRequestData Request(string method)
+    public static HttpRequestData Request(string method, CancellationToken cancellationToken = default)
     {
         var services = new ServiceCollection();
         services.Configure<WorkerOptions>(options => options.Serializer = new JsonObjectSerializer());
         var context = Substitute.For<FunctionContext>();
         context.InstanceServices.Returns(services.BuildServiceProvider());
+        context.CancellationToken.Returns(cancellationToken);
         return new FakeRequest(context, method);
     }
 

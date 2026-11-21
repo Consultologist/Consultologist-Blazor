@@ -149,7 +149,7 @@ public sealed class V31JobStarter(
             accountKind);
 
         // Part 09 § 3.6 (D9): during a drain the job is held and initialised as above, and waits, parked; the door still answers with its id.
-        if (await EngineDrainJobs.ParkIfDrainingAsync(drain, client, jobId, nameof(ConsultGenerationOrchestratorV31), orchestrationInput, logger, cancellationToken))
+        if (await EngineDrainJobs.ParkIfDrainingAsync(drain, client, jobId, nameof(ConsultGenerationOrchestratorV31), orchestrationInput, accountKind, logger, cancellationToken))
             return new ConsultGenerationJobStartOutcome(jobId);
 
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(

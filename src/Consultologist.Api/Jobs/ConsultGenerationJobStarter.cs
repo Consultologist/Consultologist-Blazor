@@ -1152,7 +1152,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 DrainAware: true);
 
         // #1503 (part 09 § 3.6; D9): during a drain the job is recorded as above and waits, parked; the door still answers with its id.
-        if (await EngineDrainJobs.ParkIfDrainingAsync(_drain, client, jobId, nameof(ConsultGenerationOrchestrator), orchestrationInput, _logger, cancellationToken))
+        if (await EngineDrainJobs.ParkIfDrainingAsync(_drain, client, jobId, nameof(ConsultGenerationOrchestrator), orchestrationInput, accountKind, _logger, cancellationToken))
         {
             return new ConsultGenerationJobStartOutcome(jobId);
         }
