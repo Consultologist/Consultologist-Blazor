@@ -164,7 +164,7 @@ public static partial class SourceTemplates
 
     /// <summary>
     /// The check of one package: what it has said so far, and the bodies of the units placed (each snippet checked once
-    /// per place it is placed in, <see cref="Snippet"/>).
+    /// per place it is placed in, <see cref="Snippet"/>: a frame, a row of § 3.1 and a depth).
     /// </summary>
     private sealed partial class Context
     {
@@ -202,11 +202,13 @@ public static partial class SourceTemplates
 
         /// <summary>
         /// One body: its syntax faults (and nothing more), or its reads, <c>if</c>s, placements and run spots;
-        /// <paramref name="placed"/> says where a snippet's body is placed, whose reads it is held to.
+        /// for a snippet's body <paramref name="reads"/> is the row of § 3.1 its placer reads by, and
+        /// <paramref name="unavailable"/> gathers, in order, the reads that place does not give (S05-022, said per
+        /// placement by <see cref="Expand"/>, since only the placer and the line differ).
         /// </summary>
-        private CheckedBody? Body(TemplateHost host, TemplateSyntax syntax, PlacedAt? placed)
+        private CheckedBody? Body(TemplateHost host, TemplateSyntax syntax, TemplateSite? reads = null, List<string>? unavailable = null)
         {
-            var body = new BodyCheck(host, syntax, package, resolution, registry, producers, placed);
+            var body = new BodyCheck(host, syntax, package, resolution, registry, producers, reads, unavailable);
             Refusals.AddRange(body.Header());
             if (syntax.Faults.Count > 0)
             {
@@ -220,13 +222,6 @@ public static partial class SourceTemplates
             return checkedBody;
         }
     }
-
-    /// <summary>
-    /// Where a snippet's body is checked: the row of § 3.1 its placer reads by (<paramref name="Reads"/>: the prompt's,
-    /// a part's text's, …; a snippet placed in a snippet reads by its placer's), the snippet as sentences name it
-    /// (<c>tone</c>, <c>standards/hpi</c>), and the placer's subject, line of the placement and file.
-    /// </summary>
-    private sealed record PlacedAt(TemplateSite Reads, string Snippet, string Subject, int Line, string Path);
 
     /// <summary>The check of one body: its scope, its reads in source order, and what it says.</summary>
     private sealed partial class BodyCheck
@@ -242,7 +237,7 @@ public static partial class SourceTemplates
         private readonly SourcePackage package;
         private readonly TypeRegistry registry;
         private readonly Producers producers;
-        private readonly PlacedAt? placed;
+        private readonly List<string>? unavailable;
         private readonly FormatSet formats;
         private readonly PathTyping typing;
         private readonly List<(int Start, int Depth, TemplateFor? For)> constructs;
@@ -254,16 +249,16 @@ public static partial class SourceTemplates
 
         public BodyCheck(
             TemplateHost host, TemplateSyntax syntax, SourcePackage package, Resolution resolution, TypeRegistry registry, Producers producers,
-            PlacedAt? placed = null)
+            TemplateSite? reads = null, List<string>? unavailable = null)
         {
             this.host = host;
             this.syntax = syntax;
             this.package = package;
             this.registry = registry;
             this.producers = producers;
-            this.placed = placed;
+            this.unavailable = unavailable;
             formats = resolution.Tree.FormatsOf(host.Frame);
-            typing = new PathTyping(host, resolution.Tree, formats, package, placed?.Reads ?? host.Site);
+            typing = new PathTyping(host, resolution.Tree, formats, package, reads ?? host.Site);
             constructs = syntax.Fors.Select(f => (f.Tag.Start, f.Depth, (TemplateFor?)f))
                 .Concat(syntax.Ifs.Select(i => (i.Tag.Start, i.Depth, (TemplateFor?)null)))
                 .OrderBy(c => c.Item1)
@@ -403,23 +398,31 @@ public static partial class SourceTemplates
 
         /// <summary>
         /// <paramref name="path"/> typed at this body's place; in a placed snippet's body a read its placer's place does
-        /// not give is S05-022, naming the placer and the line of the placement (what is wrong whatever the place, a bare
-        /// read or an unknown snippet, is said of the snippet).
+        /// not give is noted as unavailable (said as S05-022 per placement) and gives <see cref="Unavailable"/>; what is
+        /// wrong whatever the place (a bare read, an unknown snippet) is said of the snippet.
         /// </summary>
         private (TypedRead?, SourceRefusal?) Typed(string path, int line, List<ForVariable> scope)
         {
             var typed = typing.Type(path, line, scope);
-            if (placed is { } at && typed.Refusal is { } refusal && !OfTheText.Contains(refusal.Id))
-                return (null, DialectSentences.SnippetReadsUnavailable(at.Snippet, path, at.Subject, at.Line, at.Path));
+            if (unavailable is not null && typed.Refusal is { } refusal && !OfTheText.Contains(refusal.Id))
+            {
+                if (!unavailable.Contains(path, StringComparer.Ordinal))
+                    unavailable.Add(path);
+                return (null, Unavailable);
+            }
+
             return typed;
         }
+
+        /// <summary>The refusal a read noted as unavailable stands for: never said itself (<see cref="Record"/> drops it).</summary>
+        private static readonly SourceRefusal Unavailable = new("S05-022", string.Empty, string.Empty);
 
         /// <summary>The id of the node whose prompt, part or <c>rendered</c> body this is.</summary>
         private string NodeId => host.Declaration is SourceNode node ? node.Id : host.Subject;
 
         private TypedRead? Record(int start, int order, (TypedRead? Read, SourceRefusal? Refusal) typed)
         {
-            if (typed.Refusal is { } refusal)
+            if (typed.Refusal is { } refusal && !ReferenceEquals(refusal, Unavailable))
                 Refusals.Add(refusal);
             if (typed.Read is { } read)
                 reads.Add((start, order, read));

@@ -130,10 +130,45 @@ public class SnippetTests
     {
         var files = Standards("[\"Onset\"]", "Chronological prose.\n");
 
-        var refusals = RefusalsOf(files);
+        var refusal = Assert.Single(RefusalsOf(files));
 
-        Assert.NotEmpty(refusals);
-        Assert.All(refusals, V31Contract.AssertSentence);
+        Assert.Equal("S01-016", refusal.Id);
+        V31Contract.AssertSentence(refusal);
+    }
+
+    [Fact]
+    public void ALargeSnippetPlacedOftenOnManyLines_IsCheckedOncePerPlace()
+    {
+        // A body of 4,000 reads, placed on 400 lines of each of 8 prompts: one check per place, not per line.
+        var files = Package().WithSnippet("big", string.Concat(Enumerable.Repeat("{{ input.consult_draft.content }}\n", 4_000)));
+        var placements = string.Concat(Enumerable.Repeat("{{ snippet.big.content }}\n", 400));
+        for (var i = 0; i < 8; i++)
+            files.WithAgent($"draft_{i}", "Draft.\n" + placements);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var check = Check(files);
+        watch.Stop();
+
+        Assert.Empty(check.Refusals);
+        var units = check.Templates!.Bodies.Where(b => b.Host.Path.StartsWith("nodes/draft_", StringComparison.Ordinal)).SelectMany(b => b.Units).ToList();
+        Assert.Equal(3_200, units.Count);
+        Assert.Single(units.Select(u => u.Body).Distinct(ReferenceEqualityComparer.Instance));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"The check took {watch.Elapsed}.");
+    }
+
+    [Fact]
+    public void AnUnavailableRead_IsSaidForEachPlacement()
+    {
+        var files = Package()
+            .WithSnippet("heading", "Section: {{ item.value.title }}\n")
+            .WithAgent("draft", "Draft the note.\n{{~ snippet.heading.content }}\nAgain:\n{{~ snippet.heading.content }}\n");
+
+        var check = Check(files);
+
+        Assert.Equal(
+            ["Snippet 'heading' reads item.value.title, which isn't available where Node 'draft' places it at line 2.",
+             "Snippet 'heading' reads item.value.title, which isn't available where Node 'draft' places it at line 4."],
+            check.Refusals.Select(r => r.Sentence));
     }
 
     [Fact]

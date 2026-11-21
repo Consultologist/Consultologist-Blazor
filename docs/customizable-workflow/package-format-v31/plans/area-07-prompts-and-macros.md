@@ -75,7 +75,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A07-008 | `<Subject> reads <path> at line <n>; read <.value \| .content \| .title> of it.` (a bare `node.x`, `input.x`, `check.x` or `param.x` in a template) |
 | A07-009 | `<Subject> places <unit> at line <n> inside <an if \| a for>; a part, a snippet or a macro is placed at the top level of its template, and its own if decides it.` (a placement whose decision would be recorded once for a varying text; a loop body reads a folder item as `item.content`) |
 | A07-010 | `Snippet '<id>' declares format <format>; a snippet's text is plaintext, markdown_block or markdown_inline.` (part 05 § 6.1: a single snippet's `format` is a text format; Task 5) |
-| A07-011 | `<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; the limit is <limit>.` (1,000: a template's units expanded in place stay bounded at publish; Task 5) |
+| A07-011 | `<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; place fewer.` (1,000: a template's units expanded in place stay bounded at publish; Task 5) |
 
 Add an A07 sentence only when no row says the rule; number on from A07-009 and add it to this table in the task's commit.
 

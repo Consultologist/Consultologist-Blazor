@@ -211,7 +211,7 @@ public static class DialectSentences
 
     /// <summary>A07-011: a template whose placed units, counted with what its parts and snippets place in turn, pass <paramref name="limit"/>.</summary>
     public static SourceRefusal PlacesTooManyUnits(string subject, int limit, string path) =>
-        new("A07-011", $"{subject} places more than {Count(limit)} parts, snippets and macros, counting what its parts and snippets place; the limit is {Count(limit)}.", path);
+        new("A07-011", $"{subject} places more than {Count(limit)} parts, snippets and macros, counting what its parts and snippets place; place fewer.", path);
 
     /// <summary>S06-028 (part 06 R-F1): <c>profile.&lt;field&gt;</c> outside part 06 § 10.1's closed list.</summary>
     public static SourceRefusal ReadsNoProfileField(string subject, string field, string path) =>

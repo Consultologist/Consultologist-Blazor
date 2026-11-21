@@ -101,7 +101,7 @@ internal static class V31Contract
         ["A07-008"] = "<Subject> reads <path> at line <n>; read <.value | .content | .title> of it.",
         ["A07-009"] = "<Subject> places <unit> at line <n> inside <an if | a for>; a part, a snippet or a macro is placed at the top level of its template, and its own if decides it.",
         ["A07-010"] = "Snippet '<id>' declares format <format>; a snippet's text is plaintext, markdown_block or markdown_inline.",
-        ["A07-011"] = "<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; the limit is <limit>.",
+        ["A07-011"] = "<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; place fewer.",
     };
 
     private static string RepoRoot()

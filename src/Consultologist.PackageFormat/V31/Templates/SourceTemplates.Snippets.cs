@@ -20,13 +20,22 @@ public static partial class SourceTemplates
 
     private static readonly CorvusFormatValueValidator HeaderValidator = new();
 
+    /// <summary>
+    /// A snippet's body checked at one place: the body (<c>null</c> when it can't be checked), what that place does not
+    /// give it (reads and units as written, in order) and the parts and macros it places under the guard.
+    /// </summary>
+    private sealed record PlacedSnippet(CheckedBody? Body, IReadOnlyList<string> Unavailable, IReadOnlyList<string> Guarded)
+    {
+        public static readonly PlacedSnippet None = new(null, [], []);
+    }
+
     /// <summary>A snippet a placement names: its file, its name in sentences, its site in <see cref="PlacedUnit"/> and its <c>if</c>.</summary>
     private sealed record SnippetRef(SourceText Text, string Name, string Site, JsonNode? If);
 
     private sealed partial class Context
     {
         private readonly Dictionary<SourceText, TemplateSyntax> syntaxes = new(ReferenceEqualityComparer.Instance);
-        private readonly Dictionary<SourceText, Dictionary<(ScopeFrame Frame, PlacedAt At, int Depth), (CheckedBody? Body, IReadOnlyList<string> Guarded)>> placedBodies =
+        private readonly Dictionary<SourceText, Dictionary<(ScopeFrame Frame, TemplateSite Reads, int Depth), PlacedSnippet>> placedBodies =
             new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<SourceText> open = new(ReferenceEqualityComparer.Instance);
 
@@ -34,13 +43,14 @@ public static partial class SourceTemplates
         /// The units <paramref name="body"/> places, in order, each followed by the units it places in turn (D2):
         /// <paramref name="self"/> is <paramref name="body"/>'s own site (<c>null</c> for a template's body),
         /// <paramref name="reads"/> the row its snippets read by, <paramref name="parts"/> a prompt's declared parts,
-        /// <paramref name="depth"/> how many snippets deep it is. For a snippet's body <paramref name="placed"/> is where
-        /// it is placed and <paramref name="guarded"/> gathers the parts and macros it places, itself or through a snippet,
-        /// in a part's text or a macro's instruction (said once, by the snippet placed there).
+        /// <paramref name="depth"/> how many snippets deep it is. For a snippet's body <paramref name="unavailable"/>
+        /// gathers the parts and macros it places that its place does not give, and <paramref name="guarded"/> those it
+        /// places, itself or through a snippet, in a part's text or a macro's instruction (said once, by the snippet
+        /// placed there). Each placement of a snippet says S05-022 for what the snippet's place does not give.
         /// </summary>
         private List<PlacedUnit> Expand(
             CheckedBody body, string? self, TemplateSite reads, IReadOnlyDictionary<string, PartUnit>? parts, int depth,
-            PlacedAt? placed, List<string>? guarded)
+            List<string>? unavailable, List<string>? guarded)
         {
             var units = new List<PlacedUnit>();
             foreach (var placement in body.Placements)
@@ -50,8 +60,15 @@ public static partial class SourceTemplates
                     case "snippet":
                         if (Lookup(placement.Unit, body.Host.Function) is not { } snippet)
                             break;
-                        var at = new PlacedAt(reads, snippet.Name, body.Host.Subject, placement.Line, body.Host.Path);
-                        var (unitBody, inner) = Snippet(snippet, body.Host.Frame, at, depth + 1);
+                        if (depth + 1 > DialectRules.NestingLimit)
+                        {
+                            Refusals.Add(DialectSentences.NestsTooDeep($"Snippet '{snippet.Name}'", depth + 1, placement.Line, body.Host.Path));
+                            break;
+                        }
+
+                        var (unitBody, missing, inner) = Snippet(snippet, body.Host.Frame, reads, depth + 1);
+                        foreach (var read in missing)
+                            Refusals.Add(DialectSentences.SnippetReadsUnavailable(snippet.Name, read, body.Host.Subject, placement.Line, body.Host.Path));
                         if (unitBody is not null)
                         {
                             units.Add(new PlacedUnit(snippet.Site, self, unitBody, snippet.If));
@@ -69,13 +86,13 @@ public static partial class SourceTemplates
                         }
 
                         break;
-                    case "part" or "macro" when placed is not null:
+                    case "part" or "macro" when unavailable is not null:
                         // A snippet's own part or macro: the guard's, or a read its placer's place does not give (a part
                         // belongs to one node's body; a macro is placed only where its placer may place one).
                         if (Guard(reads) is not null)
                             guarded!.Add(placement.Unit);
                         else if (placement.Kind == "part" || !SiteReads.Of(reads).Roots.Contains("macro"))
-                            Refusals.Add(DialectSentences.SnippetReadsUnavailable(placed.Snippet, placement.Unit, placed.Subject, placed.Line, placed.Path));
+                            unavailable.Add(placement.Unit);
                         break;
                     case "part" when parts is not null:
                         if (parts.TryGetValue(placement.Unit["part.".Length..], out var part) && part.Body is { } text)
@@ -107,39 +124,39 @@ public static partial class SourceTemplates
         };
 
         /// <summary>
-        /// <paramref name="snippet"/>'s body checked where <paramref name="at"/> places it, at <paramref name="frame"/>,
-        /// <paramref name="depth"/> snippets deep, with the units it places; and the parts and macros it places under the
-        /// guard. Checked once per place (memoised), never past a chain of 15 (S05-013) or round a cycle (S05-023 is
-        /// <see cref="Cycles"/>'s). A body with a syntax fault (said by <see cref="Definitions"/>) gives none.
+        /// <paramref name="snippet"/>'s body checked at its place (part 05 § 3.2): at <paramref name="frame"/>, by the row
+        /// <paramref name="reads"/>, <paramref name="depth"/> snippets deep; with the units it places, the reads and units
+        /// that place does not give (said per placement, as S05-022, by the caller) and the parts and macros it places
+        /// under the guard. Checked once per place, whatever line places it, and its body shared by every placement there;
+        /// never round a cycle (S05-023 is <see cref="Cycles"/>'s). A body with a syntax fault (said by
+        /// <see cref="Definitions"/>) gives none.
         /// </summary>
-        private (CheckedBody? Body, IReadOnlyList<string> Guarded) Snippet(SnippetRef snippet, ScopeFrame frame, PlacedAt at, int depth)
+        private PlacedSnippet Snippet(SnippetRef snippet, ScopeFrame frame, TemplateSite reads, int depth)
         {
-            if (depth > DialectRules.NestingLimit)
-            {
-                Refusals.Add(DialectSentences.NestsTooDeep($"Snippet '{snippet.Name}'", depth, at.Line, at.Path));
-                return (null, []);
-            }
-
             if (open.Contains(snippet.Text))
-                return (null, []);
+                return PlacedSnippet.None;
             if (!placedBodies.TryGetValue(snippet.Text, out var known))
                 placedBodies[snippet.Text] = known = [];
-            if (known.TryGetValue((frame, at, depth), out var done))
+            if (known.TryGetValue((frame, reads, depth), out var done))
                 return done;
 
-            (CheckedBody?, IReadOnlyList<string>) result = (null, []);
+            var result = PlacedSnippet.None;
             var syntax = SyntaxOf(snippet.Text);
             var host = new TemplateHost(TemplateSite.SnippetBody, $"Snippet '{snippet.Name}'", snippet.Text.Path, snippet.Text, frame.Function, frame, null);
-            if (syntax.Faults.Count == 0 && Body(host, syntax, at) is { } body)
+            var unavailable = new List<string>();
+            if (syntax.Faults.Count == 0 && Body(host, syntax, reads, unavailable) is { } body)
             {
                 open.Add(snippet.Text);
                 var guarded = new List<string>();
-                var units = Expand(body, snippet.Site, at.Reads, null, depth, at, guarded);
+                var units = Expand(body, snippet.Site, reads, null, depth, unavailable, guarded);
                 open.Remove(snippet.Text);
-                result = (body with { Units = units }, guarded.Distinct(StringComparer.Ordinal).ToList());
+                result = new PlacedSnippet(
+                    body with { Units = units },
+                    unavailable.Distinct(StringComparer.Ordinal).ToList(),
+                    guarded.Distinct(StringComparer.Ordinal).ToList());
             }
 
-            known[(frame, at, depth)] = result;
+            known[(frame, reads, depth)] = result;
             return result;
         }
 
