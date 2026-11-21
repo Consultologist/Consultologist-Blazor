@@ -18,6 +18,15 @@ public sealed class PlanFormats
     /// <summary>The deepest JSON <see cref="Read"/> parses a reply to (the evaluator's own limit).</summary>
     public const int MaxReplyDepth = 512;
 
+    /// <summary>
+    /// The most JSON nodes (objects, lists and values) <see cref="Expand"/> writes for one format; past it, <c>false</c>.
+    /// The schema budget counts schemas, not what their keywords hold, so a forged document can repeat one very large
+    /// <c>enum</c> from thousands of places within it. The bound is half of <see cref="SourceBounds.TotalBytes"/>: a
+    /// JSON node takes two bytes of a file at least, so this is as many nodes as a whole package source can hold, and
+    /// an expansion that writes every node of every format of the largest source once stays within it.
+    /// </summary>
+    public const int NodeBudget = SourceBounds.TotalBytes / 2;
+
     private const string DefsPrefix = "#/$defs/";
 
     /// <summary>
@@ -52,8 +61,8 @@ public sealed class PlanFormats
     /// part 02 § 3.1), then the bundle's entry of that key. A reference to a key neither has,
     /// any other reference, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
     /// <c>false</c>, the schema nothing fits. Too large is past <see cref="FormatTypes.SchemaBudget"/> schemas, counted as
-    /// publish counts them (A03-011), so a format file publish accepted is not too large here. A new tree: the bundle is
-    /// not changed.
+    /// publish counts them (A03-011), so a format file publish accepted is not too large here, or past
+    /// <see cref="NodeBudget"/> nodes written in all. A new tree: the bundle is not changed.
     /// </summary>
     public JsonNode Expand(JsonNode? format)
     {
@@ -135,7 +144,8 @@ public sealed class PlanFormats
     /// value (a keyword's, an annotation's, an <c>enum</c>'s list) is copied uncounted, as publish copies it; a reference
     /// met there is inlined all the same, and its entry counted, so every inlining spends the budget. The schemas the
     /// format writes itself, around the entries it refers to, are counted apart from the entries': publish holds each
-    /// format file to the budget, not the place that refers to it.
+    /// format file to the budget, not the place that refers to it. What the uncounted values hold is bounded by
+    /// <see cref="NodeBudget"/>, which counts every node written.
     /// </summary>
     private sealed class Walk(JsonObject defs)
     {
@@ -145,6 +155,7 @@ public sealed class PlanFormats
         private JsonObject? local;
         private int written;
         private int own;
+        private int nodes;
 
         public bool Failed { get; private set; }
 
@@ -161,12 +172,15 @@ public sealed class PlanFormats
         /// <summary>One more schema, within the budget: an entry's, or one of the format's own.</summary>
         private bool Counted() => (inlining.Count > 0 ? ++written : ++own) <= Budget;
 
-        /// <summary><paramref name="node"/> copied, the references in it inlined, to <see cref="MaxDepth"/>.</summary>
+        /// <summary>One more node written, within <see cref="NodeBudget"/>.</summary>
+        private bool Node() => ++nodes <= NodeBudget;
+
+        /// <summary><paramref name="node"/> copied, the references in it inlined, to <see cref="MaxDepth"/> and <see cref="NodeBudget"/>.</summary>
         private JsonNode? Copy(JsonNode? node, int depth)
         {
             if (Failed)
                 return null;
-            if (depth > MaxDepth)
+            if (depth > MaxDepth || !Node())
                 return Fail();
 
             switch (node)
@@ -193,6 +207,8 @@ public sealed class PlanFormats
             {
                 case "properties" when value is JsonObject properties && depth <= MaxDepth:
                 {
+                    if (!Node())
+                        return Fail();
                     var map = new JsonObject();
                     foreach (var (property, schema) in properties)
                         map[property] = Schema(schema, depth + 1);
@@ -203,6 +219,8 @@ public sealed class PlanFormats
                     return Schema(value, depth);
                 case "anyOf" when value is JsonArray members && depth <= MaxDepth:
                 {
+                    if (!Node())
+                        return Fail();
                     var list = new JsonArray();
                     foreach (var member in members)
                         list.Add(Schema(member, depth + 1));

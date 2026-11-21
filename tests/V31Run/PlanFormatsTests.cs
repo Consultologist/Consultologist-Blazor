@@ -163,6 +163,39 @@ public class PlanFormatsTests
         Assert.False(formats.Validate(new JsonObject(), Ref("d0")).Valid);
     }
 
+    /// <summary>A forged bundle: <c>chart</c> has <paramref name="fields"/> fields, each the entry <c>codes</c>, an enum of 2,000 values.</summary>
+    private static PlanFormats ManyLargeEnums(int fields)
+    {
+        var codes = new JsonArray();
+        for (var i = 0; i < 2000; i++)
+            codes.Add($"code_{i}");
+        var properties = new JsonObject();
+        for (var i = 0; i < fields; i++)
+            properties[$"f{i}"] = Ref("codes");
+        return new PlanFormats(new JsonObject
+        {
+            ["$defs"] = new JsonObject
+            {
+                ["codes"] = new JsonObject { ["type"] = "string", ["enum"] = codes },
+                ["chart"] = new JsonObject { ["type"] = "object", ["properties"] = properties },
+            },
+        });
+    }
+
+    [Fact]
+    public void AnExpansionPastTheNodeBudget_IsFalse()
+    {
+        // Few schemas, so the schema budget does not stop it: 600 fields of a 2,000-value enum are 1.2 million nodes.
+        var forged = ManyLargeEnums(600);
+        Assert.True(600 * 2000 > PlanFormats.NodeBudget);
+        Assert.Equal("false", forged.Expand(Ref("chart")).ToJsonString());
+        Assert.False(forged.Validate(new JsonObject(), Ref("chart")).Valid);
+
+        // Within it, the same shape expands.
+        var within = ManyLargeEnums(100);
+        Assert.Equal(100, (Assert.IsType<JsonObject>(within.Expand(Ref("chart")))["properties"] as JsonObject)?.Count);
+    }
+
     [Fact]
     public void ASelfReference_ExpandsToFalse_AndValidatesNothing()
     {
