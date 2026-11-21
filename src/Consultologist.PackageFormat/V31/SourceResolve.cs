@@ -29,7 +29,8 @@ public sealed record CallBinding(SourceFunction Function, IReadOnlyDictionary<st
 /// loop's source and <c>itemLabel</c>, a while's unused body nodes: <c>SourceResolve.Loops.cs</c>; a case's subject
 /// and values: <c>SourceResolve.Branches.cs</c>; each call's function and arguments: <c>SourceResolve.Calls.cs</c>; each
 /// function's <c>ret</c> and <c>uses</c>, the call graph, depth and the profile a parameter carries:
-/// <c>SourceResolve.Functions.cs</c>). Never throws on package content.
+/// <c>SourceResolve.Functions.cs</c>; a function's own format whose bundle key the package already uses, A05-004:
+/// <see cref="CompiledFormats.Collisions"/>). Never throws on package content.
 /// </summary>
 public static partial class SourceResolve
 {
@@ -65,6 +66,7 @@ public static partial class SourceResolve
         Functions(package, types, refusals, warnings);
         var depths = Graph(tree, package, calls, refusals);
         Profile(tree, package, calls, refusals);
+        refusals.AddRange(CompiledFormats.Collisions(package, types));
         if (refusals.Count > 0)
             return (refusals.OrderBy(r => r.Path, StringComparer.Ordinal).ToList(), null);
 

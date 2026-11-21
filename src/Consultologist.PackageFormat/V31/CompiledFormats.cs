@@ -41,25 +41,10 @@ public sealed record CompiledFormats(
         ArgumentNullException.ThrowIfNull(types);
         ArgumentNullException.ThrowIfNull(registry);
 
-        var used = new Used(types);
-        used.Members(package);
-        var refusals = new List<SourceRefusal>();
+        var (claimed, refusals) = Claim(package, types);
         var defs = new JsonObject();
         var formatHashes = new JsonObject();
         var typeHashes = new JsonObject();
-
-        // The package's scope takes its keys first; a function's own format then needs a key no other format has.
-        var claimed = new Dictionary<string, Entry>(StringComparer.Ordinal);
-        foreach (var entry in used.Entries.Where(e => e.Function == null))
-            claimed.Add(entry.Key, entry);
-        foreach (var entry in used.Entries.Where(e => e.Function != null))
-        {
-            if (!claimed.TryAdd(entry.Key, entry))
-            {
-                var file = entry.Function!.Definitions.Formats.Items.FirstOrDefault(f => f.Id == entry.Format.Id);
-                refusals.Add(ResolveSentences.BundleKeyTaken(entry.Function.Id, entry.Format.Id, file?.Path ?? entry.Function.Path));
-            }
-        }
 
         foreach (var (key, entry) in claimed.OrderBy(p => p.Key, StringComparer.Ordinal))
         {
@@ -75,6 +60,43 @@ public sealed record CompiledFormats(
             typeHashes,
             BindingsOf(package, types),
             refusals);
+    }
+
+    /// <summary>
+    /// A05-004 (D5) of <paramref name="package"/>: each function's own format whose bundle key
+    /// (<c>&lt;function&gt;__&lt;id&gt;</c>) a format the package uses already has, as <see cref="Build"/> finds it, without
+    /// building the bundle; the resolve step says them (<see cref="SourceResolve.Check"/>). Ordered as found. A null
+    /// argument is the caller's error.
+    /// </summary>
+    internal static IReadOnlyList<SourceRefusal> Collisions(SourcePackage package, PackageTypes types)
+    {
+        ArgumentNullException.ThrowIfNull(package);
+        ArgumentNullException.ThrowIfNull(types);
+        return Claim(package, types).Refusals;
+    }
+
+    /// <summary>
+    /// The used formats by bundle key: the package's scope takes its keys first; a function's own format then needs a key
+    /// no other format has, else it is A05-004 and left out.
+    /// </summary>
+    private static (Dictionary<string, Entry> Claimed, List<SourceRefusal> Refusals) Claim(SourcePackage package, PackageTypes types)
+    {
+        var used = new Used(types);
+        used.Members(package);
+        var refusals = new List<SourceRefusal>();
+        var claimed = new Dictionary<string, Entry>(StringComparer.Ordinal);
+        foreach (var entry in used.Entries.Where(e => e.Function == null))
+            claimed.Add(entry.Key, entry);
+        foreach (var entry in used.Entries.Where(e => e.Function != null))
+        {
+            if (!claimed.TryAdd(entry.Key, entry))
+            {
+                var file = entry.Function!.Definitions.Formats.Items.FirstOrDefault(f => f.Id == entry.Format.Id);
+                refusals.Add(ResolveSentences.BundleKeyTaken(entry.Function.Id, entry.Format.Id, file?.Path ?? entry.Function.Path));
+            }
+        }
+
+        return (claimed, refusals);
     }
 
     /// <summary>

@@ -151,8 +151,8 @@ public class ResolveCompilerTests
         Assert.Equal("[]", Canonical(agent["places"]));
         Assert.Equal(CanonicalJson.HashText((string)agent["body"]!), (string?)agent["bodyHash"]);
         var call = document["nodes"]!["node.standards.section"]!.AsObject();
-        Assert.Null(call["body"]);
-        Assert.Null(call["bodyHash"]);
+        PresentAndNull(call, "body");
+        PresentAndNull(call, "bodyHash");
         Assert.False(call.ContainsKey("parts"));
     }
 
@@ -228,20 +228,19 @@ public class ResolveCompilerTests
         Assert.Equal("Sections", (string?)sections["label"]);
         Assert.Equal("for", (string?)sections["kind"]);
         Assert.Equal("computed", (string?)sections["producer"]);
-        Assert.Null(sections["parent"]);
+        PresentAndNull(sections, "parent");
         Assert.False((bool)sections["reproducible"]!);
         Assert.Equal("node.plan.value.sections", (string?)sections["in"]);
         Assert.Equal("title", (string?)sections["itemLabel"]);
         Assert.True((bool)sections["parallel"]!);
-        Assert.Null(sections["maxParallel"]);
-        Assert.Null(sections["until"]);
-        Assert.Null(sections["if"]);
+        PresentAndNull(sections, "maxParallel");
+        PresentAndNull(sections, "until");
         Assert.Equal(["node.sections.outline", "node.sections.paragraphs"], Strings(sections["nodes"]));
         Assert.Equal("node.sections.paragraphs", (string?)sections["ret"]);
         Assert.Equal(["node.plan.value"], Strings(sections["reads"]));
         Assert.Equal((true, false, false), ((bool)sections["modelDerived"]!, (bool)sections["runDependent"]!, (bool)sections["profileCarrying"]!));
-        Assert.Null(sections["body"]);
-        Assert.Null(sections["bodyHash"]);
+        PresentAndNull(sections, "body");
+        PresentAndNull(sections, "bodyHash");
         Assert.Equal("[]", Canonical(sections["renders"]));
         Assert.Equal("[]", Canonical(sections["runSpots"]));
 
@@ -263,7 +262,7 @@ public class ResolveCompilerTests
         var refine = nodes["node.refine"]!;
         Assert.Equal(("refine", "Refining the summary", "while", "computed"),
             ((string)refine["id"]!, (string)refine["label"]!, (string)refine["kind"]!, (string)refine["producer"]!));
-        Assert.Null(refine["parent"]);
+        PresentAndNull(refine, "parent");
         Assert.Equal((true, false, false), ((bool)refine["modelDerived"]!, (bool)refine["runDependent"]!, (bool)refine["profileCarrying"]!));
         Assert.Equal("{\"!==\":[{\"var\":\"node.refine.judge.value.verdict\"},\"good\"]}", Canonical(refine["while"]));
         Assert.Equal(3, (int)refine["max"]!);
@@ -280,8 +279,8 @@ public class ResolveCompilerTests
         var note = document["deliverables"]!["deliverable.note"]!;
         Assert.Equal(("note", "Nested consultation note", "rendered"), ((string)note["id"]!, (string)note["label"]!, (string)note["kind"]!));
         Assert.Equal("{\"$ref\":\"#/$defs/markdown_block\"}", Canonical(note["format"]));
-        Assert.Null(note["if"]);
-        Assert.Null(note["check"]);
+        PresentAndNull(note, "if");
+        PresentAndNull(note, "check");
         Assert.Equal(["node.refine.content", "node.sections.items"], Strings(note["reads"]));
         Assert.Equal((true, false, false), ((bool)note["modelDerived"]!, (bool)note["runDependent"]!, (bool)note["profileCarrying"]!));
         Assert.Equal("## Summary\n\n{{ node.refine.content }}\n", (string?)note["body"]);
@@ -305,6 +304,13 @@ public class ResolveCompilerTests
             Strings(document["graph"]!["order"]));
         Assert.Equal("[]", Canonical(document["run"]));
         Assert.Equal("[]", Canonical(document["warnings"]));
+    }
+
+    /// <summary><paramref name="member"/> is written, and is null (part 07 § 1: every member is present).</summary>
+    private static void PresentAndNull(JsonNode? entry, string member)
+    {
+        Assert.True(entry!.AsObject().ContainsKey(member), $"no {member}");
+        Assert.Null(entry[member]);
     }
 
     private static JsonObject Without(JsonObject entry, params string[] members)
@@ -339,7 +345,7 @@ public class ResolveCompilerTests
         Assert.Equal("{}", Canonical(function["macros"]));
 
         var standard = function["nodes"]!["node.standard_draft"]!;
-        Assert.Null(standard["parent"]);
+        PresentAndNull(standard, "parent");
         Assert.Equal("{\"!\":[{\"blank\":[{\"var\":\"param.standard.value.title\"}]}]}", Canonical(standard["if"]));
 
         // The call is written with its function, and its arguments as written roots.
@@ -364,6 +370,60 @@ public class ResolveCompilerTests
         Assert.True(order.IndexOf("check.section_coverage") > order.IndexOf("node.extract_note_terms"));
         Assert.True(order.IndexOf("check.all_sections") > order.IndexOf("check.section_coverage"));
         Assert.Equal(order.Count, order.Distinct().Count());
+    }
+
+    [Fact]
+    public void DerivedFrom_IsTheManifests()
+    {
+        var copied = Minimal().WithJson("manifest.json", m => m["derivedFrom"] = "example-base@v2026.11.1");
+        var document = Compile(copied).Document!;
+        Assert.Equal("example-base@v2026.11.1", (string?)document["derivedFrom"]);
+
+        var original = Compile(Minimal()).Document!;
+        PresentAndNull(original, "derivedFrom");
+    }
+
+    [Fact]
+    public void Branches_KeepTheirWrittenShape_WithKeys()
+    {
+        var nodes = Compile(ResolveFixture.Conditional()).Document!["nodes"]!;
+
+        var route = nodes["node.sections_draft.route"]!;
+        Assert.Equal("case", (string?)route["kind"]);
+        Assert.Equal("item.value.kind", (string?)route["case"]);
+        Assert.Equal(
+            "[{\"nodes\":[\"node.sections_draft.route.narrative_draft\"],\"ret\":\"node.sections_draft.route.narrative_draft\",\"when\":[\"narrative\"]},"
+            + "{\"nodes\":[\"node.sections_draft.route.table_draft\"],\"ret\":\"node.sections_draft.route.table_draft\",\"when\":[\"table\"]},"
+            + "{\"nodes\":[],\"ret\":null,\"when\":[\"omit\"]}]",
+            Canonical(route["branches"]));
+        PresentAndNull(route, "else");
+        PresentAndNull(route, "ret");
+        Assert.Equal(["node.sections_draft.route.narrative_draft", "node.sections_draft.route.table_draft"], Strings(route["nodes"]));
+        Assert.Equal("node.sections_draft", (string?)route["parent"]);
+
+        var applies = nodes["node.standing_sections.applies"]!;
+        Assert.Equal("if", (string?)applies["kind"]);
+        Assert.Equal(
+            "{\"nodes\":[\"node.standing_sections.applies.standing_draft\"],\"ret\":\"node.standing_sections.applies.standing_draft\"}",
+            Canonical(applies["then"]));
+        PresentAndNull(applies, "else");
+        PresentAndNull(applies, "ret");
+        Assert.Equal(["node.standing_sections.applies.standing_draft"], Strings(applies["nodes"]));
+
+        // A case whose subject reads a node is written with the node's key (D3): route, in the while, on the judge's verdict.
+        var keyed = ResolveFixture.NestedNote()
+            .WithJson("nodes/refine/index.json", w => w["nodes"]!.AsArray().Add("route"))
+            .With("nodes/refine/route/index.json", Json(SourceFixture.Node("case", "Routing on the verdict", "\"plaintext\"", false, true,
+                "\"case\": \"node.judge.value.verdict\", "
+                + "\"branches\": [{ \"when\": [\"good\"], \"nodes\": [\"keep\"], \"ret\": \"node.refine.route.keep\" }], "
+                + "\"else\": { \"nodes\": [\"redo\"], \"ret\": \"node.refine.route.redo\" }")))
+            .With("nodes/refine/route/keep.md", Agent("Keeping the summary", "\"plaintext\"", "Keep the summary for Dr A. Sample.\n"))
+            .With("nodes/refine/route/redo.md", Agent("Redoing the summary", "\"plaintext\"", "Redo the summary for Dr A. Sample.\n"));
+        var routed = Compile(keyed).Document!["nodes"]!["node.refine.route"]!;
+        Assert.Equal("node.refine.judge.value.verdict", (string?)routed["case"]);
+        Assert.Equal("{\"nodes\":[\"node.refine.route.redo\"],\"ret\":\"node.refine.route.redo\"}", Canonical(routed["else"]));
+        Assert.Equal(["node.refine.route.keep", "node.refine.route.redo"], Strings(routed["nodes"]));
+        PresentAndNull(routed, "ret");
     }
 
     // ---- requires ------------------------------------------------------------------------------
@@ -443,7 +503,7 @@ public class ResolveCompilerTests
         Assert.DoesNotMatch("\\d{4}-\\d{2}-\\d{2}T\\d{2}:", once.Canonical!);
         foreach (var (member, value) in once.Document!)
         {
-            if (member != "description")
+            if (member is not ("description" or "derivedFrom"))
                 Assert.True(value != null, $"{member} is null");
         }
     }
@@ -463,7 +523,7 @@ public class ResolveCompilerTests
         Assert.Empty(result.Warnings);
         Assert.False(result.Complete);
 
-        // A05-004: a function's own format compiled under a key the package already uses; said at compile.
+        // A05-004: a function's own format bundled under a key the package already uses; the check says it, and nothing is compiled.
         var colliding = ResolveFixture.Functions()
             .With("functions/draft_section/formats/index.json", Index(["excerpt"]))
             .With("functions/draft_section/formats/excerpt.json", Json(
@@ -476,11 +536,11 @@ public class ResolveCompilerTests
                 + "\"additionalProperties\": false, \"properties\": { \"note\": { \"$ref\": \"plaintext\" } } }"))
             .WithJson("nodes/plan.md", h => h["format"] = "draft_section__excerpt");
         var check = SourceCheck.Run(colliding, ResolveFixture.Published());
-        Assert.True(check.Refusals.Count == 0, ResolveFixture.Said(check));
-        var collided = ResolveCompiler.Compile(check, ResolveFixture.Published(), Scriban);
-        var refusal = Assert.Single(collided.Refusals);
-        Assert.Equal("A05-004", refusal.Id);
+        var refusal = Assert.Single(check.Refusals);
+        Assert.Equal(("A05-004", "functions/draft_section/formats/excerpt.json"), (refusal.Id, refusal.Path));
         V31Contract.AssertSentence(refusal);
+        var collided = ResolveCompiler.Compile(check, ResolveFixture.Published(), Scriban);
+        Assert.Equal(check.Refusals, collided.Refusals);
         Assert.Null(collided.Document);
     }
 

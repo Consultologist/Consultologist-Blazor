@@ -70,7 +70,10 @@ public static partial class ResolveCompiler
         return new ResolveResult(document, canonical, CanonicalJson.HashText(canonical), [], warnings, derived.Complete);
     }
 
-    /// <summary>The members of part 07 § 2.2, in its order.</summary>
+    /// <summary>
+    /// The members of part 07 § 2.2, in its order, with the manifest's <c>derivedFrom</c> after <c>package</c>: a member
+    /// that only steers publish, carried under its own name (§ 2.2; part 01 § 3), the name@version or null.
+    /// </summary>
     private static JsonObject Document(Context context, string scribanVersion, IReadOnlyList<SourceRefusal> warnings)
     {
         var manifest = context.Package.Manifest;
@@ -82,6 +85,7 @@ public static partial class ResolveCompiler
             ["documentVersion"] = DocumentVersion,
             ["specVersion"] = SpecVersion,
             ["package"] = new JsonObject { ["name"] = manifest.Name, ["version"] = manifest.Version },
+            ["derivedFrom"] = manifest.DerivedFrom,
             ["title"] = manifest.Title ?? $"{manifest.Name}@{manifest.Version}",
             ["description"] = manifest.Description == null ? null : string.Join('\n', manifest.Description),
             ["tags"] = new JsonArray(manifest.Tags.Select(t => (JsonNode?)t).ToArray()),

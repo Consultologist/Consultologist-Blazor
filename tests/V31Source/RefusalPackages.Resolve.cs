@@ -13,7 +13,7 @@ namespace Consultologist.Api.Tests.V31Source;
 internal static partial class RefusalPackages
 {
     private static IEnumerable<RefusalCase> Resolve() => Passes().Concat(Levels()).Concat(Sealed()).Concat(Sources()).Concat(Labels()).Concat(Unused()).Concat(Cases())
-        .Concat(Calls()).Concat(Rets()).Concat(Uses()).Concat(Graph()).Concat(Derived());
+        .Concat(Calls()).Concat(Rets()).Concat(Uses()).Concat(Graph()).Concat(Derived()).Concat(Bundle());
 
     // ---- Chapter 4 § 4.2.2: what a loop iterates -----------------------------------------------------------
 
@@ -568,4 +568,47 @@ internal static partial class RefusalPackages
                 "\"if\": null, \"expression\": { \"+\": [{ \"var\": \"node.second.value\" }, 1] }"), ""))
             .With("nodes/second.md", Md(Node("computed", "Measuring the draft", "\"number\"", true, false,
                 "\"if\": null, \"expression\": { \"size\": [{ \"var\": \"input.consult_draft.content\" }] }"), ""));
+
+    // ---- Chapter 7 § 7.2.4: the formats bundle --------------------------------------------------------------
+
+    private static IEnumerable<RefusalCase> Bundle()
+    {
+        yield return new RefusalCase("A05-004",
+            "A function's own format is bundled as <function>__<format>, a key no format the package uses may have "
+            + "(chapter 7 § 7.2.4). The function sign has its own format excerpt; the plan returns the package format "
+            + "sign__excerpt. Invalid: sign's node draft returns excerpt. Valid: draft returns plaintext, and excerpt is "
+            + "not bundled.",
+            WithExcerpt(),
+            WithExcerpt().Edit("functions/sign/draft.md", "\"format\": \"plaintext\"", "\"format\": \"excerpt\""));
+    }
+
+    /// <summary>
+    /// The package format <c>sign__excerpt</c>, returned by the plan; the function <c>sign</c> with its own format
+    /// <c>excerpt</c> and the agents <c>draft</c> and <c>closing</c> (its <c>ret</c>), and the call <c>signed</c>.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithExcerpt()
+    {
+        const string excerpt =
+            "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", \"required\": [\"text\"], "
+            + "\"additionalProperties\": false, \"properties\": { \"text\": { \"$ref\": \"plaintext\" } } }";
+        var files = Minimal()
+            .Edit("nodes/index.json", "\"items\": [\"plan\"]", "\"items\": [\"plan\", \"signed\"]")
+            .Edit("nodes/plan.md", "\"format\": \"plaintext\"", "\"format\": \"sign__excerpt\"")
+            .With("nodes/signed.md", Md(Node("call", "Signing the note", Plain, false, true,
+                "\"if\": null, \"function\": \"sign\", \"with\": {}"), ""))
+            .Edit("formats/index.json", "\"items\": []", "\"items\": [\"sign__excerpt\"]")
+            .With("formats/sign__excerpt.json", SourceFixture.Json(excerpt))
+            .Edit("functions/index.json", "\"items\": []", "\"items\": [\"sign\"]")
+            .With("functions/sign/index.json", SourceFixture.Json(
+                "{ \"label\": \"Sign the note\", \"description\": null, \"inputs\": {}, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                + "\"nodes\": [\"draft\", \"closing\"], \"ret\": \"node.closing\", \"format\": \"plaintext\" }"))
+            .With("functions/sign/draft.md", Agent("Drafting an excerpt", Plain, "Draft a closing for Dr A. Sample to sign.\n"))
+            .With("functions/sign/closing.md", Agent("The closing", Plain, "Close the note.\n\n{{ node.draft.content }}\n"))
+            .With("functions/sign/formats/index.json", SourceFixture.Index(["excerpt"]))
+            .With("functions/sign/formats/excerpt.json", SourceFixture.Json(excerpt));
+        foreach (var folder in new[] { "snippets", "macros", "renderers" })
+            files.With($"functions/sign/{folder}/index.json", SourceFixture.Index([]));
+        return files;
+    }
 }

@@ -12,8 +12,10 @@ namespace Consultologist.PackageFormat.V31;
 /// keys. Then the derived members: <c>id</c>, <c>parent</c>, <c>reads</c> and the three flags
 /// (<see cref="PackageDerived"/>'s); on every node <c>body</c> and <c>bodyHash</c> (null for the kinds with no body),
 /// <c>renders</c>, <c>runSpots</c>, <c>formatHash</c> and <c>typeHash</c>; on an agent <c>parts</c> and
-/// <c>places</c>; on a flow node <c>nodes</c> (every child, in order) and, for a <c>for</c> and a <c>while</c>,
-/// <c>ret</c>. A body the seam did not say has no places, renders or run spots (D1).
+/// <c>places</c>; on a flow node <c>nodes</c> (every child, in order) and <c>ret</c>: the returned key of a <c>for</c>
+/// and a <c>while</c>, <c>null</c> on an <c>if</c> and a <c>case</c>, whose <c>ret</c>s are their branches' (inside
+/// <c>then</c>, <c>else</c> and <c>branches</c>), every member being present (§ 1). A body the seam did not say has no places,
+/// renders or run spots (D1).
 /// </summary>
 public static partial class ResolveCompiler
 {
@@ -147,6 +149,7 @@ public static partial class ResolveCompiler
                     entry["then"] = Branch(branch.Then);
                     entry["else"] = branch.Else == null ? null : Branch(branch.Else);
                     entry["nodes"] = Strings(Blocks(node).SelectMany(b => b.Nodes).Select(n => n.Key));
+                    entry["ret"] = null;
                     break;
                 case SourceCase choice:
                     entry["case"] = Reference(choice.Case, frame, choice);
@@ -158,6 +161,7 @@ public static partial class ResolveCompiler
                     }).ToArray());
                     entry["else"] = choice.Else == null ? null : Branch(choice.Else);
                     entry["nodes"] = Strings(Blocks(node).SelectMany(b => b.Nodes).Select(n => n.Key));
+                    entry["ret"] = null;
                     break;
             }
 
