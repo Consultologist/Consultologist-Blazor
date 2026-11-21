@@ -332,6 +332,15 @@ internal static partial class RefusalPackages
             + "standards' agent section reads item.content. Invalid: hpi's body writes run.date. Valid: it writes only text.",
             StandardsRead(),
             StandardsRead().Edit("snippets/standards/hpi.md", "orientation to the patient.\n", "orientation to the patient, on {{ run.date }}.\n"));
+
+        yield return new RefusalCase("A07-013",
+            "A folder item's body is rendered only where a template reads it as item.content in its loop; passed to a function "
+            + "(or read by a computed node's expression) it is carried as written, so there it is plain text, no tag and no raw "
+            + "block (chapter 5 § 5.6.2; chapter 4 § 4.7.7; this implementation's sentence). The loop standards' call section "
+            + "passes item to the function draft_section as param.standard. Invalid: hpi's body writes item.value.title. "
+            + "Valid: it writes only text.",
+            StandardsCalled(),
+            StandardsCalled().Edit("snippets/standards/hpi.md", "Open with a one-sentence", "Open the {{ item.value.title }} with a one-sentence"));
     }
 
     // ---- Chapter 5 § 5.7: parts -----------------------------------------------------------------------------
@@ -547,6 +556,38 @@ internal static partial class RefusalPackages
                 + "\"itemLabel\": \"title\", \"nodes\": [\"section\"], \"ret\": \"node.standards.section\"")))
             .With("nodes/standards/section.md", Agent("Applying the section standard", Plain,
                 "Write the section '{{ item.value.title }}' of the note for Margaret Okafor, following this standard:\n\n{{ item.content }}\n"));
+
+    /// <summary>
+    /// <see cref="WithSnippetFolder"/> with the loop <c>standards</c> over it, whose call <c>section</c> passes <c>item</c>
+    /// to the function <c>draft_section</c> as <c>param.standard</c> (part 04 § 7.7), which reads its body as
+    /// <c>param.standard.content</c>.
+    /// </summary>
+    private static Dictionary<string, byte[]> StandardsCalled()
+    {
+        const string standard = "{ \"type\": \"object\", \"required\": [\"title\"], \"additionalProperties\": false, "
+            + "\"properties\": { \"title\": { \"$ref\": \"plaintext\" } } }";
+        var files = WithSnippetFolder()
+            .Edit("nodes/index.json", "\"items\": [\"plan\"]", "\"items\": [\"plan\", \"standards\"]")
+            .With("nodes/standards/index.json", Json(Node("for", "Standards", ArrayOf(Plain), false, true,
+                "\"in\": \"snippet.standards\", \"parallel\": true, \"maxParallel\": 4, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"section\"], \"ret\": \"node.standards.section\"")))
+            .With("nodes/standards/section.md", Md(
+                Node("call", "Drafting the section", Plain, false, true,
+                    "\"if\": null, \"function\": \"draft_section\", \"with\": { \"standard\": \"item\" }"),
+                ""))
+            .Edit("functions/index.json", "\"items\": []", "\"items\": [\"draft_section\"]")
+            .With("functions/draft_section/index.json", Json(
+                "{ \"label\": \"Draft a section\", \"description\": null, "
+                + "\"inputs\": { \"standard\": { \"label\": \"Standard\", \"description\": null, \"format\": " + standard + " } }, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                + "\"nodes\": [\"standard_draft\"], \"ret\": \"node.standard_draft\", \"format\": \"plaintext\" }"))
+            .With("functions/draft_section/standard_draft.md", Agent("Drafting from the standard", Plain,
+                "Draft the section '{{ param.standard.value.title }}' of the note for Margaret Okafor, following this standard:\n\n"
+                + "{{ param.standard.content }}\n"));
+        foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
+            files.With($"functions/draft_section/{folder}/index.json", SourceFixture.Index([]));
+        return files;
+    }
 
     /// <summary>The snippets <c>intro</c> (placing <c>outro</c>) and <c>outro</c>; the plan's prompt places intro.</summary>
     private static Dictionary<string, byte[]> IntroOutro() =>

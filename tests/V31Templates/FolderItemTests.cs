@@ -186,6 +186,183 @@ public class FolderItemTests
         Assert.All(body.FolderItems, b => Assert.Empty(b.Reads));
     }
 
+    // ---- routes out of the loop (fix round 1) --------------------------------------------------------
+
+    /// <summary><paramref name="files"/> with the text <paramref name="old"/> of <paramref name="path"/> replaced (it must be there).</summary>
+    private static Dictionary<string, byte[]> Edited(Dictionary<string, byte[]> files, string path, string old, string replacement)
+    {
+        var text = System.Text.Encoding.UTF8.GetString(files[path]);
+        Assert.Contains(old, text, StringComparison.Ordinal);
+        files[path] = System.Text.Encoding.UTF8.GetBytes(text.Replace(old, replacement, StringComparison.Ordinal));
+        return files;
+    }
+
+    /// <summary>Part 04 § 7.7's package (<see cref="ResolveFixture.Functions"/>), the call <c>section</c> binding <paramref name="with"/>, hpi's body <paramref name="hpi"/>.</summary>
+    private static Dictionary<string, byte[]> Called(string with, string hpi)
+    {
+        var files = Edited(ResolveFixture.Functions(), "nodes/standards/section.md", "\"standard\": \"item\", \"draft\": \"input.consult_draft.content\"", with);
+        return Edited(files, "snippets/standards/hpi.md", "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n", hpi);
+    }
+
+    private static string Carried(string subject, string route, int line = 1) =>
+        $"Snippet 'standards/hpi' holds a tag at line {line}, and {subject} {route}, where it isn't rendered; "
+        + "keep a folder item's body plain text, or read it as item.content in its loop.";
+
+    private const string Passes = "passes it to function 'draft_section' as param.";
+
+    [Theory]
+    [InlineData("\"standard\": \"item\", \"draft\": \"input.consult_draft.content\"", "standard")]
+    [InlineData("\"standard\": \"snippet.standards.hpi\", \"draft\": \"input.consult_draft.content\"", "standard")]
+    public void AFolderBodyPassedToAFunction_IsPlainText(string with, string param)
+    {
+        var refusal = Single(Check(Called(with, "Open with '{{ item.value.title }}'.\n")));
+
+        Assert.Equal("A07-013", refusal.Id);
+        Assert.Equal(Carried("Call 'section'", Passes + param), refusal.Sentence);
+        Assert.Equal("nodes/standards/section.md", refusal.Path);
+
+        Assert.Empty(Check(Called(with, "Open with a one-sentence orientation.\n")).Refusals);
+    }
+
+    [Fact]
+    public void AFolderBodyPassedAsText_IsPlainText_OnEachLineItIsTagged()
+    {
+        // item.content passed as the markdown_block draft: its text, raw; a raw block is no plain text either.
+        var check = Check(Called("\"standard\": \"item\", \"draft\": \"item.content\"", "Plain first.\nKeep {%{ this }%} as written.\n"));
+
+        Assert.Equal([Carried("Call 'section'", Passes + "standard", line: 2), Carried("Call 'section'", Passes + "draft", line: 2)],
+            check.Refusals.Select(r => r.Sentence));
+        Assert.All(check.Refusals, V31Contract.AssertSentence);
+    }
+
+    /// <summary>The loop <c>standards</c> over the folder of the computed node <c>text</c> (<paramref name="header"/> its <c>if</c> and <c>expression</c>).</summary>
+    private static Dictionary<string, byte[]> Computing(string hpi, string header) =>
+        Folder(hpi)
+            .Listed("nodes/index.json", "standards")
+            .With("nodes/standards/index.json", Json(Node("for", "Standards", ArrayOf("\"markdown_block\""), false, true,
+                "\"in\": \"snippet.standards\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"text\"], \"ret\": \"node.standards.text\"")))
+            .With("nodes/standards/text.md", Md(Node("computed", "Text", "\"markdown_block\"", true, true, header), ""));
+
+    [Fact]
+    public void AFolderBodyReadByAnExpression_IsPlainText()
+    {
+        const string reads = "\"if\": null, \"expression\": { \"var\": \"item.content\" }";
+        var refusal = Single(Check(Computing("Open with '{{ item.value.title }}'.\n", reads)));
+
+        Assert.Equal("A07-013", refusal.Id);
+        Assert.Equal(Carried("Node 'text'", "reads it in its expression"), refusal.Sentence);
+        Assert.Equal("nodes/standards/text.md", refusal.Path);
+        Assert.Empty(Check(Computing("Open plainly.\n", reads)).Refusals);
+
+        // A condition only decides: it carries no text, so the body may be a template there.
+        Assert.Empty(Check(Computing("Open with '{{ item.value.title }}'.\n",
+            "\"if\": { \"!\": [{ \"blank\": [{ \"var\": \"item.content\" }] }] }, \"expression\": \"Has a standard.\"")).Refusals);
+    }
+
+    /// <summary>The element of <c>node.standards.items</c> in part 04 § 7.7's package: its <c>item</c> carries the folder item (and, at run time, its body).</summary>
+    private const string Entry = "{ \"type\": \"object\", \"required\": [\"id\", \"value\"], \"additionalProperties\": false, "
+        + "\"properties\": { \"id\": { \"type\": \"string\" }, \"value\": { \"$ref\": \"standard_section\" } } }";
+
+    private const string OrNullText = "{ \"anyOf\": [{ \"$ref\": \"plaintext\" }, { \"type\": \"null\" }] }";
+
+    private const string States = "{ \"type\": \"string\", \"enum\": [\"completed\", \"skipped\", \"not_run\"] }";
+
+    private const string Items = "{ \"type\": \"array\", \"items\": { \"type\": \"object\", "
+        + "\"required\": [\"item\", \"label\", \"state\", \"reason\", \"value\", \"content\", \"nodes\"], \"additionalProperties\": false, \"properties\": { "
+        + "\"item\": " + Entry + ", \"label\": { \"type\": \"string\" }, \"state\": " + States + ", \"reason\": { \"type\": [\"string\", \"null\"] }, "
+        + "\"value\": " + OrNullText + ", \"content\": " + OrNullText + ", "
+        + "\"nodes\": { \"type\": \"object\", \"required\": [\"section\"], \"additionalProperties\": false, \"properties\": { \"section\": { "
+        + "\"type\": \"object\", \"required\": [\"value\", \"content\", \"state\"], \"additionalProperties\": false, \"properties\": { "
+        + "\"value\": " + OrNullText + ", \"content\": " + OrNullText + ", \"state\": " + States + " } } } } } } }";
+
+    /// <summary>
+    /// Part 04 § 7.7's package (hpi's body <paramref name="hpi"/>) with the loop <c>again</c> over <c>node.standards.items</c>
+    /// whose call <c>redo</c> passes <paramref name="argument"/> to the function <c>note_item</c>, of the one parameter
+    /// <c>entry</c> (<paramref name="format"/>, inline), which reads <c>param.entry.content</c>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Redone(string argument, string format, string hpi)
+    {
+        var files = Edited(ResolveFixture.Functions(), "snippets/standards/hpi.md",
+                "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n", hpi)
+            .Listed("functions/index.json", "note_item")
+            .With("functions/note_item/index.json", Json(
+                "{ \"label\": \"Note an item\", \"description\": null, \"inputs\": { "
+                + "\"entry\": { \"label\": \"Entry\", \"description\": null, \"format\": " + format + " } }, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [\"standard_section\"], \"renderers\": [] }, "
+                + "\"nodes\": [\"say\"], \"ret\": \"node.say\", \"format\": \"plaintext\" }"))
+            .With("functions/note_item/say.md", Agent("Noting the entry", Plain, "Note:\n{{ param.entry.content }}\n"))
+            .Listed("nodes/index.json", "again")
+            .With("nodes/again/index.json", Json(Node("for", "Again", ArrayOf(Plain), false, true,
+                "\"in\": \"node.standards.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": null, \"nodes\": [\"redo\"], \"ret\": \"node.again.redo\"")))
+            .With("nodes/again/redo.md", Md(Node("call", "Redoing the section", Plain, false, true,
+                "\"if\": null, \"function\": \"note_item\", \"with\": { \"entry\": \"" + argument + "\" }"), ""));
+        foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
+            files.With($"functions/note_item/{folder}/index.json", Index([]));
+        return files;
+    }
+
+    [Theory]
+    [InlineData("item.item", Entry)]
+    [InlineData("node.standards.items", Items)]
+    public void AFolderBodyCarriedByALoopsItems_IsPlainText(string argument, string format)
+    {
+        // The runner's .items element holds item.content, the body as written; passed on, nothing renders it.
+        var check = Check(Redone(argument, format, "Open with '{{ item.value.title }}'.\n"));
+
+        var redo = Assert.Single(check.Refusals, r => r.Path == "nodes/again/redo.md");
+        V31Contract.AssertSentence(redo);
+        Assert.Equal(Carried("Call 'redo'", "passes it to function 'note_item' as param.entry"), redo.Sentence);
+        Assert.Single(check.Refusals, r => r.Path == "nodes/standards/section.md");
+
+        Assert.Empty(Check(Redone(argument, format, "Open with a one-sentence orientation.\n")).Refusals);
+    }
+
+    /// <summary>
+    /// Part 04 § 7.7's package (hpi's body <paramref name="hpi"/>) with the loop <c>again</c> over <c>node.standards.items</c>
+    /// of the computed node <c>copy</c> (<paramref name="format"/>), whose expression reads <paramref name="read"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Copied(string read, string format, string hpi) =>
+        Edited(ResolveFixture.Functions(), "snippets/standards/hpi.md",
+                "Chronological prose narrative. Open with a one-sentence orientation to the patient.\n", hpi)
+            .Listed("nodes/index.json", "again")
+            .With("nodes/again/index.json", Json(Node("for", "Again", ArrayOf(format), false, true,
+                "\"in\": \"node.standards.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": null, \"nodes\": [\"copy\"], \"ret\": \"node.again.copy\"")))
+            .With("nodes/again/copy.md", Md(Node("computed", "Copy", format, true, true,
+                "\"if\": null, \"expression\": { \"var\": \"" + read + "\" }"), ""));
+
+    [Theory]
+    [InlineData("item.item", Entry)]
+    [InlineData("node.standards.items", Items)]
+    public void AFolderBodyCarriedByALoopsItems_InAnExpression_IsPlainText(string read, string format)
+    {
+        // A computed node's value is what its expression reads: the .items element's item, holding the body as written.
+        var check = Check(Copied(read, format, "Open with '{{ item.value.title }}'.\n"));
+
+        var copy = Assert.Single(check.Refusals, r => r.Path == "nodes/again/copy.md");
+        V31Contract.AssertSentence(copy);
+        Assert.Equal(Carried("Node 'copy'", "reads it in its expression"), copy.Sentence);
+
+        Assert.Empty(Check(Copied(read, format, "Open with a one-sentence orientation.\n")).Refusals);
+    }
+
+    [Theory]
+    [InlineData("{{ item | renderer.card }}\n", "{{ value.title }}\n", "A07-008")]
+    [InlineData("{{ item.value | renderer.card }}\n", "{{ value.content }}\n", "S05-011")]
+    public void AWholeFolderItemPipedIntoARenderer_IsRefusedAlready(string reader, string renderer, string id)
+    {
+        // A bare item is no value to pipe (A07-008), and a renderer of the folder's format reads only its header (S05-011):
+        // no renderer reaches a folder item's body but through item.content, which is rendered first (A07-012's route).
+        var files = Standards("Open with '{{ item.value.title }}'.\n", reader: reader)
+            .WithRenderer("card", "\"standard_section\"", renderer);
+
+        Assert.Equal(id, Single(Check(files)).Id);
+        Assert.Empty(Check(Standards("Open with '{{ item.value.title }}'.\n", reader: "{{ item.content | renderer.text }}\n")
+            .WithRenderer("text", "\"markdown_block\"", "{{ value }}\n")).Refusals);
+    }
+
     [Theory]
     [InlineData("{{ snippet.nope.content }} {{ part }} {{ macro.a.b.c.d }} {{ part.x | string.upcase }}")]
     [InlineData("{{ for s in item.value }}{{ s.x }}{{ end }} {{ if s.state == \"done\" }}{{ end }}")]
