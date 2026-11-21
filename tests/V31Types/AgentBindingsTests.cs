@@ -20,7 +20,7 @@ public class AgentBindingsTests
         Assert.Equal(48, binding.AgentVersion);
         Assert.Equal("format", binding.Via);
         Assert.Equal(["format"], binding.StrictRejects);
-        Assert.Equal("v2026.12.1", bindings.Version);
+        Assert.Equal("v2026.12.2", bindings.Version);
         Assert.Equal("judgement", bindings.Find("judgement", FormatOrigin.BuiltIn, "generated")!.AgentName);
         Assert.Equal("concept-extraction", bindings.Find("concept_list", FormatOrigin.Catalogue, "generated")!.AgentName);
     }
