@@ -80,6 +80,9 @@ internal static class V31Contract
         ["A06-008"] = "<Subject> couldn't be rendered.",
         ["A06-009"] = "This job's inputs are no longer held, so it can't run. Run the workflow again.",
         ["A06-010"] = "The engine couldn't finish this job. Tell the operator.",
+        ["A06-011"] = "Input '<id>' is required; fill it in to run this workflow.",
+        ["A06-012"] = "Input '<id>' was given a value that isn't <format>.",
+        ["A06-013"] = "Unknown input(s) <ids> (declared: <ids>).",
     };
 
     private static string RepoRoot()
