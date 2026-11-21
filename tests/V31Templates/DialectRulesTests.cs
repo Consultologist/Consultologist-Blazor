@@ -288,6 +288,18 @@ public class DialectRulesTests
     [InlineData("PartOnlyPresents", "A07-002")]
     [InlineData("SnippetFormatNotText", "A07-010")]
     [InlineData("PlacesTooManyUnits", "A07-011")]
+    [InlineData("MacroBodyPlacesMacro", "S05-042")]
+    [InlineData("MacroBodyPlacesPart", "S05-043")]
+    [InlineData("MarkerCount", "S05-044")]
+    [InlineData("MarkerOfAnother", "S05-045")]
+    [InlineData("MacroFormatNotTaken", "S05-046")]
+    [InlineData("OnlyAgentsPlaceMacros", "S05-047")]
+    [InlineData("MacroPlacedTwice", "S05-048")]
+    [InlineData("MacroInNonTextNode", "S05-049")]
+    [InlineData("MacroBodyNotFormat", "S05-050")]
+    [InlineData("MarkerInBody", "S05-051")]
+    [InlineData("ReadsProfileCarrying", "S05-064")]
+    [InlineData("InstructionPlaces", "A07-003")]
     public void EachSentenceMethod_SaysItsRow(string method, string id)
     {
         var info = typeof(DialectSentences).GetMethod(method)!;

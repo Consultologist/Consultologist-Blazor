@@ -242,6 +242,15 @@ internal static class V31Contract
             row = full.Replace(" and run.<fact> in one output ", " and the run-dependent <value> in one output ", StringComparison.Ordinal);
         }
 
+        // #1504: S05-043's row is written as S05-042's for part.* ("Macro '<id>' places part.<name> in its body; …", part 05
+        // R-M1: "the rest unchanged"): the sentence is that head with S05-042's rest.
+        if (refusal.Id == "S05-043")
+        {
+            var full = (string)Json("sentences.json")["sentences"]!.AsArray().First(s => (string?)s!["id"] == "S05-042")!["sentence"]!;
+            Assert.Equal("Macro '<id>' places part.<name> in its body; …", row);
+            row = row[..^1] + full[(full.IndexOf("; ", StringComparison.Ordinal) + 2)..];
+        }
+
         var pattern = "^" + ToPattern(row) + "$";
         // Part 04 § 10.1 writes S04-009 for Loop "(also While, If, Case)": the word is the flow kind's.
         if (refusal.Id == "S04-009")

@@ -213,6 +213,60 @@ public static class DialectSentences
     public static SourceRefusal PlacesTooManyUnits(string subject, int limit, string path) =>
         new("A07-011", $"{subject} places more than {Count(limit)} parts, snippets and macros, counting what its parts and snippets place; place fewer.", path);
 
+    /// <summary>S05-042 (R-M1): macro <paramref name="id"/>'s body places <c>macro.<paramref name="other"/></c>, itself or through a snippet it places.</summary>
+    public static SourceRefusal MacroBodyPlacesMacro(string id, string other, string path) =>
+        new("S05-042", $"Macro '{id}' places macro.{other} in its body; {BodyIsOutput}", path);
+
+    /// <summary>S05-043 (R-M1, for <c>part.*</c>): macro <paramref name="id"/>'s body places <c>part.<paramref name="name"/></c>; the rest is S05-042's.</summary>
+    public static SourceRefusal MacroBodyPlacesPart(string id, string name, string path) =>
+        new("S05-043", $"Macro '{id}' places part.{name} in its body; {BodyIsOutput}", path);
+
+    /// <summary>S05-044 (R-M3): macro <paramref name="id"/>'s instruction holds its own marker <paramref name="count"/> times, not once.</summary>
+    public static SourceRefusal MarkerCount(string id, int count, string path) =>
+        new("S05-044", $"Macro '{id}' has {count.ToString(CultureInfo.InvariantCulture)} markers in its instruction; it must hold {{{{~ macro.{id}.content }}}} or {{{{ macro.{id}.content }}}} exactly once.", path);
+
+    /// <summary>S05-045 (R-M4): macro <paramref name="id"/>'s instruction holds the marker of macro <paramref name="other"/>.</summary>
+    public static SourceRefusal MarkerOfAnother(string id, string other, string path) =>
+        new("S05-045", $"Macro '{id}' has the marker of macro '{other}' in its instruction.", path);
+
+    /// <summary>
+    /// S05-046 (R-M5): node <paramref name="id"/> (of the text format <paramref name="nodeFormat"/>) places macro
+    /// <paramref name="macro"/>, whose <paramref name="format"/> it does not take; <paramref name="allowed"/> lists what it takes.
+    /// </summary>
+    public static SourceRefusal MacroFormatNotTaken(string id, string macro, string format, string nodeFormat, string allowed, string path) =>
+        new("S05-046", $"Node '{id}' places macro.{macro}, whose format is {format}; an {nodeFormat} node takes {allowed}.", path);
+
+    /// <summary>S05-047 (R-M6): <paramref name="subject"/>, no agent's prompt or part, places <c>macro.<paramref name="id"/></c>, itself or through a snippet it places.</summary>
+    public static SourceRefusal OnlyAgentsPlaceMacros(string subject, string id, string path) =>
+        new("S05-047", $"{subject} places macro.{id}; only agent nodes place macros, in their prompt or a part's text.", path);
+
+    /// <summary>S05-048 (R-M7): <paramref name="subject"/> places <c>macro.<paramref name="id"/></c> more than once, counting its parts' text and the snippets it places.</summary>
+    public static SourceRefusal MacroPlacedTwice(string subject, string id, string path) =>
+        new("S05-048", $"{subject} places macro.{id} twice, counting its parts' text; place a macro once in a template.", path);
+
+    /// <summary>S05-049 (R-M11): node <paramref name="id"/> places macro <paramref name="macro"/> and returns <paramref name="format"/> (its type string), no text format.</summary>
+    public static SourceRefusal MacroInNonTextNode(string id, string macro, string format, string path) =>
+        new("S05-049", $"Node '{id}' places macro.{macro}, and returns {format}; macros are placed only in agent nodes returning a text format.", path);
+
+    /// <summary>S05-050 (R-M8): macro <paramref name="id"/> of <paramref name="format"/>, whose body <paramref name="reason"/> (<c>writes Markdown at line 2</c>).</summary>
+    public static SourceRefusal MacroBodyNotFormat(string id, string format, string reason, string path) =>
+        new("S05-050", $"Macro '{id}' has format {format}, and its body {reason}.", path);
+
+    /// <summary>S05-051 (R-M9): macro <paramref name="id"/>'s body reads a marker (<c>macro.&lt;…&gt;.content</c>).</summary>
+    public static SourceRefusal MarkerInBody(string id, string path) =>
+        new("S05-051", $"Macro '{id}' has a marker in its body; a body is the text that replaces the marker.", path);
+
+    /// <summary>
+    /// S05-064 (R-R6): <paramref name="subject"/> (a prompt, a part's text, a macro's instruction) reads
+    /// <paramref name="readPath"/>, the value of a node whose text carries profile text through macro <paramref name="macro"/>.
+    /// </summary>
+    public static SourceRefusal ReadsProfileCarrying(string subject, string readPath, int line, string macro, string path) =>
+        new("S05-064", $"{subject} reads {readPath} at line {Line(line)}, which carries profile text through macro '{macro}'; a prompt or a part doesn't read profile text. Read it in a deliverable.", path);
+
+    /// <summary>A07-003 (R-M2): macro <paramref name="id"/>'s instruction places <paramref name="unit"/> (<c>macro.other</c>, <c>part.p</c>, as written).</summary>
+    public static SourceRefusal InstructionPlaces(string id, string unit, string path) =>
+        new("A07-003", $"Macro '{id}' places {unit} in its instruction; combine instructions by placing each macro in the prompt.", path);
+
     /// <summary>S06-028 (part 06 R-F1): <c>profile.&lt;field&gt;</c> outside part 06 § 10.1's closed list.</summary>
     public static SourceRefusal ReadsNoProfileField(string subject, string field, string path) =>
         new("S06-028", $"{subject} reads profile.{field}, which isn't a profile field; the fields are name, credentials, organisation, signature and closing.", path);
@@ -260,6 +314,9 @@ public static class DialectSentences
             _ => throw new ArgumentException($"{fault.Id} is no dialect sentence.", nameof(fault)),
         };
     }
+
+    /// <summary>R-M1's reason, which S05-042 and S05-043 share.</summary>
+    private const string BodyIsOutput = "a macro body is output text, written after the model replies. Put shared text in a snippet and place it in both.";
 
     private static string Line(int line) => line.ToString(CultureInfo.InvariantCulture);
 
