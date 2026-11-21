@@ -67,6 +67,80 @@ public class V31JobStartTests
         Assert.Empty(start.Signals);
     }
 
+    public static TheoryData<string> RegistryFailures() => ["no latest pointer", "an invalid latest pointer", "a storage failure"];
+
+    [Theory]
+    [MemberData(nameof(RegistryFailures))]
+    public async Task ARegistryFailure_IsAnsweredAsWithThePreviewOff(string condition)
+    {
+        // the 5–30 store and the 31 load read the same registry: whatever it does to today's start (the store's
+        // ResolveAsync, as WorkflowPackageStore throws for the condition), it does to the version's resolution and reads
+        Exception Failure() => condition switch
+        {
+            "no latest pointer" => new InvalidOperationException("Workflow package blob 'unknown-package/latest.json' was not found in container 'workflow-packages'."),
+            "an invalid latest pointer" => new InvalidOperationException("Latest pointer for workflow package 'unknown-package' is missing or holds an invalid version."),
+            _ => new Azure.RequestFailedException(503, "The server is busy."),
+        };
+
+        async Task<(ConsultGenerationJobStartOutcome? Outcome, Exception? Thrown, Start Start)> RunAsync(string? preview, bool atRead)
+        {
+            var start = new Start(preview);
+            if (atRead)
+                start.Registry.ReadFailure = Failure();
+            else
+                start.Registry.ResolveFailure = Failure();
+            start.PackageStore.ResolveAsync(Arg.Any<WorkflowPackageRef>(), Arg.Any<CancellationToken>()).Throws(_ => Failure());
+            try
+            {
+                return (await start.RunAsync(new ConsultGenerationRequest(null, "unknown-package@latest", Inputs: Text(Draft))), null, start);
+            }
+            catch (Exception ex)
+            {
+                return (null, ex, start);
+            }
+        }
+
+        foreach (var atRead in condition == "a storage failure" ? new[] { false, true } : [false])
+        {
+            var off = await RunAsync(null, atRead);
+            var on = await RunAsync("31", atRead);
+
+            Assert.Equal(off.Outcome, on.Outcome);
+            Assert.Equal(off.Thrown?.GetType(), on.Thrown?.GetType());
+            Assert.Empty(on.Start.Scheduled);
+            Assert.Empty(on.Start.Signals);
+            if (condition != "a storage failure")
+                Assert.Equal(ConsultGenerationJobStartError.RegistryUnavailable, on.Outcome!.Error);
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(RegistryFailures))]
+    public async Task TheStore_AnswersARegistryFailure_NeverThrows(string condition)
+    {
+        var registry = new FakeRegistry();
+        var packageRef = registry.Put(RunFixture.Golden("nested-note")).Ref;
+        if (condition == "a storage failure")
+            registry.ReadFailure = new Azure.RequestFailedException(503, "The server is busy.");
+        else
+            registry.ResolveFailure = new InvalidOperationException("Latest pointer for workflow package 'nested-note' is missing or holds an invalid version.");
+
+        var store = V31Job.StoreOver(registry);
+        var load = await store.TryLoadAsync(packageRef, CancellationToken.None);
+
+        Assert.NotNull(load);
+        Assert.True(load.Unreadable);
+        Assert.Null(load.Plan);
+        Assert.Null(load.Refusal);
+        Assert.StartsWith($"The registry could not be read for {packageRef.Name}@", load.OperatorDetail, StringComparison.Ordinal);
+        Assert.DoesNotContain("busy", load.OperatorDetail, StringComparison.Ordinal);
+
+        // at run time it is the engine's fault, not the package's: the activity fails (the job with A06-010), as when the read threw
+        var failed = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new LoadPlanV31Activity(store).RunAsync(new LoadPlanV31Input(packageRef.Name, packageRef.Version, "sha256:r", "sha256:l"), CancellationToken.None));
+        Assert.Equal(load.OperatorDetail, failed.Message);
+    }
+
     [Fact]
     public async Task WithIt_AJobIsScheduledOnTheV31Orchestrator()
     {

@@ -30,15 +30,25 @@ internal sealed class FakeRegistry : IRegistryFiles, IWorkflowPackageVersions
     /// <summary>The paths read, in order.</summary>
     public IReadOnlyList<string> Reads => _reads.ToArray();
 
+    /// <summary>What a version's resolution throws, as the 5–30 store's pointer read would (null: it resolves).</summary>
+    public Exception? ResolveFailure { get; set; }
+
+    /// <summary>What a read throws, as storage would (null: it reads).</summary>
+    public Exception? ReadFailure { get; set; }
+
     public Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct)
     {
         Assert.StartsWith(packageName + "/", path, StringComparison.Ordinal);
         _reads.Enqueue(path);
+        if (ReadFailure != null)
+            return Task.FromException<byte[]?>(ReadFailure);
         return Task.FromResult(Blobs.TryGetValue(path, out var bytes) ? bytes : null);
     }
 
     public Task<string> ResolveVersionAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken) =>
-        Task.FromResult(packageRef.IsLatest ? Latest[packageRef.Name] : packageRef.Version);
+        ResolveFailure != null
+            ? Task.FromException<string>(ResolveFailure)
+            : Task.FromResult(packageRef.IsLatest ? Latest[packageRef.Name] : packageRef.Version);
 
     /// <summary>Forgets the reads so far.</summary>
     public void ClearReads() => _reads.Clear();

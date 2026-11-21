@@ -66,6 +66,12 @@ public sealed class V31JobStarter(
         var load = await store.TryLoadAsync(packageRef, cancellationToken);
         if (load == null)
             return null;
+        if (load.Unreadable)
+        {
+            // Today's path reads the same registry and answers the failure as it does with 31 off.
+            logger.LogWarning("31 load could not read the registry; today's path answers the start. Detail={Detail}", load.OperatorDetail);
+            return null;
+        }
 
         var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId);
         if (load.Plan is not { } plan)

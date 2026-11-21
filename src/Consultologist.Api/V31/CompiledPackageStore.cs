@@ -49,8 +49,11 @@ public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory contai
 /// <summary>
 /// #1503: a 31 load: the plan, or the refusal a start failure records (D5): <paramref name="Refusal"/> the sentence the
 /// job shows under <paramref name="RefusalId"/>, <paramref name="OperatorDetail"/> what the operator's log keeps.
+/// <paramref name="Unreadable"/>: the registry could not be read (the version's pointer, or a file of the folder), so
+/// nothing is known of the version; a start then takes today's path, which meets the same registry and answers as it does
+/// with 31 off. <paramref name="OperatorDetail"/> says what failed (the package, the version, the failure's type and status).
 /// </summary>
-public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail);
+public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false);
 
 /// <summary>#1503 (specVersion 31, area 06; part 09 § 1.2 steps 1 to 5): loads a 31 version from its stamped pair.</summary>
 public interface ICompiledPackageStore
@@ -98,18 +101,34 @@ public sealed class CompiledPackageStore(
             return null;
 
         var name = packageRef.Name;
-        var version = await versions.ResolveVersionAsync(packageRef, ct);
+        var version = packageRef.Version;
+        PublishedStamp? stamp;
+        byte[]? resolveBytes, lockBytes;
+        try
+        {
+            version = await versions.ResolveVersionAsync(packageRef, ct);
+            if (_plans.TryGetValue($"{name}@{version}", out var cached))
+                return new CompiledLoad(cached, null, null, null);
+
+            var folder = $"{name}/{version}/";
+            stamp = PublishedStamp.TryRead(Text(await files.TryReadAsync(name, folder + PublishedStamp.FileName, ct)));
+            if (stamp == null)
+                return null;
+
+            resolveBytes = await files.TryReadAsync(name, folder + CompiledPackage.ResolveFile, ct);
+            lockBytes = await files.TryReadAsync(name, folder + ResolveCompiler.LockFile, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // The registry could not be read: a pointer missing or invalid, a storage failure. Nothing is known of the
+            // version, so nothing is refused; the failure's type and status are the operator's (never its message, which
+            // can carry a URI).
+            return new CompiledLoad(null, null, null,
+                $"The registry could not be read for {name}@{version}: {ex.GetType().Name}{(ex is RequestFailedException failed ? $" {failed.Status}" : "")}.",
+                Unreadable: true);
+        }
+
         var key = $"{name}@{version}";
-        if (_plans.TryGetValue(key, out var cached))
-            return new CompiledLoad(cached, null, null, null);
-
-        var folder = $"{name}/{version}/";
-        var stamp = PublishedStamp.TryRead(Text(await files.TryReadAsync(name, folder + PublishedStamp.FileName, ct)));
-        if (stamp == null)
-            return null;
-
-        var resolveBytes = await files.TryReadAsync(name, folder + CompiledPackage.ResolveFile, ct);
-        var lockBytes = await files.TryReadAsync(name, folder + ResolveCompiler.LockFile, ct);
         if (resolveBytes == null || lockBytes == null)
             return Refused(NotPublishedId, NotPublished(name, version), null);
 

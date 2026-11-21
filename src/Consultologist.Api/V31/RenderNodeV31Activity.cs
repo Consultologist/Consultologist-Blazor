@@ -46,7 +46,8 @@ internal static class V31Plans
     /// <summary>
     /// The plan of <paramref name="name"/>@<paramref name="version"/> from the store (its cache after the first load), held
     /// to the job's <paramref name="resolveHash"/>: a version not stamped 31 is A06-004's; a refusal is its sentence; a plan
-    /// whose hash is not the job's is S09-009's, so a job never runs bytes other than the ones its start checked.
+    /// whose hash is not the job's is S09-009's, so a job never runs bytes other than the ones its start checked. A registry
+    /// that could not be read throws <see cref="InvalidOperationException"/> (the operator's detail, no value).
     /// </summary>
     public static async Task<(RunPlan? Plan, string? Refusal)> LoadAsync(
         ICompiledPackageStore store, string name, string version, string resolveHash, CancellationToken cancellationToken)
@@ -54,6 +55,10 @@ internal static class V31Plans
         var load = await store.TryLoadAsync(new WorkflowPackageRef(name, version), cancellationToken);
         if (load == null)
             return (null, CompiledPackageStore.NotPublished(name, version));
+        // A registry that could not be read is the engine's fault, not the package's: the activity fails, as it did when
+        // the read threw, and the job with it (A06-010).
+        if (load.Unreadable)
+            throw new InvalidOperationException(load.OperatorDetail);
         if (load.Plan == null)
             return (null, load.Refusal ?? HashMismatch(name, version));
         if (!string.Equals(load.Plan.ResolveHash, resolveHash, StringComparison.Ordinal))
