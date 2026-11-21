@@ -26,9 +26,9 @@ public class RefusalPackagesTests
     /// <summary>
     /// #1500 (area 03): the type sentences no package reaches through <see cref="SourceCheck.Run"/>, so
     /// the suite has no case for them.
-    /// S02-018, S02-019 and S02-020 (D6): <see cref="FormatReads"/> says them when asked, but finding
+    /// S02-019 and S02-020 (D6): <see cref="FormatReads"/> says them when asked, but finding
     /// the reads (JSON Logic <c>var</c>, templates, reference strings) is areas 04, 05 and 07's; no
-    /// caller asks yet.
+    /// caller asks yet. (#1502, area 05: S02-018 is said of a loop's <c>in</c> that reads an input bare, and has its case.)
     /// S02-027, S02-035, S02-036 and A03-009: only a registry or catalogue format reaches them. A
     /// package format whose root is an <c>anyOf</c> is A03-001 and an agent's format is named, so no
     /// package's agent returns a union root (S02-027); the two annotations are judged only at a registry
@@ -37,7 +37,7 @@ public class RefusalPackagesTests
     /// S02-011: the three flags follow from what a node reads, areas 04 and 05's.
     /// </summary>
     private static readonly string[] TypesNotShipped =
-        ["S02-009", "S02-011", "S02-018", "S02-019", "S02-020", "S02-027", "S02-035", "S02-036", "A03-009"];
+        ["S02-009", "S02-011", "S02-019", "S02-020", "S02-027", "S02-035", "S02-036", "A03-009"];
 
     /// <summary>The two ids of <see cref="TypesNotShipped"/> that no method of <see cref="FormatSentences"/> gives (S01-028's words; areas 04 and 05's flags).</summary>
     private static readonly string[] TypesWithNoMethod = ["S02-009", "S02-011"];

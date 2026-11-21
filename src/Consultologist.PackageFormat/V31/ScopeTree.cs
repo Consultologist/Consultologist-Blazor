@@ -110,9 +110,10 @@ public sealed class ScopeFrame
 /// and what a reference names at a place: <see cref="Resolve"/>, the one resolution every caller uses (a <c>var</c>
 /// path, an <c>in</c>, a <c>case</c>, a <c>with</c>). Members are typed by D14. Never throws on package content, and
 /// every walk is bounded by the reader's nesting limit; a loop whose source reads itself is not typed. A tree caches
-/// each loop's item as it is first asked for, so it serves one caller at a time.
+/// each loop's source (<see cref="Source"/>, in <c>ScopeTree.Items.cs</c>) as it is first asked for, so it serves one
+/// caller at a time.
 /// </summary>
-public sealed class ScopeTree
+public sealed partial class ScopeTree
 {
     private static readonly string[] States = ["completed", "skipped", "not_run"];
 
@@ -122,12 +123,6 @@ public sealed class ScopeTree
     private readonly Dictionary<SourceNode, ScopeFrame> frames = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<SourceNode, ScopeFrame> bodies = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<SourceFunction, ScopeFrame> functions = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<SourceFor, LoopItem?> items = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<SourceFor> typing = new(ReferenceEqualityComparer.Instance);
-
-    /// <summary>What a loop's <c>item</c> is: the source's element, whether it is a <c>.items</c> element (§ 2.6), whether <c>item.content</c> is a snippet's body.</summary>
-    private sealed record LoopItem(JsonNode? Element, bool OverItems, bool Content);
-
     private ScopeTree(SourcePackage package, PackageTypes types)
     {
         this.package = package;
@@ -143,9 +138,13 @@ public sealed class ScopeTree
     /// <summary>The top level of <c>checks/</c>.</summary>
     public ScopeFrame ChecksRoot { get; }
 
-    /// <summary>Every node of the package, <c>nodes/</c>, <c>checks/</c>, then each function, a flow node before its children, with its key.</summary>
-    internal IReadOnlyDictionary<SourceNode, string> Keys =>
-        frames.Keys.ToDictionary(n => n, n => n.Key, (IEqualityComparer<SourceNode>)ReferenceEqualityComparer.Instance);
+    /// <summary>Every node of the package, <c>nodes/</c>, <c>checks/</c>, then each function, a flow node before its children, with its key; built once, by <see cref="Build"/>.</summary>
+    internal IReadOnlyDictionary<SourceNode, string> Keys { get; private set; } = new Dictionary<SourceNode, string>();
+
+    /// <summary>Every node of the package in <see cref="Keys"/>'s order: <c>nodes/</c>, <c>checks/</c>, then each function, a flow node before its children.</summary>
+    internal IEnumerable<SourceNode> All() =>
+        Walk(package.Nodes.Nodes).Concat(Walk(package.Checks.Nodes))
+            .Concat(package.Functions.Items.SelectMany(f => Walk(f.Body.Nodes)));
 
     /// <summary>The frames of <paramref name="package"/>: every body, and the body each node is in. A null argument is the caller's error.</summary>
     public static ScopeTree Build(SourcePackage package, PackageTypes types)
@@ -163,6 +162,10 @@ public sealed class ScopeTree
             tree.Body(root, function.Body.Nodes);
         }
 
+        var keys = new Dictionary<SourceNode, string>(ReferenceEqualityComparer.Instance);
+        foreach (var node in tree.All())
+            keys.TryAdd(node, node.Key);
+        tree.Keys = keys;
         return tree;
     }
 
@@ -200,7 +203,7 @@ public sealed class ScopeTree
     /// function S04-050 and S04-051.</item>
     /// <item><c>param.&lt;id&gt;</c>: a parameter of the enclosing function, a Format head of two; otherwise unknown.</item>
     /// <item><c>item</c>, <c>item.parent</c>, …: the loop's <c>.id</c> (a <c>string</c>), <c>.value</c> (the source's
-    /// element, <see cref="ScopeHeadKind.Deferred"/> while the source cannot be typed), a snippet folder item's
+    /// element, <see cref="Source"/>'s; <see cref="ScopeHeadKind.Deferred"/> when the source is refused), a snippet folder item's
     /// <c>.content</c>; over a loop's <c>.items</c>, the element of § 2.6 itself (a Value head ending at <c>item</c>). No
     /// loop: unknown, S04-040 for <c>item.parent</c> in an outermost loop, S04-051 inside a function.</item>
     /// <item><c>pass</c>, <c>pass.parent</c>, …: <c>.number</c>, <c>.history</c>, <c>.node.&lt;id&gt;</c> (read as
@@ -365,114 +368,17 @@ public sealed class ScopeTree
         var member = at < s.Count ? s[at] : null;
         if (member == "id")
             return Head(ScopeHeadKind.Value, null, at + 1, JsonValue.Create("string"), false);
-        if (ItemOf(loop) is not { Element: { } element } item)
+        if (Source(loop) is not { Element: { } element } source)
             return Deferred;
-        if (item.OverItems)
+        if (source.OverItems)
             return Head(ScopeHeadKind.Value, null, at, element, false);
         return member switch
         {
             "value" => Head(ScopeHeadKind.Value, null, at + 1, element, false),
-            "content" when item.Content => Head(ScopeHeadKind.Value, null, at + 1, JsonValue.Create("markdown_block"), false),
+            "content" when source.KnownLength != null => Head(ScopeHeadKind.Value, null, at + 1, JsonValue.Create("markdown_block"), false),
             null => Head(ScopeHeadKind.Format, null, at, element, false),
             _ => Unknown,
         };
-    }
-
-    /// <summary>
-    /// The item of <paramref name="loop"/>, typed from its source read outside it (part 04 § 2.2): a list read through
-    /// the scope, a loop's <c>.items</c>, or a snippet folder. Null when the source cannot be typed (Task 2 says why),
-    /// or reads itself.
-    /// </summary>
-    private LoopItem? ItemOf(SourceFor loop)
-    {
-        if (items.TryGetValue(loop, out var known))
-            return known;
-        if (!typing.Add(loop))
-            return null;
-
-        var item = TypeSource(loop);
-        typing.Remove(loop);
-        items[loop] = item;
-        return item;
-    }
-
-    private LoopItem? TypeSource(SourceFor loop)
-    {
-        if (ReferenceString.Parse(loop.In) is not { } reference)
-            return null;
-        var frame = FrameOf(loop);
-        var s = reference.Segments;
-
-        if (s is ["snippet", var id])
-        {
-            var folder = SnippetFolder(frame.Function, id);
-            return folder?.Index["format"] is { } format ? new LoopItem(format, false, true) : null;
-        }
-
-        var head = Resolve(reference, frame, $"Loop '{loop.Id}'", SourceLayout.Join(loop.Path, "index.json"), false, loop);
-        if (head.Kind is not (ScopeHeadKind.Format or ScopeHeadKind.Value))
-            return null;
-        var formats = FormatsOf(frame);
-        var rest = s.Skip(Math.Clamp(head.Length, 0, s.Count)).ToList();
-        List<string> steps = head.Kind == ScopeHeadKind.Value ? ["value", .. rest] : rest;
-        var list = FormatReads.Read(head.Format, steps, formats);
-        if (list.Fault != ReadFault.None || FormatTypes.Shape(list.Format, formats) != FormatShape.List
-            || ExpressionChecker.ItemsOf(list.Format, formats) is not { } element)
-        {
-            return null;
-        }
-
-        var overItems = rest.Count == 0 && head.Kind == ScopeHeadKind.Value && s.Count == 3 && s[0] is "node" or "check" && s[2] == "items";
-        return new LoopItem(element, overItems, false);
-    }
-
-    /// <summary>The snippet folder <paramref name="id"/>: the function's own, else the package's.</summary>
-    private SourceTextFolder? SnippetFolder(SourceFunction? function, string id) =>
-        (function?.Definitions.Snippets.Items.OfType<SourceTextFolder>().FirstOrDefault(f => f.Id == id))
-        ?? package.Definitions.Snippets.Items.OfType<SourceTextFolder>().FirstOrDefault(f => f.Id == id);
-
-    /// <summary>
-    /// The element of <paramref name="loop"/>'s <c>.items</c> (part 04 § 2.6; D14), an inline object schema:
-    /// <c>item</c> (its <c>id</c>, and its <c>value</c> when the source is typed), <c>label</c>, <c>state</c>,
-    /// <c>reason</c>, <c>value</c> and <c>content</c> (of the loop's element, nullable), and <c>nodes</c>, each body
-    /// node's <c>value</c>, <c>content</c> (nullable) and <c>state</c>.
-    /// </summary>
-    private JsonObject Element(SourceFor loop)
-    {
-        var formats = FormatsOf(FrameOf(loop));
-        var item = new JsonObject { ["id"] = new JsonObject { ["type"] = "string" } };
-        if (ItemOf(loop) is { Element: { } source })
-            item["value"] = Schema(source);
-
-        var properties = new JsonObject
-        {
-            ["item"] = Object(item),
-            ["label"] = new JsonObject { ["type"] = "string" },
-            ["state"] = Enum(States),
-            ["reason"] = new JsonObject { ["type"] = new JsonArray("string", "null") },
-        };
-        if (FormatOf(loop) is { } declared && ExpressionChecker.ItemsOf(declared, formats) is { } value)
-        {
-            properties["value"] = OrNull(value, formats);
-            properties["content"] = OrNull(ContentOf(value, formats), formats);
-        }
-
-        var nodes = new JsonObject();
-        foreach (var node in loop.Body.Nodes)
-        {
-            var outputs = new JsonObject();
-            if (FormatOf(node) is { } format)
-            {
-                outputs["value"] = OrNull(format, formats);
-                outputs["content"] = OrNull(ContentOf(format, formats), formats);
-            }
-
-            outputs["state"] = Enum(States);
-            nodes[node.Id] = Object(outputs);
-        }
-
-        properties["nodes"] = Object(nodes);
-        return Object(properties);
     }
 
     // ---- pass ----------------------------------------------------------------------------------
@@ -518,7 +424,8 @@ public sealed class ScopeTree
 
     // ---- Types ---------------------------------------------------------------------------------
 
-    private FormatSet FormatsOf(ScopeFrame frame) =>
+    /// <summary>The formats a body's reads are typed against: its function's own set, else the package's.</summary>
+    internal FormatSet FormatsOf(ScopeFrame frame) =>
         frame.Function != null && types.FunctionFormats.TryGetValue(frame.Function.Id, out var own) ? own : types.Formats;
 
     /// <summary>The node's declared format as the type rules read it (the model's own node: read-only).</summary>
@@ -586,7 +493,7 @@ public sealed class ScopeTree
     }
 
     /// <summary>Every node under <paramref name="nodes"/>, a flow node before its children.</summary>
-    private static IEnumerable<SourceNode> Walk(IReadOnlyList<SourceNode> nodes)
+    internal static IEnumerable<SourceNode> Walk(IReadOnlyList<SourceNode> nodes)
     {
         foreach (var node in nodes)
         {

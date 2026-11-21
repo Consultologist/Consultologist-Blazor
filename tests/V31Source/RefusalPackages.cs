@@ -107,17 +107,18 @@ internal static partial class RefusalPackages
 
     /// <summary>
     /// <see cref="SourceFixture.Minimal"/> plus two nested loops whose ids are 64 characters, holding an
-    /// agent node whose id is <paramref name="leaf"/> characters: its path is 139 + <paramref name="leaf"/>.
+    /// agent node whose id is <paramref name="leaf"/> characters: its path is 139 + <paramref name="leaf"/>. The outer
+    /// loop iterates the input <c>sections</c>, the inner each section's points (#1502: typed sources).
     /// </summary>
     private static Dictionary<string, byte[]> LongPath(int leaf)
     {
         var outer = Fit("sections_of_the_consultation_note_for_margaret_okafor_each_in_turn", 64);
         var inner = Fit("paragraphs_of_one_section_of_the_consultation_note_drafted_in_order", 64);
         var node = Fit("draft_one_paragraph_of_the_section_from_its_point_for_dr_a_sample", leaf);
-        return Minimal()
+        return WithSectionsInput(Minimal())
             .Edit("nodes/index.json", "\"items\": [\"plan\"]", $"\"items\": [\"plan\", \"{outer}\"]")
             .With($"nodes/{outer}/index.json", Json(Node("for", "Sections", ArrayOf(ArrayOf(Plain)), false, true,
-                "\"in\": \"node.plan.value.sections\", \"parallel\": true, \"maxParallel\": null, \"until\": null, "
+                "\"in\": \"input.sections.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, "
                 + $"\"max\": null, \"itemLabel\": null, \"nodes\": [\"{inner}\"], \"ret\": \"node.{outer}.{inner}\"")))
             .With($"nodes/{outer}/{inner}/index.json", Json(Node("for", "Paragraphs", ArrayOf(Plain), false, true,
                 "\"in\": \"item.value.points\", \"parallel\": true, \"maxParallel\": null, \"until\": null, "
@@ -442,7 +443,8 @@ internal static partial class RefusalPackages
             WithLoop().Edit(sections, parallelFour, "\"parallel\": false, \"maxParallel\": null"),
             WithLoop().Edit(sections, parallelFour, "\"parallel\": false, \"maxParallel\": 4"));
 
-        const string until = "\"until\": { \"===\": [{ \"var\": \"item.value.kind\" }, \"omit\"] }";
+        // #1502: the until reads the section's title, a string the input types (it read a kind the source has no longer).
+        const string until = "\"until\": { \"===\": [{ \"var\": \"item.value.title\" }, \"Plan\"] }";
         yield return new RefusalCase("S04-023",
             "An until on a parallel for (chapter 4 § 4.2.4). Invalid: the for sections declares an until with \"parallel\": true. "
             + "Valid: the same until with \"parallel\": false and \"maxParallel\": null.",
@@ -626,14 +628,28 @@ internal static partial class RefusalPackages
     private static Dictionary<string, byte[]> MinimalListing(string id) =>
         Minimal().Edit("nodes/index.json", "\"items\": [\"plan\"]", $"\"items\": [\"plan\", \"{id}\"]");
 
-    /// <summary>A parallel <c>for</c>, <c>sections</c>, capped at 4, running one agent node, <c>outline</c>, per section of the plan.</summary>
+    /// <summary>
+    /// A parallel <c>for</c>, <c>sections</c>, capped at 4, running one agent node, <c>outline</c>, per section of the input
+    /// <c>sections</c> (#1502: a typed list, now that a loop's source is typed; the plan of <see cref="SourceFixture.Minimal"/>
+    /// is plaintext, with no sections to iterate).
+    /// </summary>
     private static Dictionary<string, byte[]> WithLoop() =>
-        MinimalListing("sections")
+        WithSectionsInput(MinimalListing("sections"))
             .With("nodes/sections/index.json", Json(Node("for", "Sections", ArrayOf(Plain), false, true,
-                "\"in\": \"node.plan.value.sections\", \"parallel\": true, \"maxParallel\": 4, \"until\": null, \"max\": null, "
+                "\"in\": \"input.sections.value\", \"parallel\": true, \"maxParallel\": 4, \"until\": null, \"max\": null, "
                 + "\"itemLabel\": \"title\", \"nodes\": [\"outline\"], \"ret\": \"node.sections.outline\"")))
             .With("nodes/sections/outline.md", Agent("Outlining the section", Plain,
                 "Outline the section '{{ item.value.title }}' of the note as a short list of points.\n"));
+
+    /// <summary>
+    /// <paramref name="files"/> with the required input <c>sections</c>: a list of sections, each a <c>title</c> and its
+    /// <c>points</c> (a list of plaintext).
+    /// </summary>
+    private static Dictionary<string, byte[]> WithSectionsInput(Dictionary<string, byte[]> files) =>
+        WithRequiredInput(files, "sections", "Sections",
+            "{ \"type\": \"array\", \"items\": { \"type\": \"object\", \"required\": [\"title\", \"points\"], "
+            + "\"additionalProperties\": false, \"properties\": { \"title\": { \"type\": \"string\", \"title\": \"Title\" }, "
+            + "\"points\": { \"type\": \"array\", \"items\": { \"$ref\": \"plaintext\" }, \"title\": \"Points\" } } } }");
 
     /// <summary>
     /// A <c>while</c>, <c>refine</c>, of at most 3 passes, drafting a summary and judging it: it runs again while the

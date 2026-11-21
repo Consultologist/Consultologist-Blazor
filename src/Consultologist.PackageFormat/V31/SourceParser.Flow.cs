@@ -10,7 +10,8 @@ namespace Consultologist.PackageFormat.V31;
 /// <c>index.json</c> (part 04 §§ 1–6). Only what a node's own shape says is judged here (D16): the
 /// member rules, with part 04's own sentence in place of the generic one where it has one, the
 /// bounds of <c>maxParallel</c> and <c>max</c>, and the bodies' lists. Whether <c>ret</c> names a
-/// child, what <c>in</c> and <c>case</c> read and every type are later areas'.
+/// child, what <c>in</c> and <c>case</c> read and every type are later areas'. #1502 (area 05): an <c>in</c>
+/// written as an object or a list is S04-017 here, part 04's row, in place of A02-001.
 /// </summary>
 public static partial class SourceParser
 {
@@ -85,6 +86,8 @@ public static partial class SourceParser
             leave.Add("max");
         if (kind == "if")
             leave.Add("then");
+        if (kind == "for")
+            leave.Add("in");
         SourceMembers.Check(index, shape, name, path, walk.Refusals, leave);
 
         if (index.TryGetPropertyValue("label", out var label))
@@ -97,6 +100,17 @@ public static partial class SourceParser
 
         foreach (var other in foreign)
             walk.Refuse(SourceSentences.MemberOfAnotherKind(word, id, other, FlowOwners[other], path));
+
+        // #1502 (area 05): an in written as an object or a list is an expression (S04-017, part 04's row, in place of A02-001).
+        if (kind == "for" && index.TryGetPropertyValue("in", out var source))
+        {
+            if (source is null)
+                walk.Refuse(SourceSentences.MemberNull(name, "in", path));
+            else if (source is JsonObject or JsonArray)
+                walk.Refuse(ResolveSentences.IsAnExpression(word, id, "in", path));
+            else
+                SourceMembers.CheckType(source, MemberType.Reference, name, "in", path, walk.Refusals);
+        }
 
         var producer = SourceLayout.Text(index["producer"]);
         if (producer != null && ReservedProducers.Contains(producer))

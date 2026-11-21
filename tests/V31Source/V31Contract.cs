@@ -58,6 +58,12 @@ internal static class V31Contract
         ["A04-011"] = "<site> <member> could not be evaluated: <detail>.",
     };
 
+    /// <summary>#1502: area 05's own sentences (<c>A05-NNN</c>), as plan area-05-resolver-and-lock lists them; each is added as a task first says it.</summary>
+    private static readonly Dictionary<string, string> ResolveAreaSentences = new()
+    {
+        ["A05-001"] = "<Kind> '<id>' <member> '<text>' is not a reference; a reference is a root, then names joined by dots.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -150,6 +156,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A04-", StringComparison.Ordinal))
         {
             Assert.True(LogicAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A05-", StringComparison.Ordinal))
+        {
+            Assert.True(ResolveAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

@@ -152,9 +152,10 @@ public class ResolvedScopeTests
     }
 
     [Fact]
-    public void ALoopWhoseSourceIsNotTypedYet_DefersItsItem()
+    public void ALoopWhoseSourceIsRefused_DefersItsItem()
     {
-        // The loop iterates the plan's sections, but plan is plaintext: the source is Task 2's to refuse.
+        // The loop iterates the plan's sections, but plan is plaintext: the loop's source is refused (S03-014), so its
+        // item says nothing more (one mistake, one sentence).
         var files = Minimal()
             .With("nodes/index.json", Index(["plan", "sections"]))
             .With("nodes/sections/index.json", Json(Node("for", "Sections", ArrayOf("\"plaintext\""), false, true,
@@ -168,6 +169,7 @@ public class ResolvedScopeTests
 
         Assert.Equal(ScopeHeadKind.Deferred, resolved.Kind);
         Assert.Null(resolved.Refusal);
+        Assert.Equal("S03-014", tree.Source((SourceFor)ResolveFixture.Node(package, "node.sections")).Resolved.Refusal?.Id);
     }
 
     public static TheoryData<string, string, string, string?> RefusalCases => new()
