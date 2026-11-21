@@ -85,7 +85,10 @@ internal static class V31Contract
         ["A06-013"] = "Unknown input(s) <ids> (declared: <ids>).",
     };
 
-    /// <summary>#1504: area 07's own sentences (<c>A07-NNN</c>), as plan area-07-prompts-and-macros lists them, all nine at once (later tasks say the rest).</summary>
+    /// <summary>
+    /// #1504: area 07's own sentences (<c>A07-NNN</c>), as plan area-07-prompts-and-macros lists them: the first nine at
+    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5).
+    /// </summary>
     private static readonly Dictionary<string, string> TemplateAreaSentences = new()
     {
         ["A07-001"] = "Snippet '<id>' places <part.* or macro.*>, and <subject> places it in <a part's text | a macro's instruction>; a snippet placed there doesn't place parts or macros.",
@@ -97,6 +100,8 @@ internal static class V31Contract
         ["A07-007"] = "<Subject> writes <path> at line <n>, which is <an object | a list>; read a member, loop over it or pipe it into a renderer.",
         ["A07-008"] = "<Subject> reads <path> at line <n>; read <.value | .content | .title> of it.",
         ["A07-009"] = "<Subject> places <unit> at line <n> inside <an if | a for>; a part, a snippet or a macro is placed at the top level of its template, and its own if decides it.",
+        ["A07-010"] = "Snippet '<id>' declares format <format>; a snippet's text is plaintext, markdown_block or markdown_inline.",
+        ["A07-011"] = "<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; the limit is <limit>.",
     };
 
     private static string RepoRoot()

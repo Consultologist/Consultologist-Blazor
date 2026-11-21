@@ -276,6 +276,18 @@ public class DialectRulesTests
     [InlineData("RendererPipesIntoRenderer", "S05-033")]
     [InlineData("ChainWrongFormat", "S05-034")]
     [InlineData("BlockRendererInsideALine", "S05-061")]
+    [InlineData("SnippetReadsUnavailable", "S05-022")]
+    [InlineData("ReachesItself", "S05-023")]
+    [InlineData("PlacesUndefinedSnippet", "S05-035")]
+    [InlineData("SnippetHeaderNotFormat", "S05-036")]
+    [InlineData("PlacesUndeclaredPart", "S05-038")]
+    [InlineData("PartNeverPlaced", "S05-039")]
+    [InlineData("PartPlacedTwice", "S05-040")]
+    [InlineData("DeclaresPartsNotAgent", "S05-041")]
+    [InlineData("SnippetPlacesPartOrMacro", "A07-001")]
+    [InlineData("PartOnlyPresents", "A07-002")]
+    [InlineData("SnippetFormatNotText", "A07-010")]
+    [InlineData("PlacesTooManyUnits", "A07-011")]
     public void EachSentenceMethod_SaysItsRow(string method, string id)
     {
         var info = typeof(DialectSentences).GetMethod(method)!;

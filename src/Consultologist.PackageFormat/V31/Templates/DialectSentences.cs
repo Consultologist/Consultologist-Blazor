@@ -154,6 +154,65 @@ public static class DialectSentences
     public static SourceRefusal ReadsBareSnippet(string subject, string id, int line, string path) =>
         new("S05-037", $"{subject} reads snippet.{id} at line {Line(line)}; read its text as snippet.{id}.content.", path);
 
+    /// <summary>
+    /// S05-022 (R-R3): snippet <paramref name="id"/> (<c>tone</c>, a folder item <c>standards/hpi</c>) reads
+    /// <paramref name="readPath"/> (as written in its body), which <paramref name="subject"/>'s place does not give; the
+    /// snippet is placed there at <paramref name="line"/> of the placer's text.
+    /// </summary>
+    public static SourceRefusal SnippetReadsUnavailable(string id, string readPath, string subject, int line, string path) =>
+        new("S05-022", $"Snippet '{id}' reads {readPath}, which isn't available where {subject} places it at line {Line(line)}.", path);
+
+    /// <summary>S05-023 (R-R4): <paramref name="kind"/> <paramref name="id"/> reaching itself; <paramref name="chain"/> the ids from it back to it.</summary>
+    public static SourceRefusal ReachesItself(string kind, string id, IReadOnlyList<string> chain, string path) =>
+        new("S05-023", $"{kind} '{id}' reaches itself: {string.Join(" → ", chain)}.", path);
+
+    /// <summary>S05-035 (R-S1): a read of <c>snippet.&lt;id&gt;</c> the package (or the function) does not define; <paramref name="id"/> as written.</summary>
+    public static SourceRefusal PlacesUndefinedSnippet(string subject, string id, string path) =>
+        new("S05-035", $"{subject} places snippet.{id}, which this package doesn't define.", path);
+
+    /// <summary>
+    /// S05-036 (R-S2): the header of item <paramref name="id"/> of snippet folder <paramref name="folder"/> is not of the
+    /// folder's <paramref name="format"/>; <paramref name="error"/> names the first fault's keyword and place, never a value.
+    /// </summary>
+    public static SourceRefusal SnippetHeaderNotFormat(string folder, string id, string format, string error, string path) =>
+        new("S05-036", $"Snippet '{folder}/{id}' has a header that doesn't match format {format}: {error}.", path);
+
+    /// <summary>S05-038 (R-P1): node <paramref name="id"/>'s body places part <paramref name="name"/>, which its <c>parts</c> does not declare.</summary>
+    public static SourceRefusal PlacesUndeclaredPart(string id, string name, string path) =>
+        new("S05-038", $"Node '{id}' places part.{name}, which its header doesn't declare.", path);
+
+    /// <summary>S05-039 (R-P2): node <paramref name="id"/> declares part <paramref name="name"/> and its body never places it.</summary>
+    public static SourceRefusal PartNeverPlaced(string id, string name, string path) =>
+        new("S05-039", $"Node '{id}' declares part '{name}' but never places it.", path);
+
+    /// <summary>S05-040 (R-P3): node <paramref name="id"/>'s body places part <paramref name="name"/> <paramref name="count"/> times.</summary>
+    public static SourceRefusal PartPlacedTwice(string id, string name, int count, string path) =>
+        new("S05-040", $"Node '{id}' places part.{name} {count.ToString(CultureInfo.InvariantCulture)} times; place a part once.", path);
+
+    /// <summary>S05-041 (R-P4): node <paramref name="id"/>, not an agent, declares <c>parts</c>.</summary>
+    public static SourceRefusal DeclaresPartsNotAgent(string id, string path) =>
+        new("S05-041", $"Node '{id}' declares parts, and only agent nodes have parts.", path);
+
+    /// <summary>
+    /// A07-001 (R-S4, the guard): snippet <paramref name="id"/>, placed in <paramref name="where"/> (<c>a part's text</c>
+    /// or <c>a macro's instruction</c>) by <paramref name="subject"/>, places <paramref name="unit"/> (<c>macro.m</c>,
+    /// <c>part.p</c>), itself or through a snippet it places.
+    /// </summary>
+    public static SourceRefusal SnippetPlacesPartOrMacro(string id, string unit, string subject, string where, string path) =>
+        new("A07-001", $"Snippet '{id}' places {unit}, and {subject} places it in {where}; a snippet placed there doesn't place parts or macros.", path);
+
+    /// <summary>A07-002 (R-P5): part <paramref name="name"/> of node <paramref name="id"/> uses <paramref name="what"/> (<c>if</c>, or the <c>part.&lt;id&gt;</c> it places).</summary>
+    public static SourceRefusal PartOnlyPresents(string name, string id, string what, string path) =>
+        new("A07-002", $"Part '{name}' of node '{id}' uses {what}; a part's text only presents.", path);
+
+    /// <summary>A07-010 (part 05 § 6.1): a single snippet whose <c>format</c> is not one of the three text formats; <paramref name="format"/> its type string.</summary>
+    public static SourceRefusal SnippetFormatNotText(string id, string format, string path) =>
+        new("A07-010", $"Snippet '{id}' declares format {format}; a snippet's text is plaintext, markdown_block or markdown_inline.", path);
+
+    /// <summary>A07-011: a template whose placed units, counted with what its parts and snippets place in turn, pass <paramref name="limit"/>.</summary>
+    public static SourceRefusal PlacesTooManyUnits(string subject, int limit, string path) =>
+        new("A07-011", $"{subject} places more than {Count(limit)} parts, snippets and macros, counting what its parts and snippets place; the limit is {Count(limit)}.", path);
+
     /// <summary>S06-028 (part 06 R-F1): <c>profile.&lt;field&gt;</c> outside part 06 § 10.1's closed list.</summary>
     public static SourceRefusal ReadsNoProfileField(string subject, string field, string path) =>
         new("S06-028", $"{subject} reads profile.{field}, which isn't a profile field; the fields are name, credentials, organisation, signature and closing.", path);
@@ -203,6 +262,9 @@ public static class DialectSentences
     }
 
     private static string Line(int line) => line.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>A count as the sentences write it, with a thousands comma (<c>1,000</c>).</summary>
+    private static string Count(int count) => count.ToString("#,0", CultureInfo.InvariantCulture);
 
     /// <summary><c>a</c>, <c>a and b</c>, <c>a, b and c</c>.</summary>
     private static string Listed(IReadOnlyList<string> items) => items.Count switch
