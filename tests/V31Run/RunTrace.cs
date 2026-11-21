@@ -6,8 +6,8 @@ using Consultologist.PackageFormat.V31.Run;
 namespace Consultologist.Api.Tests.V31Run;
 
 /// <summary>
-/// #1503 (specVersion 31, area 06): a whole run as one text, for a golden. Four parts, each under its heading: the agent
-/// calls in the order dispatched (row keys); every row in the order recorded, as <c>key | state | reason | value hash</c>
+/// #1503 (specVersion 31, area 06): a whole run as one text, for a golden. Four parts (#1504: five, with a composing host),
+/// each under its heading: the agent calls in the order dispatched (row keys); every row in the order recorded, as <c>key | state | reason | value hash</c>
 /// (<c>-</c> for none); every decision in the order recorded, as <c>site | member | printed condition | result</c> (a
 /// <c>case</c>'s branch taken); and the result: its state, sentence, failed key, agent calls, peak in flight, and each
 /// top-level entry's read form as a hash. No clock value: a decision's time is the host's and is left out. LF line ends,
@@ -15,11 +15,19 @@ namespace Consultologist.Api.Tests.V31Run;
 /// </summary>
 internal static class RunTrace
 {
-    public static string Of(FakeRunHost host, ListRecorder recorder, RunResult result)
+    public static string Of(FakeRunHost host, ListRecorder recorder, RunResult result) => Of(host.Dispatched, recorder, result);
+
+    /// <summary>
+    /// The trace of a run whose agent calls went out as <paramref name="dispatched"/>. #1504: when a row carries a composed
+    /// call's detail (an <c>inputHash</c>: a host that composes, <see cref="ComposingRunHost"/>), a fifth part follows the
+    /// decisions, <c># details</c>: each such row, in the order recorded, as <c>key | &lt;its detail as canonical JSON&gt;</c>
+    /// (ids, keys, hashes and lengths only).
+    /// </summary>
+    public static string Of(IReadOnlyList<string> dispatched, ListRecorder recorder, RunResult result)
     {
         var text = new StringBuilder();
         text.Append("# dispatched\n");
-        foreach (var key in host.Dispatched)
+        foreach (var key in dispatched)
             text.Append(key).Append('\n');
 
         text.Append("\n# rows\n");
@@ -29,6 +37,14 @@ internal static class RunTrace
         text.Append("\n# decisions\n");
         foreach (var decision in recorder.Decisions)
             text.Append(Decision(decision)).Append('\n');
+
+        var detailed = recorder.Rows.Where(r => r.Detail.ContainsKey("inputHash")).ToList();
+        if (detailed.Count > 0)
+        {
+            text.Append("\n# details\n");
+            foreach (var row in detailed)
+                text.Append(row.Key).Append(" | ").Append(CanonicalJson.Write(row.Detail)).Append('\n');
+        }
 
         text.Append("\n# result\n");
         text.Append("state | ").Append(Word(result.State.ToString())).Append('\n');
