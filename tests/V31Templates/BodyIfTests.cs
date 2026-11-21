@@ -85,6 +85,20 @@ public class BodyIfTests
         Assert.Equal("Deliverable 'note' branches on s.state and handles completed and skipped, but not not_run: add it or an else.", refusal.Sentence);
     }
 
+    [Fact]
+    public void AChainsReads_AreInSourceOrder()
+    {
+        // Each test is read where it is written: an else if's test after the outputs of the branch before it.
+        var body = "{{ if check.coverage.value.pass }}{{ node.plan.content }}"
+            + "{{ else if node.sections.state == \"completed\" }}{{ input.consult_draft.content }}{{ else }}{{ end }}\n";
+
+        var reads = Body(Check(WithSections(body)), "deliverables/note.md").Reads;
+
+        Assert.Equal(
+            ["check.coverage.value.pass", "node.plan.content", "node.sections.state", "input.consult_draft.content"],
+            reads.Select(r => r.Written));
+    }
+
     [Theory]
     [InlineData("concept_bullets.md")]
     [InlineData("concept_context.md")]

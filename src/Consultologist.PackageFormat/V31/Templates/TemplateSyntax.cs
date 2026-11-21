@@ -32,9 +32,10 @@ public sealed record TemplateFor(string Variable, string Source, TemplateTag Tag
 /// <c>!</c>, <c>&amp;&amp;</c>, <c>||</c> and parentheses taken apart. <paramref name="Text"/> is the test as written;
 /// <paramref name="Path"/> the access path it tests (after any pipes: <c>(c.support | string.strip) != ""</c> tests
 /// <c>c.support</c> through <paramref name="Pipes"/>); <paramref name="Operator"/> and <paramref name="Literal"/> the
-/// comparison's operator and literal as written (<c>==</c>, <c>"completed"</c>), <c>null</c> for a bare test.
+/// comparison's operator and literal as written (<c>==</c>, <c>"completed"</c>), <c>null</c> for a bare test;
+/// <paramref name="Start"/> its offset in the body, so that an <c>else if</c>'s test is placed after the branch before it.
 /// </summary>
-public sealed record TemplateTest(string Text, string? Path, string? Operator, string? Literal, IReadOnlyList<TemplatePipe> Pipes, int Line);
+public sealed record TemplateTest(string Text, string? Path, string? Operator, string? Literal, IReadOnlyList<TemplatePipe> Pipes, int Line, int Start);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 2.5): an <c>if</c> chain (<c>if</c>, its <c>else if</c>s, its
@@ -415,14 +416,16 @@ public sealed record TemplateSyntax(
                         comparison.OperatorToken?.Value ?? comparison.OperatorAsText,
                         literal is null ? null : Slice(literal),
                         steps.Select(Pipe).ToList(),
-                        LineOf(comparison)));
+                        LineOf(comparison),
+                        Math.Max(comparison.Span.Start.Offset, 0)));
                     return;
                 }
 
                 default:
                 {
                     var (head, steps) = Decompose(expression);
-                    tests.Add(new TemplateTest(Slice(expression), Chain(head), null, null, steps.Select(Pipe).ToList(), LineOf(expression)));
+                    tests.Add(new TemplateTest(
+                        Slice(expression), Chain(head), null, null, steps.Select(Pipe).ToList(), LineOf(expression), Math.Max(expression.Span.Start.Offset, 0)));
                     return;
                 }
             }

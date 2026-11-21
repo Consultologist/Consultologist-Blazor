@@ -365,7 +365,7 @@ public static partial class SourceTemplates
             foreach (var test in chain.Tests)
             {
                 var read = test.Path is { } path ? typing.Type(path, test.Line, scope) : (null, null);
-                Record(chain.Tag.Start, order++, read);
+                Record(test.Start, order++, read);
                 if (read.Item2 != null || host.Site == TemplateSite.Renderer)
                     continue;
 
