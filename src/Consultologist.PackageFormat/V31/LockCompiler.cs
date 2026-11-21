@@ -40,6 +40,11 @@ public static class LockCompiler
     /// <summary>Every name <c>builtins</c> may hold: the machinery and each built-in renderer.</summary>
     internal static IEnumerable<string> BuiltinNames => Machinery.Select(m => m.Name).Concat(Renderers.Keys);
 
+    /// <summary>#1503: every built-in <c>builtins</c> may hold, at the version this library writes for it.</summary>
+    internal static IReadOnlyDictionary<string, string> BuiltinVersions { get; } =
+        Machinery.Concat(Renderers.Select(r => (Name: r.Key, Version: r.Value)))
+            .ToDictionary(b => b.Name, b => b.Version, StringComparer.Ordinal);
+
     /// <summary>The flat maps of <c>resolve.json</c> whose entries may render (§ 2.5), and a function's own.</summary>
     private static readonly string[] Maps = ["nodes", "checks", "renderers", "snippets", "macros", "deliverables"];
 
