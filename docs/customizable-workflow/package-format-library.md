@@ -1172,7 +1172,10 @@ caller's errors.
 
 **`PlanFormats`** holds values to the bundle. `Expand(format)` inlines every `#/$defs/<key>` and drops `$id` and
 `$schema` from the inlined entries, to depth 64 (`PlanFormats.MaxDepth`) within `FormatTypes.SchemaBudget`. A
-cycle, a missing key or any other reference gives `false`, the schema nothing fits.
+cycle, a missing key or any other reference gives `false`, the schema nothing fits. The budget counts schemas
+as publish counts them for A03-011 (the format, each value of `properties`, `items`, each member of `anyOf`,
+each entry inlined), so a format file publish accepted is never too large at run. The schemas a site's format
+writes itself are counted apart from those of the entries it refers to.
 `Validate(value, format)` is `Expand` followed by `CorvusFormatValueValidator.ValidateExpanded`.
 `IsText(format)` is true for `plaintext`, `markdown_block` and `markdown_inline`, by their bundle `$id`.
 `Read(reply, format)` gives a text reply as a string. Any other reply is parsed as JSON, to 512 levels, with a

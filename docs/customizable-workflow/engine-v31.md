@@ -37,8 +37,8 @@ stamp, or a stamp that cannot be read. So while 31 is previewed, every 5–30 st
 
 `ICompiledPackageStore.TryLoadAsync(WorkflowPackageRef packageRef, CancellationToken ct)` (`CompiledPackageStore`)
 returns `null` when the version is not a 31 one. Otherwise it returns a
-`CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail)`. It runs these steps in
-order:
+`CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail, bool Unreadable = false)`.
+It runs these steps in order:
 
 1. **Nothing is read** unless `SpecVersionAdmission.Runs31`.
 2. **The pin.** `latest` is resolved through the 5–30 store's own pointer read and cache
@@ -67,6 +67,11 @@ order:
 A refusal is not cached: once the registry is fixed, the next load loads. Two first loads at once may both build,
 and both get the first plan stored.
 
+**A registry that cannot be read.** The load never throws for what it reads. A missing or invalid `latest`
+pointer, or a storage failure other than an absent blob, gives a load with `Unreadable` true and no refusal:
+nothing is known of the version, so nothing is refused. `OperatorDetail` then holds the package, the version and
+the failure's type and status, never its message, which can carry a URI.
+
 **What the engine runs** (`EngineCapabilitiesFactory.Current()`):
 
 - **Kinds:** all eight.
@@ -81,8 +86,9 @@ and both get the first plan stored.
 ## Starting a job
 
 `ConsultGenerationJobStarter.StartAsync` calls the 31 branch (`V31JobStarter`) after the hold, the rate limit and
-the package ref, and before today's `ResolveAsync`. A `null` load continues on today's path unchanged. The
-branch does this:
+the package ref, and before today's `ResolveAsync`. A `null` load continues on today's path unchanged. So does
+an `Unreadable` one, after a warning with the operator's detail: today's path reads the same registry and answers
+the failure exactly as it does with the preview off, for a 5–30 package too. The branch does this:
 
 1. **A load refusal** becomes a start failure on the job (`RecordStartFailure`, with the clinician's sentence;
    the operator's detail goes to the log). The outcome is `PackageContentRejected`, with the job's id.
@@ -131,13 +137,18 @@ held inputs. The limits and the regex limit are the ones the start read, so a re
 has changed since. The orchestration runs these steps in order:
 
 1. It waits for the job's schedule, as the 5–30 orchestration does.
-2. **The drain** (`DrainAware`): while the engine drains, it waits here (below).
+2. **The drain** (`DrainAware`): it sets its custom status to `Queued`, then calls `check-drain`; while the
+   engine drains, it waits here (below).
 3. It takes `startedAtUtc` from the replay-safe clock. The job limit is timed from here, so time spent queued or
    waiting behind a drain does not count.
 4. It records the header on the job's entity in one call, before any node runs: `RecordV31Header` with the two
    hashes, the nine limits and `startedAtUtc`. Then it calls `MarkRunning`.
 5. **`load-plan-v31`** loads and verifies the version again through the store. The plan's `resolveHash` must be
    the job's, else S09-009; its `lockHash` must be too, else S09-014. A version no longer stamped 31 is A06-004.
+   When the store refuses the version here, or in any other activity that loads the plan (`load-run-inputs-v31`,
+   `run-agent-node-v31`, `render-node-v31`), the job shows the refusal's sentence and the activity logs a warning
+   with the package, the version, the refusal's id and the operator's detail (D5), which is package text and
+   hashes. A registry that cannot be read fails the activity instead, and the job with A06-010.
    The activity returns the verified `resolve.json`, gzipped then base64, and is called even when the plan is
    cached, so every worker's history is the same. The orchestrator takes the plan from a 64-entry process cache
    keyed by `resolveHash` and the regex limit. On a miss it re-hashes the text against the job's `resolveHash`
@@ -177,7 +188,7 @@ from 5 seconds, so one storage hiccup does not fail a job.
 `run-agent-node-v31` (`RunAgentNodeV31Activity`) makes one attempt of one call. It loads the plan through the
 store's cache, held to the job's `resolveHash`, and composes the entry's body with the job's recorded
 `renderSteps`. It finds the agent in the plan's `bindings` (`bindings.<format key>.<producer>`), then sends the
-body once:
+body once, through `IAgentAttempts`, which declares:
 
 ```csharp
 Task<AgentAttempt> TryPromptOnceAsync(string stage, string userMessage, string agentName, string agentVersion, CancellationToken cancellationToken);
@@ -219,7 +230,7 @@ input and in the job header's `limits`, and never re-read for that job.
 
 | Setting | Default | What it is |
 |---|---|---|
-| `WorkflowPackages__PreviewSpecVersions` | unset | A comma-separated list of the spec versions admitted beside the compiled-in list. Only `31` is allowed, on `canada-east-ai-function-dev` only, and it is removed at the bump. An entry that is not an integer, is already released (5–30) or is not implemented stops the host. The attestation lists it apart, as `PreviewSpecVersions` (`[]` when unset). |
+| `WorkflowPackages__PreviewSpecVersions` | unset | A comma-separated list of the spec versions admitted beside the compiled-in list. Only `31` is allowed. It is meant for the dev app (`canada-east-ai-function-dev`) only; the engine does not enforce that, so an app runs 31 wherever the setting is given. It is removed at the bump. An entry that is not an integer, is already released (5–30) or is not implemented stops the host. The attestation lists it apart, as `PreviewSpecVersions` (`[]` when unset). |
 | `ConsultGeneration__MaxAgentCallsPerJob` | 16 | The per-job ceiling: agent calls in flight at once (`maxAgentCalls`) |
 | `ConsultGeneration__CapacityWaitMinutes` | 10 | The minutes a node may wait on 429s in all |
 | `ConsultGeneration__ServiceAttempts` | 5 | The attempts a node's call gets for other service failures |
@@ -271,9 +282,15 @@ counts as producing.
 - **Every door still answers a new job with its id**: HTTP (202), email, forms, rerun. The job's entity is
   initialised as usual. Its status reads *"Waiting for an update to finish"* (S09-018), and its orchestration input
   is parked instead of scheduled.
-- **A scheduled job** whose time comes during the drain waits with the same status until Resume.
-- **The wait.** A waiting orchestration checks the drain again every 5 minutes, in case Resume looked for it
-  before it began to wait. Cancel refuses a waiting job.
+- **A scheduled job** whose time comes during the drain waits with the same status until a check after Resume
+  reads not draining.
+- **A scheduled job is not asleep once its timer ends.** A drain-aware orchestration sets its custom status to
+  `Queued` when its schedule timer ends, before it calls `check-drain`. So a drain begun after that check has
+  read "not draining" counts the job as producing, not as asleep on its schedule.
+- **The wait.** A waiting orchestration waits for `engine-resumed` or 5 minutes, whichever comes first (Resume
+  may have looked for it before it began to wait). Either way it sets its status to `Queued` and calls
+  `check-drain` again, and it goes on only once a check reads not draining. So a second drain begun just after
+  a Resume holds it too. Cancel refuses a waiting job.
 - **What does not count.** Time spent waiting does not count toward a 31 job's `jobMinutes`.
 - **Older orchestrations.** An orchestration started by an earlier build has no `DrainAware` and never meets the
   check, so its replay is unchanged.
@@ -316,8 +333,8 @@ If the release is abandoned at step 2, the drain stays on and new jobs keep park
   start to park within the same moment a Resume runs.
 - **Later builds must keep the drain-wait replay prefix.** An orchestration waiting behind the drain when the
   deploy happens replays on the new build through that wait: the schedule timer, `check-drain`,
-  `MarkWaitingForUpdate`, the `engine-resumed` wait and the recheck timer. A later build must not change that
-  prefix, nor the `DrainAware` check that leads to it.
+  `MarkWaitingForUpdate`, the `engine-resumed` wait and the recheck timer, then `check-drain` again. A later
+  build must not change that prefix, nor the `DrainAware` check that leads to it.
 
 ## Sizing the deployment-wide limits (D10)
 
