@@ -405,6 +405,80 @@ public class SourceDerivedTests
             "While 'refine' declares reproducible true; its body makes it false.", "nodes/refine/index.json");
     }
 
+    // ---- The facts of a run (D33) --------------------------------------------------------------
+
+    private const string Text = "\"string\"";
+
+    private const string Yes = "\"boolean\"";
+
+    /// <summary>Whether <paramref name="path"/> is <paramref name="value"/>, as JSON Logic.</summary>
+    private static string Is(string path, string value) => $"{{ \"===\": [{{ \"var\": \"{path}\" }}, \"{value}\"] }}";
+
+    /// <summary>A computed node over <paramref name="expression"/>, of <paramref name="format"/>, declaring <paramref name="runDependent"/>.</summary>
+    private static string Computed(string label, string format, string expression, bool runDependent) =>
+        Md(SourceFixture.Node("computed", label, format, true, false,
+            $"\"if\": null, \"expression\": {expression}").Replace("\"runDependent\": false", $"\"runDependent\": {(runDependent ? "true" : "false")}",
+            StringComparison.Ordinal), "");
+
+    /// <summary>
+    /// <see cref="SourceFixture.Minimal"/> with the while <c>stamping</c> (its <c>while</c> rule <paramref name="condition"/>)
+    /// of <c>stamp</c>, which reads <c>run.id</c>, and <c>probe</c>, whose expression is <paramref name="probe"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Stamping(string condition, string probe) =>
+        Listing(Minimal(), "stamping")
+            .With("nodes/stamping/index.json", Json(SourceFixture.Node("while", "Stamping the run", Yes, true, false,
+                $"\"while\": {condition}, \"max\": 3, \"until\": null, \"checkFirst\": false, "
+                + "\"nodes\": [\"stamp\", \"probe\"], \"ret\": \"node.stamping.probe\"")))
+            .With("nodes/stamping/stamp.md", Computed("Naming the run", Text, "{ \"var\": \"run.id\" }", true))
+            .With("nodes/stamping/probe.md", Computed("Probing the stamp", Yes, probe, false));
+
+    [Fact]
+    public void ANodesState_ReadThroughPass_CarriesNoFlag()
+    {
+        // pass.node.stamp.state, as node.stamp.state, is the engine's fact about the run: no flag passes through it.
+        var pass = Is("pass.node.stamp.state", "completed");
+        var derived = Accepted(Stamping("{ \"<\": [{ \"var\": \"pass.number\" }, 2] }", pass));
+        Assert.False(derived.Entries["node.stamping.probe"].RunDependent);
+        Assert.False(derived.Entries["node.stamping"].RunDependent);
+
+        // The while deciding on the stamp's state, this pass's or the last, is no run-dependent decision; on its value it is.
+        foreach (var read in new[] { "pass.node.stamp.state", "pass.previous.node.stamp.state" })
+        {
+            Assert.DoesNotContain(Accepted(Stamping(Is(read, "skipped"), pass)).Warnings, w => w.Id == "S03-037");
+        }
+
+        Assert.Contains(Accepted(Stamping(Is("pass.node.stamp.value", "done"), pass)).Warnings,
+            w => w.Id == "S03-037" && w.Sentence.StartsWith("While 'stamping' while reads run.id", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ANodesState_ReadThroughItemNodes_CarriesNoFlag()
+    {
+        // The loop stamps reads run.id in each item; the loop states, over its .items, reads each stamp's state.
+        var files = Listing(Minimal(), "stamps", "states")
+            .WithJson("manifest.json", m => m["inputs"]!["points"] = JsonNode.Parse(
+                "{ \"label\": \"Points\", \"description\": null, \"format\": " + ArrayOf(Plain) + ", \"required\": true, \"channel\": null }"))
+            .With("nodes/stamps/index.json", Json(SourceFixture.Node("for", "Stamping each point", ArrayOf(Text), true, false,
+                "\"in\": \"input.points.value\", \"parallel\": false, \"maxParallel\": null, \"until\": null, "
+                + "\"max\": null, \"itemLabel\": null, \"nodes\": [\"stamp\"], \"ret\": \"node.stamps.stamp\"")))
+            .WithJson("nodes/stamps/index.json", h => h["runDependent"] = true)
+            .With("nodes/stamps/stamp.md", Computed("Naming the run", Text, "{ \"var\": \"run.id\" }", true))
+            .With("nodes/states/index.json", Json(SourceFixture.Node("for", "Reading each stamp's state", ArrayOf(Yes), true, false,
+                "\"in\": \"node.stamps.items\", \"parallel\": false, \"maxParallel\": null, \"until\": null, "
+                + "\"max\": null, \"itemLabel\": null, \"nodes\": [\"state\"], \"ret\": \"node.states.state\"")))
+            .WithJson("nodes/states/index.json", h => h["runDependent"] = true)
+            .With("nodes/states/state.md", Computed("The stamp's state", Yes, Is("item.nodes.stamp.state", "completed"), false));
+        var derived = Accepted(files);
+        Assert.False(derived.Entries["node.states.state"].RunDependent);
+
+        // The loop itself reads the stamps' .items, which hold their values: it is run-dependent through its source.
+        Assert.True(derived.Entries["node.states"].RunDependent);
+
+        // The stamp's value, read the same way, carries the flag.
+        AssertRefusal(files.With("nodes/states/state.md", Computed("The stamp's value", Yes, Is("item.nodes.stamp.value", "done"), false)),
+            null, "S03-036", "Node 'state' declares runDependent false, but its reads make it true: item.nodes.stamp.value.", "nodes/states/state.md");
+    }
+
     // ---- Circles -------------------------------------------------------------------------------
 
     /// <summary>The computed node <paramref name="id"/>, a number, one more than <paramref name="reads"/>' value.</summary>

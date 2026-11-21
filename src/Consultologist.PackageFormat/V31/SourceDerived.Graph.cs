@@ -10,7 +10,8 @@ namespace Consultologist.PackageFormat.V31;
 /// call's function, a folder's items, a renderer piped into, a macro placed); <paramref name="Pass"/> whether it reads through <c>pass</c>
 /// (no circle), <paramref name="Earlier"/> whether it reads an earlier pass (<c>pass.previous…</c>, <c>pass.history</c>:
 /// never content). <paramref name="Carries"/> is false for a read of what is no value's content (a node's
-/// <c>.state</c>, <c>.stopped</c>, <c>.passes</c>; an item's <c>.id</c> or <c>.state</c>): it carries no flag.
+/// <c>.state</c>, <c>.stopped</c>, <c>.passes</c>, named as <c>node.&lt;id&gt;</c>, through <c>pass</c> or through
+/// <c>item.nodes</c>; an item's <c>.id</c> or <c>.state</c>): it carries no flag.
 /// </summary>
 internal sealed record GraphRead(string Path, string? Id, string? Key, string Canonical, bool Pass, bool Earlier, bool Carries = true);
 
@@ -432,7 +433,7 @@ internal sealed class DerivedGraph
                     return plain;
                 var member = s[0] is "node" or "check" && s.Count > 2 ? s[2] : null;
                 return new GraphRead(path, s[0] == "input" ? key : prefix + key, key, s.Count > 2 ? $"{key}.{s[2]}" : key, false, false,
-                    Carries: member is not ("state" or "stopped" or "passes"));
+                    Carries: !RunFact(member));
             case "pass" when frame != null:
                 return Pass(path, s, frame, prefix);
             case "pass":
@@ -442,9 +443,15 @@ internal sealed class DerivedGraph
                 while (1 + up < s.Count && s[1 + up] == "parent")
                     up++;
                 var itemMember = 1 + up < s.Count ? s[1 + up] : null;
-                return frame.Loop(up) is { } loop
-                    ? plain with { Id = ItemId(vertex.Function, vertex.Union, loop), Carries = itemMember is not ("id" or "state") }
-                    : plain;
+                if (frame.Loop(up) is not { } loop)
+                    return plain;
+                // Over a loop's .items, item.nodes.<id>.<member> is a body node's member, a fact of the run as node.<id>'s is.
+                var nodeMember = itemMember == "nodes" && 3 + up < s.Count && Tree.Source(loop).OverItems ? s[3 + up] : null;
+                return plain with
+                {
+                    Id = ItemId(vertex.Function, vertex.Union, loop),
+                    Carries = itemMember is not ("id" or "state") && !RunFact(nodeMember),
+                };
             case "profile" when s.Count >= 2:
                 var field = $"profile.{s[1]}";
                 var profile = Add(new Vertex(field, field, null, false, null, false));
@@ -456,6 +463,13 @@ internal sealed class DerivedGraph
                 return plain;
         }
     }
+
+    /// <summary>
+    /// D33: whether <paramref name="member"/>, read after a node's id (<c>node.&lt;id&gt;</c>, <c>pass…node.&lt;id&gt;</c>,
+    /// <c>item.nodes.&lt;id&gt;</c>), is the engine's fact about the run rather than a value's content: <c>.state</c>,
+    /// <c>.stopped</c>, <c>.passes</c>. Such a read carries no flag, whichever form names the node.
+    /// </summary>
+    private static bool RunFact(string? member) => member is "state" or "stopped" or "passes";
 
     /// <summary>
     /// <c>pass.(parent)*.(previous.)?node.&lt;id&gt;</c>: the node, an earlier pass's marked <c>Earlier</c> (and told no
@@ -481,7 +495,8 @@ internal sealed class DerivedGraph
             && ScopeTree.Walk(loop.Body.Nodes).FirstOrDefault(n => n.Id == s[at + 1]) is { } node)
         {
             // An earlier pass's node is named (reproducible and the decisions follow it), but is never content.
-            return plain with { Id = prefix + node.Key, Key = earlier ? null : node.Key, Earlier = earlier };
+            var member = at + 2 < s.Count ? s[at + 2] : null;
+            return plain with { Id = prefix + node.Key, Key = earlier ? null : node.Key, Earlier = earlier, Carries = !RunFact(member) };
         }
 
         return plain with { Earlier = earlier };
