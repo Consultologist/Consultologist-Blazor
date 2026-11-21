@@ -134,6 +134,15 @@ public class PlanRunnerCallsTests
         var files = ResolveFixture.Functions()
             .WithJson("nodes/standards/section.md", header => header["with"]!["draft"] = JsonNode.Parse(argument))
             .WithJson("functions/draft_section/index.json", f => f["inputs"]!["draft"]!["format"] = JsonNode.Parse(format));
+        if (argument is "null" or "\"run.date\"")
+        {
+            // #1504: a date or a nullable string has no .content, so the prompt reads .value to be a valid template; the
+            // runner is still told it reads both (the stub below).
+            files.With("functions/draft_section/patient_draft.md", SourceFixture.Agent("Drafting from the patient's facts", "\"plaintext\"",
+                "Using the draft below, write what it says about Margaret Okafor for this section.\n\n{{ param.draft.value }}\n"));
+        }
+
+
         if (argument == "\"run.date\"")
         {
             // a run fact makes the parameter, and everything reading it, run-dependent (part 03 § 4.4)
@@ -226,7 +235,7 @@ public class PlanRunnerCallsTests
                     "\"if\": null, \"function\": \"draft_section\", "
                     + "\"with\": { \"standard\": \"item\", \"draft\": \"input.consult_draft.content\" }"),
                 ""));
-        var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed, templates: ResolveFixture.FunctionsReads());
+        var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed);
         Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}")));
         var document = JsonNode.Parse(compiled!.Resolve)!.AsObject();
         var reads = document["functions"]!["draft_section"]!["nodes"]!["node.standard_draft"]!["reads"]!.AsArray();
@@ -330,7 +339,7 @@ public class PlanRunnerCallsTests
         var files = ResolveFixture.Functions()
             .WithJson("nodes/standards/section.md",
                 header => header["if"] = JsonNode.Parse("""{ "!==": [{ "var": "item.id" }, "hpi"] }"""));
-        var plan = RunFixture.Plan(files, ResolveFixture.FunctionsReads());
+        var plan = RunFixture.Plan(files);
         var host = ConceptsHost(auto: true);
         var recorder = new ListRecorder();
 
@@ -506,7 +515,7 @@ public class PlanRunnerCallsTests
             // a reply that isn't the function's node's format, twice (onInvalid: retry)
             files = ResolveFixture.Functions()
                 .WithJson("functions/draft_section/standard_draft.md", header => header["format"] = "concept_list");
-            reads = ResolveFixture.FunctionsReads();
+            reads = FunctionsReads();
             inputs = PlanRunnerLeavesTests.Inputs();
             host = ConceptsHost(auto: true).Reply("node.standards.section.standard_draft:hpi", "not a concept list");
         }
@@ -562,7 +571,7 @@ public class PlanRunnerCallsTests
     /// <summary>A JSON string of <paramref name="text"/>.</summary>
     private static string Quoted(string text) => JsonValue.Create(text)!.ToJsonString();
 
-    /// <summary><see cref="ResolveFixture.FunctionsReads"/> with some bodies' reads replaced or added.</summary>
+    /// <summary>What each body of <see cref="ResolveFixture.Functions"/> reads, with some bodies' reads replaced or added.</summary>
     private static StubTemplates FunctionsReads(params (string Name, string[] Reads)[] changed)
     {
         var reads = new Dictionary<string, string[]>(StringComparer.Ordinal)

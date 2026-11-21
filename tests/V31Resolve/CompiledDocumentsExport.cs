@@ -103,6 +103,6 @@ public class CompiledDocumentsExport
         + "UTF-8, no final newline), with no publish limits, so no ceiling note.\n\n"
         + $"resolve.json: {compiled.ResolveHash}\n"
         + $"lock.json: {compiled.LockHash}\n\n"
-        + "What each Scriban body reads is stated by a stub, as the bodies are written, until this implementation's "
-        + "dialect (area 07) says it; area 07 regenerates these documents.\n";
+        + "What each Scriban body reads, places, renders and where its run spots are is what the dialect "
+        + "(scriban-dialect.md) finds in the bodies as written.\n";
 }
