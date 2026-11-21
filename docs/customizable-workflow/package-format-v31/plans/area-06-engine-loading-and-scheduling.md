@@ -236,7 +236,7 @@ How it runs (this task: the top level's leaves; Tasks 6 to 8 add frames):
 
 `FakeRunHost` (tests): scripted by `EntryKey` or `Key` → reply or outcome; answers are held until the test releases them (`Release(key)`, `ReleaseAll()`, `ReleaseInOrder(Random)`), or at once in auto mode; records `Dispatched` (keys in order), `InFlightPeak`, per-loop-instance peaks; `UtcNow` and `DelayAsync` on a manual clock (`Advance(TimeSpan)`).
 
-- [ ] **Step 1: Write the failing tests** (`RunFixture` packages built on `SourceFixture.Minimal()`):
+- [x] **Step 1: Write the failing tests** (`RunFixture` packages built on `SourceFixture.Minimal()`):
   - `ASingleAgent_Completes`: one agent reading `input.consult_draft.content`; the call's `Scope` holds exactly `input.consult_draft.content`; the row is `Completed` with `ValueHash` = `CanonicalJson.HashText(reply)`; `RunResult.Values["node.plan"]` reads `value`, `content`, `state: "completed"`.
   - `AComputedNode_IsEvaluatedInline_WithNoCall`: `node.section_count` over a stubbed `node.plan` → value 3, `host.Dispatched` holds only `node.plan`.
   - `AComputedValue_ThatDoesNotFitItsFormat_FailsWithA06003`.
@@ -248,8 +248,8 @@ How it runs (this task: the top level's leaves; Tasks 6 to 8 add frames):
   - `AFailedCall_FailsTheJob_AndDispatchesNothingMore`.
   - `ADeliverable_IsRenderedAndSettlesComposed`; `ADeliverableWhoseIfIsFalse_IsSkipped`; `ARenderPastItsSteps_FailsWithItsSentence`.
   - `TheRunner_ReadsNoClockButTheHosts`: a source scan of `Run/*.cs` finds no `DateTime.UtcNow`, `DateTime.Now`, `Stopwatch`, `Guid.NewGuid`, `new Random`, `Task.Delay`, `Task.Run`.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): the runner: leaves in their fixed order, under the per-job ceiling`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): the runner: leaves in their fixed order, under the per-job ceiling`
 
 ### Task 5: Agent replies: `onInvalid`, retries, and the job limit
 
