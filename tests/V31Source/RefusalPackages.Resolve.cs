@@ -12,7 +12,7 @@ namespace Consultologist.Api.Tests.V31Source;
 /// </summary>
 internal static partial class RefusalPackages
 {
-    private static IEnumerable<RefusalCase> Resolve() => Passes().Concat(Levels()).Concat(Sealed()).Concat(Sources()).Concat(Labels()).Concat(Unused());
+    private static IEnumerable<RefusalCase> Resolve() => Passes().Concat(Levels()).Concat(Sealed()).Concat(Sources()).Concat(Labels()).Concat(Unused()).Concat(Cases());
 
     // ---- Chapter 4 § 4.2.2: what a loop iterates -----------------------------------------------------------
 
@@ -85,6 +85,47 @@ internal static partial class RefusalPackages
             + "its itemLabel is points, a list. Valid: title.",
             WithLoop(),
             WithLoop().Edit(SectionsLoop, label, "\"itemLabel\": \"points\""));
+    }
+
+    // ---- Chapter 4 § 4.5.2: what a case switches on --------------------------------------------------------
+
+    private static IEnumerable<RefusalCase> Cases()
+    {
+        const string route = "nodes/route/index.json";
+        const string subject = "\"case\": \"input.note_kind.value\"";
+        const string narrative = "\"when\": [\"narrative\"]";
+        const string omit = ", { \"when\": [\"omit\"], \"nodes\": [], \"ret\": null }";
+
+        yield return new RefusalCase("S04-044",
+            "A case switches on an enumerated string (chapter 4 § 4.5.2). The case route drafts the note by the input "
+            + "note_kind. Invalid: it switches on input.consult_draft.value, a markdown_block. Valid: input.note_kind.value.",
+            WithCase(),
+            WithCase().Edit(route, subject, "\"case\": \"input.consult_draft.value\""));
+
+        yield return new RefusalCase("S04-045",
+            "A case's values are its subject's (chapter 4 § 4.5.2). The case route drafts the note by the input note_kind, "
+            + "narrative or omit. Invalid: its first branch lists narrative and prose. Valid: narrative.",
+            WithCase(),
+            WithCase().Edit(route, narrative, "\"when\": [\"narrative\", \"prose\"]"));
+
+        yield return new RefusalCase("S04-046",
+            "A value belongs to one branch (chapter 4 § 4.5.2). The case route drafts the note by the input note_kind. "
+            + "Invalid: its second, empty branch lists omit and narrative, which the first lists. Valid: omit.",
+            WithCase(),
+            WithCase().Edit(route, "\"when\": [\"omit\"]", "\"when\": [\"omit\", \"narrative\"]"));
+
+        yield return new RefusalCase("S04-047",
+            "Every case is exhaustive: a branch for every value, or an else (chapter 4 § 4.5.2). The case route drafts the note "
+            + "by the input note_kind. Invalid: it has no branch for omit and no else. Valid: an empty branch for omit.",
+            WithCase(),
+            WithCase().Edit(route, omit, ""));
+
+        yield return new RefusalCase("S04-075",
+            "A subject that can be null requires an else (chapter 4 § 4.5.2). The case route drafts the note by the input "
+            + "note_kind. Invalid: note_kind may be null. Valid: it may not.",
+            WithCase(),
+            WithCase().Edit("manifest.json", NoteKinds,
+                "{ \"type\": [\"string\", \"null\"], \"enum\": [\"narrative\", \"omit\", null] }"));
     }
 
     // ---- Chapter 4 § 4.10.1: a while's body nodes are used -------------------------------------------------

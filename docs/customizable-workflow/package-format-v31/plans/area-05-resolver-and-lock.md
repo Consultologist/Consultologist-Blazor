@@ -155,9 +155,9 @@ Rules: `in` that the reader held as non-text → S04-017 if the reader does not 
 
 Rules: the `case` subject resolved like `in` (S04-017, A05-001, S03-014); not an enumerated string (`enum`, or `oneOf` of `const`s; nullable allowed) → S04-044; a `when` value not among the subject's values → S04-045 (`<values>` in the format's order, quoted as the row shows); a value in two branches → S04-046; values unlisted with no `else` → S04-047; a subject that can be null (a nullable format, an input not required, a node not `AlwaysValued`) with no `else` → S04-075.
 
-- [ ] **Step 1: Failing tests:** one fact per sentence; `TheMigratedExamples_Pass` (§ 5.4's three files verbatim); `ASubjectFromASkippableNode_NeedsAnElse`; `AlwaysValued` (theory over each kind).
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement; refusal cases; re-export.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1502): a case's subject and its values, held to the subject's enum`
+- [x] **Step 1: Failing tests:** one fact per sentence; `TheMigratedExamples_Pass` (§ 5.4's three files verbatim); `ASubjectFromASkippableNode_NeedsAnElse`; `AlwaysValued` (theory over each kind).
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement; refusal cases; re-export.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1502): a case's subject and its values, held to the subject's enum`
 
 ### Task 4: Functions and calls
 

@@ -311,7 +311,7 @@ public sealed partial class ScopeTree
             ("stopped", SourceWhile) => Head(ScopeHeadKind.Value, key, length, Enum(["check", "until", "bound"]), nullable),
             ("passes", SourceWhile) => Head(ScopeHeadKind.Value, key, length, Integer(), nullable),
             ("history", SourceWhile) => Head(ScopeHeadKind.Value, key, length, History(), nullable),
-            _ => Head(ScopeHeadKind.Format, key, at + 1, FormatOf(node), nullable || MayBeSkipped(node)),
+            _ => Head(ScopeHeadKind.Format, key, at + 1, FormatOf(node), nullable || !AlwaysValued(node)),
         };
     }
 
@@ -430,20 +430,6 @@ public sealed partial class ScopeTree
 
     /// <summary>The node's declared format as the type rules read it (the model's own node: read-only).</summary>
     private JsonNode? FormatOf(SourceNode node) => types.NodeFormats.GetValueOrDefault(node.Path);
-
-    /// <summary>
-    /// D14, approximated until Task 3's <c>ScopeTree.AlwaysValued</c> replaces it: a leaf with an <c>if</c>, an
-    /// <c>if</c> with no <c>else</c>, a <c>case</c> with an empty branch and a <c>checkFirst</c> while may be skipped,
-    /// so what they hold may be null.
-    /// </summary>
-    private static bool MayBeSkipped(SourceNode node) => node switch
-    {
-        SourceLeaf leaf => leaf.Header["if"] is not null,
-        SourceIf branch => branch.Else == null,
-        SourceCase choice => choice.Branches.Any(b => b.Body.Nodes.Count == 0),
-        SourceWhile loop => loop.CheckFirst,
-        _ => false,
-    };
 
     /// <summary>What <c>.content</c> of a value of <paramref name="format"/> is (D10): a text format itself, otherwise plaintext.</summary>
     private static JsonNode ContentOf(JsonNode format, FormatSet formats) =>

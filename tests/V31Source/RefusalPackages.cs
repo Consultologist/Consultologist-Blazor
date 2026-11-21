@@ -677,15 +677,22 @@ internal static partial class RefusalPackages
                 Node("rendered", "Billing text", Plain, true, false, "\"if\": null"),
                 "Consultation with Margaret Okafor, 45 minutes.\n"));
 
-    /// <summary>A <c>case</c>, <c>route</c>, with a branch that drafts and an empty branch.</summary>
+    /// <summary>
+    /// A <c>case</c>, <c>route</c>, on the required input <c>note_kind</c> (narrative or omit), with a branch that drafts
+    /// and an empty branch (#1502: a case's subject is typed, an enumerated string; the plan of
+    /// <see cref="SourceFixture.Minimal"/> is plaintext, with no kind to switch on).
+    /// </summary>
     private static Dictionary<string, byte[]> WithCase() =>
-        MinimalListing("route")
+        WithRequiredInput(MinimalListing("route"), "note_kind", "Kind of note", NoteKinds)
             .With("nodes/route/index.json", Json(Node("case", "Routing the note by its kind", Plain, false, true,
-                "\"case\": \"node.plan.value.kind\", \"branches\": ["
+                "\"case\": \"input.note_kind.value\", \"branches\": ["
                 + "{ \"when\": [\"narrative\"], \"nodes\": [\"narrative_draft\"], \"ret\": \"node.route.narrative_draft\" }, "
                 + "{ \"when\": [\"omit\"], \"nodes\": [], \"ret\": null }], \"else\": null")))
             .With("nodes/route/narrative_draft.md", Agent("Drafting the note as prose", Plain,
                 "Write the note for Margaret Okafor as prose.\n"));
+
+    /// <summary>The format of <see cref="WithCase"/>'s input <c>note_kind</c>.</summary>
+    private const string NoteKinds = "{ \"type\": \"string\", \"enum\": [\"narrative\", \"omit\"] }";
 
     /// <summary>A function, <c>draft_section</c>, of one parameter and one agent node, and a <c>call</c> node, <c>section</c>, that calls it.</summary>
     private static Dictionary<string, byte[]> WithFunction()

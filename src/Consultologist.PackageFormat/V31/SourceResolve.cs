@@ -10,7 +10,8 @@ public sealed record Resolution(ScopeTree Tree, IExpressionScopes Scopes, IReadO
 /// <summary>
 /// #1502 (specVersion 31, area 05): the resolve step of <see cref="SourceCheck.Run"/>, after the types and before the
 /// expressions: every reference of a package resolved to its key and typed, and part 04's rules of what reads it (a
-/// loop's source and <c>itemLabel</c>, a while's unused body nodes: <c>SourceResolve.Loops.cs</c>). Never throws on
+/// loop's source and <c>itemLabel</c>, a while's unused body nodes: <c>SourceResolve.Loops.cs</c>; a case's subject
+/// and values: <c>SourceResolve.Branches.cs</c>). Never throws on
 /// package content.
 /// </summary>
 public static partial class SourceResolve
@@ -28,6 +29,7 @@ public static partial class SourceResolve
         var tree = ScopeTree.Build(package, types);
         var refusals = new List<SourceRefusal>();
         Loops(tree, refusals);
+        Branches(tree, refusals);
         if (refusals.Count > 0)
             return (refusals.OrderBy(r => r.Path, StringComparer.Ordinal).ToList(), null);
         return ([], new Resolution(tree, new ResolvedScopes(tree, package), tree.Keys));

@@ -545,6 +545,9 @@ public static partial class ExpressionChecker
         return properties;
     }
 
+    /// <summary>#1502 (area 05): the values of the enum <paramref name="format"/> (through names, <c>null</c> set aside), in order: what a <c>case</c>'s subject takes.</summary>
+    internal static List<string> ValuesOf(JsonNode? format, FormatSet formats) => EnumValues(Core(format, formats));
+
     /// <summary>An enum's values, its <c>enum</c> or its <c>oneOf</c>'s <c>const</c>s, in order, <c>null</c> set aside.</summary>
     private static List<string> EnumValues(JsonObject? schema)
     {

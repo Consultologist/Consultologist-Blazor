@@ -71,31 +71,18 @@ public sealed partial class ScopeTree
         if (s is ["node", var id, "value", _, ..] && HiddenFrom(frame, "node", id) is { } hidden)
             return Refuse(ResolveSentences.IteratesNodeInsideLoop(loop.Id, id, string.Join('.', s.Skip(3)), hidden.Loop.Id, path));
 
-        var head = Resolve(reference, frame, subject, path, false, loop);
-        switch (head.Kind)
-        {
-            case ScopeHeadKind.Refused or ScopeHeadKind.Deferred:
-                return new LoopSource(head, loop.In, null, null, false, null);
-            case ScopeHeadKind.Format or ScopeHeadKind.Value:
-                break;
-            default:
-                return Refuse(ResolveSentences.DoesNotExist(subject, reference.Text, path));
-        }
-
-        var rest = s.Skip(Math.Clamp(head.Length, 0, s.Count)).ToList();
-        List<string> steps = head.Kind == ScopeHeadKind.Value ? ["value", .. rest] : rest;
-        var list = FormatReads.Read(head.Format, steps, formats);
-        if (list.Fault == ReadFault.Bare && s[0] == "input")
-            return Refuse(FormatReads.BareInput(s[1], path));
-        if (list.Fault != ReadFault.None)
-            return Refuse(ResolveSentences.DoesNotExist(subject, reference.Text, path));
+        var (head, list, refusal) = Typed(reference, frame, subject, path, loop);
+        if (refusal != null)
+            return Refuse(refusal);
+        if (list == null)
+            return new LoopSource(head, loop.In, null, null, false, null);
         if (FormatTypes.Shape(list.Format, formats) != FormatShape.List
             || ExpressionChecker.ItemsOf(list.Format, formats) is not { } element)
         {
             return Refuse(ResolveSentences.IteratesNoList(loop.Id, reference.Text, TypeStrings.Print(list.Format, formats), path));
         }
 
-        var production = rest.Count == 0 && head.Kind == ScopeHeadKind.Value && s is [_, var named, "items"]
+        var production = head.Length >= s.Count && head.Kind == ScopeHeadKind.Value && s is [_, var named, "items"]
             ? frame.Visible(s[0], named) as SourceFor
             : null;
         return new LoopSource(head, reference.Text, element, null, production != null, production);

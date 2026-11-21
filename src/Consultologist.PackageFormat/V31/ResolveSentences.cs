@@ -70,6 +70,26 @@ internal static class ResolveSentences
     public static SourceRefusal ItemParentOutsideLoop(string site, string path) =>
         new("S04-040", $"{site} reads item.parent, but its loop runs inside no loop; item.parent is the enclosing loop's item.", path);
 
+    /// <summary>S04-044: the case <paramref name="id"/> switches on <paramref name="reference"/>, of the type string <paramref name="format"/>, which is no enumerated string.</summary>
+    public static SourceRefusal SwitchesOnNoEnum(string id, string reference, string format, string path) =>
+        new("S04-044", $"Case '{id}' switches on {reference}, which is {format}; a case switches on an enumerated string.", path);
+
+    /// <summary>S04-045: branch <paramref name="n"/> lists <paramref name="value"/>, none of the subject's <paramref name="values"/> (each quoted, in the format's order).</summary>
+    public static SourceRefusal ListsNoValue(string id, int n, string value, string reference, string values, string path) =>
+        new("S04-045", $"Case '{id}' branch {n} lists \"{value}\", which is not one of {reference}'s values ({values}).", path);
+
+    /// <summary>S04-046: <paramref name="value"/> is listed by the branches <paramref name="n"/> and <paramref name="m"/>.</summary>
+    public static SourceRefusal ListsValueTwice(string id, string value, int n, int m, string path) =>
+        new("S04-046", $"Case '{id}' lists \"{value}\" in branches {n} and {m}; a value belongs to one branch.", path);
+
+    /// <summary>S04-047: the subject's <paramref name="values"/> (each quoted, in the format's order) no branch lists, with no <c>else</c>.</summary>
+    public static SourceRefusal ListsNotEveryValue(string id, string values, string path) =>
+        new("S04-047", $"Case '{id}' doesn't list {values} and has no else; a case has a branch for every value: add a branch, an empty branch, or an else.", path);
+
+    /// <summary>S04-075: the subject <paramref name="reference"/> can be null, and the case has no <c>else</c>.</summary>
+    public static SourceRefusal NullSubjectWithNoElse(string id, string reference, string path) =>
+        new("S04-075", $"Case '{id}' switches on {reference}, which can be null, and has no else; a null subject goes to the else: add one.", path);
+
     /// <summary>S04-050: the node <paramref name="id"/> of the function <paramref name="function"/> reads the input <paramref name="input"/>.</summary>
     public static SourceRefusal FunctionReadsInput(string id, string function, string input, string path) =>
         new("S04-050", $"Node '{id}' in function '{function}' reads input.{input}; a function reads only its parameters: add a parameter and pass it in with.", path);
