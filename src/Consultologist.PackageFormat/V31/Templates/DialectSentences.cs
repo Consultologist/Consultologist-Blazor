@@ -223,6 +223,16 @@ public static class DialectSentences
         new("A07-012", $"Snippet '{id}' {does}, and {subject} reads it as {read} at line {Line(line)}; a folder item's body read in a loop "
             + "places no part, macro or snippet, pipes into no renderer and reads no run.* or run-dependent value.", path);
 
+    /// <summary>
+    /// A07-013 (part 05 § 6.2): the body of folder item <paramref name="id"/> (<c>&lt;folder&gt;/&lt;item&gt;</c>) holds a tag
+    /// (or a raw block) first at <paramref name="line"/>, and <paramref name="subject"/> carries it out of its loop by
+    /// <paramref name="route"/> (<c>passes it to function '&lt;f&gt;' as param.&lt;p&gt;</c>, <c>reads it in its expression</c>),
+    /// where nothing renders it.
+    /// </summary>
+    public static SourceRefusal FolderItemCarried(string id, int line, string subject, string route, string path) =>
+        new("A07-013", $"Snippet '{id}' holds a tag at line {Line(line)}, and {subject} {route}, where it isn't rendered; "
+            + "keep a folder item's body plain text, or read it as item.content in its loop.", path);
+
     /// <summary>S05-042 (R-M1): macro <paramref name="id"/>'s body places <c>macro.<paramref name="other"/></c>, itself or through a snippet it places.</summary>
     public static SourceRefusal MacroBodyPlacesMacro(string id, string other, string path) =>
         new("S05-042", $"Macro '{id}' places macro.{other} in its body; {BodyIsOutput}", path);
