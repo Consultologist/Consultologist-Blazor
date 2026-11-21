@@ -8,7 +8,8 @@ namespace Consultologist.Api.Workflow;
 /// <summary>
 /// What the deployed engine is, stated by the engine (#449): the commit it was
 /// built from, the output-contract catalog it resolved, the format and
-/// provenance registry versions it was built against, the spec versions it accepts and runs, and
+/// provenance registry versions it was built against, the spec versions it accepts and runs (and,
+/// apart, those it admits in preview), and
 /// the Scriban the renderer uses. Deployment facts only — nothing here is a
 /// secret or names a person — which is what lets Public/Engine be anonymous.
 /// The property set is pinned by test: a new field lands through that test or
@@ -36,7 +37,14 @@ public sealed record EngineAttestationResponse(
     // #1063: what this deployment can do beyond the format — today whether a
     // recording dropped on a transcript input is transcribed. Read by the Create
     // page so its door says so; null on records and builds from before.
-    EngineFeatures? Features = null);
+    EngineFeatures? Features = null)
+{
+    /// <summary>
+    /// #1503 (part 09 § 2.1): the versions <c>WorkflowPackages__PreviewSpecVersions</c> admits beside the two lists,
+    /// attested apart so a preview version is never presented as released. Never null: <c>[]</c> when none.
+    /// </summary>
+    public IReadOnlyList<int> PreviewSpecVersions { get; init; } = [];
+}
 
 /// <summary>#1063: the deployment's optional capabilities, each a configured service.</summary>
 public sealed record EngineFeatures(bool SpeechToText);
@@ -52,7 +60,7 @@ public static class EngineAttestation
     private const int FullCommitLength = 40;
 
     /// <summary>The rule, separated from reflection and the file system so it can be tested on strings.</summary>
-    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now, string? apiHost = null, string? release = null, EngineFeatures? features = null)
+    public static EngineAttestationResponse Describe(string? informationalVersion, string catalogRef, string? packageFormat, string? provenance, DateTimeOffset now, string? apiHost = null, string? release = null, EngineFeatures? features = null, IReadOnlyList<int>? previewSpecVersions = null)
     {
         var raw = string.IsNullOrWhiteSpace(informationalVersion) ? "unknown" : informationalVersion;
         var separator = raw.IndexOf('+');
@@ -69,7 +77,10 @@ public static class EngineAttestation
             now,
             ApiHostOf(apiHost),
             ReleaseOf(release),
-            features);
+            features)
+        {
+            PreviewSpecVersions = previewSpecVersions ?? [],
+        };
     }
 
     /// <summary>
@@ -169,7 +180,7 @@ public static class EngineAttestation
     public const string PackageFormatRegistry = "package-format";
     public const string ProvenanceRegistry = "provenance";
 
-    public static EngineAttestationResponse Current(OutputContractCatalog catalog, string? apiHost = null, EngineFeatures? features = null) =>
+    public static EngineAttestationResponse Current(OutputContractCatalog catalog, string? apiHost = null, EngineFeatures? features = null, IReadOnlyList<int>? previewSpecVersions = null) =>
         Describe(
             typeof(EngineAttestation).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion,
             catalog.ResolvedRef,
@@ -178,5 +189,6 @@ public static class EngineAttestation
             DateTimeOffset.UtcNow,
             apiHost,
             ReleaseMetadataOf(typeof(EngineAttestation).Assembly),
-            features);
+            features,
+            previewSpecVersions);
 }

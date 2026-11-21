@@ -140,13 +140,21 @@ builder.Services.AddSingleton<IWorkflowPackageOwnership, WorkflowPackageOwnershi
 builder.Services.AddSingleton<IWorkflowPackagePinResolver, WorkflowPackagePinResolver>();
 builder.Services.AddSingleton<PublicRegistryReader>();
 builder.Services.AddSingleton<PublicChain>();
+// #1503 (part 09 § 2.1): which spec versions this engine admits — the compiled-in
+// list, and beside it WorkflowPackages__PreviewSpecVersions (dev only). The 31
+// engine's limits (ConsultGeneration__*). Both are resolved below, before the host
+// runs, so a bad value stops the host at startup.
+builder.Services.AddSingleton<SpecVersionAdmission>();
+builder.Services.AddSingleton<Consultologist.Api.V31.EngineLimitSettings>();
 // #449/#398: the build's attestation, computed once — served at Public/Engine
 // and stamped on every record's packageFormatRef/provenanceRef.
 builder.Services.AddSingleton(sp => EngineAttestation.Current(
     sp.GetRequiredService<OutputContractCatalog>(),
     sp.GetRequiredService<Microsoft.Extensions.Configuration.IConfiguration>()[EngineAttestation.ApiHostSetting],
     // #1063: the deployment's capabilities — the Create page's door reads them.
-    new EngineFeatures(sp.GetRequiredService<Consultologist.Api.Documents.ISpeechToText>().IsConfigured)));
+    new EngineFeatures(sp.GetRequiredService<Consultologist.Api.Documents.ISpeechToText>().IsConfigured),
+    // #1503: the versions WorkflowPackages__PreviewSpecVersions admits, attested apart.
+    sp.GetRequiredService<SpecVersionAdmission>().Preview));
 builder.Services.AddSingleton<PublicEngine>();
 // #403: what the terminology server says about itself, read once per cache window.
 builder.Services.AddSingleton<ITerminologyAttestationSource, TerminologyAttestationClient>();
@@ -224,4 +232,8 @@ builder.Services.AddScoped<RunPromptNodeActivity>();
 // v10 (#496): the boundary.
 builder.Services.AddScoped<DecideActivity>();
 
-builder.Build().Run();
+var host = builder.Build();
+// #1503: fail at startup, not at the first job, on a bad preview or limit setting.
+host.Services.GetRequiredService<SpecVersionAdmission>();
+host.Services.GetRequiredService<Consultologist.Api.V31.EngineLimitSettings>();
+host.Run();
