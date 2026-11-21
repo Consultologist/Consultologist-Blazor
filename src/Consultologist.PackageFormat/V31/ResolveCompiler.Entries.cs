@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.PackageFormat.V31;
 
@@ -413,8 +414,8 @@ public static partial class ResolveCompiler
 
         /// <summary>
         /// D2 and D1 on a templated entry (an agent's, a <c>rendered</c> node's, a deliverable's): <c>placements</c>, every
-        /// unit its body places in order of appearance, placed units expanded in place, a folder macro preceded once by
-        /// its folder; each with the site that places it (<c>within</c>), its rule with keys rooted for this entry's
+        /// unit its body places in order of appearance, placed units expanded in place (a macro's body's snippets right
+        /// after the macro's own entry), a folder macro preceded once by its folder; each with the site that places it (<c>within</c>), its rule with keys rooted for this entry's
         /// place (<paramref name="frame"/>, read by <paramref name="reader"/>) and that rule's <c>plainConverts</c>, and a
         /// macro's marker form. Then <c>names</c>, each head the body writes to the rooted key it names, where they differ.
         /// </summary>
@@ -423,7 +424,7 @@ public static partial class ResolveCompiler
             var templates = context.Check.Templates;
             var placements = new JsonArray();
             var folders = new HashSet<string>(StringComparer.Ordinal);
-            foreach (var unit in templates?.Units(declaration, function) ?? [])
+            void Add(PlacedUnit unit)
             {
                 var s = unit.Site.Split('.');
                 if (unit.Instruction is not null && s is ["macro", var id, _] && folders.Add(id) && MacroFolder(id, function) is { } folder)
@@ -437,6 +438,16 @@ public static partial class ResolveCompiler
                 };
                 var form = unit.Marker is { } marker ? (marker.Block ? "block" : "inline") : null;
                 placements.Add(Placement(unit.Site, unit.Within, unit.If, holder, member, form, frame, reader));
+            }
+
+            foreach (var unit in templates?.Units(declaration, function) ?? [])
+            {
+                Add(unit);
+
+                // #1504 (part 05 § 6.3): the snippets a macro's body places (and those they place), after the macro's own
+                // entry, within the macro, so that each is decided as a prompt's snippet is.
+                foreach (var placed in unit.MacroBody?.Units ?? [])
+                    Add(placed);
             }
 
             entry["placements"] = placements;
