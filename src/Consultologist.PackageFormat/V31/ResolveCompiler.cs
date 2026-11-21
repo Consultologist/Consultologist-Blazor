@@ -59,11 +59,12 @@ public static partial class ResolveCompiler
             return new ResolveResult(null, null, null, check.Refusals, [], false);
         }
 
-        var formats = CompiledFormats.Build(package, types, registry);
+        var builtins = BuiltInsUsed(derived, registry);
+        var formats = CompiledFormats.Build(package, types, registry, builtins.SelectMany(b => new[] { b.Header["input"], b.Header["format"] }));
         if (formats.Refusals.Count > 0)
             return new ResolveResult(null, null, null, formats.Refusals, [], false);
 
-        var context = new Context(check, package, types, resolution, derived, formats);
+        var context = new Context(check, package, types, resolution, derived, formats) { BuiltIns = builtins };
         var warnings = Warnings(context, limits);
         var document = Document(context, scribanVersion, warnings);
         var canonical = CanonicalJson.Write(document);
@@ -119,18 +120,27 @@ public static partial class ResolveCompiler
     /// <summary>
     /// Every warning publish gives (part 07 § 2.8): the derived step's (S03-037 and S03-038 for every run-dependent
     /// decision and computed value, which say the expressions' own warnings for every site; S04-074 for definitions),
-    /// the resolve step's (S04-074 for formats), and the notes; ordered by path, the package's (<c>""</c>) first, then
-    /// as found; each said once.
+    /// the resolve step's (S04-074 for formats), the dialect's (#1504: S05-060 for each run spot, S05-061, each with its
+    /// file), and the notes; ordered by path, the package's (<c>""</c>) first, then as found; each said once.
     /// </summary>
     private static List<SourceRefusal> Warnings(Context context, PublishLimits? limits)
     {
-        var found = context.Derived.Warnings.Concat(context.Resolution.Warnings);
+        var found = context.Derived.Warnings.Concat(context.Resolution.Warnings).Concat(context.Check.Templates?.Warnings ?? []);
         if (limits != null)
             found = found.Concat(PublishNotes.Of(context.Package, context.Resolution, limits));
         return found.Distinct().OrderBy(w => w.Path, StringComparer.Ordinal).ToList();
     }
 
     private static JsonArray Strings(IEnumerable<string> values) => new(values.Select(v => (JsonNode?)v).ToArray());
+
+    /// <summary>
+    /// #1504 (D6; part 05 § 5.3): each built-in renderer an entry pipes into (a package's or a function's), ordinal by
+    /// id: <c>resolve.json</c> embeds it under <c>renderers</c>, and the formats it reads and returns are bundled.
+    /// </summary>
+    private static List<BuiltInRenderer> BuiltInsUsed(PackageDerived derived, TypeRegistry registry) =>
+        AllEntries(derived).SelectMany(e => e.Body?.Renders ?? []).Select(r => r.Renderer)
+            .Where(registry.BuiltInRendererIds.Contains).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal)
+            .Select(id => registry.BuiltInRenderers[id]).ToList();
 
     /// <summary>What one compilation reads: the check's results and the compiled formats.</summary>
     private sealed record Context(
@@ -143,22 +153,27 @@ public static partial class ResolveCompiler
     {
         public ScopeTree Tree => Resolution.Tree;
 
+        /// <summary>#1504 (D6): the built-in renderers the package pipes into, ordinal by id.</summary>
+        public IReadOnlyList<BuiltInRenderer> BuiltIns { get; init; } = [];
+
         /// <summary>
         /// #1503 (D3): each checked site's <see cref="ExpressionCheck.PlainConverts"/>, by the declaration that holds it
-        /// (by reference) and its member; an agent part's <c>if</c> is area 07's and is not here.
+        /// (by reference) and its member; #1504 (D2): an agent part's <c>if</c> under <c>parts.&lt;id&gt;.if</c>
+        /// (<see cref="PartMember"/>), for its placement.
         /// </summary>
         public IReadOnlyDictionary<object, Dictionary<string, IReadOnlyList<bool>>> Plains { get; } = PlainsOf(Check.Expressions);
+
+        /// <summary>The member a part's <c>if</c> is held under in <see cref="Plains"/>.</summary>
+        public static string PartMember(string part) => $"parts.{part}.if";
 
         private static Dictionary<object, Dictionary<string, IReadOnlyList<bool>>> PlainsOf(PackageExpressions? expressions)
         {
             var plains = new Dictionary<object, Dictionary<string, IReadOnlyList<bool>>>(ReferenceEqualityComparer.Instance);
             foreach (var site in expressions?.Sites ?? [])
             {
-                if (site.Context.PartId != null)
-                    continue;
                 if (!plains.TryGetValue(site.Context.Declaration, out var members))
                     plains[site.Context.Declaration] = members = new Dictionary<string, IReadOnlyList<bool>>(StringComparer.Ordinal);
-                members[site.Context.Site.Member] = site.Check.PlainConverts;
+                members[site.Context.PartId is { } part ? PartMember(part) : site.Context.Site.Member] = site.Check.PlainConverts;
             }
 
             return plains;

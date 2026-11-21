@@ -33,15 +33,17 @@ public sealed record CompiledFormats(
     /// a renderer's <c>input</c> and <c>format</c>, a snippet's, a snippet folder's, a macro's, a deliverable's), in
     /// the scope that owns the member, or when a used format reaches it through its names: a function's own format in
     /// the function's scope, any other in the package's. Returns for any package: a name no scope knows is left out,
-    /// a format that reaches itself is bundled once. A null argument is the caller's error.
+    /// a format that reaches itself is bundled once. #1504 (area 07, D6): and each of <paramref name="embedded"/>, the
+    /// formats named by what <c>resolve.json</c> embeds from outside the source (a built-in renderer's <c>input</c> and
+    /// <c>format</c>), in the package's scope. A null argument other than <paramref name="embedded"/> is the caller's error.
     /// </summary>
-    public static CompiledFormats Build(SourcePackage package, PackageTypes types, TypeRegistry registry)
+    public static CompiledFormats Build(SourcePackage package, PackageTypes types, TypeRegistry registry, IEnumerable<JsonNode?>? embedded = null)
     {
         ArgumentNullException.ThrowIfNull(package);
         ArgumentNullException.ThrowIfNull(types);
         ArgumentNullException.ThrowIfNull(registry);
 
-        var (claimed, refusals) = Claim(package, types);
+        var (claimed, refusals) = Claim(package, types, embedded);
         var defs = new JsonObject();
         var formatHashes = new JsonObject();
         var typeHashes = new JsonObject();
@@ -79,10 +81,12 @@ public sealed record CompiledFormats(
     /// The used formats by bundle key: the package's scope takes its keys first; a function's own format then needs a key
     /// no other format has, else it is A05-004 and left out.
     /// </summary>
-    private static (Dictionary<string, Entry> Claimed, List<SourceRefusal> Refusals) Claim(SourcePackage package, PackageTypes types)
+    private static (Dictionary<string, Entry> Claimed, List<SourceRefusal> Refusals) Claim(SourcePackage package, PackageTypes types, IEnumerable<JsonNode?>? embedded = null)
     {
         var used = new Used(types);
         used.Members(package);
+        foreach (var format in embedded ?? [])
+            used.Embedded(format);
         var refusals = new List<SourceRefusal>();
         var claimed = new Dictionary<string, Entry>(StringComparer.Ordinal);
         foreach (var entry in used.Entries.Where(e => e.Function == null))
@@ -284,6 +288,9 @@ public sealed record CompiledFormats(
                 Definitions(function.Definitions, scope, function);
             }
         }
+
+        /// <summary>#1504 (D6): a format named by what <c>resolve.json</c> embeds from outside the source, in the package's scope.</summary>
+        public void Embedded(JsonNode? format) => Name(format, package, null);
 
         private void Nodes(IReadOnlyList<SourceNode> nodes, FormatSet scope, SourceFunction? function)
         {

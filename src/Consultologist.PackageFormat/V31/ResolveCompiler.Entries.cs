@@ -16,7 +16,9 @@ namespace Consultologist.PackageFormat.V31;
 /// and a <c>while</c>, <c>null</c> on an <c>if</c> and a <c>case</c>, whose <c>ret</c>s are their branches' (inside
 /// <c>then</c>, <c>else</c> and <c>branches</c>), every member being present (§ 1). A body the seam did not say has no places,
 /// renders or run spots (D1). #1503 (specVersion 31, area 06; D3): and on every node (a function's too) and every
-/// deliverable, <c>plainConverts</c> (<see cref="Entries"/>' <c>PlainConverts</c>).
+/// deliverable, <c>plainConverts</c> (<see cref="Entries"/>' <c>PlainConverts</c>). #1504 (specVersion 31, area 07): on
+/// every agent, <c>rendered</c> node and deliverable, <c>placements</c> (D2) and <c>names</c> (D1); each run spot's
+/// <c>unit</c> and <c>neutral</c> (D4); and in <c>renderers</c> each built-in renderer the package uses (D6).
 /// </summary>
 public static partial class ResolveCompiler
 {
@@ -216,6 +218,8 @@ public static partial class ResolveCompiler
             Body(entry, body, derived);
             if (node is SourceLeaf { Kind: "agent" })
                 entry["places"] = Strings(derived?.Body?.Places ?? []);
+            if (node is SourceLeaf { Kind: "agent" or "rendered" } leafTemplate)
+                Templated(entry, leafTemplate, function, frame, leafTemplate);
             Hashes(entry, node.Header["format"], scope, function);
             return entry;
         }
@@ -278,6 +282,16 @@ public static partial class ResolveCompiler
                 renderers[key] = entry;
             }
 
+            // #1504 (D6; part 05 § 5.3): each built-in renderer the package uses, embedded as a package renderer is, after them.
+            foreach (var builtin in function == null ? context.BuiltIns : [])
+            {
+                var key = $"renderer.{builtin.Id}";
+                var entry = Text(builtin.Header, builtin.Id, key, null, builtin.Body);
+                if (entry.ContainsKey("input"))
+                    entry["input"] = CompiledFormats.Rewrite(builtin.Header["input"], scope, null);
+                renderers[key] = entry;
+            }
+
             var snippets = new JsonObject();
             var macros = new JsonObject();
             foreach (var (root, entries, map) in new[] { ("snippet", definitions.Snippets.Items, snippets), ("macro", definitions.Macros.Items, macros) })
@@ -336,6 +350,7 @@ public static partial class ResolveCompiler
             Derived(entry, deliverable.Id, null, derived);
             PlainConverts(entry, deliverable);
             Body(entry, deliverable.Body, derived);
+            Templated(entry, deliverable, null, Tree.PackageRoot, null);
             Hashes(entry, deliverable.Header["format"], context.Types.Formats, null);
             return entry;
         }
@@ -389,8 +404,68 @@ public static partial class ResolveCompiler
                 ["site"] = s.Site,
                 ["at"] = s.At,
                 ["reads"] = s.Reads,
+                ["unit"] = s.Unit,
+                ["neutral"] = s.Neutral,
             }).ToArray());
         }
+
+        // ---- #1504 (area 07): what a template places, and the keys its heads name ---------------
+
+        /// <summary>
+        /// D2 and D1 on a templated entry (an agent's, a <c>rendered</c> node's, a deliverable's): <c>placements</c>, every
+        /// unit its body places in order of appearance, placed units expanded in place, a folder macro preceded once by
+        /// its folder; each with the site that places it (<c>within</c>), its rule with keys rooted for this entry's
+        /// place (<paramref name="frame"/>, read by <paramref name="reader"/>) and that rule's <c>plainConverts</c>, and a
+        /// macro's marker form. Then <c>names</c>, each head the body writes to the rooted key it names, where they differ.
+        /// </summary>
+        private void Templated(JsonObject entry, object declaration, SourceFunction? function, ScopeFrame frame, SourceNode? reader)
+        {
+            var templates = context.Check.Templates;
+            var placements = new JsonArray();
+            var folders = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var unit in templates?.Units(declaration, function) ?? [])
+            {
+                var s = unit.Site.Split('.');
+                if (unit.Instruction is not null && s is ["macro", var id, _] && folders.Add(id) && MacroFolder(id, function) is { } folder)
+                    placements.Add(Placement($"macro-folder.{id}", unit.Within, folder.Index["if"], folder, "if", null, frame, reader));
+
+                var (holder, member) = s[0] switch
+                {
+                    "part" => (unit.Body.Host.Declaration, Context.PartMember(s[1])),
+                    "macro" => (unit.Instruction?.Host.Declaration ?? unit.Body.Host.Declaration, "if"),
+                    _ => (unit.Body.Host.Declaration, "if"),
+                };
+                var form = unit.Marker is { } marker ? (marker.Block ? "block" : "inline") : null;
+                placements.Add(Placement(unit.Site, unit.Within, unit.If, holder, member, form, frame, reader));
+            }
+
+            entry["placements"] = placements;
+            var names = new JsonObject();
+            foreach (var (head, key) in templates?.Names(declaration, function) ?? new Dictionary<string, string>())
+                names[head] = key;
+            entry["names"] = names;
+        }
+
+        /// <summary>One <c>placements</c> entry (D2): <paramref name="rule"/> rooted at <paramref name="frame"/>, its <c>plainConverts</c> those of <paramref name="holder"/>'s <paramref name="member"/>.</summary>
+        private JsonObject Placement(
+            string site, string? within, JsonNode? rule, object holder, string member, string? form, ScopeFrame frame, SourceNode? reader)
+        {
+            var written = rule is null || rule.GetValueKind() == System.Text.Json.JsonValueKind.Null ? null : Logic(rule, frame, reader);
+            var plains = written is null ? [] : context.Plains.GetValueOrDefault(holder)?.GetValueOrDefault(member) ?? [];
+            return new JsonObject
+            {
+                ["site"] = site,
+                ["within"] = within,
+                ["if"] = written,
+                ["plainConverts"] = new JsonArray(plains.Select(p => (JsonNode?)p).ToArray()),
+                ["form"] = form,
+            };
+        }
+
+        /// <summary>The macro folder <paramref name="id"/>, <paramref name="function"/>'s own before the package's.</summary>
+        private SourceTextFolder? MacroFolder(string id, SourceFunction? function) =>
+            (function?.Definitions.Macros.Items.FirstOrDefault(m => m.Id == id) ?? context.Package.Definitions.Macros.Items.FirstOrDefault(m => m.Id == id))
+                as SourceTextFolder;
 
         /// <summary>
         /// <c>formatHash</c> and <c>typeHash</c> of <paramref name="format"/>: a bundled name's, as in <c>formatHashes</c> and
