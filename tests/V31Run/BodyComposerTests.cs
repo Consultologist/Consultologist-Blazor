@@ -343,7 +343,7 @@ public class BodyComposerTests
         Assert.Equal([1, 2, 4, 3], composition.Renders.Select(r => r.N));
         Assert.Equal("input.consult_draft.content", composition.Renders[2].Source);
         Assert.Equal(
-            [("macro.m", "macro.m.content", false, "Reviewed with [Margaret Okafor].\n"), ("macro.f.n", "macro.f.n.content", true, "Follow up with Dr A. Sample in six weeks.\n")],
+            [("macro.m", "macro.m.content", false, "Reviewed with [Margaret Okafor]."), ("macro.f.n", "macro.f.n.content", true, "Follow up with Dr A. Sample in six weeks.")],
             composition.Macros.Select(m => (m.Site, m.Marker, m.Block, m.Body)));
         Assert.All(composition.Macros, m => Assert.Equal(CanonicalJson.HashText(m.Body), m.ContentHash));
         Assert.Empty(composition.Units);

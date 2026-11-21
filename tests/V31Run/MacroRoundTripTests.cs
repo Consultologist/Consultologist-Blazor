@@ -72,7 +72,7 @@ public class MacroRoundTripTests
 
         var text = Finished(prepared, $"Margaret Okafor reports two weeks of fatigue.\n{marker}\nNo other concerns.\n");
 
-        Assert.Equal($"Margaret Okafor reports two weeks of fatigue.\n{Content}\n\nNo other concerns.\n", text);
+        Assert.Equal($"Margaret Okafor reports two weeks of fatigue.\n{Content}\nNo other concerns.\n", text);
         Assert.DoesNotContain('{', text);
         Assert.DoesNotContain('}', text);
     }
@@ -86,9 +86,41 @@ public class MacroRoundTripTests
 
         var text = Finished(prepared, $"Margaret Okafor reports two weeks of fatigue. {marker}");
 
-        Assert.Equal($"Margaret Okafor reports two weeks of fatigue. {Content}\n", text);
+        Assert.Equal($"Margaret Okafor reports two weeks of fatigue. {Content}", text);
         Assert.DoesNotContain('{', text);
         Assert.DoesNotContain('}', text);
+    }
+
+    [Fact]
+    public void AMarkerInsideASentence_AndABlockBeforeALine_LeaveNoStrayLineEnding()
+    {
+        // Fix round 1 (I1): the body file's last line ending is not substituted, in either form.
+        var inline = Prepare(Plan("End the history with {{ macro.section_notes.hpi.content }} as its last sentence."));
+        var inlineText = Finished(inline, $"Margaret Okafor reports fatigue; {MarkerIn(inline)} Seen with her daughter.\nPlan to follow.\n");
+        Assert.Equal($"Margaret Okafor reports fatigue; {Content} Seen with her daughter.\nPlan to follow.\n", inlineText);
+
+        var block = Prepare(Plan("Place the history's closing line alone, after the narrative:", "{{~ macro.section_notes.hpi.content }}"));
+        var blockText = Finished(block, $"Margaret Okafor reports fatigue.\n{MarkerIn(block)}\nPlan to follow.\n\nSigned.\n");
+        Assert.Equal($"Margaret Okafor reports fatigue.\n{Content}\nPlan to follow.\n\nSigned.\n", blockText);
+    }
+
+    [Fact]
+    public void ABodyEndingInTwoLineEndings_KeepsOne()
+    {
+        var plan = RunFixture.Plan(Package()
+            .Listed("macros/index.json", "section_notes")
+            .With("macros/section_notes/index.json", Index(["hpi"], extra: ", \"if\": null"))
+            .With("macros/section_notes/hpi.md", Md(
+                "{ \"label\": \"History\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place the history's closing line alone:\", \"{{~ macro.section_notes.hpi.content }}\"] }",
+                Content + "\n\n"))
+            .WithAgent("draft", "Draft the history of present illness for Margaret Okafor.\n{{~ macro.section_notes.hpi }}\n"));
+        var prepared = Prepare(plan);
+
+        var offered = Assert.Single(prepared.Composition.Macros);
+        Assert.Equal(Content + "\n", offered.Body);
+        Assert.Equal(Consultologist.PackageFormat.V31.CanonicalJson.HashText(Content + "\n"), offered.ContentHash);
+        Assert.Equal($"Fatigue.\n{Content}\n\nPlan.\n", Finished(prepared, "Fatigue.\n{{~ macro.section_notes.hpi.content }}\nPlan.\n"));
     }
 
     [Fact]

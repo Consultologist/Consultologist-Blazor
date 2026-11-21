@@ -116,9 +116,9 @@ public class AgentTurnTests
             Placed("macro.follow_up"), key: "node.standards.section.patient_draft:hpi", function: "draft_section"), 100_000, Rejects));
 
         Assert.EndsWith("End with {{ macro.follow_up.content }} as the last sentence.\n", prepared.Text, StringComparison.Ordinal);
-        Assert.Equal("Follow up with Dr A. Sample in six weeks.\n", Assert.Single(prepared.Composition.Macros).Body);
+        Assert.Equal("Follow up with Dr A. Sample in six weeks.", Assert.Single(prepared.Composition.Macros).Body);
         var finished = AgentTurn.Finish(prepared, "The draft. {{ macro.follow_up.content }}");
-        Assert.Equal("The draft. Follow up with Dr A. Sample in six weeks.\n", finished.Reply);
+        Assert.Equal("The draft. Follow up with Dr A. Sample in six weeks.", finished.Reply);
         Assert.Equal("node.standards.section.patient_draft:hpi/macro:follow_up", (string)Row(finished.Detail!, "macros")["id"]!);
     }
 
@@ -162,8 +162,9 @@ public class AgentTurnTests
         var plan = RunFixture.Plan(LetrozoleFiles()
             .WithAgent("summary", "Summarise the plan for Margaret Okafor.\n\n{{ node.plan.content }}\n{{~ macro." + Letrozole + " }}\n"));
         var placed = Placed($"macro.{Letrozole}");
-        var escaped = MarkdownEscape.Escape(LetrozoleBody);
-        Assert.NotEqual(LetrozoleBody, escaped);
+        var body = LetrozoleBody[..^1]; // the file's last line ending is not substituted
+        var escaped = MarkdownEscape.Escape(body);
+        Assert.NotEqual(body, escaped);
 
         var markdown = Prepared(AgentTurn.Prepare(plan, Call("node.assessment", PlanScope(), placed), 100_000, Rejects));
         var plain = Prepared(AgentTurn.Prepare(plan, Call("node.summary", PlanScope(), placed), 100_000, Rejects));
@@ -172,8 +173,8 @@ public class AgentTurnTests
         Assert.Equal(escaped, offered.Body);
         Assert.Equal(CanonicalJson.HashText(escaped), offered.ContentHash);
         Assert.Equal(CanonicalJson.HashText(escaped), (string)Row(markdown.Detail, "macros")["contentHash"]!);
-        Assert.Equal(LetrozoleBody, Assert.Single(plain.Composition.Macros).Body);
-        Assert.Equal(CanonicalJson.HashText(LetrozoleBody), Assert.Single(plain.Composition.Macros).ContentHash);
+        Assert.Equal(body, Assert.Single(plain.Composition.Macros).Body);
+        Assert.Equal(CanonicalJson.HashText(body), Assert.Single(plain.Composition.Macros).ContentHash);
 
         var finished = AgentTurn.Finish(markdown, $"Assessment.\n{{{{~ macro.{Letrozole}.content }}}}\nPlan.\n");
         Assert.Equal($"Assessment.\n{escaped}\nPlan.\n", finished.Reply);
@@ -192,7 +193,7 @@ public class AgentTurnTests
 
         Assert.DoesNotContain(signature, prepared.Text, StringComparison.Ordinal);
         var offered = Assert.Single(prepared.Composition.Macros);
-        Assert.Equal($"With thanks,\n{signature}\n", offered.Body);
+        Assert.Equal($"With thanks,\n{signature}", offered.Body);
         Assert.Equal([new ProfileRead("signature", CanonicalJson.HashText(signature))], offered.ProfileReads);
         var read = Row(prepared.Detail, "profileReads");
         Assert.Equal("signature", (string)read["field"]!);
@@ -200,7 +201,7 @@ public class AgentTurnTests
         Assert.DoesNotContain(signature, prepared.Detail.ToJsonString(), StringComparison.Ordinal);
 
         var finished = AgentTurn.Finish(prepared, "The note. Close {{ macro.signoff.content }}");
-        Assert.Equal($"The note. Close With thanks,\n{signature}\n", finished.Reply);
+        Assert.Equal($"The note. Close With thanks,\n{signature}", finished.Reply);
     }
 
     [Fact]
@@ -330,7 +331,7 @@ public class AgentTurnTests
         Assert.Equal(
             $$"""{"id":"node.note/macro:{{Letrozole}}","macro":"macro.{{Letrozole}}","offered":false,"decisions":["node.note/if:macro.{{Letrozole}}"],"classifier":"node.prescribes_letrozole","placed":false,"form":null,"contentHash":null}""",
             macros[0].ToJsonString());
-        var followUp = MarkdownEscape.Escape("Follow up with Dr A. Sample in six weeks.\n");
+        var followUp = MarkdownEscape.Escape("Follow up with Dr A. Sample in six weeks.");
         Assert.Equal(
             $$"""{"id":"node.note/macro:follow_up","macro":"macro.follow_up","offered":true,"decisions":[],"classifier":null,"placed":false,"form":"inline","contentHash":"{{CanonicalJson.HashText(followUp)}}"}""",
             macros[1].ToJsonString());
