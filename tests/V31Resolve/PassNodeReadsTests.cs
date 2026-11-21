@@ -159,6 +159,15 @@ public class PassNodeReadsTests
                 .With("nodes/refine/judge.md", Agent("Judging the notes", "\"verdict\"", "Say whether the notes are ready to write.\n"))
                 .With("nodes/refine/notes/note.md", Agent("Noting a section", Plain,
                     "Note the section '{{ item.value.title }}' after {{ pass.node.judge.content }}.\n")),
+            ["an earlier pass's node of the inner loop"] = PlanRunnerFlowTests.LoopInWhile()
+                .With("nodes/refine/judge.md", Agent("Judging the notes", "\"verdict\"",
+                    "Say whether the notes are good or need another pass.\n\n{{ node.notes.content }}\n\nLast pass: {{ pass.previous.node.note.content }}\n")),
+            ["an earlier pass's node, itself"] = ResolveFixture.NestedNote()
+                .With("nodes/refine/judge.md", Agent("Judging the summary", "\"verdict\"",
+                    "Say whether the summary is good or needs another pass.\n\n{{ node.draft_summary.content }}\n\nLast verdict: {{ pass.previous.node.judge.content }}\n")),
+            ["an earlier pass's node, the enclosing one"] = PlanRunnerFlowTests.LoopInWhile()
+                .With("nodes/refine/notes/note.md", Agent("Noting a section", Plain,
+                    "Note the section '{{ item.value.title }}' after the last notes: {{ pass.previous.node.notes.content }}\n")),
             ["the enclosing while's pass and node"] = PlanRunnerFlowTests.NestedWhiles(forBetween: false),
             ["the enclosing while's pass and node, through a loop"] = PlanRunnerFlowTests.NestedWhiles(forBetween: true),
         };

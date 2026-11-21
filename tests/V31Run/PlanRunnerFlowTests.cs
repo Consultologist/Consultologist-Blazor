@@ -640,8 +640,9 @@ public class PlanRunnerFlowTests
         // publish refuses the judge reading its own enclosing if as pass.node.gate (A05-003, as node.gate; #1504 ruling 7,
         // PassNodeReadsTests). A document that holds the read anyway (here: publish's, the read written in after) loads with
         // no edge that could never be met, and the read gives the if not yet settled
-        var (_, compiled) = CompiledPackage.Publish(Gated(), ResolveFixture.Published(), CompiledGoldenTests.Fixed,
+        var (refusals, compiled) = CompiledPackage.Publish(Gated(), ResolveFixture.Published(), CompiledGoldenTests.Fixed,
             templates: GatedReads("pass.number", judge: "pass.previous.node.gate.content"));
+        Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}")));
         var resolve = compiled!.Resolve.Replace("pass.previous.node.gate.content", "pass.node.gate.content", StringComparison.Ordinal);
         Assert.NotEqual(compiled.Resolve, resolve);
         var plan = RunPlan.Build(resolve, compiled.ResolveHash, compiled.LockHash, null).Plan!;
