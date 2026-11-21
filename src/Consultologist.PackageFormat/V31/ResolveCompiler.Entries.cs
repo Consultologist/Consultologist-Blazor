@@ -57,8 +57,12 @@ public static partial class ResolveCompiler
             Body(context.Package.Checks.Nodes, null, null, checks);
             var definitions = Definitions(context.Package.Definitions, null);
             var deliverables = new JsonObject();
-            foreach (var deliverable in Deliverables(context.Package.Deliverables))
-                deliverables[deliverable.Key] = Deliverable(deliverable);
+            foreach (var folder in DeliveryFolders(context.Package.Deliverables))
+            {
+                foreach (var deliverable in folder.Deliverables)
+                    deliverables[deliverable.Key] = Deliverable(deliverable, folder);
+            }
+
             return new FlatMaps(nodes, checks, definitions.Renderers, definitions.Snippets, definitions.Macros, deliverables);
         }
 
@@ -272,9 +276,17 @@ public static partial class ResolveCompiler
             return entry;
         }
 
-        private JsonObject Deliverable(SourceDeliverable deliverable)
+        /// <summary>
+        /// A deliverable: its header as written (<c>format</c> rewritten, the <c>if</c>'s paths as keys), then
+        /// <c>delivery</c> and <c>bundle</c> as the <c>index.json</c> of <paramref name="folder"/>, the folder that holds
+        /// it, writes them (part 06 § 8: delivery is declared on folders only, with no inheritance; the engine loads only
+        /// <c>resolve.json</c>, part 07 § 1), and the derived members.
+        /// </summary>
+        private JsonObject Deliverable(SourceDeliverable deliverable, SourceDeliveryFolder folder)
         {
             var entry = deliverable.Header.DeepClone().AsObject();
+            entry["delivery"] = folder.Index["delivery"]?.DeepClone() ?? new JsonArray();
+            entry["bundle"] = folder.Index["bundle"]?.DeepClone();
             if (entry.ContainsKey("format"))
                 entry["format"] = CompiledFormats.Rewrite(deliverable.Header["format"], context.Types.Formats, null);
             if (entry.ContainsKey("if"))
@@ -406,8 +418,9 @@ public static partial class ResolveCompiler
             return reference.Segments.Count == 2 ? key : $"{key}.{string.Join('.', reference.Segments.Skip(2))}";
         }
 
-        private static IEnumerable<SourceDeliverable> Deliverables(SourceDeliveryFolder folder) =>
-            folder.Deliverables.Concat(folder.Folders.SelectMany(Deliverables));
+        /// <summary><paramref name="folder"/>, then each delivery folder under it, in source order.</summary>
+        private static IEnumerable<SourceDeliveryFolder> DeliveryFolders(SourceDeliveryFolder folder) =>
+            folder.Folders.SelectMany(DeliveryFolders).Prepend(folder);
     }
 
     /// <summary>The bodies of a flow node, in order: a loop's, an <c>if</c>'s then and else, a <c>case</c>'s branches then else.</summary>

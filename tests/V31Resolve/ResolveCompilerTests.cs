@@ -426,6 +426,30 @@ public class ResolveCompilerTests
         PresentAndNull(routed, "ret");
     }
 
+    [Fact]
+    public void Deliverables_CarryTheirFoldersDelivery()
+    {
+        // Delivery is declared on folders only, with no inheritance (part 06 § 8); the engine loads only resolve.json
+        // (part 07 § 1), so each deliverable carries its own folder's delivery and bundle.
+        var files = Minimal()
+            .With("deliverables/index.json", Index(["note", "patient"], extra: ", \"delivery\": [\"emr\"], \"bundle\": null"))
+            .With("deliverables/patient/index.json", Index(["letter"], extra: ", \"delivery\": [\"email\", \"pdf\"], \"bundle\": \"zip\""))
+            .With("deliverables/patient/letter.md", Md(Deliverable("Letter for Margaret Okafor", "\"plaintext\"", "null", "hold"), "{{ node.plan.content }}\n"));
+        var deliverables = Compile(files).Document!["deliverables"]!;
+
+        Assert.Equal(["deliverable.note", "deliverable.patient.letter"], Keys(deliverables));
+        var note = deliverables["deliverable.note"]!;
+        Assert.Equal(["emr"], Strings(note["delivery"]));
+        PresentAndNull(note, "bundle");
+        var letter = deliverables["deliverable.patient.letter"]!;
+        Assert.Equal(["email", "pdf"], Strings(letter["delivery"]));
+        Assert.Equal("zip", (string?)letter["bundle"]);
+
+        var silent = Compile(Minimal()).Document!["deliverables"]!["deliverable.note"]!;
+        Assert.Equal("[]", Canonical(silent["delivery"]));
+        PresentAndNull(silent, "bundle");
+    }
+
     // ---- requires ------------------------------------------------------------------------------
 
     [Fact]
