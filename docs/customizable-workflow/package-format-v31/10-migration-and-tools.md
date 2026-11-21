@@ -70,7 +70,7 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | built-in renderers in C# (`concept_bullets`, `concept_context`) | **built-in Scriban renderers in the registry**, versioned and locked, their ids reserved; piped as `\| renderer.concept_bullets` | [05](05-templates-and-macros.md) |
 | whitespace forms #1412 refuses, `-` on a tag | rewritten to the accepted forms | [05](05-templates-and-macros.md) |
 | simple `{{ if }}…{{ end }}` blocks in prompts | lifted into parts | [05](05-templates-and-macros.md) |
-| `failIfEmpty` on agent nodes | carried over unchanged, written `true`, `false` or `null` | [05](05-templates-and-macros.md) |
+| `failIfEmpty` on agent nodes | the failure sentence, or null (part 05 § 1.2); 30's true, false or absent is what the migration converts from | [05](05-templates-and-macros.md) |
 | optional macros: per-run choices with a `default` | **boolean inputs** (§ 1.3) | [02](02-types-and-inputs.md), [05](05-templates-and-macros.md) |
 | no tests | one snapshot test (§ 4) | [07](07-compiled-documents.md) |
 
