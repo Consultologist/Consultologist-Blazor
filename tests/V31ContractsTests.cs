@@ -3,6 +3,8 @@ using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31;
+using Consultologist.Api.Tests.V31Source;
 
 namespace Consultologist.Api.Tests;
 
@@ -226,41 +228,41 @@ public class V31ContractsTests
     }
 
     [Fact]
-    public void TheJudgementAgent_CarriesTheBuiltInJudgementAsAModelReceivesIt()
+    public void TheJudgementAgent_EmbedsWhatSentFormatPrepares()
     {
+        // #1504 ruling 1 (R1): the copy of a format a model receives joins descriptions with a newline,
+        // and the attested agent embeds exactly that copy.
         var manifest = AttestedAgentManifest.Load(File.ReadAllText(Existing(Agents("agents", "judgement.yaml"))));
         Assert.NotNull(manifest.Definition.Text);
         Assert.NotNull(manifest.Definition.Text.Format);
         Assert.Equal("judgement", manifest.Definition.Text.Format.Name);
         Assert.NotNull(manifest.Definition.Text.Format.Schema);
-        var sent = JsonNode.Parse(manifest.Definition.Text.Format.Schema)!;
+        var embedded = JsonNode.Parse(manifest.Definition.Text.Format.Schema)!;
 
-        // The built-in judgement as part 02 § 3.5 says a model receives it: `$schema`, `$id` and
-        // `title` removed, every `description` kept, and a property that references a text format
-        // sent as that format's type with the text format's description first, then its own.
-        // "First, then its own" is read as the two joined by one space.
-        var expected = Json(PackageFormat("v31", "formats", "judgement.json")).AsObject();
-        expected.Remove("$schema");
-        expected.Remove("$id");
-        expected.Remove("title");
-        foreach (var (name, property) in expected["properties"]!.AsObject().ToList())
-        {
-            if (property!["$ref"] is { } reference)
-            {
-                var text = Json(PackageFormat("v31", "formats", (string)reference! + ".json"));
-                expected["properties"]![name] = new JsonObject
-                {
-                    ["type"] = text["type"]!.DeepClone(),
-                    ["description"] = $"{(string)text["description"]!} {(string)property["description"]!}",
-                };
-            }
-        }
+        var prepared = SentFormat.Prepare("judgement", FormatSet.ForPackage(V31Contract.PublishedTypes(), []), ["format"]);
+        Assert.Equal(
+            CanonicalJson.Write(prepared.Schema),
+            CanonicalJson.Write(embedded));
+        Assert.Equal(
+            "Plain text, with no markup.\nWhy, in a sentence or two, from the text given.",
+            (string)embedded["properties"]!["reason"]!["description"]!);
+        Assert.Equal(["answer", "reason"], embedded["properties"]!.AsObject().Select(p => p.Key).ToArray());
+        Assert.Equal(["answer", "reason"], Strings(embedded["required"]));
+    }
 
-        Assert.True(
-            JsonNode.DeepEquals(expected, sent),
-            $"judgement.yaml sends {sent.ToJsonString()}, not {expected.ToJsonString()}.");
-        Assert.Equal(["answer", "reason"], sent["properties"]!.AsObject().Select(p => p.Key).ToArray());
-        Assert.Equal(["answer", "reason"], Strings(sent["required"]));
+    [Fact]
+    public void ConceptList_CarriesSource()
+    {
+        // #1504 ruling 3 (R3): concept_context reads each concept's `source`, so the format has it.
+        var concept = Json(Agents("agents", "v31", "formats", "concept_list.json"))["properties"]!["concepts"]!["items"]!;
+        Assert.Contains("source", Strings(concept["required"]));
+        Assert.Equal("string", (string)concept["properties"]!["source"]!["type"]!);
+
+        var renderer = File.ReadAllText(Existing(PackageFormat("v31", "renderers", "concept_context.md")));
+        var read = Regex.Matches(renderer, @"\bc\.(\w+)").Select(m => m.Groups[1].Value).Distinct().ToArray();
+        Assert.NotEmpty(read);
+        var has = concept["properties"]!.AsObject().Select(p => p.Key).ToHashSet(StringComparer.Ordinal);
+        Assert.All(read, field => Assert.Contains(field, has));
     }
 
     [Fact]
