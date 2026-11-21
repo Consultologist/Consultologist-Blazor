@@ -494,10 +494,10 @@ public sealed class EngineCapabilitiesFactory { public EngineCapabilities Curren
 
 **Files:** Modify `docs/customizable-workflow/package-format-library.md` (a section "specVersion 31: the run (preview)": `PublishedStamp`, `RunPlan`, `PlanRunner`, the seams and what areas 07 to 12 plug into each, the keys of D13, the time limit); create `docs/customizable-workflow/engine-v31.md` (the two load paths, the load step by step, every setting with its default, the limits, retries, the drain's three endpoints and what the release workflow must call, D10's sizing of `maxConcurrentActivityFunctions` and the instance count), linked from `docs/README.md`; this plan (tick-offs, decisions amended as taken).
 
-- [ ] **Step 1: Write both documents** from the code as built; every signature quoted is copied from the source.
-- [ ] **Step 2: Spec coverage.** Fill the table at the end of this plan with the commit that built each row; a row with no commit is a gap to close or a block to record.
-- [ ] **Step 3: Run the runbook's step 6** (build, the non-E2E suite, `.github/scripts/run-e2e.sh`); all green.
-- [ ] **Step 4: Commit and push.** `Docs (#1503): the run at 31, and the engine's settings, limits and drain`
+- [x] **Step 1: Write both documents** from the code as built; every signature quoted is copied from the source.
+- [x] **Step 2: Spec coverage.** Fill the table at the end of this plan with the commit that built each row; a row with no commit is a gap to close or a block to record.
+- [x] **Step 3: Run the runbook's step 6** (build, the non-E2E suite, `.github/scripts/run-e2e.sh`); all green.
+- [x] **Step 4: Commit and push.** `Docs (#1503): the run at 31, and the engine's settings, limits and drain`
 
 ## Spec coverage
 
