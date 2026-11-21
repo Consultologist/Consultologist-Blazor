@@ -71,18 +71,6 @@ public sealed record PlacedUnit(
 public sealed record TemplateCheck(IReadOnlyList<SourceRefusal> Refusals, IReadOnlyList<SourceRefusal> Warnings, PackageTemplates? Templates);
 
 /// <summary>
-/// #1504 (specVersion 31, area 07; D18): every body of a package as the dialect checked it. What the resolver is told of
-/// each (<see cref="ITemplateReads"/>) is built on it later; for now it holds the checked bodies.
-/// </summary>
-public sealed class PackageTemplates
-{
-    internal PackageTemplates(IReadOnlyList<CheckedBody> bodies) => Bodies = bodies;
-
-    /// <summary>The checked bodies, in the order <see cref="SourceTemplates.Check"/> visits them.</summary>
-    internal IReadOnlyList<CheckedBody> Bodies { get; }
-}
-
-/// <summary>
 /// #1504 (specVersion 31, area 07; part 05 §§ 2.5, 2.6, 3.1, 4; part 02 § 2.1; part 06 §§ 6.2, 6.3, 10.1): every body
 /// of a package held to the dialect in the scope the resolver gives: each agent's prompt and each <c>rendered</c> node's
 /// body at the node's place (in <c>nodes/</c>, <c>checks/</c> and each function), each deliverable's at the top of
@@ -91,7 +79,9 @@ public sealed class PackageTemplates
 /// against the renderer's <c>input</c> and recorded (<see cref="CheckedBody.Renders"/>). Each snippet a body places is
 /// checked there, each part a prompt places is its node's text, and each macro it places is its instruction and its body
 /// checked there (<see cref="CheckedBody.Units"/>; part 05 §§ 3.2, 6, 7, 8);
-/// every snippet and every macro is held to the dialect whether placed or not. Never throws on package content; every walk over
+/// every snippet and every macro, placed or not, is held to the rules that need only its text (its syntax, a snippet's
+/// format and header, a snippet cycle, a macro's markers, placements and Markdown), and its reads are typed only where it
+/// is placed (an unplaced one's are not). Never throws on package content; every walk over
 /// snippets is bounded (a chain of 15, each cycle cut and said once, <see cref="UnitLimit"/> units a template).
 /// </summary>
 public static partial class SourceTemplates
@@ -122,10 +112,8 @@ public static partial class SourceTemplates
         context.ProfileCarrying(bodies);
 
         var said = context.Refusals.Distinct().OrderBy(r => r.Path, StringComparer.Ordinal).ToList();
-        return new TemplateCheck(
-            said,
-            context.Warnings.Distinct().OrderBy(w => w.Path, StringComparer.Ordinal).ToList(),
-            said.Count == 0 ? new PackageTemplates(bodies) : null);
+        var warnings = context.Warnings.Distinct().OrderBy(w => w.Path, StringComparer.Ordinal).ToList();
+        return new TemplateCheck(said, warnings, said.Count == 0 ? new PackageTemplates(bodies, warnings, package) : null);
     }
 
     /// <summary>

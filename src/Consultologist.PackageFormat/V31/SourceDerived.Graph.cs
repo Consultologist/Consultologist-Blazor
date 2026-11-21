@@ -11,9 +11,11 @@ namespace Consultologist.PackageFormat.V31;
 /// (no circle), <paramref name="Earlier"/> whether it reads an earlier pass (<c>pass.previous…</c>, <c>pass.history</c>:
 /// never content). <paramref name="Carries"/> is false for a read of what is no value's content (a node's
 /// <c>.state</c>, <c>.stopped</c>, <c>.passes</c>, named as <c>node.&lt;id&gt;</c>, through <c>pass</c> or through
-/// <c>item.nodes</c>; an item's <c>.id</c> or <c>.state</c>): it carries no flag.
+/// <c>item.nodes</c>; an item's <c>.id</c> or <c>.state</c>): it carries no flag. #1504 (area 07): <paramref name="Sent"/>
+/// is false for a body's read that only a placed macro's body makes (<see cref="TemplateReads.Substituted"/>): it is
+/// substituted into the reply, never sent to a model.
 /// </summary>
-internal sealed record GraphRead(string Path, string? Id, string? Key, string Canonical, bool Pass, bool Earlier, bool Carries = true);
+internal sealed record GraphRead(string Path, string? Id, string? Key, string Canonical, bool Pass, bool Earlier, bool Carries = true, bool Sent = true);
 
 /// <summary>
 /// #1502 (specVersion 31, area 05): one vertex of the derived graph: an entry (a node, a check, a deliverable, a
@@ -362,17 +364,26 @@ internal sealed class DerivedGraph
         if (reads == null)
             return;
         vertex.StartsProfile |= reads.PlacesProfileMacro;
+        var substituted = new HashSet<string>(reads.Substituted ?? [], StringComparer.Ordinal);
         foreach (var path in reads.Reads)
-            Content(vertex, Map(path, frame, vertex, reader));
+            Content(vertex, Map(path, frame, vertex, reader) with { Sent = !substituted.Contains(path) });
         foreach (var render in reads.Renders)
         {
-            Content(vertex, Map(render.Source, frame, vertex, reader));
+            // #1504: a render's source is a read only when it is a path (a later step's render:<n> and a literal head are none).
+            if (ReferenceString.Parse(render.Source) is { Segments: [var root, _, ..] } && SourceRoots.Contains(root))
+                Content(vertex, Map(render.Source, frame, vertex, reader) with { Sent = !substituted.Contains(render.Source) });
             vertex.Content.Add(Definition($"renderer.{render.Renderer}", vertex) with { Canonical = "" });
         }
 
         foreach (var place in reads.Places)
             vertex.Content.Add(Definition(place, vertex) with { Canonical = "" });
     }
+
+    /// <summary>#1504: the roots a body reads a value through (part 05 § 3.1).</summary>
+    private static readonly IReadOnlySet<string> SourceRoots = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "node", "check", "input", "item", "pass", "param", "run", "profile", "snippet",
+    };
 
     /// <summary>A content read, or, when it reads an earlier pass, one that only counts among the entry's reads.</summary>
     private static void Content(Vertex vertex, GraphRead read) => (read.Earlier ? vertex.Other : vertex.Content).Add(read);
