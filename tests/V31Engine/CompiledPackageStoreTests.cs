@@ -236,6 +236,99 @@ public class CompiledPackageStoreTests
         Assert.Equal(admission.NotSupported(declared), load.Refusal);
     }
 
+    [Theory]
+    [InlineData("requires.spec absent")]
+    [InlineData("requires.spec a number")]
+    [InlineData("requires.spec not an integer")]
+    [InlineData("requires.spec +31")]
+    [InlineData("specVersion absent")]
+    [InlineData("specVersion text")]
+    public async Task ASpecVersionNotDeclaredAsPublishWritesIt_IsS09009(string how)
+    {
+        var registry = new FakeRegistry();
+        var packageRef = registry.PutChanged(Golden(), resolve: r =>
+        {
+            var requires = r["requires"]!.AsObject();
+            switch (how)
+            {
+                case "requires.spec absent": requires.Remove("spec"); break;
+                case "requires.spec a number": requires["spec"] = 31; break;
+                case "requires.spec not an integer": requires["spec"] = "thirty-one"; break;
+                case "requires.spec +31": requires["spec"] = "+31"; break;
+                case "specVersion absent": r.Remove("specVersion"); break;
+                default: r["specVersion"] = "31"; break;
+            }
+        });
+
+        var load = await Store(registry).TryLoadAsync(packageRef, CancellationToken.None);
+
+        // Not "31 is not supported" on an engine that runs 31: the document is not what publish wrote.
+        Assert.Null(load!.Plan);
+        Assert.Equal("S09-009", load.RefusalId);
+        V31Contract.AssertSentence(new SourceRefusal("S09-009", load.Refusal!, ""));
+        V31Contract.AssertSentence(new SourceRefusal("S07-006", load.OperatorDetail!, ""));
+    }
+
+    public static TheoryData<string, string, string?> NotPublishs() => new()
+    {
+        { PublishedStamp.FileName, "not JSON", null },
+        { PublishedStamp.FileName, "empty", null },
+        { PublishedStamp.FileName, "not UTF-8", null },
+        { CompiledPackage.ResolveFile, "empty", "S09-009" },
+        { CompiledPackage.ResolveFile, "not JSON", "S09-009" },
+        { CompiledPackage.ResolveFile, "not UTF-8", "S09-009" },
+        { ResolveCompiler.LockFile, "not JSON", "S09-014" },
+        // Verifies against its own stamp, but is no object: Verify finds no lock member in it (S07-017), so the store's
+        // own not-an-object check after Verify is never reached by a stamped pair.
+        { CompiledPackage.ResolveFile, "a stamped list", "S09-014" },
+    };
+
+    [Theory]
+    [MemberData(nameof(NotPublishs))]
+    public async Task ContentThatIsNotPublishs_IsNeverThrownOn(string file, string how, string? id)
+    {
+        var registry = new FakeRegistry();
+        var (packageRef, pair) = registry.Put(Golden());
+        var path = PathOf(packageRef, file);
+        switch (how)
+        {
+            case "not JSON":
+                registry.Blobs[path] = Utf8NoBom.GetBytes("Margaret Okafor's note {");
+                break;
+            case "empty":
+                registry.Blobs[path] = [];
+                break;
+            case "not UTF-8":
+                registry.Blobs[path] = [0x7b, 0xff, 0xfe, 0x7d];
+                break;
+            default:
+                // "[]" stamped as the resolve, its lock linked to it and re-stamped: every hash agrees.
+                const string list = "[]";
+                registry.Blobs[path] = Utf8NoBom.GetBytes(list);
+                var lockDocument = JsonNode.Parse(pair.Lock)!.AsObject();
+                lockDocument["resolve"]!["hash"] = CanonicalJson.HashText(list);
+                var lockText = CanonicalJson.Write(lockDocument);
+                registry.Blobs[PathOf(packageRef, ResolveCompiler.LockFile)] = Utf8NoBom.GetBytes(lockText);
+                registry.Blobs[PathOf(packageRef, PublishedStamp.FileName)] =
+                    Utf8NoBom.GetBytes(new PublishedStamp(CanonicalJson.HashText(list), CanonicalJson.HashText(lockText)).ToJson());
+                break;
+        }
+
+        var load = await Store(registry).TryLoadAsync(packageRef, CancellationToken.None);
+
+        if (id == null)
+        {
+            Assert.Null(load);
+            Assert.Equal([PathOf(packageRef, PublishedStamp.FileName)], registry.Reads);
+            return;
+        }
+
+        Assert.Null(load!.Plan);
+        Assert.Equal(id, load.RefusalId);
+        V31Contract.AssertSentence(new SourceRefusal(id, load.Refusal!, ""));
+        V31Contract.AssertSentence(new SourceRefusal(id == "S09-009" ? "S07-006" : "S07-017", load.OperatorDetail!, ""));
+    }
+
     public static TheoryData<string, string> Lacking() => new()
     {
         { "Scriban ^99.0.0", "S07-003" },

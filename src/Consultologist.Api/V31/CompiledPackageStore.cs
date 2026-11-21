@@ -116,11 +116,16 @@ public sealed class CompiledPackageStore(
         if (CompiledPackage.Verify(name, version, resolveBytes, lockBytes, stamp.ResolveHash, stamp.LockHash) is { } mismatch)
             return Shown(mismatch, name, version);
 
-        // Verified: both are the canonical UTF-8 of a JSON document. A resolve.json that is not an object is not publish's.
+        // Verified: both are the canonical UTF-8 of a JSON document. Neither can be anything but an object here: Verify
+        // reads the lock's resolve.hash and the document's lock member, which a non-object lacks, and refuses it (S07-017).
+        // The check stays as the guard of the casts below.
         if (Parse(resolveBytes) is not JsonObject resolve || Parse(lockBytes) is not JsonObject @lock)
             return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
 
-        if (DeclaredOtherThan31(resolve) is { } declared)
+        // D4: a document declaring another spec version is S09-001; one not declaring it as publish writes is not publish's.
+        if (!Declares(resolve, out var other))
+            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+        if (other is { } declared)
             return Refused(NotSupportedId, admission.NotSupported(declared), null);
 
         if (!Names(resolve, name, version) || !Names(@lock, name, version))
@@ -147,24 +152,30 @@ public sealed class CompiledPackageStore(
     };
 
     /// <summary>
-    /// D4: the spec version the document declares when it is not 31: <c>requires.spec</c>'s, else <c>specVersion</c>'s;
-    /// 31 (S09-001's row as written) when the one that is not 31 is not an integer at all; null when both say 31.
+    /// D4: what the document declares of its spec version, <c>requires.spec</c> (text) first, then <c>specVersion</c>
+    /// (a number): false when either does not declare an integer in publish's form (absent, of another kind, or not
+    /// written as the integer itself), so the document is not what publish wrote; true otherwise, with
+    /// <paramref name="other"/> the first that declares a version other than 31, or null when both declare 31.
     /// </summary>
-    private static int? DeclaredOtherThan31(JsonObject resolve)
+    private static bool Declares(JsonObject resolve, out int? other)
     {
+        other = null;
         var spec = LockCompiler.Member(LockCompiler.Member(resolve, "requires"), "spec");
-        var specText = spec is JsonValue s && s.GetValueKind() == JsonValueKind.String ? s.GetValue<string>() : null;
-        if (specText != "31")
+        if (spec is not JsonValue s || s.GetValueKind() != JsonValueKind.String
+            || !int.TryParse(s.GetValue<string>(), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var required)
+            || required.ToString(CultureInfo.InvariantCulture) != s.GetValue<string>())
         {
-            return int.TryParse(specText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var n) && n != 31
-                ? n
-                : PublishedStamp.SpecVersion;
+            return false;
         }
 
         var specVersion = LockCompiler.Member(resolve, "specVersion");
-        if (specVersion is JsonValue v && v.GetValueKind() == JsonValueKind.Number && v.TryGetValue<int>(out var number))
-            return number == 31 ? null : number;
-        return PublishedStamp.SpecVersion;
+        if (specVersion is not JsonValue v || v.GetValueKind() != JsonValueKind.Number || !v.TryGetValue<int>(out var declared))
+            return false;
+
+        other = required != PublishedStamp.SpecVersion ? required
+            : declared != PublishedStamp.SpecVersion ? declared
+            : null;
+        return true;
     }
 
     /// <summary>D4: whether the document's <c>package</c> is the folder it was read from.</summary>
