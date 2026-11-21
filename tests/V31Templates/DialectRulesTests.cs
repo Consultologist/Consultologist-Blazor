@@ -251,11 +251,31 @@ public class DialectRulesTests
     [InlineData("ReadsPosition", "S05-063")]
     [InlineData("ForForm", "A07-004")]
     [InlineData("CannotBeRead", "A07-005")]
+    [InlineData("TestsInBodyIf", "S05-007")]
+    [InlineData("BranchesWithoutEveryState", "S05-009")]
+    [InlineData("ComparesStateWith", "S05-010")]
+    [InlineData("ReadsWhatIsNotThere", "S05-011")]
+    [InlineData("PlacesWithTildeRight", "S05-015")]
+    [InlineData("PlacesWithDash", "S05-016")]
+    [InlineData("PlacesBlockInsideALine", "S05-017")]
+    [InlineData("TextAfterBlock", "S05-018")]
+    [InlineData("ReadsRoot", "S05-020")]
+    [InlineData("ReadsProfileInPrompt", "S05-021")]
+    [InlineData("ReadsRunWithMore", "S05-024")]
+    [InlineData("ReadsRunDependentWithMore", "S05-025")]
+    [InlineData("ReadsBareSnippet", "S05-037")]
+    [InlineData("ReadsNoProfileField", "S06-028")]
+    [InlineData("WritesAnObjectOrList", "A07-007")]
+    [InlineData("ReadsBare", "A07-008")]
+    [InlineData("PlacesInsideAnIfOrFor", "A07-009")]
+    [InlineData("ReadsRunFact", "S05-060")]
     public void EachSentenceMethod_SaysItsRow(string method, string id)
     {
         var info = typeof(DialectSentences).GetMethod(method)!;
         var arguments = info.GetParameters()
-            .Select(p => p.ParameterType == typeof(int) ? (object)7 : p.Name == "subject" ? Subject : p.Name == "path" ? File : "x")
+            .Select(p => p.ParameterType == typeof(int) ? (object)7
+                : p.ParameterType == typeof(IReadOnlyList<string>) ? new[] { "x", "y" }
+                : p.Name == "subject" ? Subject : p.Name == "path" ? File : "x")
             .ToArray();
 
         var refusal = (PackageFormat.V31.SourceRefusal)info.Invoke(null, arguments)!;

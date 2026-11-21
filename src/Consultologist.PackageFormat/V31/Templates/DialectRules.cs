@@ -12,6 +12,22 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// </summary>
 public sealed record DialectFault(string Id, int Line, IReadOnlyList<string> Fill);
 
+/// <summary>#1504 (specVersion 31, area 07; part 05 § 2.5): what kind of recorded fact a body <c>if</c>'s test is, by its form.</summary>
+internal enum BodyTest
+{
+    /// <summary>None of the three: S05-007.</summary>
+    Refused,
+
+    /// <summary>A loop position (<c>for.first</c>, <c>for.index == 0</c>).</summary>
+    Position,
+
+    /// <summary>A <c>.state</c> compared with a string literal.</summary>
+    State,
+
+    /// <summary><c>check.&lt;…&gt;.value.pass</c>.</summary>
+    CheckPassed,
+}
+
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 §§ 2.1, 2.2, 2.3, 2.6, 5.2; <c>scriban-dialect.md</c> § 10): the
 /// statement-level rules of the dialect, each judged from the syntax alone. <see cref="TemplateSyntax.Parse"/>
@@ -190,6 +206,31 @@ internal static class DialectRules
     /// <summary>S05-013: the deepest nesting of a body, when past <see cref="NestingLimit"/>, at the line it was first reached.</summary>
     public static DialectFault? Nesting(int depth, int line) =>
         depth > NestingLimit ? new DialectFault("S05-013", line, [depth.ToString(CultureInfo.InvariantCulture)]) : null;
+
+    /// <summary>Part 05 § 2.5, part 06 § 6.2: the closed set of states, in its order.</summary>
+    public static readonly IReadOnlyList<string> States = ["completed", "skipped", "not_run"];
+
+    /// <summary>
+    /// Part 05 § 2.5: whether <paramref name="test"/> is one a body <c>if</c> may make, judged from its form (that what it
+    /// reads exists, and that a <c>.state</c> is a state, is the caller's): a loop position, bare or compared with a
+    /// literal (<c>for.first</c>, <c>for.index == 0</c>); a <c>.state</c> compared with <c>==</c> or <c>!=</c> to a string
+    /// literal; or <c>check.&lt;…&gt;.value.pass</c>, bare or compared with <c>true</c> or <c>false</c>. No pipe.
+    /// </summary>
+    public static BodyTest TestForm(TemplateTest test)
+    {
+        if (test.Path is not { } path || test.Pipes.Count > 0)
+            return BodyTest.Refused;
+
+        var s = path.Split('.');
+        var equality = test.Operator is "==" or "!=";
+        if (s is ["for", var position] && LoopPositions.Contains(position))
+            return test.Operator == null ? (position == "index" ? BodyTest.Refused : BodyTest.Position) : test.Literal != null ? BodyTest.Position : BodyTest.Refused;
+        if (s.Length >= 2 && s[^1] == "state" && equality && test.Literal is { } literal && literal.Length >= 2 && literal[0] is '"' or '\'')
+            return BodyTest.State;
+        if (s is ["check", _, .., "value", "pass"] && (test.Operator == null || (equality && test.Literal is "true" or "false")))
+            return BodyTest.CheckPassed;
+        return BodyTest.Refused;
+    }
 
     /// <summary>The expression inside any parentheses.</summary>
     public static ScriptExpression Unwrap(ScriptExpression expression)
