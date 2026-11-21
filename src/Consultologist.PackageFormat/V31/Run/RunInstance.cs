@@ -171,14 +171,19 @@ internal sealed class RankComparer : IComparer<IReadOnlyList<int>>
 /// <summary>
 /// #1503 (specVersion 31, area 06): one running of a body: the top level, a loop item, a while pass, a branch, a call. It
 /// holds an instance per body entry (in body order), its <c>item</c> and <c>pass</c> bindings, its parameters, and its
-/// parent frame. The top level is <see cref="Top"/>; the flow nodes open the others (a loop item, Tasks 7 and 8 the rest) through
-/// <see cref="Open"/>. A frame sees its own instances and its ancestors' that share its map: a function's frame is sealed
-/// from its caller's, as its keys are local to it.
+/// parent frame. The top level is <see cref="Top"/>; the flow nodes open the others through <see cref="Open"/> (a loop
+/// item, a while pass, Task 8 a call) and <see cref="OpenBranch"/> (the body an <c>if</c> or a <c>case</c> took). A frame
+/// sees its own instances, those of the branches opened in it (a branch is no list: its nodes are read from outside it,
+/// part 04 § 4), and its ancestors' that share its map: a function's frame is sealed from its caller's, as its keys are
+/// local to it.
 /// </summary>
 internal sealed class RunFrame
 {
     private readonly Dictionary<string, RunInstance> instances = new(StringComparer.Ordinal);
     private readonly List<RunInstance> inOrder = [];
+
+    /// <summary>The branch frames opened in this one, in the order opened.</summary>
+    private readonly List<RunFrame> branches = [];
 
     private RunFrame(
         RunFrame? parent,
@@ -245,7 +250,7 @@ internal sealed class RunFrame
     public static RunFrame Top(RunPlan plan) =>
         new(null, plan.Entries, null, [], [], [], null, null, null, null);
 
-    /// <summary>A frame opened by <paramref name="owner"/> inside this one, empty (a loop item; the flow nodes of Tasks 7 and 8).</summary>
+    /// <summary>A frame opened by <paramref name="owner"/> inside this one, empty (a loop item, a while pass; Task 8 a call).</summary>
     public RunFrame Open(
         RunInstance owner,
         IReadOnlyDictionary<string, PlanEntry> map,
@@ -257,6 +262,17 @@ internal sealed class RunFrame
         JsonNode? pass,
         IReadOnlyDictionary<string, JsonNode?>? parameters) =>
         new(this, map, function, itemPath, itemPositions, passes, item, pass, parameters, owner);
+
+    /// <summary>
+    /// The frame of the body <paramref name="owner"/> (an <c>if</c> or a <c>case</c>) took, inside this one, empty: its
+    /// keys, items and passes are this frame's, it binds nothing, and its instances are visible from here.
+    /// </summary>
+    public RunFrame OpenBranch(RunInstance owner)
+    {
+        var branch = new RunFrame(this, Map, Function, ItemPath, ItemPositions, Passes, null, null, null, owner);
+        branches.Add(branch);
+        return branch;
+    }
 
     /// <summary>A new instance of <paramref name="entry"/> in this frame, keyed and ranked by the frame's items and passes.</summary>
     public RunInstance Add(PlanEntry entry)
@@ -270,13 +286,30 @@ internal sealed class RunFrame
         return instance;
     }
 
-    /// <summary>The instance of <paramref name="key"/> visible from here: this frame's, else the nearest ancestor's with the same map; null for none.</summary>
+    /// <summary>
+    /// The instance of <paramref name="key"/> visible from here: this frame's or its branches', else the nearest ancestor's
+    /// (or its branches') with the same map; null for none.
+    /// </summary>
     public RunInstance? Find(string key)
     {
         for (var frame = this; frame != null && ReferenceEquals(frame.Map, Map); frame = frame.Parent)
         {
-            if (frame.instances.TryGetValue(key, out var found))
+            if (frame.Own(key) is { } found)
                 return found;
+        }
+
+        return null;
+    }
+
+    /// <summary>The instance of <paramref name="key"/> in this frame or a branch opened in it (at any depth; bounded by the body's nesting).</summary>
+    private RunInstance? Own(string key)
+    {
+        if (instances.TryGetValue(key, out var found))
+            return found;
+        foreach (var branch in branches)
+        {
+            if (branch.Own(key) is { } inner)
+                return inner;
         }
 
         return null;

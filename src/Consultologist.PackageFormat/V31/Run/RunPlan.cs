@@ -579,6 +579,14 @@ public sealed class RunPlan
                 {
                     var dot = path.IndexOf('.');
                     var root = dot < 0 ? path : path[..dot];
+                    if (root == "pass")
+                    {
+                        // part 04 § 3.3: this pass's node is a dependency edge; an earlier pass's (previous, history) is none
+                        if (PassNode(path, draft, map) is { } node && node != draft.Key)
+                            depends.Add(node);
+                        continue;
+                    }
+
                     if (Unnamed.Contains(root))
                         continue;
                     var named = Named(path, map);
@@ -644,6 +652,54 @@ public sealed class RunPlan
             call.Json["with"] is JsonObject arguments
             && arguments.Count == parameters.Count
             && parameters.All(arguments.ContainsKey);
+
+        /// <summary>
+        /// The key <c>pass.(parent.)*node.&lt;id&gt;</c> names for <paramref name="reader"/>: the node of that id at any depth
+        /// in the while whose pass it is (a while's own rules read its own pass; a body node, its enclosing while's; each
+        /// <c>parent</c> the next while outward), the first in ordinal order; null for any other read under <c>pass</c>.
+        /// </summary>
+        private static string? PassNode(string path, Draft reader, Dictionary<string, Draft> map)
+        {
+            var s = path.Split('.');
+            var at = 1;
+            while (at < s.Length && s[at] == "parent")
+                at++;
+            if (at + 1 >= s.Length || s[at] != "node")
+                return null;
+
+            var up = at - 1;
+            var steps = 0;
+            string? loop = null;
+            for (var key = reader.Kind == PlanKind.While ? reader.Key : reader.Parent; key != null && steps++ <= map.Count; key = map.GetValueOrDefault(key)?.Parent)
+            {
+                if (map.GetValueOrDefault(key)?.Kind == PlanKind.While && up-- == 0)
+                {
+                    loop = key;
+                    break;
+                }
+            }
+
+            if (loop == null)
+                return null;
+            return map.Values
+                .Where(d => d.Id == s[at + 1] && Inside(d, loop, map))
+                .Select(d => d.Key)
+                .Order(StringComparer.Ordinal)
+                .FirstOrDefault();
+        }
+
+        /// <summary>Whether <paramref name="draft"/>'s chain of parents reaches <paramref name="ancestor"/> (bounded by the map's size).</summary>
+        private static bool Inside(Draft draft, string ancestor, Dictionary<string, Draft> map)
+        {
+            var steps = 0;
+            for (var at = draft.Parent; at != null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
+            {
+                if (at == ancestor)
+                    return true;
+            }
+
+            return false;
+        }
 
         /// <summary>The longest key of <paramref name="map"/> that <paramref name="path"/> is, or begins with before a dot; null for none.</summary>
         private static string? Named(string path, Dictionary<string, Draft> map)

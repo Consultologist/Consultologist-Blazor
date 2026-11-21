@@ -137,8 +137,9 @@ public sealed class PlanEntry
 
     /// <summary>
     /// The keys of the entry's map (the package's, or its function's) that <see cref="Reads"/> name, sorted: for each read,
-    /// the longest key that is the path or a prefix of it ending at a dot. A read through <c>item</c>, <c>pass</c>,
-    /// <c>param</c>, <c>run</c>, <c>input</c>, <c>profile</c> or <c>snippet</c> names none, and an entry never depends on itself.
+    /// the longest key that is the path or a prefix of it ending at a dot; and for <c>pass.(parent.)*node.&lt;id&gt;</c>, that
+    /// pass's node (part 04 § 3.3). Any other read through <c>item</c>, <c>pass</c>, <c>param</c>, <c>run</c>,
+    /// <c>input</c>, <c>profile</c> or <c>snippet</c> names none, and an entry never depends on itself.
     /// </summary>
     public IReadOnlyList<string> Depends { get; }
 

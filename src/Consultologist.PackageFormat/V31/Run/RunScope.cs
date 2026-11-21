@@ -14,7 +14,10 @@ public sealed record RunInputs(IReadOnlyDictionary<string, JsonNode?> Inputs, Js
 /// roots, holding exactly the paths it reads and nothing else. A path's value is placed at the path itself, as nested objects
 /// along its dots (<c>node.sections.outline.value</c> under <c>node</c>, <c>sections</c>, <c>outline</c>). A node, check or
 /// deliverable is read through the instance its key names as seen from the reader's frame (<see cref="RunFrame.Find"/>);
-/// one skipped, not run or absent reads <c>null</c> at <c>.value</c> and <c>.content</c>, and its <c>.state</c> says which.
+/// one skipped, not run or absent reads <c>null</c> at <c>.value</c> and <c>.content</c>, and its <c>.state</c> says which
+/// (a flow node in a branch not taken reads <c>skipped</c>, part 04 § 2.5). <c>pass</c> reads the pass the reader runs in
+/// (part 04 § 3.3): <c>pass.node.&lt;id&gt;</c> (after any <c>parent</c>s) this pass's node, read as <c>node.&lt;id&gt;</c>
+/// is; the rest (<c>number</c>, <c>previous</c>, <c>history</c>) the pass's binding.
 /// An input not supplied reads <c>null</c> throughout. Never throws on a path; a path that names nothing reads <c>null</c>.
 /// </summary>
 internal sealed class RunScope(RunInputs inputs)
@@ -99,7 +102,7 @@ internal sealed class RunScope(RunInputs inputs)
             case "item":
                 return Walk(frame.Binding(f => f.Item != null)?.Item, segments, 1);
             case "pass":
-                return Walk(frame.Binding(f => f.Pass != null)?.Pass, segments, 1);
+                return Pass(segments, frame);
             case "param":
                 if (segments.Length < 2)
                     return null;
@@ -119,12 +122,81 @@ internal sealed class RunScope(RunInputs inputs)
             var key = string.Join('.', segments, 0, length);
             if (!frame.Map.ContainsKey(key))
                 continue;
-            var instance = frame.Find(key);
-            var read = instance is { IsSettled: true, Read: { } settled } ? settled : Absent(NotRun);
-            return Walk(read, segments, length);
+            return Walk(Read(key, frame), segments, length);
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// What <paramref name="key"/> reads from <paramref name="frame"/>: its settled instance's read form; with none, absent:
+    /// <c>skipped</c> for a flow node whose nearest visible ancestor is a settled <c>if</c> or <c>case</c> (it sits in a
+    /// branch not taken, part 04 § 2.5), else <c>not_run</c>.
+    /// </summary>
+    private static JsonObject Read(string key, RunFrame frame)
+    {
+        var instance = frame.Find(key);
+        if (instance is { IsSettled: true, Read: { } settled })
+            return settled;
+        if (instance != null || frame.Map.GetValueOrDefault(key) is not { Kind: PlanKind.For or PlanKind.While or PlanKind.If or PlanKind.Case } entry)
+            return Absent(NotRun);
+
+        var steps = 0;
+        for (var at = entry.Parent; at != null && steps++ <= frame.Map.Count; at = frame.Map.GetValueOrDefault(at)?.Parent)
+        {
+            if (frame.Find(at) is { } holder)
+                return Absent(holder is { IsSettled: true, Entry.Kind: PlanKind.If or PlanKind.Case } ? "skipped" : NotRun);
+        }
+
+        return Absent(NotRun);
+    }
+
+    /// <summary>
+    /// A read under <c>pass</c>: past its <c>parent</c>s, the pass of that while (the nearest frame binding one, then the
+    /// next outward, within the map); <c>node.&lt;id&gt;</c> there is that pass's node of that id, read through
+    /// <see cref="Read"/>; anything else walks the pass's binding.
+    /// </summary>
+    private static JsonNode? Pass(string[] segments, RunFrame frame)
+    {
+        var at = 1;
+        var pass = frame.Binding(f => f.Pass != null);
+        while (at < segments.Length && segments[at] == "parent" && pass != null)
+        {
+            at++;
+            pass = pass.Parent?.Binding(f => f.Pass != null);
+        }
+
+        if (pass == null)
+            return null;
+        if (at + 1 < segments.Length && segments[at] == "node" && pass.Owner is { } loop
+            && PassNode(frame.Map, loop.Entry.Key, segments[at + 1]) is { } key)
+        {
+            return Walk(Read(key, frame), segments, at + 2);
+        }
+
+        return Walk(pass.Pass, segments, at);
+    }
+
+    /// <summary>The key of the node <paramref name="id"/> inside the while <paramref name="loop"/>, at any depth (the first in ordinal order); null for none.</summary>
+    internal static string? PassNode(IReadOnlyDictionary<string, PlanEntry> map, string loop, string id)
+    {
+        string? found = null;
+        foreach (var entry in map.Values)
+        {
+            if (entry.Id != id || (found != null && string.CompareOrdinal(entry.Key, found) >= 0))
+                continue;
+            var steps = 0;
+            for (var at = entry.Parent; at != null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
+            {
+                if (at == loop)
+                {
+                    found = entry.Key;
+                    break;
+                }
+            }
+        }
+
+        return found;
     }
 
     /// <summary><paramref name="node"/> walked by <paramref name="segments"/> from <paramref name="from"/>: members of objects, positions in lists.</summary>

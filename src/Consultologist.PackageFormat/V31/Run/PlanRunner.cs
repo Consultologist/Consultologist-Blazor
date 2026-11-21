@@ -39,13 +39,14 @@ public sealed record RunResult(
 /// it. A node that fails fails the job: nothing more is dispatched and nothing in flight is awaited. The run ends when
 /// nothing is in flight and nothing is ready, or when it reaches <see cref="RunLimits.JobMinutes"/> (it then times out, each
 /// call in flight recorded cancelled). An agent's reply, its repair and its retries are <c>PlanRunner.Agents.cs</c>'s; a
-/// <c>for</c> loop, its item frames and its <c>maxParallel</c>, <c>PlanRunner.Loops.cs</c>'s.
+/// <c>for</c> loop, its item frames and its <c>maxParallel</c>, <c>PlanRunner.Loops.cs</c>'s; a <c>while</c>'s passes and
+/// the branches of an <c>if</c> and a <c>case</c>, <c>PlanRunner.Flow.cs</c>'s.
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IRunHost"/>'s (and the recorder's), reads no clock but
 /// <see cref="IRunHost.UtcNow"/>, and iterates only in the fixed order or list order. It never throws on package content or
-/// model output; a fault of the host or the recorder is theirs and passes through. Tasks 7 and 8 add
-/// <c>while</c>/<c>if</c>/<c>case</c> and <c>call</c> as the other parts of this partial class.
+/// model output; a fault of the host or the recorder is theirs and passes through. <c>while</c>, <c>if</c> and <c>case</c>
+/// are <c>PlanRunner.Flow.cs</c>'s; Task 8 adds <c>call</c> as another part of this partial class.
 /// </remarks>
 public sealed partial class PlanRunner
 {
@@ -227,8 +228,9 @@ public sealed partial class PlanRunner
 
         /// <summary>
         /// Moves a ready instance on with no call: decides its <c>if</c>, evaluates a computed node, leaves an agent or a
-        /// render waiting for dispatch, and moves a loop on (<c>PlanRunner.Loops.cs</c>). False when it did not move (a loop
-        /// with nothing to do yet; the other flow nodes: Tasks 7 and 8).
+        /// render waiting for dispatch, and moves a loop (<c>PlanRunner.Loops.cs</c>), a while, an <c>if</c> or a
+        /// <c>case</c> (<c>PlanRunner.Flow.cs</c>) on. False when it did not move (a flow node with nothing to do yet; a
+        /// <c>call</c>: Task 8).
         /// </summary>
         private async Task<bool> StepAsync(RunInstance instance)
         {
@@ -244,6 +246,10 @@ public sealed partial class PlanRunner
                     return true;
                 case PlanKind.For:
                     return await LoopAsync(instance);
+                case PlanKind.While:
+                    return await WhileAsync(instance);
+                case PlanKind.If or PlanKind.Case:
+                    return await BranchAsync(instance);
                 default:
                     return false;
             }
@@ -417,6 +423,8 @@ public sealed partial class PlanRunner
                 AgentDetail(instance, detail);
             else if (instance.Entry.Kind == PlanKind.For)
                 LoopDetail(instance, detail);
+            else if (instance.Entry.Kind == PlanKind.While)
+                WhileDetail(instance, detail);
             return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail));
         }
 
