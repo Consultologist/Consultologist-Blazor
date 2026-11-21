@@ -464,15 +464,15 @@ public sealed class EngineCapabilitiesFactory { public EngineCapabilities Curren
 - The starters: while draining, everything up to and including the entity's initialisation happens as usual, the job's status is *"Waiting for an update to finish"* (S09-018), the orchestration input is parked instead of scheduled, and the outcome carries the job id with no error (the HTTP door answers 202 as it does for any start).
 - The orchestrators: an input with `DrainAware` true, after its schedule wait and before anything else, calls the activity `check-drain`; while draining it publishes the waiting status and awaits the external event `engine-resumed`, which Resume raises for every orchestration it finds waiting. `startedAtUtc` is taken after this wait, so queued time does not count. An input without `DrainAware` (an orchestration started by an earlier build) takes no new step.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `EngineDrainTests` (an in-memory blob fake): `Begin_ThenEnd_RoundTrips`; `Park_KeepsJobsInOrder`; `End_Twice_ReturnsNothingTheSecondTime`.
   - `AdminDrainTests`: `ANonOperator_IsRefused` (403, as `Operator/*`); `Drain_ReportsWhatIsProducing`; `Resume_SchedulesEveryParkedJob_OldestFirst`.
   - `DrainDoorsTests.EveryDoor_WaitsAndStartsOnce` (Review Focus 5): during a drain, a 30 start, a 31 start and an email start each return a job id, schedule nothing, and leave the job *"Waiting for an update to finish"*; Resume schedules each exactly once; a second Resume schedules none; with no drain, every door schedules as before (the 30 orchestration input equals today's but for `DrainAware: true`).
   - `AScheduledJob_WhoseTimerEndsDuringADrain_WaitsForResume` (both orchestrators, on `FakeOrchestrationContext`: no activity but `check-drain` is called until `engine-resumed` is raised); `AnOrchestrationFromBeforeThisBuild_TakesNoNewStep` (an input without `DrainAware`: the call sequence equals `EngineRunGoldenTests`' today, golden unchanged).
   - `HoldNewJobs_StillRefusesAsToday`.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.** The `EngineRun*` goldens must not change; if `DrainAware: true` adds a `check-drain` line to them, the harness starts with a drain that is off and the trace filter leaves that activity out, said in the test's comment.
-- [ ] **Step 4: Run the whole non-E2E suite; pass.**
-- [ ] **Step 5: Commit and push.** `Api (#1503): Admin/Drain and Admin/Resume: jobs wait behind an update and start once after it`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.** The `EngineRun*` goldens must not change; if `DrainAware: true` adds a `check-drain` line to them, the harness starts with a drain that is off and the trace filter leaves that activity out, said in the test's comment.
+- [x] **Step 4: Run the whole non-E2E suite; pass.**
+- [x] **Step 5: Commit and push.** `Api (#1503): Admin/Drain and Admin/Resume: jobs wait behind an update and start once after it`
 
 ### Task 15: The guides, and the whole area checked
 
