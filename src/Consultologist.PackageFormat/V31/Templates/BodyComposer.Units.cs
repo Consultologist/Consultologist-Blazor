@@ -135,7 +135,7 @@ public static partial class BodyComposer
                 .FirstOrDefault(f => f is "block" or "inline");
 
         /// <summary>
-        /// Each <c>profile.&lt;field&gt;</c> <paramref name="body"/> (or a unit it places) writes, once, in order, with the hash
+        /// Each <c>profile.&lt;field&gt;</c> <paramref name="body"/> (or a snippet it places, when placed) writes, once, in order, with the hash
         /// of the value the data holds for it (part 08 § 9): of its text, or of its canonical JSON when it is not text.
         /// </summary>
         private IReadOnlyList<ProfileRead> ProfileReads(TextPlan body)
@@ -152,7 +152,10 @@ public static partial class BodyComposer
                 }
 
                 foreach (var child in text.Placements.Values.Reverse())
-                    pending.Push(child.Text);
+                {
+                    if (Request.Placed.TryGetValue(child.Site, out var placed) && placed)
+                        pending.Push(child.Text); // a snippet not placed wrote nothing, so read nothing
+                }
             }
 
             return [.. fields.Select(field => new ProfileRead(field, Json($"profile.{field}") is JsonValue value && value.TryGetValue<string>(out var written)
