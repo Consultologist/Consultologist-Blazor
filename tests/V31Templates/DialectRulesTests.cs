@@ -140,6 +140,24 @@ public class DialectRulesTests
         var deeper = Assert.Single(TemplateSyntax.Parse(Nest(18)).Faults);
         Assert.Equal(["18"], deeper.Fill);
         Assert.Equal(18, deeper.Line);
+
+        // Far past the limit but within the walk's bound, on a 1 MB stack: still the nesting sentence.
+        var far = Assert.Single(ParseOnASmallStack(Nest(100)).Faults);
+        Assert.Equal("S05-013", far.Id);
+        Assert.Equal(["100"], far.Fill);
+    }
+
+    /// <summary>
+    /// <see cref="TemplateSyntax.Parse"/> on a thread with a 1 MB stack, so a walk that recurses without bound fails
+    /// here rather than passing on the test runner's larger main stack.
+    /// </summary>
+    internal static TemplateSyntax ParseOnASmallStack(string body)
+    {
+        TemplateSyntax? syntax = null;
+        var thread = new Thread(() => syntax = TemplateSyntax.Parse(body), 1024 * 1024);
+        thread.Start();
+        thread.Join();
+        return syntax!;
     }
 
     [Fact]
@@ -165,13 +183,17 @@ public class DialectRulesTests
         { "{{ node.a.value | }}", 1 },
         { "a\nb\n{{ end }}", 3 },
         { "a }} b {%{ c", 0 },
+        { "{{ node" + string.Concat(Enumerable.Repeat(".a", 100_000)) + " }}", 1 },
+        { "Summary\n{{ node.a" + string.Concat(Enumerable.Repeat("[0]", 100_000)) + " }}", 2 },
+        { "{{ (node.a)" + string.Concat(Enumerable.Repeat(".b", 100_000)) + " }}", 1 },
+        { "{{ if for.first }}{{ node" + string.Concat(Enumerable.Repeat(".a", 100_000)) + " }}{{ end }}", 1 },
     };
 
     [Theory]
     [MemberData(nameof(Broken))]
     public void BrokenTemplates_NeverThrow(string body, int line)
     {
-        var syntax = TemplateSyntax.Parse(body);
+        var syntax = ParseOnASmallStack(body);
 
         if (line == 0)
         {

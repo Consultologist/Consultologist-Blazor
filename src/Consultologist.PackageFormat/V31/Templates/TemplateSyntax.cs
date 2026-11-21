@@ -60,7 +60,8 @@ public sealed record TemplateSyntax(
     /// Reads <paramref name="text"/> with Scriban 7.2.5's parser (the default language) and its lexer for the tags.
     /// Never throws on any text: a body Scriban cannot parse, or one with a <c>{{</c> never closed, is one A07-005
     /// fault at the first error's line and nothing else. Scriban's parser bounds its own depth, so a body nested a few
-    /// hundred statements or parentheses deep is A07-005 rather than S05-013.
+    /// hundred statements or parentheses deep is A07-005 rather than S05-013, and so is any body whose syntax tree is
+    /// deeper than <see cref="TreeDepthLimit"/> (a member or indexer chain thousands of segments long).
     /// </summary>
     public static TemplateSyntax Parse(string text)
     {
@@ -82,6 +83,13 @@ public sealed record TemplateSyntax(
                 return Unreadable(text, first is null ? 1 : Math.Max(first.Span.Start.Line, 0) + 1);
             }
 
+            // Scriban builds member and indexer chains in a loop, so its own depth bound never meets them; the walk
+            // below recurses, so it is bounded here, before it starts.
+            if (TooDeep(template.Page) is { } deep)
+            {
+                return Unreadable(text, deep);
+            }
+
             var reader = new Reader(text, scan.Tags);
             reader.Read(template.Page);
             return reader.ToSyntax();
@@ -91,6 +99,37 @@ public sealed record TemplateSyntax(
             // Scriban's parser reports errors as messages; this guards the one promise, never to throw on package text.
             return Unreadable(text, 1);
         }
+    }
+
+    /// <summary>
+    /// How deep the syntax tree may be before the body is refused unread (A07-005): far past any template the dialect
+    /// allows (15 levels of <c>if</c> and <c>for</c>, short access paths), and shallow enough for the recursive walk to
+    /// fit a 1 MB stack.
+    /// </summary>
+    internal const int TreeDepthLimit = 1_000;
+
+    /// <summary>The 1-based line of the first node found past <see cref="TreeDepthLimit"/>, walked without recursion; <c>null</c> when none is.</summary>
+    private static int? TooDeep(ScriptNode root)
+    {
+        var pending = new Stack<(ScriptNode Node, int Depth)>();
+        pending.Push((root, 1));
+        while (pending.TryPop(out var top))
+        {
+            if (top.Depth > TreeDepthLimit)
+            {
+                return Math.Max(top.Node.Span.Start.Line, 0) + 1;
+            }
+
+            foreach (var child in top.Node.Children)
+            {
+                if (child is not null)
+                {
+                    pending.Push((child, top.Depth + 1));
+                }
+            }
+        }
+
+        return null;
     }
 
     private static TemplateSyntax Unreadable(string text, int line) =>
@@ -474,12 +513,24 @@ public sealed record TemplateSyntax(
         }
 
         /// <summary>The access path an expression is, dotted as written (<c>node.e.value</c>), or <c>null</c>.</summary>
-        private static string? Chain(ScriptExpression? expression) => expression switch
+        private static string? Chain(ScriptExpression? expression)
         {
-            ScriptVariable variable => variable.Name,
-            ScriptMemberExpression { Member: { } member } access when Chain(access.Target) is { } target => target + "." + member.Name,
-            _ => null,
-        };
+            var members = new List<string>();
+            while (expression is ScriptMemberExpression { Member: { } member } access)
+            {
+                members.Add(member.Name);
+                expression = access.Target;
+            }
+
+            if (expression is not ScriptVariable variable)
+            {
+                return null;
+            }
+
+            members.Add(variable.Name);
+            members.Reverse();
+            return string.Join('.', members);
+        }
 
         private TemplateTag TagOf(ScriptNode node)
         {
