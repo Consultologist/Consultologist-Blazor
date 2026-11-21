@@ -1170,12 +1170,28 @@ with S07-006 for its package. These are the cases:
 `Build` never throws on the document. A null argument, and a time limit the evaluator refuses, are the
 caller's errors.
 
-**`PlanFormats`** holds values to the bundle. `Expand(format)` inlines every `#/$defs/<key>` and drops `$id` and
-`$schema` from the inlined entries, to depth 64 (`PlanFormats.MaxDepth`) within `FormatTypes.SchemaBudget`. A
-cycle, a missing key or any other reference gives `false`, the schema nothing fits. The budget counts schemas
-as publish counts them for A03-011 (the format, each value of `properties`, `items`, each member of `anyOf`,
-each entry inlined), so a format file publish accepted is never too large at run. The schemas a site's format
-writes itself are counted apart from those of the entries it refers to.
+**`PlanFormats`** holds values to the bundle. `Expand(format)` inlines every `#/$defs/<key>` and drops `$id`,
+`$schema` and `$defs` from the inlined entries, to depth 64 (`PlanFormats.MaxDepth`) within
+`FormatTypes.SchemaBudget`. A cycle, a missing key or any other reference gives `false`, the schema nothing
+fits.
+
+- **A format file's own `$defs`.** The bundle keeps a file's definitions and its `#/$defs/<name>` references as
+  written, beside the names it rewrote to `#/$defs/<bundle key>`. So inside an inlined entry a reference is
+  first one of the entry's own `$defs`, then the bundle's entry of that key. Each entry's definitions are its
+  alone: an entry inlined inside another reads its own.
+- **A known gap.** A file that names a format `x` and also defines `x` in its own `$defs` publishes, and both
+  references are written `#/$defs/x`. The run cannot tell them apart and reads both as the file's own definition,
+  where publish read the bare name as the format. The compile would have to refuse such a file or rename the
+  definition; it does neither today.
+- **The schema budget** counts schemas as publish counts them for A03-011 (the format, each value of
+  `properties`, `items`, each member of `anyOf`, each entry or definition inlined), so a format file publish
+  accepted is never past it at run. The schemas a site's format writes itself are counted apart from those of
+  the entries it refers to.
+- **The node budget.** One expansion writes at most `PlanFormats.NodeBudget` nodes (1,048,576: half of
+  `SourceBounds.TotalBytes`, as many JSON nodes as a whole source can hold); past it, `false`. It stops a forged
+  document that repeats a very large `enum` from thousands of places. Publish has no such bound, so a package
+  can publish and still pass it: a record of 5,000 fields, each referring to a format with a 250-value `enum`,
+  is within the schema budget and writes about 1.3 million nodes. Such a format fits nothing at run.
 `Validate(value, format)` is `Expand` followed by `CorvusFormatValueValidator.ValidateExpanded`.
 `IsText(format)` is true for `plaintext`, `markdown_block` and `markdown_inline`, by their bundle `$id`.
 `Read(reply, format)` gives a text reply as a string. Any other reply is parsed as JSON, to 512 levels, with a
