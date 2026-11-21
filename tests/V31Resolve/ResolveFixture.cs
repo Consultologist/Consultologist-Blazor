@@ -182,7 +182,9 @@ internal static class ResolveFixture
     /// <c>example-functions</c>: the snippet folder <c>standards</c> (format <c>standard_section</c>), the function
     /// <c>draft_section</c> (parameters <c>standard</c> and <c>draft</c>), the loop <c>standards</c> over the folder whose
     /// body is the call <c>section</c>, the agents <c>extract_input_terms</c> and <c>extract_note_terms</c>, the check loop
-    /// <c>section_coverage</c> over <c>node.standards.items</c> and the check <c>all_sections</c>.
+    /// <c>section_coverage</c> over <c>node.standards.items</c>, the check <c>all_sections</c>, and the deliverable
+    /// <c>deliverable.emr.consult</c> it gates, in the delivery folder <c>emr</c> (after part 04 § 7.11, which has
+    /// neither <c>plan</c> nor <c>extract_note_terms</c>).
     /// </summary>
     public static Dictionary<string, byte[]> Functions()
     {
@@ -252,6 +254,14 @@ internal static class ResolveFixture
                     "\"if\": null, \"expression\": { \"all_pass\": [{ \"var\": \"check.section_coverage.items\" }, "
                     + "\"Not every section covers its planned terms.\"] }"),
                 ""));
+
+        // § 7.11's deliverable: deliverable.emr.consult, gated by the check all_sections, in the delivery folder emr.
+        files.Without("deliverables/note.md")
+            .With("deliverables/index.json", Index(["emr"], extra: ", \"delivery\": [], \"bundle\": null"))
+            .With("deliverables/emr/index.json", Index(["consult"], extra: ", \"delivery\": [\"emr\", \"email\"], \"bundle\": \"zip\""))
+            .With("deliverables/emr/consult.md", Md(
+                Deliverable("Consult note", "\"markdown_block\"", "\"check.all_sections\"", "hold"),
+                "## Sections\n\n{{ node.standards.content }}\n"));
         return files;
     }
 
@@ -293,7 +303,7 @@ internal static class ResolveFixture
         ["draft_section/node.apply_instructions"] = ["node.standard_draft.content", "node.patient_draft.content"],
         ["snippets/standards/hpi.md"] = [],
         ["snippets/standards/assessment_plan.md"] = [],
-        ["deliverable.note"] = ["node.plan.content"],
+        ["deliverable.emr.consult"] = ["node.standards.content"],
     }, everyBody: false);
 
     // ---- Formats -------------------------------------------------------------------------------

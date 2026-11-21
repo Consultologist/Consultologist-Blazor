@@ -67,10 +67,11 @@ public static partial class ResolveCompiler
         }
 
         /// <summary>
-        /// Each function by id (D6): its index's members as written (<c>inputs</c> and <c>format</c> rewritten in the
-        /// function's scope), <c>inputOrder</c>, <c>ret</c>, <c>body</c> (its top-level keys), <c>nodes</c> (its own flat
-        /// map, keys local to it), its own <c>renderers</c>, <c>snippets</c> and <c>macros</c>, <c>reproducible</c> (its
-        /// <c>ret</c>'s), <c>formatHash</c> and <c>typeHash</c>.
+        /// Each function by id (D6, as amended): its index's members as written (<c>inputs</c> and <c>format</c>
+        /// rewritten in the function's scope), <c>inputOrder</c>, <c>ret</c>, <c>body</c> (its top-level keys),
+        /// <c>nodes</c> (its own flat map, keys local to it), its own <c>renderers</c>, <c>snippets</c> and
+        /// <c>macros</c>, the derived members part 07 § 2.5 puts on every entry (<see cref="Function"/>),
+        /// <c>formatHash</c> and <c>typeHash</c>.
         /// </summary>
         public JsonObject Functions()
         {
@@ -100,13 +101,48 @@ public static partial class ResolveCompiler
                 entry["renderers"] = definitions.Renderers;
                 entry["snippets"] = definitions.Snippets;
                 entry["macros"] = definitions.Macros;
-                entry["reproducible"] = function.Body.Ret is { } ret ? context.Derive(ret, function)?.Reproducible : null;
+                Function(entry, function);
                 Hashes(entry, function.Index["format"], scope, function);
                 functions[function.Id] = entry;
             }
 
             return functions;
         }
+
+        /// <summary>
+        /// The derived members of every entry (part 07 § 2.5) on a function's entry: <c>id</c> (the function's id),
+        /// <c>parent</c> (null), <c>reads</c> (what its own entries read from outside its nodes: its <c>param.*</c>
+        /// reads and its definitions', distinct and sorted) and the three flags of its <c>ret</c> with its parameters
+        /// reading nothing (<see cref="PackageDerived.Functions"/>; derived only, as for every entry that is no node).
+        /// </summary>
+        private void Function(JsonObject entry, SourceFunction function)
+        {
+            var reads = new SortedSet<string>(StringComparer.Ordinal);
+            foreach (var map in new[] { "nodes", "renderers", "snippets", "macros" })
+            {
+                foreach (var (_, own) in (JsonObject)entry[map]!)
+                {
+                    foreach (var read in (own?["reads"] as JsonArray ?? []).Select(SourceLayout.Text))
+                    {
+                        if (read != null && Outside(read))
+                            reads.Add(read);
+                    }
+                }
+            }
+
+            var result = context.Derived.Functions.GetValueOrDefault(function.Id);
+            entry["id"] = function.Id;
+            entry["parent"] = null;
+            entry["reads"] = Strings(reads);
+            entry["runDependent"] = result?.RunDependent ?? false;
+            entry["profileCarrying"] = result?.ProfileCarrying ?? false;
+            entry["modelDerived"] = result?.ModelDerived ?? false;
+        }
+
+        /// <summary>Whether a read inside a function reads past its own nodes and loops: a parameter or a definition.</summary>
+        private static bool Outside(string read) =>
+            read.StartsWith("param.", StringComparison.Ordinal) || read.StartsWith("snippet.", StringComparison.Ordinal)
+            || read.StartsWith("macro.", StringComparison.Ordinal) || read.StartsWith("renderer.", StringComparison.Ordinal);
 
         // ---- Nodes -----------------------------------------------------------------------------
 

@@ -155,6 +155,16 @@ public class SourceDerivedTests
         Assert.True(derived.FunctionEntries["draft_section"]["node.stamp"].RunDependent);
         Assert.Equal(["run.date"], derived.RunFacts);
 
+        // The function's own result, its parameters reading nothing: with the ret reading param.today, the ret is
+        // run-dependent across its calls (dated_section passes run.date), but not of itself.
+        var reading = Dated().WithJson(Function.Replace("index.json", "apply_instructions.md", StringComparison.Ordinal), h => h["runDependent"] = true);
+        var stub = new StubTemplates(new Dictionary<string, string[]> { ["draft_section/node.apply_instructions"] = ["param.today.value"] });
+        var withRet = Accepted(reading, stub);
+        Assert.True(withRet.FunctionEntries["draft_section"]["node.apply_instructions"].RunDependent);
+        var result = withRet.Functions["draft_section"];
+        Assert.True(result.ModelDerived && !result.RunDependent && !result.ProfileCarrying && result.FlagsKnown);
+        Assert.Empty(result.Reads);
+
         // Without the seam the call passing run.date is still known to be run-dependent; the other is not judged.
         derived = Accepted(Dated());
         Assert.True(derived.Entries["node.dated_section"].RunDependent);
@@ -212,7 +222,7 @@ public class SourceDerivedTests
         Accepted(ResolveFixture.Conditional());
         Assert.True(Accepted(WithCounts()).Entries["node.counts"].Reproducible);
         Assert.False(Accepted(ResolveFixture.Functions()).Entries["node.standards.section"].Reproducible);
-        Assert.Null(Accepted(ResolveFixture.Functions()).Entries["deliverable.note"].Reproducible);
+        Assert.Null(Accepted(ResolveFixture.Functions()).Entries["deliverable.emr.consult"].Reproducible);
     }
 
     [Fact]

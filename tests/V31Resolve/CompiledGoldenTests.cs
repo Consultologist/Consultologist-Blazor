@@ -54,19 +54,21 @@ public class CompiledGoldenTests
             ResolveFixture.NestedNoteReads,
             "example-nested-note: an agent planning the sections, a computed count, the loop sections over the plan's "
             + "sections holding an outline and the loop paragraphs over its points, and the while refine of a summary and "
-            + "its judge (chapter 4 § 4.2.8, § 4.3.5), with three package formats (chapter 7 § 7.2.9)."),
+            + "its judge, after chapter 4 § 4.2.8 and § 4.3.5, with the package formats of chapter 7 § 7.2.9."),
         new("conditional",
             () => Named(ResolveFixture.Conditional(), "example-conditional-sections", "Conditional sections demo"),
             ResolveFixture.ConditionalReads,
             "example-conditional-sections: a required list input of sections, each with a title and a kind; a loop "
             + "routing each section by a case on its kind (the omit branch empty), a loop holding an if on the kind, and "
-            + "a loop holding an if on the section's id and a boolean input (chapter 4 § 4.5.4)."),
+            + "a loop holding an if on the section's id and a boolean input, after chapter 4 § 4.5.4."),
         new("functions",
             () => Named(ResolveFixture.Functions(), "example-functions", "Functions demo"),
             ResolveFixture.FunctionsReads,
-            "example-functions: the function draft_section of three agents, called in a loop over the snippet folder "
-            + "standards; two agents extracting terms; the check loop section_coverage over the loop's .items and the "
-            + "check all_sections (chapter 4 § 4.7.11)."),
+            "example-functions, after chapter 4 § 4.7.11 (with an agent plan and a second agent extracting terms, which "
+            + "the example does not have): the function draft_section of three agents, called in a loop over the "
+            + "snippet folder standards; the check loop section_coverage over the loop's .items and the check "
+            + "all_sections; and the deliverable deliverable.emr.consult, gated by all_sections, in the delivery folder "
+            + "emr, which delivers to emr and email as one zip."),
     ];
 
     public static TheoryData<string> Names() => new(Cases().Select(c => c.Name));

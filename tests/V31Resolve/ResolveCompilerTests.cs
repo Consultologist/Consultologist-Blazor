@@ -326,7 +326,7 @@ public class ResolveCompilerTests
     [Fact]
     public void Functions_AreSealedMaps()
     {
-        var document = Compile(ResolveFixture.Functions(), StubTemplates.Empty()).Document!;
+        var document = Compile(ResolveFixture.Functions(), ResolveFixture.FunctionsReads()).Document!;
 
         Assert.Equal(["draft_section"], Keys(document["functions"]));
         var function = document["functions"]!["draft_section"]!.AsObject();
@@ -337,7 +337,12 @@ public class ResolveCompilerTests
         Assert.Equal("{\"$ref\":\"#/$defs/standard_section\"}", Canonical(function["inputs"]!["standard"]!["format"]));
         Assert.Equal("{\"$ref\":\"#/$defs/plaintext\"}", Canonical(function["format"]));
         Assert.Equal((string?)document["formatHashes"]!["plaintext"], (string?)function["formatHash"]);
-        Assert.False((bool)function["reproducible"]!);
+        // Part 07 § 2.5's members of every entry; no reproducible (a call's is held against its ret's, in nodes).
+        Assert.Equal("draft_section", (string?)function["id"]);
+        PresentAndNull(function, "parent");
+        Assert.Equal(["param.draft.content", "param.standard.content", "param.standard.value"], Strings(function["reads"]));
+        Assert.Equal((true, false, false), ((bool)function["modelDerived"]!, (bool)function["runDependent"]!, (bool)function["profileCarrying"]!));
+        Assert.False(function.ContainsKey("reproducible"));
         Assert.Equal("Draft a section", (string?)function["label"]);
         Assert.True(function.ContainsKey("uses") && function.ContainsKey("description"));
         Assert.Equal("{}", Canonical(function["renderers"]));
@@ -362,6 +367,11 @@ public class ResolveCompilerTests
         Assert.Contains(("node.standards.section", "node.standards", "ret"), edges);
         Assert.Contains(("input.consult_draft", "node.standards.section", "reads"), edges);
         Assert.Contains(("check.section_coverage", "check.all_sections", "reads"), edges);
+        Assert.Contains(("check.all_sections", "deliverable.emr.consult", "gates"), edges);
+        var consult = document["deliverables"]!["deliverable.emr.consult"]!;
+        Assert.Equal("check.all_sections", (string?)consult["check"]);
+        Assert.Equal(["emr", "email"], Strings(consult["delivery"]));
+        Assert.Equal("zip", (string?)consult["bundle"]);
         Assert.DoesNotContain(edges, e => e.From.StartsWith("param.", StringComparison.Ordinal) || e.To == "node.apply_instructions");
 
         var order = Strings(document["graph"]!["order"]).ToList();
@@ -444,6 +454,19 @@ public class ResolveCompilerTests
         var letter = deliverables["deliverable.patient.letter"]!;
         Assert.Equal(["email", "pdf"], Strings(letter["delivery"]));
         Assert.Equal("zip", (string?)letter["bundle"]);
+
+        // A deliverable's header cannot write either member itself: the reader refuses it as a member of no deliverable,
+        // so the folder's are never overwritten.
+        foreach (var member in new[] { "delivery", "bundle" })
+        {
+            var written = SourceCheck.Run(
+                Minimal().WithJson("deliverables/note.md", h => h[member] = member == "delivery" ? new JsonArray("email") : "zip"),
+                ResolveFixture.Published());
+            var refusal = Assert.Single(written.Refusals);
+            Assert.Equal("deliverables/note.md", refusal.Path);
+            Assert.Contains($"'{member}'", refusal.Sentence);
+            V31Contract.AssertSentence(refusal);
+        }
 
         var silent = Compile(Minimal()).Document!["deliverables"]!["deliverable.note"]!;
         Assert.Equal("[]", Canonical(silent["delivery"]));

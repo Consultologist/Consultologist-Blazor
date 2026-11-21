@@ -45,7 +45,15 @@ public sealed record PackageDerived(
     IReadOnlyList<string> RunFacts,
     IReadOnlyList<string> ProfileFields,
     IReadOnlyList<SourceRefusal> Warnings,
-    bool Complete);
+    bool Complete)
+{
+    /// <summary>
+    /// What each function's result is of itself, keyed by function id: the three flags of its <c>ret</c> with its
+    /// parameters reading nothing (the intrinsic values a call takes from the function, before its arguments'), and
+    /// whether they are known. Its <c>Reads</c> are empty: a function reads through its parameters only.
+    /// </summary>
+    public IReadOnlyDictionary<string, DerivedEntry> Functions { get; init; } = new Dictionary<string, DerivedEntry>(StringComparer.Ordinal);
+}
 
 /// <summary>
 /// #1502 (specVersion 31, area 05): the derived step of <see cref="SourceCheck.Run"/>, after the expressions: each entry's
@@ -137,7 +145,10 @@ public static partial class SourceDerived
             .Select(s => $"run.{s[1]}").Distinct().Order(StringComparer.Ordinal).ToList();
         var fields = reads.Select(r => r.Path.Split('.')).Where(s => s.Length >= 2 && s[0] == "profile")
             .Select(s => s[1]).Distinct().Order(StringComparer.Ordinal).ToList();
-        return new PackageDerived(entries, functions, facts, fields, warnings, graph.Vertices.All(v => v.BodyKnown));
+        var results = new Dictionary<string, DerivedEntry>(StringComparer.Ordinal);
+        foreach (var vertex in graph.Vertices.Where(v => v.Declaration == null && v.Function == null && v.Key.StartsWith("function.", StringComparison.Ordinal)))
+            results.TryAdd(vertex.Key["function.".Length..], Entry(derived, vertex));
+        return new PackageDerived(entries, functions, facts, fields, warnings, graph.Vertices.All(v => v.BodyKnown)) { Functions = results };
     }
 
     private static DerivedEntry Entry(Derivation derived, Vertex vertex)
