@@ -318,13 +318,13 @@ Rules:
 - **`case`:** the subject is a reference; the branch whose `when` holds its value runs; `null` or an unlisted value goes to `else`; an empty branch → `Skipped` with *"case '<id>': arm for <value> does nothing"*; the decision records the branch taken.
 - A flow node inside an untaken branch is `Skipped`; its inner entries get no rows.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `AWhile_RunsUntilItsCheckStopsHolding` (nested-note's `refine`: verdicts `poor`, `good` → 2 passes, `"check"`, keys `node.refine.judge#1`, `#2`, value pass 2's `draft_summary`); `AWhile_AtItsBound_ContinuesWithTheLastPass` (3 × `poor`: `"bound"`, reason `stopped at its bound of 3; the check never stopped holding`, the job completes); `ACheckFirstWhile_ThatFailsAtOnce_RunsNoPass` (reads as skipped, a reader gets `null`); `Until_StopsAWhile` (`"until"`); `APass_ReadsThePreviousOne` (`null` on pass 1, pass 1's value on pass 2); `PassHistory_IsSizedInAConditions`.
   - `AWhileInsideALoop_RunsPerItem` (keys carry both, `…:2#1`); `ALoopInsideAWhile_RunsPerPass`.
   - `AnIf_RunsThenOrElse`; `AnIfWithNoElse_ThatIsFalse_IsSkipped` (§ 5.4's `narrative_only` over items of kinds narrative, table: the reason is `skipped: item.value.kind = "narrative" is false`); `ACase_RunsTheMatchingBranch` (§ 5.4's `route`: narrative, table, omit → two drafts and one skip with `case 'route': arm for omit does nothing`); `ANullSubject_GoesToElse`; `AnUnlistedValue_GoesToElse`.
   - `EveryDecision_IsRecordedOnce_WithItsPrintedCondition`.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): while, if and case, each decision recorded`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): while, if and case, each decision recorded`
 
 ### Task 8: `call`: a function's body inline
 
