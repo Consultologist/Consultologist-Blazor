@@ -129,6 +129,7 @@ internal static class TemplateFixture
     public static string Said(IEnumerable<SourceRefusal> refusals) =>
         string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}"));
 
-    private static Dictionary<string, byte[]> Listed(this Dictionary<string, byte[]> files, string index, string id) =>
+    /// <summary>Adds <paramref name="id"/> to the items of the index <paramref name="index"/>.</summary>
+    public static Dictionary<string, byte[]> Listed(this Dictionary<string, byte[]> files, string index, string id) =>
         files.WithJson(index, i => i["items"]!.AsArray().Add((JsonNode)id));
 }

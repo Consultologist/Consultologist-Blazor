@@ -115,7 +115,7 @@ internal sealed class PathTyping
         this.tree = tree;
         this.formats = formats;
         this.package = package;
-        // A renderer's input that is no format this package can read is Task 4's to refuse; its reads stay untyped here.
+        // A renderer's input that is no format this package can read is refused by the type rules (S02-017); its reads stay untyped here.
         rendererInput = host.Declaration is SourceText { Header: var header } && host.Site == TemplateSite.Renderer
             && FormatTypes.Shape(header["input"], formats) != FormatShape.Unknown
             ? header["input"]
@@ -125,7 +125,8 @@ internal sealed class PathTyping
     /// <summary>
     /// Types <paramref name="written"/> (a dotted access path as written) read at <paramref name="line"/> with
     /// <paramref name="scope"/>'s <c>for</c> variables (innermost last). Null with no refusal: a read this task leaves to
-    /// another (a placed <c>part.*</c> or <c>macro.*</c>; anything but <c>value</c> in a renderer, Task 4's S05-029).
+    /// another (a placed <c>part.*</c> or <c>macro.*</c>). In a renderer anything but <c>value</c> and its <c>for</c>
+    /// variables is S05-029.
     /// </summary>
     public (TypedRead? Read, SourceRefusal? Refusal) Type(string written, int line, IReadOnlyList<ForVariable> scope)
     {
@@ -142,7 +143,15 @@ internal sealed class PathTyping
             return LoopPosition(written, line, s, scope.Count > 0);
 
         if (host.Site == TemplateSite.Renderer)
-            return root == "value" ? Steps(written, line, root, null, rendererInput, s.Skip(1).ToList(), nullable: false) : (null, null);
+        {
+            // Part 05 § 5.1: a renderer reads only `value` (S05-029); a renderer named outside a pipe is still the call form.
+            return root switch
+            {
+                "value" => Steps(written, line, root, null, rendererInput, s.Skip(1).ToList(), nullable: false),
+                "renderer" => Refuse(DialectSentences.CallsRenderer(host.Subject, string.Join('.', s.Skip(1)), "value", line, host.Path)),
+                _ => Refuse(DialectSentences.RendererReadsRoot(RendererId, SiteReads.AsWritten(root), host.Path)),
+            };
+        }
 
         var row = SiteReads.Of(host.Site);
         // An unknown root, or a root alone that names nothing by itself (`{{ profile }}`; `item` and `pass` do).
@@ -165,6 +174,9 @@ internal sealed class PathTyping
             _ => Resolved(written, line, s),
         };
     }
+
+    /// <summary>The id of the renderer whose body this is.</summary>
+    private string RendererId => host.Declaration is SourceText text ? text.Id : host.Subject;
 
     // ---- by root ---------------------------------------------------------------------------------
 

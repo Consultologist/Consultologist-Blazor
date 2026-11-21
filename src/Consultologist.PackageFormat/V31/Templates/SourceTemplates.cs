@@ -32,7 +32,8 @@ public sealed record Placement(string Unit, string Kind, bool Block, int Line);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07): one body held to the dialect at its host's place: its syntax, its reads typed in
-/// source order, its placements, its pipes into renderers (Task 4 fills them) and its run spots (part 05 § 4, D4).
+/// source order, its placements, its pipes into renderers (one per pipe step into a renderer, in source order; a later
+/// step of a chain has the source <c>render:&lt;n&gt;</c> of the step before it) and its run spots (part 05 § 4, D4).
 /// </summary>
 public sealed record CheckedBody(
     TemplateHost Host,
@@ -66,13 +67,15 @@ public sealed class PackageTemplates
 /// of a package held to the dialect in the scope the resolver gives: each agent's prompt and each <c>rendered</c> node's
 /// body at the node's place (in <c>nodes/</c>, <c>checks/</c> and each function), each deliverable's at the top of
 /// <c>nodes/</c>, and each renderer's (reading only its <c>value</c>, typed by its <c>input</c>). A body Scriban's reading
-/// already faults (<see cref="TemplateSyntax.Parse"/>) is reported and not typed. Never throws on package content.
+/// already faults (<see cref="TemplateSyntax.Parse"/>) is reported and not typed. Every pipe into a renderer is typed
+/// against the renderer's <c>input</c> and recorded (<see cref="CheckedBody.Renders"/>). Never throws on package content.
 /// </summary>
 public static partial class SourceTemplates
 {
     /// <summary>
     /// Checks every body of <paramref name="package"/> against <paramref name="types"/>' formats, each read where
-    /// <paramref name="resolution"/> places it. A null argument is the caller's error.
+    /// <paramref name="resolution"/> places it, a pipe into a built-in renderer typed by <paramref name="registry"/>'s.
+    /// A null argument is the caller's error.
     /// </summary>
     public static TemplateCheck Check(SourcePackage package, PackageTypes types, Resolution resolution, TypeRegistry registry)
     {
@@ -87,7 +90,7 @@ public static partial class SourceTemplates
         var producers = new Producers(resolution);
         foreach (var (host, text) in Hosts(package, resolution.Tree))
         {
-            if (Body(host, text, package, resolution, producers, refusals, warnings) is { } body)
+            if (Body(host, text, package, resolution, registry, producers, refusals, warnings) is { } body)
                 bodies.Add(body);
         }
 
@@ -143,11 +146,12 @@ public static partial class SourceTemplates
 
     /// <summary>One body: its syntax faults (and nothing more), or its reads, <c>if</c>s, placements and run spots.</summary>
     private static CheckedBody? Body(
-        TemplateHost host, string text, SourcePackage package, Resolution resolution, Producers producers,
+        TemplateHost host, string text, SourcePackage package, Resolution resolution, TypeRegistry registry, Producers producers,
         List<SourceRefusal> refusals, List<SourceRefusal> warnings)
     {
         var syntax = TemplateSyntax.Parse(text);
-        var body = new BodyCheck(host, syntax, package, resolution, producers);
+        var body = new BodyCheck(host, syntax, package, resolution, registry, producers);
+        refusals.AddRange(body.Header());
         if (syntax.Faults.Count > 0)
         {
             refusals.AddRange(body.Faults());
@@ -165,6 +169,8 @@ public static partial class SourceTemplates
     {
         private readonly TemplateHost host;
         private readonly TemplateSyntax syntax;
+        private readonly SourcePackage package;
+        private readonly TypeRegistry registry;
         private readonly Producers producers;
         private readonly FormatSet formats;
         private readonly PathTyping typing;
@@ -172,12 +178,15 @@ public static partial class SourceTemplates
         private readonly Dictionary<TemplateFor, JsonNode?> elements = new(ReferenceEqualityComparer.Instance);
         private readonly List<(int Start, int Order, TypedRead Read)> reads = [];
         private readonly List<Placement> placements = [];
+        private readonly List<TemplateRender> renders = [];
         private readonly List<TemplateRunSpot> spots = [];
 
-        public BodyCheck(TemplateHost host, TemplateSyntax syntax, SourcePackage package, Resolution resolution, Producers producers)
+        public BodyCheck(TemplateHost host, TemplateSyntax syntax, SourcePackage package, Resolution resolution, TypeRegistry registry, Producers producers)
         {
             this.host = host;
             this.syntax = syntax;
+            this.package = package;
+            this.registry = registry;
             this.producers = producers;
             formats = resolution.Tree.FormatsOf(host.Frame);
             typing = new PathTyping(host, resolution.Tree, formats, package);
@@ -217,14 +226,17 @@ public static partial class SourceTemplates
             foreach (var output in syntax.Outputs)
             {
                 var scope = Scope(output.Tag.Start, output.Depth);
+                TypedRead? head = null;
                 foreach (var path in output.Paths)
                 {
                     var read = Record(output.Tag.Start, order++, typing.Type(path, output.Tag.Line, scope));
+                    if (path == output.Path)
+                        head ??= read;
                     if (path == output.Path && output.Pipes.Count == 0 && read?.Format is { } format)
                         Written(path, output.Tag.Line, format);
                 }
 
-                Pipes(output);
+                Pipes(output, head);
                 Literal(output);
                 Place(output);
             }
@@ -232,10 +244,11 @@ public static partial class SourceTemplates
             foreach (var chain in syntax.Ifs)
                 If(chain, ref order);
 
+            RendererPipesInTests();
             RunSpots();
 
             return new CheckedBody(
-                host, syntax, reads.OrderBy(r => r.Start).ThenBy(r => r.Order).Select(r => r.Read).ToList(), placements, [], spots);
+                host, syntax, reads.OrderBy(r => r.Start).ThenBy(r => r.Order).Select(r => r.Read).ToList(), placements, renders, spots);
         }
 
         // ---- scope -----------------------------------------------------------------------------------
@@ -320,24 +333,6 @@ public static partial class SourceTemplates
             var inner = Inner(output.Tag);
             if (inner.StartsWith('[') || inner.StartsWith('{'))
                 Refusals.Add(DialectSentences.WritesAnObjectOrList(host.Subject, inner, output.Tag.Line, inner.StartsWith('[') ? "a list" : "an object", host.Path));
-        }
-
-        /// <summary>
-        /// S05-030 for a pipe step into a renderer that is given arguments (<c>x | renderer.r(1)</c>): a renderer takes
-        /// only the value piped into it. Pipes are typed against renderers in Task 4.
-        /// </summary>
-        private void Pipes(TemplateOutput output)
-        {
-            if (host.Site == TemplateSite.Renderer)
-                return;
-            foreach (var pipe in output.Pipes)
-            {
-                if (pipe.Arguments.Count > 0 && pipe.Name.StartsWith(DialectRules.RendererRoot + ".", StringComparison.Ordinal))
-                {
-                    Refusals.Add(DialectSentences.CallsRenderer(
-                        host.Subject, pipe.Name[(DialectRules.RendererRoot.Length + 1)..], output.Path ?? "value", pipe.Line, host.Path));
-                }
-            }
         }
 
         /// <summary>The tag's expression: its text between the braces and the marks, trimmed.</summary>
