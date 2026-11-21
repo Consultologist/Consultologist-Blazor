@@ -172,7 +172,7 @@ internal sealed class RankComparer : IComparer<IReadOnlyList<int>>
 /// #1503 (specVersion 31, area 06): one running of a body: the top level, a loop item, a while pass, a branch, a call. It
 /// holds an instance per body entry (in body order), its <c>item</c> and <c>pass</c> bindings, its parameters, and its
 /// parent frame. The top level is <see cref="Top"/>; the flow nodes open the others through <see cref="Open"/> (a loop
-/// item, a while pass, Task 8 a call) and <see cref="OpenBranch"/> (the body an <c>if</c> or a <c>case</c> took). A frame
+/// item, a while pass), <see cref="OpenCall"/> (a function's body) and <see cref="OpenBranch"/> (the body an <c>if</c> or a <c>case</c> took). A frame
 /// sees its own instances, those of the branches opened in it (a branch is no list: its nodes are read from outside it,
 /// part 04 § 4), and its ancestors' that share its map: a function's frame is sealed from its caller's, as its keys are
 /// local to it.
@@ -195,7 +195,8 @@ internal sealed class RunFrame
         JsonNode? item,
         JsonNode? pass,
         IReadOnlyDictionary<string, JsonNode?>? parameters,
-        RunInstance? owner)
+        RunInstance? owner,
+        bool call = false)
     {
         Parent = parent;
         Map = map;
@@ -207,7 +208,23 @@ internal sealed class RunFrame
         Pass = pass;
         Parameters = parameters;
         Owner = owner;
-        Depth = parent == null ? 0 : parent.Depth + 1;
+        if (call && parent != null && owner != null)
+        {
+            // A call's frame: its keys go through the call node, its instances rank under the call, one call deeper.
+            Depth = parent.Depth + 1;
+            KeyPrefix = parent.Rooted(owner.Entry.Key);
+            RankBase = owner.Rank;
+            ItemsFrom = itemPositions.Count;
+            PassesFrom = passes.Count;
+        }
+        else if (parent != null)
+        {
+            Depth = parent.Depth;
+            KeyPrefix = parent.KeyPrefix;
+            RankBase = parent.RankBase;
+            ItemsFrom = parent.ItemsFrom;
+            PassesFrom = parent.PassesFrom;
+        }
     }
 
     /// <summary>The frame this one runs inside, or null for the top level.</summary>
@@ -240,8 +257,23 @@ internal sealed class RunFrame
     /// <summary>The flow instance that opened the frame, or null for the top level.</summary>
     public RunInstance? Owner { get; }
 
-    /// <summary>How many frames it is inside (the top level is 0).</summary>
+    /// <summary>
+    /// How many call frames it is, or is inside (the package's level is 0): the depth of a <c>call</c> made from it
+    /// (part 04 § 7.8, part 08 § 7: 0 outside every function, <i>d</i>+1 inside a function reached at depth <i>d</i>).
+    /// </summary>
     public int Depth { get; }
+
+    /// <summary>The rooted key of the call node its keys go through (part 04 § 7.9), or null at the package's level.</summary>
+    public string? KeyPrefix { get; }
+
+    /// <summary>The rank of the call it runs under (its instances rank after it, in the function's body order); empty at the package's level.</summary>
+    public IReadOnlyList<int> RankBase { get; } = [];
+
+    /// <summary>How many of <see cref="ItemPositions"/> are the caller's, ranked already in <see cref="RankBase"/>.</summary>
+    private int ItemsFrom { get; }
+
+    /// <summary>How many of <see cref="Passes"/> are the caller's, ranked already in <see cref="RankBase"/>.</summary>
+    private int PassesFrom { get; }
 
     /// <summary>Its instances, in the order they were added (body order).</summary>
     public IReadOnlyList<RunInstance> Instances => inOrder;
@@ -250,7 +282,7 @@ internal sealed class RunFrame
     public static RunFrame Top(RunPlan plan) =>
         new(null, plan.Entries, null, [], [], [], null, null, null, null);
 
-    /// <summary>A frame opened by <paramref name="owner"/> inside this one, empty (a loop item, a while pass; Task 8 a call).</summary>
+    /// <summary>A frame opened by <paramref name="owner"/> inside this one, empty (a loop item, a while pass).</summary>
     public RunFrame Open(
         RunInstance owner,
         IReadOnlyDictionary<string, PlanEntry> map,
@@ -264,6 +296,27 @@ internal sealed class RunFrame
         new(this, map, function, itemPath, itemPositions, passes, item, pass, parameters, owner);
 
     /// <summary>
+    /// The frame of <paramref name="function"/>'s body run by the call <paramref name="owner"/> inside this one, empty: its
+    /// map is the function's own (so it is sealed from this one: <see cref="Find"/> and <see cref="Binding"/> stop at it),
+    /// it binds <c>param</c> to <paramref name="parameters"/> and no <c>item</c> or <c>pass</c>, its keys go through the
+    /// call node with this frame's items and passes, and its instances rank under the call.
+    /// </summary>
+    public RunFrame OpenCall(RunInstance owner, PlanFunction function, IReadOnlyDictionary<string, JsonNode?> parameters) =>
+        new(this, function.Entries, function.Id, ItemPath, ItemPositions, Passes, null, null, parameters, owner, call: true);
+
+    /// <summary>
+    /// <paramref name="key"/> of this frame's map as a record key writes it, without items: through the call node inside a
+    /// function (<c>node.patient_draft</c> in the call <c>node.standards.section</c> is <c>node.standards.section.patient_draft</c>).
+    /// </summary>
+    public string Rooted(string key)
+    {
+        if (KeyPrefix == null)
+            return key;
+        var dot = key.IndexOf('.');
+        return dot < 0 ? $"{KeyPrefix}.{key}" : KeyPrefix + key[dot..];
+    }
+
+    /// <summary>
     /// The frame of the body <paramref name="owner"/> (an <c>if</c> or a <c>case</c>) took, inside this one, empty: its
     /// keys, items and passes are this frame's, it binds nothing, and its instances are visible from here.
     /// </summary>
@@ -274,13 +327,19 @@ internal sealed class RunFrame
         return branch;
     }
 
-    /// <summary>A new instance of <paramref name="entry"/> in this frame, keyed and ranked by the frame's items and passes.</summary>
+    /// <summary>
+    /// A new instance of <paramref name="entry"/> in this frame, keyed by the frame's items and passes (through the call
+    /// node inside a function), and ranked under the call it runs in, if any: the call's rank, then the entry's order, then
+    /// the items and passes inside the function.
+    /// </summary>
     public RunInstance Add(PlanEntry entry)
     {
-        var rank = new List<int>(1 + ItemPositions.Count + Passes.Count) { entry.Order };
-        rank.AddRange(ItemPositions);
-        rank.AddRange(Passes.Select(p => p.Pass));
-        var instance = new RunInstance(entry, this, RunKeys.Of(entry.Key, ItemPath, Passes), rank);
+        var rank = new List<int>(RankBase.Count + 1 + ItemPositions.Count + Passes.Count);
+        rank.AddRange(RankBase);
+        rank.Add(entry.Order);
+        rank.AddRange(ItemPositions.Skip(ItemsFrom));
+        rank.AddRange(Passes.Skip(PassesFrom).Select(p => p.Pass));
+        var instance = new RunInstance(entry, this, RunKeys.Of(Rooted(entry.Key), ItemPath, Passes), rank);
         instances.Add(entry.Key, instance);
         inOrder.Add(instance);
         return instance;

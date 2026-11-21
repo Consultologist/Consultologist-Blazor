@@ -40,13 +40,13 @@ public sealed record RunResult(
 /// nothing is in flight and nothing is ready, or when it reaches <see cref="RunLimits.JobMinutes"/> (it then times out, each
 /// call in flight recorded cancelled). An agent's reply, its repair and its retries are <c>PlanRunner.Agents.cs</c>'s; a
 /// <c>for</c> loop, its item frames and its <c>maxParallel</c>, <c>PlanRunner.Loops.cs</c>'s; a <c>while</c>'s passes and
-/// the branches of an <c>if</c> and a <c>case</c>, <c>PlanRunner.Flow.cs</c>'s.
+/// the branches of an <c>if</c> and a <c>case</c>, <c>PlanRunner.Flow.cs</c>'s; a <c>call</c>'s function body, run inline
+/// in a frame of its own under the same ceiling, <c>PlanRunner.Calls.cs</c>'s.
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IRunHost"/>'s (and the recorder's), reads no clock but
 /// <see cref="IRunHost.UtcNow"/>, and iterates only in the fixed order or list order. It never throws on package content or
-/// model output; a fault of the host or the recorder is theirs and passes through. <c>while</c>, <c>if</c> and <c>case</c>
-/// are <c>PlanRunner.Flow.cs</c>'s; Task 8 adds <c>call</c> as another part of this partial class.
+/// model output; a fault of the host or the recorder is theirs and passes through.
 /// </remarks>
 public sealed partial class PlanRunner
 {
@@ -229,8 +229,8 @@ public sealed partial class PlanRunner
         /// <summary>
         /// Moves a ready instance on with no call: decides its <c>if</c>, evaluates a computed node, leaves an agent or a
         /// render waiting for dispatch, and moves a loop (<c>PlanRunner.Loops.cs</c>), a while, an <c>if</c> or a
-        /// <c>case</c> (<c>PlanRunner.Flow.cs</c>) on. False when it did not move (a flow node with nothing to do yet; a
-        /// <c>call</c>: Task 8).
+        /// <c>case</c> (<c>PlanRunner.Flow.cs</c>), or a <c>call</c> (<c>PlanRunner.Calls.cs</c>) on. False when it did not
+        /// move (a flow node with nothing to do yet).
         /// </summary>
         private async Task<bool> StepAsync(RunInstance instance)
         {
@@ -250,6 +250,8 @@ public sealed partial class PlanRunner
                     return await WhileAsync(instance);
                 case PlanKind.If or PlanKind.Case:
                     return await BranchAsync(instance);
+                case PlanKind.Call:
+                    return await CallAsync(instance);
                 default:
                     return false;
             }
@@ -425,6 +427,8 @@ public sealed partial class PlanRunner
                 LoopDetail(instance, detail);
             else if (instance.Entry.Kind == PlanKind.While)
                 WhileDetail(instance, detail);
+            else if (instance.Entry.Kind == PlanKind.Call)
+                CallDetail(instance, detail);
             return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail));
         }
 

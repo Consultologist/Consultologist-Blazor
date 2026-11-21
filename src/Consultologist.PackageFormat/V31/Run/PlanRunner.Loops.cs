@@ -527,7 +527,7 @@ public sealed partial class PlanRunner
                 ["itemName"] = item.Name,
                 ["positionName"] = item.PositionName,
             };
-            var key = RunKeys.Of(instance.Entry.Key, [.. instance.Frame.ItemPath, item.Id], instance.Frame.Passes);
+            var key = RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), [.. instance.Frame.ItemPath, item.Id], instance.Frame.Passes);
             return recorder.RowAsync(new RunRow(key, instance.Entry.Key, PlanKind.For, state, reason,
                 content == null ? null : CanonicalJson.HashText(content), detail));
         }

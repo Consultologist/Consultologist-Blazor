@@ -489,6 +489,8 @@ public sealed class RunPlan
                         return null;
                     foreach (var (_, argument) in arguments)
                     {
+                        if (argument is null)
+                            continue; // the one literal an argument may be (part 04 § 7.2.1)
                         if (SourceLayout.Text(argument) is not { } path)
                             return null;
                         extra.Add(path);

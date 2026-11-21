@@ -17,8 +17,10 @@ public enum AgentOutcomeKind
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): one attempt of an agent call. <paramref name="Key"/> is the instance's row key
-/// (<see cref="RunKeys.Of"/>), <paramref name="EntryKey"/> its entry's key, <paramref name="Function"/> the function the entry
-/// lives in (null at the package's top level), <paramref name="Attempt"/> from 1, <paramref name="Repair"/> whether it asks
+/// (<see cref="RunKeys.Of"/>; inside a function, through the call node: <c>node.standards.section.patient_draft:hpi</c>),
+/// <paramref name="EntryKey"/> its entry's key (inside a function, the key local to it, as
+/// <see cref="PlanFunction.Entries"/> holds it: <c>node.patient_draft</c>), <paramref name="Function"/> the function the entry
+/// lives in (null at the package's level), <paramref name="Attempt"/> from 1, <paramref name="Repair"/> whether it asks
 /// again after an invalid reply, and <paramref name="Scope"/> the data the body reads: exactly the paths it reads
 /// (<see cref="RunScope.Data"/>).
 /// </summary>

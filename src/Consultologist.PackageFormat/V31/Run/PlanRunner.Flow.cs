@@ -222,7 +222,7 @@ public sealed partial class PlanRunner
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
             ItemNameDetail(instance.Frame, detail);
             detail["pass"] = number;
-            return recorder.RowAsync(new RunRow(RunKeys.Of(instance.Entry.Key, frame.ItemPath, frame.Passes), instance.Entry.Key,
+            return recorder.RowAsync(new RunRow(RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), frame.ItemPath, frame.Passes), instance.Entry.Key,
                 PlanKind.While, state, state == RowState.Completed ? null : ret.Reason, content == null ? null : CanonicalJson.HashText(content), detail));
         }
 
