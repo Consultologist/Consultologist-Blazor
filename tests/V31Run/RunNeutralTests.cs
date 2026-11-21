@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using Consultologist.Api.Tests.V31Source;
+using static Consultologist.Api.Tests.V31Source.SourceFixture;
 using static Consultologist.Api.Tests.V31Templates.TemplateFixture;
 
 namespace Consultologist.Api.Tests.V31Run;
@@ -109,5 +111,65 @@ public class RunNeutralTests
 
         // What no run fact reaches is the same in both.
         Assert.Equal((string?)first.Row("node.plan").Detail["inputHash"], (string?)second.Row("node.plan").Detail["inputHash"]);
+    }
+    [Fact]
+    public async Task ANeutralText_IsCarriedThroughAWhile()
+    {
+        // Final review M2 (D4): a while whose ret is a run-dependent rendered node settles with that node's neutral text,
+        // and a reader of the while is given it, so its own neutral render holds the marker.
+        var plan = RunFixture.Plan(Package()
+            .Listed("nodes/index.json", "stamps")
+            .With("nodes/stamps/index.json", Json(SourceFixture.Node("while", "Stamping", Plain, true, false,
+                "\"while\": { \"<\": [{ \"var\": \"pass.number\" }, 2] }, \"max\": 3, \"until\": null, \"checkFirst\": false, "
+                + "\"nodes\": [\"stamp\"], \"ret\": \"node.stamps.stamp\"")))
+            .RunDependent("nodes/stamps/index.json")
+            .With("nodes/stamps/stamp.md", Md(SourceFixture.Node("rendered", "Rendered stamp", Plain, true, false, "\"if\": null"), Seen))
+            .RunDependent("nodes/stamps/stamp.md")
+            .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{ node.stamps.content }}\n").RunDependent("nodes/draft.md"));
+        Assert.Equal(["node.stamps.neutral"], plan.Entries["node.draft"].NeutralReads);
+
+        var (result, host, _) = await RunAsync(plan, "2026-11-21");
+
+        Assert.Equal("Seen {{run:1}}\n", (string?)result.Values["node.stamps"]!["neutral"]);
+        Assert.Equal("Seen {{run:1}}\n", (string?)host.Calls.Single(c => c.Key == "node.draft").Scope["node"]!["stamps"]!["neutral"]);
+        Assert.Equal("Draft the plan for Margaret Okafor.\nSeen {{run:1}}\n\n", host.Prompt("node.draft").Composition.NeutralText);
+    }
+
+    [Fact]
+    public async Task ANeutralText_IsCarriedThroughACall_AndIsNoPartOfTheArgumentsHash()
+    {
+        // Final review M2 (D4): a run-dependent rendered node passed to a function reads there as param.<id>.neutral, and
+        // the call's argument hash is of its value and content alone.
+        var plan = RunFixture.Plan(Package()
+            .WithRendered("stamp", Seen).RunDependent("nodes/stamp.md")
+            .Listed("nodes/index.json", "first")
+            .With("nodes/first.md", Md(SourceFixture.Node("call", "First section", Plain, false, true,
+                "\"if\": null, \"function\": \"section\", \"with\": { \"stamp\": \"node.stamp\" }"), ""))
+            .RunDependent("nodes/first.md")
+            .With("functions/index.json", Index(["section"]))
+            .With("functions/section/index.json", Json(
+                "{ \"label\": \"Draft a section\", \"description\": null, "
+                + "\"inputs\": { \"stamp\": { \"label\": \"Stamp\", \"description\": null, \"format\": \"plaintext\" } }, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                + "\"nodes\": [\"draft\"], \"ret\": \"node.draft\", \"format\": \"plaintext\" }"))
+            .With("functions/section/draft.md", Agent("Drafting the section", Plain,
+                "Draft the section for Margaret Okafor.\n{{ param.stamp.content }}\n"))
+            .RunDependent("functions/section/draft.md")
+            .With("functions/section/snippets/index.json", Index([]))
+            .With("functions/section/macros/index.json", Index([]))
+            .With("functions/section/formats/index.json", Index([]))
+            .With("functions/section/renderers/index.json", Index([])));
+        Assert.Equal(["param.stamp.neutral"], plan.Functions["section"].Entries["node.draft"].NeutralReads);
+
+        var (result, host, recorder) = await RunAsync(plan, "2026-11-21");
+
+        var call = host.Calls.Single(c => c.Key == "node.first.draft");
+        Assert.Equal("Seen {{run:1}}\n", (string?)call.Scope["param"]!["stamp"]!["neutral"]);
+        Assert.Equal("Draft the section for Margaret Okafor.\nSeen {{run:1}}\n\n", host.Prompt("node.first.draft").Composition.NeutralText);
+        var stamp = result.Values["node.stamp"]!;
+        var hashed = new JsonObject { ["value"] = stamp["value"]?.DeepClone(), ["content"] = stamp["content"]?.DeepClone() };
+        Assert.Equal(
+            CanonicalJson.Write(new JsonArray(new JsonObject { ["param"] = "stamp", ["hash"] = CanonicalJson.Hash(hashed) })),
+            CanonicalJson.Write(recorder.Row("node.first").Detail["arguments"]));
     }
 }

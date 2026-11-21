@@ -206,6 +206,37 @@ public class PlacementDecisionsTests
         Assert.True(PlacedOf(host, "node.draft")["macro.m"]);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ARenderedNodeAndADeliverable_DecideWhatTheyPlace_AndRenderOnlyThat(bool answer)
+    {
+        // Final review M2: a rendered node's and a deliverable's placements are decided as a prompt's are, recorded under
+        // their own rows, and handed to the render (RenderCall.Placed), which writes a snippet only when it holds.
+        const string text = "Follow up with Dr A. Sample in six weeks.";
+        var plan = RunFixture.Plan(Package()
+            .WithAgent("classify", "Does the plan for Margaret Okafor need a follow-up?\n\n{{ node.plan.content }}\n", "\"judgement\"")
+            .Listed("snippets/index.json", "s")
+            .With("snippets/s.md", Md($"{{ \"label\": \"When\", \"description\": null, \"if\": {MacroIf}, \"format\": \"plaintext\" }}", text))
+            .WithRendered("summary", "Summary for Margaret Okafor.\n{{~ snippet.s.content }}\n")
+            .WithDeliverable("{{ node.plan.content }}\n{{~ snippet.s.content }}\n"));
+        var host = new ComposingRunHost(plan, (call, prompt) =>
+            call.EntryKey == "node.plan" ? Sections
+            : !prompt.TextReply ? ComposingRunHost.Judgement(answer)
+            : ComposingRunHost.EchoMarkers(call, prompt));
+        var recorder = new ListRecorder(() => host.Calls.Count);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        Assert.True(result.State == RunState.Completed, result.Sentence);
+        foreach (var key in new[] { "node.summary", "deliverable.note" })
+        {
+            Assert.Equal(new Dictionary<string, bool> { ["snippet.s"] = answer }, host.Renders.Single(r => r.Key == key).Placed);
+            Assert.Equal([("snippet.s", Printed(MacroIf), answer)], Placements(recorder, key));
+            Assert.Equal(answer, SourceLayout.Text(result.Values[key]!["content"])!.Contains(text, StringComparison.Ordinal));
+        }
+    }
+
     [Fact]
     public async Task AFailingIf_FailsTheNode()
     {
