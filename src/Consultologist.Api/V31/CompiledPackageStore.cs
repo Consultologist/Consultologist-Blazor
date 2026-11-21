@@ -111,7 +111,7 @@ public sealed class CompiledPackageStore(
         var resolveBytes = await files.TryReadAsync(name, folder + CompiledPackage.ResolveFile, ct);
         var lockBytes = await files.TryReadAsync(name, folder + ResolveCompiler.LockFile, ct);
         if (resolveBytes == null || lockBytes == null)
-            return Refused(NotPublishedId, $"Workflow {name}@{version} isn't published.", null);
+            return Refused(NotPublishedId, NotPublished(name, version), null);
 
         if (CompiledPackage.Verify(name, version, resolveBytes, lockBytes, stamp.ResolveHash, stamp.LockHash) is { } mismatch)
             return Shown(mismatch, name, version);
@@ -147,9 +147,20 @@ public sealed class CompiledPackageStore(
     /// <summary>D5: part 07's S07-006 and S07-017 are shown on the job as part 09's S09-009 and S09-014, kept for the operator as they are.</summary>
     private static CompiledLoad Shown(SourceRefusal refusal, string name, string version) => refusal.Id switch
     {
-        "S07-017" => Refused(S09LockId, $"The compiled workflow {name}@{version} doesn't match its lock, so it can't be run. Tell the operator.", refusal.Sentence),
-        _ => Refused(S09HashId, $"The compiled workflow {name}@{version} doesn't match its published hash, so it can't be run. Tell the operator.", refusal.Sentence),
+        "S07-017" => Refused(S09LockId, LockMismatch(name, version), refusal.Sentence),
+        _ => Refused(S09HashId, HashMismatch(name, version), refusal.Sentence),
     };
+
+    /// <summary>A06-004 for <paramref name="name"/>@<paramref name="version"/>: stamped 31 without its compiled documents.</summary>
+    public static string NotPublished(string name, string version) => $"Workflow {name}@{version} isn't published.";
+
+    /// <summary>S09-009 for <paramref name="name"/>@<paramref name="version"/>.</summary>
+    public static string HashMismatch(string name, string version) =>
+        $"The compiled workflow {name}@{version} doesn't match its published hash, so it can't be run. Tell the operator.";
+
+    /// <summary>S09-014 for <paramref name="name"/>@<paramref name="version"/>.</summary>
+    public static string LockMismatch(string name, string version) =>
+        $"The compiled workflow {name}@{version} doesn't match its lock, so it can't be run. Tell the operator.";
 
     /// <summary>
     /// D4: what the document declares of its spec version, <c>requires.spec</c> (text) first, then <c>specVersion</c>

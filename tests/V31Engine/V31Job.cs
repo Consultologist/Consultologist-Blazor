@@ -86,6 +86,9 @@ internal sealed class V31Job
     /// <summary>The job's <c>resolveHash</c> as its input says it (the pair's by default).</summary>
     public string? ResolveHash { get; set; }
 
+    /// <summary>The job's <c>lockHash</c> as its input says it (the pair's by default).</summary>
+    public string? LockHash { get; set; }
+
     public ConsultGenerationJobState State => (ConsultGenerationJobState)StateProperty.GetValue(Entity)!;
 
     public static V31Job Of(string golden) => new(golden);
@@ -96,7 +99,7 @@ internal sealed class V31Job
 
     /// <summary>The orchestration input Task 13's start would give.</summary>
     public ConsultGenerationOrchestrationInputV31 Input() => new(
-        JobId, "user-1", Ref.Name, Ref.Version, ResolveHash ?? Pair.ResolveHash, Pair.LockHash, Limits.ToJson(), 2000,
+        JobId, "user-1", Ref.Name, Ref.Version, ResolveHash ?? Pair.ResolveHash, LockHash ?? Pair.LockHash, Limits.ToJson(), 2000,
         State.InputsBlob!.Name, new JsonObject { ["id"] = JobId }, "America/Toronto", null, true, AccountKind);
 
     /// <summary>The context, every activity answered as the summary says.</summary>

@@ -53,7 +53,7 @@ internal static class V31Plans
     {
         var load = await store.TryLoadAsync(new WorkflowPackageRef(name, version), cancellationToken);
         if (load == null)
-            return (null, $"Workflow {name}@{version} isn't published.");
+            return (null, CompiledPackageStore.NotPublished(name, version));
         if (load.Plan == null)
             return (null, load.Refusal ?? HashMismatch(name, version));
         if (!string.Equals(load.Plan.ResolveHash, resolveHash, StringComparison.Ordinal))
@@ -62,6 +62,5 @@ internal static class V31Plans
     }
 
     /// <summary>S09-009 for <paramref name="name"/>@<paramref name="version"/>.</summary>
-    public static string HashMismatch(string name, string version) =>
-        $"The compiled workflow {name}@{version} doesn't match its published hash, so it can't be run. Tell the operator.";
+    public static string HashMismatch(string name, string version) => CompiledPackageStore.HashMismatch(name, version);
 }

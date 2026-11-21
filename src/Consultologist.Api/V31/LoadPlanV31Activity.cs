@@ -18,7 +18,7 @@ public sealed record LoadPlanV31Result(string? Resolve, string? Refusal);
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 § 1.2 steps 2 to 5): the plan's text for a 31 orchestration, replay-safely. The
 /// store loads and verifies the version again (its cache after the first load), so a job never runs bytes other than the
-/// ones its start checked: the plan's <c>resolveHash</c> and <c>lockHash</c> must equal the job's, else S09-009. The text is
+/// ones its start checked: the plan's <c>resolveHash</c> must equal the job's, else S09-009, and its <c>lockHash</c>, else S09-014 (D5). The text is
 /// the plan's document written canonically, which is the verified bytes; its one copy in the history counts toward the 10 MB
 /// gate (index § 5).
 /// </summary>
@@ -32,7 +32,7 @@ public sealed class LoadPlanV31Activity(ICompiledPackageStore store)
         if (plan == null)
             return new LoadPlanV31Result(null, refusal);
         if (!string.Equals(plan.LockHash, input.LockHash, StringComparison.Ordinal))
-            return new LoadPlanV31Result(null, V31Plans.HashMismatch(input.PackageName, input.PackageVersion));
+            return new LoadPlanV31Result(null, CompiledPackageStore.LockMismatch(input.PackageName, input.PackageVersion));
         return new LoadPlanV31Result(Pack(CanonicalJson.Write(plan.Document)), null);
     }
 

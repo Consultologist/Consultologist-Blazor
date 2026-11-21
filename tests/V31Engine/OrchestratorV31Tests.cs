@@ -136,6 +136,23 @@ public class OrchestratorV31Tests
     }
 
     [Fact]
+    public async Task APlanWhoseLockIsNotTheJobs_FailsTheJob_WithS09014()
+    {
+        // D5: a lock that is not the one the job's start checked is S09-014's, not the hash's S09-009
+        var job = V31Job.Of("nested-note");
+        job.LockHash = "sha256:" + new string('0', 64);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        var sentence = job.State.FailureError!;
+        V31Contract.AssertSentence(new SourceRefusal("S09-014", sentence, ""));
+        Assert.Equal($"The compiled workflow {job.Ref.Name}@{job.Ref.Version} doesn't match its lock, so it can't be run. Tell the operator.", sentence);
+        Assert.Empty(V31Job.AgentCalls(context));
+    }
+
+    [Fact]
     public async Task APlanWhoseHashIsNotTheJobs_FailsTheJob_WithS09009()
     {
         var job = V31Job.Of("nested-note");
