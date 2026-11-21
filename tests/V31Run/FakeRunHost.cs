@@ -4,7 +4,8 @@ namespace Consultologist.Api.Tests.V31Run;
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): a scripted <see cref="IRunHost"/>. An agent call's outcome and a render's are scripted
-/// by the call's <c>Key</c> or, failing that, its <c>EntryKey</c>; an unscripted agent replies <c>"Text of &lt;key&gt;."</c>
+/// by the call's <c>Key</c> or, failing that, its <c>EntryKey</c>, an agent's as a sequence (each attempt takes the next
+/// outcome, the last repeating); an unscripted agent replies <c>"Text of &lt;key&gt;."</c>
 /// and an unscripted render gives <c>"Rendered &lt;key&gt;."</c>. In auto mode every answer is given at once; otherwise each
 /// is held until the test releases it (<see cref="Release"/>, <see cref="ReleaseAll"/>, <see cref="ReleaseInOrder"/>).
 /// The clock is manual (<see cref="Advance"/>), and a delay ends when the clock passes it. Releasing completes the task
@@ -13,7 +14,9 @@ namespace Consultologist.Api.Tests.V31Run;
 /// </summary>
 internal sealed class FakeRunHost(bool auto = false) : IRunHost
 {
-    private readonly Dictionary<string, AgentOutcome> agentScript = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, AgentOutcome[]> agentScript = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> agentServed = new(StringComparer.Ordinal);
+    private readonly HashSet<string> faults = new(StringComparer.Ordinal);
     private readonly Dictionary<string, RenderOutcome> renderScript = new(StringComparer.Ordinal);
     private readonly List<(string Key, Action Answer)> held = [];
     private readonly List<(DateTime Due, TaskCompletionSource Done)> timers = [];
@@ -43,10 +46,18 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
     /// <summary>Scripts the reply of the agent call keyed <paramref name="key"/> (a row key or an entry key).</summary>
     public FakeRunHost Reply(string key, string reply) => Agent(key, new AgentOutcome(AgentOutcomeKind.Completed, reply, 0, null));
 
-    /// <summary>Scripts the outcome of the agent call keyed <paramref name="key"/>.</summary>
-    public FakeRunHost Agent(string key, AgentOutcome outcome)
+    /// <summary>Scripts the outcomes of the agent call keyed <paramref name="key"/>: each attempt the next, the last repeating.</summary>
+    public FakeRunHost Agent(string key, params AgentOutcome[] outcomes)
     {
-        agentScript[key] = outcome;
+        Assert.NotEmpty(outcomes);
+        agentScript[key] = outcomes;
+        return this;
+    }
+
+    /// <summary>Scripts the agent call keyed <paramref name="key"/> (a row key) to fault when its answer is given: the host's own failure.</summary>
+    public FakeRunHost Fault(string key)
+    {
+        faults.Add(key);
         return this;
     }
 
@@ -75,14 +86,16 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
     {
         Calls.Add(call);
         events.Add((call.Key, true));
-        var outcome = agentScript.GetValueOrDefault(call.Key)
-            ?? agentScript.GetValueOrDefault(call.EntryKey)
+        var outcome = Next(call.Key) ?? Next(call.EntryKey)
             ?? new AgentOutcome(AgentOutcomeKind.Completed, $"Text of {call.Key}.", 0, null);
         var answer = new TaskCompletionSource<AgentOutcome>();
         return Hold(call.Key, () =>
         {
             events.Add((call.Key, false));
-            answer.SetResult(outcome);
+            if (faults.Contains(call.Key))
+                answer.SetException(new InvalidOperationException($"The fake host failed {call.Key}."));
+            else
+                answer.SetResult(outcome);
         }, answer.Task);
     }
 
@@ -151,6 +164,16 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
         Assert.True(run.IsCompleted, "The run has not ended: something it waits on was never released.");
         return run;
     });
+
+    /// <summary>The next scripted outcome for <paramref name="key"/>, the last repeating; null when none is scripted.</summary>
+    private AgentOutcome? Next(string key)
+    {
+        if (!agentScript.TryGetValue(key, out var outcomes))
+            return null;
+        var served = agentServed.GetValueOrDefault(key);
+        agentServed[key] = served + 1;
+        return outcomes[Math.Min(served, outcomes.Length - 1)];
+    }
 
     private Task<T> Hold<T>(string key, Action answer, Task<T> task)
     {

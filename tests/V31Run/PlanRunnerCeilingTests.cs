@@ -110,7 +110,7 @@ public class PlanRunnerCeilingTests
     }
 
     /// <summary><see cref="SourceFixture.Minimal"/> with <paramref name="count"/> agents <c>n1</c>… that read nothing, and a deliverable that reads none of them.</summary>
-    private static Dictionary<string, byte[]> Independent(int count)
+    internal static Dictionary<string, byte[]> Independent(int count)
     {
         var ids = Enumerable.Range(1, count).Select(i => $"n{i}").ToList();
         var files = Minimal().With("nodes/index.json", Index(ids)).Without("nodes/plan.md")
