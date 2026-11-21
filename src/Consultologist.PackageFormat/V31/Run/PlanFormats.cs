@@ -79,8 +79,14 @@ public sealed class PlanFormats
     /// Whether <paramref name="format"/> is a text format: a reference to a bundle entry whose <c>$id</c> is that of
     /// <c>plaintext</c>, <c>markdown_block</c> or <c>markdown_inline</c>.
     /// </summary>
-    public bool IsText(JsonNode? format) =>
-        Target(format) is { } entry && SourceLayout.Text(entry["$id"]) is { } id && TextIds.Contains(id);
+    public bool IsText(JsonNode? format) => TextFormat(format) != null;
+
+    /// <summary>
+    /// #1504 (area 07; part 05 § 8.3, D14): which text format <paramref name="format"/> is (<c>plaintext</c>,
+    /// <c>markdown_block</c> or <c>markdown_inline</c>, as <see cref="IsText"/> finds it), or <c>null</c> for any other.
+    /// </summary>
+    public string? TextFormat(JsonNode? format) =>
+        Target(format) is { } entry && SourceLayout.Text(entry["$id"]) is { } id && TextIds.Contains(id) ? id[(id.LastIndexOf(':') + 1)..] : null;
 
     /// <summary>
     /// A model's <paramref name="reply"/> as a value of <paramref name="format"/>: for a text format the reply itself, as a

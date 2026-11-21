@@ -14,7 +14,7 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// The run-neutral text is the sent text with each spot's output replaced at that place: a <c>marker</c> spot by
 /// <c>{{run:&lt;n&gt;}}</c>, a <c>text</c> spot by the same pipeline run over the read node's run-neutral text (the
 /// scope's <c>&lt;rooted key&gt;.neutral</c>; the node's content when the scope has none). Both come from the one render.
-/// A macro body's <c>run.*</c> reads are filled directly (D5, the macros' task): no spot here.
+/// A macro body's <c>run.*</c> reads are filled directly (D5): its text is planned under a site no run spot names.
 /// </summary>
 public static partial class BodyComposer
 {

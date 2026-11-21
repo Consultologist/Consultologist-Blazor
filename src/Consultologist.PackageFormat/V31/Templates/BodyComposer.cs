@@ -20,7 +20,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// by D13 (<see cref="TemplateValues"/>). Only package text (a body, a snippet's, a part's, a macro's instruction, a
 /// renderer's) is ever parsed; a value never is. In a loop over a snippet folder, <c>item.content</c> renders the item's
 /// body from the plan (part 05 § 6.2). Each run spot's output is recorded where it is written, which gives the run-neutral
-/// text from the same render (part 05 § 4). A macro placement renders nothing yet (the macros' task).
+/// text from the same render (part 05 § 4). A macro offered renders its instruction, its own marker written as the marker
+/// to copy (D17), and its body is rendered for the reply (part 05 §§ 8.3, 8.4; D5, D14).
 /// </summary>
 public static partial class BodyComposer
 {
@@ -51,7 +52,7 @@ public static partial class BodyComposer
     /// renderer in the body and in every unit its <c>placements</c> name, in order of appearance with each unit's text
     /// walked where it is placed (a macro's instruction and the snippets placed there included, its body not). The numbers
     /// stand whether a unit is placed or not; a macro body's renders, substituted after the reply, are numbered after the
-    /// entry's own (<see cref="Composing.Numbered"/> + 1 onward).
+    /// entry's own (<see cref="Composing.Numbered"/> + 1 onward), each offered macro's body in turn in prompt order.
     /// </remarks>
     public static Composition Compose(RunPlan plan, ComposeRequest request)
     {
@@ -78,7 +79,7 @@ public static partial class BodyComposer
             if (Encoding.UTF8.GetByteCount(text) > OutputLimit)
                 return Failed(RunSentences.OutputPassedLimit(composing.Subject));
             return new Composition(
-                text, NeutralText(text, spots), null, false, [.. spots.Select(s => s.Composed())], [.. composing.Renders], [], composing.PlacedUnits());
+                text, NeutralText(text, spots), null, false, [.. spots.Select(s => s.Composed())], [.. composing.Renders], [.. composing.Offered], composing.PlacedUnits());
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -148,6 +149,9 @@ public static partial class BodyComposer
             Stop ??= stop;
             return stop;
         }
+
+        /// <summary>The macros offered, in prompt order (part 05 § 8.5).</summary>
+        public List<OfferedMacro> Offered { get; } = [];
 
         /// <summary>The units placed, in order of appearance (a unit before the units its text places).</summary>
         public IReadOnlyList<ComposedUnit> PlacedUnits() => units.OfType<ComposedUnit>().ToList();
@@ -258,11 +262,13 @@ public static partial class BodyComposer
         /// <summary>
         /// Renders the unit <paramref name="placement"/> places when its site is placed (<see cref="ComposeRequest.Placed"/>),
         /// recording it in order of appearance, with the run spots written in it; <c>null</c>, which writes nothing, when it
-        /// is not.
+        /// is not. A macro is offered as <see cref="PlaceMacro"/> says.
         /// </summary>
         public PlacedText? Place(Placement placement)
         {
-            if (placement.Kind == "macro" || !Request.Placed.TryGetValue(placement.Site, out var placed) || !placed)
+            if (placement.Kind == "macro")
+                return PlaceMacro(placement);
+            if (!Request.Placed.TryGetValue(placement.Site, out var placed) || !placed)
                 return null;
             var index = units.Count;
             units.Add(null);
@@ -293,9 +299,12 @@ public static partial class BodyComposer
 
         /// <summary>Each output statement that is one of the entry's run spots, by the statement's offset.</summary>
         public Dictionary<int, PlannedSpot> Spots { get; } = [];
+
+        /// <summary>In a macro's instruction, the output statement holding the macro's own marker, by its offset, with what it writes (D17).</summary>
+        public Dictionary<int, string> Markers { get; } = [];
     }
 
-    /// <summary>A unit placed at one tag: its <paramref name="Site"/>, its kind (<c>snippet</c>, <c>part</c>, <c>macro</c>), and its text planned at that place (a macro's instruction, which the macros' task renders).</summary>
+    /// <summary>A unit placed at one tag: its <paramref name="Site"/>, its kind (<c>snippet</c>, <c>part</c>, <c>macro</c>), and its text planned at that place (a macro's instruction).</summary>
     internal sealed record Placement(string Site, string Kind, TextPlan Text);
 
     /// <summary>A pipe step into the renderer <paramref name="Renderer"/> (its id): its number for the entry, its source, and whether it stands in a run spot.</summary>
@@ -341,9 +350,19 @@ internal sealed class ComposeContext : TemplateContext
     /// <summary>Records and gives the stop to throw: <paramref name="sentence"/>, or A06-008 for <c>null</c>.</summary>
     public ComposeStop Stopped(string? sentence) => Composing.Stopped(new ComposeStop(sentence));
 
-    /// <summary>A run spot's output statement writes itself, recording where its output stands (part 05 § 4); any other node evaluates as Scriban's.</summary>
+    /// <summary>
+    /// A run spot's output statement writes itself, recording where its output stands (part 05 § 4); a macro's own marker in
+    /// its instruction writes the marker as the model is to copy it, never evaluated (D17); any other node evaluates as
+    /// Scriban's.
+    /// </summary>
     public override object? Evaluate(ScriptNode? scriptNode, bool aliasReturnedFunction)
     {
+        if (scriptNode is ScriptExpressionStatement marker && Text.Markers.TryGetValue(BodyComposer.Offset(marker), out var literal))
+        {
+            Write(literal);
+            return null;
+        }
+
         if (scriptNode is not ScriptExpressionStatement statement || !Text.Spots.TryGetValue(BodyComposer.Offset(statement), out var spot))
             return base.Evaluate(scriptNode, aliasReturnedFunction);
         Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction));

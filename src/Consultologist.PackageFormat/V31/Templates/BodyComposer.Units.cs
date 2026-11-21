@@ -13,7 +13,9 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// placed (a snippet's body, the function's own snippet before the package's; a part's lines; a macro's instruction),
 /// which numbers the renderer steps as the entry's <c>renders</c> does. At run time a placement tag (<c>snippet.….content</c>,
 /// <c>part.&lt;id&gt;</c>, <c>macro.…</c>, its whole output) splices its unit's rendered text when its site is placed and
-/// nothing when not; a macro placement renders nothing yet (the macros' task).
+/// nothing when not. A macro is offered when its site, its folder's and the units that place it are placed: its
+/// instruction is spliced, its own marker written as the marker to copy (D17), and its body is rendered in the same data
+/// for the reply (part 05 §§ 3.2, 8.3, 8.6; D5, D14).
 /// </summary>
 public static partial class BodyComposer
 {
@@ -38,6 +40,12 @@ public static partial class BodyComposer
                 if (statement.Expression is not { } written)
                     continue;
                 var expression = DialectRules.Unwrap(written);
+                if (site != null && site.StartsWith("macro.", StringComparison.Ordinal) && Chain(expression) == site + ".content")
+                {
+                    plan.Markers[Offset(statement)] = MarkerLiteral(read.Syntax, statement, site);
+                    continue;
+                }
+
                 if (PlacementOf(expression) is { } unit)
                 {
                     if (UnitText(unit.Kind, unit.Site) is not { } unitText || Plan(unitText, unit.Site, depth + 1) is not { } child)
@@ -60,6 +68,94 @@ public static partial class BodyComposer
             }
 
             return plan;
+        }
+
+        /// <summary>
+        /// D17: what the macro <paramref name="site"/>'s own marker writes in its instruction: the marker as § 8.6 reads it
+        /// (<c>{{~ macro.x.content }}</c> for a block, <c>{{ macro.x.content }}</c> inline), and for a block marker alone on
+        /// its line the indentation before it, which the tag's <c>~</c> would take.
+        /// </summary>
+        private static string MarkerLiteral(TemplateSyntax syntax, ScriptExpressionStatement statement, string site)
+        {
+            var offset = Offset(statement);
+            var tag = syntax.Tags.FirstOrDefault(t => t.Start <= offset && offset < t.End);
+            var block = tag is { TildeLeft: true, AloneOnLine: true };
+            var indentation = string.Empty;
+            if (block)
+            {
+                var start = Math.Clamp(tag!.Start, 0, syntax.Text.Length);
+                var lineStart = start == 0 ? 0 : syntax.Text.LastIndexOf('\n', start - 1) + 1;
+                indentation = syntax.Text[lineStart..start];
+            }
+
+            return indentation + MacroMarkers.Open(new MacroMarker(site["macro.".Length..], site + ".content", block));
+        }
+
+        /// <summary>
+        /// The macro <paramref name="placement"/> places, offered when its site and its folder's (<c>macro-folder.&lt;id&gt;</c>,
+        /// for a folder's macro) are placed (the units around it are, or this text would not be rendering): its instruction
+        /// rendered where it stands, and its body rendered in the same data (<c>profile.*</c> readable, a <c>run.*</c> read
+        /// filled directly, D5) and escaped as plain text when a <c>plaintext</c> macro stands in a Markdown node (D14),
+        /// recorded as an <see cref="OfferedMacro"/>; <c>null</c>, which writes nothing, when it is not offered. A macro the
+        /// plan lacks, with no body, or with no <c>form</c> in the entry's <c>placements</c> is not what publish wrote.
+        /// </summary>
+        private PlacedText? PlaceMacro(Placement placement)
+        {
+            var site = placement.Site;
+            var segments = site.Split('.');
+            if (!Request.Placed.TryGetValue(site, out var placed) || !placed
+                || (segments.Length == 3 && (!Request.Placed.TryGetValue($"macro-folder.{segments[1]}", out var folder) || !folder)))
+            {
+                return null;
+            }
+
+            var macro = Macro(site);
+            if (SourceLayout.Text(macro?["body"]) is not { } body || Form(site) is not { } form)
+                throw Stopped(new ComposeStop(NotPublished));
+
+            var instruction = Render(placement.Text, Globals(), out var spots);
+            if (Plan(body, site + ".content", 1) is not { } bodyPlan)
+                throw Stopped(new ComposeStop(NotPublished));
+            var text = Render(bodyPlan, Globals());
+            if (RunPlan.Formats.TextFormat(macro!["format"]) == "plaintext" && RunPlan.Formats.TextFormat(Entry.Format) is "markdown_block" or "markdown_inline")
+                text = MarkdownEscape.Escape(text);
+
+            Offered.Add(new OfferedMacro(site, site + ".content", form == "block", text, CanonicalJson.HashText(text), ProfileReads(bodyPlan)));
+            return new PlacedText(instruction, spots);
+        }
+
+        /// <summary>The <c>form</c> the entry's <c>placements</c> gives the macro <paramref name="site"/> (<c>block</c> or <c>inline</c>), or <c>null</c>.</summary>
+        private string? Form(string site) =>
+            (Entry.Json["placements"] as JsonArray ?? [])
+                .OfType<JsonObject>()
+                .Where(p => SourceLayout.Text(p["site"]) == site)
+                .Select(p => SourceLayout.Text(p["form"]))
+                .FirstOrDefault(f => f is "block" or "inline");
+
+        /// <summary>
+        /// Each <c>profile.&lt;field&gt;</c> <paramref name="body"/> (or a unit it places) writes, once, in order, with the hash
+        /// of the value the data holds for it (part 08 § 9): of its text, or of its canonical JSON when it is not text.
+        /// </summary>
+        private IReadOnlyList<ProfileRead> ProfileReads(TextPlan body)
+        {
+            var fields = new List<string>();
+            var pending = new Stack<TextPlan>();
+            pending.Push(body);
+            while (pending.TryPop(out var text))
+            {
+                foreach (var path in text.Syntax.Outputs.SelectMany(o => o.Paths))
+                {
+                    if (path.Split('.') is ["profile", var field, ..] && !fields.Contains(field, StringComparer.Ordinal))
+                        fields.Add(field);
+                }
+
+                foreach (var child in text.Placements.Values.Reverse())
+                    pending.Push(child.Text);
+            }
+
+            return [.. fields.Select(field => new ProfileRead(field, Json($"profile.{field}") is JsonValue value && value.TryGetValue<string>(out var written)
+                ? CanonicalJson.HashText(written)
+                : CanonicalJson.Hash(Json($"profile.{field}"))))];
         }
 
         /// <summary>A renderer's body planned for a pipe into it (nothing placed, nothing numbered), or <c>null</c> when it is not what publish wrote.</summary>
@@ -287,11 +383,17 @@ public static partial class BodyComposer
         }
     }
 
-    /// <summary><c>macro</c>: a macro (or a folder's, under its folder) reads <c>null</c>, which writes nothing; the macros' task renders a placed one's instruction. A key no macro has fails the render.</summary>
+    /// <summary>
+    /// <c>macro</c>: a macro (or a folder's, under its folder) at a placement of it is its instruction when it is offered
+    /// (<see cref="Composing.Place"/>), nothing otherwise; read anywhere else it reads <c>null</c>. A key no macro has fails
+    /// the render.
+    /// </summary>
     internal sealed class MacroRoot(Composing composing, string? key) : ScriptObject
     {
         public override bool TryGetValue(TemplateContext context, SourceSpan span, string member, out object? value)
         {
+            if (context is not ComposeContext composer)
+                throw composing.Stopped(new ComposeStop(null));
             var under = key == null ? $"macro.{member}" : $"{key}.{member}";
             if (composing.HasMacrosUnder(under))
             {
@@ -301,7 +403,9 @@ public static partial class BodyComposer
 
             if (composing.Macro(under) == null)
                 throw composing.Stopped(new ComposeStop(null));
-            value = null;
+            value = composer.CurrentNode is { } node && composer.Text.Placements.TryGetValue(Offset(node), out var placement) && placement.Site == under
+                ? composing.Place(placement)
+                : null;
             return true;
         }
     }

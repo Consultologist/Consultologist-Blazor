@@ -18,8 +18,9 @@ public sealed record ComposeRequest(string EntryKey, string? Function, JsonObjec
 /// run-neutral render (each spot's output replaced at its place by its marker or the read node's run-neutral text), from
 /// the same render, <c>null</c> when no run spot was filled; <paramref name="Spots"/> the spots filled, in the order of the
 /// text (one per iteration of a <c>for</c> holding one);
-/// <paramref name="Renders"/> one sub-row per renderer pipe step run, in the order run; <paramref name="Macros"/> the
-/// macros offered (Task 10); <paramref name="Units"/> each snippet and part placed, in order of appearance.
+/// <paramref name="Renders"/> one sub-row per renderer pipe step run, in the order run (an offered macro's body's steps
+/// numbered after the entry's own); <paramref name="Macros"/> the macros offered, in prompt order; <paramref name="Units"/>
+/// each snippet and part placed, in order of appearance.
 /// </summary>
 public sealed record Composition(
     string? Text,
@@ -59,8 +60,9 @@ public sealed record ComposedUnit(string Site, string TextHash);
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 §§ 8.3, 8.4, 8.8; part 08 § 4.3): a macro offered in the prompt: its
 /// <paramref name="Site"/>, the <paramref name="Marker"/> the model is to write, whether it is a <paramref name="Block"/>,
-/// its rendered <paramref name="Body"/> and that body's <paramref name="ContentHash"/>, and the profile fields the body
-/// read (<paramref name="ProfileReads"/>). Filled by the macros' task; <see cref="BodyComposer"/> gives none yet.
+/// its rendered <paramref name="Body"/> as it is substituted (escaped as plain text for a <c>plaintext</c> macro in a
+/// Markdown node, D14) and that text's <paramref name="ContentHash"/>, and the profile fields the body read
+/// (<paramref name="ProfileReads"/>, each by the field's name, <c>signature</c> for <c>profile.signature</c>).
 /// </summary>
 public sealed record OfferedMacro(string Site, string Marker, bool Block, string Body, string ContentHash, IReadOnlyList<ProfileRead> ProfileReads);
 
