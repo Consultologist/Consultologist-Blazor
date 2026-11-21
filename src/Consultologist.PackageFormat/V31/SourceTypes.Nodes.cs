@@ -5,7 +5,7 @@ namespace Consultologist.PackageFormat.V31;
 /// <summary>
 /// #1500 (specVersion 31, area 03): the type rules of a package's nodes (part 02 §§ 1–2, § 7), on
 /// every node of <c>nodes/</c>, <c>checks/</c> and each function's body, in its scope: an agent's
-/// binding (S02-012, D21), its union root (S02-027) and the strict-mode limits of what it is sent
+/// binding (S02-012, D21) and one version of each agent across the package (A07-014; #1504 ruling 4), its union root (S02-027) and the strict-mode limits of what it is sent
 /// (S02-055, S02-056, D3); a rendered node's text (S02-013, D15); a leaf's <c>reproducible</c>
 /// (S01-027, D5); a flow node's declared format against what its <c>ret</c> gives (S02-015,
 /// S02-016, D4, D24, D25). A <c>call</c>'s format, a computed node's expression, a check's
@@ -39,6 +39,12 @@ public static partial class SourceTypes
         public Dictionary<string, JsonNode> NodeFormats { get; } = new(StringComparer.Ordinal);
 
         public Dictionary<string, AgentBinding> Bindings { get; } = new(StringComparer.Ordinal);
+
+        /// <summary>#1504 (R6): the first agent node bound to each agent, by the agent's name, and the version it binds.</summary>
+        private readonly Dictionary<string, (string Node, int Version)> firstBound = new(StringComparer.Ordinal);
+
+        /// <summary>#1504 (R6): the agents already refused for binding two versions, so each is said once.</summary>
+        private readonly HashSet<string> twoVersions = new(StringComparer.Ordinal);
 
         /// <summary>Each node of a body, in listed order, its bodies first.</summary>
         public void Body(FormatSet set, IReadOnlyList<SourceNode> nodes)
@@ -113,10 +119,30 @@ public static partial class SourceTypes
             if (binding == null)
                 refusals.Add(FormatSentences.NoBinding(leaf.Id, name, Producer, leaf.Path));
             else
+            {
                 Bindings[leaf.Path] = binding;
+                OneVersion(leaf, binding);
+            }
 
             if (found.Schema.ContainsKey("anyOf"))
                 refusals.Add(FormatSentences.AnyOfAtRoot(leaf.Id, TypeStrings.Print(format, set), leaf.Path));
+        }
+
+        /// <summary>
+        /// #1504 (specVersion 31, area 07; ruling 4, R6): a package binds one version of an agent, since
+        /// <c>requires.agents</c> names one. A07-014 on the first node, in walk order, bound to an agent at another
+        /// version than the first node bound to it, once per agent. With the published catalogue each agent has one
+        /// version; a deployment's catalogue that binds two formats to two versions of one agent is what reaches it.
+        /// </summary>
+        private void OneVersion(SourceLeaf leaf, AgentBinding binding)
+        {
+            if (!firstBound.TryGetValue(binding.AgentName, out var first))
+                firstBound[binding.AgentName] = (leaf.Id, binding.AgentVersion);
+            else if (first.Version != binding.AgentVersion && twoVersions.Add(binding.AgentName))
+            {
+                refusals.Add(Templates.DialectSentences.TwoVersionsOfOneAgent(
+                    first.Node, leaf.Id, binding.AgentName, first.Version, binding.AgentVersion, leaf.Path));
+            }
         }
 
         /// <summary>

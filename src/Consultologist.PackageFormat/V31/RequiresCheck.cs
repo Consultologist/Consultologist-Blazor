@@ -73,7 +73,9 @@ public static class RequiresCheck
     /// given as a version, naming the component and the engine's version of it (or <c>unknown</c>); a break point of an
     /// operation or a built-in the package does not use is not held, and one of a name nothing knows is refused, naming
     /// both versions <c>unknown</c>; S07-004 for each kind, then
-    /// each feature, the engine does not support; S07-005 for each agent (ordinal) at a version the engine does not have.
+    /// each feature, the engine does not support; S07-005 for each agent (ordinal) at a version the engine does not have;
+    /// S07-006 once when an agent's version is not an integer (#1504 ruling 4: publish writes one, so the document is not
+    /// what publish wrote).
     /// At most one refusal per component. A document that cannot be read is one S07-003 naming <c>unknown</c>, on
     /// <c>resolve.json</c> when it is that one, else on <c>lock.json</c>. A null argument is the caller's error.
     /// </summary>
@@ -167,12 +169,20 @@ public static class RequiresCheck
         {
             foreach (var (name, written) in agents.OrderBy(a => a.Key, StringComparer.Ordinal))
             {
-                var text = SourceLayout.Text(written);
-                var number = text is { Length: > 0 and <= 9 } && text.All(char.IsAsciiDigit)
-                    ? int.Parse(text, CultureInfo.InvariantCulture)
-                    : (int?)null;
-                if (number == null || engine.Agents?.GetValueOrDefault(name) is not { } versions || !versions.Contains(number.Value))
-                    refusals.Add(ResolveSentences.AgentMissing(package, version, name, text ?? Unknown, CompiledPackage.ResolveFile));
+                // #1504 ruling 4 (R6): publish writes each version as an integer; anything else is not its document.
+                if (written is not JsonValue value || value.GetValueKind() != System.Text.Json.JsonValueKind.Number
+                    || !value.TryGetValue<int>(out var number))
+                {
+                    if (!refusals.Any(r => r.Id == "S07-006"))
+                        refusals.Add(ResolveSentences.ResolveDoesNotMatch(package, version));
+                    continue;
+                }
+
+                if (engine.Agents?.GetValueOrDefault(name) is not { } versions || !versions.Contains(number))
+                {
+                    refusals.Add(ResolveSentences.AgentMissing(
+                        package, version, name, number.ToString(CultureInfo.InvariantCulture), CompiledPackage.ResolveFile));
+                }
             }
         }
         else

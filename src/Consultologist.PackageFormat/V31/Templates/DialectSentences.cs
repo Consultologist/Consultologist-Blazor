@@ -233,6 +233,15 @@ public static class DialectSentences
         new("A07-013", $"Snippet '{id}' holds a tag at line {Line(line)}, and {subject} {route}, where it isn't rendered; "
             + "keep a folder item's body plain text, or read it as item.content in its loop.", path);
 
+    /// <summary>
+    /// A07-014 (#1504 ruling 4, R6; part 07 § 3.1 <c>requires.agents</c>): the agent nodes <paramref name="first"/> and
+    /// <paramref name="second"/> are bound to agent <paramref name="agent"/> at two versions, <paramref name="firstVersion"/>
+    /// and <paramref name="secondVersion"/>; a package's <c>requires</c> names one version of each agent.
+    /// </summary>
+    public static SourceRefusal TwoVersionsOfOneAgent(string first, string second, string agent, int firstVersion, int secondVersion, string path) =>
+        new("A07-014", $"Nodes '{first}' and '{second}' bind agent '{agent}' at versions {Line(firstVersion)} and {Line(secondVersion)}; "
+            + "a package binds one version of an agent.", path);
+
     /// <summary>S05-042 (R-M1): macro <paramref name="id"/>'s body places <c>macro.<paramref name="other"/></c>, itself or through a snippet it places.</summary>
     public static SourceRefusal MacroBodyPlacesMacro(string id, string other, string path) =>
         new("S05-042", $"Macro '{id}' places macro.{other} in its body; {BodyIsOutput}", path);

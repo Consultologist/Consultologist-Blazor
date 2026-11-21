@@ -6,7 +6,9 @@ namespace Consultologist.PackageFormat.V31;
 /// #1502 (specVersion 31, area 05): <c>requires</c> (part 07 § 3.1; D8): derived, never authored, and minimal. The spec;
 /// the evaluator's range (<c>^</c> and <see cref="JsonLogicOperations.EvaluatorVersion"/>); Scriban's (<c>^</c> and the
 /// locked version); each custom operation any rule of the package calls, with its range; the node kinds used and the
-/// features used, each in <c>constants.json</c>'s order; and each agent the bindings name, with its version as text.
+/// features used, each in <c>constants.json</c>'s order; and each agent the bindings name, with its version.
+/// #1504 (specVersion 31, area 07; ruling 4, R6): with its version as the integer the bindings carry (<c>{ "judgement": 1 }</c>);
+/// the type rules hold a package to one version of each agent (A07-014), so each name has one.
 /// </summary>
 public static partial class ResolveCompiler
 {
@@ -44,7 +46,7 @@ public static partial class ResolveCompiler
         if (checks.OfType<SourceFor>().Any())
             features.Add("check-loops");
 
-        var agents = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        var agents = new SortedDictionary<string, int>(StringComparer.Ordinal);
         foreach (var (_, producers) in context.Formats.Bindings)
         {
             foreach (var (_, binding) in producers?.AsObject() ?? [])
@@ -52,7 +54,7 @@ public static partial class ResolveCompiler
                 if (SourceLayout.Text(binding?["agentName"]) is { } name && binding?["agentVersion"] is JsonValue version
                     && version.TryGetValue<int>(out var number))
                 {
-                    agents.TryAdd(name, number.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    agents.TryAdd(name, number);
                 }
             }
         }
