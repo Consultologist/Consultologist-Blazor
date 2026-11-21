@@ -46,12 +46,15 @@ public static partial class BodyComposer
                     continue;
                 }
 
+                var spot = SpotOf(plan, statement);
+                if (spot != null)
+                    plan.Spots[Offset(statement)] = spot;
                 string? before = null;
                 foreach (var (offset, renderer, head) in RendererSteps(expression))
                 {
                     var n = ++Numbered;
                     var source = RenderSource(n) ?? before ?? head;
-                    plan.Renders[offset] = new RenderStep(n, renderer, source, InRunSpot(plan, statement));
+                    plan.Renders[offset] = new RenderStep(n, renderer, source, spot != null);
                     before = string.Create(CultureInfo.InvariantCulture, $"render:{n}");
                 }
             }
@@ -81,18 +84,6 @@ public static partial class BodyComposer
             }
 
             return renderSources.GetValueOrDefault(n);
-        }
-
-        /// <summary>Whether <paramref name="statement"/>'s tag is one of the entry's run spots in <paramref name="plan"/>'s text (its <c>unit</c> and <c>at</c>).</summary>
-        private bool InRunSpot(TextPlan plan, ScriptExpressionStatement statement)
-        {
-            var offset = Offset(statement);
-            var tag = plan.Syntax.Tags.FirstOrDefault(t => t.Start <= offset && offset < t.End);
-            if (tag == null)
-                return false;
-            var at = string.Create(CultureInfo.InvariantCulture, $"{tag.Line}:{tag.Column}");
-            return (Entry.Json["runSpots"] as JsonArray ?? []).OfType<JsonObject>()
-                .Any(spot => SourceLayout.Text(spot["at"]) == at && SourceLayout.Text(spot["unit"]) == plan.Site);
         }
 
         /// <summary>The text of the unit <paramref name="site"/> of <paramref name="kind"/>: a snippet's body, a part's lines or a macro's instruction joined with <c>\n</c>; <c>null</c> when absent.</summary>

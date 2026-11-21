@@ -19,7 +19,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// numbered as the entry's <c>renders</c> (<see cref="Compose"/>). Only the seven built-ins exist; values are written
 /// by D13 (<see cref="TemplateValues"/>). Only package text (a body, a snippet's, a part's, a macro's instruction, a
 /// renderer's) is ever parsed; a value never is. In a loop over a snippet folder, <c>item.content</c> renders the item's
-/// body from the plan (part 05 § 6.2). A macro placement renders nothing yet (the macros' task).
+/// body from the plan (part 05 § 6.2). Each run spot's output is recorded where it is written, which gives the run-neutral
+/// text from the same render (part 05 § 4). A macro placement renders nothing yet (the macros' task).
 /// </summary>
 public static partial class BodyComposer
 {
@@ -73,10 +74,11 @@ public static partial class BodyComposer
         {
             if (composing.Plan(body, null, 0) is not { } top)
                 return Failed(notPublished);
-            var text = composing.Render(top, composing.Globals());
+            var text = composing.Render(top, composing.Globals(), out var spots);
             if (Encoding.UTF8.GetByteCount(text) > OutputLimit)
                 return Failed(RunSentences.OutputPassedLimit(composing.Subject));
-            return new Composition(text, null, null, false, [], [.. composing.Renders], [], composing.PlacedUnits());
+            return new Composition(
+                text, NeutralText(text, spots), null, false, [.. spots.Select(s => s.Composed())], [.. composing.Renders], [], composing.PlacedUnits());
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -237,28 +239,36 @@ public static partial class BodyComposer
         }
 
         /// <summary>Renders <paramref name="text"/> over <paramref name="globals"/> in a context of its own, sharing this composition's budget.</summary>
-        public string Render(TextPlan text, ScriptObject globals)
+        public string Render(TextPlan text, ScriptObject globals) => Render(text, globals, out _);
+
+        /// <summary>
+        /// Renders <paramref name="text"/> as <see cref="Render(TextPlan, ScriptObject)"/> does, giving the run spots written
+        /// in it, at their places in the text it gives (<paramref name="spots"/>, in the order of the text).
+        /// </summary>
+        public string Render(TextPlan text, ScriptObject globals, out IReadOnlyList<FilledSpot> spots)
         {
             var output = new LimitedOutput(this);
             var context = new ComposeContext(this, text, builtins, output);
             context.PushGlobal(globals);
             text.Template.Render(context);
+            spots = context.Spots;
             return output.ToString();
         }
 
         /// <summary>
         /// Renders the unit <paramref name="placement"/> places when its site is placed (<see cref="ComposeRequest.Placed"/>),
-        /// recording it in order of appearance; <c>null</c>, which writes nothing, when it is not.
+        /// recording it in order of appearance, with the run spots written in it; <c>null</c>, which writes nothing, when it
+        /// is not.
         /// </summary>
-        public string? Place(Placement placement)
+        public PlacedText? Place(Placement placement)
         {
             if (placement.Kind == "macro" || !Request.Placed.TryGetValue(placement.Site, out var placed) || !placed)
                 return null;
             var index = units.Count;
             units.Add(null);
-            var rendered = Render(placement.Text, Globals());
+            var rendered = Render(placement.Text, Globals(), out var spots);
             units[index] = new ComposedUnit(placement.Site, CanonicalJson.HashText(rendered));
-            return rendered;
+            return new PlacedText(rendered, spots);
         }
     }
 
@@ -280,6 +290,9 @@ public static partial class BodyComposer
 
         /// <summary>Each pipe step into a renderer by the offset of the step.</summary>
         public Dictionary<int, RenderStep> Renders { get; } = [];
+
+        /// <summary>Each output statement that is one of the entry's run spots, by the statement's offset.</summary>
+        public Dictionary<int, PlannedSpot> Spots { get; } = [];
     }
 
     /// <summary>A unit placed at one tag: its <paramref name="Site"/>, its kind (<c>snippet</c>, <c>part</c>, <c>macro</c>), and its text planned at that place (a macro's instruction, which the macros' task renders).</summary>
@@ -299,11 +312,12 @@ internal sealed class ComposeContext : TemplateContext
 {
     private readonly Stack<int> iterations = new();
 
-    public ComposeContext(BodyComposer.Composing composing, BodyComposer.TextPlan text, ScriptObject builtins, IScriptOutput output)
+    public ComposeContext(BodyComposer.Composing composing, BodyComposer.TextPlan text, ScriptObject builtins, LimitedOutput output)
         : base(builtins)
     {
         Composing = composing;
         Text = text;
+        Written = output;
         StrictVariables = true;
         LoopLimit = 0; // each for is counted here instead (OnStepLoop)
         AutoIndent = false;
@@ -313,16 +327,41 @@ internal sealed class ComposeContext : TemplateContext
 
     public BodyComposer.Composing Composing { get; }
 
-    /// <summary>The text being rendered, whose tags say what is placed and which renderer step is which.</summary>
+    /// <summary>The text being rendered, whose tags say what is placed, which renderer step is which and which output is a run spot.</summary>
     public BodyComposer.TextPlan Text { get; }
+
+    /// <summary>The text's output, whose length is where the next write stands.</summary>
+    public LimitedOutput Written { get; }
+
+    /// <summary>The run spots written to <see cref="Written"/>, at their places in it, in the order written (part 05 § 4).</summary>
+    public List<BodyComposer.FilledSpot> Spots { get; } = [];
 
     public string Subject => Composing.Subject;
 
     /// <summary>Records and gives the stop to throw: <paramref name="sentence"/>, or A06-008 for <c>null</c>.</summary>
     public ComposeStop Stopped(string? sentence) => Composing.Stopped(new ComposeStop(sentence));
 
+    /// <summary>A run spot's output statement writes itself, recording where its output stands (part 05 § 4); any other node evaluates as Scriban's.</summary>
+    public override object? Evaluate(ScriptNode? scriptNode, bool aliasReturnedFunction)
+    {
+        if (scriptNode is not ScriptExpressionStatement statement || !Text.Spots.TryGetValue(BodyComposer.Offset(statement), out var spot))
+            return base.Evaluate(scriptNode, aliasReturnedFunction);
+        Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction));
+        return null;
+    }
+
+    /// <summary>D13's writing of a value; a placed unit's text is spliced, its run spots moved to where it stands.</summary>
     public override TemplateContext Write(SourceSpan span, object? textAsObject)
     {
+        if (textAsObject is BodyComposer.PlacedText placed)
+        {
+            var start = Written.Length;
+            if (placed.Text.Length > 0)
+                Write(placed.Text);
+            Spots.AddRange(placed.Spots.Select(s => s with { Start = s.Start + start }));
+            return this;
+        }
+
         if (textAsObject is null)
             return this;
         var text = TemplateValues.Written(textAsObject) ?? throw Stopped(null);
@@ -368,6 +407,9 @@ internal sealed class LimitedOutput(BodyComposer.Composing composing) : IScriptO
 {
     private readonly StringBuilder builder = new();
     private long bytes;
+
+    /// <summary>The characters written so far (UTF-16 code units, as <see cref="string"/> indexes them).</summary>
+    public int Length => builder.Length;
 
     public void Write(string text, int offset, int count)
     {

@@ -15,7 +15,9 @@ public sealed record ComposeRequest(string EntryKey, string? Function, JsonObjec
 /// #1504 (specVersion 31, area 07; part 05 §§ 2.3, 4, 5.5, 8.8; part 08 §§ 4.2, 4.3, 8.2, 9; D12): what composing a body gave.
 /// <paramref name="Text"/> is the sent text, <c>null</c> exactly when <paramref name="Failure"/> (the sentence the node fails
 /// with) is set or <paramref name="TooManySteps"/> (S05-062, said by the runner). <paramref name="NeutralText"/> is the
-/// run-neutral render, <c>null</c> when the body has no run spot, and <paramref name="Spots"/> the spots filled (Task 9);
+/// run-neutral render (each spot's output replaced at its place by its marker or the read node's run-neutral text), from
+/// the same render, <c>null</c> when no run spot was filled; <paramref name="Spots"/> the spots filled, in the order of the
+/// text (one per iteration of a <c>for</c> holding one);
 /// <paramref name="Renders"/> one sub-row per renderer pipe step run, in the order run; <paramref name="Macros"/> the
 /// macros offered (Task 10); <paramref name="Units"/> each snippet and part placed, in order of appearance.
 /// </summary>
@@ -68,7 +70,8 @@ public sealed record ProfileRead(string Field, string Hash);
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 4; part 08 § 8.2; D4): one run spot filled: its 1-based
 /// <paramref name="Site"/>, what it <paramref name="Reads"/>, where its output stands in the sent text
-/// (<paramref name="Start"/>, <paramref name="Length"/>), the output's hash and (when kept) the output, and the hash of
-/// the value read. Filled by the run spots' task; <see cref="BodyComposer"/> gives none yet.
+/// (<paramref name="Start"/>, <paramref name="Length"/>, in UTF-16 code units as <see cref="string"/> indexes it), the
+/// output's hash, the output itself only when the spot reads a raw <c>run.*</c> fact (else <c>null</c>: it follows 7-day
+/// retention), and the hash of the value read (of its canonical JSON).
 /// </summary>
 public sealed record ComposedSpot(int Site, string Reads, int Start, int Length, string OutputHash, string? Output, string ValueHash);

@@ -45,6 +45,8 @@ public static partial class BodyComposer
             var globals = new ScriptObject();
             globals.SetValue("value", value, false);
             var output = Render(plan, globals);
+            if (InNeutralPass)
+                return output; // a text spot's pipeline over the run-neutral text: no sub-row of the record
             Renders.Add(new ComposedRender(
                 step.N,
                 key,
