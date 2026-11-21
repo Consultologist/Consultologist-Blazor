@@ -131,7 +131,10 @@ builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponseStore, Consu
 builder.Services.AddSingleton<Consultologist.Api.Forms.IFormResponsePurger, Consultologist.Api.Forms.FormResponsePurger>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<WorkflowPackageBlobContainerFactory>();
-builder.Services.AddSingleton<IWorkflowPackageStore, WorkflowPackageStore>();
+// #1503: one store, forwarded to both its interfaces (one instance, one pointer cache).
+builder.Services.AddSingleton<WorkflowPackageStore>();
+builder.Services.AddSingleton<IWorkflowPackageStore>(sp => sp.GetRequiredService<WorkflowPackageStore>());
+builder.Services.AddSingleton<IWorkflowPackageVersions>(sp => sp.GetRequiredService<WorkflowPackageStore>());
 builder.Services.AddSingleton<IWorkflowPackageRegistryWriter, WorkflowPackageRegistryWriter>();
 builder.Services.AddSingleton<WorkflowPackagePublisher>();
 builder.Services.AddSingleton<WorkflowPackageIngestor>();
@@ -148,8 +151,8 @@ builder.Services.AddSingleton<SpecVersionAdmission>();
 builder.Services.AddSingleton<Consultologist.Api.V31.EngineLimitSettings>();
 // #1503 (part 09 § 1.2): the 31 load — the stamped resolve.json and lock.json, verified,
 // held to what this engine runs (its catalogues' attested agents among it), the plan
-// cached. The version is resolved through the 5–30 store's own latest pointer and cache.
-builder.Services.AddSingleton<IWorkflowPackageVersions>(sp => (WorkflowPackageStore)sp.GetRequiredService<IWorkflowPackageStore>());
+// cached. The version is resolved through the 5–30 store's own latest pointer and cache
+// (IWorkflowPackageVersions, registered with the store above).
 builder.Services.AddSingleton<Consultologist.Api.V31.IRegistryFiles, Consultologist.Api.V31.BlobRegistryFiles>();
 builder.Services.AddSingleton<Consultologist.Api.V31.EngineCapabilitiesFactory>();
 builder.Services.AddSingleton(sp => sp.GetRequiredService<Consultologist.Api.V31.EngineCapabilitiesFactory>().Current());
