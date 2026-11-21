@@ -5,7 +5,8 @@ namespace Consultologist.PackageFormat.V31;
 /// <summary>
 /// #1502 (specVersion 31, area 05): the loops of a package (part 04 §§ 2, 3; § 10.1's <c>for</c> and <c>while</c> rows):
 /// each <c>for</c>'s source (<see cref="ScopeTree.Source"/>) and its <c>itemLabel</c>, and each <c>while</c>'s body
-/// nodes that nothing returns or reads (S04-035).
+/// nodes that nothing returns or reads (S04-035). #1503 (area 06): and a <c>checkFirst</c> while whose check reads its
+/// own body (A06-002).
 /// </summary>
 public static partial class SourceResolve
 {
@@ -28,9 +29,35 @@ public static partial class SourceResolve
                         refusals.Add(label);
                     break;
                 case SourceWhile loop:
+                    CheckedFirst(tree, loop, refusals);
                     Unused(tree, loop, refusals);
                     break;
             }
+        }
+    }
+
+    /// <summary>
+    /// #1503 (R3; #1507, item 4): A06-002 once for each node of <paramref name="loop"/>'s own body that its <c>while</c>
+    /// rule reads, as this pass's (<c>node.&lt;id&gt;</c> or <c>pass.node.&lt;id&gt;</c>), when it declares
+    /// <c>checkFirst</c> true: such a check has no value to read before the first pass. One pass back
+    /// (<c>pass.previous.node.&lt;id&gt;</c>, <c>null</c> on the first pass by part 04 § 3.3) is not this pass's.
+    /// </summary>
+    private static void CheckedFirst(ScopeTree tree, SourceWhile loop, List<SourceRefusal> refusals)
+    {
+        if (!loop.CheckFirst || tree.BodyOf(loop) is not { } frame)
+            return;
+        var body = new HashSet<SourceNode>(ScopeTree.Walk(loop.Body.Nodes), ReferenceEqualityComparer.Instance);
+        var said = new HashSet<SourceNode>(ReferenceEqualityComparer.Instance);
+        foreach (var path in JsonLogicShape.Paths(loop.While))
+        {
+            var named = path.Split('.') switch
+            {
+                ["node", var id, ..] => frame.Visible("node", id),
+                ["pass", "node", var id, ..] => ScopeTree.Walk(loop.Body.Nodes).FirstOrDefault(n => n.Id == id),
+                _ => null,
+            };
+            if (named != null && body.Contains(named) && said.Add(named))
+                refusals.Add(ResolveSentences.CheckFirstReadsBody(loop.Id, named.Id, SourceLayout.Join(loop.Path, "index.json")));
         }
     }
 

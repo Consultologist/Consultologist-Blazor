@@ -71,6 +71,7 @@ internal static class V31Contract
     private static readonly Dictionary<string, string> EngineAreaSentences = new()
     {
         ["A06-001"] = "<site> <member> could not be decided: <matches | has_word> took longer than <n> seconds on this text. Use a simpler pattern.",
+        ["A06-002"] = "While '<id>' declares checkFirst true, but its check reads node '<n>' of its own body, which has no value before the first pass: declare \"checkFirst\": false, or read something that runs before the while.",
     };
 
     private static string RepoRoot()

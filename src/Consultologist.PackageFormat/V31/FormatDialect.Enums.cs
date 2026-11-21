@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace Consultologist.PackageFormat.V31;
@@ -186,6 +188,56 @@ public static partial class FormatDialect
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; R4, #1507 item 5): an <c>enum</c> on a <c>number</c> or an <c>integer</c> (and not
+    /// beside a <c>oneOf</c>) whose entries are numbers, with <c>null</c> among them or not, at least one a number. Any
+    /// other enum off a string is placed as before (A03-004), so one that mixes text and numbers is said as it was.
+    /// </summary>
+    private static bool IsNumericEnum(JsonObject schema, string keyword, JsonArray entries, Declared declared) =>
+        keyword == "enum" && declared.Valid && declared.Type is "number" or "integer" && !schema.ContainsKey("oneOf")
+        && entries.Any(IsNumber) && entries.All(e => e is null || IsNumber(e));
+
+    private static bool IsNumber(JsonNode? node) => node is JsonValue v && v.GetValueKind() == JsonValueKind.Number;
+
+    private sealed partial class Walk
+    {
+        /// <summary>
+        /// The values of a numeric enum (<see cref="IsNumericEnum"/>), held to the enum rules that are not about text:
+        /// each a whole number on an <c>integer</c> and <c>null</c> only on a nullable type (else A03-003, and no more is
+        /// judged); no value twice, a number by its value (<c>1</c> and <c>1.0</c> are one, S02-048); two values at least
+        /// (S02-047); a nullable one lists <c>null</c> (S02-053). A value is named by its canonical JSON.
+        /// </summary>
+        private void NumericValues(JsonArray entries, string pointer, Declared declared)
+        {
+            var nulls = entries.Count(e => e is null);
+            if (nulls > 0 && !declared.Nullable)
+            {
+                WrongType(pointer, "enum", entries, "a list of numbers");
+                return;
+            }
+
+            if (declared.Type == "integer" && entries.OfType<JsonValue>().Any(v => !IsWhole(v)))
+            {
+                WrongType(pointer, "enum", entries, "a list of whole numbers");
+                return;
+            }
+
+            var values = entries.OfType<JsonValue>().Select(v => CanonicalJson.Write(v)).ToList();
+            foreach (var value in Repeated(values))
+                Refusals.Add(FormatSentences.ValueTwice(format, pointer, value, path));
+            if (nulls > 1)
+                Refusals.Add(FormatSentences.ValueTwice(format, pointer, "null", path));
+            if (values.Count < 2)
+                Refusals.Add(FormatSentences.OneValue(format, pointer, path));
+            if (declared.Nullable && nulls == 0)
+                Refusals.Add(FormatSentences.NullableEnumWithoutNull(format, pointer, path));
+        }
+
+        private static bool IsWhole(JsonValue value) =>
+            double.TryParse(value.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d)
+            && double.IsFinite(d) && d == Math.Floor(d);
     }
 
     /// <summary>Each text written more than once, once, in the order of its second appearance.</summary>

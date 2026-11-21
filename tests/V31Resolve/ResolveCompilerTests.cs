@@ -208,7 +208,7 @@ public class ResolveCompilerTests
             + $"\"bodyHash\":\"{CanonicalJson.HashText("You are planning the sections of a consultation note.\n\n{{ input.consult_draft.content }}\n")}\","
             + "\"format\":{\"$ref\":\"#/$defs/section_plan\"},\"id\":\"plan\",\"if\":null,\"kind\":\"agent\","
             + "\"label\":\"Planning the sections\",\"modelDerived\":true,\"onInvalid\":\"fail\",\"parent\":null,\"parts\":{},"
-            + "\"places\":[],\"producer\":\"generated\",\"profileCarrying\":false,\"reads\":[\"input.consult_draft.content\"],"
+            + "\"places\":[],\"plainConverts\":{},\"producer\":\"generated\",\"profileCarrying\":false,\"reads\":[\"input.consult_draft.content\"],"
             + "\"renders\":[],\"reproducible\":false,\"runDependent\":false,\"runSpots\":[]}",
             Canonical(Without(plan, "formatHash", "typeHash", "description", "failIfEmpty", "ordered")));
         Assert.Equal((string?)document["formatHashes"]!["section_plan"], (string?)plan["formatHash"]);
@@ -217,8 +217,8 @@ public class ResolveCompilerTests
         Assert.Equal(
             "{\"body\":null,\"bodyHash\":null,\"expression\":{\"size\":[{\"var\":\"node.plan.value.sections\"}]},"
             + "\"format\":{\"$ref\":\"#/$defs/number\"},\"id\":\"section_count\",\"if\":null,\"kind\":\"computed\","
-            + "\"label\":\"Counting the sections\",\"modelDerived\":true,\"parent\":null,\"producer\":\"computed\","
-            + "\"profileCarrying\":false,\"reads\":[\"node.plan.value\"],\"renders\":[],\"reproducible\":true,"
+            + "\"label\":\"Counting the sections\",\"modelDerived\":true,\"parent\":null,\"plainConverts\":{\"expression\":[]},"
+            + "\"producer\":\"computed\",\"profileCarrying\":false,\"reads\":[\"node.plan.value\"],\"renders\":[],\"reproducible\":true,"
             + "\"runDependent\":false,\"runSpots\":[]}",
             Canonical(Without(nodes["node.section_count"]!.AsObject(), "formatHash", "typeHash", "description")));
         Assert.Equal((string?)document["formatHashes"]!["number"], (string?)nodes["node.section_count"]!["formatHash"]);
