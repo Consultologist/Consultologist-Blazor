@@ -41,11 +41,12 @@ public class PlanRunnerCallsTests
         Assert.Equal(RunState.Completed, result.State);
 
         // each item runs the function's three agents, keyed through the call, entry keys the function's own, in the fixed
-        // order: the call's place, then its item, then the function's body order
-        string[] inner = [.. Standards.SelectMany(s => Body.Select(n => $"node.standards.section.{n}:{s}"))];
+        // order of part 09 § 3.2: the node's place (the call's order, then the node's in the function), then the item path
+        string[] inner = [.. Body.SelectMany(n => Standards.Select(s => $"node.standards.section.{n}:{s}"))];
         Assert.Equal(["node.plan", .. inner.Where(k => !k.Contains("apply_instructions", StringComparison.Ordinal)), "node.extract_input_terms",
                 .. inner.Where(k => k.Contains("apply_instructions", StringComparison.Ordinal)), "node.extract_note_terms"],
             host.Dispatched);
+        Assert.Equal("node.standards.section.standard_draft:assessment_plan", host.Dispatched[2]);
         foreach (var standard in Standards)
         {
             foreach (var node in Body)
@@ -122,6 +123,8 @@ public class PlanRunnerCallsTests
         { "\"run.date\"", "\"date\"", "\"2026-11-16\"", "\"2026-11-16\"" },
         // a snippet item: its header data and its body
         { "\"snippet.standards.assessment_plan\"", "\"standard_section\"", """{"title":"Assessment and Plan"}""", Quoted(PlanBody) },
+        // a profile field: its value (publish lets it reach only deliverables and macro bodies, so the read is hand-written)
+        { "\"profile.name\"", "\"plaintext\"", "\"Dr A. Sample\"", "\"Dr A. Sample\"" },
     };
 
     [Theory]
@@ -140,11 +143,29 @@ public class PlanRunnerCallsTests
                 files.WithJson(path, header => header["runDependent"] = true);
         }
 
-        var plan = RunFixture.Plan(files, FunctionsReads(("draft_section/node.patient_draft", ["param.draft.value", "param.draft.content"])));
+        RunPlan plan;
+        if (argument.StartsWith("\"profile.", StringComparison.Ordinal))
+        {
+            // part 04 § 7.7 / part 06 § 10.2: a profile parameter may not be read in a prompt, so publish refuses this
+            // package; the compiled document is changed by hand to bind and read one, as the runner must still do
+            var document = Golden();
+            document["nodes"]!["node.standards.section"]!["with"]!["draft"] = JsonNode.Parse(argument);
+            document["nodes"]!["node.standards.section"]!["reads"] = new JsonArray("item", "profile.name");
+            document["functions"]!["draft_section"]!["nodes"]!["node.patient_draft"]!["reads"] = new JsonArray("param.draft.content", "param.draft.value");
+            var (built, refusal) = RunPlan.Build(document.ToJsonString(), "sha256:x", "sha256:y", null);
+            Assert.True(refusal == null, refusal?.Sentence);
+            plan = built!;
+        }
+        else
+        {
+            plan = RunFixture.Plan(files, FunctionsReads(("draft_section/node.patient_draft", ["param.draft.value", "param.draft.content"])));
+        }
+
         var host = ConceptsHost(auto: true);
         var recorder = new ListRecorder();
+        var inputs = Dated() with { Profile = new Dictionary<string, string?>(StringComparer.Ordinal) { ["name"] = "Dr A. Sample" } };
 
-        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Dated(), FakeRunHost.Start);
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(inputs, FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
         // what the function reads (a null parameter reads null through every path)
@@ -183,6 +204,47 @@ public class PlanRunnerCallsTests
         var apply = host.Calls.Single(c => c.Key == "node.standards.section.apply_instructions:hpi");
         Assert.Equal("The function's plan.", (string?)apply.Scope["node"]!["plan"]!["content"]);
         Assert.Contains("node.standards.section.plan:assessment_plan", host.Dispatched);
+    }
+
+    [Fact]
+    public async Task AFunction_NeverSeesItsCallersItemOrPass()
+    {
+        // the call runs inside a loop item and a while pass; its function's node is made to read item and pass (publish
+        // refuses that, part 04 § 7.4, so the compiled reads are changed by hand): both read null, never the caller's
+        var files = ResolveFixture.Functions()
+            .Without("nodes/standards/section.md")
+            .WithJson("nodes/standards/index.json", j =>
+            {
+                j["nodes"] = new JsonArray("rounds");
+                j["ret"] = "node.standards.rounds";
+            })
+            .With("nodes/standards/rounds/index.json", Json(SourceFixture.Node("while", "Rounds", PlanRunnerLeavesTests.Plain, false, true,
+                "\"while\": { \"blank\": [{ \"var\": \"node.section.content\" }] }, \"max\": 2, "
+                + "\"until\": null, \"checkFirst\": false, \"nodes\": [\"section\"], \"ret\": \"node.standards.rounds.section\"")))
+            .With("nodes/standards/rounds/section.md", Md(
+                SourceFixture.Node("call", "Drafting the section", PlanRunnerLeavesTests.Plain, false, true,
+                    "\"if\": null, \"function\": \"draft_section\", "
+                    + "\"with\": { \"standard\": \"item\", \"draft\": \"input.consult_draft.content\" }"),
+                ""));
+        var (refusals, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed, templates: ResolveFixture.FunctionsReads());
+        Assert.True(refusals.Count == 0, string.Join(" | ", refusals.Select(r => $"{r.Id} {r.Path} {r.Sentence}")));
+        var document = JsonNode.Parse(compiled!.Resolve)!.AsObject();
+        var reads = document["functions"]!["draft_section"]!["nodes"]!["node.standard_draft"]!["reads"]!.AsArray();
+        reads.Add("item.value.title");
+        reads.Add("item.id");
+        reads.Add("pass.number");
+        var (plan, refusal) = RunPlan.Build(document.ToJsonString(), compiled.ResolveHash, compiled.LockHash, null);
+        Assert.True(refusal == null, refusal?.Sentence);
+        var host = ConceptsHost(auto: true);
+
+        var result = await new PlanRunner(plan!, new RunLimits(), host, new ListRecorder()).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        var call = host.Calls.Single(c => c.Key == "node.standards.rounds.section.standard_draft:hpi#1");
+        Assert.Equal("""{"item":{"id":null,"value":{"title":null}},"pass":{"number":null}}""",
+            CanonicalJson.Write(new JsonObject { ["item"] = call.Scope["item"]?.DeepClone(), ["pass"] = call.Scope["pass"]?.DeepClone() }));
+        // what it reads through its parameter is the caller's item, passed in
+        Assert.Equal("History of Present Illness", (string?)call.Scope["param"]!["standard"]!["value"]!["title"]);
     }
 
     // ---- nesting ----------------------------------------------------------------------------------
@@ -236,7 +298,7 @@ public class PlanRunnerCallsTests
             var run = runner.RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
             Assert.Equal(["node.plan", "node.standards.section.standard_draft:hpi"], host.Dispatched);
             host.Release("node.plan");
-            Assert.Equal("node.standards.section.patient_draft:hpi", host.Dispatched[^1]);
+            Assert.Equal("node.standards.section.standard_draft:assessment_plan", host.Dispatched[^1]);
             host.ReleaseInOrder(new Random(seed));
             return run;
         });
@@ -292,7 +354,7 @@ public class PlanRunnerCallsTests
     // ---- a corrupt document -----------------------------------------------------------------------
 
     [Fact]
-    public async Task ACallRing_InACorruptDocument_FailsAndDoesNotHang()
+    public async Task ACallRing_IsRefusedAtBuild_AndAChainPastTheDepthBound_FailsWithoutHanging()
     {
         // a ring of calls is refused before any run
         var ring = Golden();
