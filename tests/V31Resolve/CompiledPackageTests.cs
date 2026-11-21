@@ -199,6 +199,23 @@ public class CompiledPackageTests
     }
 
     [Fact]
+    public void Verify_RefusesARepeatedTopLevelMember_WithItsStampRecomputed()
+    {
+        // Each document with one of its top-level members written a second time at the end, the same value, and the stamp
+        // re-computed over those bytes: the text is not the canonical text of any document, so it is not the one published.
+        var p = Published();
+        var resolve = p.Resolve[..^1] + ",\"lock\":\"lock.json\"}";
+        var refusal = Verify(p, Bytes(resolve), Bytes(p.Lock), resolveHash: CanonicalJson.HashText(resolve));
+        Assert.Equal("S07-006", refusal?.Id);
+        V31Contract.AssertSentence(refusal!);
+
+        var @lock = p.Lock[..^1] + ",\"culture\":\"invariant\"}";
+        refusal = Verify(p, Bytes(p.Resolve), Bytes(@lock), lockHash: CanonicalJson.HashText(@lock));
+        Assert.Equal("S07-017", refusal?.Id);
+        V31Contract.AssertSentence(refusal!);
+    }
+
+    [Fact]
     public void Verify_TakesNoNull()
     {
         var p = Published();
