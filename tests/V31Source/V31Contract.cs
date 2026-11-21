@@ -75,6 +75,7 @@ internal static class V31Contract
         ["A06-003"] = "Node '<id>' computed a value that isn't <format>.",
         ["A06-005"] = "Node '<id>' gave a reply that isn't <format>.",
         ["A06-006"] = "Loop '<id>' was given <reference>, which isn't a list.",
+        ["A06-007"] = "Case '<id>' was given <reference>, which no branch lists, and it has no else.",
     };
 
     private static string RepoRoot()
