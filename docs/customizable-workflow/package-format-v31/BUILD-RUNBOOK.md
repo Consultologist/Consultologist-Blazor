@@ -73,9 +73,18 @@ step whose done line does not hold yet is where you start.
    task, so a lost session loses at most one task.
    *Done:* every task's checkbox is ticked and its review passed.
 
-6. **Verify** with `superpowers:verification-before-completion`: `dotnet build Consultologist.sln`
-   and `dotnet test Consultologist.sln` from the worktree, both green, output read.
-   *Done:* both commands pass on the pushed head.
+6. **Verify** with `superpowers:verification-before-completion`, from the worktree:
+   - `dotnet build Consultologist.sln`;
+   - `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`;
+   - the browser suite, exactly as CI runs it: `.github/scripts/run-e2e.sh`. It publishes the
+     app, serves it, runs the E2E tests and stops the server, quietly. If a test fails and you
+     need the server's request log, run it again with `-v`. Read its output directly or through
+     `| tail`; never redirect it with `>`, which the guard refuses on a protected path.
+
+   All green, output read. A browser-suite failure that names the browser itself (*"Executable
+   doesn't exist"*, a missing shared library) is the server's setup, not the code: record it as a
+   **block**.
+   *Done:* all three pass on the pushed head.
 
 7. **Open the PR** into `m39-build`, ready for review (not a draft), with the body below. Comment the
    PR's link on the area issue. Wait for the checks (`gh pr checks <n> --watch`); when one goes red,
