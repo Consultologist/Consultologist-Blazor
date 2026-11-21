@@ -9,8 +9,9 @@ namespace Consultologist.Api.Tests.V31Engine;
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; D12): the default body composer until area 07: an entry's body rendered with Scriban
-/// over the scope the runner built, a loop held to the step budget, a read the scope does not hold a failure (A06-008),
-/// never an empty render. Content is fictional (Margaret Okafor, Dr A. Sample).
+/// over the scope the runner built, a loop held to the step budget, a root the scope does not hold, or a member read on a
+/// missing object, a failure (A06-008); a missing leaf under an object that is there renders empty (strict variables do not
+/// catch it). Content is fictional (Margaret Okafor, Dr A. Sample).
 /// </summary>
 public class ScribanBodyComposerTests
 {
@@ -66,6 +67,37 @@ public class ScribanBodyComposerTests
         Assert.False(composed.TooManySteps);
         V31Contract.AssertSentence(new SourceRefusal("A06-008", composed.Failure!, ""));
         Assert.Equal("Deliverable 'note' couldn't be rendered.", composed.Failure);
+    }
+
+    [Fact]
+    public void AMissingLeaf_RendersEmpty_WhatStrictModeDoesNotCatch()
+    {
+        // strict variables fail a root the scope lacks, and a member read on a missing one (below); a missing leaf under an
+        // object that is there renders empty, not a failure (area 07's dialect owns that)
+        var plan = Plan("nested-note");
+        var composer = new ScribanBodyComposer();
+
+        Assert.Equal(new ComposedBody("## Summary\n\n\n", false, null),
+            composer.Compose(plan, "deliverable.note", null, new JsonObject { ["node"] = new JsonObject { ["refine"] = new JsonObject() } }, 100_000));
+        Assert.Equal("Deliverable 'note' couldn't be rendered.",
+            composer.Compose(plan, "deliverable.note", null, new JsonObject { ["node"] = new JsonObject() }, 100_000).Failure);
+    }
+
+    [Theory]
+    [InlineData("{{ 1 // 0 }}")]
+    [InlineData("{{ 'Margaret Okafor' | regex.match '(' }}")]
+    [InlineData("{{ math.round 1.5 99 }}")]
+    public void WhateverARenderThrows_IsA06008_NeverItsMessage(string body)
+    {
+        // never throw on package content: any failure of the render is the body's, said without Scriban's message (which
+        // can quote a value). Scriban wraps what its builtins throw in ScriptRuntimeException; the composer's catch takes
+        // any exception but a cancellation, so one Scriban does not wrap is said the same way.
+        var plan = Plan("nested-note", body: body);
+
+        var composed = new ScribanBodyComposer().Compose(plan, "deliverable.note", null, RefineScope, 100_000);
+
+        Assert.Equal(new ComposedBody(null, false, "Deliverable 'note' couldn't be rendered."), composed);
+        V31Contract.AssertSentence(new SourceRefusal("A06-008", composed.Failure!, ""));
     }
 
     [Fact]

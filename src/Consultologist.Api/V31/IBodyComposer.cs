@@ -29,10 +29,13 @@ public interface IBodyComposer
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; D12): the default composer until area 07: the entry's <c>body</c> rendered with Scriban as
-/// it stands, over <paramref name="scope"/>'s paths as Scriban objects, with strict variables (a read the scope does not
-/// hold fails rather than rendering empty), the invariant culture, and Scriban's loop limit set to the step budget (a loop
-/// past it is <see cref="ComposedBody.TooManySteps"/>). A body that does not parse, or an entry the plan lacks, is not
-/// what publish wrote (S07-006); another failure is A06-008, which never quotes a value.
+/// it stands, over the scope's paths as Scriban objects, with the invariant culture and Scriban's loop limit set to the step
+/// budget (a loop past it is <see cref="ComposedBody.TooManySteps"/>). Strict variables fail a root the scope does not hold
+/// (<c>{{ node.x }}</c> with no <c>node</c>) and a member read on a missing object (<c>{{ node.draft_summary.content }}</c>
+/// when the scope holds only <c>node.refine</c>); they do not catch a missing leaf under an object that is there
+/// (<c>{{ node.refine.content }}</c> when <c>node.refine</c> has no <c>content</c>), which renders empty. Area 07's
+/// dialect owns reads beyond this. A body that does not parse, or an entry the plan lacks, is not what publish wrote
+/// (S07-006); any other failure but a cancellation is A06-008, which never quotes a value or Scriban's message.
 /// </summary>
 public sealed class ScribanBodyComposer : IBodyComposer
 {
@@ -67,9 +70,10 @@ public sealed class ScribanBodyComposer : IBodyComposer
         {
             return new ComposedBody(null, true, null);
         }
-        catch (Exception ex) when (ex is ScriptRuntimeException or InvalidOperationException or ArgumentException or FormatException or OverflowException)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            return new ComposedBody(null, false, $"{V31Entries.Subject(entry, function)} couldn't be rendered.");
+            // Whatever Scriban or a value throws is the body's failure, said without its message (which can quote a value).
+            return new ComposedBody(null, false, RunSentences.CouldNotRender(RunSentences.Subject(entry, function)));
         }
     }
 
@@ -119,7 +123,7 @@ public sealed class ScribanBodyComposer : IBodyComposer
         || ex.OriginalMessage.StartsWith("Range expression exceeds LoopLimit", StringComparison.Ordinal);
 }
 
-/// <summary>#1503 (specVersion 31, area 06): an entry of a plan by the key a call names, and its subject in a sentence.</summary>
+/// <summary>#1503 (specVersion 31, area 06): an entry of a plan by the key a call names.</summary>
 internal static class V31Entries
 {
     /// <summary>The entry <paramref name="entryKey"/>: in <paramref name="function"/>'s entries inside one, else the package's; null when absent.</summary>
@@ -128,14 +132,5 @@ internal static class V31Entries
         if (function == null)
             return plan.Entries.GetValueOrDefault(entryKey);
         return plan.Functions.TryGetValue(function, out var found) ? found.Entries.GetValueOrDefault(entryKey) : null;
-    }
-
-    /// <summary>Part 09 § 9's subject: <c>Node 'id'</c>, <c>Check 'id'</c> or <c>Deliverable 'id'</c>, with <c> in function 'f'</c> inside one.</summary>
-    public static string Subject(PlanEntry entry, string? function)
-    {
-        var word = entry.Kind == PlanKind.Deliverable ? "Deliverable"
-            : entry.Key.StartsWith("check.", StringComparison.Ordinal) ? "Check"
-            : "Node";
-        return function == null ? $"{word} '{entry.Id}'" : $"{word} '{entry.Id}' in function '{function}'";
     }
 }
