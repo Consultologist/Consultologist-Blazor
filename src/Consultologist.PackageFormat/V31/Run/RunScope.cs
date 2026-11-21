@@ -133,7 +133,7 @@ internal sealed class RunScope(RunInputs inputs)
     /// <c>skipped</c> for a flow node whose nearest visible ancestor is a settled <c>if</c> or <c>case</c> (it sits in a
     /// branch not taken, part 04 § 2.5), else <c>not_run</c>.
     /// </summary>
-    private static JsonObject Read(string key, RunFrame frame)
+    internal static JsonObject Read(string key, RunFrame frame)
     {
         var instance = frame.Find(key);
         if (instance is { IsSettled: true, Read: { } settled })
@@ -169,7 +169,7 @@ internal sealed class RunScope(RunInputs inputs)
         if (pass == null)
             return null;
         if (at + 1 < segments.Length && segments[at] == "node" && pass.Owner is { } loop
-            && PassNode(frame.Map, loop.Entry.Key, segments[at + 1]) is { } key)
+            && PassNode(frame.Map, e => e.Id, e => e.Parent, loop.Entry.Key, segments[at + 1]) is { } key)
         {
             return Walk(Read(key, frame), segments, at + 2);
         }
@@ -177,26 +177,36 @@ internal sealed class RunScope(RunInputs inputs)
         return Walk(pass.Pass, segments, at);
     }
 
-    /// <summary>The key of the node <paramref name="id"/> inside the while <paramref name="loop"/>, at any depth (the first in ordinal order); null for none.</summary>
-    internal static string? PassNode(IReadOnlyDictionary<string, PlanEntry> map, string loop, string id)
+    /// <summary>
+    /// The key <c>pass….node.&lt;id&gt;</c> names in the while <paramref name="loop"/>: the entry of <paramref name="map"/>
+    /// with that <paramref name="id"/> at any depth inside it (part 01: ids are unique within a while at any depth; the
+    /// first in ordinal order should a document repeat one); null for none. The one resolution both
+    /// <see cref="RunPlan"/>'s dependency edge and the run's live read use.
+    /// </summary>
+    internal static string? PassNode<T>(IReadOnlyDictionary<string, T> map, Func<T, string> idOf, Func<T, string?> parentOf, string loop, string id)
     {
         string? found = null;
-        foreach (var entry in map.Values)
+        foreach (var (key, entry) in map)
         {
-            if (entry.Id != id || (found != null && string.CompareOrdinal(entry.Key, found) >= 0))
-                continue;
-            var steps = 0;
-            for (var at = entry.Parent; at != null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
-            {
-                if (at == loop)
-                {
-                    found = entry.Key;
-                    break;
-                }
-            }
+            if (idOf(entry) == id && (found == null || string.CompareOrdinal(key, found) < 0) && Inside(map, parentOf, key, loop))
+                found = key;
         }
 
         return found;
+    }
+
+    /// <summary>Whether <paramref name="key"/>'s chain of parents in <paramref name="map"/> reaches <paramref name="ancestor"/> (bounded by the map's size).</summary>
+    internal static bool Inside<T>(IReadOnlyDictionary<string, T> map, Func<T, string?> parentOf, string key, string ancestor)
+    {
+        var steps = 0;
+        for (var at = map.TryGetValue(key, out var entry) ? parentOf(entry) : null; at != null && steps++ <= map.Count;
+             at = map.TryGetValue(at, out var up) ? parentOf(up) : null)
+        {
+            if (at == ancestor)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary><paramref name="node"/> walked by <paramref name="segments"/> from <paramref name="from"/>: members of objects, positions in lists.</summary>

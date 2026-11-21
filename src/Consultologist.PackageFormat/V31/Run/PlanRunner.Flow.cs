@@ -167,14 +167,27 @@ public sealed partial class PlanRunner
         private static JsonArray History(WhileState loop) =>
             new(loop.Passes.Select(p => (JsonNode?)new JsonObject { ["number"] = p["number"]!.DeepClone(), ["node"] = p["node"]!.DeepClone() }).ToArray());
 
-        /// <summary>A pass's body nodes by bare id: each one's read form (<c>{ value, content, state }</c>).</summary>
+        /// <summary>
+        /// A pass's nodes by bare id (part 01: unique within a while at any depth), each one's read form
+        /// (<c>{ value, content, state }</c>) as seen from the pass's frame: its body nodes and, through each <c>if</c> and
+        /// <c>case</c> among them, every branch's nodes (one in a branch not taken reads <c>not_run</c>, a flow node there
+        /// <c>skipped</c>); an inner loop is read whole, as its own node. Each node, then its branches' nodes, in body order.
+        /// </summary>
         private static JsonObject PassNodes(RunInstance instance, RunFrame frame)
         {
             var nodes = new JsonObject();
-            foreach (var key in instance.Entry.Body)
+            var pending = new Stack<string>(instance.Entry.Body.Reverse());
+            while (pending.Count > 0)
             {
-                var id = frame.Map.GetValueOrDefault(key)?.Id ?? key;
-                nodes[id] = frame.Instances.FirstOrDefault(i => i.Entry.Key == key)?.Read?.DeepClone() ?? RunScope.Absent(RunScope.NotRun);
+                var key = pending.Pop();
+                if (frame.Map.GetValueOrDefault(key) is not { } entry || nodes.ContainsKey(entry.Id))
+                    continue;
+                nodes[entry.Id] = RunScope.Read(key, frame).DeepClone();
+                if (entry.Kind is PlanKind.If or PlanKind.Case)
+                {
+                    foreach (var inner in entry.Branches.SelectMany(b => b.Nodes).Reverse())
+                        pending.Push(inner);
+                }
             }
 
             return nodes;
@@ -359,7 +372,7 @@ public sealed partial class PlanRunner
 
             if (matched == null)
             {
-                await FailAsync(instance, $"Case '{entry.Id}' was given {subject}, which no branch lists, and it has no else.");
+                await FailAsync(instance, NoBranch(entry, subject));
                 return null;
             }
 
@@ -367,6 +380,10 @@ public sealed partial class PlanRunner
             await SettleAsync(instance, RowState.Skipped, $"case '{entry.Id}': arm for {word} does nothing", RunScope.Absent("skipped"), null);
             return null;
         }
+
+        /// <summary>A06-007: a case subject's value that no branch lists, with no else (a value that escaped its format); never the value.</summary>
+        private static string NoBranch(PlanEntry entry, string subject) =>
+            $"Case '{entry.Id}' was given {subject}, which no branch lists, and it has no else.";
 
         /// <summary>A count as a site writes it: invariant digits.</summary>
         private static string Number(int value) => value.ToString(CultureInfo.InvariantCulture);

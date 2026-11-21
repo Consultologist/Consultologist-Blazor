@@ -581,9 +581,14 @@ public sealed class RunPlan
                     var root = dot < 0 ? path : path[..dot];
                     if (root == "pass")
                     {
-                        // part 04 § 3.3: this pass's node is a dependency edge; an earlier pass's (previous, history) is none
-                        if (PassNode(path, draft, map) is { } node && node != draft.Key)
+                        // part 04 § 3.3: this pass's node is a dependency edge; an earlier pass's (previous, history) is none.
+                        // Publish lets a node read a flow node that encloses it in this form (it refuses node.<id>, A05-003):
+                        // that is no edge, which could never be met; the read gives the ancestor not yet settled (not_run).
+                        if (PassNode(path, draft, map) is { } node && node != draft.Key
+                            && !RunScope.Inside(map, d => d.Parent, draft.Key, node))
+                        {
                             depends.Add(node);
+                        }
                         continue;
                     }
 
@@ -679,26 +684,7 @@ public sealed class RunPlan
                 }
             }
 
-            if (loop == null)
-                return null;
-            return map.Values
-                .Where(d => d.Id == s[at + 1] && Inside(d, loop, map))
-                .Select(d => d.Key)
-                .Order(StringComparer.Ordinal)
-                .FirstOrDefault();
-        }
-
-        /// <summary>Whether <paramref name="draft"/>'s chain of parents reaches <paramref name="ancestor"/> (bounded by the map's size).</summary>
-        private static bool Inside(Draft draft, string ancestor, Dictionary<string, Draft> map)
-        {
-            var steps = 0;
-            for (var at = draft.Parent; at != null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
-            {
-                if (at == ancestor)
-                    return true;
-            }
-
-            return false;
+            return loop == null ? null : RunScope.PassNode(map, d => d.Id, d => d.Parent, loop, s[at + 1]);
         }
 
         /// <summary>The longest key of <paramref name="map"/> that <paramref name="path"/> is, or begins with before a dot; null for none.</summary>
