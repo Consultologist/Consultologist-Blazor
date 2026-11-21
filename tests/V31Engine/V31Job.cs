@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
 using Consultologist.Api.Tests.Engine;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Run;
@@ -22,7 +23,7 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// and loaded by the real <see cref="CompiledPackageStore"/>; a real entity holds the job as Task 13's start would leave it;
 /// the real <see cref="ConsultGenerationOrchestratorV31"/> runs on a <see cref="FakeOrchestrationContext"/> whose
 /// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c> and <c>render-node-v31</c> are the real activities (the inputs from a
-/// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/>), and whose <c>run-agent-node-v31</c> is
+/// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/> at the job's held-inputs pointer), and whose <c>run-agent-node-v31</c> is
 /// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key). Timers longer than five minutes (the job's)
 /// wait, as durable timers do, until cancelled; shorter ones (a retry's) end at once.
 /// </summary>
@@ -43,17 +44,17 @@ internal sealed class V31Job
     {
         Registry = new FakeRegistry();
         (Ref, Pair) = Registry.Put(CompiledGoldenTests.Cases().Single(c => c.Name == golden));
-        Store = new CompiledPackageStore(Registry, Registry, ThisEngine.Value, SpecVersionAdmissionTests.With("31"),
-            new EngineLimitSettings(new ConfigurationBuilder().Build()));
+        Store = StoreOver(Registry);
         Plan = Store.TryLoadAsync(Ref, CancellationToken.None).GetAwaiter().GetResult()!.Plan!;
         Agent = call => new AgentOutcome(AgentOutcomeKind.Completed, RunFixture.StubReply(Plan, call), 0, null);
         Entity = new ConsultGenerationJobEntity(
             Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
-            Substitute.For<IJobInputsBlobStore>(), Substitute.For<IAccountUsageStore>());
+            HeldInputs, Substitute.For<IAccountUsageStore>());
         var state = ConsultGenerationJobState.Create(JobId, "user-1", Array.Empty<IReadOnlyDictionary<string, string>>());
         state.PackageSpecVersion = 31;
+        // as Task 13's start leaves it: the run-inputs document is the job's held inputs
+        state.InputsBlob = Inputs.WriteAsync(AccountKind, "user-1", JobId, Document(RunFixture.GoldenInputs()), CancellationToken.None).GetAwaiter().GetResult();
         StateProperty.SetValue(Entity, state);
-        Inputs.Documents[JobId] = Document(RunFixture.GoldenInputs());
     }
 
     public FakeRegistry Registry { get; }
@@ -70,6 +71,12 @@ internal sealed class V31Job
 
     public FakeInputs Inputs { get; } = new();
 
+    /// <summary>The job inputs' store the entity drops the held inputs through.</summary>
+    public IJobInputsBlobStore HeldInputs { get; } = Substitute.For<IJobInputsBlobStore>();
+
+    /// <summary>The account's kind (an organisation's).</summary>
+    public const string AccountKind = Consultologist.Api.Auth.SignInKinds.Organisation;
+
     /// <summary>Answers each attempt of an agent call.</summary>
     public Func<AgentCall, AgentOutcome> Agent { get; set; }
 
@@ -83,10 +90,14 @@ internal sealed class V31Job
 
     public static V31Job Of(string golden) => new(golden);
 
+    /// <summary>The engine's store over <paramref name="registry"/>, 31 admitted.</summary>
+    public static CompiledPackageStore StoreOver(FakeRegistry registry) =>
+        new(registry, registry, ThisEngine.Value, SpecVersionAdmissionTests.With("31"), new EngineLimitSettings(new ConfigurationBuilder().Build()));
+
     /// <summary>The orchestration input Task 13's start would give.</summary>
     public ConsultGenerationOrchestrationInputV31 Input() => new(
         JobId, "user-1", Ref.Name, Ref.Version, ResolveHash ?? Pair.ResolveHash, Pair.LockHash, Limits.ToJson(), 2000,
-        RunInputsBlobStore.NameFor(JobId), new JsonObject { ["id"] = JobId }, "America/Toronto", null, true);
+        State.InputsBlob!.Name, new JsonObject { ["id"] = JobId }, "America/Toronto", null, true, AccountKind);
 
     /// <summary>The context, every activity answered as the summary says.</summary>
     public FakeOrchestrationContext Context()
@@ -97,7 +108,7 @@ internal sealed class V31Job
             .On(ConsultGenerationActivityNames.LoadPlanV31, payload =>
                 new LoadPlanV31Activity(Store).RunAsync((LoadPlanV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.LoadRunInputsV31, payload =>
-                new LoadRunInputsV31Activity(Inputs).RunAsync((string)payload!, CancellationToken.None).GetAwaiter().GetResult())
+                new LoadRunInputsV31Activity(Inputs, Store).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.RunAgentNodeV31, payload => Agent(((RunAgentNodeV31Input)payload!).Call))
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
                 new RenderNodeV31Activity(Store, composer, NullLogger<RenderNodeV31Activity>.Instance)
@@ -138,18 +149,19 @@ internal sealed class V31Job
         return new JsonObject { ["inputs"] = given, ["profile"] = profile };
     }
 
-    /// <summary>An in-memory <see cref="IRunInputsStore"/>.</summary>
+    /// <summary>An in-memory <see cref="IRunInputsStore"/> where the real one writes: <see cref="RunInputsBlobStore.PointerFor"/>.</summary>
     internal sealed class FakeInputs : IRunInputsStore
     {
-        public ConcurrentDictionary<string, JsonObject> Documents { get; } = new(StringComparer.Ordinal);
+        public ConcurrentDictionary<ConsultInputsBlobPointer, JsonObject> Documents { get; } = new();
 
-        public Task WriteAsync(string jobId, JsonObject document, CancellationToken ct)
+        public Task<ConsultInputsBlobPointer> WriteAsync(string? accountKind, string appUserId, string jobId, JsonObject document, CancellationToken ct)
         {
-            Documents[jobId] = (JsonObject)document.DeepClone();
-            return Task.CompletedTask;
+            var pointer = RunInputsBlobStore.PointerFor(accountKind, appUserId, jobId);
+            Documents[pointer] = (JsonObject)document.DeepClone();
+            return Task.FromResult(pointer);
         }
 
-        public Task<JsonObject?> ReadAsync(string jobId, CancellationToken ct) =>
-            Task.FromResult(Documents.TryGetValue(jobId, out var document) ? (JsonObject?)document.DeepClone() : null);
+        public Task<JsonObject?> ReadAsync(ConsultInputsBlobPointer pointer, CancellationToken ct) =>
+            Task.FromResult(Documents.TryGetValue(pointer, out var document) ? (JsonObject?)document.DeepClone() : null);
     }
 }

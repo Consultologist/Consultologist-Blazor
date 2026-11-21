@@ -1,11 +1,13 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using NSubstitute;
 
 namespace Consultologist.Api.Tests.V31Engine;
 
@@ -130,6 +132,117 @@ public class OrchestratorV31Tests
         V31Contract.AssertSentence(new SourceRefusal("S09-009", sentence, ""));
         Assert.Equal($"The compiled workflow {job.Ref.Name}@{job.Ref.Version} doesn't match its published hash, so it can't be run. Tell the operator.", sentence);
         Assert.Empty(V31Job.AgentCalls(context));
+    }
+
+    [Fact]
+    public async Task AnActivityFault_FailsTheJob_WithA06010_NeverItsMessage()
+    {
+        var job = V31Job.Of("nested-note");
+        const string response = "Unauthorized: the deployment answered with Margaret Okafor's prompt (fictional)";
+        job.Agent = _ => throw new InvalidOperationException(response);
+        var context = job.Context().WrapActivityFailures();
+
+        await Assert.ThrowsAsync<Microsoft.DurableTask.TaskFailedException>(() => V31Job.RunAsync(context));
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.Equal(ConsultGenerationOrchestratorV31.EngineFault, job.State.FailureError);
+        V31Contract.AssertSentence(new SourceRefusal("A06-010", job.State.FailureError!, ""));
+        Assert.DoesNotContain(context.Calls, c => c.Kind == "entity" && c.InputJson.Contains("Margaret", StringComparison.Ordinal));
+        Assert.DoesNotContain("Margaret", JsonSerializer.Serialize(job.State), StringComparison.Ordinal);
+        Assert.Equal(typeof(InvalidOperationException).FullName,
+            ConsultGenerationOrchestratorV31.FaultType(new Microsoft.DurableTask.TaskFailedException("run-agent-node-v31", 1, new InvalidOperationException(response))));
+    }
+
+    [Fact]
+    public async Task InputsTheRetentionDropDeleted_FailTheJob_WithA06009()
+    {
+        var job = V31Job.Of("nested-note");
+        job.Inputs.Documents.Clear();
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.Equal("This job's inputs are no longer held, so it can't run. Run the workflow again.", job.State.FailureError);
+        V31Contract.AssertSentence(new SourceRefusal("A06-009", job.State.FailureError!, ""));
+        Assert.Empty(V31Job.AgentCalls(context));
+    }
+
+    [Fact]
+    public async Task TheInputs_AreTheJobsHeldInputs_SweptAsA530JobsAre()
+    {
+        // where they live: the kind's container, under the account's prefix, as a 5–30 job's held inputs
+        Assert.Equal(new Consultologist.Api.Models.ConsultInputsBlobPointer("org-job-inputs", "user-1/job-31-0001.json"),
+            RunInputsBlobStore.PointerFor(V31Job.AccountKind, "user-1", V31Job.JobId));
+        Assert.Equal(new Consultologist.Api.Models.ConsultInputsBlobPointer("personal-job-inputs", "user-1/job-31-0001.json"),
+            RunInputsBlobStore.PointerFor(Consultologist.Api.Auth.SignInKinds.Personal, "user-1", V31Job.JobId));
+
+        // the job's entity holds that pointer, and the retention drop deletes it once the job is over
+        var job = V31Job.Of("nested-note");
+        var pointer = job.State.InputsBlob!;
+        Assert.Equal(RunInputsBlobStore.PointerFor(V31Job.AccountKind, "user-1", V31Job.JobId), pointer);
+        Assert.Equal(pointer, RunInputsBlobStore.PointerOf(V31Job.AccountKind, job.Input().InputsBlob));
+        await V31Job.RunAsync(job.Context());
+
+        await job.Entity.DropInputs(new ConsultGenerationInputsDrop(new DateTimeOffset(V31Job.Now.AddDays(30), TimeSpan.Zero)));
+
+        await job.HeldInputs.Received(1).DeleteAsync(pointer, Arg.Any<CancellationToken>());
+        Assert.NotNull(job.State.InputsDroppedAtUtc);
+    }
+
+    [Fact]
+    public async Task TheRunFacts_AreWorkedOutInTheInputsActivity_IntoTheHistory()
+    {
+        var registry = new FakeRegistry();
+        var golden = CompiledGoldenTests.Cases().Single(c => c.Name == "nested-note");
+        var packageRef = registry.PutChanged(golden, resolve => resolve["run"] = new JsonArray("run.date", "run.id"));
+        var store = V31Job.StoreOver(registry);
+        var resolveHash = (await store.TryLoadAsync(packageRef, CancellationToken.None))!.Plan!.ResolveHash;
+        var inputs = new V31Job.FakeInputs();
+        var pointer = await inputs.WriteAsync(null, "user-1", "job-1", new JsonObject { ["inputs"] = new JsonObject() }, CancellationToken.None);
+
+        var held = await new LoadRunInputsV31Activity(inputs, store).RunAsync(
+            new LoadRunInputsV31Input(pointer, packageRef.Name, packageRef.Version, resolveHash,
+                new DateTimeOffset(2026, 11, 17, 3, 30, 0, TimeSpan.Zero), "America/Toronto", new JsonObject { ["id"] = "job-1" }),
+            CancellationToken.None);
+
+        Assert.Null(held.Refusal);
+        Assert.Equal("""{"id":"job-1","date":"2026-11-16"}""", held.RunFacts!.ToJsonString());
+    }
+
+    [Fact]
+    public async Task AReplay_RecordsTheSameCalls_WithAColdPlanCacheOrAWarmOne()
+    {
+        ConsultGenerationOrchestratorV31.Plans.Clear();
+        var cold = V31Job.Of("functions");
+        var coldContext = cold.Context();
+        await V31Job.RunAsync(coldContext);
+        Assert.NotNull(ConsultGenerationOrchestratorV31.Plans.TryGet(cold.Pair.ResolveHash, 2000));
+
+        var warm = V31Job.Of("functions");
+        var warmContext = warm.Context();
+        await V31Job.RunAsync(warmContext);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, warm.State.Status);
+        Assert.Equal(coldContext.Calls, warmContext.Calls);
+    }
+
+    [Fact]
+    public void ThePlanCache_KeepsTheMostRecent_ByHashAndRegexLimit()
+    {
+        var job = V31Job.Of("nested-note");
+        var cache = new V31PlanCache(2);
+
+        cache.Add("sha256:a", 2000, job.Plan);
+        cache.Add("sha256:b", 2000, job.Plan);
+        Assert.Null(cache.TryGet("sha256:a", 1000));
+        Assert.Same(job.Plan, cache.TryGet("sha256:a", 2000));
+        cache.Add("sha256:c", 2000, job.Plan);
+
+        Assert.Equal(2, cache.Count);
+        Assert.Null(cache.TryGet("sha256:b", 2000));
+        Assert.NotNull(cache.TryGet("sha256:a", 2000));
+        Assert.NotNull(cache.TryGet("sha256:c", 2000));
     }
 
     [Fact]

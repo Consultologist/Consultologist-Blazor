@@ -30,6 +30,7 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     private readonly List<TaskCompletionSource> _heldTimers = new();
     private readonly Dictionary<string, int> _peakHeld = new(StringComparer.Ordinal);
     private bool _holdActivities;
+    private bool _wrapFailures;
     private TimeSpan? _holdTimersLongerThan;
 
     public FakeOrchestrationContext(string instanceId, object? input, object entity, DateTime now)
@@ -69,6 +70,16 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     public FakeOrchestrationContext HoldTimersLongerThan(TimeSpan span)
     {
         _holdTimersLongerThan = span;
+        return this;
+    }
+
+    /// <summary>
+    /// #1503: an activity whose responder throws fails as Durable fails it: with a <see cref="TaskFailedException"/> carrying
+    /// the activity's exception. Off by default: the responder's exception itself.
+    /// </summary>
+    public FakeOrchestrationContext WrapActivityFailures()
+    {
+        _wrapFailures = true;
         return this;
     }
 
@@ -124,7 +135,7 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
             }
             catch (Exception ex)
             {
-                return Task.FromException<TResult>(ex);
+                return Task.FromException<TResult>(Failure(name, ex));
             }
         }
 
@@ -137,12 +148,15 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
             }
             catch (Exception ex)
             {
-                answer.SetException(ex);
+                answer.SetException(Failure(name, ex));
             }
         }));
         _peakHeld[name.Name] = Math.Max(_peakHeld.GetValueOrDefault(name.Name), _heldActivities.Count(held => held.Name == name.Name));
         return answer.Task;
     }
+
+    private Exception Failure(TaskName name, Exception ex) =>
+        _wrapFailures ? new TaskFailedException(name.Name, Calls.Count, ex) : ex;
 
     public override Task CreateTimer(DateTime fireAt, CancellationToken cancellationToken)
     {

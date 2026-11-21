@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Jobs;
 using Consultologist.PackageFormat.V31;
@@ -11,13 +10,15 @@ using Microsoft.Extensions.Logging;
 namespace Consultologist.Api.V31;
 
 /// <summary>
-/// #1503 (specVersion 31, area 06): a 31 job's orchestration input. Its inputs travel by reference (<paramref name="InputsBlob"/>,
-/// the blob <see cref="IRunInputsStore"/> holds for <paramref name="JobId"/>), never inline. <paramref name="Limits"/> is
-/// the header's <c>limits</c> (<see cref="RunLimits.ToJson"/>) and <paramref name="RegexMilliseconds"/> R2's limit, both as
-/// the job's start read them, so a replay never depends on a setting that changed. <paramref name="RunFactsBase"/> holds
-/// the run facts only the start knows (<c>id</c>, <c>engine</c>), by name; <see cref="V31RunFacts.Of"/> adds the rest.
-/// <paramref name="DrainAware"/> marks an orchestration started by a build that drains (D9). <paramref name="AccountKind"/>
-/// picks the outputs container at completion, as a 5–30 job's does.
+/// #1503 (specVersion 31, area 06): a 31 job's orchestration input. Its inputs travel by reference, never inline:
+/// <paramref name="InputsBlob"/> is the name of the job's held inputs in <paramref name="AccountKind"/>'s held-inputs container
+/// (<see cref="RunInputsBlobStore.PointerOf"/>; the pointer the job's entity records).
+/// <paramref name="Limits"/> is the header's <c>limits</c> (<see cref="RunLimits.ToJson"/>) and <paramref name="RegexMilliseconds"/>
+/// R2's limit, both as the job's start read them, so a replay never depends on a setting that changed.
+/// <paramref name="RunFactsBase"/> holds the run facts only the start knows (<c>id</c>, <c>engine</c>), by name;
+/// <see cref="V31RunFacts.Of"/> adds the rest. <paramref name="DrainAware"/> marks an orchestration started by a build that
+/// drains (D9). <paramref name="AccountKind"/> picks the held inputs' container, and the outputs container at completion, as a
+/// 5–30 job's does.
 /// </summary>
 public sealed record ConsultGenerationOrchestrationInputV31(
     string JobId,
@@ -33,24 +34,28 @@ public sealed record ConsultGenerationOrchestrationInputV31(
     string? TimeZone,
     DateTimeOffset? ScheduledAtUtc,
     bool DrainAware,
-    string? AccountKind = null);
+    string? AccountKind);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 §§ 1.2 step 6, 3.1, 3.2, 3.4; part 04 § 7.7; D7, D12): a 31 job's orchestration.
 /// It waits for a schedule as the 5–30 one does; takes <c>startedAtUtc</c> from the replay-safe clock and records it on the
 /// job's entity with the hashes and the limits, in one call, before any node runs; marks the job running; loads the plan
-/// replay-safely (<see cref="ConsultGenerationActivityNames.LoadPlanV31"/> gives the verified <c>resolve.json</c>, and the
-/// plan is a process-wide cache's by <c>resolveHash</c>, or built from that text, with no I/O of its own) and the inputs by
-/// reference (<see cref="ConsultGenerationActivityNames.LoadRunInputsV31"/>); runs <see cref="PlanRunner"/> inline, its
-/// calls activities and its waits durable timers (<see cref="DurableRunHost"/>), its rows on the entity
-/// (<see cref="EntityRunRecorder"/>); and finalises the job: <c>Completed</c>, or <c>Failed</c> with the run's sentence (a
-/// timed-out run is a failed job with S09-012's). A fault fails the job with its message, as the 5–30 orchestration's does.
-/// Telemetry at the end: the run's state, its agent calls and the peak in flight, never text.
+/// replay-safely (<see cref="ConsultGenerationActivityNames.LoadPlanV31"/> gives the verified <c>resolve.json</c>; the plan
+/// is the process cache's (<see cref="V31PlanCache"/>), or built from that text, with no I/O of its own) and the inputs and
+/// run facts by reference (<see cref="ConsultGenerationActivityNames.LoadRunInputsV31"/>, so the time zone is read in the
+/// activity, never here); runs <see cref="PlanRunner"/> inline, its calls activities and its waits durable timers
+/// (<see cref="DurableRunHost"/>), its rows on the entity (<see cref="EntityRunRecorder"/>); and finalises the job:
+/// <c>Completed</c>, or <c>Failed</c> with the run's sentence (a timed-out run is a failed job with S09-012's). A fault fails
+/// the job with A06-010, never the exception's message, which can carry a service's response. Telemetry at the end: the
+/// run's state, its agent calls and the peak in flight, never text.
 /// </summary>
 public sealed class ConsultGenerationOrchestratorV31
 {
-    /// <summary>The plans built from a history's <c>resolve.json</c>, by <c>resolveHash</c>: a plan is a function of that text.</summary>
-    private static readonly ConcurrentDictionary<string, RunPlan> Plans = new(StringComparer.Ordinal);
+    /// <summary>A06-010: the job failed for a fault of the engine, not of its package or the model service.</summary>
+    public const string EngineFault = "The engine couldn't finish this job. Tell the operator.";
+
+    /// <summary>The plans built from a history's <c>resolve.json</c>.</summary>
+    internal static V31PlanCache Plans { get; } = new(64);
 
     [Function(nameof(ConsultGenerationOrchestratorV31))]
     public async Task RunAsync([OrchestrationTrigger] TaskOrchestrationContext context)
@@ -70,6 +75,7 @@ public sealed class ConsultGenerationOrchestratorV31
 
             // Part 09 § 1.2 step 6: the header, before any node runs. The job limit is timed from here.
             var startedAtUtc = context.CurrentUtcDateTime;
+            var startedAt = new DateTimeOffset(startedAtUtc, TimeSpan.Zero);
             var limits = RunLimits.FromJson(input.Limits);
             await context.Entities.CallEntityAsync(
                 entityId,
@@ -78,7 +84,7 @@ public sealed class ConsultGenerationOrchestratorV31
                     input.ResolveHash,
                     input.LockHash,
                     limits.ToJson().ToDictionary(member => member.Key, member => (int)member.Value!, StringComparer.Ordinal),
-                    new DateTimeOffset(startedAtUtc, TimeSpan.Zero)));
+                    startedAt));
             await context.Entities.CallEntityAsync(entityId, nameof(ConsultGenerationJobEntity.MarkRunning));
             context.SetCustomStatus(new { status = ConsultGenerationJobStatuses.Running });
 
@@ -97,10 +103,17 @@ public sealed class ConsultGenerationOrchestratorV31
                 return;
             }
 
-            var document = await context.CallActivityAsync<JsonObject?>(ConsultGenerationActivityNames.LoadRunInputsV31, input.JobId)
-                ?? throw new InvalidOperationException($"The inputs of job {input.JobId} could not be read.");
-            var inputs = InputsOf(document, RunFacts(plan, input, startedAtUtc));
+            var held = await context.CallActivityAsync<LoadRunInputsV31Result>(
+                ConsultGenerationActivityNames.LoadRunInputsV31,
+                new LoadRunInputsV31Input(RunInputsBlobStore.PointerOf(input.AccountKind, input.InputsBlob), input.PackageName, input.PackageVersion, input.ResolveHash, startedAt,
+                    input.TimeZone, input.RunFactsBase));
+            if (held.Document is not { } document)
+            {
+                await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed, held.Refusal ?? EngineFault);
+                return;
+            }
 
+            var inputs = InputsOf(document, held.RunFacts ?? new JsonObject());
             var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input), new EntityRunRecorder(context, input))
                 .RunAsync(inputs, startedAtUtc);
 
@@ -115,20 +128,19 @@ public sealed class ConsultGenerationOrchestratorV31
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            // As the 5–30 orchestration does: the failure is the job's, said where its failures are said, and the
-            // orchestration fails with it. An activity's failure is said by its own message.
-            var reason = ex is TaskFailedException { FailureDetails: { } details } ? details.ErrorMessage : ex.Message;
+            // As the 5–30 orchestration does, the job is failed and the orchestration fails with it; but the job says A06-010,
+            // never the exception's message (an activity's failure can carry a service's response). The type alone is logged.
             logger.LogError(
                 "ConsultGenerationOrchestratorV31 failed. JobId={JobId}, ExceptionType={ExceptionType}",
                 input.JobId,
-                ex is TaskFailedException { FailureDetails: { } failed } ? failed.ErrorType : ex.GetType().FullName);
+                FaultType(ex));
 
             try
             {
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.FinalizeJob),
-                    new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, reason, input.AccountKind));
+                    new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, EngineFault, input.AccountKind));
             }
             catch (Exception cleanup)
             {
@@ -142,6 +154,10 @@ public sealed class ConsultGenerationOrchestratorV31
         }
     }
 
+    /// <summary>The fault's type: an activity's own (as Durable records it), else the exception's.</summary>
+    internal static string? FaultType(Exception ex) =>
+        ex is TaskFailedException { FailureDetails: { } details } ? details.ErrorType : ex.GetType().FullName;
+
     /// <summary>Finalises the job on its entity and publishes its status.</summary>
     private static async Task FinalizeAsync(
         TaskOrchestrationContext context, EntityInstanceId entityId, ConsultGenerationOrchestrationInputV31 input, string status, string? error)
@@ -154,27 +170,18 @@ public sealed class ConsultGenerationOrchestratorV31
     }
 
     /// <summary>
-    /// The plan of <paramref name="resolve"/>: the cache's by the job's <c>resolveHash</c>, else built from the text and
-    /// cached. Null when the text is not the job's (its hash differs) or no plan can be made of it.
+    /// The plan of <paramref name="resolve"/>: the cache's for the job's <c>resolveHash</c> and regex limit, else built from
+    /// the text and cached. Null when the text is not the job's (its hash differs) or no plan can be made of it.
     /// </summary>
     private static RunPlan? PlanOf(string resolve, ConsultGenerationOrchestrationInputV31 input)
     {
-        if (Plans.TryGetValue(input.ResolveHash, out var cached))
+        if (Plans.TryGet(input.ResolveHash, input.RegexMilliseconds) is { } cached)
             return cached;
         if (!string.Equals(CanonicalJson.HashText(resolve), input.ResolveHash, StringComparison.Ordinal))
             return null;
 
         var (plan, _) = RunPlan.Build(resolve, input.ResolveHash, input.LockHash, TimeSpan.FromMilliseconds(input.RegexMilliseconds));
-        return plan == null ? null : Plans.GetOrAdd(input.ResolveHash, plan);
-    }
-
-    /// <summary>The run facts: what the job's start knew (<see cref="ConsultGenerationOrchestrationInputV31.RunFactsBase"/>), then <see cref="V31RunFacts.Of"/>'s.</summary>
-    private static JsonObject RunFacts(RunPlan plan, ConsultGenerationOrchestrationInputV31 input, DateTime startedAtUtc)
-    {
-        var facts = (JsonObject)input.RunFactsBase.DeepClone();
-        foreach (var (name, value) in V31RunFacts.Of(plan, new DateTimeOffset(startedAtUtc, TimeSpan.Zero), input.TimeZone))
-            facts[name] = value?.DeepClone();
-        return facts;
+        return plan == null ? null : Plans.Add(input.ResolveHash, input.RegexMilliseconds, plan);
     }
 
     /// <summary>
@@ -198,5 +205,72 @@ public sealed class ConsultGenerationOrchestratorV31
         }
 
         return new RunInputs(inputs, runFacts, profile);
+    }
+}
+
+/// <summary>
+/// #1503 (specVersion 31, area 06): the plans a process built from orchestration histories, by <c>resolveHash</c> and regex
+/// limit (a plan is a function of the two), the most recently used <see cref="Capacity"/> kept. Safe to use concurrently.
+/// </summary>
+internal sealed class V31PlanCache(int capacity)
+{
+    private readonly object _gate = new();
+    private readonly Dictionary<(string, int), LinkedListNode<((string, int) Key, RunPlan Plan)>> _byKey = new();
+    private readonly LinkedList<((string, int) Key, RunPlan Plan)> _recent = new();
+
+    /// <summary>The most plans kept.</summary>
+    public int Capacity { get; } = capacity >= 1 ? capacity : throw new ArgumentOutOfRangeException(nameof(capacity));
+
+    /// <summary>How many plans are kept.</summary>
+    public int Count
+    {
+        get
+        {
+            lock (_gate)
+                return _byKey.Count;
+        }
+    }
+
+    /// <summary>The plan kept for the two, made the most recently used; null when none is.</summary>
+    public RunPlan? TryGet(string resolveHash, int regexMilliseconds)
+    {
+        lock (_gate)
+        {
+            if (!_byKey.TryGetValue((resolveHash, regexMilliseconds), out var node))
+                return null;
+            _recent.Remove(node);
+            _recent.AddFirst(node);
+            return node.Value.Plan;
+        }
+    }
+
+    /// <summary>Keeps <paramref name="plan"/> for the two (the one already kept, if any, is returned instead), dropping the least recently used past the capacity.</summary>
+    public RunPlan Add(string resolveHash, int regexMilliseconds, RunPlan plan)
+    {
+        lock (_gate)
+        {
+            var key = (resolveHash, regexMilliseconds);
+            if (_byKey.TryGetValue(key, out var kept))
+                return kept.Value.Plan;
+            _byKey[key] = _recent.AddFirst((key, plan));
+            while (_byKey.Count > Capacity)
+            {
+                var last = _recent.Last!;
+                _recent.RemoveLast();
+                _byKey.Remove(last.Value.Key);
+            }
+
+            return plan;
+        }
+    }
+
+    /// <summary>Forgets every plan (tests: a cold cache).</summary>
+    public void Clear()
+    {
+        lock (_gate)
+        {
+            _byKey.Clear();
+            _recent.Clear();
+        }
     }
 }

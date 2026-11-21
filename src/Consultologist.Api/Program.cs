@@ -159,7 +159,7 @@ builder.Services.AddSingleton(sp => sp.GetRequiredService<Consultologist.Api.V31
 builder.Services.AddSingleton<Consultologist.Api.V31.ICompiledPackageStore, Consultologist.Api.V31.CompiledPackageStore>();
 // #1503 (part 09 §§ 3.1, 3.4): a 31 job's orchestration — one attempt per agent activity
 // (the orchestration retries), the default body composer until area 07, and the inputs
-// held by reference on the text account.
+// held by reference as the job's held inputs (JobInputsBlobStore's containers and names).
 builder.Services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
 builder.Services.AddSingleton<Consultologist.Api.V31.IBodyComposer, Consultologist.Api.V31.ScribanBodyComposer>();
 builder.Services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
@@ -184,7 +184,8 @@ builder.Services.AddSingleton<PinHealthReporter>();
 builder.Services.AddSingleton<IJobOutputsBlobStore, JobOutputsBlobStore>();
 // #547: the held inputs — written by the starter, read by History and the
 // rerun, deleted by the retention drop.
-builder.Services.AddSingleton<IJobInputsBlobStore, JobInputsBlobStore>();
+builder.Services.AddSingleton<JobInputsBlobStore>();
+builder.Services.AddSingleton<IJobInputsBlobStore>(sp => sp.GetRequiredService<JobInputsBlobStore>());
 // #368: the retention sweep — the text is deleted N days after completion.
 builder.Services.AddSingleton<IJobTextPurger, JobTextPurger>();
 // #557: the events-move transition's old-table delete; removed by #558.

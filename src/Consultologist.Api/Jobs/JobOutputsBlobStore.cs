@@ -250,13 +250,32 @@ public sealed class JobInputsBlobStore : IJobInputsBlobStore
 
     public async Task<ConsultInputsBlobPointer> WriteAsync(string? accountKind, string appUserId, string jobId, JobInputsPayload payload, CancellationToken cancellationToken)
     {
-        var pointer = new ConsultInputsBlobPointer(ContainerFor(accountKind), NameFor(appUserId, jobId));
+        var pointer = PointerFor(accountKind, appUserId, jobId);
         await _blobs.WriteJsonAsync(pointer.Container, pointer.Name, payload, cancellationToken);
         return pointer;
     }
 
     public Task<JobInputsPayload?> ReadAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.ReadJsonAsync<JobInputsPayload>(pointer.Container, pointer.Name, cancellationToken);
+
+    /// <summary>
+    /// #1503 (specVersion 31): where a job's held inputs live, the 5–30 payload's or a 31 job's run-inputs document: the
+    /// kind's container, <c>{appUserId}/{jobId}.json</c>. So the retention drop and account closure sweep either.
+    /// </summary>
+    internal static ConsultInputsBlobPointer PointerFor(string? accountKind, string appUserId, string jobId) =>
+        new(ContainerFor(accountKind), NameFor(appUserId, jobId));
+
+    /// <summary>#1503 (specVersion 31): writes a 31 job's run-inputs document where its held inputs live, and returns the pointer.</summary>
+    public async Task<ConsultInputsBlobPointer> WriteDocumentAsync(string? accountKind, string appUserId, string jobId, System.Text.Json.Nodes.JsonObject document, CancellationToken cancellationToken)
+    {
+        var pointer = PointerFor(accountKind, appUserId, jobId);
+        await _blobs.WriteJsonAsync(pointer.Container, pointer.Name, document, cancellationToken);
+        return pointer;
+    }
+
+    /// <summary>#1503 (specVersion 31): a 31 job's run-inputs document, or null when it is gone (dropped, or never written).</summary>
+    public Task<System.Text.Json.Nodes.JsonObject?> ReadDocumentAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken) =>
+        _blobs.ReadJsonAsync<System.Text.Json.Nodes.JsonObject>(pointer.Container, pointer.Name, cancellationToken);
 
     public Task DeleteAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.DeleteAsync(pointer.Container, pointer.Name, cancellationToken);
