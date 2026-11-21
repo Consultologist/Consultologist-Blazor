@@ -5,8 +5,9 @@ namespace Consultologist.PackageFormat.V31;
 /// reader's result whatever it was; the refusals, the reader's when it has any, else the type
 /// rules', else the expressions'; and what the type rules learned, null exactly when the reader or
 /// the type rules refused something.
-/// #1501 (specVersion 31, area 04): and every expression site checked, null exactly when there is a
-/// refusal (<see cref="Types"/> stays set when only an expression is refused).
+/// #1501 (specVersion 31, area 04): and every expression site checked, null when an earlier step or an expression
+/// is refused (<see cref="Types"/> stays set when only an expression is refused; #1502: it stays set when only the
+/// derived step refuses).
 /// #1502 (specVersion 31, area 05): and what the resolve step learned, null when the reader, the type rules or the
 /// resolve step refused something (it stays set when only an expression is refused); and what the derived step worked out
 /// (<see cref="SourceDerived"/>), null exactly when there is a refusal.

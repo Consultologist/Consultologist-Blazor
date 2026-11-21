@@ -331,6 +331,70 @@ public class SourceDerivedTests
         Assert.False(derived.Entries["node.plan"].ProfileCarrying);
     }
 
+    /// <summary>
+    /// <see cref="Signed"/> with the computed <c>signed_size</c> (measuring the signed call, so profile-carrying), the
+    /// computed <c>run_label</c> (reading <c>run.id</c>), and the package macro <c>sig_note</c>, whose <c>if</c> is
+    /// <paramref name="condition"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithNoteMacro(string condition) =>
+        Listing(Signed(DraftHasText), "signed_size", "run_label")
+            .With("nodes/signed_size.md", Md(SourceFixture.Node("computed", "Measuring the signature", "\"number\"", true, false,
+                "\"if\": null, \"expression\": { \"size\": [{ \"var\": \"node.signed.content\" }] }"), ""))
+            .WithJson("nodes/signed_size.md", h => h["profileCarrying"] = true)
+            .With("nodes/run_label.md", Md(SourceFixture.Node("computed", "Naming the run", "\"string\"", true, false,
+                "\"if\": null, \"expression\": { \"var\": \"run.id\" }"), ""))
+            .WithJson("nodes/run_label.md", h => h["runDependent"] = true)
+            .WithJson("macros/index.json", m => m["items"]!.AsArray().Add("sig_note"))
+            .With("macros/sig_note.md", Md(
+                "{ \"label\": \"Signature note\", \"description\": null, \"if\": " + condition + ", \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place {{ macro.sig_note.content }} at the end.\"] }",
+                "Signed on behalf of the clinic.\n"));
+
+    /// <summary>A seam where the plan places <c>sig_note</c> and every other body reads nothing.</summary>
+    private static StubTemplates PlacingTheNote() =>
+        new(new Dictionary<string, string[]>(), bodies: new Dictionary<string, TemplateReads>
+        {
+            ["node.plan"] = new(["input.consult_draft.content"], ["macro.sig_note"], [], [], false),
+        });
+
+    [Fact]
+    public void APlacedMacrosIf_ReadingProfileText_IsS03044()
+    {
+        var files = WithNoteMacro("{ \">\": [{ \"var\": \"node.signed_size.value\" }, 0] }");
+        Accepted(files);
+        AssertRefusal(files, PlacingTheNote(), "S03-044",
+            "Macro 'sig_note' reads node.signed_size.value, which carries profile text; prompts, parts and conditions don't read profile text.",
+            "macros/sig_note.md");
+        Accepted(files, StubTemplates.Empty());
+    }
+
+    [Fact]
+    public void APlacedMacrosIf_ReadingARunDependentValue_IsS03037()
+    {
+        var files = WithNoteMacro("{ \"!\": [{ \"blank\": [{ \"var\": \"node.run_label.value\" }] }] }");
+        const string sentence = "Macro 'sig_note' if reads run.id; its decision can differ between runs with the same inputs.";
+        Assert.DoesNotContain(Accepted(files).Warnings, w => w.Sentence == sentence);
+        Assert.Contains(Accepted(files, PlacingTheNote()).Warnings, w => (w.Id, w.Sentence, w.Path) == ("S03-037", sentence, "macros/sig_note.md"));
+    }
+
+    [Fact]
+    public void AnEarlierPass_CountsTowardReproducible()
+    {
+        // The while returns a computed node that reads only the judge's earlier pass: an agent's output, so the
+        // while is not reproducible, and, an earlier pass being no content, not model-derived either.
+        var files = ResolveFixture.NestedNote()
+            .WithJson("nodes/refine/index.json", h =>
+            {
+                h["format"] = "boolean";
+                h["modelDerived"] = false;
+            })
+            .With("nodes/refine/draft_summary.md", Md(SourceFixture.Node("computed", "Checking the last judgement", "\"boolean\"", true, false,
+                "\"if\": null, \"expression\": { \"blank\": [{ \"var\": \"pass.previous.node.judge.content\" }] }"), ""));
+        Assert.False(Accepted(files).Entries["node.refine"].Reproducible);
+        AssertRefusal(files.WithJson("nodes/refine/index.json", h => h["reproducible"] = true), null, "S04-015",
+            "While 'refine' declares reproducible true; its body makes it false.", "nodes/refine/index.json");
+    }
+
     // ---- Circles -------------------------------------------------------------------------------
 
     /// <summary>The computed node <paramref name="id"/>, a number, one more than <paramref name="reads"/>' value.</summary>

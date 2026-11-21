@@ -94,6 +94,46 @@ internal sealed class DerivedGraph
     public static string Prefix(SourceFunction? function, bool union) =>
         function == null ? "" : $"function:{function.Id}:{(union ? "u" : "i")}:";
 
+    /// <summary>
+    /// The body <paramref name="vertex"/>'s template is read in: a node's own, the top of <c>nodes/</c> for a deliverable
+    /// or a package definition, a function's root for its own definitions; null for a pseudo-vertex.
+    /// </summary>
+    public ScopeFrame? FrameOfBody(Vertex vertex) => vertex.Declaration switch
+    {
+        SourceNode node => Tree.FrameOf(node),
+        SourceDeliverable => Tree.PackageRoot,
+        SourceText when vertex.Function != null => Tree.FunctionRoot(vertex.Function),
+        SourceText => Tree.PackageRoot,
+        _ => null,
+    };
+
+    /// <summary>
+    /// The declarations whose <c>if</c> a body's read <paramref name="path"/> of <paramref name="root"/> (<c>macro</c> or
+    /// <c>snippet</c>) places: <c>macro.&lt;id&gt;</c> or <c>snippet.&lt;id&gt;</c> (the one file), or
+    /// <c>macro.&lt;folder&gt;</c> with, for <c>macro.&lt;folder&gt;.&lt;item&gt;</c>, that item; the function's own first,
+    /// then the package's.
+    /// </summary>
+    public IEnumerable<object> PlacedBy(string path, string root, SourceFunction? function)
+    {
+        if (ReferenceString.Parse(path) is not { } reference || reference.Segments.Count < 2 || reference.Segments[0] != root)
+            yield break;
+        var s = reference.Segments;
+        IReadOnlyList<SourceTextEntry> Of(SourceDefinitions d) => root == "macro" ? d.Macros.Items : d.Snippets.Items;
+        var entry = (function == null ? null : Of(function.Definitions).FirstOrDefault(e => e.Id == s[1]))
+            ?? Of(package.Definitions).FirstOrDefault(e => e.Id == s[1]);
+        switch (entry)
+        {
+            case SourceSingleText single:
+                yield return single.Text;
+                break;
+            case SourceTextFolder folder:
+                yield return folder;
+                if (s.Count > 2 && folder.Items.FirstOrDefault(i => i.Id == s[2]) is { } item)
+                    yield return item;
+                break;
+        }
+    }
+
     /// <summary>What <paramref name="declaration"/>'s body reads: none for an empty body, the seam's otherwise (null: not known); asked once.</summary>
     public TemplateReads? BodyOf(object declaration, string body, SourceFunction? function)
     {
@@ -417,7 +457,10 @@ internal sealed class DerivedGraph
         }
     }
 
-    /// <summary><c>pass.(parent)*.node.&lt;id&gt;</c> of this pass: the node; an earlier pass (<c>previous</c>, <c>history</c>) or a pass's own member: none.</summary>
+    /// <summary>
+    /// <c>pass.(parent)*.(previous.)?node.&lt;id&gt;</c>: the node, an earlier pass's marked <c>Earlier</c> (and told no
+    /// key); <c>pass.history</c>: an earlier pass, naming nothing; a pass's own member: nothing.
+    /// </summary>
     private static GraphRead Pass(string path, IReadOnlyList<string> s, ScopeFrame frame, string prefix)
     {
         var at = 1;
@@ -429,15 +472,19 @@ internal sealed class DerivedGraph
         }
 
         var plain = new GraphRead(path, null, null, path, true, false);
-        if (at < s.Count && (s[at] == "previous" || s[at] == "history"))
+        if (at < s.Count && s[at] == "history")
             return plain with { Earlier = true };
+        var earlier = at < s.Count && s[at] == "previous";
+        if (earlier)
+            at++;
         if (at + 1 < s.Count && s[at] == "node" && frame.While(up) is { } loop
             && ScopeTree.Walk(loop.Body.Nodes).FirstOrDefault(n => n.Id == s[at + 1]) is { } node)
         {
-            return plain with { Id = prefix + node.Key, Key = node.Key };
+            // An earlier pass's node is named (reproducible and the decisions follow it), but is never content.
+            return plain with { Id = prefix + node.Key, Key = earlier ? null : node.Key, Earlier = earlier };
         }
 
-        return plain;
+        return plain with { Earlier = earlier };
     }
 
     /// <summary>A read of a renderer, snippet or macro: the longest key it starts with, the function's own first, then the package's.</summary>

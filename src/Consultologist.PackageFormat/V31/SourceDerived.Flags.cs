@@ -50,8 +50,8 @@ internal sealed class Derivation
     /// <summary>
     /// part 02 § 1.1, part 04 § 1: an agent is not reproducible, a rendered or computed node (a check included) is, whatever
     /// it reads; a call is its function's <c>ret</c>'s value; a flow node is reproducible only if everything in its body
-    /// that its result depends on is: each node its bodies' <c>ret</c>s are made from, through content reads that stay
-    /// inside its body (a loop's <c>item</c> followed to the loop's source), is reproducible. Null for a kind with no such
+    /// that its result depends on is: each node its bodies' <c>ret</c>s are made from, through content reads and reads of
+    /// an earlier pass that stay inside its body (a loop's <c>item</c> followed to the loop's source), is reproducible. Null for a kind with no such
     /// rule. Bounded: each node is worked out once, and calls nest in no ring.
     /// </summary>
     public bool? Reproducible(SourceNode node)
@@ -102,7 +102,7 @@ internal sealed class Derivation
             var vertex = queue.Dequeue();
             if (vertex.Declaration is SourceLeaf leaf && Reproducible(leaf) == false)
                 return false;
-            foreach (var read in vertex.Content.Where(r => r.Id != null))
+            foreach (var read in vertex.Content.Concat(vertex.Other).Where(r => r.Id != null))
             {
                 var next = Graph.ById.GetValueOrDefault(read.Id!);
                 if (next != null && (inside.Contains(next.Id) || next.Id.StartsWith("item:", StringComparison.Ordinal)) && seen.Add(next.Id))
@@ -172,8 +172,10 @@ public static partial class SourceDerived
     private sealed record Decision(ExpressionSite Site, IReadOnlyList<GraphRead> Reads);
 
     /// <summary>
-    /// Every decision: each condition site the expressions checked (not a computed node's expression), and each
-    /// <c>case</c>'s subject (<c>Case 'x' case</c>). S03-044 for each read of a profile-carrying value; S03-037 once for a
+    /// Every decision: each condition site the expressions checked (not a computed node's expression), each
+    /// <c>case</c>'s subject (<c>Case 'x' case</c>), and, through the seam, each macro's or snippet's <c>if</c> (a macro
+    /// folder's shared one included) read again at every body that places it; without the seam a placed <c>if</c>'s
+    /// reads of <c>node</c> and <c>check</c> name nothing and are not judged. S03-044 for each read of a profile-carrying value; S03-037 once for a
     /// decision that is run-dependent (part 03 § 4.4), naming the run fact it comes from, though it reads it through a value.
     /// </summary>
     private static void Decisions(Derivation derived, PackageExpressions expressions, List<SourceRefusal> refusals, List<SourceRefusal> warnings)
@@ -210,6 +212,26 @@ public static partial class SourceDerived
             };
             var reader = context.Declaration as SourceNode;
             yield return new Decision(context.Site, site.Check.Reads.Select(p => derived.Graph.Map(p, frame, vertex, reader)).ToList());
+        }
+
+        // A macro's or snippet's if is read where it is placed: at each body the seam says places it (a macro in
+        // Places, a snippet named by a read). Without the seam nothing says where, and only its run facts are judged.
+        var placeable = expressions.Sites
+            .Where(s => s.Context.Site.Kind is ExpressionSiteKind.MacroIf or ExpressionSiteKind.SnippetIf)
+            .ToLookup(s => s.Context.Declaration, ReferenceEqualityComparer.Instance);
+        foreach (var vertex in derived.Graph.Vertices.Where(v => (v.Function == null || v.Union) && v.Body != null))
+        {
+            if (derived.Graph.FrameOfBody(vertex) is not { } frame)
+                continue;
+            var reader = vertex.Declaration as SourceNode;
+            var placed = vertex.Body!.Places.SelectMany(p => derived.Graph.PlacedBy(p, "macro", vertex.Function))
+                .Concat(vertex.Body.Reads.SelectMany(p => derived.Graph.PlacedBy(p, "snippet", vertex.Function)))
+                .Distinct(ReferenceEqualityComparer.Instance);
+            foreach (var declaration in placed)
+            {
+                foreach (var site in placeable[declaration!])
+                    yield return new Decision(site.Context.Site, site.Check.Reads.Select(p => derived.Graph.Map(p, frame, vertex, reader)).ToList());
+            }
         }
 
         foreach (var vertex in derived.Graph.Vertices.Where(v => v.Function == null || v.Union))
