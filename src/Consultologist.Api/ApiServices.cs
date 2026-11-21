@@ -25,6 +25,20 @@ namespace Consultologist.Api;
 /// </summary>
 public static class ApiServices
 {
+    /// <summary>
+    /// What <c>Program.cs</c> resolves after the host is built and before it runs, so a bad setting or catalogue fails at
+    /// startup, not at the first job: #1503's <see cref="SpecVersionAdmission"/> and
+    /// <see cref="Consultologist.Api.V31.EngineLimitSettings"/>, and #1504's <see cref="Consultologist.Api.V31.V31AgentsCatalogue"/>
+    /// (resolved lazily, a defect in it would fail every job start, 5–30 included, through the 31 starter's store).
+    /// </summary>
+    public static void ResolveAtStartup(IServiceProvider services)
+    {
+        ArgumentNullException.ThrowIfNull(services);
+        services.GetRequiredService<SpecVersionAdmission>();
+        services.GetRequiredService<Consultologist.Api.V31.EngineLimitSettings>();
+        services.GetRequiredService<Consultologist.Api.V31.V31AgentsCatalogue>();
+    }
+
     public static IServiceCollection AddApiServices(this IServiceCollection services)
     {
         services.AddSingleton<TokenCredential>(sp =>

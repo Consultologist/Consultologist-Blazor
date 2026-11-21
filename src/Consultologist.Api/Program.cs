@@ -19,7 +19,6 @@ builder.Services.ConfigureFunctionsApplicationInsights();
 builder.Services.AddApiServices();
 
 var host = builder.Build();
-// #1503: fail at startup, not at the first job, on a bad preview or limit setting.
-host.Services.GetRequiredService<SpecVersionAdmission>();
-host.Services.GetRequiredService<Consultologist.Api.V31.EngineLimitSettings>();
+// #1503: fail at startup, not at the first job, on a bad preview or limit setting (#1504: or 31 agents catalogue).
+ApiServices.ResolveAtStartup(host.Services);
 host.Run();

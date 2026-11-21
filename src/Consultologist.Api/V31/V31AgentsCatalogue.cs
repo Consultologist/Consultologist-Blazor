@@ -13,7 +13,7 @@ namespace Consultologist.Api.V31;
 /// against git: each agent version it holds is the version of its bundled manifest (<c>agents/&lt;name&gt;.yaml</c>). Its
 /// agents are among <see cref="EngineCapabilities.Agents"/>, and an agent call's sent format leaves out what the agent's
 /// provider's strict mode rejects (<see cref="StrictRejects"/>). Any defect is a startup failure
-/// (<see cref="InvalidOperationException"/>): an engine without a coherent catalogue must not accept jobs.
+/// (<see cref="InvalidOperationException"/>, thrown when <see cref="ApiServices.ResolveAtStartup"/> resolves it): an engine without a coherent catalogue must not accept jobs.
 /// </summary>
 public sealed class V31AgentsCatalogue
 {
