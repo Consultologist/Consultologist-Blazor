@@ -310,16 +310,19 @@ public class BodyComposerTests
     }
 
     [Fact]
-    public void AMacroPlacement_RendersNothingYet_AndItsInstructionKeepsItsNumber()
+    public void AnOfferedMacro_RendersItsInstruction_AndItsBodysRendersNumberAfterTheEntrys()
     {
-        // The macros' task renders a placed macro's instruction; here macro.<…> renders nothing (§ 2.6's empty line), and a
-        // renderer step in an instruction keeps its number in the entry's renders: the body's later step is 3.
+        // An offered macro's instruction is spliced, its own marker written as the marker to copy (D17); its renderer step
+        // keeps its number in the entry's renders (2), so the body's later step is 3. The macro's body is rendered for the
+        // reply, and its renderer step, which the entry's renders leave out, numbers after them: 4, run when the macro is
+        // placed. A folder's macro is offered only when its folder is placed too.
         var plan = RunFixture.Plan(WithTerms(Package())
+            .WithRenderer("tag", "\"markdown_block\"", "[{{ value }}]", "plaintext")
             .Listed("macros/index.json", "m")
             .With("macros/m.md", Md(
                 "{ \"label\": \"Terms\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
                 + "\"instruction\": [\"Place {{ macro.m.content }} after {{ node.terms.value | renderer.concept_bullets }}.\"] }",
-                "Reviewed with Dr A. Sample.\n"))
+                "Reviewed with {{ input.consult_draft.content | renderer.tag }}.\n"))
             .Listed("macros/index.json", "f")
             .With("macros/f/index.json", Index(["n"], extra: ", \"if\": null"))
             .With("macros/f/n.md", Md(
@@ -330,14 +333,26 @@ public class BodyComposerTests
                 "A {{ node.terms.value | renderer.concept_bullets }}\n{{~ macro.m }}\n{{~ macro.f.n }}\nB {{ node.terms.value | renderer.concept_bullets }}\n"));
         var bullets = ConceptRenderers.Bullets(ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, ConceptSamples.Source));
         Assert.Equal([1, 2, 3], plan.Entries["node.draft"].Json["renders"]!.AsArray().Select(r => (int)r!["n"]!));
+        var scope = Scope(("node.terms.value", Concepts()), ("input.consult_draft.content", "Margaret Okafor"));
 
-        var composition = Compose(plan, "node.draft", Scope(("node.terms.value", Concepts())),
-            Placed("macro.m", "macro-folder.f", "macro.f.n"));
+        var composition = Compose(plan, "node.draft", scope, Placed("macro.m", "macro-folder.f", "macro.f.n"));
 
-        Assert.Equal($"A {bullets}\n\n\nB {bullets}\n", Composed(composition));
-        Assert.Empty(composition.Macros);
+        Assert.Equal(
+            $"A {bullets}\nPlace {{{{ macro.m.content }}}} after {bullets}.\nPlace the follow-up line alone after the plan:\n{{{{~ macro.f.n.content }}}}\nB {bullets}\n",
+            Composed(composition));
+        Assert.Equal([1, 2, 4, 3], composition.Renders.Select(r => r.N));
+        Assert.Equal("input.consult_draft.content", composition.Renders[2].Source);
+        Assert.Equal(
+            [("macro.m", "macro.m.content", false, "Reviewed with [Margaret Okafor].\n"), ("macro.f.n", "macro.f.n.content", true, "Follow up with Dr A. Sample in six weeks.\n")],
+            composition.Macros.Select(m => (m.Site, m.Marker, m.Block, m.Body)));
+        Assert.All(composition.Macros, m => Assert.Equal(CanonicalJson.HashText(m.Body), m.ContentHash));
         Assert.Empty(composition.Units);
-        Assert.Equal([1, 3], composition.Renders.Select(r => r.N));
+
+        // Not offered: the macro's own site false, or its folder not placed.
+        var none = Compose(plan, "node.draft", scope, Placed("macro.f.n"));
+        Assert.Equal($"A {bullets}\n\n\nB {bullets}\n", Composed(none));
+        Assert.Empty(none.Macros);
+        Assert.Equal([1, 3], none.Renders.Select(r => r.N));
     }
 
     [Fact]
