@@ -57,10 +57,12 @@ public class RefusalPackagesTests
     /// in uses and never names); a package that gets it is accepted. S04-063: a macro placed in a function, whose if
     /// reads a node the function lacks; where a macro is placed is what a body reads, which only the seam
     /// (<c>ITemplateReads</c>, area 07's) says, and <c>SourceCheck.Run</c> without it never judges it (D1). A05-004: a
-    /// function's own format whose bundle key another used format has; the bundle is built at compile
-    /// (<c>CompiledFormats.Build</c>), which <c>SourceCheck.Run</c> does not reach until <c>resolve.json</c> is compiled (Task 7).
+    /// function's own format whose bundle key another used format has; the bundle is built when <c>resolve.json</c> is
+    /// compiled, and <c>ResolveCompiler.Compile</c> refuses it there (<c>CompiledFormats.Build</c>), after the checks the
+    /// suite's packages are held to (<c>SourceCheck.Run</c>). S04-072, S04-073, S04-079 and S04-080: part 04 § 10.2's
+    /// notes, measured against the engine's limits (<c>PublishNotes</c>, D11); a package that gets them is accepted.
     /// </summary>
-    private static readonly string[] ResolveNotShipped = ["S04-063", "S04-074", "A05-004"];
+    private static readonly string[] ResolveNotShipped = ["S04-063", "S04-072", "S04-073", "S04-074", "S04-079", "S04-080", "A05-004"];
 
     /// <summary>
     /// The ids of <see cref="LogicNotShipped"/> that no public method of <see cref="ExpressionSentences"/> returning a

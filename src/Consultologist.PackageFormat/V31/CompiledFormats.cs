@@ -98,7 +98,7 @@ public sealed record CompiledFormats(
     }
 
     /// <summary>The bundle key of a format a scope found: its id, or <c>&lt;function&gt;__&lt;id&gt;</c> for the function's own.</summary>
-    private static string KeyOf(NamedFormat found, SourceFunction? function) =>
+    internal static string KeyOf(NamedFormat found, SourceFunction? function) =>
         found.Origin == FormatOrigin.Function && function != null ? $"{function.Id}__{found.Id}" : found.Id;
 
     /// <summary>

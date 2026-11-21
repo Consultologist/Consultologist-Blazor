@@ -197,5 +197,23 @@ internal static class ResolveSentences
     public static SourceRefusal BundleKeyTaken(string function, string id, string path) =>
         new("A05-004", $"Function '{function}' format '{id}' is compiled as '{function}__{id}', which the package already uses: rename one.", path);
 
+    /// <summary>S04-072 (a note, part 04 § 10.2): up to <paramref name="n"/> agent calls could run at once, past the engine's per-job <paramref name="ceiling"/>.</summary>
+    public static SourceRefusal CallsAtOnce(long n, int ceiling) =>
+        new("S04-072", $"Up to {Number(n)} agent calls could run at once; this engine runs at most {Number(ceiling)} per job, so the rest wait their turn.", "");
+
+    /// <summary>S04-073 (a note): the loop <paramref name="id"/> has no cap over a list known only at run time, so the agent calls under it are unbounded.</summary>
+    public static SourceRefusal CallsAtOnceUnbounded(string id, int ceiling) =>
+        new("S04-073", $"An unbounded number of agent calls could run at once (loop '{id}' has no cap over a list known only at run time); this engine runs at most {Number(ceiling)} per job, so the rest wait their turn.", "");
+
+    /// <summary>S04-079 (a note): the loop <paramref name="id"/> iterates <paramref name="reference"/>, which could hold more than the engine's <paramref name="limit"/> items per loop.</summary>
+    public static SourceRefusal ItemsPastLimit(string id, string reference, int limit, string path) =>
+        new("S04-079", $"Loop '{id}' iterates {reference}, which could hold more than {Number(limit)} items; this engine runs at most {Number(limit)} per loop, and fails the loop beyond that.", path);
+
+    /// <summary>S04-080 (a note): up to <paramref name="n"/> agent calls could run in one job, past the engine's <paramref name="limit"/>.</summary>
+    public static SourceRefusal CallsPastLimit(long n, int limit) =>
+        new("S04-080", $"Up to {Number(n)} agent calls could run in one job; this engine runs at most {Number(limit)} per job, and fails the job beyond that.", "");
+
     private static string Bool(bool value) => value ? "true" : "false";
+
+    private static string Number(long value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
 }

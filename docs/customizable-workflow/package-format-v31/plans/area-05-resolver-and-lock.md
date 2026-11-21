@@ -228,7 +228,7 @@ Rules: the bundle holds every format *used* — named by any `format` member (in
 
 Document: § 2.2's members, every one, in the shapes of §§ 2.3 to 2.8 and D3 to D8. Entries: every header member as written with formats rewritten (`CompiledFormats.Rewrite`), conditions and expressions with `var` / `missing` paths rewritten (D3), `in`, `case`, `with`, `ret` rewritten; then § 2.5's derived members that apply to the entry's kind (`nodes` and `ret` for flow nodes — an `if`'s and a `case`'s bodies keep their written structure with keys inside, and the derived `nodes` is every child in order; `body` / `bodyHash` with `null` for the body-less kinds; `parts`, `places` for agents; `renders`, `runSpots` for templated kinds; `formatHash`, `typeHash`), the flags from `PackageDerived`. `title` is the manifest's, or `<name>@<version>` when it is null (the document's `title` is never null); `description` the lines joined by `\n`, or null. `warnings`: the expression warnings, `PackageDerived.Warnings`, `Resolution.Warnings` and the notes, as `{ sentence, at }` with `at` the path or `null`, ordered by `at` (null first) then as found. `run`, `needs.profile`: `PackageDerived`'s.
 
-- [ ] **Step 1: Failing tests:**
+- [x] **Step 1: Failing tests:**
   - `TopLevel_HasEveryMember`: the document's keys equal `resolve.schema.json`'s `required`, and `requires` / `needs` theirs; every entry has the schema's `entry.required`.
   - `NestedNote_IsTheSpecsExample`: against part 07 § 2.9, member by member where the example is not elided: `package`, `lock`, `requires` (with `scribanVersion` `7.2.5`), `needs`, `inputs`, `inputOrder`, `bindings`, the entries `node.plan`, `node.section_count`, `node.sections`, `node.refine` (keys, `parent`, `nodes`, `ret`, the rewritten `in` and `while`), `deliverable.note`'s key, `graph.edges` ⊇ the example's five (with a stub `ITemplateReads` giving the bodies' reads), `graph.order` starting `input.consult_draft, node.plan, node.section_count, node.sections`.
   - `Functions_AreSealedMaps`: `functions.draft_section.nodes` keyed `node.standard_draft`…, `ret` `node.apply_instructions`, a `calls` edge `function.draft_section` → `node.standards.section`, an `aligned` edge `node.standards` → `check.section_coverage`.
@@ -236,8 +236,8 @@ Document: § 2.2's members, every one, in the shapes of §§ 2.3 to 2.8 and D3 t
   - `Compile_IsDeterministic`: compile twice; compile from an upload built in reverse insertion order; from `\r\n` files: identical `Canonical`. `Canonical` parses and re-writes to itself, has no timestamp-like member, and `Document` has no `null`-valued top-level member but `description`.
   - `ARefusedPackage_CompilesNothing`; `WithoutTheSeam_IsNotComplete`.
   - `PublishNotesTests`: two nested loops with `maxParallel` 4 and 5 over agents and a ceiling of 16 → S04-072 with 20; a `maxParallel: null` loop over a node's list → S04-073 naming it; over a snippet folder of 3 → counted as 3; a list with no `maxItems` → S04-079; 3 × 200 × agents over 500 → S04-080; no limits → no notes.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1502): resolve.json compiled from a checked source`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1502): resolve.json compiled from a checked source`
 
 ### Task 8: `lock.json`, the pair, and what an engine checks
 

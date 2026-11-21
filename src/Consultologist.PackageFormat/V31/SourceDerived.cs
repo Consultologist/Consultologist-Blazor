@@ -11,7 +11,9 @@ namespace Consultologist.PackageFormat.V31;
 /// for a non-empty body the seam did not say (D1). <paramref name="Reproducible"/> is derived for a node or check (null
 /// for other entries). The three flags are derived when known; <paramref name="FlagsKnown"/> is false when what the
 /// value is made from reaches a body that is not known, and then a flag that is not known to be true is the header's
-/// declared value (false on an entry with no header flags).
+/// declared value (false on an entry with no header flags). <paramref name="Body"/> is what the seam said its body reads,
+/// places, renders and where its run spots are (D1; <see cref="TemplateReads.None"/> for an empty body, null for an entry
+/// with no body or a body that is not known), for <c>resolve.json</c>'s <c>places</c>, <c>renders</c> and <c>runSpots</c>.
 /// </summary>
 public sealed record DerivedEntry(
     string Key,
@@ -23,7 +25,8 @@ public sealed record DerivedEntry(
     bool ModelDerived,
     bool RunDependent,
     bool ProfileCarrying,
-    bool FlagsKnown);
+    bool FlagsKnown,
+    TemplateReads? Body = null);
 
 /// <summary>
 /// #1502 (specVersion 31, area 05): what the resolver derives of a package. <paramref name="Entries"/> are keyed by rooted
@@ -150,7 +153,7 @@ public static partial class SourceDerived
             vertex.Conditions.Select(r => new LineageRead(r.Path, r.Key)).ToList(),
             vertex.BodyKnown,
             vertex.Declaration is SourceNode node ? derived.Reproducible(node) : null,
-            Flag(LineageFlag.ModelDerived), Flag(LineageFlag.RunDependent), Flag(LineageFlag.ProfileCarrying), known);
+            Flag(LineageFlag.ModelDerived), Flag(LineageFlag.RunDependent), Flag(LineageFlag.ProfileCarrying), known, vertex.Body);
     }
 
     /// <summary>The flag as a node header declares it; null when it declares none.</summary>
