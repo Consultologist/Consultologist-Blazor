@@ -7,9 +7,10 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <c>format</c> is a text format (S05-028) and its body pipes into no renderer (S05-033; that it reads only
 /// <c>value</c>, S05-029, is <see cref="PathTyping"/>'s). At a use, every pipe step into a renderer is one
 /// <see cref="TemplateRender"/> in source order: the renderer is the function's own, the package's or a built-in
-/// (S05-031); the value piped is of its <c>input</c> by type equality (part 02 § 2.3; S05-026), and in a chain each
-/// step's <c>format</c> is the next one's <c>input</c> (S05-034); a <c>markdown_block</c> renderer piped in a tag with
-/// text on its line warns (S05-061).
+/// (S05-031); the value piped is of its <c>input</c> by type equality (part 02 § 2.3; S05-026: a literal head is typed
+/// by its built-in type, and a head no format says is of no renderer's <c>input</c>), and in a chain each step's
+/// <c>format</c> is the next one's <c>input</c> (S05-034); a chain whose final value is a <c>markdown_block</c>
+/// renderer's, written in a tag with text on its line, warns (S05-061).
 /// </summary>
 public static partial class SourceTemplates
 {
@@ -44,11 +45,15 @@ public static partial class SourceTemplates
                 return;
             }
 
-            var source = output.Path ?? "value";
+            // The head as read: its path, else its literal or test as written (typed by its built-in type), else a
+            // value no format says ([1, 2], an interpolated string), which no renderer's input is.
+            var source = output.Path ?? output.Head;
             var written = source;
-            var current = head?.Format;
+            var current = output.Path is null && output.HeadType is { } type ? new JsonObject { ["type"] = type } : head?.Format;
+            var unknown = output.Path is null && output.HeadType is null;
             string? adjacent = null;
             int? last = null;
+            (string Id, int Line)? final = null;
             foreach (var pipe in output.Pipes)
             {
                 if (RendererOf(pipe) is not { } id)
@@ -75,6 +80,12 @@ public static partial class SourceTemplates
                 renders.Add(new TemplateRender(n, last is { } before ? $"render:{before}" : source, id));
 
                 var input = header["input"];
+                if (unknown)
+                {
+                    Refusals.Add(DialectSentences.PipesWrongFormat(host.Subject, written, "?", id, TypeStrings.Print(input, formats), host.Path));
+                    return;
+                }
+
                 if (current != null && FormatTypes.Shape(input, formats) != FormatShape.Unknown && !FormatTypes.Same(current, input, formats))
                 {
                     var (shown, wanted) = (TypeStrings.Print(current, formats), TypeStrings.Print(input, formats));
@@ -83,14 +94,17 @@ public static partial class SourceTemplates
                         : DialectSentences.PipesWrongFormat(host.Subject, written, shown, id, wanted, host.Path));
                 }
 
-                if (FormatSet.NameOf(header["format"]) == "markdown_block" && (output.Tag.TextBefore || output.Tag.TextAfter))
-                    Warnings.Add(DialectSentences.BlockRendererInsideALine(host.Subject, id, pipe.Line, host.Path));
-
                 current = header["format"];
                 written = $"renderer.{id}";
                 adjacent = id;
                 last = n;
+                final = (id, pipe.Line);
             }
+
+            // Part 05 § 5.4: what the tag writes is the chain's final value; when that is a markdown_block renderer's
+            // text (a built-in step after it keeps it) and the tag shares its line, it warns, naming that renderer.
+            if (final is { } placed && current != null && FormatSet.NameOf(current) == "markdown_block" && (output.Tag.TextBefore || output.Tag.TextAfter))
+                Warnings.Add(DialectSentences.BlockRendererInsideALine(host.Subject, placed.Id, placed.Line, host.Path));
         }
 
         /// <summary>S05-033 for each renderer among <paramref name="pipes"/>, in a renderer's body (part 05 § 5.1, R-N7).</summary>

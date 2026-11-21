@@ -56,7 +56,8 @@ public class RendererTests
         var types = SourceTypes.Check(parsed.Package!, registry);
 
         var refusal = Assert.Single(types.Refusals, r => r.Path == "renderers/terms.md");
-        Assert.Contains("no_such_list", refusal.Sentence, StringComparison.Ordinal);
+        Assert.Equal("S02-017", refusal.Id);
+        Assert.Equal("Format 'no_such_list' is not a built-in, catalogue or package format.", refusal.Sentence);
         V31Contract.AssertSentence(refusal);
     }
 
@@ -158,9 +159,11 @@ public class RendererTests
     [InlineData("Terms: {{ node.extract.value | renderer.concept_bullets }}\n", 1)]
     [InlineData("{{ node.extract.value | renderer.concept_bullets }} and more.\n", 1)]
     [InlineData("Terms:\n{{ node.extract.value | renderer.concept_bullets }}\n", 0)]
+    [InlineData("Terms: {{ node.extract.value | renderer.concept_bullets | renderer.quote }}\n", 0)]
     public void ABlockRendererInsideALine_Warns(string body, int warnings)
     {
-        var check = Check(WithExtract().WithAgent("draft", body));
+        // Only what the tag writes is placed in the line: a markdown_block step inside a chain is not.
+        var check = Check(WithExtract().WithRenderer("quote", "\"markdown_block\"", "{{ value }}\n", "markdown_inline").WithAgent("draft", body));
 
         Assert.Empty(check.Refusals);
         Assert.Equal(warnings, check.Warnings.Count);
@@ -188,17 +191,45 @@ public class RendererTests
     }
 
     [Theory]
-    [InlineData("{{ (node.plan.content) | renderer.concept_bullets }}")]
-    [InlineData("{{ node.extract.value | renderer.concept_bullets | renderer.nope | renderer.concept_context }}")]
-    [InlineData("{{ renderer.concept_bullets | renderer.concept_bullets }}")]
-    [InlineData("{{ node.extract.value | string.strip | renderer.concept_bullets }}")]
-    [InlineData("{{ node.extract.value | renderer.concept_bullets(1) | renderer.concept_bullets }}")]
-    [InlineData("{{ node.nope.value | renderer.concept_bullets }}")]
-    [InlineData("{{ for c in node.extract.value.concepts }}{{ c | renderer.concept_bullets }}{{ end }}")]
-    public void AnyRendererUse_IsCheckedOrRefused_NeverThrows(string body)
+    [InlineData("{{ (node.plan.value) | renderer.concept_bullets }}", "node.plan.value (section_plan)")]
+    [InlineData("{{ ((node.plan.value)) | renderer.concept_bullets }}", "node.plan.value (section_plan)")]
+    [InlineData("{{ \"text\" | renderer.concept_bullets }}", "\"text\" (string)")]
+    [InlineData("{{ 3 | renderer.concept_bullets }}", "3 (integer)")]
+    [InlineData("{{ 2.5 | renderer.concept_bullets }}", "2.5 (number)")]
+    [InlineData("{{ true | renderer.concept_bullets }}", "true (boolean)")]
+    [InlineData("{{ (node.extract.value | string.strip) | renderer.concept_bullets }}", "node.extract.value | string.strip (string)")]
+    public void AParenthesizedOrLiteralHead_IsTyped(string body, string piped)
+    {
+        var refusal = TemplateFixture.Single(Check(WithExtract().WithAgent("draft", body + "\n")));
+
+        Assert.Equal("S05-026", refusal.Id);
+        Assert.Equal($"Node 'draft' pipes {piped} into renderer.concept_bullets, which renders concept_list.", refusal.Sentence);
+    }
+
+    [Fact]
+    public void AParenthesizedPath_IsItsRead()
+    {
+        var body = Body(Check(WithExtract().WithAgent("draft", "{{ (node.extract.value) | renderer.concept_bullets }}\n")), "nodes/draft.md");
+
+        Assert.Equal([new TemplateRender(1, "node.extract.value", "concept_bullets")], body.Renders);
+    }
+
+    [Theory]
+    [InlineData("{{ (node.plan.content) | renderer.concept_bullets }}", "S05-026")]
+    [InlineData("{{ node.extract.value | renderer.concept_bullets | renderer.nope | renderer.concept_context }}", "S05-031")]
+    [InlineData("{{ renderer.concept_bullets | renderer.concept_bullets }}", "S05-030")]
+    [InlineData("{{ node.extract.value | string.strip | renderer.concept_bullets }}", "S05-026")]
+    [InlineData("{{ node.extract.value | renderer.concept_bullets(1) | renderer.concept_bullets }}", "S05-030")]
+    [InlineData("{{ node.nope.value | renderer.concept_bullets }}", "S05-011")]
+    [InlineData("{{ for c in node.extract.value.concepts }}{{ c | renderer.concept_bullets }}{{ end }}", "S05-026")]
+    [InlineData("{{ [1, 2] | renderer.concept_bullets }}", "S05-026")]
+    [InlineData("{{ null | renderer.concept_bullets }}", "S05-026")]
+    [InlineData("{{ (node.extract.value) | renderer.concept_bullets | renderer.concept_context }}", "S05-034")]
+    public void AnyRendererUse_IsRefused_NeverThrows(string body, string id)
     {
         var check = Check(WithExtract().WithAgent("draft", body + "\n"));
 
+        Assert.True(check.Refusals.Count > 0 && check.Refusals[0].Id == id, Said(check.Refusals));
         foreach (var refusal in check.Refusals.Concat(check.Warnings))
             V31Contract.AssertSentence(refusal);
     }

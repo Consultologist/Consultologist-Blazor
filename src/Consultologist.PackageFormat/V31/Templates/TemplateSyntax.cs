@@ -15,6 +15,10 @@ public sealed record TemplatePipe(string Name, IReadOnlyList<string> Arguments, 
 /// <paramref name="Paths"/> every access path the expression reads (pipe arguments included, built-in names not);
 /// <paramref name="Depth"/> the number of <c>if</c> and <c>for</c> around it and <paramref name="Enclosing"/> their
 /// kinds (<c>"if"</c>, <c>"for"</c>), outermost first. A path through a <c>for</c> variable keeps the variable (<c>s.value</c>).
+/// Parentheses around the head, or around a piped head (<c>(x | f) | g</c>), are taken off, so <c>(node.e.value)</c> is
+/// the path <c>node.e.value</c>. <paramref name="Head"/> is the head as written without them; <paramref name="HeadType"/>
+/// the built-in type of a head that is a literal or a test (<c>"string"</c>, <c>"integer"</c>, <c>"number"</c>,
+/// <c>"boolean"</c>, <c>"null"</c>), else <c>null</c>.
 /// </summary>
 public sealed record TemplateOutput(
     TemplateTag Tag,
@@ -22,7 +26,9 @@ public sealed record TemplateOutput(
     IReadOnlyList<TemplatePipe> Pipes,
     IReadOnlyList<string> Paths,
     int Depth,
-    IReadOnlyList<string> Enclosing);
+    IReadOnlyList<string> Enclosing,
+    string Head,
+    string? HeadType);
 
 /// <summary>#1504 (specVersion 31, area 07; part 05 § 2.1): a <c>for</c>: its variable, what it iterates as written, its tag, and the number of <c>if</c> and <c>for</c> around it.</summary>
 public sealed record TemplateFor(string Variable, string Source, TemplateTag Tag, int Depth);
@@ -192,7 +198,7 @@ public sealed record TemplateSyntax(
                 var paths = new List<string>();
                 CollectPaths(expression, paths);
                 _outputs.Add(new TemplateOutput(
-                    TagOf(node), Chain(head), steps.Select(Pipe).ToList(), paths, _enclosing.Count, [.. _enclosing]));
+                    TagOf(node), Chain(head), steps.Select(Pipe).ToList(), paths, _enclosing.Count, [.. _enclosing], Slice(head), TypeOf(head)));
             }
 
             Walk(node.Expression);
@@ -487,11 +493,16 @@ public sealed record TemplateSyntax(
             step is ScriptFunctionCall { Target: { } target } call ? (target, call.Arguments?.ToList() ?? []) : (step, []);
 
         /// <summary>
-        /// The head of a pipeline and its steps in order. Scriban reads <c>x | f | g</c> as a pipe from <c>x</c> to a
-        /// pipe from <c>f</c> to <c>g</c>; parentheses around a head pipeline are kept apart.
+        /// The head of a pipeline and its steps in order, parentheses taken off. Scriban reads <c>x | f | g</c> as a pipe
+        /// from <c>x</c> to a pipe from <c>f</c> to <c>g</c>; <c>(x | f) | g</c> is the same pipeline.
         /// </summary>
         private static (ScriptExpression? Head, List<ScriptExpression> Steps) Decompose(ScriptExpression? expression)
         {
+            if (expression is not null)
+            {
+                expression = DialectRules.Unwrap(expression);
+            }
+
             if (expression is not ScriptPipeCall pipe)
             {
                 return (expression, []);
@@ -514,6 +525,22 @@ public sealed record TemplateSyntax(
                 steps.Add(to);
             }
         }
+
+        /// <summary>The built-in type of a head that is a literal or a test (a comparison, <c>&amp;&amp;</c>, <c>||</c>, <c>!</c>); <c>null</c> for anything else.</summary>
+        private static string? TypeOf(ScriptExpression? head) => head switch
+        {
+            ScriptLiteral { Value: null } => "null",
+            ScriptLiteral { Value: string } => "string",
+            ScriptLiteral { Value: bool } => "boolean",
+            ScriptLiteral { Value: int or long or uint or ulong or short or byte or System.Numerics.BigInteger } => "integer",
+            ScriptLiteral { Value: double or float or decimal } => "number",
+            ScriptBinaryExpression { Operator: ScriptBinaryOperator.And or ScriptBinaryOperator.Or
+                or ScriptBinaryOperator.CompareEqual or ScriptBinaryOperator.CompareNotEqual
+                or ScriptBinaryOperator.CompareLess or ScriptBinaryOperator.CompareGreater
+                or ScriptBinaryOperator.CompareLessOrEqual or ScriptBinaryOperator.CompareGreaterOrEqual } => "boolean",
+            ScriptUnaryExpression { Operator: ScriptUnaryOperator.Not } => "boolean",
+            _ => null,
+        };
 
         /// <summary>The access path an expression is, dotted as written (<c>node.e.value</c>), or <c>null</c>.</summary>
         private static string? Chain(ScriptExpression? expression)
