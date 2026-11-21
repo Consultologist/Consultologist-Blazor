@@ -1619,8 +1619,10 @@ derived members:
   - `plainConverts` is that rule's list, and `[]` with no rule;
   - `form` is `block` or `inline` for a macro, and null otherwise.
 
-  A folder's macro is preceded once per entry by its `macro-folder.<id>`, which carries the folder's
-  `index.json` `if`. The snippets a macro's body places come right after the macro's own entry, `within` it, then
+  A folder's macro is preceded by its `macro-folder.<id>`, which carries the folder's `index.json` `if`, once for
+  each unit that places one of the folder's macros, `within` that unit. So the folder is decided wherever one of
+  its macros may be offered, whichever unit places its first macro, and (a site being decided once) at most once a
+  row. The snippets a macro's body places come right after the macro's own entry, `within` it, then
   the snippets its instruction places. A snippet's, a macro's and a part's own `if` in `snippets`, `macros` and
   `parts` stay as written.
 - **`names`** (D1) maps each `node.<id>` or `check.<id>` head written in the body, its parts and the snippet and
@@ -1681,6 +1683,13 @@ spot. `warnings` gains the dialect's S05-060 and S05-061.
     - returns a text format (S05-049), which takes the macro's format (S05-046);
     - is an agent: in a `rendered` node or a deliverable a macro is S05-047.
   - A prompt or a part that reads a node which carries profile text through a macro is S05-064.
+- **A placed unit's `if`** (part 05 §§ 3.2, 6.3 R-R3, 8.2; part 04 § 7.10): a snippet's, a macro's and a macro
+  folder's header `if` is checked as a condition at each placer's frame, through nested placements
+  (`SourceTemplates.PlacedRules`). As a definition it stays deferred (`ResolvedScopes`). A snippet's read that
+  place does not give is S05-022, naming the placer and the line: no such node, a package node in a function,
+  `item` outside a loop. A macro's is S04-063 when a function has no node it reads, and the checker's sentence
+  otherwise (S03-014 for a name that is not there). A unit whose `if` reads the node that places it is A05-003.
+  So every rule `placements` roots reads only what its place has, and a package publish accepts loads.
 
 ### Run spots
 
@@ -1784,7 +1793,8 @@ malformed placement is S07-006.
 When an agent, `rendered` or deliverable instance's gate holds, `PlanRunner` decides its placements in order:
 
 - A placement is decided only when its `within` is placed. For a folder's macro, its `macro-folder.<f>` must hold
-  too.
+  too: publish lists the folder before the macro in the macro's own unit, and a folder not decided does not hold,
+  as the composer does not offer its macros.
 - Each site is decided once.
 - A placement with no rule is placed, and no decision is recorded.
 - Each rule reads the instance's own frame. Its decision is a `RunDecision` whose `Site` is the row's key and whose
@@ -1871,10 +1881,13 @@ No member carries a value, a reply or a profile field: only ids, keys, hashes an
 The dialect says part 05's rows S05-001 to S05-064, with these exceptions:
 
 - S05-008 and S05-027 are the worked examples of S05-009 and S05-026;
-- S05-032 is the reader's S01-035;
-- S05-052 is said by no code of this area.
+- S05-032 is said as the reader's S01-035 (`SourceSentences`, a package renderer named like a built-in one), with
+  its refusal package;
+- S05-052 (a macro's `if` reading `param.*`) is said as S03-022 by the expression checker (`ExpressionChecker`,
+  `ExpressionSentences.MacroReadsParam`), with its refusal package.
 
-It also says S02-019, S04-063 and S06-028 where only a template reaches them. A rule with no row has an area
+It also says S02-019, S04-063 and S06-028 where only a template reaches them, and S03-014 and A05-003 of a placed
+unit's `if`. A rule with no row has an area
 sentence, in `V31Contract` and the conformance README:
 
 | Id | Sentence |
