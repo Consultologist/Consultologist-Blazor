@@ -132,8 +132,11 @@ public sealed class RunPlan
     /// <paramref name="resolveHash"/> and <paramref name="lockHash"/> (<see cref="CompiledPackage.Verify"/>), with an
     /// evaluator of its own whose <c>matches</c> and <c>has_word</c> stop at <paramref name="matchTimeLimit"/>. A document
     /// it cannot make a plan from (not an object; a key named and absent; a member of the wrong kind; a <c>ret</c> outside
-    /// its body; a body that holds an ancestor or the entry itself; a key missing from <c>graph.order</c>; a rule the
-    /// evaluator declines) is not what publish wrote, and is refused with S07-006 for its package. Never throws on the
+    /// its body; a body that holds an ancestor or the entry itself; a key missing from <c>graph.order</c>; a read under
+    /// <c>node.</c>, <c>check.</c> or <c>deliverable.</c> that names no entry of its scope; dependencies that form a circle, or
+    /// an entry depending on its own ancestor; a function that calls itself, directly or through others; a call whose
+    /// <c>with</c> is not exactly its function's parameters; a deliverable inside a flow node; an input not in
+    /// <c>inputOrder</c>; a rule the evaluator declines) is not what publish wrote, and is refused with S07-006 for its package. Never throws on the
     /// document; a null argument is the caller's error, and so is a time limit the evaluator refuses.
     /// </summary>
     public static (RunPlan? Plan, SourceRefusal? Refusal) Build(string resolve, string resolveHash, string lockHash, TimeSpan? matchTimeLimit)
@@ -268,6 +271,7 @@ public sealed class RunPlan
                 || Strings(document["inputOrder"]) is not { } inputOrder
                 || inputOrder.Any(i => !inputs.ContainsKey(i))
                 || inputOrder.Distinct(StringComparer.Ordinal).Count() != inputOrder.Count
+                || inputOrder.Count != inputs.Count
                 || Strings((document["needs"] as JsonObject)?["profile"]) is not { } profile
                 || Strings(document["run"]) is not { } run
                 || Objects(document["snippets"]) is not { } snippets
@@ -345,21 +349,31 @@ public sealed class RunPlan
                 functions.Add(id, (json, local, body, ret, parameters));
             }
 
-            // What a call calls, and what gates a deliverable, are there.
+            // What a call calls, with exactly its parameters, and what gates a deliverable, are there; a deliverable is top level.
             var allDrafts = drafts.Values.Concat(functions.Values.SelectMany(f => f.Drafts.Values));
-            if (allDrafts.Any(d => d.Kind == PlanKind.Call && (d.Function == null || !functions.ContainsKey(d.Function)))
-                || drafts.Values.Any(d => d.Check != null && (!drafts.TryGetValue(d.Check, out var check) || !check.Key.StartsWith("check.", StringComparison.Ordinal))))
+            if (allDrafts.Any(d => d.Kind == PlanKind.Call
+                    && (d.Function == null || !functions.TryGetValue(d.Function, out var called) || !Arguments(d, called.Inputs)))
+                || drafts.Values.Any(d => d.Check != null && (!drafts.TryGetValue(d.Check, out var check) || !check.Key.StartsWith("check.", StringComparison.Ordinal)))
+                || drafts.Values.Any(d => d.Kind == PlanKind.Deliverable && d.Parent != null))
             {
                 return false;
             }
 
-            var entries = drafts.ToDictionary(p => p.Key, p => Plan(p.Value, position[p.Key], drafts), StringComparer.Ordinal);
+            if (!Acyclic(functions.ToDictionary(
+                    p => p.Key,
+                    p => (IEnumerable<string>)p.Value.Drafts.Values.Where(d => d.Kind == PlanKind.Call).Select(d => d.Function!),
+                    StringComparer.Ordinal)))
+            {
+                return false; // a function that calls itself, directly or through others
+            }
+
+            if (Scope(drafts, k => position[k]) is not { } entries)
+                return false;
             var planFunctions = new Dictionary<string, PlanFunction>(StringComparer.Ordinal);
             foreach (var (id, function) in functions)
             {
-                if (Walk(function.Body, function.Drafts) is not { } walk)
+                if (Walk(function.Body, function.Drafts) is not { } walk || Scope(function.Drafts, k => walk[k]) is not { } local)
                     return false;
-                var local = function.Drafts.ToDictionary(p => p.Key, p => Plan(p.Value, walk[p.Key], function.Drafts), StringComparer.Ordinal);
                 planFunctions.Add(id, new PlanFunction(id, function.Inputs, function.Body, function.Ret, local, function.Json));
             }
 
@@ -549,20 +563,87 @@ public sealed class RunPlan
             return positions.Count == drafts.Count ? positions : null;
         }
 
-        /// <summary>The entry of <paramref name="draft"/>, with what it depends on in <paramref name="map"/>.</summary>
-        private static PlanEntry Plan(Draft draft, int order, Dictionary<string, Draft> map)
+        /// <summary>
+        /// The entries of one scope (the package's map, or a function's), each with what it depends on; null when a read
+        /// under <c>node.</c>, <c>check.</c> or <c>deliverable.</c> names no entry of the scope, when an entry depends on one
+        /// of its ancestors, or when the dependencies, with each flow node depending on its children, form a circle.
+        /// </summary>
+        private static Dictionary<string, PlanEntry>? Scope(Dictionary<string, Draft> map, Func<string, int> order)
         {
-            var depends = draft.Reads
-                .Select(path => Named(path, map))
-                .OfType<string>()
-                .Where(k => k != draft.Key)
-                .Distinct(StringComparer.Ordinal)
-                .Order(StringComparer.Ordinal)
-                .ToList();
-            return new PlanEntry(
-                draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order, draft.Json, draft.Rules,
-                draft.Body, draft.Branches, draft.Ret, draft.Reads, depends);
+            var entries = new Dictionary<string, PlanEntry>(StringComparer.Ordinal);
+            var edges = new Dictionary<string, IEnumerable<string>>(StringComparer.Ordinal);
+            foreach (var draft in map.Values)
+            {
+                var depends = new SortedSet<string>(StringComparer.Ordinal);
+                foreach (var path in draft.Reads)
+                {
+                    var dot = path.IndexOf('.');
+                    var root = dot < 0 ? path : path[..dot];
+                    if (Unnamed.Contains(root))
+                        continue;
+                    var named = Named(path, map);
+                    if (named == null)
+                    {
+                        if (root is "node" or "check" or "deliverable")
+                            return null; // a key named and absent
+                        continue;
+                    }
+
+                    if (named != draft.Key)
+                        depends.Add(named);
+                }
+
+                // An entry reading one of its ancestors is a circle (A05-003 at publish); the containment edges below find it.
+                edges[draft.Key] = depends.Concat(draft.Children).ToList();
+                entries.Add(draft.Key, new PlanEntry(
+                    draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order(draft.Key), draft.Json, draft.Rules,
+                    draft.Body, draft.Branches, draft.Ret, draft.Reads, depends.ToList()));
+            }
+
+            return Acyclic(edges) ? entries : null;
         }
+
+        /// <summary>Whether the directed graph <paramref name="edges"/> (each key to the keys it needs) has no circle; iterative (Kahn's).</summary>
+        private static bool Acyclic(Dictionary<string, IEnumerable<string>> edges)
+        {
+            var waiting = edges.Keys.ToDictionary(k => k, _ => 0, StringComparer.Ordinal);
+            var needed = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+            foreach (var (key, targets) in edges)
+            {
+                foreach (var target in targets.Distinct(StringComparer.Ordinal))
+                {
+                    if (!waiting.ContainsKey(target))
+                        continue;
+                    waiting[key]++;
+                    if (!needed.TryGetValue(target, out var by))
+                        needed[target] = by = [];
+                    by.Add(key);
+                }
+            }
+
+            var ready = new Queue<string>(waiting.Where(p => p.Value == 0).Select(p => p.Key));
+            var done = 0;
+            while (ready.Count > 0)
+            {
+                var key = ready.Dequeue();
+                done++;
+                if (!needed.TryGetValue(key, out var by))
+                    continue;
+                foreach (var waiter in by)
+                {
+                    if (--waiting[waiter] == 0)
+                        ready.Enqueue(waiter);
+                }
+            }
+
+            return done == waiting.Count;
+        }
+
+        /// <summary>Whether a call's <c>with</c> names exactly the called function's parameters.</summary>
+        private static bool Arguments(Draft call, IReadOnlyList<string> parameters) =>
+            call.Json["with"] is JsonObject arguments
+            && arguments.Count == parameters.Count
+            && parameters.All(arguments.ContainsKey);
 
         /// <summary>The longest key of <paramref name="map"/> that <paramref name="path"/> is, or begins with before a dot; null for none.</summary>
         private static string? Named(string path, Dictionary<string, Draft> map)
