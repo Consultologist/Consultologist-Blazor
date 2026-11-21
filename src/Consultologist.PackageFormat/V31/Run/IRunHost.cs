@@ -56,6 +56,10 @@ public interface IRunHost
     /// <summary>Renders a rendered node's or a deliverable's body.</summary>
     Task<RenderOutcome> RenderAsync(RenderCall call);
 
-    /// <summary>Waits <paramref name="wait"/> on the host's timer.</summary>
-    Task DelayAsync(TimeSpan wait);
+    /// <summary>
+    /// Waits <paramref name="wait"/> on the host's timer. When <paramref name="cancel"/> is cancelled first, the timer is
+    /// cancelled and the task ends cancelled: an orchestration does not complete while a durable timer is outstanding, so the
+    /// runner cancels every timer it made when its run ends.
+    /// </summary>
+    Task DelayAsync(TimeSpan wait, CancellationToken cancel);
 }

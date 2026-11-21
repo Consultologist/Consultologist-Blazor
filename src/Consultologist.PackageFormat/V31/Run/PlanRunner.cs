@@ -109,6 +109,9 @@ public sealed partial class PlanRunner
         /// <summary>The host's timer for the job's time left, made the first time the run waits.</summary>
         private Task? jobTimer;
 
+        /// <summary>Cancels every timer the run made (the job's and each retry's) when the run ends, on every path.</summary>
+        private readonly CancellationTokenSource timers = new();
+
         /// <summary>When the orchestration started (the job's time limit runs from it).</summary>
         public DateTime StartedAtUtc { get; } = startedAtUtc;
 
@@ -117,45 +120,53 @@ public sealed partial class PlanRunner
             foreach (var key in plan.TopLevel)
                 Add(top, plan.Entries[key]);
 
-            if (PastTheJobLimit())
-                await TimeOutAsync();
-
-            while (failure == null)
+            try
             {
-                await SettleRoundAsync();
-                if (failure != null)
-                    break;
-                await DispatchAsync();
-                if (failure != null)
-                    break;
-
-                if (flights.Count == 0)
-                {
-                    // Nothing in flight and nothing more settles: the run is over, or stuck (a document publish did not write).
-                    if (Unsettled().FirstOrDefault() is { } stuck)
-                        await FailAsync(stuck, ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
-                    break;
-                }
-
-                jobTimer ??= host.DelayAsync(StartedAtUtc + TimeSpan.FromMinutes(limits.JobMinutes) - host.UtcNow);
-                var finished = await Task.WhenAny(flights.Select(f => f.Task).Append(jobTimer));
-                if (ReferenceEquals(finished, jobTimer) || PastTheJobLimit())
-                {
-                    // Nothing that finished at or after the limit is read.
+                if (PastTheJobLimit())
                     await TimeOutAsync();
-                    break;
+
+                while (failure == null)
+                {
+                    await SettleRoundAsync();
+                    if (failure != null)
+                        break;
+                    await DispatchAsync();
+                    if (failure != null)
+                        break;
+
+                    if (flights.Count == 0)
+                    {
+                        // Nothing in flight and nothing more settles: the run is over, or stuck (a document publish did not write).
+                        if (Unsettled().FirstOrDefault() is { } stuck)
+                            await FailAsync(stuck, ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
+                        break;
+                    }
+
+                    jobTimer ??= host.DelayAsync(TimeLeft(), timers.Token);
+                    var finished = await Task.WhenAny(flights.Select(f => f.Task).Append(jobTimer));
+                    if (ReferenceEquals(finished, jobTimer) || PastTheJobLimit())
+                    {
+                        // Nothing that finished at or after the limit is read.
+                        await TimeOutAsync();
+                        break;
+                    }
+
+                    var flight = flights.First(f => ReferenceEquals(f.Task, finished));
+                    flights.Remove(flight);
+                    await LandAsync(flight);
                 }
-
-                var flight = flights.First(f => ReferenceEquals(f.Task, finished));
-                flights.Remove(flight);
-                await LandAsync(flight);
             }
-
-            // What is still in flight is never awaited: its late answer changes nothing, and its fault is never unobserved.
-            foreach (var abandoned in flights)
-                Observe(abandoned.Task);
-            if (jobTimer != null)
-                Observe(jobTimer);
+            finally
+            {
+                // What is still in flight is never awaited: its late answer changes nothing, its timer is cancelled (an
+                // orchestration does not complete while one is outstanding), and its fault is never unobserved.
+                timers.Cancel();
+                foreach (var abandoned in flights)
+                    Observe(abandoned.Task);
+                if (jobTimer != null)
+                    Observe(jobTimer);
+                timers.Dispose();
+            }
 
             var values = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
             foreach (var instance in top.Instances)

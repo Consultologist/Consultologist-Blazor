@@ -6,9 +6,13 @@ namespace Consultologist.PackageFormat.V31.Run;
 
 public sealed partial class PlanRunner
 {
+    /// <summary>The least wait applied before a retry, in milliseconds: the back-off's start (part 09 § 3.4).</summary>
+    private const int LeastWaitMilliseconds = 5000;
+
     /// <summary>
     /// One agent call, across its attempts: the call as first made, the 429 waits taken (in milliseconds), the other service
-    /// failures met, whether its repair was asked for, and each retry's record.
+    /// failures met, the replies it got, whether its repair was asked for, its <c>onInvalid</c> outcome (part 08 § 4's
+    /// <c>invalid</c>, null while every reply was valid), and each retry's record (part 08 § 4's <c>retries</c>).
     /// </summary>
     private sealed class AgentState(AgentCall call)
     {
@@ -18,7 +22,11 @@ public sealed partial class PlanRunner
 
         public int ServiceFailures { get; set; }
 
+        public int Replies { get; set; }
+
         public bool Repaired { get; set; }
+
+        public (string Reason, string Action)? Invalid { get; set; }
 
         public JsonArray Retries { get; } = [];
     }
@@ -53,7 +61,8 @@ public sealed partial class PlanRunner
         private async Task AgentAsync(RunInstance instance, AgentOutcome outcome)
         {
             var state = agentStates[instance];
-            var wait = Math.Max(0, outcome.WaitMilliseconds);
+            // A wait of 0 or less would call again at once: the back-off's start is applied instead, and counted.
+            var wait = outcome.WaitMilliseconds > 0 ? outcome.WaitMilliseconds : LeastWaitMilliseconds;
             switch (outcome.Kind)
             {
                 case AgentOutcomeKind.Completed:
@@ -67,7 +76,7 @@ public sealed partial class PlanRunner
                     }
 
                     state.CapacityWaited += wait;
-                    Retry(instance, state, wait, "capacity", null);
+                    Retry(instance, wait, "capacity", null);
                     return;
                 default:
                     state.ServiceFailures++;
@@ -78,44 +87,61 @@ public sealed partial class PlanRunner
                         return;
                     }
 
-                    Retry(instance, state, wait, "service", outcome.ErrorKind);
+                    Retry(instance, wait, "service", RecordedError(outcome.ErrorKind));
                     return;
             }
         }
 
-        /// <summary>Records a retry on the node's row (its time, its wait, what for, the error's kind) and waits on the host's timer, holding the slot.</summary>
-        private void Retry(RunInstance instance, AgentState state, int wait, string reason, string? errorKind)
+        /// <summary>
+        /// Records a retry on the node's row as part 08 § 4 words it (<c>{ atUtc, waitMs, kind, error }</c>) and waits on the
+        /// host's timer, holding the slot. The timer is cancelled if the run ends first.
+        /// </summary>
+        private void Retry(RunInstance instance, int wait, string kind, string? error)
         {
-            state.Retries.Add(new JsonObject
+            agentStates[instance].Retries.Add(new JsonObject
             {
                 ["atUtc"] = host.UtcNow.ToString("O", CultureInfo.InvariantCulture),
-                ["waitMilliseconds"] = wait,
-                ["for"] = reason,
-                ["errorKind"] = errorKind,
+                ["waitMs"] = wait,
+                ["kind"] = kind,
+                ["error"] = error,
             });
-            flights.Add(new Flight(instance, host.DelayAsync(TimeSpan.FromMilliseconds(wait)), FlightKind.Retry));
+            flights.Add(new Flight(instance, host.DelayAsync(TimeSpan.FromMilliseconds(wait), timers.Token), FlightKind.Retry));
         }
+
+        /// <summary>Part 08 § 4's <c>error</c> for the host's kind of a service failure: <c>timeout</c>, <c>5xx</c> or <c>connection</c>.</summary>
+        private static string RecordedError(string? kind) => kind switch
+        {
+            "timeout" => "timeout",
+            "unreachable" => "connection",
+            _ => "5xx",
+        };
 
         /// <summary>
         /// A reply (part 02 § 3.4, part 05 § 1.2): read as its format's value (a text format's reply is the text) and validated
         /// against the full format. An invalid one is asked again once, under <c>onInvalid: "retry"</c>, in the same slot and
         /// as the same call; invalid again, or under <c>"fail"</c>, the node fails with A06-005, which names the format and
-        /// never the reply. A valid value that is empty fails the node with its <c>failIfEmpty</c> sentence, when it has one.
+        /// never the reply. The outcome is the row's <c>invalid</c> (part 08 § 4): that sentence as its <c>reason</c>, the
+        /// node's <c>onInvalid</c> as its <c>action</c>, and the replies the node got as its <c>attempts</c>. A valid value
+        /// that is empty fails the node with its <c>failIfEmpty</c> sentence, when it has one.
         /// </summary>
         private async Task RepliedAsync(RunInstance instance, AgentState state, string reply)
         {
             var entry = instance.Entry;
+            state.Replies++;
             var (value, parsed) = plan.Formats.Read(reply, entry.Format);
             if (!parsed || !plan.Formats.Validate(value, entry.Format).Valid)
             {
-                if (!state.Repaired && SourceLayout.Text(entry.Json["onInvalid"]) == "retry")
+                var sentence = $"Node '{entry.Id}' gave a reply that isn't {FormatName(entry.Format)}.";
+                var retry = SourceLayout.Text(entry.Json["onInvalid"]) == "retry";
+                state.Invalid = (sentence, retry ? "retry" : "fail");
+                if (retry && !state.Repaired)
                 {
                     state.Repaired = true;
                     CallAgain(instance);
                     return;
                 }
 
-                await FailAsync(instance, $"Node '{entry.Id}'{InFunction(instance)} gave a reply that isn't {FormatName(entry.Format)}.");
+                await FailAsync(instance, sentence);
                 return;
             }
 
@@ -139,18 +165,27 @@ public sealed partial class PlanRunner
             _ => false,
         };
 
-        /// <summary>An agent row's detail: its <c>retries</c> (<c>[]</c> for none) and whether it was <c>repaired</c>.</summary>
+        /// <summary>An agent row's detail, in part 08 § 4's names: <c>invalid</c> (<c>null</c> when every reply was valid) and <c>retries</c> (<c>[]</c> for none).</summary>
         private void AgentDetail(RunInstance instance, JsonObject detail)
         {
             var state = agentStates.GetValueOrDefault(instance);
+            detail["invalid"] = state?.Invalid is { } invalid
+                ? new JsonObject { ["reason"] = invalid.Reason, ["action"] = invalid.Action, ["attempts"] = state.Replies }
+                : null;
             detail["retries"] = state?.Retries.DeepClone() ?? new JsonArray();
-            detail["repaired"] = state?.Repaired ?? false;
         }
 
         // ---- the job limit --------------------------------------------------------------------
 
         /// <summary>Whether the job has run <see cref="RunLimits.JobMinutes"/> from its orchestration's start, by the host's clock.</summary>
         private bool PastTheJobLimit() => host.UtcNow - StartedAtUtc >= TimeSpan.FromMinutes(limits.JobMinutes);
+
+        /// <summary>The job's time left by the host's clock, never below zero.</summary>
+        private TimeSpan TimeLeft()
+        {
+            var left = StartedAtUtc + TimeSpan.FromMinutes(limits.JobMinutes) - host.UtcNow;
+            return left > TimeSpan.Zero ? left : TimeSpan.Zero;
+        }
 
         /// <summary>
         /// The job reached its time limit (part 09 § 3.4): it times out with S09-012, and each instance in flight (a call, a
