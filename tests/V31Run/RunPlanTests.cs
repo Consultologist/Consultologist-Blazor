@@ -185,14 +185,36 @@ public class RunPlanTests
         "a body that contains an ancestor",
         "a loop in its own body",
         "a key dropped from the order",
-        "a rule without its plainConverts");
+        "a rule without its plainConverts",
+        "an in naming an absent node",
+        "a with value naming an absent node",
+        "a case subject naming an absent node",
+        "a read naming an absent check",
+        "a read naming an absent deliverable",
+        "a var naming an absent node",
+        "a function's read naming a key of the package",
+        "two nodes reading each other",
+        "a body node reading its own loop",
+        "a function calling itself",
+        "a ring of three functions",
+        "a deliverable inside a loop",
+        "a call missing a parameter",
+        "an input missing from inputOrder");
 
     [Theory]
     [MemberData(nameof(Corruptions))]
     public void EachCorruption_IsRefused(string corruption)
     {
-        var document = JsonNode.Parse(GoldenText("nested-note"))!.AsObject();
+        var golden = corruption switch
+        {
+            "a with value naming an absent node" or "a function's read naming a key of the package" or "a function calling itself"
+                or "a ring of three functions" or "a call missing a parameter" => "functions",
+            "a case subject naming an absent node" or "an input missing from inputOrder" => "conditional",
+            _ => "nested-note",
+        };
+        var document = JsonNode.Parse(GoldenText(golden))!.AsObject();
         var nodes = document["nodes"]!.AsObject();
+        var function = document["functions"]!["draft_section"] as JsonObject;
         switch (corruption)
         {
             case "a key named and absent":
@@ -214,8 +236,59 @@ public class RunPlanTests
             case "a key dropped from the order":
                 document["graph"]!["order"]!.AsArray().RemoveAt(2);
                 break;
-            default:
+            case "a rule without its plainConverts":
                 nodes["node.refine"]!["plainConverts"] = new JsonObject();
+                break;
+            case "an in naming an absent node":
+                nodes["node.sections"]!["in"] = "node.not_there.value.sections";
+                break;
+            case "a with value naming an absent node":
+                nodes["node.standards.section"]!["with"]!["draft"] = "node.gone.value";
+                break;
+            case "a case subject naming an absent node":
+                nodes["node.sections_draft.route"]!["case"] = "node.gone.value.kind";
+                break;
+            case "a read naming an absent check":
+                nodes["node.plan"]!["reads"]!.AsArray().Add("check.gone.value");
+                break;
+            case "a read naming an absent deliverable":
+                nodes["node.plan"]!["reads"]!.AsArray().Add("deliverable.gone");
+                break;
+            case "a var naming an absent node":
+                nodes["node.section_count"]!["expression"] = JsonNode.Parse("""{"size":[{"var":"node.gone.value.sections"}]}""");
+                break;
+            case "a function's read naming a key of the package":
+                function!["nodes"]!["node.apply_instructions"]!["reads"]!.AsArray().Add("node.plan.content");
+                break;
+            case "two nodes reading each other":
+                nodes["node.plan"]!["reads"]!.AsArray().Add("node.section_count.value");
+                break;
+            case "a body node reading its own loop":
+                nodes["node.sections.paragraphs.draft_paragraph"]!["reads"]!.AsArray().Add("node.sections.items");
+                break;
+            case "a function calling itself":
+                function!["nodes"]!["node.apply_instructions"] = CallOf("apply_instructions", "draft_section");
+                break;
+            case "a ring of three functions":
+                var functions = document["functions"]!.AsObject();
+                foreach (var (id, next) in new[] { ("ring_a", "ring_b"), ("ring_b", "ring_c"), ("ring_c", "ring_a") })
+                {
+                    var ring = function!.DeepClone().AsObject();
+                    ring["id"] = id;
+                    ring["nodes"]!["node.apply_instructions"] = CallOf("apply_instructions", next);
+                    functions[id] = ring;
+                }
+
+                break;
+            case "a deliverable inside a loop":
+                document["deliverables"]!["deliverable.note"]!["parent"] = "node.refine";
+                nodes["node.refine"]!["nodes"]!.AsArray().Add("deliverable.note");
+                break;
+            case "a call missing a parameter":
+                nodes["node.standards.section"]!["with"]!.AsObject().Remove("draft");
+                break;
+            default:
+                document["inputOrder"]!.AsArray().RemoveAt(2);
                 break;
         }
 
@@ -223,6 +296,38 @@ public class RunPlanTests
 
         Assert.Null(plan);
         Assert.Equal("S07-006", refusal!.Id);
+    }
+
+    /// <summary>A top-level call entry of a function's body, keyed <c>node.&lt;id&gt;</c>, calling <paramref name="function"/> with draft_section's parameters.</summary>
+    private static JsonObject CallOf(string id, string function) => new()
+    {
+        ["format"] = new JsonObject { ["$ref"] = "#/$defs/plaintext" },
+        ["function"] = function,
+        ["id"] = id,
+        ["if"] = null,
+        ["kind"] = "call",
+        ["parent"] = null,
+        ["plainConverts"] = new JsonObject(),
+        ["reads"] = new JsonArray("param.draft", "param.standard"),
+        ["with"] = new JsonObject { ["draft"] = "param.draft", ["standard"] = "param.standard" },
+    };
+
+    [Fact]
+    public void AWellFormedCallInsideAFunction_Builds()
+    {
+        // The control for the call corruptions: a function calling another (not itself) builds.
+        var document = JsonNode.Parse(GoldenText("functions"))!.AsObject();
+        var functions = document["functions"]!.AsObject();
+        var caller = functions["draft_section"]!.DeepClone().AsObject();
+        caller["id"] = "outer";
+        caller["nodes"]!["node.apply_instructions"] = CallOf("apply_instructions", "draft_section");
+        functions["outer"] = caller;
+
+        var (plan, refusal) = RunPlan.Build(document.ToJsonString(), "sha256:x", "sha256:y", null);
+
+        Assert.True(refusal == null, refusal?.Sentence);
+        Assert.Equal("draft_section", plan!.Functions["outer"].Entries["node.apply_instructions"].Function);
+        AssertConsistent(plan);
     }
 
     [Theory]
@@ -284,6 +389,19 @@ public class RunPlanTests
         }
 
         Map(plan.Entries, plan);
+        AssertAcyclic(plan.Entries.ToDictionary(
+            p => p.Key,
+            p => p.Value.Depends.Where(d => !IsDescendant(plan.Entries, d, p.Key)).ToList()), "Depends");
+        foreach (var function in plan.Functions.Values)
+        {
+            AssertAcyclic(function.Entries.ToDictionary(
+                p => p.Key,
+                p => p.Value.Depends.Where(d => !IsDescendant(function.Entries, d, p.Key)).ToList()), $"{function.Id}'s Depends");
+        }
+
+        AssertAcyclic(plan.Functions.ToDictionary(
+            p => p.Key,
+            p => p.Value.Entries.Values.Where(e => e.Kind == PlanKind.Call).Select(e => e.Function!).ToList()), "calls");
         foreach (var key in plan.TopLevel)
             Assert.Null(plan.Entries[key].Parent);
         foreach (var function in plan.Functions.Values)
@@ -294,6 +412,37 @@ public class RunPlanTests
             if (function.Ret != null)
                 Assert.True(function.Entries.ContainsKey(function.Ret), $"function {function.Id}: ret {function.Ret}");
         }
+    }
+
+    /// <summary>Whether <paramref name="key"/>'s chain of parents in <paramref name="entries"/> reaches <paramref name="ancestor"/>.</summary>
+    private static bool IsDescendant(IReadOnlyDictionary<string, PlanEntry> entries, string key, string ancestor)
+    {
+        for (var at = entries[key].Parent; at != null; at = entries[at].Parent)
+        {
+            if (at == ancestor)
+                return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>Asserts the graph <paramref name="edges"/> (each key to the keys it needs) has no circle, by removing what needs nothing until nothing is left.</summary>
+    private static void AssertAcyclic(Dictionary<string, List<string>> edges, string what)
+    {
+        var left = edges.ToDictionary(p => p.Key, p => p.Value.Where(edges.ContainsKey).ToHashSet(StringComparer.Ordinal));
+        bool removed;
+        do
+        {
+            var free = left.Where(p => p.Value.Count == 0).Select(p => p.Key).ToList();
+            removed = free.Count > 0;
+            foreach (var key in free)
+                left.Remove(key);
+            foreach (var targets in left.Values)
+                targets.ExceptWith(free);
+        }
+        while (removed);
+
+        Assert.True(left.Count == 0, $"{what} form a circle through {string.Join(", ", left.Keys)}");
     }
 
     // ---- mutations ----------------------------------------------------------------------------
