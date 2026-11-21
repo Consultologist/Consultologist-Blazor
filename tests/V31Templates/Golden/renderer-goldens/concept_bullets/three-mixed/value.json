@@ -1,0 +1,31 @@
+{
+  "concepts": [
+    {
+      "term": "Malignant neoplasm of breast",
+      "type": "disorder",
+      "id": "254837009",
+      "isSnomedConcept": true,
+      "isActive": true,
+      "source": "extract",
+      "support": "stage II"
+    },
+    {
+      "term": "Diabetes mellitus",
+      "type": "disorder",
+      "id": "73211009",
+      "isSnomedConcept": true,
+      "isActive": false,
+      "source": "draft",
+      "support": "  long-standing  "
+    },
+    {
+      "term": "Family support strong",
+      "type": "",
+      "id": null,
+      "isSnomedConcept": false,
+      "isActive": false,
+      "source": "extract",
+      "support": null
+    }
+  ]
+}

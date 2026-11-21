@@ -1,0 +1,3 @@
+0: History of present illness
+1: Examination
+2: Assessment and plan

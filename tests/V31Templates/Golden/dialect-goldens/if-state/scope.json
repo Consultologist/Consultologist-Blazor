@@ -1,0 +1,71 @@
+{
+  "node": {
+    "drafts": {
+      "items": [
+        {
+          "item": {
+            "id": "1",
+            "value": {
+              "title": "History of present illness",
+              "kind": "narrative"
+            }
+          },
+          "label": "History of present illness",
+          "state": "completed",
+          "reason": null,
+          "value": "Two weeks of fatigue, worse in the afternoons.",
+          "content": "Two weeks of fatigue, worse in the afternoons.",
+          "nodes": {
+            "draft": {
+              "value": "Two weeks of fatigue, worse in the afternoons.",
+              "content": "Two weeks of fatigue, worse in the afternoons.",
+              "state": "completed"
+            }
+          }
+        },
+        {
+          "item": {
+            "id": "2",
+            "value": {
+              "title": "Examination",
+              "kind": "table"
+            }
+          },
+          "label": "Examination",
+          "state": "skipped",
+          "reason": "skipped: item.value.kind = \"table\" is false",
+          "value": null,
+          "content": null,
+          "nodes": {
+            "draft": {
+              "value": null,
+              "content": null,
+              "state": "skipped"
+            }
+          }
+        },
+        {
+          "item": {
+            "id": "3",
+            "value": {
+              "title": "Assessment and plan",
+              "kind": "narrative"
+            }
+          },
+          "label": "Assessment and plan",
+          "state": "not_run",
+          "reason": "not run: beyond max 2",
+          "value": null,
+          "content": null,
+          "nodes": {
+            "draft": {
+              "value": null,
+              "content": null,
+              "state": "not_run"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

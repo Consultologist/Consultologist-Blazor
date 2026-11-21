@@ -1,0 +1,1 @@
+{ "$schema": "urn:consultologist:spec:31:dialect", "type": "object", "required": ["title"], "additionalProperties": false, "properties": { "title": { "$ref": "plaintext" } } }

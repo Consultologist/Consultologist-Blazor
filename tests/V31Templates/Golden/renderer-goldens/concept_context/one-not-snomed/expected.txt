@@ -1,0 +1,1 @@
+- Lives alone (finding) - ; active: False; source: extract

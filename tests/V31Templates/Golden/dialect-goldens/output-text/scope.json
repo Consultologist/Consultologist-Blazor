@@ -1,0 +1,27 @@
+{
+  "input": {
+    "consult_draft": {
+      "content": "Margaret Okafor, 58, referred by Dr A. Sample for two weeks of fatigue (fictional)."
+    }
+  },
+  "node": {
+    "plan": {
+      "value": {
+        "sections": [
+          {
+            "title": "History of present illness",
+            "kind": "narrative"
+          },
+          {
+            "title": "Examination",
+            "kind": "table"
+          },
+          {
+            "title": "Assessment and plan",
+            "kind": "narrative"
+          }
+        ]
+      }
+    }
+  }
+}

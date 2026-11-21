@@ -1,0 +1,170 @@
+[
+  {
+    "plain": "!",
+    "escaped": "\\!"
+  },
+  {
+    "plain": "\"",
+    "escaped": "\\\""
+  },
+  {
+    "plain": "#",
+    "escaped": "\\#"
+  },
+  {
+    "plain": "$",
+    "escaped": "\\$"
+  },
+  {
+    "plain": "%",
+    "escaped": "\\%"
+  },
+  {
+    "plain": "&",
+    "escaped": "\\&"
+  },
+  {
+    "plain": "'",
+    "escaped": "\\'"
+  },
+  {
+    "plain": "(",
+    "escaped": "\\("
+  },
+  {
+    "plain": ")",
+    "escaped": "\\)"
+  },
+  {
+    "plain": "*",
+    "escaped": "\\*"
+  },
+  {
+    "plain": "+",
+    "escaped": "\\+"
+  },
+  {
+    "plain": ",",
+    "escaped": "\\,"
+  },
+  {
+    "plain": "-",
+    "escaped": "\\-"
+  },
+  {
+    "plain": ".",
+    "escaped": "\\."
+  },
+  {
+    "plain": "/",
+    "escaped": "\\/"
+  },
+  {
+    "plain": ":",
+    "escaped": "\\:"
+  },
+  {
+    "plain": ";",
+    "escaped": "\\;"
+  },
+  {
+    "plain": "<",
+    "escaped": "\\<"
+  },
+  {
+    "plain": "=",
+    "escaped": "\\="
+  },
+  {
+    "plain": ">",
+    "escaped": "\\>"
+  },
+  {
+    "plain": "?",
+    "escaped": "\\?"
+  },
+  {
+    "plain": "@",
+    "escaped": "\\@"
+  },
+  {
+    "plain": "[",
+    "escaped": "\\["
+  },
+  {
+    "plain": "\\",
+    "escaped": "\\\\"
+  },
+  {
+    "plain": "]",
+    "escaped": "\\]"
+  },
+  {
+    "plain": "^",
+    "escaped": "\\^"
+  },
+  {
+    "plain": "_",
+    "escaped": "\\_"
+  },
+  {
+    "plain": "`",
+    "escaped": "\\`"
+  },
+  {
+    "plain": "{",
+    "escaped": "\\{"
+  },
+  {
+    "plain": "|",
+    "escaped": "\\|"
+  },
+  {
+    "plain": "}",
+    "escaped": "\\}"
+  },
+  {
+    "plain": "~",
+    "escaped": "\\~"
+  },
+  {
+    "plain": "Margaret Okafor, 58, seen by Dr A. Sample on 20/11/2026.",
+    "escaped": "Margaret Okafor\\, 58\\, seen by Dr A\\. Sample on 20\\/11\\/2026\\."
+  },
+  {
+    "plain": "BP 128/82 mmHg; HR 88 bpm (regular); SpO2 98% on air.",
+    "escaped": "BP 128\\/82 mmHg\\; HR 88 bpm \\(regular\\)\\; SpO2 98\\% on air\\."
+  },
+  {
+    "plain": "Plan: FBC + ferritin -> review in 2 weeks [if Hb < 110 g/L].",
+    "escaped": "Plan\\: FBC \\+ ferritin \\-\\> review in 2 weeks \\[if Hb \\< 110 g\\/L\\]\\."
+  },
+  {
+    "plain": "* Not a bullet: she said \"I'm tired all the time\" & wants answers!",
+    "escaped": "\\* Not a bullet\\: she said \\\"I\\'m tired all the time\\\" \\& wants answers\\!"
+  },
+  {
+    "plain": "# Not a heading; _not emphasis_ and `not code` either.",
+    "escaped": "\\# Not a heading\\; \\_not emphasis\\_ and \\`not code\\` either\\."
+  },
+  {
+    "plain": "Metformin 500 mg BD ~ 1 g/day; aim HbA1c <= 53 mmol/mol.",
+    "escaped": "Metformin 500 mg BD \\~ 1 g\\/day\\; aim HbA1c \\<\\= 53 mmol\\/mol\\."
+  },
+  {
+    "plain": "1. Not a list item: Dr A. Sample's {follow-up} at 09:30 = done?",
+    "escaped": "1\\. Not a list item\\: Dr A\\. Sample\\'s \\{follow\\-up\\} at 09\\:30 \\= done\\?"
+  },
+  {
+    "plain": "Allergies: penicillin (rash) | none known @ home; see note #4.",
+    "escaped": "Allergies\\: penicillin \\(rash\\) \\| none known \\@ home\\; see note \\#4\\."
+  },
+  {
+    "plain": "    Seen with her daughter; the four spaces before this line stay as written.",
+    "escaped": "    Seen with her daughter\\; the four spaces before this line stay as written\\."
+  },
+  {
+    "plain": "Fatigue – two weeks, worse ≥ 3 pm; café visit with her daughter, née Adeyemi.\nSecond line: \\ back-slashed.",
+    "escaped": "Fatigue – two weeks\\, worse ≥ 3 pm\\; café visit with her daughter\\, née Adeyemi\\.\nSecond line\\: \\\\ back\\-slashed\\."
+  }
+]

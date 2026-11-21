@@ -1,0 +1,2 @@
+Write the letter to Margaret Okafor.
+End the letter's last sentence with {{ macro.letters.closing.content }} before the signature.

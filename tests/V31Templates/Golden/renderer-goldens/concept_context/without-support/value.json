@@ -1,0 +1,13 @@
+{
+  "concepts": [
+    {
+      "term": "Tamoxifen therapy",
+      "type": "procedure",
+      "id": "75367002",
+      "isSnomedConcept": true,
+      "isActive": true,
+      "source": "extract",
+      "support": null
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "item": {
+    "id": "hpi",
+    "value": {
+      "title": "History of Present Illness"
+    },
+    "content": "Open with '{{ item.value.title }}'. The draft:\n{{ input.consult_draft.content }}\n"
+  },
+  "input": {
+    "consult_draft": {
+      "content": "Margaret Okafor, 58, referred by Dr A. Sample for two weeks of fatigue (fictional)."
+    }
+  }
+}

@@ -144,6 +144,16 @@ internal static class V31Contract
         return path;
     }
 
+    /// <summary>#1504 (area 07): the folder of the pinned suite's family <paramref name="family"/>; fails when the pin has none.</summary>
+    public static string ConformanceFolder(string family)
+    {
+        var path = System.IO.Path.Combine(RepoRoot(), "external", "consultologist-package-format", "v31", "conformance", family);
+        Assert.True(
+            Directory.Exists(path),
+            $"{path} is missing — the submodule is not checked out (git submodule update --init), or its pin has no {family}.");
+        return path;
+    }
+
     public static JsonNode Json(params string[] parts) => JsonNode.Parse(File.ReadAllText(Path(parts)))!;
 
     /// <summary>
