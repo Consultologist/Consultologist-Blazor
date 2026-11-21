@@ -117,6 +117,8 @@ public static partial class BodyComposer
             if (Plan(body, site + ".content", 1) is not { } bodyPlan)
                 throw Stopped(new ComposeStop(NotPublished));
             var text = Render(bodyPlan, Globals());
+            if (text.EndsWith('\n'))
+                text = text[..^1]; // the file's last line ending is not the body's: it would end a line mid-sentence
             if (RunPlan.Formats.TextFormat(macro!["format"]) == "plaintext" && RunPlan.Formats.TextFormat(Entry.Format) is "markdown_block" or "markdown_inline")
                 text = MarkdownEscape.Escape(text);
 
