@@ -27,12 +27,12 @@ public class BodyComposerTests
 
     private static readonly IReadOnlyDictionary<string, bool> NothingPlaced = new Dictionary<string, bool>(StringComparer.Ordinal);
 
-    private static Composition Compose(
+    internal static Composition Compose(
         RunPlan plan, string entryKey, JsonObject scope, IReadOnlyDictionary<string, bool>? placed = null, string? function = null, int steps = 100_000) =>
         BodyComposer.Compose(plan, new ComposeRequest(entryKey, function, scope, placed ?? NothingPlaced, steps));
 
     /// <summary>The data a body is given: each path's value at the path itself, as <see cref="RunScope"/> places it.</summary>
-    private static JsonObject Scope(params (string Path, JsonNode? Value)[] paths)
+    internal static JsonObject Scope(params (string Path, JsonNode? Value)[] paths)
     {
         var scope = new JsonObject();
         foreach (var (path, value) in paths)
@@ -56,9 +56,9 @@ public class BodyComposerTests
         return scope;
     }
 
-    private static Dictionary<string, bool> Placed(params string[] sites) => sites.ToDictionary(s => s, _ => true, StringComparer.Ordinal);
+    internal static Dictionary<string, bool> Placed(params string[] sites) => sites.ToDictionary(s => s, _ => true, StringComparer.Ordinal);
 
-    private static string Composed(Composition composition)
+    internal static string Composed(Composition composition)
     {
         Assert.True(composition.Failure == null, composition.Failure);
         Assert.False(composition.TooManySteps);
