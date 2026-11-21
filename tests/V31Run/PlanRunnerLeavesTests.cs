@@ -338,22 +338,31 @@ public class PlanRunnerLeavesTests
     [Fact]
     public async Task AReaderOfAFlowNode_IsNotRun_UntilItSettles_AndAStuckRunFails()
     {
-        // Until Task 8 gives `call` a step, the functions golden's loop node.standards, whose body is a call, never settles:
-        // this pins that the stuck guard ends the run Failed with S07-006 on the first unsettled instance in the fixed
-        // order, without hanging, and that the readers of the flow node never ran. Replace when Task 8 gives `call` a step.
-        var plan = RunFixture.Plan("functions");
-        var host = new FakeRunHost(auto: true).Reply("node.extract_input_terms", """{"concepts":[]}""");
+        // A compiled document publish never writes (part 04 § 4: a loop's body is hidden from outside it), whose two flow
+        // nodes each wait on the other: node.sections.outline reads node.refine.judge, and node.refine.draft_summary reads
+        // node.sections.paragraphs.draft_paragraph. RunPlan.Build finds no circle among the keys (outline → judge →
+        // draft_summary → draft_paragraph), but a reader of a key in a frame it cannot see waits for the flow node that
+        // holds it: the outline for the while, the while's pass for the loop. Nothing can move, so the stuck guard ends the
+        // run Failed with S07-006 on the first unsettled instance in the fixed order, without hanging, and the readers of
+        // the flow nodes never ran.
+        var document = JsonNode.Parse(File.ReadAllText(Path.Combine(CompiledGoldenTests.GoldenFolder(), "nested-note.resolve.json")))!.AsObject();
+        var nodes = document["nodes"]!.AsObject();
+        nodes["node.sections.outline"]!["reads"]!.AsArray().Add("node.refine.judge.content");
+        nodes["node.refine.draft_summary"]!["reads"]!.AsArray().Add("node.sections.paragraphs.draft_paragraph.content");
+        var (plan, refusal) = RunPlan.Build(document.ToJsonString(), "sha256:x", "sha256:y", null);
+        Assert.True(refusal == null, refusal?.Sentence);
+        var host = new FakeRunHost(auto: true).Reply("node.plan", ThreeSections);
         var recorder = new ListRecorder();
 
-        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Inputs(), FakeRunHost.Start);
+        var result = await FakeRunHost.Drive(() => new PlanRunner(plan!, new RunLimits(), host, recorder).RunAsync(Inputs(), FakeRunHost.Start));
 
         Assert.Equal(RunState.Failed, result.State);
-        Assert.Equal("node.standards", result.FailedKey);
-        Assert.Equal("Workflow example-functions@v2026.12.1 can't run: its compiled document doesn't match the hash published for it.", result.Sentence);
+        Assert.Equal("node.sections", result.FailedKey);
+        Assert.Equal("Workflow example-nested-note@v2026.12.1 can't run: its compiled document doesn't match the hash published for it.", result.Sentence);
         V31Contract.AssertSentence(new SourceRefusal("S07-006", result.Sentence!, ""));
-        Assert.Equal(["node.plan", "node.extract_input_terms"], host.Dispatched); // node.extract_note_terms reads node.standards
-        Assert.Empty(host.Renders); // deliverable.emr.consult reads node.standards, which never settled
-        Assert.Equal(["node.plan", "node.extract_input_terms", "node.standards"], recorder.Rows.Select(r => r.Key));
+        Assert.Equal(["node.plan"], host.Dispatched); // each outline waits on node.refine, its draft_summary on node.sections
+        Assert.Empty(host.Renders); // deliverable.note reads node.refine, which never settled
+        Assert.Equal(["node.plan", "node.section_count", "node.sections"], recorder.Rows.Select(r => r.Key));
     }
 
     // ---- failures -------------------------------------------------------------------------------

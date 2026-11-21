@@ -460,7 +460,8 @@ public class PlanRunnerLoopsTests
     [Fact]
     public async Task ACheckLoop_RunsEachItemAsItsProductionItemSettles()
     {
-        // The production loop's body here is two agents; the functions golden's is a call, which Task 8 covers.
+        // The production loop's body here is two agents, so each check can overlap production; the functions golden's call form
+        // is PlanRunnerCallsTests.ACheckLoop_OverACallsLoop_TakesEachItemAsItsCallSettles.
         var plan = RunFixture.Plan(ChecksPerItem(), ChecksPerItemReads());
         var host = ConceptsHost(auto: false);
         var recorder = new ListRecorder();
@@ -804,7 +805,7 @@ public class PlanRunnerLoopsTests
 
     /// <summary>
     /// <see cref="ResolveFixture.Functions"/> with the loop <c>standards</c>'s body made two agents, <c>section</c> (its
-    /// ret, reading the folder item's title and body) and <c>section_terms</c>, in place of the call (Task 8 runs calls),
+    /// ret, reading the folder item's title and body) and <c>section_terms</c>, in place of the call,
     /// and the function removed; the check <c>coverage</c> reads its item's <c>section_terms</c>, so each check runs as its
     /// production item settles.
     /// </summary>
