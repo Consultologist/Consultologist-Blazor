@@ -83,7 +83,9 @@ public class RunGoldenTests
                 Assert.Equal(Result(auto), Result(shuffled));
                 Assert.InRange(shuffled.Host.InFlightPeak, 1, ceiling);
 
-                // each dispatch the first waiting call in the fixed order; a replay with the same order the same dispatches
+                // each dispatch the first waiting call in the fixed order (the oracle is what catches an order fault); a
+                // replay with the same release order the same dispatches, which proves only that the run is a function of
+                // that order within one process, not that the order is the fixed one
                 DispatchOracle.Holds(plan, shuffled.Host.Calls, shuffled.Recorder, shuffled.Result);
                 Assert.Equal(shuffled.Host.Dispatched, again.Host.Dispatched);
                 Assert.Equal(RunTrace.Of(shuffled.Host, shuffled.Recorder, shuffled.Result), RunTrace.Of(again.Host, again.Recorder, again.Result));
