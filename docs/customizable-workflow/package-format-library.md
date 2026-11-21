@@ -697,8 +697,9 @@ it later.
 
 ### The resolve step
 
-`SourceResolve.Check(package, types)` runs these rules, then sorts its refusals by path. `Resolution`
-is null exactly when there is one.
+`SourceResolve.Check(package, types)` returns the tuple
+`(IReadOnlyList<SourceRefusal> Refusals, Resolution? Resolution)`. It runs these rules, then sorts
+its refusals by path. `Resolution` is null exactly when there is a refusal.
 
 - **Loops** (`SourceResolve.Loops.cs`). For a loop's `in`:
   - A05-001 when it is not a reference; S03-014 when it names nothing (`Loop 'x' reads …`);
@@ -746,7 +747,9 @@ is null exactly when there is one.
 
 ### The derived values and the seam
 
-`SourceDerived.Check(package, types, resolution, expressions, templates = null)` builds a graph with
+`SourceDerived.Check(package, types, resolution, expressions, templates = null)` returns the tuple
+`(IReadOnlyList<SourceRefusal> Refusals, PackageDerived? Derived)`, with `Derived` null exactly when
+there is a refusal (ordered by path). It builds a graph with
 one vertex per entry: each node, check and deliverable, and each renderer, snippet and macro (folders
 and their items included). Each read is resolved with `ScopeTree.Resolve` where it is read.
 
@@ -867,7 +870,9 @@ A check with refusals comes back with them and no document. The document has eve
 null. There is no time anywhere: the same source and toolchain give the same bytes, whatever the
 upload's order or line ends.
 
-- **Formats** (`CompiledFormats.Build`, D5). The bundle holds every format a `format` member names
+- **Formats** (D5). `CompiledFormats.Build(package, types, registry)` returns a `CompiledFormats`
+  record: `Bundle`, `FormatHashes`, `TypeHashes` and `Bindings` (each a `JsonObject`), and
+  `Refusals` (A05-004). The bundle holds every format a `format` member names
   (or a renderer's `input`), and every format those reach, each with its `$id` and `$schema`.
   - A package format's `$id` is `urn:consultologist:package:<name>@<version>:format:<id>`.
   - A function's own format is keyed `<function>__<id>`, with `$id`
@@ -920,7 +925,8 @@ upload's order or line ends.
 under the nine folders, each hash taken after `\r\n` → `\n`. `dag.mmd`, the compiled copies and the
 publish report are not in it.
 
-**`lock.json`.** `LockCompiler.Compile(resolve, resolveHash, toolchain)` writes § 4.1's members in
+**`lock.json`.** `LockCompiler.Compile(resolve, resolveHash, toolchain)` returns the document as a
+`JsonObject` (`CanonicalJson.Write` gives its bytes). It never refuses, and has § 4.1's members in
 order: `package`, the `Toolchain`'s release, dialect, libraries, evaluator, runtime and catalogues,
 `operations` (each name of `requires.operations` at its exact version), `builtins` (`formats`,
 `markdown_escape`, `plain_conversion`, `printer`, plus each built-in renderer an entry `renders`
@@ -934,9 +940,13 @@ builds a `Toolchain` by hand, as the goldens do.
 
 **The pair.** `CompiledPackage.Publish(upload, registry, toolchain, limits = null, templates = null)`
 is steps 1, 2 and 4.1 to 4.3 of part 07 § 5. It checks, compiles `resolve.json` and hashes it, then
-builds `lock.json` with that hash and hashes it. It gives a `CompiledPackage`: `Resolve`,
-`ResolveHash`, `Lock`, `LockHash`, `SourceHash`, `Warnings` and `Complete`. Any refusal comes back with
-nothing compiled. It returns the pair even when `Complete` is false: the caller decides, and a pair
+builds `lock.json` with that hash and hashes it. It returns the tuple
+`(IReadOnlyList<SourceRefusal> Refusals, CompiledPackage? Compiled)`. `Compiled` is null whenever
+`Refusals` is not empty: the check's, or the compiler's. Its guard also gives null, with no
+refusal, if the compiler wrote no document, which a check that refused nothing never leads to. So in
+practice `Compiled` is null exactly when there is a refusal. A `CompiledPackage` holds `Resolve`,
+`ResolveHash`, `Lock`, `LockHash`, `SourceHash`, `Warnings` and `Complete`. `Publish` returns the
+pair even when `Complete` is false: the caller decides, and a pair
 that is not complete is not the one to store. The rules run over the source model before compiling,
 not over the compiled document (part 07 § 5 step 2 reads the other way). The source's in-package
 tests are not run here.
@@ -961,9 +971,16 @@ missing or of another shape is refused.
     - the locked version is not a version;
     - or the package is locked before one of the component's break points, with the engine at or
       past it.
-  - S07-003 for a break point of another locked library (Markdig, the two Corvus libraries), held to
-    `EngineCapabilities.Libraries`. An engine version that is missing or not a version is `unknown`,
-    and is refused.
+  - S07-003 for another locked library (Markdig, the two Corvus libraries) only when all of these
+    hold:
+    - the library is a key of the lock's `libraries`;
+    - the engine has a break point for it;
+    - the locked version is before that break point (a missing locked version counts as before);
+    - the engine's own version of it (`EngineCapabilities.Libraries`) is at or past the break
+      point, or is missing or not a version.
+
+    A missing or invalid version is said as `unknown`. With no break point for a library, nothing is
+    said of it.
   - S07-004 for each kind or feature the engine lacks, and S07-005 for each agent version it lacks.
   - At most one refusal per component. Where the document says nothing, the sentence says `unknown`.
 
