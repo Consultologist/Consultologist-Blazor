@@ -14,7 +14,17 @@ public interface IWorkflowPackageStore
     Task<WorkflowPackage> ResolveAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken);
 }
 
-public sealed class WorkflowPackageStore : IWorkflowPackageStore
+/// <summary>
+/// #1503 (specVersion 31, area 06; part 09 § 1.2 step 1): the version a ref names, as the 5–30 load resolves it: a
+/// <c>latest</c> ref through <c>{name}/latest.json</c> and its 60-second cache, any other as written. The 31 load
+/// shares the store's pointer and its cache rather than keeping its own.
+/// </summary>
+public interface IWorkflowPackageVersions
+{
+    Task<string> ResolveVersionAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken);
+}
+
+public sealed class WorkflowPackageStore : IWorkflowPackageStore, IWorkflowPackageVersions
 {
     /// <summary>A manifest declares the rule set it was validated under (package-format-v6-design.md § 9).</summary>
     // v12 (#623): the engine runs twelve — the last rung of the v12 ladder
@@ -114,6 +124,10 @@ public sealed class WorkflowPackageStore : IWorkflowPackageStore
         _logger.LogInformation("Workflow package resolved. Package={Package}, SpecVersion={SpecVersion}, Prompts={PromptCount}", cacheKey, manifest.SpecVersion, package.Prompts?.Count ?? 0);
         return package;
     }
+
+    /// <inheritdoc />
+    public Task<string> ResolveVersionAsync(WorkflowPackageRef packageRef, CancellationToken cancellationToken) =>
+        packageRef.IsLatest ? ResolveLatestVersionAsync(packageRef.Name, cancellationToken) : Task.FromResult(packageRef.Version);
 
     /// <summary>
     /// The package a load hands the run path, built from what <see cref="Materialise"/>

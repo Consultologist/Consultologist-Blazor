@@ -8,6 +8,7 @@ using Microsoft.Extensions.Logging;
 using OpenAI.Responses;
 using System.ClientModel;
 using System.ClientModel.Primitives;
+using Consultologist.PackageFormat.V31.Run;
 
 namespace Consultologist.Api.Agents;
 
@@ -16,7 +17,7 @@ namespace Consultologist.Api.Agents;
 /// the assistant text. Prompt content lives in workflow packages (milestone 3 retired
 /// the compiled prompt builders); rendering happens at the call sites.
 /// </summary>
-public sealed class AgentSectionGenerator
+public sealed class AgentSectionGenerator : IAgentAttempts
 {
     private readonly ILogger<AgentSectionGenerator> _logger;
     private readonly TokenCredential _credential;
@@ -144,6 +145,40 @@ public sealed class AgentSectionGenerator
 
         Console.Error.WriteLine(PromptDiagnostics.Describe("AgentResponse", stage, assistantText));
         return new AgentPromptResult(assistantText, UsageOf(sdkResponse.Usage));
+    }
+
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; part 09 § 3.4; D7): one attempt of <see cref="SendPromptAsync"/>, which is unchanged:
+    /// its reply, or the service failure it met (<see cref="AgentAttempt.Of"/>: a 429, a 5xx, a time-out, no connection),
+    /// which a 31 orchestration waits on and retries itself. An empty reply, which <c>SendPromptAsync</c> throws as an
+    /// <see cref="InvalidOperationException"/>, is a completed attempt with empty text (<see cref="AgentAttempt.EmptyReply"/>):
+    /// model output, which the runner's validation, <c>failIfEmpty</c> and <c>onInvalid</c> decide. Anything else propagates.
+    /// One attempt holds while <c>AzureAI__MaxRetries</c> is 0 (its default): <c>SendPromptAsync</c>'s client retry policy
+    /// would otherwise retry a 429 or a 5xx inside the attempt.
+    /// </summary>
+    public async Task<AgentAttempt> TryPromptOnceAsync(
+        string stage,
+        string userMessage,
+        string agentName,
+        string agentVersion,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var reply = await SendPromptAsync(stage, userMessage, agentName, agentVersion, cancellationToken);
+            return new AgentAttempt(AgentOutcomeKind.Completed, reply.Text, reply.Tokens, null, null);
+        }
+        catch (Exception ex) when (AgentAttempt.Of(ex, cancellationToken, DateTimeOffset.UtcNow) is { } failed)
+        {
+            _logger.LogWarning(
+                "Foundry agent attempt ended without a reply. Stage={Stage}, Kind={Kind}, ErrorKind={ErrorKind}, RetryAfterMs={RetryAfterMs}, ExceptionType={ExceptionType}",
+                stage,
+                failed.Kind,
+                failed.ErrorKind,
+                failed.RetryAfterMilliseconds,
+                ex.GetType().FullName);
+            return failed;
+        }
     }
 
     /// <summary>

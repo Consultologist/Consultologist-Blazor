@@ -236,7 +236,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // ran stamps at its first document; nothing here will stamp it later.
         Stamp(state, 7);
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
-        state.History.Add(new JobHistoryEvent("failure", "No document applies", input.Reason, DateTimeOffset.UtcNow));
+        // #1503: a 31 job refused at its start (its load, its account or its inputs) did not start; 5–30 keep their line.
+        state.History.Add(new JobHistoryEvent(
+            "failure", input.Initialize.PackageSpecVersion >= 31 ? "Not started" : "No document applies", input.Reason, DateTimeOffset.UtcNow));
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -326,6 +328,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
             pair => pair.Value,
             StringComparer.Ordinal);
         State.ExcludedMacros ??= input.ExcludedMacros?.ToList();
+        // #1503 (specVersion 31): the header as the start read it; RecordV31Header fills what is still unset.
+        State.ResolveHash ??= input.ResolveHash;
+        State.LockHash ??= input.LockHash;
+        State.Limits ??= input.Limits?.ToDictionary(member => member.Key, member => member.Value!.GetValue<int>(), StringComparer.Ordinal);
+        State.StartedAtUtc ??= input.StartedAtUtc;
 
         // v10 (#496): a job that starts deciding has no count yet — the
         // boundary stamps it. Every other job is decided at start, as it always
@@ -368,6 +375,45 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; part 08 § 3; part 09 § 1.2 step 6): a 31 job's header, recorded by its orchestration
+    /// once, before any node runs: the <c>resolveHash</c> and <c>lockHash</c> it runs, the limits in force, and when its
+    /// orchestration started (the job limit is timed from it). The start's <c>Initialize</c> records the same hashes and
+    /// limits (the orchestration input carries what the start read); each member is written once, by whichever comes
+    /// first, so a second call (a replay's, say) changes nothing.
+    /// </summary>
+    public void RecordV31Header(ConsultGenerationV31Header input)
+    {
+        var state = EnsureState();
+        state.ResolveHash ??= input.ResolveHash;
+        state.LockHash ??= input.LockHash;
+        state.Limits ??= new Dictionary<string, int>(input.Limits, StringComparer.Ordinal);
+        state.StartedAtUtc ??= input.StartedAtUtc;
+        State = state;
+    }
+
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; D12): a 31 job's progress: one finished row (its key and state) or, with no state, one
+    /// decision. Counts and the current key only; the rows themselves are area 09's.
+    /// </summary>
+    public void RecordV31Progress(ConsultGenerationV31Progress input)
+    {
+        var state = EnsureState();
+        var progress = state.V31Progress ??= new ConsultV31ProgressState();
+        if (input.State is { } rowState)
+        {
+            progress.Rows++;
+            progress.States[rowState] = progress.States.GetValueOrDefault(rowState) + 1;
+            progress.CurrentKey = input.Key;
+        }
+        else
+        {
+            progress.Decisions++;
+        }
+
+        State = state;
     }
 
     public async Task CompleteBlock(BlockGenerationResult result)
@@ -886,6 +932,45 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
         state.Status = ConsultGenerationJobStatuses.Failed;
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// #1503 (part 09 § 3.6, S09-018; D9): the job waits behind a drain — its start parked its orchestration, or its
+    /// orchestration met the drain after its schedule wait. A job already running or ended is left as it is.
+    /// </summary>
+    public async Task MarkWaitingForUpdate()
+    {
+        var state = EnsureState();
+        if (state.Status is not (ConsultGenerationJobStatuses.Queued or ConsultGenerationJobStatuses.Scheduled))
+        {
+            return;
+        }
+
+        state.Status = ConsultGenerationJobStatuses.WaitingForUpdate;
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// #1503 (D9): <c>Admin/Resume</c> scheduled the job's parked orchestration: it is Queued again, or Scheduled while
+    /// its time is still to come. Only a job still waiting changes, so a resume landing after the orchestration's own
+    /// <see cref="MarkRunning"/> changes nothing.
+    /// </summary>
+    public async Task EndWaitingForUpdate()
+    {
+        var state = EnsureState();
+        if (state.Status != ConsultGenerationJobStatuses.WaitingForUpdate)
+        {
+            return;
+        }
+
+        state.Status = state.ScheduledAtUtc is { } scheduledAt && scheduledAt > DateTimeOffset.UtcNow
+            ? ConsultGenerationJobStatuses.Scheduled
+            : ConsultGenerationJobStatuses.Queued;
         State = state;
 
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
@@ -1415,7 +1500,12 @@ public sealed record ConsultGenerationOrchestrationInput(
     // v29 (#1305): the package's specVersion, for the engine's at-29 rules (the
     // deliverable's row at composition, "produced" meaning released). Null on a
     // job started before this field — read as below 29. Appended last, same rule.
-    int? PackageSpecVersion = null);
+    int? PackageSpecVersion = null,
+    // #1503 (part 09 § 3.6; D9): started by a build that drains, so the orchestration checks the drain after its
+    // schedule wait. False on every payload from before (it reads as absent), and written only when true, so a false
+    // input writes the bytes it wrote before. Appended last, same rule.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    bool DrainAware = false);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -1509,7 +1599,21 @@ public sealed record ConsultGenerationJobInitialize(
     string? FormatsRef = null,
     // v29 (#1303, design § 1.1): the loops whose count is not yet known —
     // written once; ResolveLoop removes each as it settles. Appended last.
-    IReadOnlyList<string>? UnresolvedLoops = null);
+    IReadOnlyList<string>? UnresolvedLoops = null,
+    // #1503 (specVersion 31, part 09 § 1.2 step 6): a 31 job's header as its start
+    // read it — the resolveHash and lockHash it runs and the limits in force
+    // (RunLimits.ToJson's nine members) — and when its orchestration started, null
+    // at the start (the orchestration's RecordV31Header writes it). All null below
+    // 31, so every stored payload reads as before; not written when null, so every
+    // 5–30 payload writes the bytes it always wrote. Appended last, same rule.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? ResolveHash = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    string? LockHash = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    System.Text.Json.Nodes.JsonObject? Limits = null,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    DateTimeOffset? StartedAtUtc = null);
 
 /// <summary>
 /// v29 (#1303, design § 1.2): a loop over a node's value, settled — the loop,
@@ -1676,6 +1780,24 @@ public sealed record ConsultGenerationNodeFailure(
     // beyond what Error already carries. Appended last, positional rule.
     string? ErrorType = null,
     string? ErrorStack = null);
+
+/// <summary>
+/// #1503 (specVersion 31, area 06; part 08 § 3): a 31 job's header as its orchestration records it: the hashes it runs, the
+/// nine limits in force (<c>RunLimits.ToJson</c>'s members), and when the orchestration started.
+/// </summary>
+public sealed record ConsultGenerationV31Header(string ResolveHash, string LockHash, IReadOnlyDictionary<string, int> Limits, DateTimeOffset StartedAtUtc);
+
+/// <summary>#1503 (specVersion 31, area 06; D12): a finished row (its key and part 08's state), or a decision (its site's key, no state).</summary>
+public sealed record ConsultGenerationV31Progress(string Key, string? State);
+
+/// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress: rows settled, by state, decisions made, and the last row's key.</summary>
+public sealed class ConsultV31ProgressState
+{
+    public int Rows { get; set; }
+    public Dictionary<string, int> States { get; set; } = new(StringComparer.Ordinal);
+    public int Decisions { get; set; }
+    public string? CurrentKey { get; set; }
+}
 
 public sealed record ConsultGenerationJobFinalize(
     string Status,
@@ -2024,6 +2146,25 @@ public sealed class ConsultGenerationJobState
     /// below 30 and when the job has none.
     /// </summary>
     public List<ConsultLoopInstanceRow>? LoopInstances { get; set; }
+
+    /// <summary>
+    /// #1503 (specVersion 31, area 06; part 08 § 3): the SHA-256 of the canonical <c>resolve.json</c> and <c>lock.json</c> a
+    /// 31 job ran, and the limits in force (exactly <c>RunLimits.ToJson</c>'s nine members), recorded once before any node
+    /// runs. Null, and not written, below 31.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? ResolveHash { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? LockHash { get; set; }
+
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public Dictionary<string, int>? Limits { get; set; }
+
+    /// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress, counts and the current key only. Null, and not written, below 31.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ConsultV31ProgressState? V31Progress { get; set; }
+
     public Dictionary<string, ConsultNodeOutputState>? NodeOutputs { get; set; }
 
     // v6: the result aggregator's rendered output — the deliverable itself
@@ -2593,6 +2734,12 @@ public static class ConsultGenerationJobStatuses
     // #202: a Scheduled job called off before its timer fired. Terminal, and
     // distinct from Failed: nothing went wrong and nothing was spent.
     public const string Cancelled = "Cancelled";
+
+    /// <summary>
+    /// #1503 (part 09 § 3.6, S09-018; D9): a job held behind a drain — started during one (its orchestration parked), or
+    /// a scheduled one whose timer ended during one. Not terminal; it starts after <c>Admin/Resume</c>.
+    /// </summary>
+    public const string WaitingForUpdate = "Waiting for an update to finish";
 }
 
 public static class ConsultGenerationActivityNames
@@ -2610,6 +2757,21 @@ public static class ConsultGenerationActivityNames
     // item, in an activity over the item's scope — the orchestrator stays
     // deterministic and reads the branch back on replay.
     public const string DecideFlowItem = "decide-flow-item";
+
+    /// <summary>#1503 (specVersion 31, area 06; D7): one attempt of a 31 agent call. No Durable retry policy: the orchestration retries.</summary>
+    public const string RunAgentNodeV31 = "run-agent-node-v31";
+
+    /// <summary>#1503 (specVersion 31, area 06): a 31 rendered node's or deliverable's render.</summary>
+    public const string RenderNodeV31 = "render-node-v31";
+
+    /// <summary>#1503 (specVersion 31, area 06): a 31 job's verified <c>resolve.json</c>, for its orchestration's plan.</summary>
+    public const string LoadPlanV31 = "load-plan-v31";
+
+    /// <summary>#1503 (specVersion 31, area 06): a 31 job's inputs, profile fields included, read by reference.</summary>
+    public const string LoadRunInputsV31 = "load-run-inputs-v31";
+
+    /// <summary>#1503 (part 09 § 3.6; D9): whether the engine is draining, read by a drain-aware orchestration after its schedule wait.</summary>
+    public const string CheckDrain = "check-drain";
 }
 
 public static class ConsultGenerationItemSteps

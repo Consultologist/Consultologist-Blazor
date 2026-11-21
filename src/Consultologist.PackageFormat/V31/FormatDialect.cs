@@ -337,6 +337,8 @@ public static partial class FormatDialect
                 case "enum" or "oneOf":
                     if (value is not JsonArray values)
                         WrongType(pointer, keyword, value, "a list");
+                    else if (IsNumericEnum(schema, keyword, values, declared))
+                        NumericValues(values, pointer, declared);
                     else if (Place(pointer, keyword, declared, "string", "a string")
                         && !(schema.ContainsKey("enum") && schema.ContainsKey("oneOf")))
                         Values(keyword, values, pointer, declared);

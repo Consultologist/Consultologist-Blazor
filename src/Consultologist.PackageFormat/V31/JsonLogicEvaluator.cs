@@ -66,6 +66,11 @@ public interface IJsonLogicEvaluator
 /// singleton. The lock is per instance, so a slow <c>matches</c> stalls every other rule run on that instance, and the
 /// compiled-rule cache is never emptied: it lives, and grows with the rules compiled, as long as the instance does.
 /// </para>
+/// <para>
+/// #1503 (R2): an instance may have a time limit on each evaluation of <c>matches</c> and of <c>has_word</c>; past it the
+/// rule fails with <see cref="JsonLogicFailureKind.MatchTooSlow"/> (A06-001). Such an instance keeps its own cache of
+/// patterns compiled with the limit as their time-out. Without a limit (publish-time probing, the tests) nothing is timed.
+/// </para>
 /// </summary>
 public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
 {
@@ -83,7 +88,7 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
     private static readonly JsonDocumentOptions Reading = new() { MaxDepth = MaxJsonDepth };
     private static readonly Corvus.Text.Json.JsonDocumentOptions CorvusReading = new() { MaxDepth = MaxJsonDepth };
 
-    private readonly JsonLogicEvaluator corvus = new(Compilers());
+    private readonly JsonLogicEvaluator corvus;
 
     // Corvus 5.8.12 remembers the last rule it ran as two fields written one after the other
     // (_lastRuleIdentity, _lastCompiled), so two threads evaluating different rules at once can run
@@ -91,6 +96,20 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
     // result read outside the lock.
     private readonly Lock gate = new();
     private readonly ConcurrentDictionary<string, IJsonLogicRule> compiled = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// An evaluator whose <c>matches</c> and <c>has_word</c> each stop at <paramref name="matchTimeLimit"/> (#1503 R2),
+    /// or, with <c>null</c>, are never timed.
+    /// </summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="matchTimeLimit"/> is zero or less, or longer than a regex time-out can be.</exception>
+    public CorvusJsonLogicEvaluator(TimeSpan? matchTimeLimit = null)
+    {
+        MatchTimeLimit = matchTimeLimit;
+        corvus = new JsonLogicEvaluator(Compilers(matchTimeLimit is { } limit ? new SearchTimeLimit(limit) : null));
+    }
+
+    /// <summary>The time limit on each evaluation of <c>matches</c> and of <c>has_word</c>, or <c>null</c> for none.</summary>
+    public TimeSpan? MatchTimeLimit { get; }
 
     /// <inheritdoc />
     public string Version => JsonLogicOperations.EvaluatorVersion;
@@ -239,7 +258,7 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
 
     // ---- our compilers ----
 
-    private static Dictionary<string, IOperatorCompiler> Compilers()
+    private static Dictionary<string, IOperatorCompiler> Compilers(SearchTimeLimit? limit)
     {
         var compilers = new Dictionary<string, IOperatorCompiler>(StringComparer.Ordinal)
         {
@@ -253,7 +272,7 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
         foreach (var operation in JsonLogicOperations.All)
         {
             if (operation.Name is not ("if" or "!" or "===" or "!==") && !compilers.ContainsKey(operation.Name))
-                compilers[operation.Name] = new Compiler(operands => Generic(operation.Name, operands));
+                compilers[operation.Name] = new Compiler(operands => Generic(operation.Name, operands, limit));
         }
         return compilers;
     }
@@ -324,14 +343,14 @@ public sealed class CorvusJsonLogicEvaluator : IJsonLogicEvaluator
             return Result(JsonLogicFunctions.Apply("plain", [markdown], converts), workspace);
         };
 
-    /// <summary>Every other operation of § 5: its operands evaluated, then <see cref="JsonLogicFunctions.Apply"/>.</summary>
-    private static RuleEvaluator Generic(string operation, RuleEvaluator[] operands) =>
+    /// <summary>Every other operation of § 5: its operands evaluated, then <see cref="JsonLogicFunctions.Apply"/> under the instance's <paramref name="limit"/>.</summary>
+    private static RuleEvaluator Generic(string operation, RuleEvaluator[] operands, SearchTimeLimit? limit) =>
         (in CorvusElement data, CorvusWorkspace workspace) =>
         {
             var values = new JsonNode?[operands.Length];
             for (var i = 0; i < operands.Length; i++)
                 values[i] = Node(operands[i](in data, workspace).AsElement(workspace));
-            return Result(JsonLogicFunctions.Apply(operation, values), workspace);
+            return Result(JsonLogicFunctions.Apply(operation, values, plainConverts: true, limit), workspace);
         };
 
     // ---- crossing between Corvus's elements and JsonNode ----

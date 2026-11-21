@@ -143,6 +143,27 @@ public static partial class ResolveCompiler
     {
         public ScopeTree Tree => Resolution.Tree;
 
+        /// <summary>
+        /// #1503 (D3): each checked site's <see cref="ExpressionCheck.PlainConverts"/>, by the declaration that holds it
+        /// (by reference) and its member; an agent part's <c>if</c> is area 07's and is not here.
+        /// </summary>
+        public IReadOnlyDictionary<object, Dictionary<string, IReadOnlyList<bool>>> Plains { get; } = PlainsOf(Check.Expressions);
+
+        private static Dictionary<object, Dictionary<string, IReadOnlyList<bool>>> PlainsOf(PackageExpressions? expressions)
+        {
+            var plains = new Dictionary<object, Dictionary<string, IReadOnlyList<bool>>>(ReferenceEqualityComparer.Instance);
+            foreach (var site in expressions?.Sites ?? [])
+            {
+                if (site.Context.PartId != null)
+                    continue;
+                if (!plains.TryGetValue(site.Context.Declaration, out var members))
+                    plains[site.Context.Declaration] = members = new Dictionary<string, IReadOnlyList<bool>>(StringComparer.Ordinal);
+                members[site.Context.Site.Member] = site.Check.PlainConverts;
+            }
+
+            return plains;
+        }
+
         /// <summary>The format scope of <paramref name="function"/>, or the package's.</summary>
         public FormatSet Scope(SourceFunction? function) =>
             function != null && Types.FunctionFormats.TryGetValue(function.Id, out var own) ? own : Types.Formats;

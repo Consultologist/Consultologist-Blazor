@@ -30,7 +30,8 @@ internal sealed record RefusalCase(string Id, string About, Dictionary<string, b
 /// is held to the reader and the type rules together, and chapter 2's cases are
 /// <c>RefusalPackages.Types.cs</c>'s. #1501 (specVersion 31, area 04): and to the expression rules, the third
 /// step; chapter 3's cases are <c>RefusalPackages.Logic.cs</c>'s. #1502 (specVersion 31, area 05): and to the resolve
-/// step before them; the resolver's cases are <c>RefusalPackages.Resolve.cs</c>'s.
+/// step before them; the resolver's cases are <c>RefusalPackages.Resolve.cs</c>'s. #1503 (specVersion 31, area 06): the
+/// rules area 06 adds at publish are <c>RefusalPackages.Engine.cs</c>'s.
 /// </summary>
 internal static partial class RefusalPackages
 {
@@ -63,7 +64,7 @@ internal static partial class RefusalPackages
     public static IReadOnlyList<RefusalCase> All() =>
         Intake().Concat(Layout()).Concat(Headers()).Concat(Members()).Concat(Ids()).Concat(Kinds())
             .Concat(Loops()).Concat(Branches()).Concat(Functions()).Concat(Scopes()).Concat(Registry())
-            .Concat(Types()).Concat(Logic()).Concat(Resolve())
+            .Concat(Types()).Concat(Logic()).Concat(Resolve()).Concat(Engine())
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
 

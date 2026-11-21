@@ -67,6 +67,24 @@ internal static class V31Contract
         ["A05-005"] = "Call '<id>' with <param> is <what it is>; an argument is a reference, written as text, or null.",
     };
 
+    /// <summary>#1503: area 06's own sentences (<c>A06-NNN</c>), as plan area-06-engine-loading-and-scheduling lists them; each is added as a task first says it.</summary>
+    private static readonly Dictionary<string, string> EngineAreaSentences = new()
+    {
+        ["A06-001"] = "<site> <member> could not be decided: <matches | has_word> took longer than <n> seconds on this text. Use a simpler pattern.",
+        ["A06-002"] = "While '<id>' declares checkFirst true, but its check reads node '<n>' of its own body, which has no value before the first pass: declare \"checkFirst\": false, or read something that runs before the while.",
+        ["A06-003"] = "Node '<id>' computed a value that isn't <format>.",
+        ["A06-004"] = "Workflow <package>@<version> isn't published.",
+        ["A06-005"] = "Node '<id>' gave a reply that isn't <format>.",
+        ["A06-006"] = "Loop '<id>' was given <reference>, which isn't a list.",
+        ["A06-007"] = "Case '<id>' was given <reference>, which no branch lists, and it has no else.",
+        ["A06-008"] = "<Subject> couldn't be rendered.",
+        ["A06-009"] = "This job's inputs are no longer held, so it can't run. Run the workflow again.",
+        ["A06-010"] = "The engine couldn't finish this job. Tell the operator.",
+        ["A06-011"] = "Input '<id>' is required; fill it in to run this workflow.",
+        ["A06-012"] = "Input '<id>' was given a value that isn't <format>.",
+        ["A06-013"] = "Unknown input(s) <ids> (declared: <ids>).",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -175,6 +193,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A05-", StringComparison.Ordinal))
         {
             Assert.True(ResolveAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A06-", StringComparison.Ordinal))
+        {
+            Assert.True(EngineAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

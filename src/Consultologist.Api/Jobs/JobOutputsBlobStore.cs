@@ -124,6 +124,26 @@ internal sealed class TextBlobClientFactory
     public Task DeleteAsync(string container, string name, CancellationToken cancellationToken) =>
         _containerFor(container).GetBlobClient(name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
 
+    /// <summary>#1503 (D9): the names of the blobs under a prefix, ordinally; a missing container (local dev) holds none.</summary>
+    public async Task<IReadOnlyList<string>> ListNamesAsync(string container, string prefix, CancellationToken cancellationToken)
+    {
+        var names = new List<string>();
+
+        try
+        {
+            await foreach (var blob in _containerFor(container).GetBlobsAsync(prefix: prefix, cancellationToken: cancellationToken))
+            {
+                names.Add(blob.Name);
+            }
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+        }
+
+        names.Sort(StringComparer.Ordinal);
+        return names;
+    }
+
     /// <summary>
     /// #559: every blob under a prefix — the closure's per-container sweep.
     /// A missing container (local dev) reads as nothing to delete. Returns
@@ -250,13 +270,32 @@ public sealed class JobInputsBlobStore : IJobInputsBlobStore
 
     public async Task<ConsultInputsBlobPointer> WriteAsync(string? accountKind, string appUserId, string jobId, JobInputsPayload payload, CancellationToken cancellationToken)
     {
-        var pointer = new ConsultInputsBlobPointer(ContainerFor(accountKind), NameFor(appUserId, jobId));
+        var pointer = PointerFor(accountKind, appUserId, jobId);
         await _blobs.WriteJsonAsync(pointer.Container, pointer.Name, payload, cancellationToken);
         return pointer;
     }
 
     public Task<JobInputsPayload?> ReadAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.ReadJsonAsync<JobInputsPayload>(pointer.Container, pointer.Name, cancellationToken);
+
+    /// <summary>
+    /// #1503 (specVersion 31): where a job's held inputs live, the 5–30 payload's or a 31 job's run-inputs document: the
+    /// kind's container, <c>{appUserId}/{jobId}.json</c>. So the retention drop and account closure sweep either.
+    /// </summary>
+    internal static ConsultInputsBlobPointer PointerFor(string? accountKind, string appUserId, string jobId) =>
+        new(ContainerFor(accountKind), NameFor(appUserId, jobId));
+
+    /// <summary>#1503 (specVersion 31): writes a 31 job's run-inputs document where its held inputs live, and returns the pointer.</summary>
+    public async Task<ConsultInputsBlobPointer> WriteDocumentAsync(string? accountKind, string appUserId, string jobId, System.Text.Json.Nodes.JsonObject document, CancellationToken cancellationToken)
+    {
+        var pointer = PointerFor(accountKind, appUserId, jobId);
+        await _blobs.WriteJsonAsync(pointer.Container, pointer.Name, document, cancellationToken);
+        return pointer;
+    }
+
+    /// <summary>#1503 (specVersion 31): a 31 job's run-inputs document, or null when it is gone (dropped, or never written).</summary>
+    public Task<System.Text.Json.Nodes.JsonObject?> ReadDocumentAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken) =>
+        _blobs.ReadJsonAsync<System.Text.Json.Nodes.JsonObject>(pointer.Container, pointer.Name, cancellationToken);
 
     public Task DeleteAsync(ConsultInputsBlobPointer pointer, CancellationToken cancellationToken) =>
         _blobs.DeleteAsync(pointer.Container, pointer.Name, cancellationToken);

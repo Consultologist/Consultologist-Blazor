@@ -1,23 +1,59 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 namespace Consultologist.PackageFormat.V31;
 
 /// <summary>
 /// #1501 (specVersion 31, area 04): why a rule run could not give a value: the rule was declined (A04-011),
 /// <c>matches</c> was given text over 1 MiB (S03-040), a condition yielded no boolean (S03-041), the evaluator failed
-/// (A04-011), or <c>plain</c> was given Markdown nested too deeply to convert (A04-011).
+/// (A04-011), <c>plain</c> was given Markdown nested too deeply to convert (A04-011), or (#1503 R2) <c>matches</c> or
+/// <c>has_word</c> ran past the evaluator's time limit (A06-001).
 /// </summary>
-public enum JsonLogicFailureKind { Declined, MatchesTextTooLong, NotABoolean, Fault, PlainNotConverted }
+public enum JsonLogicFailureKind { Declined, MatchesTextTooLong, NotABoolean, Fault, PlainNotConverted, MatchTooSlow }
 
 /// <summary>#1501 (specVersion 31, area 04): a failure of a rule run; <paramref name="Detail"/> never holds a value from the data.</summary>
-public sealed record JsonLogicFailure(JsonLogicFailureKind Kind, string Detail);
+public sealed record JsonLogicFailure(JsonLogicFailureKind Kind, string Detail)
+{
+    /// <summary>#1503 (R2): for <see cref="JsonLogicFailureKind.MatchTooSlow"/>, the time limit that was passed; otherwise <c>null</c>.</summary>
+    public TimeSpan? Limit { get; init; }
+}
+
+/// <summary>
+/// #1503 (specVersion 31, area 06; R2): an evaluator's time limit on each evaluation of <c>matches</c> and of
+/// <c>has_word</c>, with the patterns it has compiled under that limit (the time-out is part of a compiled regex).
+/// One per evaluator; an evaluator without a limit has none and uses <see cref="IRegexp.Check"/>'s cache.
+/// </summary>
+internal sealed class SearchTimeLimit
+{
+    /// <summary>A limit of <paramref name="limit"/>, which <see cref="Regex"/> accepts as a match time-out.</summary>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="limit"/> is zero or less, or over <see cref="Regex"/>'s longest time-out.</exception>
+    public SearchTimeLimit(TimeSpan limit)
+    {
+        // Regex's own bounds on a time-out: more than zero and at most Int32.MaxValue - 1 milliseconds.
+        if (limit <= TimeSpan.Zero || limit > TimeSpan.FromMilliseconds(int.MaxValue - 1))
+            throw new ArgumentOutOfRangeException(nameof(limit), limit, "A time limit is more than zero and at most about 24 days.");
+        Limit = limit;
+        Patterns = new IRegexpPatterns(limit);
+    }
+
+    /// <summary>The limit.</summary>
+    public TimeSpan Limit { get; }
+
+    /// <summary>The patterns compiled with <see cref="Limit"/> as their match time-out.</summary>
+    public IRegexpPatterns Patterns { get; }
+
+    /// <summary>The failure of <paramref name="operation"/> past the limit (A06-001).</summary>
+    public JsonLogicFailureException TooSlow(string operation) =>
+        new(new JsonLogicFailure(JsonLogicFailureKind.MatchTooSlow, operation) { Limit = Limit });
+}
 
 /// <summary>
 /// #1501 (specVersion 31, area 04): thrown by an operation that fails the rule (S03-040 for <c>matches</c>, A04-011 for a
-/// <c>plain</c> that cannot convert), the only failure <see cref="JsonLogicFunctions.Apply"/> throws on run data.
+/// <c>plain</c> that cannot convert, A06-001 for <c>matches</c> or <c>has_word</c> past a time limit), the only failure <see cref="JsonLogicFunctions.Apply"/> throws on run data.
 /// </summary>
 public sealed class JsonLogicFailureException(JsonLogicFailure failure) : Exception(failure.Detail)
 {
@@ -44,7 +80,15 @@ public static class JsonLogicFunctions
     /// <exception cref="JsonLogicFailureException"><c>matches</c> over text longer than 1 MiB; <c>plain</c>, told to convert, over
     /// Markdown nested too deeply for <see cref="PlainConversion.ToPlain"/> to convert.</exception>
     /// <exception cref="ArgumentException">A name this class does not compute.</exception>
-    public static JsonNode? Apply(string operation, IReadOnlyList<JsonNode?> operands, bool plainConverts = true)
+    public static JsonNode? Apply(string operation, IReadOnlyList<JsonNode?> operands, bool plainConverts = true) =>
+        Apply(operation, operands, plainConverts, null);
+
+    /// <summary>
+    /// As <see cref="Apply(string, IReadOnlyList{JsonNode?}, bool)"/>, with <paramref name="limit"/> (#1503 R2) on each
+    /// evaluation of <c>matches</c> and <c>has_word</c>; <c>null</c> is no limit.
+    /// </summary>
+    /// <exception cref="JsonLogicFailureException">As the other overload, and <c>matches</c> or <c>has_word</c> past <paramref name="limit"/>.</exception>
+    internal static JsonNode? Apply(string operation, IReadOnlyList<JsonNode?> operands, bool plainConverts, SearchTimeLimit? limit)
     {
         operands ??= [];
         JsonNode? At(int i) => i < operands.Count ? operands[i] : null;
@@ -88,9 +132,9 @@ public static class JsonLogicFunctions
                 if (!plainConverts)
                     return JsonValue.Create(md);
                 return JsonValue.Create(PlainConversion.ToPlain(md) ?? throw new JsonLogicFailureException(PlainNotConverted));
-            case "matches": return JsonValue.Create(Matches(At(0), At(1)));
+            case "matches": return JsonValue.Create(Matches(At(0), At(1), limit));
             case "has_word":
-                return JsonValue.Create(Text(At(0)) is { } hay && Text(At(1)) is { } word && HasWord(hay, word));
+                return JsonValue.Create(Text(At(0)) is { } hay && Text(At(1)) is { } word && HasWord(hay, word, limit));
 
             case "days_between":
                 return Date(At(0)) is { } d1 && Date(At(1)) is { } d2 ? Number(d2.DayNumber - d1.DayNumber) : null;
@@ -294,11 +338,11 @@ public static class JsonLogicFunctions
         return result.ToString();
     }
 
-    private static bool Matches(JsonNode? x, JsonNode? pattern)
+    private static bool Matches(JsonNode? x, JsonNode? pattern, SearchTimeLimit? limit)
     {
         if (Text(x) is not { } text || Text(pattern) is not { } source)
             return false;
-        var check = IRegexp.Check(source);
+        var check = limit is null ? IRegexp.Check(source) : limit.Patterns.Check(source);
         if (check.Regex is not { } regex)
             return false;
         if (IRegexp.TooLong(text))
@@ -307,16 +351,33 @@ public static class JsonLogicFunctions
             throw new JsonLogicFailureException(new JsonLogicFailure(
                 JsonLogicFailureKind.MatchesTextTooLong, mebibytes.ToString("0.0", CultureInfo.InvariantCulture)));
         }
-        return IRegexp.IsMatch(regex, text);
+        if (limit is null)
+            return IRegexp.IsMatch(regex, text);
+        try
+        {
+            return IRegexp.IsMatch(regex, text);
+        }
+        catch (RegexMatchTimeoutException)
+        {
+            throw limit.TooSlow("matches");
+        }
     }
 
-    private static bool HasWord(string text, string word)
+    /// <summary>How many candidate positions <c>has_word</c> tries between two looks at the clock (#1503 R2).</summary>
+    private const int CandidatesPerClockCheck = 4_096;
+
+    private static bool HasWord(string text, string word, SearchTimeLimit? limit)
     {
         if (word.Length == 0)
             return false;
+        var started = limit is null ? 0 : Stopwatch.GetTimestamp();
+        var candidates = 0;
         for (var at = text.IndexOf(word, StringComparison.Ordinal); at >= 0;
              at = at + 1 < text.Length ? text.IndexOf(word, at + 1, StringComparison.Ordinal) : -1)
         {
+            if (limit is not null && ++candidates % CandidatesPerClockCheck == 0
+                && Stopwatch.GetElapsedTime(started) > limit.Limit)
+                throw limit.TooSlow("has_word");
             var before = at == 0 ? (Rune?)null : LastRune(text.AsSpan(0, at));
             var afterAt = at + word.Length;
             var after = afterAt >= text.Length ? (Rune?)null : FirstRune(text.AsSpan(afterAt));

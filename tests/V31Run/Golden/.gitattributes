@@ -1,0 +1,2 @@
+# The run goldens are compared byte for byte: LF line ends on every checkout.
+*.run.txt text eol=lf

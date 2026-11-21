@@ -144,6 +144,13 @@ public sealed class ConsultGenerationOrchestrator
             await context.CreateTimer(scheduledAt.UtcDateTime, CancellationToken.None);
         }
 
+        // #1503 (part 09 § 3.6; D9): an orchestration started by a build that drains waits here while the engine drains.
+        // One started before carries no DrainAware and takes no new step, so its replay is unchanged.
+        if (input.DrainAware)
+        {
+            await EngineDrainJobs.WaitWhileDrainingAsync(context, entityId);
+        }
+
         await context.Entities.CallEntityAsync(entityId, nameof(ConsultGenerationJobEntity.MarkRunning));
 
         logger.LogInformation(

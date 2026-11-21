@@ -245,7 +245,10 @@ internal sealed class CaptureRun
                     var supplied = decide.SuppliedInputs?.ToDictionary(pair => pair.Key, pair => ConsultInputValue.FromJson(pair.Value), StringComparer.Ordinal);
                     return DecideActivity.Decide(package, supplied, decide.Classifications, TestFormats.Catalog,
                         decide.EffectiveInputs, decide.NodeTexts, decide.Run, decide.Profile);
-                }));
+                }))
+            // #1503 (D9): the starter marks the input DrainAware; the capture runs with the drain off and leaves
+            // check-drain out of its calls, so every capture stays what the job ran before the drain.
+            .Unrecorded(ConsultGenerationActivityNames.CheckDrain, _ => false);
 
         try
         {

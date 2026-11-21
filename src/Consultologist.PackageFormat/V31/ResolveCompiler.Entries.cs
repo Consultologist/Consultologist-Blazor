@@ -15,12 +15,16 @@ namespace Consultologist.PackageFormat.V31;
 /// <c>places</c>; on a flow node <c>nodes</c> (every child, in order) and <c>ret</c>: the returned key of a <c>for</c>
 /// and a <c>while</c>, <c>null</c> on an <c>if</c> and a <c>case</c>, whose <c>ret</c>s are their branches' (inside
 /// <c>then</c>, <c>else</c> and <c>branches</c>), every member being present (§ 1). A body the seam did not say has no places,
-/// renders or run spots (D1).
+/// renders or run spots (D1). #1503 (specVersion 31, area 06; D3): and on every node (a function's too) and every
+/// deliverable, <c>plainConverts</c> (<see cref="Entries"/>' <c>PlainConverts</c>).
 /// </summary>
 public static partial class ResolveCompiler
 {
     /// <summary>As deep as a rule is walked for its paths (<see cref="JsonLogicShape.MaxDepth"/>; the checker refused deeper).</summary>
     private const int RuleDepth = JsonLogicShape.MaxDepth;
+
+    /// <summary>The rule members of an entry <c>plainConverts</c> covers (D3), in this order.</summary>
+    private static readonly string[] RuleMembers = ["if", "expression", "while", "until"];
 
     /// <summary>The six flat maps of the package, as <see cref="Entries.Maps"/> writes them.</summary>
     private sealed record FlatMaps(JsonObject Nodes, JsonObject Checks, JsonObject Renderers, JsonObject Snippets, JsonObject Macros, JsonObject Deliverables);
@@ -207,6 +211,7 @@ public static partial class ResolveCompiler
 
             var derived = context.Derive(node.Key, function);
             Derived(entry, node.Id, parent, derived);
+            PlainConverts(entry, node);
             var body = node is SourceLeaf { Kind: "agent" or "rendered" } templated ? templated.Body : null;
             Body(entry, body, derived);
             if (node is SourceLeaf { Kind: "agent" })
@@ -329,6 +334,7 @@ public static partial class ResolveCompiler
                 entry["if"] = Logic(deliverable.Header["if"], Tree.PackageRoot, null);
             var derived = context.Derive(deliverable.Key, null);
             Derived(entry, deliverable.Id, null, derived);
+            PlainConverts(entry, deliverable);
             Body(entry, deliverable.Body, derived);
             Hashes(entry, deliverable.Header["format"], context.Types.Formats, null);
             return entry;
@@ -344,6 +350,26 @@ public static partial class ResolveCompiler
             entry["runDependent"] = derived?.RunDependent ?? false;
             entry["profileCarrying"] = derived?.ProfileCarrying ?? false;
             entry["modelDerived"] = derived?.ModelDerived ?? false;
+        }
+
+        /// <summary>
+        /// #1503 (D3, 04-D14): <c>plainConverts</c>, from each of <c>if</c>, <c>expression</c>, <c>while</c> and
+        /// <c>until</c> that <paramref name="entry"/> has non-null to its site's list (whether each <c>plain</c> of the rule
+        /// converts, in the evaluator's order; <c>[]</c> for a rule with none); <c>{}</c> for an entry with none of them.
+        /// </summary>
+        private void PlainConverts(JsonObject entry, object declaration)
+        {
+            var sites = context.Plains.GetValueOrDefault(declaration);
+            var plains = new JsonObject();
+            foreach (var member in RuleMembers)
+            {
+                if (entry[member] is null)
+                    continue;
+                var list = sites?.GetValueOrDefault(member) ?? [];
+                plains[member] = new JsonArray(list.Select(converts => (JsonNode?)converts).ToArray());
+            }
+
+            entry["plainConverts"] = plains;
         }
 
         /// <summary><c>body</c>, <c>bodyHash</c>, and what the seam said of it: <c>renders</c> and <c>runSpots</c>.</summary>

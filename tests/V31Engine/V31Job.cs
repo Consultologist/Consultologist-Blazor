@@ -1,0 +1,173 @@
+using System.Collections.Concurrent;
+using System.Reflection;
+using System.Text.Json.Nodes;
+using Consultologist.Api.Agents;
+using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
+using Consultologist.Api.Tests.Engine;
+using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Run;
+using Consultologist.Api.V31;
+using Consultologist.Api.Workflow;
+using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Run;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging.Abstractions;
+using NSubstitute;
+
+namespace Consultologist.Api.Tests.V31Engine;
+
+/// <summary>
+/// #1503 (specVersion 31, area 06): a 31 job, end to end in a test. A golden is published into a <see cref="FakeRegistry"/>
+/// and loaded by the real <see cref="CompiledPackageStore"/>; a real entity holds the job as Task 13's start would leave it;
+/// the real <see cref="ConsultGenerationOrchestratorV31"/> runs on a <see cref="FakeOrchestrationContext"/> whose
+/// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c> and <c>render-node-v31</c> are the real activities (the inputs from a
+/// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/> at the job's held-inputs pointer), and whose <c>run-agent-node-v31</c> is
+/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key). Timers longer than five minutes (the job's)
+/// wait, as durable timers do, until cancelled; shorter ones (a retry's) end at once.
+/// </summary>
+internal sealed class V31Job
+{
+    private static readonly PropertyInfo StateProperty =
+        typeof(ConsultGenerationJobEntity).GetProperty("State", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
+
+    private static readonly Lazy<EngineCapabilities> ThisEngine =
+        new(() => new EngineCapabilitiesFactory(OutputContractCatalog.Load(), FormatCatalogLoader.Load()).Current());
+
+    /// <summary>The orchestration's clock.</summary>
+    public static readonly DateTime Now = new(2026, 11, 16, 14, 0, 0, DateTimeKind.Utc);
+
+    public const string JobId = "job-31-0001";
+
+    private V31Job(string golden)
+    {
+        Registry = new FakeRegistry();
+        (Ref, Pair) = Registry.Put(CompiledGoldenTests.Cases().Single(c => c.Name == golden));
+        Store = StoreOver(Registry);
+        Plan = Store.TryLoadAsync(Ref, CancellationToken.None).GetAwaiter().GetResult()!.Plan!;
+        Agent = call => new AgentOutcome(AgentOutcomeKind.Completed, RunFixture.StubReply(Plan, call), 0, null);
+        Entity = new ConsultGenerationJobEntity(
+            Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
+            HeldInputs, Substitute.For<IAccountUsageStore>());
+        var state = ConsultGenerationJobState.Create(JobId, "user-1", Array.Empty<IReadOnlyDictionary<string, string>>());
+        state.PackageSpecVersion = 31;
+        // as Task 13's start leaves it: the run-inputs document is the job's held inputs
+        state.InputsBlob = Inputs.WriteAsync(AccountKind, "user-1", JobId, Document(RunFixture.GoldenInputs()), CancellationToken.None).GetAwaiter().GetResult();
+        StateProperty.SetValue(Entity, state);
+    }
+
+    public FakeRegistry Registry { get; }
+
+    public WorkflowPackageRef Ref { get; }
+
+    public CompiledPackage Pair { get; }
+
+    public CompiledPackageStore Store { get; }
+
+    public RunPlan Plan { get; }
+
+    public ConsultGenerationJobEntity Entity { get; }
+
+    public FakeInputs Inputs { get; } = new();
+
+    /// <summary>The job inputs' store the entity drops the held inputs through.</summary>
+    public IJobInputsBlobStore HeldInputs { get; } = Substitute.For<IJobInputsBlobStore>();
+
+    /// <summary>The account's kind (an organisation's).</summary>
+    public const string AccountKind = Consultologist.Api.Auth.SignInKinds.Organisation;
+
+    /// <summary>Answers each attempt of an agent call.</summary>
+    public Func<AgentCall, AgentOutcome> Agent { get; set; }
+
+    /// <summary>The limits the job's input records.</summary>
+    public RunLimits Limits { get; set; } = new();
+
+    /// <summary>The job's <c>resolveHash</c> as its input says it (the pair's by default).</summary>
+    public string? ResolveHash { get; set; }
+
+    /// <summary>The job's <c>lockHash</c> as its input says it (the pair's by default).</summary>
+    public string? LockHash { get; set; }
+
+    public ConsultGenerationJobState State => (ConsultGenerationJobState)StateProperty.GetValue(Entity)!;
+
+    public static V31Job Of(string golden) => new(golden);
+
+    /// <summary>The engine's store over <paramref name="registry"/>, 31 admitted.</summary>
+    public static CompiledPackageStore StoreOver(FakeRegistry registry) =>
+        new(registry, registry, ThisEngine.Value, SpecVersionAdmissionTests.With("31"), new EngineLimitSettings(new ConfigurationBuilder().Build()));
+
+    /// <summary>The orchestration input Task 13's start would give.</summary>
+    public ConsultGenerationOrchestrationInputV31 Input() => new(
+        JobId, "user-1", Ref.Name, Ref.Version, ResolveHash ?? Pair.ResolveHash, LockHash ?? Pair.LockHash, Limits.ToJson(), 2000,
+        State.InputsBlob!.Name, new JsonObject { ["id"] = JobId }, "America/Toronto", null, true, AccountKind);
+
+    /// <summary>The context, every activity answered as the summary says; its input <paramref name="input"/>, else <see cref="Input"/>.</summary>
+    public FakeOrchestrationContext Context(ConsultGenerationOrchestrationInputV31? input = null)
+    {
+        var composer = new ScribanBodyComposer();
+        return new FakeOrchestrationContext(JobId, input ?? Input(), Entity, Now)
+            .HoldTimersLongerThan(TimeSpan.FromMinutes(5))
+            .On(ConsultGenerationActivityNames.LoadPlanV31, payload =>
+                new LoadPlanV31Activity(Store).RunAsync((LoadPlanV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            .On(ConsultGenerationActivityNames.LoadRunInputsV31, payload =>
+                new LoadRunInputsV31Activity(Inputs, Store).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            .On(ConsultGenerationActivityNames.RunAgentNodeV31, payload => Agent(((RunAgentNodeV31Input)payload!).Call))
+            .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
+                new RenderNodeV31Activity(Store, composer, NullLogger<RenderNodeV31Activity>.Instance)
+                    .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            // #1503 (D9): the input is DrainAware; the drain is off here and check-drain is left out of the calls the
+            // tests read (the drain's own tests answer it recorded: DrainDoorsTests).
+            .Unrecorded(ConsultGenerationActivityNames.CheckDrain, _ => false);
+    }
+
+    /// <summary>Runs the orchestration on <paramref name="context"/> to its end.</summary>
+    public static Task RunAsync(FakeOrchestrationContext context) => new ConsultGenerationOrchestratorV31().RunAsync(context);
+
+    /// <summary>
+    /// Runs the orchestration with every activity held, on a thread with no synchronization context, releasing the oldest
+    /// held answer until none is held; the run must have ended by then.
+    /// </summary>
+    public static Task DriveAsync(FakeOrchestrationContext context) => Task.Run(() =>
+    {
+        var run = RunAsync(context.HoldActivities());
+        while (context.HeldActivities > 0)
+            context.ReleaseOldest();
+        Assert.True(run.IsCompleted, "The orchestration has not ended: something it waits on was never released.");
+        return run;
+    });
+
+    /// <summary>The agent activity's calls, in the order made.</summary>
+    public static List<AgentCall> AgentCalls(FakeOrchestrationContext context) =>
+        context.Calls.Where(c => c.Kind == "activity" && c.Name == ConsultGenerationActivityNames.RunAgentNodeV31)
+            .Select(c => System.Text.Json.JsonSerializer.Deserialize<RunAgentNodeV31Input>(c.InputJson)!.Call)
+            .ToList();
+
+    /// <summary>The inputs document of <paramref name="inputs"/>, as <see cref="IRunInputsStore"/> holds it.</summary>
+    public static JsonObject Document(RunInputs inputs)
+    {
+        var given = new JsonObject();
+        foreach (var (id, read) in inputs.Inputs)
+            given[id] = read?.DeepClone();
+        var profile = new JsonObject();
+        foreach (var (field, text) in inputs.Profile)
+            profile[field] = text;
+        return new JsonObject { ["inputs"] = given, ["profile"] = profile };
+    }
+
+    /// <summary>An in-memory <see cref="IRunInputsStore"/> where the real one writes: <see cref="RunInputsBlobStore.PointerFor"/>.</summary>
+    internal sealed class FakeInputs : IRunInputsStore
+    {
+        public ConcurrentDictionary<ConsultInputsBlobPointer, JsonObject> Documents { get; } = new();
+
+        public Task<ConsultInputsBlobPointer> WriteAsync(string? accountKind, string appUserId, string jobId, JsonObject document, CancellationToken ct)
+        {
+            var pointer = RunInputsBlobStore.PointerFor(accountKind, appUserId, jobId);
+            Documents[pointer] = (JsonObject)document.DeepClone();
+            return Task.FromResult(pointer);
+        }
+
+        public Task<JsonObject?> ReadAsync(ConsultInputsBlobPointer pointer, CancellationToken ct) =>
+            Task.FromResult(Documents.TryGetValue(pointer, out var document) ? (JsonObject?)document.DeepClone() : null);
+    }
+}

@@ -45,7 +45,8 @@ internal static class ExpressionSentences
     /// <summary>
     /// The words a rule fails with at run time (part 03 § 11.3; D22): S03-040 for text over the limit, S03-041 for a
     /// condition that yields no boolean, A04-011 for a declined rule, a fault inside the evaluator, or a <c>plain</c> given
-    /// Markdown nested too deeply to convert.
+    /// Markdown nested too deeply to convert, and (#1503 R2) A06-001 for <c>matches</c> or <c>has_word</c> past the
+    /// evaluator's time limit, the limit in seconds (at most three decimals, no trailing zeros).
     /// </summary>
     public static string RunTime(string subject, string member, JsonLogicFailure failure)
     {
@@ -55,10 +56,15 @@ internal static class ExpressionSentences
             JsonLogicFailureKind.MatchesTextTooLong =>
                 $"{subject} {member} could not be decided: matches was given {failure.Detail} MiB of text; the most is 1 MiB.",
             JsonLogicFailureKind.NotABoolean => $"{subject} {member} yields {failure.Detail}; a condition yields a boolean.",
+            JsonLogicFailureKind.MatchTooSlow =>
+                $"{subject} {member} could not be decided: {failure.Detail} took longer than {Seconds(failure.Limit ?? TimeSpan.Zero)} seconds on this text. Use a simpler pattern.",
             // Declined, Fault and PlainNotConverted: A04-011, the detail as the failure gives it
             _ => $"{subject} {member} could not be evaluated: {failure.Detail}.",
         };
     }
+
+    /// <summary>A time limit in seconds, invariant, at most three decimals and no trailing zeros (<c>2</c>, <c>0.05</c>).</summary>
+    private static string Seconds(TimeSpan limit) => limit.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture);
 
     /// <summary>S03-002: text compared with a literal by <c>===</c> or <c>!==</c>.</summary>
     public static SourceRefusal ComparesTextWithLiteral(ExpressionSite site, string path, string format) =>

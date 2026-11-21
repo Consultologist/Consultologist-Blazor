@@ -14,7 +14,12 @@ namespace Consultologist.Api.Tests.Engine;
 /// on a real in-memory entity — its input and result round-trip through JSON, as
 /// they do through the Durable store. Every call is recorded, in order. Responders
 /// return completed tasks, so the orchestrator's <c>Task.WhenAny</c> picks the
-/// first in its list, every run.
+/// first in its list, every run. #1503: a test may hold activity answers
+/// (<see cref="HoldActivities"/>) and timers longer than a span
+/// (<see cref="HoldTimersLongerThan"/>), which then wait until cancelled, as
+/// durable timers do; by default neither is held, as before. #1503 (D9): an
+/// activity may be answered unrecorded (<see cref="Unrecorded"/>), and an external
+/// event waited for is given by <see cref="RaiseEvent"/>.
 /// </summary>
 internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
 {
@@ -22,13 +27,22 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
 
     private readonly object? _input;
     private readonly Dictionary<string, Func<object?, object?>> _activities = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _unrecorded = new(StringComparer.Ordinal);
+    private readonly List<(string Name, TaskCompletionSource<object?> Event)> _awaitedEvents = new();
     private readonly FakeEntities _entities;
+    private readonly List<(string Name, Action Answer)> _heldActivities = new();
+    private readonly List<TaskCompletionSource> _heldTimers = new();
+    private readonly Dictionary<string, int> _peakHeld = new(StringComparer.Ordinal);
+    private bool _holdActivities;
+    private bool _wrapFailures;
+    private TimeSpan? _holdTimersLongerThan;
+    private DateTime _now;
 
     public FakeOrchestrationContext(string instanceId, object? input, object entity, DateTime now)
     {
         InstanceId = instanceId;
         _input = input;
-        CurrentUtcDateTime = now;
+        _now = now;
         _entities = new FakeEntities(entity, Calls);
     }
 
@@ -41,7 +55,95 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     public FakeOrchestrationContext On(string name, Func<object?, object?> respond)
     {
         _activities[name] = respond;
+        _unrecorded.Remove(name);
         return this;
+    }
+
+    /// <summary>
+    /// #1503 (D9): answers activity <paramref name="name"/> with <paramref name="respond"/> and leaves its calls out of
+    /// <see cref="Calls"/>, so a harness whose trace predates the activity keeps its trace.
+    /// </summary>
+    public FakeOrchestrationContext Unrecorded(string name, Func<object?, object?> respond)
+    {
+        On(name, respond);
+        _unrecorded.Add(name);
+        return this;
+    }
+
+    /// <summary>#1503 (D9): ends every held timer, as their time coming would.</summary>
+    public void EndHeldTimers()
+    {
+        foreach (var timer in _heldTimers.ToList())
+        {
+            _heldTimers.Remove(timer);
+            timer.TrySetResult();
+        }
+    }
+
+    /// <summary>#1503 (D9): moves the orchestration's clock on by <paramref name="span"/>, as time passes between episodes.</summary>
+    public void Advance(TimeSpan span) => _now += span;
+
+    /// <summary>#1503 (D9): the external events the orchestration is waiting for, by name, oldest first.</summary>
+    public IReadOnlyList<string> AwaitedEvents => _awaitedEvents.Select(waiting => waiting.Name).ToList();
+
+    /// <summary>#1503 (D9): raises event <paramref name="name"/>: every wait for it ends. Returns how many were waiting.</summary>
+    public int RaiseEvent(string name)
+    {
+        var waiting = _awaitedEvents.Where(awaited => awaited.Name == name).ToList();
+        foreach (var awaited in waiting)
+        {
+            _awaitedEvents.Remove(awaited);
+            awaited.Event.TrySetResult(null);
+        }
+
+        return waiting.Count;
+    }
+
+    /// <summary>
+    /// #1503: holds every activity's answer until <see cref="ReleaseOldest"/> gives it, so a test can see what is in flight
+    /// at once (<see cref="PeakHeld"/>). Off by default: answers are given at once.
+    /// </summary>
+    public FakeOrchestrationContext HoldActivities()
+    {
+        _holdActivities = true;
+        return this;
+    }
+
+    /// <summary>
+    /// #1503: holds every timer that ends more than <paramref name="span"/> from now until it is cancelled (its task then
+    /// ends cancelled), as a durable timer would wait; a shorter one ends at once. Off by default: every timer ends at once.
+    /// </summary>
+    public FakeOrchestrationContext HoldTimersLongerThan(TimeSpan span)
+    {
+        _holdTimersLongerThan = span;
+        return this;
+    }
+
+    /// <summary>
+    /// #1503: an activity whose responder throws fails as Durable fails it: with a <see cref="TaskFailedException"/> carrying
+    /// the activity's exception. Off by default: the responder's exception itself.
+    /// </summary>
+    public FakeOrchestrationContext WrapActivityFailures()
+    {
+        _wrapFailures = true;
+        return this;
+    }
+
+    /// <summary>#1503: the activities whose answers are held.</summary>
+    public int HeldActivities => _heldActivities.Count;
+
+    /// <summary>#1503: the held timers neither ended nor cancelled.</summary>
+    public int PendingTimers => _heldTimers.Count;
+
+    /// <summary>#1503: the most answers of activity <paramref name="name"/> held at once.</summary>
+    public int PeakHeld(string name) => _peakHeld.GetValueOrDefault(name);
+
+    /// <summary>#1503: gives the oldest held answer.</summary>
+    public void ReleaseOldest()
+    {
+        var (_, answer) = _heldActivities[0];
+        _heldActivities.RemoveAt(0);
+        answer();
     }
 
     public override TaskName Name => new("ConsultGenerationOrchestrator");
@@ -50,7 +152,7 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
 
     public override ParentOrchestrationInstance? Parent => null;
 
-    public override DateTime CurrentUtcDateTime { get; }
+    public override DateTime CurrentUtcDateTime => _now;
 
     public override bool IsReplaying => false;
 
@@ -63,7 +165,10 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     public override Task<TResult> CallActivityAsync<TResult>(TaskName name, object? input = null, TaskOptions? options = null)
     {
         var json = JsonSerializer.Serialize(input, input?.GetType() ?? typeof(object), Json);
-        Calls.Add(("activity", name.Name, json));
+        if (!_unrecorded.Contains(name.Name))
+        {
+            Calls.Add(("activity", name.Name, json));
+        }
 
         if (!_activities.TryGetValue(name.Name, out var respond))
         {
@@ -71,27 +176,75 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
         }
 
         // A responder that throws is an activity that failed: the orchestrator awaits a faulted task.
-        try
+        if (!_holdActivities)
         {
-            return Task.FromResult(RoundTrip<TResult>(respond(input)));
+            try
+            {
+                return Task.FromResult(RoundTrip<TResult>(respond(input)));
+            }
+            catch (Exception ex)
+            {
+                return Task.FromException<TResult>(Failure(name, ex));
+            }
         }
-        catch (Exception ex)
+
+        var answer = new TaskCompletionSource<TResult>();
+        _heldActivities.Add((name.Name, () =>
         {
-            return Task.FromException<TResult>(ex);
-        }
+            try
+            {
+                answer.SetResult(RoundTrip<TResult>(respond(input)));
+            }
+            catch (Exception ex)
+            {
+                answer.SetException(Failure(name, ex));
+            }
+        }));
+        _peakHeld[name.Name] = Math.Max(_peakHeld.GetValueOrDefault(name.Name), _heldActivities.Count(held => held.Name == name.Name));
+        return answer.Task;
     }
+
+    private Exception Failure(TaskName name, Exception ex) =>
+        _wrapFailures ? new TaskFailedException(name.Name, Calls.Count, ex) : ex;
 
     public override Task CreateTimer(DateTime fireAt, CancellationToken cancellationToken)
     {
         Calls.Add(("timer", "CreateTimer", JsonSerializer.Serialize(fireAt, Json)));
-        return Task.CompletedTask;
+        if (_holdTimersLongerThan is not { } span || fireAt - CurrentUtcDateTime <= span)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return Task.FromCanceled(cancellationToken);
+        }
+
+        var timer = new TaskCompletionSource();
+        _heldTimers.Add(timer);
+        cancellationToken.Register(() =>
+        {
+            _heldTimers.Remove(timer);
+            timer.TrySetCanceled(cancellationToken);
+        });
+        return timer.Task;
     }
 
     public override void SetCustomStatus(object? customStatus) =>
         CustomStatuses.Add(JsonSerializer.Serialize(customStatus, customStatus?.GetType() ?? typeof(object), Json));
 
-    public override Task<T> WaitForExternalEvent<T>(string eventName, CancellationToken cancellationToken = default) =>
-        throw new NotSupportedException("The orchestrator waits for no external event.");
+    public override async Task<T> WaitForExternalEvent<T>(string eventName, CancellationToken cancellationToken = default)
+    {
+        Calls.Add(("event", eventName, "null"));
+        var awaited = (eventName, new TaskCompletionSource<object?>());
+        _awaitedEvents.Add(awaited);
+        using var registration = cancellationToken.Register(() =>
+        {
+            _awaitedEvents.Remove(awaited);
+            awaited.Item2.TrySetCanceled(cancellationToken);
+        });
+        return RoundTrip<T>(await awaited.Item2.Task);
+    }
 
     public override void SendEvent(string instanceId, string eventName, object payload) =>
         throw new NotSupportedException("The orchestrator sends no event.");

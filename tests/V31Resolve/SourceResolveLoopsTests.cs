@@ -337,6 +337,47 @@ public class SourceResolveLoopsTests
         Assert.True(ResolveFixture.Run(used).Refusals.Count == 0, ResolveFixture.Said(ResolveFixture.Run(used)));
     }
 
+    // ---- A06-002 (#1507, item 4) -----------------------------------------------------------------
+
+    private const string Refine = "nodes/refine/index.json";
+
+    /// <summary><see cref="ResolveFixture.NestedNote"/> with <c>refine</c> checked before each pass, its check <paramref name="rule"/>.</summary>
+    private static Dictionary<string, byte[]> CheckedFirst(string rule) =>
+        ResolveFixture.NestedNote().WithJson(Refine, h =>
+        {
+            h["checkFirst"] = true;
+            h["while"] = JsonNode.Parse(rule);
+        });
+
+    [Theory]
+    [InlineData("node.judge.value.verdict")]
+    [InlineData("pass.node.judge.value.verdict")]
+    public void ACheckFirstWhile_ReadingItsOwnBody_IsA06002(string path) =>
+        AssertRefusal(CheckedFirst($$"""{ "!==": [{ "var": "{{path}}" }, "good"] }"""), "A06-002",
+            "While 'refine' declares checkFirst true, but its check reads node 'judge' of its own body, which has no value "
+            + "before the first pass: declare \"checkFirst\": false, or read something that runs before the while.",
+            Refine);
+
+    [Theory]
+    [InlineData("""{ "!==": [{ "var": "pass.previous.node.judge.value.verdict" }, "good"] }""")]
+    [InlineData("""{ "<": [{ "var": "pass.number" }, 3] }""")]
+    [InlineData("""{ ">": [{ "size": [{ "var": "node.plan.value.sections" }] }, 0] }""")]
+    public void ACheckFirstWhile_ReadingAnEarlierPassOrOutside_IsAccepted(string rule)
+    {
+        var result = ResolveFixture.Run(CheckedFirst(rule));
+
+        Assert.True(result.Refusals.Count == 0, ResolveFixture.Said(result));
+    }
+
+    [Fact]
+    public void AWhileCheckedAfterEachPass_MayReadItsOwnBody()
+    {
+        // the fixture's own refine: checkFirst false, its check reads judge
+        var result = ResolveFixture.Run(ResolveFixture.NestedNote());
+
+        Assert.True(result.Refusals.Count == 0, ResolveFixture.Said(result));
+    }
+
     [Fact]
     public void AWhileWithAnAgent_IsNotJudgedYet()
     {

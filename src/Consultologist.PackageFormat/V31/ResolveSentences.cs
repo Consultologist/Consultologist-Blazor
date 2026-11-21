@@ -3,7 +3,8 @@ namespace Consultologist.PackageFormat.V31;
 /// <summary>
 /// #1502 (specVersion 31, area 05): every sentence the resolver says, one method each, named after what it says, as
 /// <see cref="ExpressionSentences"/> does for area 04. Each is the row of <c>v31/sentences.json</c> (part 04 § 10.1,
-/// part 07 § 10) or the area's own <c>A05-NNN</c> with its placeholders filled in, character for character.
+/// part 07 § 10) or the area's own <c>A05-NNN</c> (#1503: or area 06's <c>A06-NNN</c>) with its placeholders filled in,
+/// character for character.
 /// <c>&lt;site&gt;</c> is the subject of the place that reads (<see cref="ExpressionSite.Subject"/>, or D13's
 /// <c>Loop 'x'</c>, <c>Case 'x'</c>, <c>Call 'x'</c>), and every refusal names the file it is about. No sentence
 /// carries a value from an input or a model: only ids, keys, references, member names and type strings.
@@ -49,6 +50,14 @@ internal static class ResolveSentences
     /// <summary>S04-035: the body node <paramref name="id"/> of the while <paramref name="loop"/> is not its <c>ret</c> and nothing in the while reads it.</summary>
     public static SourceRefusal WhileNodeUnused(string id, string loop, string path) =>
         new("S04-035", $"Node '{id}' in while '{loop}' is neither returned nor read; name it with ret, read it from a body node or from the check.", path);
+
+    /// <summary>
+    /// A06-002 (#1503; #1507, item 4): the while <paramref name="loop"/> declares <c>checkFirst</c> true, and its
+    /// <c>while</c> rule reads the node <paramref name="node"/> of its own body, which has no value before the first pass.
+    /// </summary>
+    public static SourceRefusal CheckFirstReadsBody(string loop, string node, string path) =>
+        new("A06-002", $"While '{loop}' declares checkFirst true, but its check reads node '{node}' of its own body, which has no "
+            + "value before the first pass: declare \"checkFirst\": false, or read something that runs before the while.", path);
 
     /// <summary>S04-036: <c>pass.number</c> read where no <c>while</c> encloses the reader.</summary>
     public static SourceRefusal PassOutsideWhile(string site, string path) =>

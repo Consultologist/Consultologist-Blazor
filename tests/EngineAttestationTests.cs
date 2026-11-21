@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Consultologist.Api.Agents;
@@ -70,6 +71,32 @@ public class EngineAttestationTests
 
         Assert.True(with.Features!.SpeechToText);
         Assert.Null(without.Features);
+    }
+
+    [Fact]
+    public void Describe_ListsThePreviewVersionsApart()
+    {
+        // #1503 (part 09 § 2.1): a preview version is attested on its own, never
+        // as released: the two lists stay the compiled-in ones either way.
+        var with = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch,
+            previewSpecVersions: V31Engine.SpecVersionAdmissionTests.With("31").Preview);
+        var without = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch,
+            previewSpecVersions: V31Engine.SpecVersionAdmissionTests.With(null).Preview);
+        var unsaid = EngineAttestation.Describe("1.0.0", "output-contracts@v2026.07.2", null, null, DateTimeOffset.UnixEpoch);
+
+        Assert.Equal(new[] { 31 }, with.PreviewSpecVersions);
+        Assert.Empty(without.PreviewSpecVersions);
+        Assert.NotNull(unsaid.PreviewSpecVersions);
+        Assert.Empty(unsaid.PreviewSpecVersions);
+        foreach (var response in new[] { with, without, unsaid })
+        {
+            Assert.Same(WorkflowPackageValidator.AcceptedSpecVersions, response.AcceptedSpecVersions);
+            Assert.Same(WorkflowPackageStore.SupportedSpecVersions, response.SupportedSpecVersions);
+        }
+
+        // On the wire beside the two lists, as an empty list when there are none.
+        Assert.Equal("[31]", JsonSerializer.SerializeToNode(with)!["PreviewSpecVersions"]!.ToJsonString());
+        Assert.Equal("[]", JsonSerializer.SerializeToNode(without)!["PreviewSpecVersions"]!.ToJsonString());
     }
 
     [Fact]
@@ -193,7 +220,8 @@ public class EngineAttestationTests
         var properties = typeof(EngineAttestationResponse).GetProperties().Select(p => p.Name).Order(StringComparer.Ordinal);
         Assert.Equal(
             // #1063: Features — the deployment's capabilities (speechToText), no PHI.
-            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "Features", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "Provenance", "Release", "Scriban", "SupportedSpecVersions", "Version" },
+            // #1503: PreviewSpecVersions — the versions admitted on dev before the bump (part 09 § 2.1).
+            new[] { "AcceptedSpecVersions", "ApiHost", "Commit", "Features", "GeneratedAtUtc", "OutputContracts", "PackageFormat", "PreviewSpecVersions", "Provenance", "Release", "Scriban", "SupportedSpecVersions", "Version" },
             properties);
     }
 
