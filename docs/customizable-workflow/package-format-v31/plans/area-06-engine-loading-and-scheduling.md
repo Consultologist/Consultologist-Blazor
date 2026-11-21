@@ -292,7 +292,7 @@ Rules:
 - **Over `.items`** (a check loop, or a production loop): the loop is ready when the production loop has opened its items; item *i* is ready when production item *i* has settled, so checking overlaps production; its `item` is the `.items` element and its id is the production item's id.
 - **A failed item fails the job** (#1507 ruling 2).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `NestedLoops_RunEveryItem_AndReadByPath`: nested-note with a 2-section plan of 2 and 3 points → 5 `draft_paragraph` calls keyed `node.sections.paragraphs.draft_paragraph:1/1` … `:2/3`; each call's scope holds its own `item.value` and `item.parent.value.title`; `node.sections.value` is a list of two lists.
   - `AnEmptyList_SettlesAtZeroItems` (`"end"`, no call, the job completes: R1); `ANullSource_SettlesAtZero_WithItsReason` (S04-077); `ALoopGivenTooManyItems_FailsWithItsSentence` (201 items, S04-078 with `201` and `200`; and a model list of 5,000).
   - `MaxParallel_CapsEachLoopInstance`: outer `maxParallel` 2 over 4 items, inner `maxParallel` 3 over 5: `host` per-instance peaks are ≤ 3 and ≤ 2, overall peak ≤ 6 with ceiling 16 and ≤ 4 with ceiling 4.
@@ -303,8 +303,8 @@ Rules:
   - `ACheckLoop_RunsEachItemAsItsProductionItemSettles`: functions fixture, production items released one by one: `check.section_coverage.coverage:<id>` settles right after its production item, before the next production item is released; ids match.
   - `ALoopsContent_IsItsItemsUnderTheirNames` (D11's exact bytes); `ASkippedRet_MakesTheItemSkipped` (absent from `.value`, present in `.items` with the printed reason).
   - `AFailedItem_FailsTheJob`.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): for loops run as resolve.json writes them`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): for loops run as resolve.json writes them`
 
 ### Task 7: `while`, `if` and `case`
 
