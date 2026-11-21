@@ -65,6 +65,38 @@ public class PlanRunnerLoopsTests
         Assert.Equal(RowState.Completed, recorder.Row("node.sections:1").State);
         Assert.Equal(3, (int)recorder.Row("node.sections.paragraphs:2").Detail["count"]!);
         Assert.Equal(RowState.Composed, recorder.Row("deliverable.note").State);
+
+        // every row inside an item carries the innermost item's name (part 08 § 4); rows outside a loop carry null
+        Assert.Equal("History", (string?)recorder.Row("node.sections.outline:1").Detail["itemName"]);
+        Assert.False((bool)recorder.Row("node.sections.outline:1").Detail["positionName"]!);
+        Assert.Equal("Plan", (string?)recorder.Row("node.sections.paragraphs:2").Detail["itemName"]);
+        Assert.Equal("Paragraphs 3", (string?)recorder.Row("node.sections.paragraphs.draft_paragraph:2/3").Detail["itemName"]);
+        Assert.True((bool)recorder.Row("node.sections.paragraphs.draft_paragraph:2/3").Detail["positionName"]!);
+        Assert.Null(recorder.Row("node.plan").Detail["itemName"]);
+        Assert.Null(recorder.Row("node.sections").Detail["itemName"]);
+    }
+
+    [Fact]
+    public async Task AnItemValueFieldSource_RunsANestedLoopOverIt()
+    {
+        var plan = RunFixture.Plan(Visits(), VisitsReads());
+        var host = new FakeRunHost(auto: true);
+        var recorder = new ListRecorder();
+        var visits = new JsonArray(Visit("March visit", "Fatigue", "Weight"), Visit("April visit", "Results"));
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Supplied("visits", visits), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        // the outer ids are an input's (0-based), the inner a field list's (1-based)
+        Assert.Equal(["node.visits.points.note:0/1", "node.visits.points.note:0/2", "node.visits.points.note:1/1"],
+            host.Dispatched.Where(k => k.StartsWith("node.visits.", StringComparison.Ordinal)).Order(StringComparer.Ordinal));
+        Assert.Equal("""{"item":{"parent":{"value":{"title":"April visit"}},"value":"Results"}}""",
+            host.Calls.Single(c => c.Key == "node.visits.points.note:1/1").Scope.ToJsonString());
+        Assert.Equal(["node.visits.points:0/1", "node.visits.points:0/2", "node.visits.points:1/1"],
+            recorder.Rows.Where(r => r.EntryKey == "node.visits.points" && r.Key.Contains('/', StringComparison.Ordinal)).Select(r => r.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(["node.visits:0", "node.visits:1"],
+            recorder.Rows.Where(r => r.EntryKey == "node.visits" && r.Key != "node.visits").Select(r => r.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(2, result.Values["node.visits"]!["value"]![0]!.AsArray().Count);
     }
 
     // ---- sizes ------------------------------------------------------------------------------------
@@ -301,6 +333,62 @@ public class PlanRunnerLoopsTests
         Assert.Equal("not run: beyond max 2", row.Reason);
         V31Contract.AssertSentence(new SourceRefusal("S04-002", row.Reason!, ""));
         Assert.Equal("bound", (string?)recorder.Row("node.drafts").Detail["stopped"]);
+        Assert.Equal("not run: beyond max 2", (string?)recorder.Row("node.drafts").Detail["reason"]);
+    }
+
+    [Fact]
+    public async Task MaxParallel_AndMax_Together()
+    {
+        var plan = RunFixture.Plan(InputLoop(Members(max: "3", maxParallel: "2")), InputLoopReads());
+        var host = new FakeRunHost();
+        var recorder = new ListRecorder();
+        var runner = new PlanRunner(plan, new RunLimits(), host, recorder);
+
+        var result = await FakeRunHost.Drive(() =>
+        {
+            var run = runner.RunAsync(Sections(Rows("History", "Examination", "Results", "Assessment", "Plan")), FakeRunHost.Start);
+
+            // two open at a time; the items beyond max are not run at once, while the first two still run
+            Assert.Equal(["node.plan", "node.drafts.draft:0", "node.drafts.draft:1"], host.Dispatched);
+            Assert.Equal(RowState.NotRun, recorder.Row("node.drafts:3").State);
+            Assert.Equal("not run: beyond max 3", recorder.Row("node.drafts:4").Reason);
+            host.Release("node.drafts.draft:1");
+            Assert.Equal(["node.plan", "node.drafts.draft:0", "node.drafts.draft:1", "node.drafts.draft:2"], host.Dispatched);
+            host.ReleaseAll();
+            return run;
+        });
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(4, host.Dispatched.Count);
+        Assert.Equal("bound", (string?)result.Values["node.drafts"]!["stopped"]);
+        Assert.Equal(3, result.Values["node.drafts"]!["value"]!.AsArray().Count);
+        Assert.Equal(2, (int)recorder.Row("node.drafts").Detail["maxParallel"]!);
+    }
+
+    [Fact]
+    public async Task Until_WithItemLabel_GivesThePositionName()
+    {
+        // until holds after the first section, named "History" by its title: the reason names it by position
+        var plan = RunFixture.Plan(InputLoop(Members(parallel: false,
+            until: "{ \"!\": [{ \"blank\": [{ \"var\": \"node.draft.content\" }] }] }")), InputLoopReads());
+        var host = new FakeRunHost(auto: true);
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Sections(Rows("History", "Examination", "Plan")), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        Assert.Equal(["node.plan", "node.drafts.draft:0"], host.Dispatched);
+        Assert.Equal("History", (string?)recorder.Row("node.drafts:0").Detail["itemName"]);
+        foreach (var key in new[] { "node.drafts:1", "node.drafts:2" })
+        {
+            var row = recorder.Row(key);
+            Assert.Equal("stopped early at Sections 1", row.Reason);
+            V31Contract.AssertSentence(new SourceRefusal("S04-001", row.Reason!, ""));
+            Assert.DoesNotContain("History", row.Reason!, StringComparison.Ordinal);
+        }
+
+        Assert.Equal("stopped early at Sections 1", (string?)recorder.Row("node.drafts").Detail["reason"]);
+        Assert.Equal("until", (string?)result.Values["node.drafts"]!["stopped"]);
     }
 
     // ---- names --------------------------------------------------------------------------------------
@@ -406,11 +494,52 @@ public class PlanRunnerLoopsTests
         var checks = result.Values["check.section_coverage"]!["items"]!.AsArray();
         Assert.Equal(["hpi", "assessment_plan"], checks.Select(i => (string)i!["item"]!["id"]!));
         Assert.Equal(["History of Present Illness", "Assessment and Plan"], checks.Select(i => (string)i!["label"]!));
-        Assert.Equal("completed", (string?)checks[0]!["item"]!["value"]!["state"]);
-        Assert.Equal("hpi", (string?)checks[0]!["item"]!["value"]!["item"]!["id"]);
+        // the element's item is the item the body iterated: the production element with its id, not wrapped again
+        Assert.Equal("completed", (string?)checks[0]!["item"]!["state"]);
+        Assert.Equal("hpi", (string?)checks[0]!["item"]!["item"]!["id"]);
+        Assert.Equal("Text of node.standards.section:hpi.", (string?)checks[0]!["item"]!["value"]);
         Assert.True((bool)checks[0]!["value"]!["pass"]!);
         Assert.Equal(RowState.Completed, recorder.Row("check.section_coverage:assessment_plan").State);
         Assert.True((bool)result.Values["check.all_sections"]!["value"]!["pass"]!);
+    }
+
+    [Fact]
+    public async Task ALoopOverItems_RecordsTheItemItsBodyRead()
+    {
+        // a production loop chained over the loop's .items: its body's item and its .items element's item are one JSON
+        var files = ChecksPerItem()
+            .With("nodes/index.json", Index(["plan", "standards", "extract_input_terms", "extract_note_terms", "summaries"]))
+            .With("nodes/summaries/index.json", Json(SourceFixture.Node("for", "Summaries", ArrayOf(Plain), false, true,
+                "\"in\": \"node.standards.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"label\", \"nodes\": [\"summary\"], \"ret\": \"node.summaries.summary\"")))
+            .With("nodes/summaries/summary.md", Agent("Summarising a section", Plain,
+                "Summarise the section {{ item.label }}: {{ item.value }}\n"));
+        var plan = RunFixture.Plan(files, new StubTemplates(new Dictionary<string, string[]>
+        {
+            ["node.plan"] = ["input.consult_draft.content"],
+            ["node.extract_input_terms"] = ["input.consult_draft.content"],
+            ["node.extract_note_terms"] = ["node.standards.content"],
+            ["node.standards.section"] = ["item.value.title", "item.content"],
+            ["node.standards.section_terms"] = ["item.value.title"],
+            ["node.summaries.summary"] = ["item"],
+            ["snippets/standards/hpi.md"] = [],
+            ["snippets/standards/assessment_plan.md"] = [],
+            ["deliverable.emr.consult"] = ["node.standards.content"],
+        }, everyBody: false));
+        var host = ConceptsHost(auto: true);
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, new ListRecorder()).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Completed, result.State);
+        var items = result.Values["node.summaries"]!["items"]!.AsArray();
+        Assert.Equal(["hpi", "assessment_plan"], items.Select(i => (string)i!["item"]!["id"]!));
+        for (var k = 0; k < 2; k++)
+        {
+            var bound = host.Calls.Single(c => c.Key == $"node.summaries.summary:{(string)items[k]!["item"]!["id"]!}").Scope["item"];
+            Assert.Equal(CanonicalJson.Write(bound), CanonicalJson.Write(items[k]!["item"]));
+        }
+
+        Assert.Equal("Text of node.standards.section:hpi.", (string?)items[0]!["item"]!["value"]);
     }
 
     // ---- reading a loop -----------------------------------------------------------------------------
@@ -539,8 +668,8 @@ public class PlanRunnerLoopsTests
             : null;
 
     /// <summary>A loop's members after <c>in</c>: <c>parallel</c>, <c>maxParallel</c>, <c>until</c>, <c>max</c> and <c>itemLabel</c>.</summary>
-    private static string Members(bool parallel = true, string max = "null", string itemLabel = "\"title\"") =>
-        $"\"parallel\": {(parallel ? "true" : "false")}, \"maxParallel\": null, \"until\": null, \"max\": {max}, \"itemLabel\": {itemLabel}";
+    private static string Members(bool parallel = true, string max = "null", string itemLabel = "\"title\"", string maxParallel = "null", string until = "null") =>
+        $"\"parallel\": {(parallel ? "true" : "false")}, \"maxParallel\": {maxParallel}, \"until\": {until}, \"max\": {max}, \"itemLabel\": {itemLabel}";
 
     /// <summary>
     /// <see cref="SourceFixture.Minimal"/> with the optional list input <c>sections</c> (of <c>section_request</c>) and the
@@ -585,15 +714,51 @@ public class PlanRunnerLoopsTests
     private static JsonArray Rows(params string[] titles) => new(titles.Select(t => (JsonNode?)Row(t)).ToArray());
 
     /// <summary>The consult draft, and the input <c>sections</c> supplied as <paramref name="value"/>.</summary>
-    private static RunInputs Sections(JsonNode value)
+    private static RunInputs Sections(JsonNode value) => Supplied("sections", value);
+
+    /// <summary>The consult draft, and the input <paramref name="id"/> supplied as <paramref name="value"/>.</summary>
+    private static RunInputs Supplied(string id, JsonNode value)
     {
         var inputs = PlanRunnerLeavesTests.Inputs();
         var supplied = new Dictionary<string, JsonNode?>(inputs.Inputs, StringComparer.Ordinal)
         {
-            ["sections"] = new JsonObject { ["value"] = value, ["content"] = null, ["title"] = null },
+            [id] = new JsonObject { ["value"] = value, ["content"] = null, ["title"] = null },
         };
         return inputs with { Inputs = supplied };
     }
+
+    /// <summary>
+    /// The list input <c>visits</c> (of <c>visit_request</c>: a <c>title</c> and a list of <c>points</c>) and the loop
+    /// <c>visits</c> over it, whose body is the loop <c>points</c> over <c>item.value.points</c>, drafting a note per point.
+    /// </summary>
+    private static Dictionary<string, byte[]> Visits() => Minimal()
+        .WithJson("manifest.json", m => m["inputs"]!.AsObject()["visits"] = JsonNode.Parse(
+            "{ \"label\": \"Visits\", \"description\": null, "
+            + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"visit_request\" } }, \"required\": true, \"channel\": null }"))
+        .With("formats/index.json", Index(["visit_request"]))
+        .With("formats/visit_request.json", Json(
+            "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", \"required\": [\"title\", \"points\"], "
+            + "\"additionalProperties\": false, \"properties\": { \"title\": { \"type\": \"string\", \"title\": \"Title\" }, "
+            + "\"points\": { \"type\": \"array\", \"items\": { \"type\": \"string\" }, \"title\": \"Points\" } } }"))
+        .With("nodes/index.json", Index(["plan", "visits"]))
+        .With("nodes/visits/index.json", Json(SourceFixture.Node("for", "Visits", ArrayOf(ArrayOf(Plain)), false, true,
+            "\"in\": \"input.visits.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+            + "\"itemLabel\": \"title\", \"nodes\": [\"points\"], \"ret\": \"node.visits.points\"")))
+        .With("nodes/visits/points/index.json", Json(SourceFixture.Node("for", "Points", ArrayOf(Plain), false, true,
+            "\"in\": \"item.value.points\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+            + "\"itemLabel\": null, \"nodes\": [\"note\"], \"ret\": \"node.visits.points.note\"")))
+        .With("nodes/visits/points/note.md", Agent("Noting a point", Plain,
+            "Note the point {{ item.value }} of {{ item.parent.value.title }}.\n"));
+
+    private static StubTemplates VisitsReads() => new(new Dictionary<string, string[]>
+    {
+        ["node.plan"] = ["input.consult_draft.content"],
+        ["node.visits.points.note"] = ["item.parent.value.title", "item.value"],
+        ["deliverable.note"] = ["node.plan.content"],
+    }, everyBody: false);
+
+    private static JsonObject Visit(string title, params string[] points) =>
+        new() { ["title"] = title, ["points"] = new JsonArray(points.Select(p => (JsonNode?)p).ToArray()) };
 
     /// <summary>
     /// Part 04 § 2.4's example: the list input <c>prior_letters</c> and the sequential loop <c>letters</c> over it, reading
