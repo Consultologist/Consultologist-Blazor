@@ -74,6 +74,7 @@ internal static class V31Contract
         ["A06-002"] = "While '<id>' declares checkFirst true, but its check reads node '<n>' of its own body, which has no value before the first pass: declare \"checkFirst\": false, or read something that runs before the while.",
         ["A06-003"] = "Node '<id>' computed a value that isn't <format>.",
         ["A06-005"] = "Node '<id>' gave a reply that isn't <format>.",
+        ["A06-006"] = "Loop '<id>' was given <reference>, which isn't a list.",
     };
 
     private static string RepoRoot()

@@ -82,6 +82,25 @@ internal sealed class FakeRunHost(bool auto = false) : IRunHost
         return peak;
     }
 
+    /// <summary>
+    /// The most groups with an agent call held at once, each call's group being what <paramref name="group"/> gives for its
+    /// key (null: in none), as the outer items of a loop instance with a call in flight.
+    /// </summary>
+    public int PeakGroupsOf(Func<string, string?> group)
+    {
+        var inFlight = new Dictionary<string, int>(StringComparer.Ordinal);
+        var peak = 0;
+        foreach (var (key, starts) in events)
+        {
+            if (group(key) is not { } named)
+                continue;
+            inFlight[named] = inFlight.GetValueOrDefault(named) + (starts ? 1 : -1);
+            peak = Math.Max(peak, inFlight.Count(p => p.Value > 0));
+        }
+
+        return peak;
+    }
+
     /// <inheritdoc/>
     public Task<AgentOutcome> CallAgentAsync(AgentCall call)
     {

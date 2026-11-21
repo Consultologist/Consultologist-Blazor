@@ -338,22 +338,22 @@ public class PlanRunnerLeavesTests
     [Fact]
     public async Task AReaderOfAFlowNode_IsNotRun_UntilItSettles_AndAStuckRunFails()
     {
-        // Until Task 6 gives `for` (and Task 7 `while`) a step, a top-level flow node never settles: this pins that the
-        // stuck guard ends the run Failed with S07-006, without hanging, and that the readers of a flow node never ran.
-        // Replace when Task 6 gives `for` a step.
-        var plan = RunFixture.Plan("nested-note");
-        var host = new FakeRunHost(auto: true).Reply("node.plan", ThreeSections);
+        // Until Task 8 gives `call` a step, the functions golden's loop node.standards, whose body is a call, never settles:
+        // this pins that the stuck guard ends the run Failed with S07-006 on the first unsettled instance in the fixed
+        // order, without hanging, and that the readers of the flow node never ran. Replace when Task 8 gives `call` a step.
+        var plan = RunFixture.Plan("functions");
+        var host = new FakeRunHost(auto: true).Reply("node.extract_input_terms", """{"concepts":[]}""");
         var recorder = new ListRecorder();
 
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Inputs(), FakeRunHost.Start);
 
         Assert.Equal(RunState.Failed, result.State);
-        Assert.Equal("node.sections", result.FailedKey);
-        Assert.Equal("Workflow example-nested-note@v2026.12.1 can't run: its compiled document doesn't match the hash published for it.", result.Sentence);
+        Assert.Equal("node.standards", result.FailedKey);
+        Assert.Equal("Workflow example-functions@v2026.12.1 can't run: its compiled document doesn't match the hash published for it.", result.Sentence);
         V31Contract.AssertSentence(new SourceRefusal("S07-006", result.Sentence!, ""));
-        Assert.Equal(["node.plan"], host.Dispatched);
-        Assert.Empty(host.Renders); // deliverable.note reads node.refine, which never settled
-        Assert.Equal(["node.plan", "node.section_count", "node.sections"], recorder.Rows.Select(r => r.Key));
+        Assert.Equal(["node.plan", "node.extract_input_terms"], host.Dispatched); // node.extract_note_terms reads node.standards
+        Assert.Empty(host.Renders); // deliverable.emr.consult reads node.standards, which never settled
+        Assert.Equal(["node.plan", "node.extract_input_terms", "node.standards"], recorder.Rows.Select(r => r.Key));
     }
 
     // ---- failures -------------------------------------------------------------------------------
