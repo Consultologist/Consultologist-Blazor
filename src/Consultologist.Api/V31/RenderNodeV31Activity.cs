@@ -3,21 +3,27 @@ using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using Consultologist.PackageFormat.V31.Templates;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api.V31;
 
-/// <summary>#1503 (specVersion 31, area 06): an activity's input: the job's package version, its <c>resolveHash</c>, and the call.</summary>
+/// <summary>
+/// #1503 (specVersion 31, area 06): an activity's input: the job's package version, its <c>resolveHash</c>, and the call
+/// (#1504: with the runner's placement decisions, <see cref="RenderCall.Placed"/>).
+/// </summary>
 public sealed record RenderNodeV31Input(string PackageName, string PackageVersion, string ResolveHash, RenderCall Call);
 
 /// <summary>
-/// #1503 (specVersion 31, area 06; part 09 § 3.1): a rendered node's or a deliverable's render, in an activity, as templates
-/// render today: the plan from the store's cache (the job's own, by its <c>resolveHash</c>), the entry's body composed over
-/// the call's scope within its step budget. A plan that is not the job's, or an entry it lacks, is the render's failure.
-/// Telemetry: the key, the length and hash of what was rendered, never the text.
+/// #1503 (specVersion 31, area 06; part 09 § 3.1): a rendered node's or a deliverable's render, in an activity: the plan
+/// from the store's cache (the job's own, by its <c>resolveHash</c>). #1504 (area 07; part 05 §§ 4, 9; part 08 §§ 4.2, 8.2,
+/// 10): the render is <see cref="RenderTurn.Render"/>'s (the entry's body composed over the call's scope with its
+/// placements decided, within its step budget): its text, its run-neutral text and the row's detail. A plan that is not
+/// the job's, or an entry it lacks, is the render's failure. Telemetry: the key, the lengths and hashes of what was
+/// rendered, never the text.
 /// </summary>
-public sealed class RenderNodeV31Activity(ICompiledPackageStore store, IBodyComposer composer, ILogger<RenderNodeV31Activity> logger)
+public sealed class RenderNodeV31Activity(ICompiledPackageStore store, ILogger<RenderNodeV31Activity> logger)
 {
     [Function(ConsultGenerationActivityNames.RenderNodeV31)]
     public async Task<RenderOutcome> RunAsync([ActivityTrigger] RenderNodeV31Input input, CancellationToken cancellationToken)
@@ -28,15 +34,17 @@ public sealed class RenderNodeV31Activity(ICompiledPackageStore store, IBodyComp
             return new RenderOutcome(null, false, refusal);
 
         var call = input.Call;
-        var composed = composer.Compose(plan, call.EntryKey, call.Function, call.Scope, call.StepLimit);
+        var rendered = RenderTurn.Render(plan, call);
         logger.LogInformation(
-            "V31 render. Key={Key}, TooManySteps={TooManySteps}, Failed={Failed}, Length={Length}, Hash={Hash}",
+            "V31 render. Key={Key}, TooManySteps={TooManySteps}, Failed={Failed}, Length={Length}, Hash={Hash}, NeutralLength={NeutralLength}, NeutralHash={NeutralHash}",
             call.Key,
-            composed.TooManySteps,
-            composed.Failure != null,
-            composed.Text?.Length,
-            composed.Text == null ? null : CanonicalJson.HashText(composed.Text));
-        return new RenderOutcome(composed.Text, composed.TooManySteps, composed.Failure);
+            rendered.TooManySteps,
+            rendered.Failure != null,
+            rendered.Text?.Length,
+            rendered.Text == null ? null : CanonicalJson.HashText(rendered.Text),
+            rendered.NeutralText?.Length,
+            rendered.NeutralText == null ? null : CanonicalJson.HashText(rendered.NeutralText));
+        return rendered;
     }
 }
 

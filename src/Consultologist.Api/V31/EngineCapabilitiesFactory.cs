@@ -11,26 +11,26 @@ namespace Consultologist.Api.V31;
 /// libraries as their loaded assemblies say (<see cref="Toolchain.Current"/>'s reading); each custom operation and each
 /// built-in at the version this build writes into <c>lock.json</c>; the kinds and features this build runs; the attested
 /// agents of the catalogues the engine loads and attests at startup (the output contracts' and the formats catalogue's,
-/// its custom producer included); and <see cref="EngineBreakPoints.All"/>.
+/// its custom producer included, and #1504's 31 agents catalogue, <see cref="V31AgentsCatalogue"/>); and
+/// <see cref="EngineBreakPoints.All"/>.
 /// </summary>
-public sealed class EngineCapabilitiesFactory(OutputContractCatalog contracts, WorkflowFormatCatalog formats)
+public sealed class EngineCapabilitiesFactory(OutputContractCatalog contracts, WorkflowFormatCatalog formats, V31AgentsCatalogue agents)
 {
     /// <summary>The node kinds this build runs: every kind of <c>constants.json</c>.</summary>
     public static readonly IReadOnlyList<string> Kinds = ["agent", "rendered", "computed", "for", "while", "if", "case", "call"];
 
-    /// <summary>The features of <c>constants.json</c> this build runs: the runner's.</summary>
-    public static readonly IReadOnlyList<string> Features = ["parallel", "check-loops"];
+    /// <summary>
+    /// The features of <c>constants.json</c> this build runs: the runner's, and (#1504, area 07; D15) the template library's:
+    /// parts, macro markers and run spots.
+    /// </summary>
+    public static readonly IReadOnlyList<string> Features = ["parallel", "check-loops", "parts", "macro-markers", "run-spots"];
 
-    /// <summary>The features of <c>constants.json</c> this build does not run yet, each with its reason; a package needing one is refused (S07-004).</summary>
-    public static readonly IReadOnlyDictionary<string, string> FeaturesNotRun = new Dictionary<string, string>(StringComparer.Ordinal)
-    {
-        ["parts"] = "a deliverable's parts are composed by the body composer, which area 07 builds",
-        ["macro-markers"] = "macro markers are placed by the body composer, which area 07 builds",
-        ["run-spots"] = "run spots are filled by the body composer, which area 07 builds",
-    };
+    /// <summary>The features of <c>constants.json</c> this build does not run yet, each with its reason; a package needing one is refused (S07-004). None since area 07.</summary>
+    public static readonly IReadOnlyDictionary<string, string> FeaturesNotRun = new Dictionary<string, string>(StringComparer.Ordinal);
 
     private readonly OutputContractCatalog _contracts = contracts ?? throw new ArgumentNullException(nameof(contracts));
     private readonly WorkflowFormatCatalog _formats = formats ?? throw new ArgumentNullException(nameof(formats));
+    private readonly V31AgentsCatalogue _agents = agents ?? throw new ArgumentNullException(nameof(agents));
 
     /// <summary>What this engine runs now.</summary>
     public EngineCapabilities Current()
@@ -50,7 +50,7 @@ public sealed class EngineCapabilitiesFactory(OutputContractCatalog contracts, W
             new Dictionary<string, string>(LockCompiler.BuiltinVersions, StringComparer.Ordinal));
     }
 
-    /// <summary>Each attested agent's versions, by name: every agent the startup attestation checks.</summary>
+    /// <summary>Each attested agent's versions, by name: every agent of the catalogues the engine loads and attests.</summary>
     private Dictionary<string, IReadOnlySet<int>> Agents()
     {
         var agents = new Dictionary<string, HashSet<int>>(StringComparer.Ordinal);
@@ -74,6 +74,10 @@ public sealed class EngineCapabilitiesFactory(OutputContractCatalog contracts, W
         }
 
         Add(_formats.CustomProducer.AgentName, _formats.CustomProducer.AgentVersion);
+
+        // #1504 ruling 3 (D9): the 31 agents catalogue, so an agent only it holds (judgement) is not refused S07-005.
+        foreach (var (name, version) in _agents.Agents)
+            Add(name, version);
         return agents.ToDictionary(a => a.Key, a => (IReadOnlySet<int>)a.Value, StringComparer.Ordinal);
     }
 }

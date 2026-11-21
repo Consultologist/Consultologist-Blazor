@@ -7,6 +7,7 @@ using Consultologist.Api.Jobs;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using Consultologist.PackageFormat.V31.Templates;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
@@ -14,27 +15,31 @@ namespace Consultologist.Api.V31;
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): an activity's input: the job's package version, its <c>resolveHash</c>, the step budget
-/// of its body (the job's recorded <c>renderSteps</c>, never the live setting), and the call.
+/// of its body (the job's recorded <c>renderSteps</c>, never the live setting), and the call (#1504: with the runner's
+/// placement decisions, <see cref="AgentCall.Placed"/>, and a retry's <see cref="AgentCall.Faults"/>).
 /// </summary>
 public sealed record RunAgentNodeV31Input(string PackageName, string PackageVersion, string ResolveHash, int RenderSteps, AgentCall Call);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 §§ 3.1, 3.4; D7): one attempt of a 31 agent call. The plan comes from the store's
-/// cache (the job's own, by its <c>resolveHash</c>); the entry's body is composed over the call's scope; the agent is the
-/// one the plan's <c>bindings</c> name for the entry's format and producer (<c>bindings.&lt;format key&gt;.&lt;producer&gt;</c>);
-/// and the composed body is sent once, as the user message (<see cref="IAgentAttempts.TryPromptOnceAsync"/>). A 429 or
-/// another service failure is answered with the wait before the next attempt: the service's, else
+/// cache (the job's own, by its <c>resolveHash</c>); the agent is the one the plan's <c>bindings</c> name for the entry's
+/// format and producer (<c>bindings.&lt;format key&gt;.&lt;producer&gt;</c>), which the 31 agents catalogue must hold. #1504
+/// (area 07; part 05 §§ 8.3 to 8.6; D8, D11): the prompt is <see cref="AgentTurn.Prepare"/>'s (the body composed over the
+/// call's scope with its placements decided, a custom binding's format sent without the attested agent's
+/// <c>strictRejects</c>, a retry's text), sent once as the user message (<see cref="IAgentAttempts.TryPromptOnceAsync"/>),
+/// and a reply is <see cref="AgentTurn.Finish"/>'s (unwrapped, its macro markers checked and replaced, the row's detail).
+/// A 429 or another service failure is answered with the wait before the next attempt: the service's, else
 /// <see cref="AgentBackoff.Wait"/> with jitter from <paramref name="random"/> (<see cref="Random.Shared"/> unless a test
 /// gives one; the wait is in the history, so a replay repeats it). There is no Durable retry policy: the orchestration
-/// retries. A call that cannot be made answers <see cref="AgentOutcomeKind.Failed"/>, so the runner fails the node with a
-/// row and a sentence: <c>plan</c> (a plan that is not the job's, an entry or binding it lacks), <c>steps</c> (the body
-/// passed the job's step budget), <c>compose</c> (it could not be composed). Telemetry: the key, the attempt, lengths and
-/// hashes, never text.
+/// retries. A call that cannot be made answers <see cref="AgentOutcomeKind.Failed"/> and is never sent, so the runner fails
+/// the node with a row and a sentence: <c>plan</c> (a plan that is not the job's, an entry, a binding or a catalogue agent
+/// it lacks), <c>steps</c> (the body passed the job's step budget), <c>compose</c> (it could not be composed). Telemetry:
+/// the key, the attempt, lengths and hashes, never text.
 /// </summary>
 public sealed class RunAgentNodeV31Activity(
     ICompiledPackageStore store,
     IAgentAttempts agent,
-    IBodyComposer composer,
+    V31AgentsCatalogue catalogue,
     ILogger<RunAgentNodeV31Activity> logger,
     Random? random = null)
 {
@@ -49,34 +54,40 @@ public sealed class RunAgentNodeV31Activity(
 
         var (plan, _) = await V31Plans.LoadAsync(store, input.PackageName, input.PackageVersion, input.ResolveHash, logger, cancellationToken);
         var entry = plan == null ? null : V31Entries.Find(plan, call.EntryKey, call.Function);
-        if (plan == null || entry == null || Binding(plan, entry) is not { } binding)
+        if (plan == null || entry == null || Binding(plan, entry) is not { } binding
+            || !int.TryParse(binding.AgentVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var version)
+            || !catalogue.Holds(binding.AgentName, version))
+        {
             return CouldNotCall(call, "plan");
+        }
 
         var (agentName, agentVersion) = binding;
+        var prepared = AgentTurn.Prepare(plan, call, input.RenderSteps, catalogue.StrictRejects(agentName, version));
+        if (prepared.Text is not { } prompt)
+            return CouldNotCall(call, prepared.ErrorKind ?? "plan");
 
-        var composed = composer.Compose(plan, call.EntryKey, call.Function, call.Scope, input.RenderSteps);
-        if (composed.TooManySteps)
-            return CouldNotCall(call, "steps");
-        if (composed.Text is not { } body)
-            return CouldNotCall(call, "compose");
-
-        var attempt = await agent.TryPromptOnceAsync(call.Key, body, agentName, agentVersion, cancellationToken);
+        var attempt = await agent.TryPromptOnceAsync(call.Key, prompt, agentName, agentVersion, cancellationToken);
         var outcome = attempt.Kind == AgentOutcomeKind.Completed
-            ? new AgentOutcome(AgentOutcomeKind.Completed, attempt.Text ?? "", 0, null)
+            ? AgentTurn.Finish(prepared, attempt.Text ?? "")
             : new AgentOutcome(attempt.Kind, null, attempt.RetryAfterMilliseconds ?? AgentBackoff.Wait(call.Attempt, _random.NextDouble()), attempt.ErrorKind);
 
         logger.LogInformation(
-            "V31 agent attempt. Key={Key}, Attempt={Attempt}, Repair={Repair}, AgentName={AgentName}, AgentVersion={AgentVersion}, Outcome={Outcome}, ErrorKind={ErrorKind}, WaitMs={WaitMs}, PromptLength={PromptLength}, PromptHash={PromptHash}, ReplyLength={ReplyLength}, ReplyHash={ReplyHash}, InputTokens={InputTokens}, OutputTokens={OutputTokens}, ElapsedMs={ElapsedMs}",
+            "V31 agent attempt. Key={Key}, Attempt={Attempt}, Repair={Repair}, Faults={Faults}, AgentName={AgentName}, AgentVersion={AgentVersion}, Outcome={Outcome}, ErrorKind={ErrorKind}, WaitMs={WaitMs}, PromptLength={PromptLength}, PromptHash={PromptHash}, RunNeutralHash={RunNeutralHash}, ReplyLength={ReplyLength}, ReplyHash={ReplyHash}, Invalid={Invalid}, ValueLength={ValueLength}, ValueHash={ValueHash}, InputTokens={InputTokens}, OutputTokens={OutputTokens}, ElapsedMs={ElapsedMs}",
             call.Key,
             call.Attempt,
             call.Repair,
+            call.Faults?.Count ?? 0,
             agentName,
             agentVersion,
             outcome.Kind,
             outcome.ErrorKind,
             outcome.WaitMilliseconds,
-            body.Length,
-            CanonicalJson.HashText(body),
+            prompt.Length,
+            CanonicalJson.HashText(prompt),
+            SourceLayout.Text(prepared.Detail["runNeutralHash"]),
+            attempt.Text?.Length,
+            attempt.Text == null ? null : CanonicalJson.HashText(attempt.Text),
+            outcome.Invalid?.Count ?? 0,
             outcome.Reply?.Length,
             outcome.Reply == null ? null : CanonicalJson.HashText(outcome.Reply),
             attempt.Tokens?.Input,
