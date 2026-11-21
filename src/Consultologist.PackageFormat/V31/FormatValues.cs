@@ -53,10 +53,43 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
     {
         ArgumentNullException.ThrowIfNull(formats);
 
-        JsonSchema schema;
+        JsonNode full;
         try
         {
-            if (!FormatTypes.Expands(format, formats) || FormatTypes.FullForm(format, formats) is not JsonObject full)
+            if (!FormatTypes.Expands(format, formats) || FormatTypes.FullForm(format, formats) is not JsonObject form)
+            {
+                return new FormatValueResult(false, BadFormat);
+            }
+
+            full = form;
+        }
+        catch (Exception)
+        {
+            return new FormatValueResult(false, BadFormat);
+        }
+
+        return ValidateExpanded(value, full);
+    }
+
+    /// <summary>
+    /// #1503 (area 06): validates <paramref name="value"/> against <paramref name="schema"/>, a self-contained schema (no
+    /// reference left to resolve; what <see cref="Validate"/> holds a value to once it has expanded the format): an object,
+    /// compiled once per process as <see cref="Validate"/> compiles one, or a boolean schema (<c>true</c> fits every value,
+    /// <c>false</c> none, with the fault <c>("", "$ref")</c> of a format that cannot be compiled). Never throws on either.
+    /// </summary>
+    public FormatValueResult ValidateExpanded(JsonNode? value, JsonNode schema)
+    {
+        ArgumentNullException.ThrowIfNull(schema);
+
+        if (schema is JsonValue boolean && boolean.GetValueKind() is System.Text.Json.JsonValueKind.True or System.Text.Json.JsonValueKind.False)
+        {
+            return boolean.GetValueKind() == System.Text.Json.JsonValueKind.True ? new FormatValueResult(true, []) : new FormatValueResult(false, BadFormat);
+        }
+
+        JsonSchema compiled;
+        try
+        {
+            if (schema is not JsonObject full)
             {
                 return new FormatValueResult(false, BadFormat);
             }
@@ -65,7 +98,7 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
             var copy = (JsonObject)full.DeepClone();
             copy.Remove("$id");
             copy["$schema"] = "https://json-schema.org/draft/2020-12/schema";
-            schema = JsonSchema.FromText(copy.ToJsonString(), uri, Options, false);
+            compiled = JsonSchema.FromText(copy.ToJsonString(), uri, Options, false);
         }
         catch (Exception)
         {
@@ -75,13 +108,13 @@ public sealed class CorvusFormatValueValidator : IFormatValueValidator
         try
         {
             var json = value?.ToJsonString() ?? "null";
-            if (schema.Validate(json, null))
+            if (compiled.Validate(json, null))
             {
                 return new FormatValueResult(true, []);
             }
 
             using var collector = JsonSchemaResultsCollector.Create(JsonSchemaResultsLevel.Detailed, 0);
-            schema.Validate(json, collector);
+            compiled.Validate(json, collector);
             var faults = Faults(collector);
             return new FormatValueResult(false, faults.Count > 0 ? faults : BadValue);
         }
