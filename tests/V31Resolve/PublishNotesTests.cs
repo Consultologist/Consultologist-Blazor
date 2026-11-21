@@ -174,6 +174,77 @@ public class PublishNotesTests
             Said(notes, "S04-080"));
     }
 
+    /// <summary>
+    /// <paramref name="files"/> with the function <paramref name="id"/>: its <paramref name="inputs"/> (JSON members),
+    /// <paramref name="nodes"/> (path under the function to file text), its top-level <paramref name="body"/>, and its
+    /// <paramref name="ret"/> of <paramref name="format"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithFunction(
+        Dictionary<string, byte[]> files, string id, string inputs, string[] body, string ret, string format, Dictionary<string, string> nodes)
+    {
+        files.With("functions/index.json", Index([id]))
+            .With($"functions/{id}/index.json", Json(
+                $"{{ \"label\": \"Drafting\", \"description\": null, \"inputs\": {{ {inputs} }}, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                + $"\"nodes\": [{string.Join(", ", body.Select(n => $"\"{n}\""))}], \"ret\": \"{ret}\", \"format\": {format} }}"));
+        foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
+            files.With($"functions/{id}/{folder}/index.json", Index([]));
+        foreach (var (path, text) in nodes)
+            files.With($"functions/{id}/{path}", text);
+        return files;
+    }
+
+    private static string CallOf(string function, string with = "{}") =>
+        Md(SourceFixture.Node("call", "Drafting through the function", Plain, false, true,
+            $"\"if\": null, \"function\": \"{function}\", \"with\": {with}"), "");
+
+    [Fact]
+    public void OneFunction_CalledUnderDifferentCaps_TakesEachSitesOwn()
+    {
+        // draft_one holds one agent. It is called inside loop a (cap 3) and inside b2 (cap 5) inside b (cap 2): the
+        // largest product is the second site's, 10, though the function was first worked out at the first.
+        var files = WithFunction(WithPoints(Minimal()), "draft_one", "", ["draft"], "node.draft", Plain,
+                new() { ["draft.md"] = Agent("Drafting a sentence", Plain, "Write one sentence for Dr A. Sample.\n") })
+            .With("nodes/index.json", Index(["plan", "a", "b"]))
+            .With("nodes/a/index.json", Loop("A", ArrayOf(Plain), "input.points.value", true, "3", "call_a", "node.a.call_a"))
+            .With("nodes/a/call_a.md", CallOf("draft_one"))
+            .With("nodes/b/index.json", Loop("B", ArrayOf(ArrayOf(Plain)), "input.points.value", true, "2", "b2", "node.b.b2"))
+            .With("nodes/b/b2/index.json", Loop("B2", ArrayOf(Plain), "input.points.value", true, "5", "call_b", "node.b.b2.call_b"))
+            .With("nodes/b/b2/call_b.md", CallOf("draft_one"));
+        Assert.Equal(["Up to 10 agent calls could run at once; this engine runs at most 9 per job, so the rest wait their turn."],
+            Said(Notes(files, Engine with { Ceiling = 9 }), "S04-072"));
+        Assert.Empty(Said(Notes(files, Engine with { Ceiling = 10 }), "S04-072"));
+
+        // The other way round: the first site's product is the larger.
+        var swapped = files.WithJson("nodes/a/index.json", h => h["maxParallel"] = 12);
+        Assert.Equal(["Up to 12 agent calls could run at once; this engine runs at most 9 per job, so the rest wait their turn."],
+            Said(Notes(swapped, Engine with { Ceiling = 9 }), "S04-072"));
+    }
+
+    [Fact]
+    public void ACalleesUnboundedLoop_IsNamedAtTheCall()
+    {
+        // draft_points loops, uncapped, over the points it is passed, an agent beneath: the call makes it S04-073.
+        var files = WithFunction(WithPoints(Minimal()), "draft_points",
+                "\"points\": { \"label\": \"Points\", \"description\": null, \"format\": " + ArrayOf(Plain) + " }",
+                ["each"], "node.each", ArrayOf(Plain), new()
+                {
+                    ["each/index.json"] = Loop("Each point", ArrayOf(Plain), "param.points.value", true, "null", "draft", "node.each.draft"),
+                    ["each/draft.md"] = Agent("Drafting a point", Plain, "Write one sentence about {{ item.value }}.\n"),
+                })
+            .With("nodes/index.json", Index(["plan", "outer"]))
+            .With("nodes/outer/index.json", Loop("Outer", ArrayOf(ArrayOf(Plain)), "input.points.value", true, "null", "drafted", "node.outer.drafted"))
+            .With("nodes/outer/drafted.md", CallOf("draft_points", "{ \"points\": \"input.points.value\" }")
+                .Replace(Plain + ", \"reproducible\"", ArrayOf(Plain) + ", \"reproducible\"", StringComparison.Ordinal));
+        var notes = Notes(files, Engine);
+        Assert.Equal(
+        [
+            "An unbounded number of agent calls could run at once (loop 'outer' has no cap over a list known only at run time); this engine runs at most 16 per job, so the rest wait their turn.",
+            "An unbounded number of agent calls could run at once (loop 'each' has no cap over a list known only at run time); this engine runs at most 16 per job, so the rest wait their turn.",
+        ], Said(notes, "S04-073"));
+        Assert.Empty(Said(notes, "S04-072"));
+    }
+
     [Fact]
     public void NoLimits_NoNotes()
     {
