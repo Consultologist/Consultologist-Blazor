@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Templates;
 
 namespace Consultologist.PackageFormat.V31.Run;
 
@@ -28,6 +29,9 @@ public sealed partial class PlanRunner
 
         public (string Reason, string Action)? Invalid { get; set; }
 
+        /// <summary>#1504 (D11): the sentences of the reply's marker faults the repair names; empty for a format repair, null before one.</summary>
+        public IReadOnlyList<string>? Faults { get; set; }
+
         public JsonArray Retries { get; } = [];
     }
 
@@ -48,7 +52,7 @@ public sealed partial class PlanRunner
         {
             var state = agentStates[instance];
             instance.Attempt++;
-            var call = state.Call with { Attempt = instance.Attempt, Repair = state.Repaired };
+            var call = state.Call with { Attempt = instance.Attempt, Repair = state.Repaired, Faults = state.Faults };
             flights.Add(new Flight(instance, host.CallAgentAsync(call), FlightKind.Agent));
         }
 
@@ -68,7 +72,11 @@ public sealed partial class PlanRunner
             switch (outcome.Kind)
             {
                 case AgentOutcomeKind.Completed:
-                    await RepliedAsync(instance, state, outcome.Reply ?? "");
+                    instance.CallDetail = outcome.Detail;
+                    if (outcome.Invalid is { Count: > 0 } faults)
+                        await InvalidAsync(instance, state, faults);
+                    else
+                        await RepliedAsync(instance, state, outcome.Reply ?? "");
                     return;
                 case AgentOutcomeKind.Throttled:
                     if (state.CapacityWaited + wait > limits.CapacityWaitMinutes * 60_000L)
@@ -143,16 +151,7 @@ public sealed partial class PlanRunner
             if (!parsed || !plan.Formats.Validate(value, entry.Format).Valid)
             {
                 var sentence = $"Node '{entry.Id}' gave a reply that isn't {FormatName(entry.Format)}.";
-                var retry = SourceLayout.Text(entry.Json["onInvalid"]) == "retry";
-                state.Invalid = (sentence, retry ? "retry" : "fail");
-                if (retry && !state.Repaired)
-                {
-                    state.Repaired = true;
-                    CallAgain(instance);
-                    return;
-                }
-
-                await FailAsync(instance, sentence);
+                await OnInvalidAsync(instance, state, sentence, sentence, []);
                 return;
             }
 
@@ -166,6 +165,40 @@ public sealed partial class PlanRunner
         }
 
         /// <summary>
+        /// #1504 (part 05 § 8.6; part 08 § 4; D11): a reply whose macro markers are wrong (<see cref="AgentOutcome.Invalid"/>),
+        /// the reply as it came, never read: the row's <c>invalid</c> reason is the faults' short forms joined by <c>; </c>,
+        /// and <c>onInvalid</c> is applied as for a reply that does not fit its format, the repair naming each fault's
+        /// sentence and the failure the first's, after the node.
+        /// </summary>
+        private Task InvalidAsync(RunInstance instance, AgentState state, IReadOnlyList<ReplyFault> faults)
+        {
+            state.Replies++;
+            return OnInvalidAsync(instance, state, string.Join("; ", faults.Select(f => f.Reason)),
+                $"Node '{instance.Entry.Id}': {faults[0].Sentence}", [.. faults.Select(f => f.Sentence)]);
+        }
+
+        /// <summary>
+        /// The node's <c>onInvalid</c> for an invalid reply (part 05 § 1.2): recorded as the row's <c>invalid</c>
+        /// (<paramref name="reason"/> and the action); under <c>retry</c> asked again once, in the same slot and as the same
+        /// call, the repair carrying <paramref name="faults"/>; invalid again, or under <c>fail</c>, the node fails with
+        /// <paramref name="sentence"/>.
+        /// </summary>
+        private async Task OnInvalidAsync(RunInstance instance, AgentState state, string reason, string sentence, IReadOnlyList<string> faults)
+        {
+            var retry = SourceLayout.Text(instance.Entry.Json["onInvalid"]) == "retry";
+            state.Invalid = (reason, retry ? "retry" : "fail");
+            if (retry && !state.Repaired)
+            {
+                state.Repaired = true;
+                state.Faults = faults;
+                CallAgain(instance);
+                return;
+            }
+
+            await FailAsync(instance, sentence);
+        }
+
+        /// <summary>
         /// Whether a valid value is empty for <c>failIfEmpty</c>, as at version 30: text that is blank (white space only),
         /// or an empty list. An object, a number, a boolean and <c>null</c> are never empty.
         /// </summary>
@@ -176,9 +209,14 @@ public sealed partial class PlanRunner
             _ => false,
         };
 
-        /// <summary>An agent row's detail, in part 08 § 4's names: <c>invalid</c> (<c>null</c> when every reply was valid) and <c>retries</c> (<c>[]</c> for none).</summary>
+        /// <summary>
+        /// An agent row's detail, in part 08 § 4's names: #1504, the members its last attempt's outcome gave
+        /// (<see cref="AgentTurn"/>'s: hashes, run spots, renders, macro rows, units); <c>invalid</c> (<c>null</c> when every
+        /// reply was valid) and <c>retries</c> (<c>[]</c> for none).
+        /// </summary>
         private void AgentDetail(RunInstance instance, JsonObject detail)
         {
+            Merge(instance.CallDetail, detail);
             var state = agentStates.GetValueOrDefault(instance);
             detail["invalid"] = state?.Invalid is { } invalid
                 ? new JsonObject { ["reason"] = invalid.Reason, ["action"] = invalid.Action, ["attempts"] = state.Replies }

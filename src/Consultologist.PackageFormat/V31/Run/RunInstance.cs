@@ -72,6 +72,15 @@ internal sealed class RunInstance
     /// <summary>Whether it has settled.</summary>
     public bool IsSettled => Phase == InstancePhase.Settled;
 
+    /// <summary>
+    /// #1504 (area 07; D3): for an agent, a rendered node or a deliverable whose gate held, each placement of its entry the
+    /// run decided, to its result (a placement with no rule, true); null before.
+    /// </summary>
+    public IReadOnlyDictionary<string, bool>? Placed { get; set; }
+
+    /// <summary>#1504 (area 07; part 08 §§ 4, 10): the row detail its last call's outcome gave (part 08's names), or null.</summary>
+    public JsonObject? CallDetail { get; set; }
+
     /// <summary><see cref="Entry"/>'s dependencies other than its own descendants, worked out once.</summary>
     private IReadOnlyList<string>? outside;
 

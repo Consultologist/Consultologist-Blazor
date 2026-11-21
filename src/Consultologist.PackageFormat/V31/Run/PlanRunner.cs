@@ -41,7 +41,9 @@ public sealed record RunResult(
 /// call in flight recorded cancelled). An agent's reply, its repair and its retries are <c>PlanRunner.Agents.cs</c>'s; a
 /// <c>for</c> loop, its item frames and its <c>maxParallel</c>, <c>PlanRunner.Loops.cs</c>'s; a <c>while</c>'s passes and
 /// the branches of an <c>if</c> and a <c>case</c>, <c>PlanRunner.Flow.cs</c>'s; a <c>call</c>'s function body, run inline
-/// in a frame of its own under the same ceiling, <c>PlanRunner.Calls.cs</c>'s.
+/// in a frame of its own under the same ceiling, <c>PlanRunner.Calls.cs</c>'s. #1504 (area 07; D3): the placements of an
+/// agent's, a rendered node's or a deliverable's body are decided once its gate holds, and passed with its call,
+/// <c>PlanRunner.Placements.cs</c>'s.
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IRunHost"/>'s (and the recorder's), reads no clock but
@@ -237,7 +239,7 @@ public sealed partial class PlanRunner
             switch (instance.Entry.Kind)
             {
                 case PlanKind.Agent or PlanKind.Rendered or PlanKind.Deliverable:
-                    if (await GateAsync(instance))
+                    if (await GateAsync(instance) && await PlaceAsync(instance))
                         instance.Phase = InstancePhase.Waiting;
                     return true;
                 case PlanKind.Computed:
@@ -319,7 +321,7 @@ public sealed partial class PlanRunner
                     // A render takes no slot.
                     instance.Phase = InstancePhase.Running;
                     var render = new RenderCall(instance.Key, entry.Key, instance.Frame.Function,
-                        scope.Data(entry, instance.Frame, CompiledReads(entry)), limits.RenderSteps);
+                        scope.Data(entry, instance.Frame, CallReads(entry)), limits.RenderSteps, instance.Placed);
                     flights.Add(new Flight(instance, host.RenderAsync(render), FlightKind.Render));
                     continue;
                 }
@@ -337,18 +339,19 @@ public sealed partial class PlanRunner
                 peakInFlight = Math.Max(peakInFlight, agentsInFlight);
                 instance.Phase = InstancePhase.Running;
                 var call = new AgentCall(instance.Key, entry.Key, instance.Frame.Function, 1, false,
-                    scope.Data(entry, instance.Frame, CompiledReads(entry)));
+                    scope.Data(entry, instance.Frame, CallReads(entry)), instance.Placed);
                 StartAgent(instance, call);
             }
         }
 
         /// <summary>
         /// What a call's scope holds: exactly the entry's compiled <c>reads</c> (its body's and its header's, as publish wrote
-        /// them), never more, since Durable keeps an activity's input in its history. <see cref="RunPlan.Build"/> has checked
-        /// it is a list of strings.
+        /// them), and (#1504, D4) the run-neutral text of each node its run spots read so (<see cref="PlanEntry.NeutralReads"/>),
+        /// never more, since Durable keeps an activity's input in its history. <see cref="RunPlan.Build"/> has checked
+        /// <c>reads</c> is a list of strings.
         /// </summary>
-        private static IEnumerable<string> CompiledReads(PlanEntry entry) =>
-            entry.Json["reads"] is JsonArray reads ? reads.Select(r => SourceLayout.Text(r)).OfType<string>() : [];
+        private static IEnumerable<string> CallReads(PlanEntry entry) =>
+            (entry.Json["reads"] is JsonArray reads ? reads.Select(r => SourceLayout.Text(r)).OfType<string>() : []).Concat(entry.NeutralReads);
 
         /// <summary>
         /// Moves on what finished: an agent call's attempt (its slot is freed once the node settles, a repair or a retry
@@ -373,9 +376,14 @@ public sealed partial class PlanRunner
             }
         }
 
-        /// <summary>A render's outcome: a rendered node completes with its text; a deliverable settles composed (area 08 takes it from there).</summary>
+        /// <summary>
+        /// A render's outcome: a rendered node completes with its text; a deliverable settles composed (area 08 takes it from
+        /// there). #1504 (part 05 § 4; part 08 §§ 8.2, 10): its row carries the outcome's detail, and its read form its
+        /// run-neutral text as <c>neutral</c> when it has one.
+        /// </summary>
         private async Task RenderedAsync(RunInstance instance, RenderOutcome outcome)
         {
+            instance.CallDetail = outcome.Detail;
             if (outcome.TooManySteps)
             {
                 await FailAsync(instance, RunSentences.StoppedRendering(Subject(instance), limits.RenderSteps));
@@ -389,13 +397,17 @@ public sealed partial class PlanRunner
             }
 
             var text = JsonValue.Create(outcome.Text ?? "");
-            await CompleteAsync(instance, text, instance.Entry.Kind == PlanKind.Deliverable ? RowState.Composed : RowState.Completed);
+            await CompleteAsync(instance, text, instance.Entry.Kind == PlanKind.Deliverable ? RowState.Composed : RowState.Completed, outcome.NeutralText);
         }
 
         // ---- settling -----------------------------------------------------------------------
 
-        /// <summary>Settles <paramref name="instance"/> with <paramref name="value"/>: its <c>.content</c> is its text for a text format, else the value's canonical JSON (D11).</summary>
-        private Task CompleteAsync(RunInstance instance, JsonNode? value, RowState state)
+        /// <summary>
+        /// Settles <paramref name="instance"/> with <paramref name="value"/>: its <c>.content</c> is its text for a text format,
+        /// else the value's canonical JSON (D11); #1504 (D4): with <paramref name="neutral"/>, a render's run-neutral text, as
+        /// its <c>.neutral</c>.
+        /// </summary>
+        private Task CompleteAsync(RunInstance instance, JsonNode? value, RowState state, string? neutral = null)
         {
             var content = Content(instance.Entry, value);
             var read = new JsonObject
@@ -404,6 +416,8 @@ public sealed partial class PlanRunner
                 ["content"] = content,
                 ["state"] = state == RowState.Composed ? "composed" : "completed",
             };
+            if (neutral != null)
+                read["neutral"] = neutral;
             return SettleAsync(instance, state, null, read, content == null ? null : CanonicalJson.HashText(content));
         }
 
@@ -423,6 +437,8 @@ public sealed partial class PlanRunner
             ItemNameDetail(instance.Frame, detail);
             if (instance.Entry.Kind == PlanKind.Agent)
                 AgentDetail(instance, detail);
+            else if (instance.Entry.Kind is PlanKind.Rendered or PlanKind.Deliverable)
+                Merge(instance.CallDetail, detail);
             else if (instance.Entry.Kind == PlanKind.For)
                 LoopDetail(instance, detail);
             else if (instance.Entry.Kind == PlanKind.While)

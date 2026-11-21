@@ -49,14 +49,21 @@ public sealed record AgentCall(
 public sealed record AgentOutcome(
     AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind, JsonObject? Detail = null, IReadOnlyList<ReplyFault>? Invalid = null);
 
-/// <summary>#1503 (specVersion 31, area 06): one render of a rendered node or a deliverable, with its step budget.</summary>
-public sealed record RenderCall(string Key, string EntryKey, string? Function, JsonObject Scope, int StepLimit);
+/// <summary>
+/// #1503 (specVersion 31, area 06): one render of a rendered node or a deliverable, with its step budget. #1504 (area 07;
+/// D3): <paramref name="Placed"/> is each decided placement of the entry's <c>placements</c> to its result, as
+/// <see cref="AgentCall.Placed"/> is; none when null.
+/// </summary>
+public sealed record RenderCall(string Key, string EntryKey, string? Function, JsonObject Scope, int StepLimit, IReadOnlyDictionary<string, bool>? Placed = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): what a render gave: its text; or <paramref name="TooManySteps"/> when it passed its
-/// step budget; or <paramref name="Failure"/>, the composer's sentence for another failure.
+/// step budget; or <paramref name="Failure"/>, the composer's sentence for another failure. #1504 (area 07; part 05 § 4;
+/// part 08 §§ 8.2, 10): <paramref name="NeutralText"/> is the run-neutral text (<see cref="Composition.NeutralText"/>),
+/// null when no run spot was filled, and <paramref name="Detail"/> the row's detail in part 08's names
+/// (<see cref="RenderTurn"/>).
 /// </summary>
-public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure);
+public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): everything outside the run that <see cref="PlanRunner"/> talks to: agent calls, renders,

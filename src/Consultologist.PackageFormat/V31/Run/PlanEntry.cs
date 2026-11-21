@@ -42,6 +42,16 @@ public enum PlanKind
 public sealed record PlanBranch(IReadOnlyList<string> Nodes, string? Ret, IReadOnlyList<JsonNode?>? When);
 
 /// <summary>
+/// #1504 (specVersion 31, area 07; part 05 §§ 3.2, 9; D2, D3): one unit an entry's body places, as its <c>placements</c>
+/// lists it: its <paramref name="Site"/> (<c>part.&lt;id&gt;</c>, <c>snippet.&lt;id&gt;</c>, <c>macro.&lt;id&gt;</c>,
+/// <c>macro-folder.&lt;id&gt;</c>), the site that places it (<paramref name="Within"/>, null for the body itself), its
+/// header <c>if</c> rooted for the entry's place and compiled with its <c>plainConverts</c> (<paramref name="If"/>, null
+/// when it has none), that rule as the printer writes it (<paramref name="Printed"/>), and a macro's marker form
+/// (<paramref name="Form"/>: <c>block</c> or <c>inline</c>; null for other kinds).
+/// </summary>
+public sealed record PlanPlacement(string Site, string? Within, IJsonLogicRule? If, string? Printed, string? Form);
+
+/// <summary>
 /// #1503 (specVersion 31, area 06; part 09 § 1.2 step 5): one entry of the plan: a node, check or deliverable of the package,
 /// or a node of a function's body, with its rules compiled (each with its <c>plainConverts</c> list, D3) and what it
 /// depends on. Built only by <see cref="RunPlan.Build"/>; its JSON is the document's, read-only.
@@ -61,7 +71,9 @@ public sealed class PlanEntry
         IReadOnlyList<PlanBranch> branches,
         string? ret,
         IReadOnlyList<string> reads,
-        IReadOnlyList<string> depends)
+        IReadOnlyList<string> depends,
+        IReadOnlyList<PlanPlacement> placements,
+        IReadOnlyList<string> neutralReads)
     {
         Key = key;
         Id = id;
@@ -79,6 +91,8 @@ public sealed class PlanEntry
         Ret = ret;
         Reads = reads;
         Depends = depends;
+        Placements = placements;
+        NeutralReads = neutralReads;
     }
 
     /// <summary>The rooted key (<c>node.sections.paragraphs.draft_paragraph</c>); in a function, local to it.</summary>
@@ -130,8 +144,8 @@ public sealed class PlanEntry
     public string? Ret { get; }
 
     /// <summary>
-    /// Every path the entry reads, sorted, without repeats: its <c>reads</c>, every <c>var</c> of its rules, and its
-    /// <c>in</c>, its <c>case</c> subject and its <c>with</c> values.
+    /// Every path the entry reads, sorted, without repeats: its <c>reads</c>, every <c>var</c> of its rules and (#1504)
+    /// of its placements' rules, and its <c>in</c>, its <c>case</c> subject and its <c>with</c> values.
     /// </summary>
     public IReadOnlyList<string> Reads { get; }
 
@@ -142,6 +156,20 @@ public sealed class PlanEntry
     /// <c>input</c>, <c>profile</c> or <c>snippet</c> names none, and an entry never depends on itself.
     /// </summary>
     public IReadOnlyList<string> Depends { get; }
+
+    /// <summary>
+    /// #1504 (area 07; D2, D3): every unit an agent's, a rendered node's or a deliverable's body places, in <c>placements</c>
+    /// order (placed units expanded in place); empty for every other kind.
+    /// </summary>
+    public IReadOnlyList<PlanPlacement> Placements { get; }
+
+    /// <summary>
+    /// #1504 (area 07; part 05 § 4; D4): the run-neutral texts the entry's body reads: <c>&lt;rooted head&gt;.neutral</c>
+    /// for each of its <c>runSpots</c> whose <c>neutral</c> is <c>"text"</c> (a run-dependent <c>rendered</c> node, or a
+    /// flow node or a parameter whose value is one), its head rooted through <c>names</c> (D1), sorted, without repeats.
+    /// A call's scope holds them beside its compiled <c>reads</c>.
+    /// </summary>
+    internal IReadOnlyList<string> NeutralReads { get; }
 
     /// <summary><see cref="JsonLogicPrinter.Print"/> of the rule held in <paramref name="member"/> (<c>if</c>, <c>expression</c>, <c>while</c>, <c>until</c>).</summary>
     public string Printed(string member)

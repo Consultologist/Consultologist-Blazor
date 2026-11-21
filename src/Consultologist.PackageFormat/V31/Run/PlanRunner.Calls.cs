@@ -46,7 +46,11 @@ public sealed partial class PlanRunner
                 {
                     var bound = Argument(instance, SourceLayout.Text(with?[parameter]));
                     parameters[parameter] = bound;
-                    arguments.Add(new JsonObject { ["param"] = parameter, ["hash"] = CanonicalJson.Hash(bound) });
+                    // the hash is of what the parameter reads as a value: its run-neutral text (#1504) is no part of it
+                    var hashed = bound is JsonObject { } carried && carried.ContainsKey("neutral")
+                        ? new JsonObject { ["value"] = carried["value"]?.DeepClone(), ["content"] = carried["content"]?.DeepClone() }
+                        : bound;
+                    arguments.Add(new JsonObject { ["param"] = parameter, ["hash"] = CanonicalJson.Hash(hashed) });
                 }
 
                 var frame = instance.Frame.OpenCall(instance, function, parameters);
@@ -80,7 +84,7 @@ public sealed partial class PlanRunner
         /// What <c>param.&lt;id&gt;</c> reads for the argument <paramref name="reference"/> of <paramref name="call"/>, read in
         /// the caller's frame (part 04 § 7.7): <c>null</c> for the literal <c>null</c>; for a whole reference (<c>node.&lt;id&gt;</c>,
         /// <c>check.&lt;id&gt;</c>, <c>item</c>, <c>item.parent</c>…, <c>param.&lt;id&gt;</c>) only its <c>.value</c> and
-        /// <c>.content</c>, as the caller reads them, never its <c>.state</c> or <c>.items</c>; for a snippet folder item
+        /// <c>.content</c>, as the caller reads them (and #1504 its <c>.neutral</c> when it has one), never its <c>.state</c> or <c>.items</c>; for a snippet folder item
         /// (<c>snippet.&lt;folder&gt;.&lt;item&gt;</c>) its header data and its body, as a loop over the folder gives them; for any
         /// other reference (a field path, <c>run.&lt;fact&gt;</c>, <c>profile.&lt;field&gt;</c>) its value, and as
         /// <c>.content</c> its text: the text itself, else its canonical JSON.
@@ -101,7 +105,10 @@ public sealed partial class PlanRunner
                 var whole = keyed ? RunScope.Read(reference, frame) : At(scope.Data(call.Entry, frame, [reference]), reference);
                 if (whole is not JsonObject read)
                     return null; // a parameter passed on that was itself null
-                return new JsonObject { ["value"] = read["value"]?.DeepClone(), ["content"] = read["content"]?.DeepClone() };
+                var argument = new JsonObject { ["value"] = read["value"]?.DeepClone(), ["content"] = read["content"]?.DeepClone() };
+                if (read["neutral"] is { } neutral)
+                    argument["neutral"] = neutral.DeepClone(); // #1504 (D4): a rendered node's run-neutral text, read as param.<id>.neutral
+                return argument;
             }
 
             var value = At(scope.Data(call.Entry, frame, [reference]), reference);

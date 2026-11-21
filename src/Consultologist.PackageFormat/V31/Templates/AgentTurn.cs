@@ -234,34 +234,46 @@ public static class AgentTurn
             ["inputHash"] = CanonicalJson.HashText(sent),
             ["hashVersion"] = HashVersion,
             ["runNeutralHash"] = neutral == null ? null : CanonicalJson.HashText(neutral),
-            ["runSpots"] = new JsonArray([.. composition.Spots.Select(s => (JsonNode)new JsonObject
-            {
-                ["id"] = $"{key}/spot:{s.Site}",
-                ["site"] = s.Site,
-                ["reads"] = s.Reads,
-                ["valueHash"] = s.ValueHash,
-                ["output"] = s.Output,
-                ["outputHash"] = s.OutputHash,
-            })]),
-            ["renders"] = new JsonArray([.. composition.Renders.Select(r => (JsonNode)new JsonObject
-            {
-                ["id"] = $"{key}/render:{r.N}",
-                ["renderer"] = r.Renderer,
-                ["templateHash"] = r.TemplateHash,
-                ["source"] = r.Source.StartsWith("render:", StringComparison.Ordinal) ? $"{key}/{r.Source}" : r.Source,
-                ["inputHash"] = r.InputHash,
-                ["inputSize"] = r.InputSize,
-                ["outputHash"] = r.OutputHash,
-                ["outputLength"] = r.OutputLength,
-                ["runDependent"] = r.RunDependent,
-            })]),
+            ["runSpots"] = SpotRows(key, composition),
+            ["renders"] = RenderRows(key, composition),
             ["macros"] = Macros(entry, map, call, composition),
             ["profileReads"] = new JsonArray([.. profile.Select(p => (JsonNode)new JsonObject { ["field"] = p.Field, ["hash"] = p.Hash })]),
             ["sentFormatHash"] = format.Hash,
             ["notSent"] = new JsonArray([.. format.NotSent.Select(p => (JsonNode)p)]),
-            ["units"] = new JsonArray([.. composition.Units.Select(u => (JsonNode)new JsonObject { ["site"] = u.Site, ["hash"] = u.TextHash })]),
+            ["units"] = UnitRows(composition),
         };
     }
+
+    /// <summary>Part 08 § 8.2's run spots of <paramref name="composition"/>, each named <c>&lt;key&gt;/spot:&lt;n&gt;</c>.</summary>
+    internal static JsonArray SpotRows(string key, Composition composition) =>
+        new([.. composition.Spots.Select(s => (JsonNode)new JsonObject
+        {
+            ["id"] = $"{key}/spot:{s.Site}",
+            ["site"] = s.Site,
+            ["reads"] = s.Reads,
+            ["valueHash"] = s.ValueHash,
+            ["output"] = s.Output,
+            ["outputHash"] = s.OutputHash,
+        })]);
+
+    /// <summary>Part 08 § 4.2's renderer sub-rows of <paramref name="composition"/>, each named <c>&lt;key&gt;/render:&lt;n&gt;</c>, a chain's <c>source</c> the step before's.</summary>
+    internal static JsonArray RenderRows(string key, Composition composition) =>
+        new([.. composition.Renders.Select(r => (JsonNode)new JsonObject
+        {
+            ["id"] = $"{key}/render:{r.N}",
+            ["renderer"] = r.Renderer,
+            ["templateHash"] = r.TemplateHash,
+            ["source"] = r.Source.StartsWith("render:", StringComparison.Ordinal) ? $"{key}/{r.Source}" : r.Source,
+            ["inputHash"] = r.InputHash,
+            ["inputSize"] = r.InputSize,
+            ["outputHash"] = r.OutputHash,
+            ["outputLength"] = r.OutputLength,
+            ["runDependent"] = r.RunDependent,
+        })]);
+
+    /// <summary>Part 05 § 9's placed units of <paramref name="composition"/>: <c>{ site, hash }</c>.</summary>
+    internal static JsonArray UnitRows(Composition composition) =>
+        new([.. composition.Units.Select(u => (JsonNode)new JsonObject { ["site"] = u.Site, ["hash"] = u.TextHash })]);
 
     /// <summary>
     /// Part 08 § 4.3's macro row for each macro of the entry's <c>placements</c>, offered or not: <c>decisions</c> are the
