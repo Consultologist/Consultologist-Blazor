@@ -89,6 +89,17 @@ internal static class V31Contract
         return path;
     }
 
+    /// <summary>#1502 (area 05): the folder of the pinned suite's <c>compiled-documents</c> family; fails when the pin has none.</summary>
+    public static string CompiledDocumentsFolder()
+    {
+        var path = System.IO.Path.Combine(
+            RepoRoot(), "external", "consultologist-package-format", "v31", "conformance", "compiled-documents");
+        Assert.True(
+            Directory.Exists(path),
+            $"{path} is missing — the submodule is not checked out (git submodule update --init), or its pin has no compiled documents.");
+        return path;
+    }
+
     public static JsonNode Json(params string[] parts) => JsonNode.Parse(File.ReadAllText(Path(parts)))!;
 
     /// <summary>

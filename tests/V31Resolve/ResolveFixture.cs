@@ -255,6 +255,47 @@ internal static class ResolveFixture
         return files;
     }
 
+    // ---- What the bodies read -----------------------------------------------------------------
+
+    /// <summary>
+    /// A stand-in for area 07's dialect (D1) that states what each body of <see cref="NestedNote"/> reads, as its
+    /// <c>{{ … }}</c> are written; any other body is unknown, so a body it misses leaves the compile incomplete.
+    /// </summary>
+    public static StubTemplates NestedNoteReads() => new(new Dictionary<string, string[]>
+    {
+        ["node.plan"] = ["input.consult_draft.content"],
+        ["node.sections.outline"] = ["item.value.title"],
+        ["node.sections.paragraphs.draft_paragraph"] = ["item.parent.value.title", "item.value"],
+        ["node.refine.draft_summary"] = [],
+        ["node.refine.judge"] = ["node.draft_summary.content"],
+        ["deliverable.note"] = ["node.refine.content"],
+    }, everyBody: false);
+
+    /// <summary>What each body of <see cref="Conditional"/> reads, as <see cref="NestedNoteReads"/> states it.</summary>
+    public static StubTemplates ConditionalReads() => new(new Dictionary<string, string[]>
+    {
+        ["node.plan"] = ["input.consult_draft.content"],
+        ["node.sections_draft.route.narrative_draft"] = ["item.value.title"],
+        ["node.sections_draft.route.table_draft"] = ["item.value.title"],
+        ["node.patient_summaries.narrative_only.patient_summary"] = ["item.value.title"],
+        ["node.standing_sections.applies.standing_draft"] = ["item.value.title"],
+        ["deliverable.note"] = ["node.plan.content"],
+    }, everyBody: false);
+
+    /// <summary>What each body of <see cref="Functions"/> reads, the function's own and the snippets' included.</summary>
+    public static StubTemplates FunctionsReads() => new(new Dictionary<string, string[]>
+    {
+        ["node.plan"] = ["input.consult_draft.content"],
+        ["node.extract_input_terms"] = ["input.consult_draft.content"],
+        ["node.extract_note_terms"] = ["node.standards.content"],
+        ["draft_section/node.standard_draft"] = ["param.standard.value.title", "param.standard.content"],
+        ["draft_section/node.patient_draft"] = ["param.draft.content"],
+        ["draft_section/node.apply_instructions"] = ["node.standard_draft.content", "node.patient_draft.content"],
+        ["snippets/standards/hpi.md"] = [],
+        ["snippets/standards/assessment_plan.md"] = [],
+        ["deliverable.note"] = ["node.plan.content"],
+    }, everyBody: false);
+
     // ---- Formats -------------------------------------------------------------------------------
 
     private static readonly Dictionary<string, string> FormatFiles = new(StringComparer.Ordinal)
