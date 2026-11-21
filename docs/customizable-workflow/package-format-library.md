@@ -762,7 +762,9 @@ and their items included). Each read is resolved with `ScopeTree.Resolve` where 
 
 A condition (`if`, `while`, `until`, a `case` subject, a part's `if`) is never content. Nor is a
 read through `pass.previous…` or `pass.history`. A read of `.state`, `.stopped`, `.passes`, `item.id`
-or `item.state` carries no flag: those are the engine's facts about a run.
+or `item.state` carries no flag: those are the engine's facts about a run. The member after a node's id
+decides however the node is named: `node.x.state`, `pass.node.x.state`, `pass.previous.node.x.state`
+and, over a loop's `.items`, `item.nodes.x.state` alike (D33).
 
 **Inside a function each entry is worked out twice:**
 
@@ -919,7 +921,8 @@ upload's order or line ends.
   derived step, the resolve step's S04-074, and, when `limits` are given, `PublishNotes.Of`: S04-072
   or S04-073, S04-079, S04-080, measured against the caller's
   `PublishLimits(Ceiling, ItemsPerLoop, CallsPerJob)` (D11). They are distinct, and sorted by `at`
-  with null first.
+  with null first. The notes work each function out once and apply it at every call, so a chain
+  of functions each calling the next several times costs one walk per function, not one per path.
 
 `SourceHash.Of(files)` hashes the listing of § 2.6: `manifest.json`, every `README.md` and every file
 under the nine folders, each hash taken after `\r\n` → `\n`. `dag.mmd`, the compiled copies and the
@@ -973,9 +976,8 @@ missing or of another shape is refused.
     - the locked version is not a version;
     - or the package is locked before one of the component's break points, with the engine at or
       past it.
-  - S07-003 for another locked library (Markdig, the two Corvus libraries) only when all of these
-    hold:
-    - the library is a key of the lock's `libraries`;
+  - S07-003 for another locked library (Markdig, the two Corvus libraries: any break point that is
+    not Scriban's, the evaluator's or an operation's) only when all of these hold:
     - the engine has a break point for it;
     - the locked version is before that break point (a missing locked version counts as before);
     - the engine's own version of it (`EngineCapabilities.Libraries`) is at or past the break
@@ -985,13 +987,15 @@ missing or of another shape is refused.
     said of it.
   - S07-004 for each kind or feature the engine lacks, and S07-005 for each agent version it lacks.
   - At most one refusal per component. Where the document says nothing, the sentence says `unknown`.
+    A document that cannot be read (parsed from text that repeats a member, which throws when first
+    read) is one S07-003 naming `unknown`, on `resolve.json` if it is that one, else on `lock.json`.
 
   `CaretRange.Admits("^a.b.c", v)` admits `>= a.b.c` and `< (a+1).0.0`. A version is three numeric
   parts; anything else never admits, and compares lowest. `requires.spec` is not read here.
 - **At job start, `RequiresCheck.Profile(resolve, profile)`.** For each field of `needs.profile`
   that is missing, empty or white space: S06-031 for the signature, S06-032 with the field's label
-  (`closing line`) for any other. A `needs.profile` that is not a list of names is read as needing
-  every field.
+  (`closing line`) for any other. A `needs.profile` that is not a list of names, or a `resolve.json`
+  that cannot be read, is read as needing every field.
 - **At import, `ResolveSentences.ImportIgnored(dropped)`** gives S07-016 when `resolve.json` or
   `lock.json` was dropped. **In CI, `EvidenceCommitted(path)`** gives S07-015. `ResolveSentences` is
   internal, so the Api and the tests can call these, but the Editor cannot.
