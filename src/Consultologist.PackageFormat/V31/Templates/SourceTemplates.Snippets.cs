@@ -68,6 +68,7 @@ public static partial class SourceTemplates
                             break;
                         }
 
+                        SnippetRule(snippet, body, placement);
                         var (unitBody, missing, inner) = Snippet(snippet, body.Host.Frame, reads, depth + 1);
                         foreach (var read in missing)
                             Refusals.Add(DialectSentences.SnippetReadsUnavailable(snippet.Name, read, body.Host.Subject, placement.Line, body.Host.Path));

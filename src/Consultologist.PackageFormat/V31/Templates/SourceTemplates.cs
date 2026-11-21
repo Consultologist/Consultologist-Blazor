@@ -207,6 +207,8 @@ public static partial class SourceTemplates
             var units = Expand(body, null, host.Site, parts, 0, null, null);
             if (leaf is not null)
                 PlacingNode(units, leaf, host);
+            if (host.Declaration is SourceNode placer)
+                ReadsItsPlacer(units, placer, host.Frame);
             return body with { Units = units };
         }
 

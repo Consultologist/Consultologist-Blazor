@@ -28,8 +28,9 @@ public sealed class ResolvedScope(ScopeTree tree, ScopeFrame frame, string subje
 /// #1502 (specVersion 31, area 05): the scope each expression site of a package is read in (part 03 § 4.2), over its
 /// <see cref="ScopeTree"/>: a node's rule at the node's place; a <c>while</c>'s <c>while</c> and <c>until</c>, and a
 /// <c>for</c>'s <c>until</c>, in the frame of their own body (they read its nodes by bare id); a deliverable's
-/// <c>if</c> at the top of <c>nodes/</c>. A macro's or a snippet's <c>if</c> is read where it is placed, which is area
-/// 07's: until then its scope stays <see cref="PackageScope"/>'s, deferred.
+/// <c>if</c> at the top of <c>nodes/</c>. A macro's or a snippet's <c>if</c> is read where it is placed: here, as a
+/// definition, its scope stays <see cref="PackageScope"/>'s, deferred; #1504 (area 07) checks it again at each placer's
+/// frame (<c>SourceTemplates.PlacedRules</c>: S05-022, S03-014, S04-063, A05-003).
 /// </summary>
 public sealed class ResolvedScopes(ScopeTree tree, SourcePackage package) : IExpressionScopes
 {

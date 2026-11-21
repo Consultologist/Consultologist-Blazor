@@ -69,6 +69,7 @@ public static partial class SourceTemplates
                 return;
             }
 
+            MacroRules(macro, body);
             var placed = Macro(macro, body.Host.Frame);
             if (placed.Instruction is not { } instruction)
                 return;
