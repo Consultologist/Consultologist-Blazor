@@ -334,7 +334,7 @@ internal static class ResolveFixture
     };
 
     /// <summary><paramref name="files"/> with the package formats <paramref name="ids"/> (listed in that order).</summary>
-    private static Dictionary<string, byte[]> WithFormats(Dictionary<string, byte[]> files, params string[] ids)
+    internal static Dictionary<string, byte[]> WithFormats(Dictionary<string, byte[]> files, params string[] ids)
     {
         files.With("formats/index.json", Index(ids));
         foreach (var id in ids)

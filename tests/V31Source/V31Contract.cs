@@ -72,6 +72,7 @@ internal static class V31Contract
     {
         ["A06-001"] = "<site> <member> could not be decided: <matches | has_word> took longer than <n> seconds on this text. Use a simpler pattern.",
         ["A06-002"] = "While '<id>' declares checkFirst true, but its check reads node '<n>' of its own body, which has no value before the first pass: declare \"checkFirst\": false, or read something that runs before the while.",
+        ["A06-003"] = "Node '<id>' computed a value that isn't <format>.",
     };
 
     private static string RepoRoot()
