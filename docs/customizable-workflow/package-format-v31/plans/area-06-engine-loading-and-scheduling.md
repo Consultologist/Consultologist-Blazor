@@ -334,7 +334,7 @@ Rules:
 
 Rules: a call is ready when its arguments' keys have settled; its `if` is decided like a leaf's. It opens a frame over the function's `Body` with `param.<id>` bound to each argument: a field path gives that value as `.value` (and its text as `.content`); a whole reference (`node.<id>`, `check.<id>`, `item`, `item.parent`, `param.<id>`) gives only `.value` and `.content`; `null` gives `null`; `run.<fact>`, `profile.<field>`, `snippet.<folder>.<item>` give their values. Inside the frame `node.<id>` resolves in the function's own entries and never outward; `item` and `pass` of the caller are not visible. Its nodes are scheduled by the same rounds, so the ceiling, the call limit and the fixed order hold; their `Order` is the call's `Order`, then the function's body order. Keys go through the call node (`node.standards.section.patient_draft:hpi`); the call's row has `function`, `depth` and its arguments' hashes; the call's value is the function's `ret`'s. Depth is not checked at run time (publish bounds it), but a frame chain deeper than `FormatBounds.Depth + 1` fails the call (a corrupt document).
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `ACallInALoop_RunsTheFunctionPerItem`: functions fixture → for each of `hpi`, `assessment_plan`: `standard_draft`, `patient_draft`, `apply_instructions` keyed through the call; `node.standards.value` holds the two `apply_instructions` texts.
   - `Parameters_AreBoundFromArguments` (theory: a field path, a whole `item`, `null`, `run.date`, a snippet item): what `param.<id>.value` and `.content` read in the function.
   - `AFunction_SeesOnlyItsOwnNodes`: a function node `plan` and a top-level `plan`: the function's reader gets the function's.
@@ -342,8 +342,8 @@ Rules: a call is ready when its arguments' keys have settled; its `if` is decide
   - `CallsInsideFunctions_CountTowardTheCeilingAndTheCallLimit` (ceiling 2 over 2 items × 3 agents: peak 2; `JobAgentCalls = 5` fails with S09-015).
   - `ACallWhoseIfIsFalse_IsSkipped_AndRunsNothing`.
   - `ACallRing_InACorruptDocument_FailsAndDoesNotHang`.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): a call runs its function's body inline, under the same ceiling`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): a call runs its function's body inline, under the same ceiling`
 
 ### Task 9: Whole runs, pinned
 
