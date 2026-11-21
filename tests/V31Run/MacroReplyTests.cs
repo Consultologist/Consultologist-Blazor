@@ -219,6 +219,25 @@ public class MacroReplyTests
     }
 
     [Fact]
+    public void AOneLineReplyFullOfMarkers_IsScannedPromptly()
+    {
+        // Fix round 1 (M4): 2 MiB on one line, every marker on it; the line's start is never searched for again.
+        const string marker = "{{ macro.follow_up.content }} {{~ macro.letrozole.content }} ";
+        var reply = new StringBuilder();
+        while (reply.Length < 2 * 1024 * 1024)
+            reply.Append(marker);
+        var count = reply.Length / marker.Length;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        var result = Process(reply.ToString(), false, Block, Inline);
+
+        clock.Stop();
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(5), $"took {clock.Elapsed}");
+        Assert.Equal(["S05-054", "S05-054"], result.Faults.Select(f => f.Id));
+        Assert.Equal($"The reply has the marker for macro 'letrozole' {count} times.", result.Faults[0].Sentence);
+    }
+
+    [Fact]
     public void Process_NeverThrows()
     {
         foreach (var reply in new[] { "{{", "{{ ", "{{~", "{{ macro.", "{{ macro.x", "{{ macro.x.content", "{{ macro.x.content }", "}}{{", "\r", "\n\n{{~ macro.letrozole.content }}\r" })
