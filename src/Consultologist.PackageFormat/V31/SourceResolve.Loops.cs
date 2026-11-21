@@ -59,18 +59,47 @@ public static partial class SourceResolve
     }
 
     /// <summary>
+    /// #1502 (Task 5): S04-035 re-judged once the seam is supplied (D1): every while that holds an agent or a rendered
+    /// node, which <see cref="Check"/> left unjudged, counting what each body reads (<paramref name="bodies"/>: the paths
+    /// a template leaf's body reads, null when they are not known). A while one of whose bodies is not known stays
+    /// unjudged.
+    /// </summary>
+    internal static void UnusedWithBodies(ScopeTree tree, Func<SourceLeaf, IReadOnlyList<string>?> bodies, List<SourceRefusal> refusals)
+    {
+        ArgumentNullException.ThrowIfNull(tree);
+        ArgumentNullException.ThrowIfNull(bodies);
+        foreach (var loop in tree.All().OfType<SourceWhile>())
+        {
+            if (ScopeTree.Walk(loop.Body.Nodes).Any(IsTemplate))
+                Unused(tree, loop, refusals, bodies);
+        }
+    }
+
+    private static bool IsTemplate(SourceNode node) => node is SourceLeaf leaf && TemplateKinds.Contains(leaf.Kind);
+
+    /// <summary>
     /// S04-035: each body node of <paramref name="loop"/> that is not its <c>ret</c> and is read neither by its
     /// <c>while</c> or <c>until</c> rule nor by another node of the body's header (an <c>if</c>, an <c>expression</c>,
-    /// an <c>in</c>, an <c>until</c>, a <c>while</c>, a <c>case</c>, a <c>with</c>). Not judged while a node anywhere in
-    /// the body is an agent or a rendered node, whose template's reads are unknown (D1).
+    /// an <c>in</c>, an <c>until</c>, a <c>while</c>, a <c>case</c>, a <c>with</c>), nor, when <paramref name="bodies"/> is
+    /// given, by another node's body. Without <paramref name="bodies"/> it is not judged while a node anywhere in the body
+    /// is an agent or a rendered node, whose template's reads are unknown (D1); with them, while one of those is unknown.
     /// </summary>
-    private static void Unused(ScopeTree tree, SourceWhile loop, List<SourceRefusal> refusals)
+    private static void Unused(ScopeTree tree, SourceWhile loop, List<SourceRefusal> refusals, Func<SourceLeaf, IReadOnlyList<string>?>? bodies = null)
     {
         var body = ScopeTree.Walk(loop.Body.Nodes).ToList();
-        if (body.Any(n => n is SourceLeaf leaf && TemplateKinds.Contains(leaf.Kind)) || tree.BodyOf(loop) is not { } frame)
+        if (tree.BodyOf(loop) is not { } frame)
             return;
-
         var read = new HashSet<SourceNode>(ReferenceEqualityComparer.Instance);
+        foreach (var leaf in body.OfType<SourceLeaf>().Where(IsTemplate))
+        {
+            if (bodies?.Invoke(leaf) is not { } paths)
+                return;
+            var found = new HashSet<SourceNode>(ReferenceEqualityComparer.Instance);
+            Read(tree, tree.FrameOf(leaf), paths, found);
+            found.Remove(leaf);
+            read.UnionWith(found);
+        }
+
         foreach (var rule in new[] { loop.While, loop.Until })
             Read(tree, frame, JsonLogicShape.Paths(rule), read);
         foreach (var reader in body)

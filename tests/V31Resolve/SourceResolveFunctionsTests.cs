@@ -47,11 +47,25 @@ public class SourceResolveFunctionsTests
     private static Dictionary<string, byte[]> With(string param, string json) =>
         ResolveFixture.Functions().WithJson(Call, h => h["with"]![param] = JsonNode.Parse(json));
 
-    /// <summary><see cref="ResolveFixture.Functions"/> with <c>draft_section</c>'s parameter <c>draft</c> of <paramref name="format"/>, passed <paramref name="argument"/>.</summary>
-    private static Dictionary<string, byte[]> Draft(string format, string argument) =>
-        ResolveFixture.Functions()
+    /// <summary>
+    /// <see cref="ResolveFixture.Functions"/> with <c>draft_section</c>'s parameter <c>draft</c> of <paramref name="format"/>,
+    /// passed <paramref name="argument"/>; an argument read from the profile or a run fact makes the call profile-carrying
+    /// or run-dependent (#1502, Task 5), and the loop that returns it, the check loop over its items and the check that
+    /// reads that, so their headers say so.
+    /// </summary>
+    private static Dictionary<string, byte[]> Draft(string format, string argument)
+    {
+        var files = ResolveFixture.Functions()
             .WithJson(Function, f => f["inputs"]!["draft"]!["format"] = JsonNode.Parse(format))
             .WithJson(Call, h => h["with"]!["draft"] = JsonValue.Create(argument));
+        var flag = argument.StartsWith("profile.", StringComparison.Ordinal) ? "profileCarrying"
+            : argument.StartsWith("run.", StringComparison.Ordinal) ? "runDependent" : null;
+        if (flag == null)
+            return files;
+        foreach (var path in new[] { Call, "nodes/standards/index.json", "checks/section_coverage/index.json", "checks/all_sections.md" })
+            files.WithJson(path, h => h[flag] = true);
+        return files;
+    }
 
     // ---- The example ---------------------------------------------------------------------------
 

@@ -45,26 +45,27 @@ public class RefusalPackagesTests
     /// <summary>
     /// #1501 (area 04): the expression sentences the suite has no case for.
     /// S03-001: the reason sentence of a decision (<c>skipped: … is false</c>), which the record holds; not a refusal.
-    /// S03-036 and S03-044 (D28): the three flags are worked out from the compiled package's edges and from what
-    /// templates read, areas 05 and 07's; no caller gives <see cref="LineageFlags"/> a graph yet.
+    /// (#1502, area 05: S03-036 and S03-044 are said of the resolver's graph, and have their cases.)
     /// S03-037 and S03-038: warnings, and S03-039 a note; a package that gets them is accepted.
     /// S03-040, S03-041 and A04-011: failures at run time, said when a rule is evaluated, never at publish.
     /// </summary>
     private static readonly string[] LogicNotShipped =
-        ["S03-001", "S03-036", "S03-037", "S03-038", "S03-039", "S03-040", "S03-041", "S03-044", "A04-011"];
+        ["S03-001", "S03-037", "S03-038", "S03-039", "S03-040", "S03-041", "A04-011"];
 
     /// <summary>
     /// #1502 (area 05): the resolver's sentences the suite has no case for. S04-074: a warning (a format a function lists
-    /// in uses and never names); a package that gets it is accepted.
+    /// in uses and never names); a package that gets it is accepted. S04-063: a macro placed in a function, whose if
+    /// reads a node the function lacks; where a macro is placed is what a body reads, which only the seam
+    /// (<c>ITemplateReads</c>, area 07's) says, and <c>SourceCheck.Run</c> without it never judges it (D1).
     /// </summary>
-    private static readonly string[] ResolveNotShipped = ["S04-074"];
+    private static readonly string[] ResolveNotShipped = ["S04-063", "S04-074"];
 
     /// <summary>
     /// The ids of <see cref="LogicNotShipped"/> that no public method of <see cref="ExpressionSentences"/> returning a
-    /// refusal gives: S03-001 (the record's), S03-036 (the flags', internal), S03-039 (a note, text) and the run-time
-    /// sentences (<see cref="ExpressionSentences.RunTime"/>, text).
+    /// refusal gives: S03-001 (the record's), S03-039 (a note, text) and the run-time sentences
+    /// (<see cref="ExpressionSentences.RunTime"/>, text).
     /// </summary>
-    private static readonly string[] LogicWithNoMethod = ["S03-001", "S03-036", "S03-039", "S03-040", "S03-041", "A04-011"];
+    private static readonly string[] LogicWithNoMethod = ["S03-001", "S03-039", "S03-040", "S03-041", "A04-011"];
 
     [Fact]
     public void EveryCase_SaysWhatItClaims()
@@ -209,6 +210,7 @@ public class RefusalPackagesTests
         var t when t == typeof(long) => 1L,
         var t when t == typeof(bool) => true,
         var t when t == typeof(ExpressionSite) => new ExpressionSite(ExpressionSiteKind.NodeIf, "x", "if", "x", null, null),
+        var t when t == typeof(LineageValue) => new LineageValue(true, "x"),
         _ => "x",
     };
 }

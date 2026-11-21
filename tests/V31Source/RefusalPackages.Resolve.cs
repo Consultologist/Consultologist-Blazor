@@ -13,7 +13,7 @@ namespace Consultologist.Api.Tests.V31Source;
 internal static partial class RefusalPackages
 {
     private static IEnumerable<RefusalCase> Resolve() => Passes().Concat(Levels()).Concat(Sealed()).Concat(Sources()).Concat(Labels()).Concat(Unused()).Concat(Cases())
-        .Concat(Calls()).Concat(Rets()).Concat(Uses()).Concat(Graph());
+        .Concat(Calls()).Concat(Rets()).Concat(Uses()).Concat(Graph()).Concat(Derived());
 
     // ---- Chapter 4 § 4.2.2: what a loop iterates -----------------------------------------------------------
 
@@ -492,4 +492,80 @@ internal static partial class RefusalPackages
     private static string CallOf(string function, string draft) =>
         Md(Node("call", "Calling the next function", Plain, false, true,
             $"\"if\": null, \"function\": \"{function}\", \"with\": {{ \"draft\": \"{draft}\" }}"), "");
+
+    // ---- Chapter 3 §§ 3.4.4 to 3.4.6, chapter 4 § 4.1: what the resolver derives -------------------------------
+
+    private static IEnumerable<RefusalCase> Derived()
+    {
+        yield return new RefusalCase("S03-036",
+            "A node's flags are what its reads make them (chapter 3 § 3.4.5). The computed node section_count measures the "
+            + "plan, an agent's output. Invalid: it declares modelDerived false. Valid: true.",
+            WithComputed(),
+            WithComputed().Edit("nodes/section_count.md", "\"modelDerived\": true", "\"modelDerived\": false"));
+
+        yield return new RefusalCase("S04-015",
+            "A flow node is reproducible exactly when what its result is made from is (chapter 4 § 4.1). The while tally "
+            + "returns a computed node. Invalid: it declares reproducible false. Valid: true.",
+            WithTally(),
+            WithTally().Edit("nodes/tally/index.json", "\"reproducible\": true", "\"reproducible\": false"));
+
+        yield return new RefusalCase("S04-016",
+            "A flow node's flags are what its body makes them (chapter 4 § 4.1). The for sections returns the agent node "
+            + "outline. Invalid: it declares modelDerived false. Valid: true.",
+            WithLoop(),
+            WithLoop().Edit(SectionsLoop, "\"modelDerived\": true", "\"modelDerived\": false"));
+
+        const string draftRead = "\"blank\": [{ \"var\": \"input.consult_draft.content\" }]";
+        yield return new RefusalCase("S03-044",
+            "A condition never reads profile text (chapter 3 § 3.4.6). The call signed passes profile.signature to the "
+            + "function sign, so its value carries profile text; the computed node signed_length runs when its if holds. "
+            + "Invalid: the if reads node.signed.content. Valid: input.consult_draft.content.",
+            WithSigned(),
+            WithSigned().Edit("nodes/signed_length.md", draftRead, "\"blank\": [{ \"var\": \"node.signed.content\" }]"));
+
+        const string measure = "{ \"size\": [{ \"var\": \"input.consult_draft.content\" }] }";
+        yield return new RefusalCase("A05-003",
+            "Nodes don't read each other in a circle (chapter 4 § 4.4). The computed node first counts one more than the "
+            + "computed node second. Invalid: second counts one more than first. Valid: second measures the draft.",
+            WithCounters(),
+            WithCounters().Edit("nodes/second.md", measure, "{ \"+\": [{ \"var\": \"node.first.value\" }, 1] }"));
+    }
+
+    /// <summary>
+    /// The function <c>sign</c> (its parameter <c>sig</c>, returned by its computed node <c>closing</c>), the call
+    /// <c>signed</c> passing it <c>profile.signature</c>, and the computed node <c>signed_length</c>, measuring the draft
+    /// when it has text.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithSigned()
+    {
+        var files = Minimal()
+            .Edit("nodes/index.json", "\"items\": [\"plan\"]", "\"items\": [\"plan\", \"signed\", \"signed_length\"]")
+            .With("nodes/signed.md", Md(Node("call", "Signing the note", Plain, true, false,
+                "\"if\": null, \"function\": \"sign\", \"with\": { \"sig\": \"profile.signature\" }"), "")
+                .Replace("\"profileCarrying\": false", "\"profileCarrying\": true", StringComparison.Ordinal))
+            .With("nodes/signed_length.md", Md(Node("computed", "Measuring the draft", "\"number\"", true, false,
+                "\"if\": { \"!\": [{ \"blank\": [{ \"var\": \"input.consult_draft.content\" }] }] }, "
+                + "\"expression\": { \"size\": [{ \"var\": \"input.consult_draft.content\" }] }"), ""))
+            .Edit("functions/index.json", "\"items\": []", "\"items\": [\"sign\"]")
+            .With("functions/sign/index.json", Json(
+                "{ \"label\": \"Sign the note\", \"description\": null, "
+                + "\"inputs\": { \"sig\": { \"label\": \"Signature\", \"description\": null, \"format\": \"plaintext\" } }, "
+                + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                + "\"nodes\": [\"closing\"], \"ret\": \"node.closing\", \"format\": \"plaintext\" }"))
+            .With("functions/sign/closing.md", Md(Node("computed", "The closing", Plain, true, false,
+                "\"if\": null, \"expression\": { \"var\": \"param.sig.content\" }"), "")
+                .Replace("\"profileCarrying\": false", "\"profileCarrying\": true", StringComparison.Ordinal));
+        foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
+            files.With($"functions/sign/{folder}/index.json", SourceFixture.Index([]));
+        return files;
+    }
+
+    /// <summary>Two computed nodes: <c>first</c>, one more than <c>second</c>; <c>second</c>, the draft's size.</summary>
+    private static Dictionary<string, byte[]> WithCounters() =>
+        Minimal()
+            .Edit("nodes/index.json", "\"items\": [\"plan\"]", "\"items\": [\"plan\", \"first\", \"second\"]")
+            .With("nodes/first.md", Md(Node("computed", "Counting one more", "\"number\"", true, false,
+                "\"if\": null, \"expression\": { \"+\": [{ \"var\": \"node.second.value\" }, 1] }"), ""))
+            .With("nodes/second.md", Md(Node("computed", "Measuring the draft", "\"number\"", true, false,
+                "\"if\": null, \"expression\": { \"size\": [{ \"var\": \"input.consult_draft.content\" }] }"), ""));
 }

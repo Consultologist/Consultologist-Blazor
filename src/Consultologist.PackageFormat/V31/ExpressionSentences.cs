@@ -200,7 +200,7 @@ internal static class ExpressionSentences
     /// S03-036: node <paramref name="id"/> declares <paramref name="member"/> as <paramref name="declared"/>, but its reads make
     /// it <paramref name="derived"/>'s value; the read is <see cref="LineageValue.Because"/>, or <c>none</c>. <paramref name="path"/> is the node's file.
     /// </summary>
-    internal static SourceRefusal FlagDisagrees(string id, string member, bool declared, LineageValue derived, string path) =>
+    public static SourceRefusal FlagDisagrees(string id, string member, bool declared, LineageValue derived, string path) =>
         new("S03-036", $"Node '{id}' declares {member} {Json(declared)}, but its reads make it {Json(derived.Value)}: {derived.Because ?? "none"}.", path);
 
     /// <summary>S03-039 (a note, § 11.2): the words shown beside a node whose text is computed from model text.</summary>

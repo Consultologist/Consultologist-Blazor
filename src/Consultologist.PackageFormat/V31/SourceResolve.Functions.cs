@@ -31,7 +31,7 @@ public static partial class SourceResolve
 
             Unlisted(package, function, refusals);
             Ret(types, function, formats, path, refusals);
-            var named = Named(function);
+            var named = Reached(package, function, Named(function));
             foreach (var id in Uses(function, "formats").Distinct(StringComparer.Ordinal).Where(id => !named.Contains(id)))
                 warnings.Add(ResolveSentences.UsedNever(function.Id, "format", id, path));
         }
@@ -206,6 +206,38 @@ public static partial class SourceResolve
 
         foreach (var format in d.Formats.Items)
             Names(format.Schema, named, top: false, 0);
+        return named;
+    }
+
+    /// <summary>
+    /// #1502 (Task 5): <paramref name="named"/> and every format a named one reaches through its schema's <c>$ref</c>s, at
+    /// any depth: the function's own formats first, then the package's (a listed format that only another listed or
+    /// named format references is used, S04-074). Each format is read once.
+    /// </summary>
+    private static HashSet<string> Reached(SourcePackage package, SourceFunction function, HashSet<string> named)
+    {
+        var schemas = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        foreach (var format in package.Definitions.Formats.Items)
+            schemas[format.Id] = format.Schema;
+        foreach (var format in function.Definitions.Formats.Items)
+            schemas[format.Id] = format.Schema;
+
+        var queue = new Queue<string>(named.Order(StringComparer.Ordinal));
+        var read = new HashSet<string>(StringComparer.Ordinal);
+        while (queue.Count > 0)
+        {
+            var id = queue.Dequeue();
+            if (!read.Add(id) || !schemas.TryGetValue(id, out var schema))
+                continue;
+            var inner = new HashSet<string>(StringComparer.Ordinal);
+            Names(schema, inner, top: false, 0);
+            foreach (var name in inner.Order(StringComparer.Ordinal))
+            {
+                if (named.Add(name))
+                    queue.Enqueue(name);
+            }
+        }
+
         return named;
     }
 
@@ -388,37 +420,12 @@ public static partial class SourceResolve
     /// S04-069: a parameter bound by any call to <c>profile.&lt;field&gt;</c>, or to a parameter that carries one,
     /// carries the profile (part 04 § 7.7, part 06 R-F3); a condition inside its function that reads it (a leaf's
     /// <c>if</c>, an <c>if</c>'s rule, a <c>while</c>'s and an <c>until</c>, a <c>case</c>'s subject) is said once per
-    /// node and parameter. A prompt's and a part's reads are the seam's (Task 5).
+    /// node and parameter, and so is an agent's part whose <c>if</c> reads it (<c>a part</c>). A prompt's reads are the
+    /// seam's (<see cref="SourceDerived"/>).
     /// </summary>
     private static void Profile(ScopeTree tree, SourcePackage package, List<Bound> calls, List<SourceRefusal> refusals)
     {
-        var carries = new Dictionary<(string Function, string Param), string>();
-        for (var changed = true; changed;)
-        {
-            changed = false;
-            foreach (var bound in calls)
-            {
-                var caller = tree.FrameOf(bound.Call).Function;
-                var with = bound.Call.Header["with"] as JsonObject;
-                foreach (var parameter in bound.Function.Inputs)
-                {
-                    if (carries.ContainsKey((bound.Function.Id, parameter.Id)))
-                        continue;
-                    var field = ReferenceString.Parse(SourceLayout.Text(with?[parameter.Id]))?.Segments switch
-                    {
-                        ["profile", var f, ..] when caller == null && ProfileFields.ContainsKey(f) => f,
-                        ["param", var p, ..] when caller != null && carries.TryGetValue((caller.Id, p), out var carried) => carried,
-                        _ => null,
-                    };
-                    if (field != null)
-                    {
-                        carries[(bound.Function.Id, parameter.Id)] = field;
-                        changed = true;
-                    }
-                }
-            }
-        }
-
+        var carries = Carried(tree, calls.Select(b => (b.Call, b.Function)));
         if (carries.Count == 0)
             return;
         foreach (var function in package.Functions.Items)
@@ -430,9 +437,59 @@ public static partial class SourceResolve
                     if (carries.TryGetValue((function.Id, name), out var field))
                         refusals.Add(ResolveSentences.ReadsProfileParameter(function.Id, name, field, "a condition", HeaderFile(node)));
                 }
+
+                foreach (var name in PartConditions(node).Select(p => p.Split('.')).Where(s => s is ["param", _, ..]).Select(s => s[1]).Distinct(StringComparer.Ordinal))
+                {
+                    if (carries.TryGetValue((function.Id, name), out var field))
+                        refusals.Add(ResolveSentences.ReadsProfileParameter(function.Id, name, field, "a part", HeaderFile(node)));
+                }
             }
         }
     }
+
+    /// <summary>
+    /// The parameters that carry the profile (part 04 § 7.7): each one a call binds to <c>profile.&lt;field&gt;</c>, or
+    /// to a parameter that carries one, with the field; a fixed point over <paramref name="calls"/> (each call and the
+    /// function it runs, in source order).
+    /// </summary>
+    internal static Dictionary<(string Function, string Param), string> Carried(ScopeTree tree, IEnumerable<(SourceLeaf Call, SourceFunction Function)> calls)
+    {
+        var bound = calls.ToList();
+        var carries = new Dictionary<(string Function, string Param), string>();
+        for (var changed = true; changed;)
+        {
+            changed = false;
+            foreach (var (call, function) in bound)
+            {
+                var caller = tree.FrameOf(call).Function;
+                var with = call.Header["with"] as JsonObject;
+                foreach (var parameter in function.Inputs)
+                {
+                    if (carries.ContainsKey((function.Id, parameter.Id)))
+                        continue;
+                    var field = ReferenceString.Parse(SourceLayout.Text(with?[parameter.Id]))?.Segments switch
+                    {
+                        ["profile", var f, ..] when caller == null && ProfileFields.ContainsKey(f) => f,
+                        ["param", var p, ..] when caller != null && carries.TryGetValue((caller.Id, p), out var carried) => carried,
+                        _ => null,
+                    };
+                    if (field != null)
+                    {
+                        carries[(function.Id, parameter.Id)] = field;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        return carries;
+    }
+
+    /// <summary>What an agent's parts' <c>if</c>s read, in written order.</summary>
+    private static IEnumerable<string> PartConditions(SourceNode node) =>
+        node is SourceLeaf { Kind: "agent" } leaf && leaf.Header["parts"] is JsonObject parts
+            ? parts.SelectMany(p => JsonLogicShape.Paths((p.Value as JsonObject)?["if"]))
+            : [];
 
     /// <summary>What <paramref name="node"/>'s conditions read, in written order: a leaf's <c>if</c>, an <c>if</c>'s rule, a loop's <c>until</c>, a while's rules, a case's subject.</summary>
     private static IEnumerable<string> Conditions(SourceNode node) => node switch

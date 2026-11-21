@@ -62,6 +62,7 @@ internal static class V31Contract
     private static readonly Dictionary<string, string> ResolveAreaSentences = new()
     {
         ["A05-001"] = "<Kind> '<id>' <member> '<text>' is not a reference; a reference is a root, then names joined by dots.",
+        ["A05-003"] = "Node '<a>' reads node '<b>', which reads node '<a>': nodes can't read each other in a circle. Break the circle.",
         ["A05-005"] = "Call '<id>' with <param> is <what it is>; an argument is a reference, written as text, or null.",
     };
 

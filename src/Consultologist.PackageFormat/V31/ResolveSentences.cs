@@ -169,4 +169,26 @@ internal static class ResolveSentences
     /// <summary>A05-005 (D13): the call <paramref name="id"/>'s argument <paramref name="param"/> is <paramref name="whatItIs"/> (a number, true or false): neither a reference nor <c>null</c>.</summary>
     public static SourceRefusal ArgumentNotAReference(string id, string param, string whatItIs, string path) =>
         new("A05-005", $"Call '{id}' with {param} is {whatItIs}; an argument is a reference, written as text, or null.", path);
+
+    /// <summary>S04-015: the flow node or call <paramref name="id"/> (<paramref name="kind"/> <c>Loop</c>, <c>While</c>, <c>If</c>, <c>Case</c>, <c>Call</c>) declares <c>reproducible</c> <paramref name="declared"/>, and its body makes it the other.</summary>
+    public static SourceRefusal ReproducibleNotTheBodys(string kind, string id, bool declared, string path) =>
+        new("S04-015", $"{kind} '{id}' declares reproducible {Bool(declared)}; its body makes it {Bool(!declared)}.", path);
+
+    /// <summary>S04-016: the flow node or call <paramref name="id"/> declares the flag <paramref name="member"/> (<c>modelDerived</c>, <c>runDependent</c>, <c>profileCarrying</c>) <paramref name="declared"/>, and its body makes it the other.</summary>
+    public static SourceRefusal FlagNotTheBodys(string kind, string id, string member, bool declared, string path) =>
+        new("S04-016", $"{kind} '{id}' declares {member} {Bool(declared)}; its body makes it {Bool(!declared)}.", path);
+
+    /// <summary>S04-063: the macro <paramref name="macro"/>, placed in the function <paramref name="function"/>, has an <c>if</c> that reads <c>node.&lt;id&gt;</c>, which the function has no node of.</summary>
+    public static SourceRefusal PlacedMacroReadsNothing(string macro, string function, string id, string path) =>
+        new("S04-063", $"Macro '{macro}' is placed in function '{function}', where its if reads node.{id}, which doesn't exist there: add a classifier with that id (pattern A), or pass the decision in and hold it in a computed node (pattern B).", path);
+
+    /// <summary>
+    /// A05-003: nodes that read each other in a circle; <paramref name="a"/> is the circle's first node and <paramref name="chain"/>
+    /// the nodes after it, each id quoted and joined by <c>', which reads node '</c> (a longer circle is named in full, as
+    /// S04-054 is; a node reading itself is its own <paramref name="chain"/>).
+    /// </summary>
+    public static SourceRefusal ReadInACircle(string a, string chain, string path) =>
+        new("A05-003", $"Node '{a}' reads node '{chain}', which reads node '{a}': nodes can't read each other in a circle. Break the circle.", path);
+
+    private static string Bool(bool value) => value ? "true" : "false";
 }

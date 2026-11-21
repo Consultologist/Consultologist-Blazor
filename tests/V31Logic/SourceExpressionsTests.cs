@@ -262,7 +262,8 @@ public class SourceExpressionsTests
         var stamped = SourceFixture.Minimal()
             .With("nodes/index.json", SourceFixture.Index(["plan", "stamp"]))
             .With("nodes/stamp.md", SourceFixture.Md(SourceFixture.Node("computed", "Stamping the run", "\"string\"", true, false,
-                "\"if\": null, \"expression\": { \"if\": [{ \"blank\": [{ \"var\": \"run.id\" }] }, \"none\", { \"var\": \"run.id\" }] }"), ""));
+                "\"if\": null, \"expression\": { \"if\": [{ \"blank\": [{ \"var\": \"run.id\" }] }, \"none\", { \"var\": \"run.id\" }] }"), ""))
+            .WithJson("nodes/stamp.md", h => h["runDependent"] = true);
 
         var value = Run(stamped);
 
