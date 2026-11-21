@@ -77,6 +77,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A07-010 | `Snippet '<id>' declares format <format>; a snippet's text is plaintext, markdown_block or markdown_inline.` (part 05 § 6.1: a single snippet's `format` is a text format; Task 5) |
 | A07-011 | `<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; place fewer.` (1,000: a template's units expanded in place stay bounded at publish; Task 5) |
 | A07-012 | `Snippet '<id>' <places <unit> \| pipes into <renderer> \| reads <path>>, and <subject> reads it as <path> at line <n>; a folder item's body read in a loop places no part, macro or snippet, pipes into no renderer and reads no run.* or run-dependent value.` (part 05 § 6.2: a folder item's body read as `item.content` only presents; Task 8b) |
+| A07-013 | `Snippet '<id>' holds a tag at line <n>, and <subject> <passes it to function '<f>' as param.<p> \| reads it in its expression>, where it isn't rendered; keep a folder item's body plain text, or read it as item.content in its loop.` (part 05 § 6.2; part 04 § 7.7: a folder item's body carried out of its loop as text, by a call's `with` or a computed node's `expression`, holds no tag and no raw block; Task 8b) |
 
 Add an A07 sentence only when no row says the rule; number on from A07-009 and add it to this table in the task's commit.
 
