@@ -146,6 +146,14 @@ builder.Services.AddSingleton<PublicChain>();
 // runs, so a bad value stops the host at startup.
 builder.Services.AddSingleton<SpecVersionAdmission>();
 builder.Services.AddSingleton<Consultologist.Api.V31.EngineLimitSettings>();
+// #1503 (part 09 § 1.2): the 31 load — the stamped resolve.json and lock.json, verified,
+// held to what this engine runs (its catalogues' attested agents among it), the plan
+// cached. The version is resolved through the 5–30 store's own latest pointer and cache.
+builder.Services.AddSingleton<IWorkflowPackageVersions>(sp => (WorkflowPackageStore)sp.GetRequiredService<IWorkflowPackageStore>());
+builder.Services.AddSingleton<Consultologist.Api.V31.IRegistryFiles, Consultologist.Api.V31.BlobRegistryFiles>();
+builder.Services.AddSingleton<Consultologist.Api.V31.EngineCapabilitiesFactory>();
+builder.Services.AddSingleton(sp => sp.GetRequiredService<Consultologist.Api.V31.EngineCapabilitiesFactory>().Current());
+builder.Services.AddSingleton<Consultologist.Api.V31.ICompiledPackageStore, Consultologist.Api.V31.CompiledPackageStore>();
 // #449/#398: the build's attestation, computed once — served at Public/Engine
 // and stamped on every record's packageFormatRef/provenanceRef.
 builder.Services.AddSingleton(sp => EngineAttestation.Current(

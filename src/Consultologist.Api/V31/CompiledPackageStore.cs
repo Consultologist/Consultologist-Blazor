@@ -1,0 +1,204 @@
+using System.Collections.Concurrent;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Azure;
+using Consultologist.Api.Workflow;
+using Consultologist.PackageFormat;
+using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Run;
+
+namespace Consultologist.Api.V31;
+
+/// <summary>#1503 (specVersion 31, area 06): the registry's blobs, read whole.</summary>
+public interface IRegistryFiles
+{
+    /// <summary>
+    /// The bytes of the blob at <paramref name="path"/> (<c>{name}/{version}/{file}</c>) in the container that holds
+    /// <paramref name="packageName"/>, or null when it is absent.
+    /// </summary>
+    Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct);
+}
+
+/// <summary>
+/// #1503: <see cref="IRegistryFiles"/> over the registry's containers: the public one for a repo-owned name, the private
+/// pair for an <c>acct-*</c> one (<see cref="WorkflowPackageBlobContainerFactory.GetContainersFor"/>), the first hit the
+/// only one, as the 5–30 store reads them.
+/// </summary>
+public sealed class BlobRegistryFiles(WorkflowPackageBlobContainerFactory containers) : IRegistryFiles
+{
+    public async Task<byte[]?> TryReadAsync(string packageName, string path, CancellationToken ct)
+    {
+        foreach (var container in containers.GetContainersFor(packageName))
+        {
+            try
+            {
+                var response = await container.GetBlobClient(path).DownloadContentAsync(ct);
+                return response.Value.Content.ToArray();
+            }
+            catch (RequestFailedException ex) when (ex.Status == 404)
+            {
+            }
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
+/// #1503: a 31 load: the plan, or the refusal a start failure records (D5): <paramref name="Refusal"/> the sentence the
+/// job shows under <paramref name="RefusalId"/>, <paramref name="OperatorDetail"/> what the operator's log keeps.
+/// </summary>
+public sealed record CompiledLoad(RunPlan? Plan, string? Refusal, string? RefusalId, string? OperatorDetail);
+
+/// <summary>#1503 (specVersion 31, area 06; part 09 § 1.2 steps 1 to 5): loads a 31 version from its stamped pair.</summary>
+public interface ICompiledPackageStore
+{
+    /// <summary>null: the version has no 31 stamp, so it is today's path's. Otherwise the plan, or the refusal a start failure records.</summary>
+    Task<CompiledLoad?> TryLoadAsync(WorkflowPackageRef packageRef, CancellationToken ct);
+}
+
+/// <summary>
+/// #1503 (specVersion 31, area 06; part 09 §§ 1.1, 1.2 steps 1 to 5; part 07 §§ 3, 4.4, 5; D1, D2, D4, D5): the 31 load.
+/// Nothing is read unless this deployment runs 31 (<see cref="SpecVersionAdmission.Runs31"/>). The ref's version is
+/// resolved as the 5–30 store resolves it (its pointer read and cache); then <c>publish.json</c> is read, and a version
+/// without a 31 stamp is today's path's (null) after that one read. Otherwise <c>resolve.json</c> and <c>lock.json</c>
+/// are read (either absent: A06-004), verified against the stamp (<see cref="CompiledPackage.Verify"/>: S07-006 shown as
+/// S09-009, S07-017 as S09-014, the S07 sentence for the operator), held to D4 (<c>requires.spec</c> and
+/// <c>specVersion</c> 31, else S09-001; <c>package</c> naming the folder read, else S07-006 as S09-009), to this engine
+/// (<see cref="RequiresCheck.Engine"/>: the first sentence on the job, all of them for the operator), and built into a
+/// plan with the engine's regex limit. A plan is cached in memory per <c>name@version</c>, holding its
+/// <c>resolveHash</c>; a stamped folder never changes, so a second load reads nothing. A refusal is not cached. Safe to
+/// call concurrently: two first loads may both build, and the first plan stored is the one both return.
+/// </summary>
+public sealed class CompiledPackageStore(
+    IRegistryFiles files,
+    IWorkflowPackageVersions versions,
+    EngineCapabilities engine,
+    SpecVersionAdmission admission,
+    EngineLimitSettings limits) : ICompiledPackageStore
+{
+    private const string S09HashId = "S09-009";
+    private const string S09LockId = "S09-014";
+    private const string NotSupportedId = "S09-001";
+    private const string NotPublishedId = "A06-004";
+
+    /// <summary>The deepest JSON read here; <see cref="CanonicalJson"/> writes nothing deeper than <see cref="CompiledPackage.Verify"/> reads.</summary>
+    private const int MaxDepth = 256;
+
+    private static readonly UTF8Encoding Utf8 = new(false, true);
+
+    private readonly ConcurrentDictionary<string, RunPlan> _plans = new(StringComparer.Ordinal);
+
+    public async Task<CompiledLoad?> TryLoadAsync(WorkflowPackageRef packageRef, CancellationToken ct)
+    {
+        ArgumentNullException.ThrowIfNull(packageRef);
+        if (!admission.Runs31)
+            return null;
+
+        var name = packageRef.Name;
+        var version = await versions.ResolveVersionAsync(packageRef, ct);
+        var key = $"{name}@{version}";
+        if (_plans.TryGetValue(key, out var cached))
+            return new CompiledLoad(cached, null, null, null);
+
+        var folder = $"{name}/{version}/";
+        var stamp = PublishedStamp.TryRead(Text(await files.TryReadAsync(name, folder + PublishedStamp.FileName, ct)));
+        if (stamp == null)
+            return null;
+
+        var resolveBytes = await files.TryReadAsync(name, folder + CompiledPackage.ResolveFile, ct);
+        var lockBytes = await files.TryReadAsync(name, folder + ResolveCompiler.LockFile, ct);
+        if (resolveBytes == null || lockBytes == null)
+            return Refused(NotPublishedId, $"Workflow {name}@{version} isn't published.", null);
+
+        if (CompiledPackage.Verify(name, version, resolveBytes, lockBytes, stamp.ResolveHash, stamp.LockHash) is { } mismatch)
+            return Shown(mismatch, name, version);
+
+        // Verified: both are the canonical UTF-8 of a JSON document. A resolve.json that is not an object is not publish's.
+        if (Parse(resolveBytes) is not JsonObject resolve || Parse(lockBytes) is not JsonObject @lock)
+            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+
+        if (DeclaredOtherThan31(resolve) is { } declared)
+            return Refused(NotSupportedId, admission.NotSupported(declared), null);
+
+        if (!Names(resolve, name, version) || !Names(@lock, name, version))
+            return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+
+        var lacking = RequiresCheck.Engine(resolve, @lock, engine);
+        if (lacking.Count > 0)
+            return Refused(lacking[0].Id, lacking[0].Sentence, string.Join("\n", lacking.Select(r => r.Sentence)));
+
+        var (plan, refusal) = RunPlan.Build(Utf8.GetString(resolveBytes), stamp.ResolveHash, stamp.LockHash, limits.RegexLimit);
+        if (plan == null)
+            return Shown(refusal ?? ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
+
+        return new CompiledLoad(_plans.GetOrAdd(key, plan), null, null, null);
+    }
+
+    private static CompiledLoad Refused(string id, string sentence, string? operatorDetail) => new(null, sentence, id, operatorDetail);
+
+    /// <summary>D5: part 07's S07-006 and S07-017 are shown on the job as part 09's S09-009 and S09-014, kept for the operator as they are.</summary>
+    private static CompiledLoad Shown(SourceRefusal refusal, string name, string version) => refusal.Id switch
+    {
+        "S07-017" => Refused(S09LockId, $"The compiled workflow {name}@{version} doesn't match its lock, so it can't be run. Tell the operator.", refusal.Sentence),
+        _ => Refused(S09HashId, $"The compiled workflow {name}@{version} doesn't match its published hash, so it can't be run. Tell the operator.", refusal.Sentence),
+    };
+
+    /// <summary>
+    /// D4: the spec version the document declares when it is not 31: <c>requires.spec</c>'s, else <c>specVersion</c>'s;
+    /// 31 (S09-001's row as written) when the one that is not 31 is not an integer at all; null when both say 31.
+    /// </summary>
+    private static int? DeclaredOtherThan31(JsonObject resolve)
+    {
+        var spec = LockCompiler.Member(LockCompiler.Member(resolve, "requires"), "spec");
+        var specText = spec is JsonValue s && s.GetValueKind() == JsonValueKind.String ? s.GetValue<string>() : null;
+        if (specText != "31")
+        {
+            return int.TryParse(specText, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var n) && n != 31
+                ? n
+                : PublishedStamp.SpecVersion;
+        }
+
+        var specVersion = LockCompiler.Member(resolve, "specVersion");
+        if (specVersion is JsonValue v && v.GetValueKind() == JsonValueKind.Number && v.TryGetValue<int>(out var number))
+            return number == 31 ? null : number;
+        return PublishedStamp.SpecVersion;
+    }
+
+    /// <summary>D4: whether the document's <c>package</c> is the folder it was read from.</summary>
+    private static bool Names(JsonObject document, string name, string version)
+    {
+        var package = LockCompiler.Member(document, "package");
+        return SourceLayout.Text(LockCompiler.Member(package, "name")) == name
+            && SourceLayout.Text(LockCompiler.Member(package, "version")) == version;
+    }
+
+    private static JsonNode? Parse(byte[] bytes)
+    {
+        try
+        {
+            return JsonNode.Parse(bytes, documentOptions: new JsonDocumentOptions { MaxDepth = MaxDepth });
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The UTF-8 text of <paramref name="bytes"/>, or null when there are none or they are not UTF-8.</summary>
+    private static string? Text(byte[]? bytes)
+    {
+        if (bytes == null)
+            return null;
+        try
+        {
+            return Utf8.GetString(bytes);
+        }
+        catch (DecoderFallbackException)
+        {
+            return null;
+        }
+    }
+}
