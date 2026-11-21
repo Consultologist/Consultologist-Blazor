@@ -40,9 +40,21 @@ internal sealed class Derivation
     /// <summary>The reads as <see cref="LineageFlags"/> takes them: a read that carries no flag names no vertex.</summary>
     public static List<LineageRead> Reads(IEnumerable<GraphRead> reads) => reads.Select(r => new LineageRead(r.Path, r.Carries ? r.Id : null)).ToList();
 
-    public LineageValue Value(Vertex vertex, LineageFlag flag) => Flags[vertex.Id][flag];
+    /// <summary>
+    /// <paramref name="vertex"/>'s <paramref name="flag"/>. A vertex added after the flags were derived (a
+    /// <c>profile.&lt;field&gt;</c> a later <see cref="DerivedGraph.Map"/> names) reads nothing: its value is what it starts with.
+    /// </summary>
+    public LineageValue Value(Vertex vertex, LineageFlag flag) =>
+        Flags.TryGetValue(vertex.Id, out var flags) && flags.TryGetValue(flag, out var value) ? value : new LineageValue(Starts(vertex, flag), null);
 
-    public bool Flag(Vertex vertex, LineageFlag flag) => Flags[vertex.Id][flag].Value;
+    public bool Flag(Vertex vertex, LineageFlag flag) => Value(vertex, flag).Value;
+
+    private static bool Starts(Vertex vertex, LineageFlag flag) => flag switch
+    {
+        LineageFlag.ModelDerived => vertex.StartsModel,
+        LineageFlag.ProfileCarrying => vertex.StartsProfile,
+        _ => false,
+    };
 
     /// <summary>Whether nothing <paramref name="vertex"/>'s value is made from is a body the seam did not say.</summary>
     public bool Known(Vertex vertex) => !unknown[vertex.Id][LineageFlag.ModelDerived].Value;

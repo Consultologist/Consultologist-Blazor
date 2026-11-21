@@ -479,6 +479,24 @@ public class SourceDerivedTests
             null, "S03-036", "Node 'state' declares runDependent false, but its reads make it true: item.nodes.stamp.value.", "nodes/states/state.md");
     }
 
+    [Fact]
+    public void AVertexReadAfterTheFlagsWereDerived_HasItsOwnStartsOnly_NeverThrows()
+    {
+        // A read mapped after the derivation adds the profile field it names (Map's side effect); its flags are what it
+        // starts with, as a vertex that reads nothing.
+        var check = Run(Minimal());
+        var resolution = check.Resolution!;
+        var graph = DerivedGraph.Build(check.Parse.Package!, resolution, null);
+        var derived = new Derivation(graph, resolution, check.Parse.Package!);
+        var plan = graph.ById["node.plan"];
+
+        var read = graph.Map("profile.closing", resolution.Tree.PackageRoot, plan, null);
+        var field = graph.ById[read.Id!];
+        Assert.True(derived.Flag(field, LineageFlag.ProfileCarrying));
+        Assert.False(derived.Flag(field, LineageFlag.ModelDerived));
+        Assert.False(derived.Value(field, LineageFlag.RunDependent).Value);
+    }
+
     // ---- Circles -------------------------------------------------------------------------------
 
     /// <summary>The computed node <paramref name="id"/>, a number, one more than <paramref name="reads"/>' value.</summary>
