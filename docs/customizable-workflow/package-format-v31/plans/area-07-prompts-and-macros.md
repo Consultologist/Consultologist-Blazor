@@ -421,7 +421,7 @@ Families, each case a folder with `about.txt`, its inputs, and the bytes the cod
 
 `scriban-dialect.md` gains what this area decided, each with its sentence: R2 (a pipe to a built-in inside an `if`), A07-004 to A07-009, D12's and D13's run-time rules, D17. Its version stays `1.0.0` (not yet published).
 
-- [ ] **Step 1: Write `DialectGoldenTests`** (each in-repo golden equals what the code gives; the pinned families equal the in-repo goldens). It fails: no goldens. - [ ] **Step 2: Write the export, generate, read every golden file.** - [ ] **Step 3: Export to the content repo,** extend `check-v31.py`, edit `scriban-dialect.md` and the README; run `check-v31.py`; commit, push, move the pin. - [ ] **Step 4: Run** the V31 filter: green. - [ ] **Step 5: Commit**, push.
+- [x] **Step 1: Write `DialectGoldenTests`** (each in-repo golden equals what the code gives; the pinned families equal the in-repo goldens). It fails: no goldens. - [x] **Step 2: Write the export, generate, read every golden file.** - [x] **Step 3: Export to the content repo,** extend `check-v31.py`, edit `scriban-dialect.md` and the README; run `check-v31.py`; commit, push, move the pin. - [x] **Step 4: Run** the V31 filter: green. - [x] **Step 5: Commit**, push.
 
 ### Task 14: The guide
 
