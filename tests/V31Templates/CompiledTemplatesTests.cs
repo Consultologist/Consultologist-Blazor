@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
 using Corvus.Text.Json.Validator;
@@ -159,6 +160,28 @@ public class CompiledTemplatesTests
         Assert.Equal("[]", document["nodes"]!["node.plan"]!["placements"]!.ToJsonString());
         Assert.Equal("[]", document["deliverables"]!["deliverable.note"]!["placements"]!.ToJsonString());
         Assert.Equal("{\"===\":[{\"var\":\"node.classify.value.answer\"},true]}", document["macros"]!["macro.f.m"]!["if"]!.ToJsonString());
+    }
+
+    [Fact]
+    public void AFolder_IsListedBeforeItsMacros_InEachUnitThatPlacesOne()
+    {
+        // Final review F1 (D2, D3): a folder's entry precedes its first macro in each placing unit, so its decision never
+        // depends on which unit places its first macro; a second macro in the same unit adds none.
+        static List<(string Site, string? Within, string? If)> Sites(Dictionary<string, byte[]> files) =>
+            Resolve(files)["nodes"]!["node.draft"]!["placements"]!.AsArray()
+                .Select(p => ((string)p!["site"]!, (string?)p["within"], p["if"]?.ToJsonString())).ToList();
+        const string folderIf = "{\"===\":[{\"var\":\"node.classify.value.reason\"},\"The plan says so.\"]}";
+        const string partIf = "{\"!\":[{\"blank\":[{\"var\":\"node.classify.value.reason\"}]}]}";
+
+        Assert.Equal(
+            [("part.p", null, partIf), ("macro-folder.f", "part.p", folderIf), ("macro.f.m", "part.p", null),
+             ("macro-folder.f", null, folderIf), ("macro.f.n", null, null)],
+            Sites(MacroRunTests.FolderInTwoPlaces(PlacementDecisionsTests.FolderIf)));
+        Assert.Equal(
+            [("macro-folder.f", null, null), ("macro.f.m", null, null), ("macro.f.n", null, null)],
+            Sites(MacroRunTests.FolderInTwoPlaces()
+                .With("nodes/draft.md", SourceFixture.Agent("Agent draft", Plain,
+                    "Draft the plan for Margaret Okafor.\n{{~ macro.f.m }}\n{{~ macro.f.n }}\n"))));
     }
 
     [Fact]

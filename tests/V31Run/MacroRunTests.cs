@@ -345,4 +345,58 @@ public class MacroRunTests
             Assert.Empty(run.Recorder.Decisions);
         }
     }
+
+    /// <summary>
+    /// The folder <c>f</c> (its <c>if</c> null) with the macros <c>m</c> and <c>n</c> (theirs null): the part <c>p</c> of the
+    /// agent <c>draft</c> (decided on the classifier's reason, <see cref="PlacementDecisionsTests.PartIf"/>) places
+    /// <c>m</c>, first; the prompt itself places <c>n</c>. <paramref name="folderIf"/> is the folder's rule.
+    /// </summary>
+    internal static Dictionary<string, byte[]> FolderInTwoPlaces(string folderIf = "null")
+    {
+        static string Item(string id, string body) => Md(
+            $"{{ \"label\": \"Macro {id}\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+            + $"\"instruction\": [\"Place this line alone at the end:\", \"{{{{~ macro.f.{id}.content }}}}\"] }}",
+            body + "\n");
+
+        return Package()
+            .WithAgent("classify", "Does the plan for Margaret Okafor need a follow-up?\n\n{{ node.plan.content }}\n", "\"judgement\"")
+            .Listed("macros/index.json", "f")
+            .With("macros/f/index.json", Index(["m", "n"], extra: $", \"if\": {folderIf}"))
+            .With("macros/f/m.md", Item("m", "Close with Dr A. Sample."))
+            .With("macros/f/n.md", Item("n", Body))
+            .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{~ part.p }}\n{{~ macro.f.n }}\n")
+            .WithJson("nodes/draft.md", h => h["parts"] = JsonNode.Parse(
+                $"{{ \"p\": {{ \"if\": {PlacementDecisionsTests.PartIf}, \"text\": [\"Close the plan.\", \"{{{{~ macro.f.m }}}}\"] }} }}"));
+    }
+
+    [Fact]
+    public async Task AFolderMacro_IsOffered_WhenTheFolderFirstMacrosUnitIsNotPlaced()
+    {
+        // The part does not hold (an empty reason): its macro f.m is not decided, and the prompt's own f.n is offered.
+        var plan = RunFixture.Plan(FolderInTwoPlaces());
+
+        var (result, host, recorder) = await RunAsync(plan, (call, prompt) =>
+            call.EntryKey == "node.classify" ? """{"answer":true,"reason":""}""" : Replies()(call, prompt));
+
+        Assert.True(result.State == RunState.Completed, result.Sentence);
+        Assert.Equal(
+            new Dictionary<string, bool> { ["part.p"] = false, ["macro-folder.f"] = true, ["macro.f.n"] = true },
+            host.Calls.Single(c => c.Key == "node.draft").Placed);
+        Assert.Equal(["macro.f.n"], host.Prompt("node.draft").Composition.Macros.Select(m => m.Site));
+        Assert.Equal($"{WorkflowStubOutputs.Text("node.draft")}\n{Body}\n", Content(result, "node.draft"));
+        Assert.Equal([("part.p", false)], recorder.Decisions.Where(d => d.Site == "node.draft").Select(d => (d.Member, d.Result == true)));
+
+        // A folder rule is decided once for the row, wherever its macros stand, and holds the macro back when false.
+        var ruled = RunFixture.Plan(FolderInTwoPlaces(PlacementDecisionsTests.FolderIf));
+        foreach (var reason in new[] { "", "The plan says so.", "Another reason." })
+        {
+            var (run, ruledHost, ruledRecorder) = await RunAsync(ruled, (call, prompt) =>
+                call.EntryKey == "node.classify" ? $$"""{"answer":true,"reason":"{{reason}}"}""" : Replies()(call, prompt));
+            Assert.True(run.State == RunState.Completed, run.Sentence);
+            var folder = reason == "The plan says so.";
+            Assert.Equal([folder], ruledRecorder.Decisions.Where(d => d.Site == "node.draft" && d.Member == "macro-folder.f").Select(d => d.Result == true));
+            string[] offered = folder ? ["macro.f.m", "macro.f.n"] : []; // the reason given, the part holds
+            Assert.Equal(offered, ruledHost.Prompt("node.draft").Composition.Macros.Select(m => m.Site));
+        }
+    }
 }
