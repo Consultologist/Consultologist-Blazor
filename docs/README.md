@@ -16,6 +16,7 @@ would otherwise have carried it (#397).
 - [DURABLE_JOBS.md](DURABLE_JOBS.md) — durable jobs, server-sent events, and .NET version notes
 - [ASYNC_DELIVERY.md](ASYNC_DELIVERY.md) — design record for the async-delivery arc: scheduled runs, email intake, encrypted document delivery (#157–#159; implemented 2026-07-25)
 - [DOCUMENT_INPUT.md](DOCUMENT_INPUT.md) — design record for reading documents into declared inputs: one parser, two sources (#234)
+- [the engine at specVersion 31](customizable-workflow/engine-v31.md) — loading and starting a 31 job (preview), every setting with its default, the limits and retries, the drain before a deploy and what the release workflow calls, sizing the deployment-wide limits (#1503)
 - [PARALLEL_AGENTS.md](PARALLEL_AGENTS.md) — parallel section calls, backend parallelism, async jobs
 - [NEW_AGENTS.md](NEW_AGENTS.md) — new Azure AI Foundry agents
 - [SNOMED_TOOL_FAILURES.md](SNOMED_TOOL_FAILURES.md) — diagnosis and fix for `search_concepts` tool failures (250-character Snowstorm term limit; resolved 2026-07-09)

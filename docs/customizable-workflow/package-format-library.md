@@ -1078,5 +1078,352 @@ CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.
 
 ### Not wired in
 
-Nothing in the engine calls any of it yet. No publish path compiles a 31 package, and no engine
-loads one. 31 stays outside `AcceptedSpecVersions`.
+No publish path compiles a 31 package yet, and 31 stays outside `AcceptedSpecVersions`. Since area 06
+(the next section) the engine calls `CompiledPackage.Verify`, `RequiresCheck.Engine` and
+`RequiresCheck.Profile` when it loads and starts a 31 job, which it does only where
+`WorkflowPackages__PreviewSpecVersions` lists 31.
+
+## specVersion 31: the run (preview)
+
+*Area 06 of the Milestone 39 build (#1503). Built from
+[the engine and the pages](package-format-v31/09-engine-and-pages.md) §§ 1, 2.1, 3.1 to 3.4 and 3.6,
+[loops and functions](package-format-v31/04-loops-and-functions.md) §§ 2 to 8 as they run,
+[expressions](package-format-v31/03-expressions.md) §§ 5.3, 6, 9 and 11.3,
+[the record](package-format-v31/08-record.md) §§ 3 to 5 for what a row and a decision carry, and
+[the plan](package-format-v31/plans/area-06-engine-loading-and-scheduling.md) for the decisions (the rulings R1
+to R5, D1 to D13, and those taken during the build). How the engine loads, starts, limits and drains a 31 job
+is in [the engine at specVersion 31](engine-v31.md).*
+
+`Consultologist.PackageFormat.V31.Run` runs a published 31 package. It builds the in-memory plan from
+`resolve.json` alone and runs it: leaves, `for`, `while`, `if`, `case`, and `call` with its function's body
+inline, under the per-job ceiling, the retries and the limits. It is a pure library. The run talks to the
+outside only through two interfaces, `IRunHost` (agent calls, renders, timers, the clock) and `IRunRecorder`
+(rows and decisions), so the same runner can serve the engine's orchestration, area 10's byte-equivalence run and
+area 11's in-package tests. Nothing here reads a clock, a file or the network.
+
+### The stamp
+
+`PublishedStamp(string ResolveHash, string LockHash)` is the "published" stamp of a 31 version (D1):
+`publish.json` (`PublishedStamp.FileName`) in the version's folder,
+`{ "specVersion": 31, "resolveHash": "sha256:…", "lockHash": "sha256:…" }`. `ToJson()` writes it canonically.
+`PublishedStamp.TryRead(string? json)` gives null unless the text is a JSON object with `specVersion` the
+integer 31 and two hashes, each `sha256:` and 64 lowercase hex digits. It ignores other members (area 11 writes
+the stamp and may add some), refuses a repeated member, and never throws. The engine chooses the load path by
+it: a 31 stamp takes the 31 path, and anything else, no stamp included, takes today's.
+
+### The plan
+
+```csharp
+public static (RunPlan? Plan, SourceRefusal? Refusal) Build(string resolve, string resolveHash, string lockHash, TimeSpan? matchTimeLimit)
+```
+
+`RunPlan.Build` takes the text of a `resolve.json` the caller has already verified (`CompiledPackage.Verify`) and
+gives the plan, which is never stored. A `RunPlan` holds:
+
+- `Package`, `Version`, `ResolveHash`, `LockHash`, and `Document` (the compiled document, read-only);
+- `Entries`: every node, check and deliverable, by key;
+- `TopLevel`: the keys with no parent, in `graph.order`;
+- `Functions`;
+- `Inputs` and `InputOrder`, `NeedsProfile` (`needs.profile`), `RunFacts` (the `run` list), and `Snippets`;
+- `Formats`, a `PlanFormats` over the bundle;
+- `Evaluator`, a `CorvusJsonLogicEvaluator` of its own (04-D47), with `matchTimeLimit` as its limit on
+  `matches` and `has_word` (below).
+
+Every rule (`if`, `expression`, `while`, `until`) is compiled on that evaluator with its entry's
+`plainConverts` list (D3).
+
+**A `PlanEntry`** has these members:
+
+- `Key`, `Id` and `Kind`. `PlanKind` is `Agent`, `Rendered`, `Computed`, `For`, `While`, `If`, `Case`, `Call` or
+  `Deliverable`.
+- `Parent`, and `Function`. `Function` is the function a `call` calls, and null on every other kind. An entry's
+  own function is known from the `PlanFunction.Entries` that holds it.
+- `Order`: the position in `graph.order`. For a node of a function it is the position in the walk of the
+  function's body: each node, then its children.
+- `Json` and `Format`; the compiled `If`, `Expression`, `While` and `Until`; and `Printed(member)`.
+- `Body`: a `for`'s or `while`'s children. `Branches`: an `if`'s then and else, or a `case`'s branches and then
+  its else, each a `PlanBranch(Nodes, Ret, When)`.
+- `Ret`.
+- `Reads`: the compiled `reads`, every `var` of its rules, and its `in`, `case` subject and `with` values.
+- `Depends`: the keys those reads name, through the longest key at a dot.
+  `pass.(parent.)*node.<id>` names that pass's node (part 04 § 3.3). Other reads through `item`, `pass`, `param`,
+  `run`, `input`, `profile` or `snippet` name nothing. An entry never depends on itself, but a `while`'s
+  `Depends` can hold its own body nodes, which the runner skips.
+
+A `PlanFunction` has `Id`, `Inputs` (in `inputOrder`), `Body`, `Ret`, `Entries` (its own map, with keys local to
+it), `Json` and `Format`.
+
+**What `Build` refuses.** A document `Build` cannot make a plan from is not what publish wrote. It is refused
+with S07-006 for its package. These are the cases:
+
+- a member missing or of the wrong kind, or an unknown kind;
+- a key named and absent, a read under `node.`, `check.` or `deliverable.` that names no entry of its scope, or
+  a key missing from `graph.order`;
+- a `ret` outside its body, or a body holding an ancestor or the entry itself;
+- reads that form a circle, or an entry that depends on its own ancestor. Each flow node depends on its
+  children for this check, so a read of a descendant is allowed;
+- a function that calls itself, directly or through others, or a call whose `with` is not exactly its
+  function's parameters. The literal `null` argument is accepted;
+- a deliverable inside a flow node, or an input not in `inputOrder`;
+- a rule the evaluator declines.
+
+`Build` never throws on the document. A null argument, and a time limit the evaluator refuses, are the
+caller's errors.
+
+**`PlanFormats`** holds values to the bundle. `Expand(format)` inlines every `#/$defs/<key>` and drops `$id` and
+`$schema` from the inlined entries, to depth 64 (`PlanFormats.MaxDepth`) within `FormatTypes.SchemaBudget`. A
+cycle, a missing key or any other reference gives `false`, the schema nothing fits.
+`Validate(value, format)` is `Expand` followed by `CorvusFormatValueValidator.ValidateExpanded`.
+`IsText(format)` is true for `plaintext`, `markdown_block` and `markdown_inline`, by their bundle `$id`.
+`Read(reply, format)` gives a text reply as a string. Any other reply is parsed as JSON, to 512 levels, with a
+repeated member refused; `Parsed` is false when it does not parse.
+
+### The runner
+
+```csharp
+public PlanRunner(RunPlan plan, RunLimits limits, IRunHost host, IRunRecorder recorder)
+public Task<RunResult> RunAsync(RunInputs inputs, DateTime startedAtUtc)
+```
+
+`RunInputs(IReadOnlyDictionary<string, JsonNode?> Inputs, JsonObject RunFacts, IReadOnlyDictionary<string, string?> Profile)`
+is what a job starts with:
+
+- `Inputs` holds each supplied input by id, in its read form `{ value, content, title }`. An input not supplied
+  is absent.
+- `RunFacts` holds the `run.*` facts by name, without `run.`.
+- `Profile` holds the profile's fields.
+
+`RunResult(RunState State, string? Sentence, string? FailedKey, IReadOnlyDictionary<string, JsonNode?> Values, int AgentCalls, int PeakInFlight)`
+says how the run ended:
+
+- `State` is `Completed`, `Failed` or `TimedOut`;
+- `Sentence` and `FailedKey` say what failed;
+- `Values` holds every top-level entry's settled read form;
+- `AgentCalls` counts the calls made;
+- `PeakInFlight` is the most calls in flight at once, for telemetry only.
+
+**`RunLimits`** is a record with nine members. Each defaults to the spec's starting value:
+`MaxAgentCalls = 16`, `CapacityWaitMinutes = 10`, `ServiceAttempts = 5`, `JobMinutes = 30`, `DeliveryMinutes = 15`,
+`DeliveryAttempts = 3`, `LoopItems = 200`, `JobAgentCalls = 500`, `RenderSteps = 100_000`.
+
+- `ToJson()` writes the header's `limits`: exactly part 08 § 3's nine members, in its order (D8).
+- `RunLimits.FromJson` reads them back, so a job's limits are rebuilt from what its orchestration input recorded.
+- A limit the runner counts against that is below 1 throws `ArgumentOutOfRangeException`, through `with` too.
+  `DeliveryMinutes` and `DeliveryAttempts` are not checked here, but the engine's settings refuse them below 1.
+
+**A round.** The runner does three things in each round:
+
+1. It settles, in the fixed order, everything that needs no call, until nothing more settles: an `if` deciding,
+   a `computed` node evaluating and its value checked against its format, a skip.
+2. It dispatches the ready agent and render calls in the fixed order. An agent call goes out only while fewer
+   than `MaxAgentCalls` are in flight. Renders and deliverables take no slot.
+3. It awaits `Task.WhenAny` of what is in flight and the job's timer, then settles what finished.
+
+The run ends when nothing is in flight and nothing is ready. A failed node fails the job: nothing more is
+dispatched, and nothing in flight is awaited. If nothing is in flight, nothing is ready and something is still
+unsettled, the document was not what publish wrote. The first unsettled instance in the fixed order then fails
+with S07-006: this is the stuck guard.
+
+**The fixed order** (part 09 § 3.2) ranks an instance by its entry's `Order`, then its item positions (outermost
+first), then its passes. Inside a function, the rank begins with the `Order`s of the enclosing calls, then the
+entry's walk position, then the whole item path (the caller's items, then the function's own), then the passes.
+So a function's agents go out at their call's place, before later package nodes.
+
+**Readiness.** An instance is ready when every key in its `Depends` that it can see has settled. A loop never
+waits on its own descendants. A key in a frame not yet opened makes the reader wait for the flow node that holds
+it. A loop over another loop's `.items` waits only until the production loop has read its source. After that,
+check item *i* opens when production item *i* settles, so checking overlaps production (part 09 § 3.1).
+
+**Leaves.**
+
+- An `if` that is false or `null` skips the leaf, with `JsonLogicPrinter.Reason`'s printed reason and a
+  `RunDecision`. A condition that fails fails the node with `ExpressionSentences.RunTime`.
+- A computed `null` is a value (04-D49). Any other computed value that does not fit its format is A06-003.
+- A rendered node or a deliverable renders through the host. A deliverable settles `Composed`, and area 08 takes
+  it from there. A render past its steps is S05-062.
+- `.content` is a text format's text, else the canonical JSON of the value (D11). `ValueHash` is
+  `CanonicalJson.HashText` of `.content`.
+
+**Agent replies** (`PlanRunner.Agents.cs`).
+
+- A reply is read by `PlanFormats.Read` and validated against its format. An invalid one under `onInvalid: "retry"`
+  is asked once more. That repair goes out at once in the slot the node holds, and it is not a new call in
+  `AgentCalls`.
+- An invalid reply under `onInvalid: "fail"`, or a second invalid reply, fails the node with A06-005.
+- `failIfEmpty` is the package's failure sentence, used as written (part 05 § 1.2). It is judged after
+  validation and never repaired. Empty is judged as at version 30: a blank string or an empty list.
+- `Throttled` adds its wait to the node's capacity wait. A wait that would pass `CapacityWaitMinutes` fails the
+  node with S09-010 instead of being taken.
+- `ServiceFailure` counts an attempt. At `ServiceAttempts` the node fails with S09-011.
+- Between attempts the runner waits on `host.DelayAsync`, holding its slot. A wait of 0 or less is taken as
+  5,000 ms.
+- `Failed` (a call that could not be made: `ErrorKind` `plan`, `steps` or `compose`) fails the node at once, with
+  S07-006, S05-062 or A06-008, and is never retried.
+- The agent row's `Detail` carries `retries` in part 08 § 4's shape (`{ atUtc, waitMs, kind, error }`, `kind`
+  `capacity` or `service`, `error` `timeout`, `5xx` or `connection`) and `invalid` (`{ reason, action, attempts }`,
+  or null).
+
+**The job limit.** One timer for the time left is made the first time the run waits. When it ends, or the host's
+clock is `JobMinutes` past `startedAtUtc`, the run is `TimedOut` with S09-012. Every instance in flight gets a
+`Cancelled` row with S08-009, late answers are not read, and abandoned tasks are observed so that a late fault is
+never unobserved. `DelayAsync` takes a `CancellationToken`. The run cancels every timer it made when it ends,
+because an orchestration does not complete while a durable timer is outstanding.
+
+**`for`** (`PlanRunner.Loops.cs`).
+
+- **The source.** An array input gives item ids from 0. Every other list gives ids from 1: a node's list,
+  `item.value.<field>` and `param.<id>.value`. A snippet folder's ids are its items' stems; `item.value` holds
+  the members its format declares, and `item.content` holds the body. The function's own folder is used before
+  the package's. A loop over `.items` takes the production items' ids.
+- **Sizes.** An empty or `null` list settles at 0 items with `.stopped` `"end"` (R1), and `null` gives the reason
+  S04-077. More than `LoopItems` items fails the loop with S04-078. A value that is not a list fails it with
+  A06-006.
+- **`maxParallel`** caps the open items of each loop instance, so caps multiply along nesting (part 04 §§ 2.3,
+  8). An item is open from the time its frame opens until it settles.
+- **`parallel: false`** opens item *n*+1 only when item *n* has settled.
+- **`max` and `until`.** Items past `max` are `NotRun` with S04-002, and `.stopped` is `"bound"`. `until` is
+  decided after each item of a sequential loop (`until.<n>`, 1-based). When it holds, the rest are `NotRun` with
+  S04-001, named by position.
+- **Items.** An item's state is its `ret`'s. Its name is the `itemLabel` field, trimmed and cut to 120 characters
+  ending `…`, or else `<loop label> <n>`. Every row inside an item carries `itemName` and `positionName`.
+- **What a loop reads:** `.value` (the completed items' values), `.items` (part 04 § 2.6's element), `.content`
+  (D11), `.state` and `.stopped`.
+
+**`while`, `if`, `case`** (`PlanRunner.Flow.cs`).
+
+- **Passes.** A `while`'s passes run one after another, each in its own frame binding `pass`:
+  `{ number, previous, history }`. A pass record holds the body's nodes and its branches' nodes by id, but not
+  inner loops'. `previous` is one level deep and `history` is `{ number, node }`, so a record's size grows
+  linearly with the passes.
+- **The check.** With `checkFirst: false` the check is decided after each pass (`pass.<n>`), then `until`
+  (`until.<n>`); the check wins a tie. With `checkFirst: true`, `until` runs after pass *n* and the check before
+  pass *n*+1. At the bound the check is decided once more (`pass.<max+1>`), so `"bound"` means the check never
+  stopped holding (S04-005).
+- **Zero passes.** A while with zero passes reads as skipped.
+- **`if` and `case`.** An `if` or a `case` opens its taken branch as a frame that siblings can see into (only
+  loops hide their bodies). A `case` records its branch as its 1-based position, or `else`. An empty branch is
+  skipped with S04-006 / S04-049's form. An `else` taken when it is empty (a value that escaped its format) fails
+  the case with A06-007.
+- **Branches not taken.** A flow node inside a branch not taken reads `skipped`, and a leaf there reads
+  `not_run`; neither gets a row.
+
+**`call`** (`PlanRunner.Calls.cs`). A call's `if` is decided as a leaf's is. The call then opens a frame over its
+function's own map, sealed from the caller's `node`, `item` and `pass`, with `param.<id>` bound to each argument:
+
+- a field path, `run.<fact>` or `profile.<field>` binds `{ value, content }`, `content` being its text;
+- a whole reference (`node.<id>`, `check.<id>`, `item`, `item.parent`, `param.<id>`) binds the `.value` and
+  `.content` the caller reads;
+- `snippet.<folder>.<item>` binds as a loop over the folder would;
+- `null` binds `null`.
+
+The call settles as its function's `ret`, with its whole read form. Its row carries `function`, `depth` and
+`arguments` (`[{ param, hash }]`, never a value). `depth` on every row is the call depth. A frame chain deeper
+than `FormatBounds.Depth` + 1 fails the call with S07-006.
+
+### Keys (D13)
+
+```csharp
+public static string Of(string entryKey, IReadOnlyList<string> itemPath, IReadOnlyList<(int Position, int Pass)> passes)
+```
+
+`RunKeys.Of` is the one writer of an instance's row key: the entry's key, then `:` and the item ids from the
+outermost loop inward joined by `/`, each while's pass written `#<n>` at its position in that path. Examples:
+`node.sections.paragraphs.draft_paragraph:2/1`, `node.refine.judge#2`, `node.sections.refine.judge:2#1`. Inside a
+function the key goes through the call node: `node.standards.section.patient_draft:hpi`, nested
+`node.hpi_section.refine_call.judge`. An item's row is the loop's key with its path (`node.sections:2`), and a
+pass's row is the while's (`node.refine#2`). Area 09 owns the record's final form.
+
+`AgentCall(string Key, string EntryKey, string? Function, int Attempt, bool Repair, JsonObject Scope)` carries
+three keys:
+
+- `Key`: the row key;
+- `EntryKey`: the entry's key, local to its function inside one (`node.patient_draft`);
+- `Function`: the function the entry lives in, or null.
+
+So the entry is `plan.Functions[call.Function].Entries[call.EntryKey]`, or `plan.Entries[call.EntryKey]` at the
+package's level. `Scope` is `RunScope.Data` over exactly the entry's compiled `reads`.
+
+### The seams
+
+| Seam | Here | Who plugs in |
+|---|---|---|
+| `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)` | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's byte-equivalence run and area 11's in-package tests bring their own |
+| `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | area 09 (the record's storage), replacing the engine's `EntityRunRecorder` (D12: counts on the job's entity, telemetry by key, state and hash) |
+| `IBodyComposer` (in the Api) | `ComposedBody Compose(RunPlan plan, string entryKey, string? function, JsonObject scope, int stepLimit)` | area 07 (the Scriban dialect: parts, macros, snippets, renderers), replacing `ScribanBodyComposer` (D12) |
+| A rendered deliverable settles `Composed` | the runner stops there | area 08 (outcome, gating, delivery) |
+| `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts` | area 12's Create page, which calls the same checks |
+| `SpecVersionAdmission` (in the Api) | `Admits`, `Runs31`, `NotSupported` | area 11 (publish, import, `WorkflowPackages/Current`) |
+
+`RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail)`
+and `RunDecision(string Site, string Member, string Printed, bool? Result, string? Branch, DateTime DecidedAtUtc)`
+are what area 09 turns into the record. `RowState` is `Completed`, `Skipped`, `NotRun`, `Failed`, `Cancelled` or
+`Composed`. A decision's `Member` is part 08 § 5.2's site (`self`, `pass.<n>`, `until.<n>`, `case`), and its time
+comes from the host's clock. No row or decision carries a value from an input or a model: only keys, states,
+reasons, hashes, counts and package text.
+
+### The time limit (R2)
+
+`public CorvusJsonLogicEvaluator(TimeSpan? matchTimeLimit = null)`, with `MatchTimeLimit`. With `null` the
+evaluator does what it did before, and publish-time probing uses it that way. With a limit, the evaluator works
+as follows:
+
+- `matches` runs its pattern with the limit as the `Regex` match time-out, from a pattern cache of the instance's
+  own.
+- `has_word` checks a `Stopwatch` every 4,096 candidate positions.
+- Past the limit the rule fails with `JsonLogicFailureKind.MatchTooSlow` (`Detail` `matches` or `has_word`;
+  `JsonLogicFailure.Limit` the limit). `ExpressionSentences.RunTime` words it A06-001, `<n>` in seconds (at most
+  three decimals).
+- A limit of zero, or longer than a regex time-out can be, throws at construction.
+
+The engine passes `ConsultGeneration__RegexMilliseconds` (default 2000). The spec's "reads no clock" was there
+so that a replay decides alike. With a limit, an evaluation close to it can decide differently on a Durable
+replay, which fails the orchestration; the PR flags this for the owner.
+
+### Sentences
+
+The run says these rows of `sentences.json`:
+
+- S03-040, S03-041 (conditions);
+- S04-001 to S04-006, S04-049, S04-077, S04-078 (loops and branches);
+- S05-062 (steps);
+- S07-006 (a document publish did not write);
+- S08-009 (cancelled);
+- S09-010, S09-011, S09-012, S09-015 (capacity, service, the job limit, the job's calls).
+
+Area 06 adds these area sentences, in `V31Contract` and the conformance README:
+
+- A06-001 (the time limit);
+- A06-002 (publish: a `checkFirst` while reading its own body, R3);
+- A06-003 (a computed value that does not fit);
+- A06-005 (a reply that does not fit);
+- A06-006 (a source that is not a list);
+- A06-007 (a `case` value no branch lists, with no `else`);
+- A06-008 (a body that fails to render, `RunSentences.CouldNotRender`).
+
+The engine says A06-004 and A06-009 to A06-013 (see the engine guide). A06-003 and A06-005 do not name the
+function they are said in.
+
+### What it leaves to later areas
+
+- **Area 07:** the body composer, and with it `parts`, `macro-markers` and `run-spots`. The engine refuses a
+  package that needs them with S07-004 until then. A judge's body that reads a local name (`node.draft_summary`
+  inside `refine`) fails with A06-008 under the default composer's strict variables.
+- **Area 08:** everything after `Composed`.
+- **Area 09:** the record. It maps `RunRow.Detail` and the decisions to storage rows, and gives the final form of
+  keys. Area 09 also records the tokens, which the agent activity only logs today.
+- **Areas 11 and 12:** they call `SpecVersionAdmission` and `V31StartChecks`.
+- **Not modelled by the tests' oracle:** a loop over another loop's `.items` chained further, and calls nested
+  more than one deep.
+
+### Tests and goldens
+
+The library's tests are in `tests/V31Run/`:
+
+- `RunFixture` builds plans from the compiled goldens through `CompiledPackage.Publish` and `RunPlan.Build`.
+- `FakeRunHost` is scripted by key, holds answers until released, and runs on a manual clock.
+- `ListRecorder` collects the rows and decisions.
+- `DispatchOracle` checks the fixed order independently of the runner's rank.
+- `RunGoldenTests` pins three whole runs, `tests/V31Run/Golden/{nested-note,conditional,functions}.run.txt`, from
+  replies seeded by the row key (`WorkflowStubOutputs`). Each holds the dispatch sequence, every row, every
+  decision and the result. `GOLDEN_UPDATE_V31=1` rewrites them, and `Golden/.gitattributes` keeps them LF.
+- `PlanRunnerNestingTests` holds the ceiling and the loop caps under three nested parallel loops of 10.
