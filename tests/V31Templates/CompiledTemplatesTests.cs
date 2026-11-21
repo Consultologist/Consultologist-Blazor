@@ -170,7 +170,7 @@ public class CompiledTemplatesTests
         static List<(string Site, string? Within, string? If)> Sites(Dictionary<string, byte[]> files) =>
             Resolve(files)["nodes"]!["node.draft"]!["placements"]!.AsArray()
                 .Select(p => ((string)p!["site"]!, (string?)p["within"], p["if"]?.ToJsonString())).ToList();
-        const string folderIf = "{\"===\":[{\"var\":\"node.classify.value.reason\"},\"The plan says so.\"]}";
+        const string folderIf = "{\"in\":[\"says so\",{\"var\":\"node.classify.value.reason\"}]}";
         const string partIf = "{\"!\":[{\"blank\":[{\"var\":\"node.classify.value.reason\"}]}]}";
 
         Assert.Equal(

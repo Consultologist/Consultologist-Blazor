@@ -12,7 +12,7 @@ deliverable.note | composed | - | sha256:203d6cc06b4759876c05d587d247d3d8bfbd4a3
 
 # decisions
 node.draft | part.close | not blank(node.classify.value.reason) | true
-node.draft | macro-folder.section_notes | node.classify.value.reason = "The plan says so." | true
+node.draft | macro-folder.section_notes | "says so" in node.classify.value.reason | true
 node.draft | macro.section_notes.hpi | node.classify.value.answer = true | true
 
 # details

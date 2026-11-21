@@ -20,7 +20,7 @@ namespace Consultologist.Api.Tests.V31Run;
 public class PlacementDecisionsTests
 {
     internal const string PartIf = "{ \"!\": [ { \"blank\": [ { \"var\": \"node.classify.value.reason\" } ] } ] }";
-    internal const string FolderIf = "{ \"===\": [ { \"var\": \"node.classify.value.reason\" }, \"The plan says so.\" ] }";
+    internal const string FolderIf = "{ \"in\": [ \"says so\", { \"var\": \"node.classify.value.reason\" } ] }";
     internal const string MacroIf = "{ \"===\": [ { \"var\": \"node.classify.value.answer\" }, true ] }";
     internal const string SnippetIf = "{ \"!==\": [ { \"var\": \"node.classify.value.answer\" }, null ] }";
 
@@ -189,7 +189,9 @@ public class PlacementDecisionsTests
     {
         // Task 7's carry-over: plain of a string literal does not convert (plainConverts [false]); a miswired list, read as
         // none, would convert "**urgent** today" to "urgent today", which holds no "**urgent**", and the macro would not be placed.
-        const string rule = "{ \"in\": [ { \"var\": \"node.kind.content\" }, { \"plain\": [ \"**urgent** today\" ] } ] }";
+        // (The needle is a literal: in takes a string to find, and a node's plaintext is no string, A04-001, now that a
+        // macro's if is checked where it is placed.)
+        const string rule = "{ \"in\": [ \"**urgent**\", { \"plain\": [ \"**urgent** today\" ] } ] }";
         var plan = RunFixture.Plan(Package()
             .WithMacroOf("m", "Follow up with Dr A. Sample this week.\n", ["End with {{ macro.m.content }}"], condition: rule)
             .WithAgent("kind", "How urgent is the plan for Margaret Okafor?\n\n{{ node.plan.content }}\n")
