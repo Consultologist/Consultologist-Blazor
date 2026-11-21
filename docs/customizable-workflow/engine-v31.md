@@ -119,14 +119,21 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
 
 A 31 start failure's History line is "Not started".
 
-**Not read at 31 yet.** A 31 start reads typed inputs and documents only. These request members are not read,
-so an input sent only through one of them reads as missing (A06-011):
+**Macro choices.** A per-run choice is an optional boolean input that takes the macro's id (part 05 § 8.2), so a
+31 start reads each `MacroChoices` entry `<id>: <bool>` as the value of the package's boolean input `<id>`, exactly
+as if the request had sent that input (#1504, ruled by the owner). An id that is no boolean input of the package is
+refused, *"MacroChoices names '<id>', which is not a boolean input of the package."* (A07-015, which, quoting the
+caller's id, the email sender is not told, as A06-013); an input sent both ways with different values is refused,
+*"Input '<id>' is given one value in Inputs and another in MacroChoices; send it once."* (A07-016). Each is one of
+the start's refusals, recorded with the others.
+
+**Not read at 31 yet.** A 31 start reads typed inputs, documents and macro choices only. These request members are
+not read, so an input sent only through one of them reads as missing (A06-011):
 
 - `InputRefs`, the references to a previous run's input or result;
-- `InputFormRefs` and `InputFormFiles`, a form response's references and files;
-- `MacroChoices`.
+- `InputFormRefs` and `InputFormFiles`, a form response's references and files.
 
-Reruns and the pages that send references are area 12's; macro choices are area 07's.
+Reruns and the pages that send references are area 12's.
 
 ## The orchestration
 
