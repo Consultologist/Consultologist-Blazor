@@ -68,6 +68,38 @@ public class PlanRunnerCeilingTests
             new RunLimits().ToJson().ToJsonString());
     }
 
+    [Theory]
+    [InlineData("MaxAgentCalls")]
+    [InlineData("CapacityWaitMinutes")]
+    [InlineData("ServiceAttempts")]
+    [InlineData("JobMinutes")]
+    [InlineData("LoopItems")]
+    [InlineData("JobAgentCalls")]
+    [InlineData("RenderSteps")]
+    public void ALimitBelowOne_IsRefused(string member)
+    {
+        Func<RunLimits> make = member switch
+        {
+            "MaxAgentCalls" => () => new RunLimits(MaxAgentCalls: 0),
+            "CapacityWaitMinutes" => () => new RunLimits(CapacityWaitMinutes: 0),
+            "ServiceAttempts" => () => new RunLimits(ServiceAttempts: -1),
+            "JobMinutes" => () => new RunLimits(JobMinutes: 0),
+            "LoopItems" => () => new RunLimits(LoopItems: 0),
+            "JobAgentCalls" => () => new RunLimits(JobAgentCalls: 0),
+            _ => () => new RunLimits(RenderSteps: 0),
+        };
+        Assert.Equal(member, Assert.Throws<ArgumentOutOfRangeException>(make).ParamName);
+
+        Func<RunLimits> with = member switch
+        {
+            "MaxAgentCalls" => () => new RunLimits() with { MaxAgentCalls = 0 },
+            "RenderSteps" => () => new RunLimits() with { RenderSteps = 0 },
+            _ => () => new RunLimits() with { JobAgentCalls = 0 },
+        };
+        Assert.Throws<ArgumentOutOfRangeException>(with);
+        Assert.Equal(1, new RunLimits(MaxAgentCalls: 1).MaxAgentCalls);
+    }
+
     [Fact]
     public void RunKeys_WriteItemsAndPasses()
     {

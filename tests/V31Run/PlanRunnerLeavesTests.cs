@@ -182,7 +182,7 @@ public class PlanRunnerLeavesTests
         Assert.Equal(["node.plan"], host.Dispatched);
         Assert.True(Assert.Single(recorder.Decisions).Result);
 
-        // the call's scope holds what the entry reads: its body's read and its condition's
+        // the call's scope holds exactly the entry's compiled reads, which publish writes with its header's (its if's) too
         Assert.Equal(Draft, (string?)host.Calls[0].Scope["input"]!["consult_draft"]!["content"]);
         Assert.True((bool)host.Calls[0].Scope["input"]!["include_billing"]!["value"]!);
     }
@@ -268,6 +268,92 @@ public class PlanRunnerLeavesTests
         Assert.Equal(RunState.Completed, result.State);
         Assert.Equal(3, result.AgentCalls);
         Assert.Equal(2, result.PeakInFlight);
+    }
+
+    [Fact]
+    public async Task ARenderedNode_CompletesWithItsText_AndTakesNoSlot()
+    {
+        var files = Minimal()
+            .With("nodes/index.json", Index(["plan", "billing_text"]))
+            .With("nodes/billing_text.md", Md(
+                SourceFixture.Node("rendered", "Billing text", Plain, true, false, "\"if\": null"),
+                "Consultation with Margaret Okafor, 45 minutes.\n"));
+        var plan = RunFixture.Plan(files, MinimalReads());
+        var host = new FakeRunHost();
+        var recorder = new ListRecorder();
+        var runner = new PlanRunner(plan, new RunLimits(MaxAgentCalls: 1), host, recorder);
+
+        var result = await FakeRunHost.Drive(() =>
+        {
+            var run = runner.RunAsync(Inputs(), FakeRunHost.Start);
+
+            // the only slot is taken by node.plan, and the render still goes out
+            Assert.Equal(["node.plan"], host.Dispatched);
+            Assert.Equal(["node.billing_text"], host.Renders.Select(r => r.Key));
+            host.Release("node.billing_text");
+            Assert.Equal(RowState.Completed, recorder.Row("node.billing_text").State);
+            host.ReleaseAll();
+            return run;
+        });
+
+        Assert.Equal(RunState.Completed, result.State);
+        var read = result.Values["node.billing_text"]!;
+        Assert.Equal("Rendered node.billing_text.", (string?)read["value"]);
+        Assert.Equal("Rendered node.billing_text.", (string?)read["content"]);
+        Assert.Equal("completed", (string?)read["state"]);
+        Assert.Equal(PlanKind.Rendered, recorder.Row("node.billing_text").Kind);
+        Assert.Equal(CanonicalJson.HashText("Rendered node.billing_text."), recorder.Row("node.billing_text").ValueHash);
+        Assert.Equal(1, result.AgentCalls);
+    }
+
+    [Fact]
+    public void AReaderOfAKeyInAFrameNotYetOpened_WaitsForTheFlowNodeThatHoldsIt()
+    {
+        // A hand-built frame: node.sections.paragraphs reads node.sections.outline, whose instance is in no frame it sees;
+        // the nearest ancestor of that key with a visible instance is the loop node.sections, which must settle first.
+        var plan = RunFixture.Plan("nested-note");
+        var top = RunFrame.Top(plan);
+        var sections = top.Add(plan.Entries["node.sections"]);
+        var item = top.Open(sections, plan.Entries, null, ["0"], [0], [], new JsonObject(), null, null);
+        var paragraphs = item.Add(plan.Entries["node.sections.paragraphs"]);
+        Assert.Equal(["node.sections.outline"], paragraphs.Entry.Depends);
+
+        Assert.False(paragraphs.IsReady());
+
+        sections.Settle(RowState.Completed, RunScope.Absent("completed"));
+        Assert.True(paragraphs.IsReady());
+
+        // with the key's own instance visible, that instance is what it waits on
+        var outline = item.Add(plan.Entries["node.sections.outline"]);
+        Assert.False(paragraphs.IsReady());
+        outline.Settle(RowState.Completed, RunScope.Absent("completed"));
+        Assert.True(paragraphs.IsReady());
+
+        // a flow node never waits on its own descendants: node.refine's while reads node.refine.judge
+        var refine = top.Add(plan.Entries["node.refine"]);
+        Assert.Equal(["node.refine.judge"], refine.Entry.Depends);
+        Assert.True(refine.IsReady());
+    }
+
+    [Fact]
+    public async Task AReaderOfAFlowNode_IsNotRun_UntilItSettles_AndAStuckRunFails()
+    {
+        // Until Task 6 gives `for` (and Task 7 `while`) a step, a top-level flow node never settles: this pins that the
+        // stuck guard ends the run Failed with S07-006, without hanging, and that the readers of a flow node never ran.
+        // Replace when Task 6 gives `for` a step.
+        var plan = RunFixture.Plan("nested-note");
+        var host = new FakeRunHost(auto: true).Reply("node.plan", ThreeSections);
+        var recorder = new ListRecorder();
+
+        var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Inputs(), FakeRunHost.Start);
+
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal("node.sections", result.FailedKey);
+        Assert.Equal("Workflow example-nested-note@v2026.12.1 can't run: its compiled document doesn't match the hash published for it.", result.Sentence);
+        V31Contract.AssertSentence(new SourceRefusal("S07-006", result.Sentence!, ""));
+        Assert.Equal(["node.plan"], host.Dispatched);
+        Assert.Empty(host.Renders); // deliverable.note reads node.refine, which never settled
+        Assert.Equal(["node.plan", "node.section_count", "node.sections"], recorder.Rows.Select(r => r.Key));
     }
 
     // ---- failures -------------------------------------------------------------------------------
