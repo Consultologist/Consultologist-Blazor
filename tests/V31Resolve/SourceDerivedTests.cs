@@ -405,6 +405,53 @@ public class SourceDerivedTests
             "While 'refine' declares reproducible true; its body makes it false.", "nodes/refine/index.json");
     }
 
+    // ---- A condition passes no flag on (part 07 § 2.5) -----------------------------------------
+
+    [Fact]
+    public void ANodeChosenByAModelDerivedCase_IsNotModelDerived()
+    {
+        // The loop kinds goes over the plan's sections (an agent's); its case routes each by its kind, and the narrative
+        // branch measures the draft. The case's subject is model-derived; what it chooses is not, for that.
+        var files = Listing(ResolveFixture.NestedNote(), "kinds")
+            .With("nodes/kinds/index.json", Json(SourceFixture.Node("for", "Measuring each narrative section", ArrayOf("\"number\""), true, true,
+                "\"in\": \"node.plan.value.sections\", \"parallel\": false, \"maxParallel\": null, \"until\": null, "
+                + "\"max\": null, \"itemLabel\": null, \"nodes\": [\"route\"], \"ret\": \"node.kinds.route\"")))
+            .With("nodes/kinds/route/index.json", Json(SourceFixture.Node("case", "Routing a section by its kind", "\"number\"", true, false,
+                "\"case\": \"item.value.kind\", \"branches\": ["
+                + "{ \"when\": [\"narrative\"], \"nodes\": [\"measure\"], \"ret\": \"node.kinds.route.measure\" }, "
+                + "{ \"when\": [\"table\"], \"nodes\": [], \"ret\": null }, "
+                + "{ \"when\": [\"omit\"], \"nodes\": [], \"ret\": null }], \"else\": null")))
+            .With("nodes/kinds/route/measure.md", Md(SourceFixture.Node("computed", "Measuring the draft", "\"number\"", true, false,
+                "\"if\": null, \"expression\": { \"size\": [{ \"var\": \"input.consult_draft.content\" }] }"), ""));
+        var derived = Accepted(files);
+        Assert.False(derived.Entries["node.kinds.route"].ModelDerived);
+        Assert.False(derived.Entries["node.kinds.route.measure"].ModelDerived);
+        Assert.True(derived.Entries["node.kinds.route"].FlagsKnown);
+
+        // The loop iterates the plan's sections, its content: it is model-derived through its source, not its case.
+        Assert.True(derived.Entries["node.kinds"].ModelDerived);
+    }
+
+    [Fact]
+    public void AnItemOfALoopWhoseUntilIsRunDependent_IsNotRunDependent()
+    {
+        // The loop echoes goes over the input points until the run's label says so; each item is the point, and the
+        // decision when to stop is run-dependent (S03-037), but neither the item read nor the loop is, for that.
+        var files = Listing(Minimal(), "run_label", "echoes")
+            .WithJson("manifest.json", m => m["inputs"]!["points"] = JsonNode.Parse(
+                "{ \"label\": \"Points\", \"description\": null, \"format\": " + ArrayOf(Plain) + ", \"required\": true, \"channel\": null }"))
+            .With("nodes/run_label.md", Computed("Naming the run", Text, "{ \"var\": \"run.id\" }", true))
+            .With("nodes/echoes/index.json", Json(SourceFixture.Node("for", "Echoing each point", ArrayOf(Plain), true, false,
+                $"\"in\": \"input.points.value\", \"parallel\": false, \"maxParallel\": null, \"until\": {Is("node.run_label.value", "stop")}, "
+                + "\"max\": null, \"itemLabel\": null, \"nodes\": [\"echo\"], \"ret\": \"node.echoes.echo\"")))
+            .With("nodes/echoes/echo.md", Computed("Echoing the point", Plain, "{ \"var\": \"item.value\" }", false));
+        var derived = Accepted(files);
+        Assert.False(derived.Entries["node.echoes.echo"].RunDependent);
+        Assert.False(derived.Entries["node.echoes"].RunDependent);
+        Assert.Contains(derived.Warnings, w => (w.Id, w.Sentence) == ("S03-037",
+            "Loop 'echoes' until reads run.id; its decision can differ between runs with the same inputs."));
+    }
+
     // ---- The facts of a run (D33) --------------------------------------------------------------
 
     private const string Text = "\"string\"";
