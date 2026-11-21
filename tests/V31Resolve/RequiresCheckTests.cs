@@ -158,6 +158,49 @@ public class RequiresCheckTests
     }
 
     [Fact]
+    public void ALockMissingALibrary_IsHeldToItsBreakPoint()
+    {
+        // A lock that does not say its Markdig is no lock past Markdig's break point: refused, naming the version unknown.
+        var breakPoints = new[] { new BreakPoint("Markdig", "0.42.0") };
+        var libraries = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Corvus.JsonSchema"] = "5.8.12",
+            ["Corvus.Text.Json.JsonLogic"] = "5.8.11",
+            ["Markdig"] = "0.42.1",
+            ["Scriban"] = "7.2.6",
+        };
+        var without = Lock();
+        without["libraries"]!.AsObject().Remove("Markdig");
+
+        var refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), without, Engine(breakPoints: breakPoints, libraries: libraries))));
+        Assert.Equal(("S07-003", "lock.json"), (refusal.Id, refusal.Path));
+        Assert.Contains("needs Markdig unknown; this engine runs Markdig 0.42.1.", refusal.Sentence);
+
+        // The evaluator's and an operation's break points are not a library's: no lock key holds them.
+        Assert.Empty(RequiresCheck.Engine(Resolve(), without, Engine(breakPoints: [new BreakPoint("the evaluator", "1.0.1"), new BreakPoint("matches", "1.1.0")])));
+    }
+
+    [Fact]
+    public void ADocumentWithARepeatedMember_IsRefused_NeverThrown()
+    {
+        // A document parsed from text that repeats a member throws when first read; the checks refuse it instead.
+        static JsonObject Repeating(JsonObject document, string member) =>
+            JsonNode.Parse(document.ToJsonString().Insert(1, $"\"{member}\": null, "))!.AsObject();
+
+        var resolve = Repeating(Resolve(), "requires");
+        var refusal = Assert.Single(Said(RequiresCheck.Engine(resolve, Lock(), Engine())));
+        Assert.Equal(("S07-003", "resolve.json"), (refusal.Id, refusal.Path));
+
+        var @lock = Repeating(Lock(), "libraries");
+        refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), @lock, Engine())));
+        Assert.Equal(("S07-003", "lock.json"), (refusal.Id, refusal.Path));
+        Assert.StartsWith("This workflow (example-nested-note@v2026.12.1) needs unknown", refusal.Sentence);
+
+        // needs.profile is unreadable, so every field is needed.
+        Assert.Equal(5, Said(RequiresCheck.Profile(Repeating(Resolve(), "needs"), new Dictionary<string, string?>())).Count);
+    }
+
+    [Fact]
     public void AMissingOperation_IsRefused()
     {
         var engine = Engine();

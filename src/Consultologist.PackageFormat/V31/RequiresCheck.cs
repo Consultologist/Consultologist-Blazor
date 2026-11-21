@@ -33,7 +33,8 @@ public sealed record EngineCapabilities(
 /// start"), as pure functions; calling them when the Create page asks and when the job starts is area 06's.
 /// <see cref="Engine"/> holds <c>requires</c> and <c>lock.json</c>'s exact versions to what the engine runs and its
 /// break points; <see cref="Profile"/> holds <c>needs.profile</c> to the account's profile. Never throws on a document:
-/// a member it reads that is missing or of another shape is refused, with <c>unknown</c> where the document says nothing.
+/// a member it reads that is missing or of another shape is refused, with <c>unknown</c> where the document says nothing,
+/// and a document that cannot be read (parsed from text that repeats a member) is refused whole.
 /// </summary>
 public static class RequiresCheck
 {
@@ -64,16 +65,28 @@ public static class RequiresCheck
     /// each operation <c>requires.operations</c> names (ordinal), when the engine's version is outside the range, the
     /// operation is missing, the locked version is not a version, or the package is locked before one of the
     /// component's break points with the engine at or past it; S07-003 for another locked library (ordinal) locked before
-    /// one of its break points with the engine's version of it (<see cref="EngineCapabilities.Libraries"/>) at or past it,
-    /// or not given as a version, naming that library and the engine's version of it (or <c>unknown</c>); S07-004 for each kind, then
+    /// one of its break points (a lock that does not say the library is before all of them) with the engine's version of
+    /// it (<see cref="EngineCapabilities.Libraries"/>) at or past it, or not given as a version, naming that library and
+    /// the engine's version of it (or <c>unknown</c>); S07-004 for each kind, then
     /// each feature, the engine does not support; S07-005 for each agent (ordinal) at a version the engine does not have.
-    /// At most one refusal per component. A null argument is the caller's error.
+    /// At most one refusal per component. A document that cannot be read is one S07-003 naming <c>unknown</c>, on
+    /// <c>resolve.json</c> when it is that one, else on <c>lock.json</c>. A null argument is the caller's error.
     /// </summary>
     public static IReadOnlyList<SourceRefusal> Engine(JsonObject resolve, JsonObject @lock, EngineCapabilities engine)
     {
         ArgumentNullException.ThrowIfNull(resolve);
         ArgumentNullException.ThrowIfNull(@lock);
         ArgumentNullException.ThrowIfNull(engine);
+
+        // A document parsed from text that repeats a member throws when first read: it is refused whole, as unknown.
+        var resolveReadable = Readable(resolve);
+        var lockReadable = Readable(@lock);
+        if (!resolveReadable || !lockReadable)
+        {
+            var (name, at) = Named(resolveReadable ? resolve : [], lockReadable ? @lock : []);
+            var path = resolveReadable ? ResolveCompiler.LockFile : CompiledPackage.ResolveFile;
+            return [ResolveSentences.ComponentOutOfRange(name, at, Unknown, Unknown, Unknown, path)];
+        }
 
         var (package, version) = Named(resolve, @lock);
         var requires = LockCompiler.Member(resolve, "requires");
@@ -108,8 +121,13 @@ public static class RequiresCheck
 
         // The other locked libraries (Markdig, the two Corvus libraries) have no range: only their break points hold them,
         // each against the engine's own version of the library; an engine that does not say it, or says what is no version,
-        // is held to it.
-        foreach (var point in (engine.BreakPoints ?? []).Where(p => p?.Component is { } c && c != Scriban && LockCompiler.Member(libraries, c) != null)
+        // is held to it, and so is a lock that does not say it (a missing locked version is before every break point).
+        // A break point of Scriban, the evaluator or an operation was held above.
+        var operationNames = JsonLogicOperations.All.Select(o => o.Name)
+            .Concat(engine.Operations?.Keys ?? [])
+            .Concat((LockCompiler.Member(requires, "operations") as JsonObject)?.Select(o => o.Key) ?? [])
+            .ToHashSet(StringComparer.Ordinal);
+        foreach (var point in (engine.BreakPoints ?? []).Where(p => p?.Component is { } c && c != Scriban && c != Evaluator && !operationNames.Contains(c))
                      .GroupBy(p => p.Component, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
             var locked = Text(libraries, point.Key);
@@ -156,7 +174,8 @@ public static class RequiresCheck
         ArgumentNullException.ThrowIfNull(resolve);
         ArgumentNullException.ThrowIfNull(profile);
 
-        var fields = Strings(LockCompiler.Member(LockCompiler.Member(resolve, "needs"), "profile")) ?? Fields.Select(f => f.Field).ToList();
+        var needs = Readable(resolve) ? LockCompiler.Member(LockCompiler.Member(resolve, "needs"), "profile") : null;
+        var fields = Strings(needs) ?? Fields.Select(f => f.Field).ToList();
         var refusals = new List<SourceRefusal>();
         foreach (var field in fields.Distinct(StringComparer.Ordinal))
         {
@@ -185,6 +204,38 @@ public static class RequiresCheck
             if (name == null || supported == null || !supported.Contains(name))
                 refusals.Add(ResolveSentences.NotSupported(package, version, kindOrFeature, name ?? Unknown, CompiledPackage.ResolveFile));
         }
+    }
+
+    /// <summary>
+    /// Whether every object under <paramref name="document"/> can be read: one parsed from text that repeats a member
+    /// throws <see cref="ArgumentException"/> when it is first enumerated or looked into.
+    /// </summary>
+    private static bool Readable(JsonNode document)
+    {
+        var pending = new Stack<JsonNode?>([document]);
+        try
+        {
+            while (pending.Count > 0)
+            {
+                switch (pending.Pop())
+                {
+                    case JsonObject o:
+                        foreach (var (_, value) in o)
+                            pending.Push(value);
+                        break;
+                    case JsonArray a:
+                        foreach (var value in a)
+                            pending.Push(value);
+                        break;
+                }
+            }
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     /// <summary>Whether <paramref name="locked"/> is before a break point of <paramref name="component"/> that <paramref name="engineVersion"/> is at or past.</summary>
