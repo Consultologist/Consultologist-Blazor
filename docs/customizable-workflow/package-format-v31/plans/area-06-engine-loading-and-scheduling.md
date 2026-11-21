@@ -140,14 +140,14 @@ consultologist-package-format (m39-build)   v31/conformance/refusal-packages/**,
 
 **Interfaces — Produces:** in `resolve.json`, on every entry of `nodes`, `checks`, `deliverables` and of a function's `nodes`: `"plainConverts": { "<member>": [bool, …] }` for each of `if`, `expression`, `while`, `until` the entry has non-null, from `ExpressionCheck.PlainConverts` of that site; `{}` when it has none.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `ACheckFirstWhile_ReadingItsOwnBody_IsA06002` (theory: `node.judge.value.verdict`, `pass.node.judge.value.verdict`): `ResolveFixture.NestedNote()` with `refine`'s `checkFirst` set `true` → exactly one refusal, A06-002, naming `refine` and `judge`, path `nodes/refine/index.json`. `ACheckFirstWhile_ReadingAnEarlierPassOrOutside_IsAccepted` (theory: `pass.previous.node.judge.value.verdict`, `pass.number`, `node.plan.value.sections`).
   - `NumericEnumTests`: a package format `{ "type": "integer", "enum": [1, 2, 3] }` and `{ "type": "number", "enum": [0.5, 1] }` pass the dialect; `CorvusFormatValueValidator` accepts `2` and refuses `4`; an input of that format compiles; a mixed `["a", 1]` enum is still what the dialect said before this task (assert the current refusal id, unchanged).
   - `PlainConvertsTests.EveryRuleMember_HasItsList`: compile a fixture with a computed node `{"plain":[{"var":"input.consult_draft.content"}]}` (a Markdown input: converts) and one over `plaintext` (does not): the entries read `{"expression":[true]}` and `{"expression":[false]}`; an agent with an `if` and no `plain` reads `{"if":[]}`; a `for` with `until` null reads `{}`.
-- [ ] **Step 2: Run; fail.**
-- [ ] **Step 3: Implement.** Regenerate the goldens (`GOLDEN_UPDATE_V31=1`), read the diff (only `plainConverts` members appear), add the A06-002 refusal case, re-export both families, push the content repo, run `check-v31.py`, move the pin.
-- [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): a checkFirst while can't read its own body; numeric enums; plainConverts compiled in`
+- [x] **Step 2: Run; fail.**
+- [x] **Step 3: Implement.** Regenerate the goldens (`GOLDEN_UPDATE_V31=1`), read the diff (only `plainConverts` members appear), add the A06-002 refusal case, re-export both families, push the content repo, run `check-v31.py`, move the pin.
+- [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): a checkFirst while can't read its own body; numeric enums; plainConverts compiled in`
 
 ### Task 3: The stamp and the in-memory plan
 
