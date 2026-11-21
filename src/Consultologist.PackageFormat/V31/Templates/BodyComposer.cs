@@ -18,7 +18,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// renders the renderer's body with the piped value as <c>value</c> and gives one <see cref="ComposedRender"/> per step,
 /// numbered as the entry's <c>renders</c> (<see cref="Compose"/>). Only the seven built-ins exist; values are written
 /// by D13 (<see cref="TemplateValues"/>). Only package text (a body, a snippet's, a part's, a macro's instruction, a
-/// renderer's) is ever parsed; a value never is. A macro placement renders nothing yet (the macros' task).
+/// renderer's) is ever parsed; a value never is. In a loop over a snippet folder, <c>item.content</c> renders the item's
+/// body from the plan (part 05 § 6.2). A macro placement renders nothing yet (the macros' task).
 /// </summary>
 public static partial class BodyComposer
 {
@@ -150,7 +151,8 @@ public static partial class BodyComposer
         public IReadOnlyList<ComposedUnit> PlacedUnits() => units.OfType<ComposedUnit>().ToList();
 
         /// <summary>
-        /// The data the body reads, as Scriban sees it: each root of the scope, each local head of <c>names</c> set to what
+        /// The data the body reads, as Scriban sees it: each root of the scope (<c>item</c>, in a loop over a snippet folder,
+        /// rendering its body where it is read: <see cref="FolderItemObject"/>), each local head of <c>names</c> set to what
         /// its rooted key holds (D1), and the roots a body places and pipes through (<c>snippet</c>, <c>part</c>,
         /// <c>macro</c>, <c>renderer</c>), which no scope value stands for.
         /// </summary>
@@ -161,6 +163,8 @@ public static partial class BodyComposer
             var globals = new ScriptObject();
             foreach (var (root, value) in Request.Scope)
                 globals.SetValue(root, TemplateValues.FromJson(value), false);
+            if (globals.TryGetValue("item", out var item))
+                globals.SetValue("item", FolderItemObject.Of(this, item), false); // part 05 § 6.2: a folder item's body is rendered where read
 
             if (Entry.Json["names"] is JsonObject names)
             {

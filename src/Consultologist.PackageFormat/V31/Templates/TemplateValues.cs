@@ -76,6 +76,7 @@ internal static class TemplateValues
             int number => JsonValue.Create(number),
             long number => JsonValue.Create(number),
             DataObject data => data.Json.DeepClone(),
+            BodyComposer.FolderItemObject item => item.Data.Json.DeepClone(),
             ScriptArray list => new JsonArray(list.Select(item => ToJson(item, depth + 1)).ToArray()),
             ScriptObject other => new JsonObject(other.Select(p => KeyValuePair.Create(p.Key, ToJson(p.Value, depth + 1)))),
             _ => null,
