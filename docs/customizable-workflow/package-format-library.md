@@ -915,7 +915,7 @@ upload's order or line ends.
     by source order.
 - **`requires`** (D8 as amended). `evaluator` is `^1.0.0` and `scriban` is `^` plus the locked
   version. `operations` holds each custom operation any rule calls (part 07 § 3.1). `kinds` and
-  `features` follow `constants.json`'s order. `agents` is each bound agent, name to version as text.
+  `features` follow `constants.json`'s order. `agents` is each bound agent, name to its integer version (one per agent, A07-014).
 - **`needs.profile`** and **`run`** are `PackageDerived`'s.
 - **`warnings`** are `{ sentence, at }`, `at` null for the package as a whole. They come from the
   derived step, the resolve step's S04-074, and, when `limits` are given, `PublishNotes.Of`: S04-072
