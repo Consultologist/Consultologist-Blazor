@@ -421,15 +421,15 @@ public sealed class EngineCapabilitiesFactory { public EngineCapabilities Curren
 - `RunAgentNodeV31Activity`: loads the plan (store cache), composes the body, finds the agent by the entry's format and producer in the plan's `bindings`, and makes **one** attempt through `AgentSectionGenerator.TryPromptOnceAsync(...)`, a new method returning `AgentAttempt(AgentOutcomeKind Kind, string? Text, ConsultTokenUsage? Tokens, int? RetryAfterMilliseconds, string? ErrorKind)`: HTTP 429 → `Throttled` with `retry-after-ms` or `retry-after` when present; 5xx → `ServiceFailure` `error`; a time-out → `timeout`; no connection → `unreachable`; anything else propagates as today. The activity fills `WaitMilliseconds`: the service's value, else `AgentBackoff.Wait(attempt, jitterSeed)` — 5 s doubling, capped at 60 s, plus up to 20% jitter from `Random.Shared` (an activity may; the result is in the history). Telemetry: key, attempt, lengths and hashes, never text.
 - `EntityRunRecorder : IRunRecorder` (D12): `RowAsync` updates progress on the job's entity (an additive operation `RecordV31Progress(key, state)`: counts and the current key only) and is the seam area 09 replaces; `DecisionAsync` likewise counts.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `OrchestratorV31Tests.AJob_RunsToCompleted`: nested-note's golden in a `FakeRegistry`, `FakeOrchestrationContext` answering `run-agent-node-v31` from a stub by key and `render-node-v31` through the real composer: the entity ends `Completed`; the first entity call after the schedule wait carries `resolveHash`, `lockHash`, the nine limits and `startedAtUtc`, and precedes every activity call; the agent activity calls appear in `RunGoldenTests`' dispatch order.
   - `AFailedNode_FailsTheJob_WithItsSentence`; `AThrottledCall_WaitsOnADurableTimer` (the context records a timer of the returned wait between two calls of one key).
   - `NeverMoreThanTheCeiling_InFlight` (ceiling 2 in the input's limits; the fake context's pending activities never exceed 2).
   - `RunAgentNodeV31ActivityTests`: the prompt sent is the composed body; the agent is the binding's; a 429 with `retry-after-ms: 1500` → `Throttled`, 1500; a 429 with none → a wait between 5,000 and 6,000 on attempt 1 and between 10,000 and 12,000 on attempt 2, never over 72,000; a 503 → `ServiceFailure`, `error`; `TaskCanceledException` from the time-out → `timeout`; `HttpRequestException` with no status → `unreachable`.
   - `ScribanBodyComposer_RendersTheScope`, `…_StopsAtItsStepLimit`.
   - `The30Orchestrator_IsUntouched`: `git diff origin/m39-build -- src/Consultologist.Api/Jobs/ConsultGenerationEngine.cs` is empty at this task's commit (asserted by the reviewer, not a unit test), and every `EngineRun*` and capture golden passes unchanged.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run the whole non-E2E suite; pass.**
-- [ ] **Step 5: Commit and push.** `Api (#1503): a 31 job's orchestration: the plan run inline, calls as activities, waits as timers`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run the whole non-E2E suite; pass.**
+- [x] **Step 5: Commit and push.** `Api (#1503): a 31 job's orchestration: the plan run inline, calls as activities, waits as timers`
 
 ### Task 13: Starting a 31 job
 
