@@ -87,7 +87,7 @@ internal static class V31Contract
 
     /// <summary>
     /// #1504: area 07's own sentences (<c>A07-NNN</c>), as plan area-07-prompts-and-macros lists them: the first nine at
-    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5).
+    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5; A07-012, Task 8b).
     /// </summary>
     private static readonly Dictionary<string, string> TemplateAreaSentences = new()
     {
@@ -102,6 +102,8 @@ internal static class V31Contract
         ["A07-009"] = "<Subject> places <unit> at line <n> inside <an if | a for>; a part, a snippet or a macro is placed at the top level of its template, and its own if decides it.",
         ["A07-010"] = "Snippet '<id>' declares format <format>; a snippet's text is plaintext, markdown_block or markdown_inline.",
         ["A07-011"] = "<Subject> places more than <limit> parts, snippets and macros, counting what its parts and snippets place; place fewer.",
+        ["A07-012"] = "Snippet '<id>' <places <unit> | pipes into <renderer> | reads <path>>, and <subject> reads it as <path> at line <n>; "
+            + "a folder item's body read in a loop places no part, macro or snippet, pipes into no renderer and reads no run.* or run-dependent value.",
     };
 
     private static string RepoRoot()

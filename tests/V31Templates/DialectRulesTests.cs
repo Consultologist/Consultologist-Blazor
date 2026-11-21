@@ -288,6 +288,7 @@ public class DialectRulesTests
     [InlineData("PartOnlyPresents", "A07-002")]
     [InlineData("SnippetFormatNotText", "A07-010")]
     [InlineData("PlacesTooManyUnits", "A07-011")]
+    [InlineData("FolderItemDoes", "A07-012")]
     [InlineData("MacroBodyPlacesMacro", "S05-042")]
     [InlineData("MacroBodyPlacesPart", "S05-043")]
     [InlineData("MarkerCount", "S05-044")]

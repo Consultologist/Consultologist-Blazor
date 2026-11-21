@@ -325,6 +325,13 @@ internal static partial class RefusalPackages
             + "plan's prompt places block, which places line 999 times: 1,000 units. Invalid: block places line once more.",
             Placing(999),
             Placing(999).Edit("snippets/block.md", "End of the lines.\n", "{{~ snippet.line.content }}\nEnd of the lines.\n"));
+
+        yield return new RefusalCase("A07-012",
+            "A loop over a snippet folder reads each item's body as item.content, rendered where it is read; one tag stands for "
+            + "a different body per item, so that body only presents (chapter 5 § 5.6.2; this implementation's sentence). The loop "
+            + "standards' agent section reads item.content. Invalid: hpi's body writes run.date. Valid: it writes only text.",
+            StandardsRead(),
+            StandardsRead().Edit("snippets/standards/hpi.md", "orientation to the patient.\n", "orientation to the patient, on {{ run.date }}.\n"));
     }
 
     // ---- Chapter 5 § 5.7: parts -----------------------------------------------------------------------------
@@ -530,6 +537,16 @@ internal static partial class RefusalPackages
             .With("snippets/title_line.md", Md("{ \"label\": \"Title line\", \"description\": null, \"if\": null, \"format\": \"plaintext\" }",
                 "Section: {{ item.value.title }}\n"))
             .Edit("nodes/sections/outline.md", "short list of points.\n", "short list of points.\n{{~ snippet.title_line.content }}\n");
+
+    /// <summary>The snippet folder <c>standards</c> and the loop <c>standards</c> over it, whose agent <c>section</c> reads each item's body as <c>item.content</c>.</summary>
+    private static Dictionary<string, byte[]> StandardsRead() =>
+        WithSnippetFolder()
+            .Edit("nodes/index.json", "\"items\": [\"plan\"]", "\"items\": [\"plan\", \"standards\"]")
+            .With("nodes/standards/index.json", Json(Node("for", "Standards", ArrayOf(Plain), false, true,
+                "\"in\": \"snippet.standards\", \"parallel\": true, \"maxParallel\": 4, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"section\"], \"ret\": \"node.standards.section\"")))
+            .With("nodes/standards/section.md", Agent("Applying the section standard", Plain,
+                "Write the section '{{ item.value.title }}' of the note for Margaret Okafor, following this standard:\n\n{{ item.content }}\n"));
 
     /// <summary>The snippets <c>intro</c> (placing <c>outro</c>) and <c>outro</c>; the plan's prompt places intro.</summary>
     private static Dictionary<string, byte[]> IntroOutro() =>
