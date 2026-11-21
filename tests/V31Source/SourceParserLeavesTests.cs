@@ -317,8 +317,9 @@ public class SourceParserLeavesTests
 
         var refusal = Only(files.Parse());
 
-        Assert.Equal("A02-001", refusal.Id);
-        Assert.Equal("Node 'section' declares 'with.draft' as an object; it is text.", refusal.Sentence);
+        // #1502 (area 05, D13): part 04's row, in place of A02-001.
+        Assert.Equal("S04-017", refusal.Id);
+        Assert.Equal("Call 'section' with draft is an expression; it names one readable thing: compute the value in a computed node and name that.", refusal.Sentence);
     }
 
     [Fact]

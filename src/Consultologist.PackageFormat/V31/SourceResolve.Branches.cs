@@ -17,7 +17,8 @@ public static partial class SourceResolve
     /// <summary>
     /// One case: its subject's refusal, if any, alone; then S04-044 for a subject that is no enumerated string (an
     /// <c>enum</c>, or a <c>oneOf</c> of <c>const</c>s; nullable allowed), alone; then, in written order, S04-045 for
-    /// each value that is not the subject's and S04-046 for each value an earlier branch lists; then, with no
+    /// each value that is not the subject's and S04-046 for each value an earlier branch lists, or this one
+    /// lists again (part 04 § 5.2: "in at most one branch, once"; the branch named twice); then, with no
     /// <c>else</c>, S04-047 for the values no branch lists and S04-075 for a subject that can be null.
     /// </summary>
     private static void Case(CaseSubject subject, SourceCase choice, FormatSet formats, List<SourceRefusal> refusals)
@@ -41,9 +42,12 @@ public static partial class SourceResolve
         for (var i = 0; i < choice.Branches.Count; i++)
         {
             var n = i + 1;
-            foreach (var value in choice.Branches[i].When.Distinct(StringComparer.Ordinal))
+            var own = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var value in choice.Branches[i].When)
             {
-                if (!values.Contains(value, StringComparer.Ordinal))
+                if (!own.Add(value))
+                    refusals.Add(ResolveSentences.ListsValueTwice(choice.Id, value, n, n, path));
+                else if (!values.Contains(value, StringComparer.Ordinal))
                     refusals.Add(ResolveSentences.ListsNoValue(choice.Id, n, value, subject.Reference, Quoted(values), path));
                 else if (listed.TryGetValue(value, out var first))
                     refusals.Add(ResolveSentences.ListsValueTwice(choice.Id, value, first, n, path));

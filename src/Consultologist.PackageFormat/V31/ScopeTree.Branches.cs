@@ -84,9 +84,18 @@ public sealed partial class ScopeTree
     /// nor a refusal, the head is <see cref="ScopeHeadKind.Deferred"/>.
     /// </summary>
     private (Resolved Head, ReadResult? Read, SourceRefusal? Refusal) Typed(
-        ReferenceString reference, ScopeFrame frame, string subject, string path, SourceNode reader)
+        ReferenceString reference, ScopeFrame frame, string subject, string path, SourceNode reader) =>
+        TypeHead(Resolve(reference, frame, subject, path, false, reader), reference, frame, subject, path, whole: false);
+
+    /// <summary>
+    /// <paramref name="head"/>, what <paramref name="reference"/> resolved to at <paramref name="frame"/>, typed as
+    /// <see cref="Typed"/> says. With <paramref name="whole"/>, a Format head that consumed every segment is read through
+    /// its <c>.value</c> (a whole <c>node.&lt;id&gt;</c>, <c>check.&lt;id&gt;</c>, <c>item</c>, <c>param.&lt;id&gt;</c> or
+    /// snippet passed to <c>with</c>, part 04 § 7.7).
+    /// </summary>
+    private (Resolved Head, ReadResult? Read, SourceRefusal? Refusal) TypeHead(
+        Resolved head, ReferenceString reference, ScopeFrame frame, string subject, string path, bool whole)
     {
-        var head = Resolve(reference, frame, subject, path, false, reader);
         switch (head.Kind)
         {
             case ScopeHeadKind.Refused:
@@ -101,7 +110,7 @@ public sealed partial class ScopeTree
 
         var s = reference.Segments;
         var rest = s.Skip(Math.Clamp(head.Length, 0, s.Count)).ToList();
-        List<string> steps = head.Kind == ScopeHeadKind.Value ? ["value", .. rest] : rest;
+        List<string> steps = head.Kind == ScopeHeadKind.Value || (whole && rest.Count == 0) ? ["value", .. rest] : rest;
         var read = FormatReads.Read(head.Format, steps, FormatsOf(frame));
         if (read.Fault == ReadFault.Bare && s[0] == "input")
             return (head, null, FormatReads.BareInput(s[1], path));

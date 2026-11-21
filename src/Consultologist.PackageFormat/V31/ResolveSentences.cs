@@ -97,4 +97,76 @@ internal static class ResolveSentences
     /// <summary>S04-051: the node <paramref name="id"/> of the function <paramref name="function"/> reads <paramref name="reference"/>, from outside it.</summary>
     public static SourceRefusal FunctionReadsOutside(string id, string function, string reference, string path) =>
         new("S04-051", $"Node '{id}' in function '{function}' reads {reference}; a function reads only its parameters: add a parameter and pass it in with.", path);
+
+    /// <summary>S04-052: the function <paramref name="function"/> reads the package's <paramref name="kind"/> (<c>snippet</c>, <c>macro</c>, <c>format</c>, <c>renderer</c>) <paramref name="id"/>, which its <c>uses</c> does not list.</summary>
+    public static SourceRefusal UsesUnlisted(string function, string kind, string id, string path) =>
+        new("S04-052", $"Function '{function}' uses {kind} '{id}' but doesn't list it in uses.", path);
+
+    /// <summary>S04-053: the function <paramref name="function"/> holds its own <paramref name="kind"/> <paramref name="id"/> and lists the package's in <c>uses</c>.</summary>
+    public static SourceRefusal OwnAndUsed(string function, string kind, string id, string path) =>
+        new("S04-053", $"Function '{function}' has its own {kind} '{id}' and also uses the package's: rename one.", path);
+
+    /// <summary>S04-054: the function <paramref name="a"/> calls itself through the others; <paramref name="chain"/> is the ring after <paramref name="a"/>, each id quoted and joined by <c>', which calls '</c> (part 04 § 10.1: a longer ring is named in full).</summary>
+    public static SourceRefusal CallsInARing(string a, string chain, string path) =>
+        new("S04-054", $"Function '{a}' calls '{chain}', which calls '{a}': functions may not call themselves.", path);
+
+    /// <summary>S04-055: the function <paramref name="a"/> calls itself directly.</summary>
+    public static SourceRefusal CallsItself(string a, string path) =>
+        new("S04-055", $"Function '{a}' calls '{a}': functions may not call themselves.", path);
+
+    /// <summary>S04-056: the call <paramref name="id"/>, outside every function, starts a chain of nested calls <paramref name="depth"/> deep, past <see cref="FormatBounds.Depth"/>.</summary>
+    public static SourceRefusal CallsTooDeep(string id, int depth, string path) =>
+        new("S04-056", $"Call '{id}' reaches depth {depth}; calls nest at most FormatBounds.depth ({FormatBounds.Depth}) deep.", path);
+
+    /// <summary>S04-057: the function <paramref name="function"/> returns the <c>if</c> <paramref name="id"/>, which has no <c>else</c>.</summary>
+    public static SourceRefusal ReturnsAnIfWithNoElse(string function, string id, string path) =>
+        new("S04-057", $"Function '{function}' returns node.{id}, an if with no else: add an else, or return a node that always runs.", path);
+
+    /// <summary>S04-058: what the function <paramref name="function"/> returns is <paramref name="id"/> (its full name), which may be skipped inside the <c>if</c> (or <c>case</c>) <paramref name="branch"/>.</summary>
+    public static SourceRefusal ReturnsASkippableNode(string function, string id, string branch, string path) =>
+        new("S04-058", $"Function '{function}' returns node.{id}, which runs inside if '{branch}' and may be skipped: return a node that always runs.", path);
+
+    /// <summary>S04-059: the function <paramref name="function"/> returns the <c>case</c> <paramref name="id"/>, whose branches for <paramref name="values"/> (each quoted) are empty.</summary>
+    public static SourceRefusal ReturnsACaseWithAnEmptyBranch(string function, string id, string values, string path) =>
+        new("S04-059", $"Function '{function}' returns node.{id}, a case with an empty branch for {values}: return a node that always runs.", path);
+
+    /// <summary>S04-060: the function <paramref name="function"/> returns the <c>if</c> or <c>case</c> <paramref name="id"/>, two of whose bodies return the type strings <paramref name="a"/> and <paramref name="b"/>.</summary>
+    public static SourceRefusal ReturnsTwoFormats(string function, string id, string a, string b, string path) =>
+        new("S04-060", $"Function '{function}' returns node.{id}, whose branches return {a} and {b}: a function returns one format. Wrap them in an object format.", path);
+
+    /// <summary>S04-061: the function <paramref name="function"/> declares <paramref name="declared"/>, and its <c>ret</c> <paramref name="id"/> returns <paramref name="returned"/> (type strings).</summary>
+    public static SourceRefusal FunctionFormatDisagrees(string function, string declared, string id, string returned, string path) =>
+        new("S04-061", $"Function '{function}' declares format {declared}; its ret '{id}' returns {returned}.", path);
+
+    /// <summary>S04-064: the call <paramref name="id"/> names <paramref name="function"/>, which no function of the package is.</summary>
+    public static SourceRefusal UnknownFunction(string id, string function, string path) =>
+        new("S04-064", $"Call '{id}' names function '{function}', which the package doesn't define.", path);
+
+    /// <summary>S04-065: the call <paramref name="id"/> leaves out <paramref name="param"/>; <paramref name="parameters"/> are the function's, in declared order.</summary>
+    public static SourceRefusal ParameterNotPassed(string id, string param, string function, string parameters, string path) =>
+        new("S04-065", $"Call '{id}' passes no {param}; function '{function}' takes {parameters}.", path);
+
+    /// <summary>S04-066: the call <paramref name="id"/> passes <paramref name="param"/>, which the function does not declare; <paramref name="parameters"/> are its own, in declared order (<c>none</c> for none).</summary>
+    public static SourceRefusal ParameterNotTaken(string id, string param, string function, string parameters, string path) =>
+        new("S04-066", $"Call '{id}' passes {param}, which function '{function}' doesn't take ({parameters}).", path);
+
+    /// <summary>S04-068: the argument <paramref name="reference"/>, of the type string <paramref name="format"/>, does not fit <paramref name="param"/>'s <paramref name="expected"/>.</summary>
+    public static SourceRefusal ArgumentDoesNotFit(string id, string reference, string format, string param, string function, string expected, string path) =>
+        new("S04-068", $"Call '{id}' passes {reference} ({format}) as {param}; function '{function}' takes {expected}.", path);
+
+    /// <summary>S04-069: a condition of the function <paramref name="function"/> reads <c>param.&lt;name&gt;</c>, bound to <c>profile.&lt;field&gt;</c>; <paramref name="where"/> is <c>a prompt</c>, <c>a part</c> or <c>a condition</c>.</summary>
+    public static SourceRefusal ReadsProfileParameter(string function, string name, string field, string where, string path) =>
+        new("S04-069", $"Function '{function}' reads param.{name}, which carries profile.{field}, in {where}; the profile is read only in deliverables and macro bodies.", path);
+
+    /// <summary>S04-070: the call <paramref name="id"/> declares <paramref name="declared"/>, and the function returns <paramref name="returned"/> (type strings).</summary>
+    public static SourceRefusal CallFormatDisagrees(string id, string declared, string function, string returned, string path) =>
+        new("S04-070", $"Call '{id}' declares format {declared}; function '{function}' returns {returned}.", path);
+
+    /// <summary>S04-074 (a warning): the function <paramref name="function"/> lists <paramref name="kind"/> <paramref name="id"/> in <c>uses</c> and never names it.</summary>
+    public static SourceRefusal UsedNever(string function, string kind, string id, string path) =>
+        new("S04-074", $"Function '{function}' lists {kind} '{id}' in uses but never uses it.", path);
+
+    /// <summary>A05-005 (D13): the call <paramref name="id"/>'s argument <paramref name="param"/> is <paramref name="whatItIs"/> (a number, true or false): neither a reference nor <c>null</c>.</summary>
+    public static SourceRefusal ArgumentNotAReference(string id, string param, string whatItIs, string path) =>
+        new("A05-005", $"Call '{id}' with {param} is {whatItIs}; an argument is a reference, written as text, or null.", path);
 }

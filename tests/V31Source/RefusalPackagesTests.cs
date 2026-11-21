@@ -54,6 +54,12 @@ public class RefusalPackagesTests
         ["S03-001", "S03-036", "S03-037", "S03-038", "S03-039", "S03-040", "S03-041", "S03-044", "A04-011"];
 
     /// <summary>
+    /// #1502 (area 05): the resolver's sentences the suite has no case for. S04-074: a warning (a format a function lists
+    /// in uses and never names); a package that gets it is accepted.
+    /// </summary>
+    private static readonly string[] ResolveNotShipped = ["S04-074"];
+
+    /// <summary>
     /// The ids of <see cref="LogicNotShipped"/> that no public method of <see cref="ExpressionSentences"/> returning a
     /// refusal gives: S03-001 (the record's), S03-036 (the flags', internal), S03-039 (a note, text) and the run-time
     /// sentences (<see cref="ExpressionSentences.RunTime"/>, text).
@@ -89,6 +95,7 @@ public class RefusalPackagesTests
             .Except(NotShipped)
             .Except(TypesNotShipped)
             .Except(LogicNotShipped)
+            .Except(ResolveNotShipped)
             .Order(StringComparer.Ordinal)
             .ToList();
 

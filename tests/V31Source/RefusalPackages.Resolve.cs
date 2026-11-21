@@ -12,7 +12,8 @@ namespace Consultologist.Api.Tests.V31Source;
 /// </summary>
 internal static partial class RefusalPackages
 {
-    private static IEnumerable<RefusalCase> Resolve() => Passes().Concat(Levels()).Concat(Sealed()).Concat(Sources()).Concat(Labels()).Concat(Unused()).Concat(Cases());
+    private static IEnumerable<RefusalCase> Resolve() => Passes().Concat(Levels()).Concat(Sealed()).Concat(Sources()).Concat(Labels()).Concat(Unused()).Concat(Cases())
+        .Concat(Calls()).Concat(Rets()).Concat(Uses()).Concat(Graph());
 
     // ---- Chapter 4 § 4.2.2: what a loop iterates -----------------------------------------------------------
 
@@ -214,22 +215,21 @@ internal static partial class RefusalPackages
 
     private static IEnumerable<RefusalCase> Sealed()
     {
-        const string patient = "functions/draft_section/patient_draft.md";
+        const string note = "functions/draft_section/draft_note.md";
         var written = If("""{ "!": [{ "blank": [{ "var": "param.draft.content" }] }] }""");
 
         yield return new RefusalCase("S04-050",
-            "A function reads only its parameters (chapter 4 § 4.7.4). The function draft_section drafts from the "
-            + "parameter draft, when it has text. Invalid: its node patient_draft's if reads the input consult_draft. "
-            + "Valid: the parameter draft.",
-            WithFunction().Edit(patient, "\"if\": null", written),
-            WithFunction().Edit(patient, "\"if\": null", written).Edit(patient, "param.draft.content\" }", "input.consult_draft.content\" }"));
+            "A function reads only its parameters (chapter 4 § 4.7.4). The function draft_section notes the parameter draft, "
+            + "when it has text. Invalid: its node draft_note's if reads the input consult_draft. Valid: the parameter draft.",
+            WithDraftNote().Edit(note, "\"if\": null", written),
+            WithDraftNote().Edit(note, "\"if\": null", written).Edit(note, "param.draft.content\" }", "input.consult_draft.content\" }"));
 
         yield return new RefusalCase("S04-051",
             "A function reads only its parameters, never a node outside it (chapter 4 § 4.7.4). The function draft_section "
-            + "drafts from the parameter draft, when it has text. Invalid: its node patient_draft's if reads node.plan, a "
-            + "top-level node. Valid: the parameter draft.",
-            WithFunction().Edit(patient, "\"if\": null", written),
-            WithFunction().Edit(patient, "\"if\": null", written).Edit(patient, "param.draft.content\" }", "node.plan.content\" }"));
+            + "notes the parameter draft, when it has text. Invalid: its node draft_note's if reads node.plan, a top-level "
+            + "node. Valid: the parameter draft.",
+            WithDraftNote().Edit(note, "\"if\": null", written),
+            WithDraftNote().Edit(note, "\"if\": null", written).Edit(note, "param.draft.content\" }", "node.plan.content\" }"));
     }
 
     /// <summary>A header's <c>if</c> member, <paramref name="rule"/> its value: what replaces <c>"if": null</c>.</summary>
@@ -244,4 +244,252 @@ internal static partial class RefusalPackages
                 + "\"itemLabel\": null, \"nodes\": [\"note_summary\"], \"ret\": \"node.notes.note_summary\"")))
             .With("nodes/notes/note_summary.md", Agent("Summarising a prior note", Plain,
                 "Summarise the prior note below in one sentence for Dr A. Sample.\n"));
+
+    // ---- Chapter 4 § 4.7.7: the call node ------------------------------------------------------------------
+
+    private const string CallFile = "nodes/section.md";
+
+    private const string DraftArgument = "\"with\": { \"draft\": \"input.consult_draft.content\" }";
+
+    private static IEnumerable<RefusalCase> Calls()
+    {
+        yield return new RefusalCase("S04-064",
+            "A call names a function the package defines (chapter 4 § 4.7.7). The call section runs draft_section. Invalid: it "
+            + "names draft_sections. Valid: draft_section.",
+            WithFunction(),
+            WithFunction().Edit(CallFile, "\"function\": \"draft_section\"", "\"function\": \"draft_sections\""));
+
+        yield return new RefusalCase("S04-065",
+            "A call passes every parameter (chapter 4 § 4.7.7). The call section runs draft_section, whose parameter is draft. "
+            + "Invalid: its with is {}. Valid: it passes draft.",
+            WithFunction(),
+            WithFunction().Edit(CallFile, DraftArgument, "\"with\": {}"));
+
+        yield return new RefusalCase("S04-066",
+            "A call passes only the function's parameters (chapter 4 § 4.7.7). The call section runs draft_section, whose "
+            + "parameter is draft. Invalid: it also passes tone. Valid: draft only.",
+            WithFunction(),
+            WithFunction().Edit(CallFile, DraftArgument,
+                "\"with\": { \"draft\": \"input.consult_draft.content\", \"tone\": \"input.consult_draft.content\" }"));
+
+        yield return new RefusalCase("S04-068",
+            "Each argument is typed against its parameter (chapter 4 § 4.7.7). The call section passes draft_section's draft, a "
+            + "markdown_block. Invalid: it passes node.plan, a plaintext. Valid: input.consult_draft.content.",
+            WithFunction(),
+            WithFunction().Edit(CallFile, DraftArgument, "\"with\": { \"draft\": \"node.plan\" }"));
+
+        yield return new RefusalCase("S04-070",
+            "A call's format is its function's (chapter 4 § 4.7.7). The call section runs draft_section, which returns "
+            + "plaintext. Invalid: the call declares markdown_block. Valid: plaintext.",
+            WithFunction(),
+            WithFunction().Edit(CallFile, "\"format\": \"plaintext\"", "\"format\": \"markdown_block\""));
+
+        yield return new RefusalCase("A05-005",
+            "An argument is a reference string, or null (chapter 4 § 4.7.7). The call section passes draft_section's draft. "
+            + "Invalid: it passes the number 5. Valid: input.consult_draft.content.",
+            WithFunction(),
+            WithFunction().Edit(CallFile, DraftArgument, "\"with\": { \"draft\": 5 }"));
+
+        const string note = "functions/draft_section/draft_note.md";
+        var profiled = WithDraftNote()
+            .Edit(FunctionIndex, "\"format\": \"markdown_block\" }", "\"format\": \"plaintext\" }")
+            .Edit(CallFile, "input.consult_draft.content", "node.plan.content")
+            .Edit(note, "\"if\": null", If("""{ "!": [{ "blank": [{ "var": "param.draft.content" }] }] }"""));
+        yield return new RefusalCase("S04-069",
+            "A parameter bound to the profile carries it, and no condition reads it (chapter 4 § 4.7.7). The call section "
+            + "passes draft_section's draft, which its node draft_note's if reads. Invalid: the call passes "
+            + "profile.signature. Valid: node.plan.content.",
+            profiled,
+            WithDraftNote()
+                .Edit(FunctionIndex, "\"format\": \"markdown_block\" }", "\"format\": \"plaintext\" }")
+                .Edit(CallFile, "input.consult_draft.content", "profile.signature")
+                .Edit(note, "\"if\": null", If("""{ "!": [{ "blank": [{ "var": "param.draft.content" }] }] }""")));
+    }
+
+    // ---- Chapter 4 § 4.7.6: one ret, always valued, one format ---------------------------------------------
+
+    private const string FunctionIndex = "functions/draft_section/index.json";
+
+    private const string PatientRet = "\"ret\": \"node.patient_draft\"";
+
+    private static IEnumerable<RefusalCase> Rets()
+    {
+        yield return new RefusalCase("S04-061",
+            "A function's format is its ret's (chapter 4 § 4.7.6). The function draft_section returns patient_draft and "
+            + "declares plaintext. Invalid: patient_draft returns markdown_block. Valid: plaintext.",
+            WithFunction(),
+            WithFunction().Edit("functions/draft_section/patient_draft.md", "\"format\": \"plaintext\"", "\"format\": \"markdown_block\""));
+
+        var noElse = WithBranchInFunction("checked", Checked("null"), ("checked/final.md", Final(null)));
+        yield return new RefusalCase("S04-057",
+            "A function's ret always has a value (chapter 4 § 4.7.6). The function draft_section holds the if checked, which "
+            + "has no else. Invalid: it returns checked. Valid: it returns patient_draft.",
+            noElse,
+            WithBranchInFunction("checked", Checked("null"), ("checked/final.md", Final(null)))
+                .Edit(FunctionIndex, PatientRet, "\"ret\": \"node.checked\""));
+
+        (string, string)[] skippable = [Checked(CheckedElse), ("checked/final.md", Final(HasText)), ("checked/fallback.md", Final(null, "Writing a fallback"))];
+        yield return new RefusalCase("S04-058",
+            "A function's ret always has a value (chapter 4 § 4.7.6). The function draft_section holds the if checked, whose "
+            + "then returns final, which has an if of its own. Invalid: it returns checked. Valid: it returns patient_draft.",
+            WithBranchInFunction("checked", skippable),
+            WithBranchInFunction("checked", skippable).Edit(FunctionIndex, PatientRet, "\"ret\": \"node.checked\""));
+
+        var route = ("route/index.json", Json(Node("case", "Routing by the draft's state", Plain, false, true,
+            "\"case\": \"node.patient_draft.state\", \"branches\": ["
+            + "{ \"when\": [\"completed\"], \"nodes\": [\"final\"], \"ret\": \"node.route.final\" }, "
+            + "{ \"when\": [\"skipped\", \"not_run\"], \"nodes\": [], \"ret\": null }], \"else\": null")));
+        (string, string)[] routed = [route, ("route/final.md", Final(null))];
+        yield return new RefusalCase("S04-059",
+            "A function's ret always has a value (chapter 4 § 4.7.6). The function draft_section holds the case route, whose "
+            + "branch for skipped and not_run is empty. Invalid: it returns route. Valid: it returns patient_draft.",
+            WithBranchInFunction("route", routed),
+            WithBranchInFunction("route", routed).Edit(FunctionIndex, PatientRet, "\"ret\": \"node.route\""));
+
+        (string, string)[] twoFormats =
+        [
+            Checked(CheckedElse, "{ \"anyOf\": [{ \"$ref\": \"plaintext\" }, { \"$ref\": \"markdown_block\" }] }"),
+            ("checked/final.md", Final(null)),
+            ("checked/fallback.md", Final(null, "Writing a fallback", "\"markdown_block\"")),
+        ];
+        yield return new RefusalCase("S04-060",
+            "A function returns one format (chapter 4 § 4.7.6). The function draft_section holds the if checked, whose then "
+            + "returns plaintext and whose else markdown_block. Invalid: it returns checked. Valid: it returns patient_draft.",
+            WithBranchInFunction("checked", twoFormats),
+            WithBranchInFunction("checked", twoFormats).Edit(FunctionIndex, PatientRet, "\"ret\": \"node.checked\""));
+    }
+
+    private const string HasText = """{ "!": [{ "blank": [{ "var": "param.draft.content" }] }] }""";
+
+    private const string CheckedElse = "{ \"nodes\": [\"fallback\"], \"ret\": \"node.checked.fallback\" }";
+
+    /// <summary>The if <c>checked</c> of <see cref="WithBranchInFunction"/>: when the parameter draft has text, <c>final</c>; <paramref name="otherwise"/> its <c>else</c>.</summary>
+    private static (string, string) Checked(string otherwise, string format = Plain) =>
+        ("checked/index.json", Json(Node("if", "Writing when there is a draft", format, false, true,
+            $"\"if\": {HasText}, \"then\": {{ \"nodes\": [\"final\"], \"ret\": \"node.checked.final\" }}, \"else\": {otherwise}")));
+
+    /// <summary>An agent node of <see cref="Checked"/>'s bodies, with the <c>if</c> <paramref name="condition"/> (none when null).</summary>
+    private static string Final(string? condition, string label = "Writing the section", string format = Plain) =>
+        Md(Node("agent", label, format, false, true,
+                $"\"if\": {condition ?? "null"}, \"onInvalid\": \"retry\", \"failIfEmpty\": null, \"parts\": null, \"ordered\": false"),
+            "Write the section for Margaret Okafor.\n\n{{ param.draft.content }}\n");
+
+    /// <summary><see cref="WithFunction"/> with the flow node <paramref name="id"/>, written by <paramref name="files"/> (under the function's folder), beside <c>patient_draft</c>, which it returns.</summary>
+    private static Dictionary<string, byte[]> WithBranchInFunction(string id, params (string Path, string Text)[] files)
+    {
+        var package = WithFunction().Edit(FunctionIndex, "\"nodes\": [\"patient_draft\"]", $"\"nodes\": [\"patient_draft\", \"{id}\"]");
+        foreach (var (path, text) in files)
+            package.With($"functions/draft_section/{path}", text);
+        return package;
+    }
+
+    /// <summary><see cref="WithFunction"/> with a second agent node, <c>draft_note</c>, beside <c>patient_draft</c>, which it returns.</summary>
+    private static Dictionary<string, byte[]> WithDraftNote() =>
+        WithFunction()
+            .Edit(FunctionIndex, "\"nodes\": [\"patient_draft\"]", "\"nodes\": [\"patient_draft\", \"draft_note\"]")
+            .With("functions/draft_section/draft_note.md", Agent("Noting the draft", Plain,
+                "Note in one line what the consult draft says about Margaret Okafor.\n\n{{ param.draft.content }}\n"));
+
+    // ---- Chapter 4 § 4.7.3: uses ---------------------------------------------------------------------------
+
+    private static IEnumerable<RefusalCase> Uses()
+    {
+        const string listed = "\"uses\": { \"snippets\": [\"standards\"]";
+        yield return new RefusalCase("S04-052",
+            "A function uses a package snippet only if it lists it in uses (chapter 4 § 4.7.3). The function draft_section "
+            + "notes each standard of the package's snippet folder standards. Invalid: its uses lists no snippet. Valid: it "
+            + "lists standards.",
+            WithStandardsInFunction(),
+            WithStandardsInFunction().Edit(FunctionIndex, listed, "\"uses\": { \"snippets\": []"));
+
+        yield return new RefusalCase("S04-053",
+            "A function's own definition does not share an id with one it uses (chapter 4 § 4.7.3). The package and the "
+            + "function draft_section each have a snippet tone. Invalid: the function also lists the package's tone in uses. "
+            + "Valid: it lists none.",
+            WithOwnTone(),
+            WithOwnTone().Edit(FunctionIndex, "\"uses\": { \"snippets\": []", "\"uses\": { \"snippets\": [\"tone\"]"));
+    }
+
+    /// <summary><see cref="WithFunction"/> and <see cref="WithSnippetFolder"/>, the function's loop <c>each</c> noting each standard; its <c>uses</c> lists the folder.</summary>
+    private static Dictionary<string, byte[]> WithStandardsInFunction()
+    {
+        var files = WithFunction()
+            .Edit(FunctionIndex, "\"nodes\": [\"patient_draft\"]", "\"nodes\": [\"patient_draft\", \"each\"]")
+            .Edit(FunctionIndex, "\"uses\": { \"snippets\": []", "\"uses\": { \"snippets\": [\"standards\"]")
+            .With("functions/draft_section/each/index.json", Json(Node("for", "Each standard", ArrayOf(Plain), false, true,
+                "\"in\": \"snippet.standards\", \"parallel\": false, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": null, \"nodes\": [\"note\"], \"ret\": \"node.each.note\"")))
+            .With("functions/draft_section/each/note.md", Agent("Noting the standard", Plain,
+                "Note this standard in one line.\n\n{{ item.content }}\n"));
+        foreach (var (path, bytes) in WithSnippetFolder().Where(f => f.Key.StartsWith("snippets/", StringComparison.Ordinal)))
+            files[path] = bytes;
+        return files;
+    }
+
+    /// <summary><see cref="WithFunction"/> with a package snippet <c>tone</c> and the function's own snippet <c>tone</c>.</summary>
+    private static Dictionary<string, byte[]> WithOwnTone()
+    {
+        const string tone = "---\n{ \"label\": \"Tone\", \"description\": null, \"if\": null, \"format\": \"plaintext\" }\n---\nWrite plainly for Dr A. Sample.\n";
+        return WithFunction()
+            .Edit("snippets/index.json", "\"items\": []", "\"items\": [\"tone\"]")
+            .With("snippets/tone.md", tone)
+            .Edit("functions/draft_section/snippets/index.json", "\"items\": []", "\"items\": [\"tone\"]")
+            .With("functions/draft_section/snippets/tone.md", tone);
+    }
+
+    // ---- Chapter 4 § 4.7.8: depth and recursion ------------------------------------------------------------
+
+    private static IEnumerable<RefusalCase> Graph()
+    {
+        yield return new RefusalCase("S04-055",
+            "Functions may not call themselves (chapter 4 § 4.7.8). The call start runs f01, which calls f02. Invalid: f01 "
+            + "calls f01. Valid: f02.",
+            WithChain(2),
+            WithChain(2).Edit("functions/f01/next.md", "\"function\": \"f02\"", "\"function\": \"f01\""));
+
+        yield return new RefusalCase("S04-054",
+            "Functions may not call each other in a ring (chapter 4 § 4.7.8). The call start runs f01, which calls f02, which "
+            + "calls f03. Invalid: f02 calls f01. Valid: f03.",
+            WithChain(3),
+            WithChain(3).Edit("functions/f02/next.md", "\"function\": \"f03\"", "\"function\": \"f01\""));
+
+        yield return new RefusalCase("S04-056",
+            "Calls nest at most FormatBounds.depth (15) deep (chapter 4 § 4.7.8). The functions f01 to f17 each call the "
+            + "next. Invalid: the call start runs f01, sixteen calls deep. Valid: it runs f02, fifteen deep.",
+            WithChain(17).Edit("nodes/start.md", "\"function\": \"f01\"", "\"function\": \"f02\""),
+            WithChain(17));
+    }
+
+    /// <summary>
+    /// <see cref="SourceFixture.Minimal"/> with the call <c>start</c> of <c>f01</c> and the functions <c>f01</c> to
+    /// <c>f&lt;n&gt;</c>, each of one parameter, <c>draft</c>: each calls the next with a call <c>next</c>, and the last
+    /// writes with the agent <c>write</c>.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithChain(int n)
+    {
+        var ids = Enumerable.Range(1, n).Select(i => $"f{i:00}").ToList();
+        var files = MinimalListing("start")
+            .With("nodes/start.md", CallOf("f01", "input.consult_draft.value"))
+            .Edit("functions/index.json", "\"items\": []", $"\"items\": [{string.Join(", ", ids.Select(id => $"\"{id}\""))}]");
+        for (var i = 0; i < n; i++)
+        {
+            var node = i + 1 < n ? "next" : "write";
+            files.With($"functions/{ids[i]}/index.json", Json(
+                    "{ \"label\": \"Drafting\", \"description\": null, "
+                    + "\"inputs\": { \"draft\": { \"label\": \"Consult draft\", \"description\": null, \"format\": \"markdown_block\" } }, "
+                    + "\"uses\": { \"snippets\": [], \"macros\": [], \"formats\": [], \"renderers\": [] }, "
+                    + $"\"nodes\": [\"{node}\"], \"ret\": \"node.{node}\", \"format\": \"plaintext\" }}"))
+                .With($"functions/{ids[i]}/{node}.md", i + 1 < n
+                    ? CallOf(ids[i + 1], "param.draft.value")
+                    : Agent("Writing the section", Plain, "Write the section for Margaret Okafor.\n\n{{ param.draft.content }}\n"));
+            foreach (var folder in new[] { "snippets", "macros", "formats", "renderers" })
+                files.With($"functions/{ids[i]}/{folder}/index.json", SourceFixture.Index([]));
+        }
+
+        return files;
+    }
+
+    private static string CallOf(string function, string draft) =>
+        Md(Node("call", "Calling the next function", Plain, false, true,
+            $"\"if\": null, \"function\": \"{function}\", \"with\": {{ \"draft\": \"{draft}\" }}"), "");
 }
