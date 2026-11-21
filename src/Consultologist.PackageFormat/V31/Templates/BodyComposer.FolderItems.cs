@@ -13,8 +13,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// plan's <c>snippets</c> (the function's own folder before the package's, as the runner reads it), the item being the one
 /// whose body the scope's <c>item.content</c> is. That body counts against the composition's steps, its <c>for</c>
 /// limit and its output. A scope whose <c>item.content</c> is no item of the folder, or a body publish would not have let
-/// through (one placing a unit, piping into a renderer, or reading a folder item's body in turn), is S07-006; the value
-/// itself is never parsed.
+/// through (one placing a unit, piping into a renderer, writing a run fact, or reading a folder item's body in turn), is
+/// S07-006; the value itself is never parsed.
 /// </summary>
 public static partial class BodyComposer
 {
@@ -64,7 +64,7 @@ public static partial class BodyComposer
 
         /// <summary>
         /// The text planned for the item of <paramref name="folder"/> whose body is <paramref name="body"/>, once per
-        /// composition; <c>null</c> when there is none, or when its body places a unit or pipes into a renderer.
+        /// composition; <c>null</c> when there is none, or when its body is not one publish lets through (<see cref="PlainText"/>).
         /// </summary>
         private TextPlan? FolderText(string folder, string body)
         {
@@ -89,10 +89,14 @@ public static partial class BodyComposer
             return plan;
         }
 
-        /// <summary><paramref name="text"/>, the text of <paramref name="site"/>, planned when it places no unit and pipes into no renderer; else <c>null</c>.</summary>
+        /// <summary>
+        /// <paramref name="text"/>, the text of <paramref name="site"/>, planned when it places no unit, pipes into no
+        /// renderer and reads no run fact (a run-dependent node's read is not told apart here: publish refuses it); else
+        /// <c>null</c>.
+        /// </summary>
         private TextPlan? PlainText(string text, string site)
         {
-            if (Parse(text) is not { } read)
+            if (Parse(text) is not { } read || read.Syntax.Outputs.SelectMany(o => o.Paths).Any(p => p.Split('.')[0] == "run"))
                 return null;
             foreach (var statement in Outputs(read.Template.Page!))
             {
