@@ -20,13 +20,16 @@ public sealed record AgentAttempt(AgentOutcomeKind Kind, string? Text, ConsultTo
     /// <c>retry-after</c> (seconds, or an HTTP date from <paramref name="now"/>); a 5xx is <c>error</c>, with the same
     /// wait; a time-out (a cancellation not of <paramref name="cancellation"/>, which is the host's own and propagates) is
     /// <c>timeout</c>; no connection (an <see cref="HttpRequestException"/> with no status, bare or as the SDK wraps it) is
-    /// <c>unreachable</c>.
+    /// <c>unreachable</c>. An empty reply (<see cref="IsEmptyReply"/>) is not a failure: it is <see cref="EmptyReply"/>, a
+    /// completed attempt with empty text, which the runner validates as it validates any reply.
     /// </summary>
     public static AgentAttempt? Of(Exception failure, CancellationToken cancellation, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(failure);
         if (cancellation.IsCancellationRequested)
             return null;
+        if (IsEmptyReply(failure))
+            return EmptyReply;
 
         switch (failure)
         {
@@ -44,6 +47,25 @@ public sealed record AgentAttempt(AgentOutcomeKind Kind, string? Text, ConsultTo
                 return null;
         }
     }
+
+    /// <summary>
+    /// An empty reply, as a completed attempt with empty text: model output, which the runner's format validation,
+    /// <c>failIfEmpty</c> and <c>onInvalid</c> decide, never an engine fault ("never throw on model output").
+    /// </summary>
+    public static AgentAttempt EmptyReply { get; } = new(AgentOutcomeKind.Completed, "", null, null, null);
+
+    /// <summary>
+    /// What <see cref="AgentSectionGenerator.SendPromptAsync"/> throws when the response carries no assistant text. It throws a
+    /// bare <see cref="InvalidOperationException"/> with this message and nothing else marks the case, so, with
+    /// <c>SendPromptAsync</c> left unchanged for 5–30, the message is matched exactly (a test pins it to that method's source).
+    /// </summary>
+    internal const string EmptyReplyMessage = "No assistant response found";
+
+    /// <summary>Whether <paramref name="failure"/> is <see cref="AgentSectionGenerator.SendPromptAsync"/>'s empty reply.</summary>
+    internal static bool IsEmptyReply(Exception failure) =>
+        failure.GetType() == typeof(InvalidOperationException)
+        && failure.InnerException == null
+        && string.Equals(failure.Message, EmptyReplyMessage, StringComparison.Ordinal);
 
     private static AgentAttempt Failure(string kind) => new(AgentOutcomeKind.ServiceFailure, null, null, null, kind);
 

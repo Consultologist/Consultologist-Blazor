@@ -150,7 +150,11 @@ public sealed class AgentSectionGenerator : IAgentAttempts
     /// <summary>
     /// #1503 (specVersion 31, area 06; part 09 § 3.4; D7): one attempt of <see cref="SendPromptAsync"/>, which is unchanged:
     /// its reply, or the service failure it met (<see cref="AgentAttempt.Of"/>: a 429, a 5xx, a time-out, no connection),
-    /// which a 31 orchestration waits on and retries itself. Anything else propagates, as it does today.
+    /// which a 31 orchestration waits on and retries itself. An empty reply, which <c>SendPromptAsync</c> throws as an
+    /// <see cref="InvalidOperationException"/>, is a completed attempt with empty text (<see cref="AgentAttempt.EmptyReply"/>):
+    /// model output, which the runner's validation, <c>failIfEmpty</c> and <c>onInvalid</c> decide. Anything else propagates.
+    /// One attempt holds while <c>AzureAI__MaxRetries</c> is 0 (its default): <c>SendPromptAsync</c>'s client retry policy
+    /// would otherwise retry a 429 or a 5xx inside the attempt.
     /// </summary>
     public async Task<AgentAttempt> TryPromptOnceAsync(
         string stage,
@@ -167,7 +171,7 @@ public sealed class AgentSectionGenerator : IAgentAttempts
         catch (Exception ex) when (AgentAttempt.Of(ex, cancellationToken, DateTimeOffset.UtcNow) is { } failed)
         {
             _logger.LogWarning(
-                "Foundry agent attempt failed. Stage={Stage}, Kind={Kind}, ErrorKind={ErrorKind}, RetryAfterMs={RetryAfterMs}, ExceptionType={ExceptionType}",
+                "Foundry agent attempt ended without a reply. Stage={Stage}, Kind={Kind}, ErrorKind={ErrorKind}, RetryAfterMs={RetryAfterMs}, ExceptionType={ExceptionType}",
                 stage,
                 failed.Kind,
                 failed.ErrorKind,

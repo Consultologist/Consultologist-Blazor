@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Consultologist.Api.Agents;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Run;
@@ -77,6 +78,40 @@ public class OrchestratorV31Tests
         Assert.Equal("The model service returned an error 5 times in a row. Run the workflow again later.", sentence);
         Assert.Equal(5, V31Job.AgentCalls(context).Count(c => c.Key == "node.plan"));
         Assert.Equal(0, context.PendingTimers);
+    }
+
+    [Fact]
+    public async Task AnEmptyReply_IsModelOutput_RepairedByTheNodesOnInvalid_NeverAnEngineFault()
+    {
+        // node.plan is onInvalid: retry; an empty reply is invalid, so its repair is asked for, and the repaired reply settles it
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" && !call.Repair
+            ? new AgentOutcome(AgentOutcomeKind.Completed, AgentAttempt.EmptyReply.Text, 0, null)
+            : stub(call);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, job.State.Status);
+        Assert.Equal([false, true], V31Job.AgentCalls(context).Where(c => c.Key == "node.plan").Select(c => c.Repair));
+    }
+
+    [Fact]
+    public async Task EmptyReplies_FailTheNodeWithItsSentence_NeverA06010()
+    {
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.Completed, "", 0, null) : stub(call);
+        var context = job.Context();
+
+        await V31Job.RunAsync(context);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        // invalid twice (the reply, then its repair): the node fails with A06-005, the job with it
+        V31Contract.AssertSentence(new SourceRefusal("A06-005", job.State.FailureError!, ""));
+        Assert.StartsWith("Node 'plan' gave a reply that isn't ", job.State.FailureError, StringComparison.Ordinal);
+        Assert.Equal(2, V31Job.AgentCalls(context).Count(c => c.Key == "node.plan"));
     }
 
     [Fact]

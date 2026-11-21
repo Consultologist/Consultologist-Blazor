@@ -68,9 +68,33 @@ public class AgentAttemptTests
     {
         Assert.Null(AgentAttempt.Of(Failed(400), CancellationToken.None, Now));
         Assert.Null(AgentAttempt.Of(Failed(404), CancellationToken.None, Now));
-        Assert.Null(AgentAttempt.Of(new InvalidOperationException("No assistant response found"), CancellationToken.None, Now));
+        Assert.Null(AgentAttempt.Of(new InvalidOperationException("Azure AI configuration missing"), CancellationToken.None, Now));
         Assert.Null(AgentAttempt.Of(new HttpRequestException("Forbidden", null, System.Net.HttpStatusCode.Forbidden), CancellationToken.None, Now));
         Assert.Null(AgentAttempt.Of(new TaskCanceledException(), new CancellationToken(canceled: true), Now));
+    }
+
+    [Fact]
+    public void AnEmptyReply_IsACompletedAttempt_WithEmptyText()
+    {
+        // model output, never an engine fault: the runner's validation, failIfEmpty and onInvalid decide it
+        Assert.Equal(new AgentAttempt(AgentOutcomeKind.Completed, "", null, null, null),
+            AgentAttempt.Of(new InvalidOperationException("No assistant response found"), CancellationToken.None, Now));
+        // only that exception: not another type with the message, not one wrapping another failure, not the host's cancellation
+        Assert.Null(AgentAttempt.Of(new ObjectDisposedException("No assistant response found"), CancellationToken.None, Now));
+        Assert.Null(AgentAttempt.Of(new InvalidOperationException("No assistant response found", new IOException()), CancellationToken.None, Now));
+        Assert.Null(AgentAttempt.Of(new InvalidOperationException("No assistant response found"), new CancellationToken(canceled: true), Now));
+    }
+
+    [Fact]
+    public void TheEmptyReplyMessage_IsTheOneSendPromptAsyncThrows()
+    {
+        // SendPromptAsync is unchanged for 5-30 and marks the case only by this message: pinned to its source
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir != null && !File.Exists(Path.Combine(dir.FullName, "Consultologist.sln")))
+            dir = dir.Parent;
+        var source = File.ReadAllText(Path.Combine(dir!.FullName, "src", "Consultologist.Api", "Agents", "AgentSectionGenerator.cs"));
+
+        Assert.Contains($"throw new InvalidOperationException(\"{AgentAttempt.EmptyReplyMessage}\");", source, StringComparison.Ordinal);
     }
 
     [Fact]

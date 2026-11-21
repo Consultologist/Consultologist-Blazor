@@ -124,6 +124,17 @@ public class RunAgentNodeV31ActivityTests
     }
 
     [Fact]
+    public async Task AnEmptyReply_SettlesAsACompletedOutcome_WithEmptyText()
+    {
+        var (activity, agent, job) = Activity("nested-note");
+        agent.Throw = new InvalidOperationException("No assistant response found");
+
+        var outcome = await activity.RunAsync(Input(job, Plan(1)), CancellationToken.None);
+
+        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Completed, "", 0, null), outcome);
+    }
+
+    [Fact]
     public async Task AnyOtherFailure_Propagates()
     {
         // as today (the brief): a 401 is not a service failure a 31 call retries; the orchestration fails the job with A06-010
