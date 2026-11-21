@@ -39,8 +39,24 @@ public class CompositionTests
         Assert.Same(drain, FieldOf<IEngineDrain>(ActivatorUtilities.CreateInstance<CheckDrainActivity>(services)));
     }
 
-    /// <summary>The host's registrations over a configuration a test can give: a local storage connection string.</summary>
-    private static ServiceProvider HostServices()
+    [Fact]
+    public void TheHostsStartup_LoadsThe31AgentsCatalogue_SoADefectStopsTheHost()
+    {
+        // #1504 (D9): what Program.cs resolves before the host runs (ApiServices.ResolveAtStartup) includes the 31 agents
+        // catalogue; resolved lazily, a missing or incoherent agents/v31 would instead fail every job start, 5-30 included.
+        using (var provider = HostServices())
+        {
+            ApiServices.ResolveAtStartup(provider);
+            Assert.Contains(("judgement", 1), provider.GetRequiredService<V31AgentsCatalogue>().Agents);
+        }
+
+        using var broken = HostServices(services => services.AddSingleton<V31AgentsCatalogue>(
+            _ => throw new InvalidOperationException("The 31 agents catalogue file 'agents/v31/agents.json' was not found.")));
+        Assert.Contains("agents/v31", Assert.Throws<InvalidOperationException>(() => ApiServices.ResolveAtStartup(broken)).Message);
+    }
+
+    /// <summary>The host's registrations over a configuration a test can give: a local storage connection string; then <paramref name="change"/>.</summary>
+    private static ServiceProvider HostServices(Action<IServiceCollection>? change = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -53,6 +69,7 @@ public class CompositionTests
         services.AddSingleton<IConfiguration>(configuration);
         services.AddLogging();
         services.AddApiServices();
+        change?.Invoke(services);
         return services.BuildServiceProvider();
     }
 
