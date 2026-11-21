@@ -73,6 +73,32 @@ public sealed record RunLimits(
         ["renderSteps"] = RenderSteps,
     };
 
+    /// <summary>
+    /// The limits <paramref name="limits"/> holds, as <see cref="ToJson"/> wrote them: each of the nine members an integer.
+    /// The engine rebuilds a job's limits from what its orchestration input recorded, so a replay never reads a setting
+    /// that changed since. A member absent or not an integer is the engine's own error (an <see cref="ArgumentException"/>
+    /// naming it), never package content; one below 1 is refused as the constructor refuses it.
+    /// </summary>
+    public static RunLimits FromJson(JsonObject limits)
+    {
+        ArgumentNullException.ThrowIfNull(limits);
+        return new RunLimits(
+            Member(limits, "maxAgentCalls"),
+            Member(limits, "capacityWaitMinutes"),
+            Member(limits, "serviceAttempts"),
+            Member(limits, "jobMinutes"),
+            Member(limits, "deliveryMinutes"),
+            Member(limits, "deliveryAttempts"),
+            Member(limits, "loopItems"),
+            Member(limits, "jobAgentCalls"),
+            Member(limits, "renderSteps"));
+    }
+
+    private static int Member(JsonObject limits, string name) =>
+        limits[name] is JsonValue value && value.GetValueKind() == System.Text.Json.JsonValueKind.Number && value.TryGetValue<int>(out var number)
+            ? number
+            : throw new ArgumentException($"The limits hold no integer '{name}'.", nameof(limits));
+
     private static int AtLeastOne(int value, string name) =>
         value >= 1 ? value : throw new ArgumentOutOfRangeException(name, value, $"{name} is at least 1.");
 }
