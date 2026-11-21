@@ -68,6 +68,32 @@ internal sealed class EngineRun
         Dictionary<string, ConsultInputValue> inputs,
         Func<string, string?>? outputs = null)
     {
+        var run = await PrepareAsync(package, inputs, outputs);
+        await run.RunAsync();
+        return run;
+    }
+
+    /// <summary>
+    /// #1503 (D9): as <see cref="StartAsync"/>, but the orchestration is not run yet (<see cref="RunAsync"/> runs it), and
+    /// <paramref name="input"/> may change the orchestration input the starter gave first.
+    /// </summary>
+    public static async Task<EngineRun> PrepareAsync(
+        WorkflowPackage package,
+        Dictionary<string, ConsultInputValue> inputs,
+        Func<string, string?>? outputs = null,
+        Func<ConsultGenerationOrchestrationInput, ConsultGenerationOrchestrationInput>? input = null)
+    {
+        var started = await StartedAsync(package, inputs);
+        return await PreparedAsync(package, outputs, input?.Invoke(started.Input) ?? started.Input, started.Initialize);
+    }
+
+    /// <summary>Runs the orchestration on <see cref="Context"/>.</summary>
+    public Task RunAsync() => new ConsultGenerationOrchestrator().RunAsync(Context);
+
+    private static async Task<(ConsultGenerationOrchestrationInput Input, ConsultGenerationJobInitialize Initialize)> StartedAsync(
+        WorkflowPackage package,
+        Dictionary<string, ConsultInputValue> inputs)
+    {
         // ---- the starter, its stores substituted (ConsultGenerationJobStarterTests' idiom) ----
         var packageStore = Substitute.For<IWorkflowPackageStore>();
         var pinResolver = Substitute.For<IWorkflowPackagePinResolver>();
@@ -121,6 +147,15 @@ internal sealed class EngineRun
             throw new InvalidOperationException($"The job did not start: {outcome.Error}.");
         }
 
+        return (input, initialize);
+    }
+
+    private static async Task<EngineRun> PreparedAsync(
+        WorkflowPackage package,
+        Func<string, string?>? outputs,
+        ConsultGenerationOrchestrationInput input,
+        ConsultGenerationJobInitialize initialize)
+    {
         var jobId = initialize.JobId;
 
         // ---- the entity, Initialized as the starter signalled it --------------------------------
@@ -154,9 +189,12 @@ internal sealed class EngineRun
             .On(ConsultGenerationActivityNames.RunComputedNode, payload =>
                 RunComputedNodeActivity.Compute((ConsultComputedNodeActivityInput)payload!, package))
             .On(ConsultGenerationActivityNames.DecideFlowItem, payload =>
-                DecideFlowItemActivity.Decide(package, (ConsultDecideFlowItemInput)payload!));
+                DecideFlowItemActivity.Decide(package, (ConsultDecideFlowItemInput)payload!))
+            // #1503 (D9): the starter marks the input DrainAware, so the orchestrator asks check-drain after its schedule
+            // wait. The harness runs with the drain off and leaves that activity out of the trace, so the goldens
+            // (Golden/EngineRun*.txt) stay what every 26–30 job ran before the drain.
+            .Unrecorded(ConsultGenerationActivityNames.CheckDrain, _ => false);
 
-        await new ConsultGenerationOrchestrator().RunAsync(context);
         return new EngineRun(context, entity, prompts, jobId);
     }
 

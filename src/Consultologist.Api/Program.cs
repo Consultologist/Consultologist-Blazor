@@ -164,6 +164,11 @@ builder.Services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSect
 builder.Services.AddSingleton<Consultologist.Api.V31.IBodyComposer, Consultologist.Api.V31.ScribanBodyComposer>();
 builder.Services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
 builder.Services.AddSingleton<Consultologist.Api.V31.V31JobStarter>();
+// #1503 (part 09 § 3.6; D9): the drain before a deploy — its state on the text account (drain/ in the job outputs'
+// container), read on every call; both starters park behind it; Admin/Drain, Admin/Resume and GET Admin/Drain drive it.
+builder.Services.AddSingleton<IDrainBlobs, TextDrainBlobs>();
+builder.Services.AddSingleton<IEngineDrain, EngineDrain>();
+builder.Services.AddScoped<AdminDrain>();
 // #449/#398: the build's attestation, computed once — served at Public/Engine
 // and stamped on every record's packageFormatRef/provenanceRef.
 builder.Services.AddSingleton(sp => EngineAttestation.Current(

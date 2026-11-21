@@ -124,6 +124,26 @@ internal sealed class TextBlobClientFactory
     public Task DeleteAsync(string container, string name, CancellationToken cancellationToken) =>
         _containerFor(container).GetBlobClient(name).DeleteIfExistsAsync(cancellationToken: cancellationToken);
 
+    /// <summary>#1503 (D9): the names of the blobs under a prefix, ordinally; a missing container (local dev) holds none.</summary>
+    public async Task<IReadOnlyList<string>> ListNamesAsync(string container, string prefix, CancellationToken cancellationToken)
+    {
+        var names = new List<string>();
+
+        try
+        {
+            await foreach (var blob in _containerFor(container).GetBlobsAsync(prefix: prefix, cancellationToken: cancellationToken))
+            {
+                names.Add(blob.Name);
+            }
+        }
+        catch (RequestFailedException ex) when (ex.Status == 404)
+        {
+        }
+
+        names.Sort(StringComparer.Ordinal);
+        return names;
+    }
+
     /// <summary>
     /// #559: every blob under a prefix — the closure's per-container sweep.
     /// A missing container (local dev) reads as nothing to delete. Returns

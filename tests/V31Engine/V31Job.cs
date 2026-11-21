@@ -102,11 +102,11 @@ internal sealed class V31Job
         JobId, "user-1", Ref.Name, Ref.Version, ResolveHash ?? Pair.ResolveHash, LockHash ?? Pair.LockHash, Limits.ToJson(), 2000,
         State.InputsBlob!.Name, new JsonObject { ["id"] = JobId }, "America/Toronto", null, true, AccountKind);
 
-    /// <summary>The context, every activity answered as the summary says.</summary>
-    public FakeOrchestrationContext Context()
+    /// <summary>The context, every activity answered as the summary says; its input <paramref name="input"/>, else <see cref="Input"/>.</summary>
+    public FakeOrchestrationContext Context(ConsultGenerationOrchestrationInputV31? input = null)
     {
         var composer = new ScribanBodyComposer();
-        return new FakeOrchestrationContext(JobId, Input(), Entity, Now)
+        return new FakeOrchestrationContext(JobId, input ?? Input(), Entity, Now)
             .HoldTimersLongerThan(TimeSpan.FromMinutes(5))
             .On(ConsultGenerationActivityNames.LoadPlanV31, payload =>
                 new LoadPlanV31Activity(Store).RunAsync((LoadPlanV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
@@ -115,7 +115,10 @@ internal sealed class V31Job
             .On(ConsultGenerationActivityNames.RunAgentNodeV31, payload => Agent(((RunAgentNodeV31Input)payload!).Call))
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
                 new RenderNodeV31Activity(Store, composer, NullLogger<RenderNodeV31Activity>.Instance)
-                    .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult());
+                    .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            // #1503 (D9): the input is DrainAware; the drain is off here and check-drain is left out of the calls the
+            // tests read (the drain's own tests answer it recorded: DrainDoorsTests).
+            .Unrecorded(ConsultGenerationActivityNames.CheckDrain, _ => false);
     }
 
     /// <summary>Runs the orchestration on <paramref name="context"/> to its end.</summary>

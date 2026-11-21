@@ -73,6 +73,11 @@ public sealed class ConsultGenerationOrchestratorV31
                 await context.CreateTimer(scheduledAt.UtcDateTime, CancellationToken.None);
             }
 
+            // Part 09 § 3.6 (D9): while the engine drains, the job waits here, before anything else; the time it waits is
+            // not counted towards its limit (§ 3.4), since startedAtUtc is taken after.
+            if (input.DrainAware)
+                await EngineDrainJobs.WaitWhileDrainingAsync(context, entityId);
+
             // Part 09 § 1.2 step 6: the header, before any node runs. The job limit is timed from here.
             var startedAtUtc = context.CurrentUtcDateTime;
             var startedAt = new DateTimeOffset(startedAtUtc, TimeSpan.Zero);

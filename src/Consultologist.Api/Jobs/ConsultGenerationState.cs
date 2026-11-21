@@ -944,6 +944,45 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// would inherit the "section not reached" bookkeeping that belongs to a
     /// failure. Nothing here ran, so there is nothing to reconcile.
     /// </summary>
+    /// <summary>
+    /// #1503 (part 09 § 3.6, S09-018; D9): the job waits behind a drain — its start parked its orchestration, or its
+    /// orchestration met the drain after its schedule wait. A job already running or ended is left as it is.
+    /// </summary>
+    public async Task MarkWaitingForUpdate()
+    {
+        var state = EnsureState();
+        if (state.Status is not (ConsultGenerationJobStatuses.Queued or ConsultGenerationJobStatuses.Scheduled))
+        {
+            return;
+        }
+
+        state.Status = ConsultGenerationJobStatuses.WaitingForUpdate;
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
+    /// #1503 (D9): <c>Admin/Resume</c> scheduled the job's parked orchestration: it is Queued again, or Scheduled while
+    /// its time is still to come. Only a job still waiting changes, so a resume landing after the orchestration's own
+    /// <see cref="MarkRunning"/> changes nothing.
+    /// </summary>
+    public async Task EndWaitingForUpdate()
+    {
+        var state = EnsureState();
+        if (state.Status != ConsultGenerationJobStatuses.WaitingForUpdate)
+        {
+            return;
+        }
+
+        state.Status = state.ScheduledAtUtc is { } scheduledAt && scheduledAt > DateTimeOffset.UtcNow
+            ? ConsultGenerationJobStatuses.Scheduled
+            : ConsultGenerationJobStatuses.Queued;
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
     public async Task Cancel()
     {
         var state = EnsureState();
@@ -1461,7 +1500,12 @@ public sealed record ConsultGenerationOrchestrationInput(
     // v29 (#1305): the package's specVersion, for the engine's at-29 rules (the
     // deliverable's row at composition, "produced" meaning released). Null on a
     // job started before this field — read as below 29. Appended last, same rule.
-    int? PackageSpecVersion = null);
+    int? PackageSpecVersion = null,
+    // #1503 (part 09 § 3.6; D9): started by a build that drains, so the orchestration checks the drain after its
+    // schedule wait. False on every payload from before (it reads as absent), and written only when true, so a false
+    // input writes the bytes it wrote before. Appended last, same rule.
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault)]
+    bool DrainAware = false);
 
 /// <summary>
 /// v11 #516: the chosen signature as it was at job start — the block's id,
@@ -2690,6 +2734,12 @@ public static class ConsultGenerationJobStatuses
     // #202: a Scheduled job called off before its timer fired. Terminal, and
     // distinct from Failed: nothing went wrong and nothing was spent.
     public const string Cancelled = "Cancelled";
+
+    /// <summary>
+    /// #1503 (part 09 § 3.6, S09-018; D9): a job held behind a drain — started during one (its orchestration parked), or
+    /// a scheduled one whose timer ended during one. Not terminal; it starts after <c>Admin/Resume</c>.
+    /// </summary>
+    public const string WaitingForUpdate = "Waiting for an update to finish";
 }
 
 public static class ConsultGenerationActivityNames
@@ -2719,6 +2769,9 @@ public static class ConsultGenerationActivityNames
 
     /// <summary>#1503 (specVersion 31, area 06): a 31 job's inputs, profile fields included, read by reference.</summary>
     public const string LoadRunInputsV31 = "load-run-inputs-v31";
+
+    /// <summary>#1503 (part 09 § 3.6; D9): whether the engine is draining, read by a drain-aware orchestration after its schedule wait.</summary>
+    public const string CheckDrain = "check-drain";
 }
 
 public static class ConsultGenerationItemSteps

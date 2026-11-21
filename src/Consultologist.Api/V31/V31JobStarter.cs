@@ -33,7 +33,9 @@ public sealed class V31JobStarter(
     IAccountStore accounts,
     IAccountSettingsStore settings,
     EngineAttestationResponse engine,
-    ILogger<V31JobStarter> logger)
+    ILogger<V31JobStarter> logger,
+    // #1503 (D9): the drain before a deploy; null (a test) reads as never draining.
+    IEngineDrain? drain = null)
 {
     /// <summary>What a profile field of <c>needs.profile</c> is read from: the account settings that hold it (D6).</summary>
     private static readonly Dictionary<string, string> ProfileSettings = new(StringComparer.Ordinal)
@@ -128,23 +130,29 @@ public sealed class V31JobStarter(
                 Limits = (JsonObject)recorded.DeepClone(),
             });
 
+        var orchestrationInput = new ConsultGenerationOrchestrationInputV31(
+            jobId,
+            appUserId,
+            plan.Package,
+            plan.Version,
+            plan.ResolveHash,
+            plan.LockHash,
+            recorded,
+            (int)limits.RegexLimit.TotalMilliseconds,
+            pointer.Name,
+            new JsonObject { ["id"] = jobId, ["engine"] = engine.Release },
+            timeZone,
+            request.ScheduledAtUtc,
+            DrainAware: true,
+            accountKind);
+
+        // Part 09 § 3.6 (D9): during a drain the job is held and initialised as above, and waits, parked; the door still answers with its id.
+        if (await EngineDrainJobs.ParkIfDrainingAsync(drain, client, jobId, nameof(ConsultGenerationOrchestratorV31), orchestrationInput, logger, cancellationToken))
+            return new ConsultGenerationJobStartOutcome(jobId);
+
         var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
             nameof(ConsultGenerationOrchestratorV31),
-            new ConsultGenerationOrchestrationInputV31(
-                jobId,
-                appUserId,
-                plan.Package,
-                plan.Version,
-                plan.ResolveHash,
-                plan.LockHash,
-                recorded,
-                (int)limits.RegexLimit.TotalMilliseconds,
-                pointer.Name,
-                new JsonObject { ["id"] = jobId, ["engine"] = engine.Release },
-                timeZone,
-                request.ScheduledAtUtc,
-                DrainAware: true,
-                accountKind),
+            orchestrationInput,
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 

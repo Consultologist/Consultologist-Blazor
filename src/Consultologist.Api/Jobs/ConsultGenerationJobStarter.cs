@@ -194,6 +194,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
     private readonly ISpeechToText? _speechToText;
     private readonly IJobIntakeHold? _hold;
     private readonly V31.V31JobStarter? _v31;
+    private readonly IEngineDrain? _drain;
 
     public ConsultGenerationJobStarter(
         ILogger<ConsultGenerationJobStarter> logger,
@@ -218,9 +219,12 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
         // #1302: the release hold; null (a test) reads as never held.
         IJobIntakeHold? hold = null,
         // #1503 (specVersion 31): the 31 branch; null (a test) runs no 31 job.
-        V31.V31JobStarter? v31 = null)
+        V31.V31JobStarter? v31 = null,
+        // #1503 (D9): the drain before a deploy; null (a test) reads as never draining.
+        IEngineDrain? drain = null)
     {
         _v31 = v31;
+        _drain = drain;
         _speechToText = speechToText;
         _hold = hold;
         _logger = logger;
@@ -1078,9 +1082,7 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 ExcludedMacros: excludedMacros.Count > 0 ? excludedMacros : null));
 
         var terminology = await _terminology.GetAsync(cancellationToken);
-        var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
-            nameof(ConsultGenerationOrchestrator),
-            new ConsultGenerationOrchestrationInput(
+        var orchestrationInput = new ConsultGenerationOrchestrationInput(
                 request,
                 appUserId,
                 resolvedPackageRef,
@@ -1145,7 +1147,19 @@ public sealed class ConsultGenerationJobStarter : IConsultGenerationJobStarter
                 AccountKind: accountKind,
                 // v12 #618: the resolved choices the deciding boundary
                 // filters descriptors with.
-                MacroChoices: macroChoices.Resolved),
+                MacroChoices: macroChoices.Resolved,
+                // #1503 (D9): this build drains; the orchestration checks the drain after its schedule wait.
+                DrainAware: true);
+
+        // #1503 (part 09 § 3.6; D9): during a drain the job is recorded as above and waits, parked; the door still answers with its id.
+        if (await EngineDrainJobs.ParkIfDrainingAsync(_drain, client, jobId, nameof(ConsultGenerationOrchestrator), orchestrationInput, _logger, cancellationToken))
+        {
+            return new ConsultGenerationJobStartOutcome(jobId);
+        }
+
+        var instanceId = await client.ScheduleNewOrchestrationInstanceAsync(
+            nameof(ConsultGenerationOrchestrator),
+            orchestrationInput,
             new StartOrchestrationOptions { InstanceId = jobId },
             cancellationToken);
 
