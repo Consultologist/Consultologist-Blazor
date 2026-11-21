@@ -310,6 +310,82 @@ public class BodyComposerTests
     }
 
     [Fact]
+    public void AMacroPlacement_RendersNothingYet_AndItsInstructionKeepsItsNumber()
+    {
+        // The macros' task renders a placed macro's instruction; here macro.<…> renders nothing (§ 2.6's empty line), and a
+        // renderer step in an instruction keeps its number in the entry's renders: the body's later step is 3.
+        var plan = RunFixture.Plan(WithTerms(Package())
+            .Listed("macros/index.json", "m")
+            .With("macros/m.md", Md(
+                "{ \"label\": \"Terms\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place {{ macro.m.content }} after {{ node.terms.value | renderer.concept_bullets }}.\"] }",
+                "Reviewed with Dr A. Sample.\n"))
+            .Listed("macros/index.json", "f")
+            .With("macros/f/index.json", Index(["n"], extra: ", \"if\": null"))
+            .With("macros/f/n.md", Md(
+                "{ \"label\": \"Follow-up\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+                + "\"instruction\": [\"Place the follow-up line alone after the plan:\", \"{{~ macro.f.n.content }}\"] }",
+                "Follow up with Dr A. Sample in six weeks.\n"))
+            .WithAgent("draft",
+                "A {{ node.terms.value | renderer.concept_bullets }}\n{{~ macro.m }}\n{{~ macro.f.n }}\nB {{ node.terms.value | renderer.concept_bullets }}\n"));
+        var bullets = ConceptRenderers.Bullets(ConceptOutputContract.Deserialize(ConceptSamples.ConceptListJson, ConceptSamples.Source));
+        Assert.Equal([1, 2, 3], plan.Entries["node.draft"].Json["renders"]!.AsArray().Select(r => (int)r!["n"]!));
+
+        var composition = Compose(plan, "node.draft", Scope(("node.terms.value", Concepts())),
+            Placed("macro.m", "macro-folder.f", "macro.f.n"));
+
+        Assert.Equal($"A {bullets}\n\n\nB {bullets}\n", Composed(composition));
+        Assert.Empty(composition.Macros);
+        Assert.Empty(composition.Units);
+        Assert.Equal([1, 3], composition.Renders.Select(r => r.N));
+    }
+
+    [Fact]
+    public void ASnippetHoldingARawBlock_IsSplicedByteForByte()
+    {
+        var plan = RunFixture.Plan(Package()
+            .WithSnippet("literal", "Keep {%{ {{ node.x.content }} }%} as written.")
+            .WithAgent("draft", "Draft:\n{{~ snippet.literal.content }}\n"));
+
+        Assert.Equal("Draft:\nKeep  {{ node.x.content }}  as written.\n",
+            Composed(Compose(plan, "node.draft", new JsonObject(), Placed("snippet.literal"))));
+    }
+
+    [Fact]
+    public void ARendererThatLoops_PipedInAFor_SpendsTheSharedBudget()
+    {
+        // 200 drafts, each piping 600 concepts into a renderer that loops over them: no for passes 1,000, but the
+        // composition's 120,200 iterations pass the budget of 100,000 (its loop writes nothing, so the output limit cannot
+        // stop it first).
+        var plan = RunFixture.Plan(WithTerms(Package())
+            .WithLoop("drafts", "node.plan.value.sections", "draft", "Draft the section '{{ item.value.title }}'.\n")
+            .WithRenderer("terms", "\"concept_list\"", "Terms:{{ for c in value.concepts }}{{ end }}", "plaintext")
+            .WithAgent("summary", "{{ for d in node.drafts.value }}{{ node.terms.value | renderer.terms }}{{ end }}\n"));
+        var concept = Concepts()["concepts"]![0]!;
+        var many = new JsonObject { ["concepts"] = new JsonArray(Enumerable.Range(0, 600).Select(_ => concept.DeepClone()).ToArray()) };
+        JsonObject ScopeOf(int drafts) => Scope(
+            ("node.drafts.value", new JsonArray(Enumerable.Range(0, drafts).Select(_ => (JsonNode?)JsonValue.Create("x")).ToArray())),
+            ("node.terms.value", many.DeepClone()));
+
+        var stopped = Compose(plan, "node.summary", ScopeOf(200));
+        Assert.True(stopped.TooManySteps, stopped.Failure);
+        Assert.Null(stopped.Text);
+        Assert.Null(stopped.Failure);
+        Assert.Equal(2, Compose(plan, "node.summary", ScopeOf(2)).Renders.Count);
+    }
+
+    [Fact]
+    public void TheContext_HoldsTheSevenBuiltIns_AndNoOther()
+    {
+        // A second line behind TemplateSyntax: the run-time context has only the dialect's built-ins (part 05 § 2.2).
+        var builtins = TemplateValues.BuiltIns();
+        var names = builtins.SelectMany(root => ((Scriban.Runtime.ScriptObject)root.Value!).Select(f => $"{root.Key}.{f.Key}")).Order(StringComparer.Ordinal);
+        Assert.Equal(
+            ["array.join", "array.size", "date.to_string", "string.capitalize", "string.downcase", "string.strip", "string.upcase"],
+            names);
+    }
+
+    [Fact]
     public void ARendererInARunSpot_IsRunDependent()
     {
         var plan = RunFixture.Plan(Package()
@@ -413,6 +489,10 @@ public class BodyComposerTests
         var exactly = new string('€', room / 3) + new string('x', room % 3);
         Assert.Equal(1_048_576, Encoding.UTF8.GetByteCount(Composed(Compose(output, "node.draft", Scope(("input.consult_draft.content", exactly))))));
         AssertFailed(Compose(output, "node.draft", Scope(("input.consult_draft.content", exactly + "x"))),
+            "S05-014", "Node 'draft' stopped rendering: its output passed 1 MiB.");
+
+        // A three-byte character straddling the limit: 1 MiB − 1 bytes, then '€'.
+        AssertFailed(Compose(output, "node.draft", Scope(("input.consult_draft.content", new string('x', room - 1) + "€"))),
             "S05-014", "Node 'draft' stopped rendering: its output passed 1 MiB.");
     }
 
