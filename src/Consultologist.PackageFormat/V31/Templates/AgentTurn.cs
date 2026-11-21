@@ -1,0 +1,420 @@
+using System.Text.Json.Nodes;
+using Consultologist.PackageFormat.V31.Run;
+
+namespace Consultologist.PackageFormat.V31.Templates;
+
+/// <summary>
+/// #1504 (specVersion 31, area 07; part 05 §§ 8.3 to 8.6; part 08 § 4; D8, D11): one attempt of an agent call as it is
+/// sent. <paramref name="Text"/> is what is sent, <c>null</c> when the prompt could not be prepared: then
+/// <paramref name="ErrorKind"/> says why (<c>"plan"</c>: the plan lacks the entry, it is no agent or has no binding,
+/// S07-006; <c>"steps"</c>: <see cref="Composition.TooManySteps"/>, S05-062; <c>"compose"</c>: <see cref="Composition.Failure"/>).
+/// <paramref name="Composition"/> is the body's (its offered macros in prompt order), <paramref name="Detail"/> the row's
+/// detail in part 08 § 4's names, <paramref name="Format"/> the format the prompt ends with (a <c>via: "custom"</c>
+/// binding's, D8; <c>null</c> for a <c>via: "format"</c> agent, which carries its own), <paramref name="Ordered"/> the
+/// node's <c>ordered</c>, and <paramref name="PackageMacros"/> the ids of every macro the entry's package and function
+/// define (<c>letrozole</c>, <c>section_notes.hpi</c>).
+/// </summary>
+public sealed record PreparedPrompt(
+    string? Text, Composition Composition, JsonObject Detail, EnvelopedFormat? Format, bool Ordered, IReadOnlyCollection<string> PackageMacros, string? ErrorKind)
+{
+    /// <summary>Whether the entry returns a text format, whose reply's markers are checked and replaced (part 05 § 8.3: a marker has no place in an object reply).</summary>
+    public bool TextReply { get; init; }
+}
+
+/// <summary>
+/// #1504 (specVersion 31, area 07; part 05 §§ 8.3 to 8.6, 8.8; part 08 §§ 4, 4.2, 4.3, 8.2, 9; part 02 § 3.5; D8, D10,
+/// D11): one attempt of an agent call, prepared and finished, with no Azure in between. <see cref="Prepare"/> composes the
+/// prompt (<see cref="BodyComposer.Compose"/>), ends it with the sent format for a custom binding, appends the retry text
+/// for a retry, and gives the row's detail; <see cref="Finish"/> unwraps an enveloped reply and checks and replaces a text
+/// reply's markers (<see cref="MacroReply"/>). Neither ever puts a value, a reply or a profile field in a sentence or the
+/// detail: only ids, keys, hashes and lengths. Never throws on the plan, the data or a reply.
+/// </summary>
+public static class AgentTurn
+{
+    /// <summary>The trailer before a custom format's schema (the 30 catalogue's custom producer's sentence): the reply is one object, enveloped when its format is not one (D8).</summary>
+    public const string CustomTrailer = "Answer with one JSON object conforming to this schema.";
+
+    /// <summary>Part 08 § 4's <c>hashVersion</c> of a 31 agent row's <c>inputHash</c>.</summary>
+    public const int HashVersion = 7;
+
+    private static readonly IReadOnlyDictionary<string, bool> NothingPlaced = new Dictionary<string, bool>(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The prompt of <paramref name="call"/>'s entry: its body composed over the call's scope with the call's placements
+    /// decided (<see cref="AgentCall.Placed"/>) in at most <paramref name="stepLimit"/> steps; for a <c>via: "custom"</c>
+    /// binding ended with the format sent (<see cref="EnvelopedFormat"/> with <paramref name="strictRejects"/>, the attested
+    /// agent's, removed) through <see cref="WorkflowCustomPrompt.Compose"/>; and, after two newlines, D11's retry text: for
+    /// <see cref="AgentCall.Faults"/>, each fault's sentence on its own line; for another repair, the format's line.
+    /// </summary>
+    public static PreparedPrompt Prepare(RunPlan plan, AgentCall call, int stepLimit, IReadOnlyList<string> strictRejects)
+    {
+        ArgumentNullException.ThrowIfNull(plan);
+        ArgumentNullException.ThrowIfNull(call);
+        ArgumentNullException.ThrowIfNull(strictRejects);
+
+        var map = call.Function == null ? plan.Entries : plan.Functions.GetValueOrDefault(call.Function)?.Entries;
+        var entry = map?.GetValueOrDefault(call.EntryKey);
+        if (map == null || entry is not { Kind: PlanKind.Agent } || Via(plan, entry) is not { } via)
+        {
+            var sentence = ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence;
+            return Unprepared(new Composition(null, null, sentence, false, [], [], [], []), "plan");
+        }
+
+        var composition = BodyComposer.Compose(plan, new ComposeRequest(call.EntryKey, call.Function, call.Scope, call.Placed ?? NothingPlaced, stepLimit));
+        if (composition.TooManySteps)
+            return Unprepared(composition, "steps");
+        if (composition.Text is not { } body)
+            return Unprepared(composition, "compose");
+
+        var (format, formats) = PlanScope(plan, entry.Format);
+        var enveloped = EnvelopedFormat.Of(format, formats, strictRejects);
+        var custom = via == "custom";
+        string Sent(string text) => Retry(custom ? WorkflowCustomPrompt.Compose(text, CustomTrailer, CanonicalJson.Write(enveloped.Sent)) : text, call);
+
+        var sent = Sent(body);
+        var neutral = composition.NeutralText is { } run ? Sent(run) : null;
+        var detail = Detail(entry, map, call, composition, sent, neutral, enveloped);
+        return new PreparedPrompt(sent, composition, detail, custom ? enveloped : null, entry.Json["ordered"] is JsonValue o && o.TryGetValue<bool>(out var ordered) && ordered,
+            PackageMacros(plan, call.Function), null)
+        {
+            TextReply = plan.Formats.IsText(entry.Format),
+        };
+    }
+
+    /// <summary>
+    /// <paramref name="reply"/> to the attempt <paramref name="prepared"/> sent, finished: unwrapped from its envelope (D8;
+    /// a reply that is not the envelope is given as it is, and its format then refuses it); for a text format, checked and
+    /// replaced by <see cref="MacroReply.Process"/>. <see cref="AgentOutcomeKind.Completed"/> with the substituted text and
+    /// the detail (each macro placed said), or, when the markers are wrong, with the reply as it came and
+    /// <see cref="AgentOutcome.Invalid"/> set. A prompt that was not prepared is <see cref="AgentOutcomeKind.Failed"/> with
+    /// its <see cref="PreparedPrompt.ErrorKind"/>.
+    /// </summary>
+    public static AgentOutcome Finish(PreparedPrompt prepared, string reply)
+    {
+        ArgumentNullException.ThrowIfNull(prepared);
+        ArgumentNullException.ThrowIfNull(reply);
+        if (prepared.Text == null)
+            return new AgentOutcome(AgentOutcomeKind.Failed, null, 0, prepared.ErrorKind ?? "plan");
+
+        var value = prepared.Format?.Unwrap(reply) ?? reply;
+        var detail = prepared.Detail.DeepClone().AsObject();
+        if (!prepared.TextReply)
+            return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail);
+
+        var result = MacroReply.Process(value, prepared.Composition.Macros, prepared.PackageMacros, prepared.Ordered);
+        if (result.Text is not { } text)
+            return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail, result.Faults);
+        foreach (var row in (detail["macros"] as JsonArray ?? []).OfType<JsonObject>())
+            row["placed"] = SourceLayout.Text(row["macro"]) is { } site && result.Placed.Contains(site, StringComparer.Ordinal);
+        return new AgentOutcome(AgentOutcomeKind.Completed, text, 0, null, detail);
+    }
+
+    private static PreparedPrompt Unprepared(Composition composition, string kind) => new(null, composition, [], null, false, [], kind);
+
+    /// <summary>D11: <paramref name="text"/> with the retry text after two newlines, for a call that asks again; else as it is.</summary>
+    private static string Retry(string text, AgentCall call)
+    {
+        if (call.Faults is { Count: > 0 } faults)
+        {
+            var lines = string.Concat(faults.Select(f => $"- {f}\n"));
+            return $"{text.TrimEnd()}\n\nYour last reply could not be used:\n{lines}Write the reply again, with each marker exactly as given above.";
+        }
+
+        return call.Repair
+            ? $"{text.TrimEnd()}\n\nYour last reply could not be used: it did not fit the required format. Write the reply again."
+            : text;
+    }
+
+    /// <summary>The route of the plan's binding for <paramref name="entry"/> (<c>bindings.&lt;format key&gt;.&lt;producer&gt;.via</c>): <c>format</c> or <c>custom</c>, else <c>null</c>.</summary>
+    private static string? Via(RunPlan plan, PlanEntry entry)
+    {
+        const string defs = "#/$defs/";
+        if (entry.Format is not JsonObject format || SourceLayout.Text(format["$ref"]) is not { } reference
+            || !reference.StartsWith(defs, StringComparison.Ordinal) || SourceLayout.Text(entry.Json["producer"]) is not { } producer)
+        {
+            return null;
+        }
+
+        var via = SourceLayout.Text(((plan.Document["bindings"] as JsonObject)?[reference[defs.Length..]] as JsonObject)?[producer]?["via"]);
+        return via is "format" or "custom" ? via : null;
+    }
+
+    /// <summary>The ids of the macros (not the folders) of the package and of <paramref name="function"/>.</summary>
+    private static IReadOnlyCollection<string> PackageMacros(RunPlan plan, string? function)
+    {
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var sets = new[] { plan.Document["macros"] as JsonObject, function == null ? null : plan.Functions.GetValueOrDefault(function)?.Json["macros"] as JsonObject };
+        foreach (var set in sets)
+        {
+            foreach (var (key, macro) in set ?? [])
+            {
+                if (key.StartsWith("macro.", StringComparison.Ordinal) && macro is JsonObject m && m.ContainsKey("instruction"))
+                    ids.Add(key["macro.".Length..]);
+            }
+        }
+
+        return ids;
+    }
+
+    // ---- the format in the plan's scope ---------------------------------------------------------
+
+    /// <summary>
+    /// <paramref name="format"/> and a scope its names resolve in, from the plan's bundle: each <c>#/$defs/&lt;key&gt;</c>
+    /// that is not a definition of its own schema becomes the name <c>&lt;key&gt;</c>, found as the bundle's entry (as
+    /// <see cref="PlanFormats.Expand"/> reads it), so the sent copy is built as publish builds it (a text format's
+    /// description first, then its site's).
+    /// </summary>
+    private static (JsonNode? Format, FormatSet Formats) PlanScope(RunPlan plan, JsonNode? format)
+    {
+        var bundle = (plan.Document["formats"] as JsonObject)?["$defs"] as JsonObject ?? [];
+        var named = new Dictionary<string, JsonObject>(StringComparer.Ordinal);
+        foreach (var (key, schema) in bundle)
+        {
+            if (schema is JsonObject entry && Rebased(entry, bundle, entry["$defs"] as JsonObject, 0) is JsonObject rebased)
+                named[key] = rebased;
+        }
+
+        var registry = new TypeRegistry(named, new Dictionary<string, JsonObject>(), [], [], new Dictionary<string, BuiltInRenderer>());
+        return (Rebased(format, bundle, null, 0), FormatSet.ForPackage(registry, []));
+    }
+
+    /// <summary>A copy of <paramref name="node"/> with each reference to a bundle entry written as that entry's key (<see cref="PlanScope"/>), to the depth the plan's formats are expanded to.</summary>
+    private static JsonNode? Rebased(JsonNode? node, JsonObject bundle, JsonObject? own, int depth)
+    {
+        if (depth > PlanFormats.MaxDepth)
+            return node?.DeepClone();
+        switch (node)
+        {
+            case JsonObject obj:
+                var copy = new JsonObject();
+                foreach (var (key, value) in obj)
+                {
+                    if (key == "$ref" && SourceLayout.Text(value) is { } reference && reference.StartsWith("#/$defs/", StringComparison.Ordinal)
+                        && reference["#/$defs/".Length..] is var name && own?.ContainsKey(name) != true && bundle.ContainsKey(name))
+                    {
+                        copy[key] = name;
+                    }
+                    else
+                    {
+                        copy[key] = Rebased(value, bundle, own, depth + 1);
+                    }
+                }
+
+                return copy;
+            case JsonArray list:
+                return new JsonArray([.. list.Select(item => Rebased(item, bundle, own, depth + 1))]);
+            default:
+                return node?.DeepClone();
+        }
+    }
+
+    // ---- the detail -----------------------------------------------------------------------------
+
+    /// <summary>
+    /// Part 08 § 4's members of the attempt's row: <c>inputHash</c> of the sent text, <c>hashVersion</c>,
+    /// <c>runNeutralHash</c> (of the sent text with each run spot neutral; <c>null</c> with none), <c>runSpots</c> (§ 8.2),
+    /// <c>renders</c> (§ 4.2), <c>macros</c> (§ 4.3, one per macro of the entry's <c>placements</c>), <c>profileReads</c>
+    /// (§ 9), <c>sentFormatHash</c> and <c>notSent</c> (part 02 § 3.5), and <c>units</c>, each snippet and part placed by
+    /// the hash of its text. Sub-rows are named by the row's key (<see cref="AgentCall.Key"/>).
+    /// </summary>
+    private static JsonObject Detail(
+        PlanEntry entry, IReadOnlyDictionary<string, PlanEntry> map, AgentCall call, Composition composition, string sent, string? neutral,
+        EnvelopedFormat format)
+    {
+        var key = call.Key;
+        var profile = new List<ProfileRead>();
+        foreach (var read in composition.Macros.SelectMany(m => m.ProfileReads))
+        {
+            if (!profile.Any(p => p.Field == read.Field))
+                profile.Add(read);
+        }
+
+        return new JsonObject
+        {
+            ["inputHash"] = CanonicalJson.HashText(sent),
+            ["hashVersion"] = HashVersion,
+            ["runNeutralHash"] = neutral == null ? null : CanonicalJson.HashText(neutral),
+            ["runSpots"] = new JsonArray([.. composition.Spots.Select(s => (JsonNode)new JsonObject
+            {
+                ["id"] = $"{key}/spot:{s.Site}",
+                ["site"] = s.Site,
+                ["reads"] = s.Reads,
+                ["valueHash"] = s.ValueHash,
+                ["output"] = s.Output,
+                ["outputHash"] = s.OutputHash,
+            })]),
+            ["renders"] = new JsonArray([.. composition.Renders.Select(r => (JsonNode)new JsonObject
+            {
+                ["id"] = $"{key}/render:{r.N}",
+                ["renderer"] = r.Renderer,
+                ["templateHash"] = r.TemplateHash,
+                ["source"] = r.Source.StartsWith("render:", StringComparison.Ordinal) ? $"{key}/{r.Source}" : r.Source,
+                ["inputHash"] = r.InputHash,
+                ["inputSize"] = r.InputSize,
+                ["outputHash"] = r.OutputHash,
+                ["outputLength"] = r.OutputLength,
+                ["runDependent"] = r.RunDependent,
+            })]),
+            ["macros"] = Macros(entry, map, call, composition),
+            ["profileReads"] = new JsonArray([.. profile.Select(p => (JsonNode)new JsonObject { ["field"] = p.Field, ["hash"] = p.Hash })]),
+            ["sentFormatHash"] = format.Hash,
+            ["notSent"] = new JsonArray([.. format.NotSent.Select(p => (JsonNode)p)]),
+            ["units"] = new JsonArray([.. composition.Units.Select(u => (JsonNode)new JsonObject { ["site"] = u.Site, ["hash"] = u.TextHash })]),
+        };
+    }
+
+    /// <summary>
+    /// Part 08 § 4.3's macro row for each macro of the entry's <c>placements</c>, offered or not: <c>decisions</c> are the
+    /// decision ids of the non-null rules its offer depended on (its own, its folder's, a part's that places it), the
+    /// <c>classifier</c> is D10's, and <c>placed</c> is <c>false</c> until <see cref="Finish"/> says otherwise.
+    /// </summary>
+    private static JsonArray Macros(PlanEntry entry, IReadOnlyDictionary<string, PlanEntry> map, AgentCall call, Composition composition)
+    {
+        var placements = (entry.Json["placements"] as JsonArray ?? []).OfType<JsonObject>().ToList();
+        JsonObject? Placement(string? site) => site == null ? null : placements.FirstOrDefault(p => SourceLayout.Text(p["site"]) == site);
+        static bool Ruled(JsonObject? placement) => placement?["if"] is { } rule && rule.GetValueKind() != System.Text.Json.JsonValueKind.Null;
+
+        var rows = new JsonArray();
+        foreach (var placement in placements)
+        {
+            if (SourceLayout.Text(placement["site"]) is not { } site || !site.StartsWith("macro.", StringComparison.Ordinal))
+                continue;
+            var decisions = new List<string>();
+            if (Ruled(placement))
+                decisions.Add($"{call.Key}/if:{site}");
+            if (site.Split('.') is [_, var folder, _] && Ruled(Placement($"macro-folder.{folder}")))
+                decisions.Add($"{call.Key}/if:macro-folder.{folder}");
+            var within = SourceLayout.Text(placement["within"]);
+            for (var steps = 0; within != null && steps <= placements.Count; steps++)
+            {
+                var placing = Placement(within);
+                if (within.StartsWith("part.", StringComparison.Ordinal) && Ruled(placing))
+                    decisions.Add($"{call.Key}/if:{within}");
+                within = SourceLayout.Text(placing?["within"]);
+            }
+
+            var offered = composition.Macros.FirstOrDefault(m => m.Site == site);
+            rows.Add(new JsonObject
+            {
+                ["id"] = $"{call.Key}/macro:{site["macro.".Length..]}",
+                ["macro"] = site,
+                ["offered"] = offered != null,
+                ["decisions"] = new JsonArray([.. decisions.Select(d => (JsonNode)d)]),
+                ["classifier"] = Classifier(map, entry, call, placement["if"]),
+                ["placed"] = false,
+                ["form"] = offered == null ? null : offered.Block ? "block" : "inline",
+                ["contentHash"] = offered?.ContentHash,
+            });
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// D10: the row key of the node <paramref name="rule"/> reads when it reads exactly one node of the entry's map, in the
+    /// instance the call stands in (its item and pass ids for the loops around both); otherwise <c>null</c>.
+    /// </summary>
+    private static string? Classifier(IReadOnlyDictionary<string, PlanEntry> map, PlanEntry entry, AgentCall call, JsonNode? rule)
+    {
+        var nodes = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var path in Vars(rule, 0))
+        {
+            var segments = path.Split('.');
+            for (var length = segments.Length; length >= 2; length--)
+            {
+                var key = string.Join('.', segments, 0, length);
+                if (key.StartsWith("node.", StringComparison.Ordinal) && map.ContainsKey(key))
+                {
+                    nodes.Add(key);
+                    break;
+                }
+            }
+        }
+
+        return nodes.Count == 1 ? InstanceKey(map, entry, call, nodes.First()) : null;
+    }
+
+    /// <summary>Every <c>var</c> path of <paramref name="rule"/>, to a bounded depth.</summary>
+    private static IEnumerable<string> Vars(JsonNode? rule, int depth)
+    {
+        if (depth > PlanFormats.MaxDepth)
+            yield break;
+        switch (rule)
+        {
+            case JsonObject obj:
+                foreach (var (key, value) in obj)
+                {
+                    var path = key == "var" ? SourceLayout.Text(value) ?? SourceLayout.Text((value as JsonArray)?.FirstOrDefault()) : null;
+                    if (path != null)
+                        yield return path;
+                    else
+                        foreach (var inner in Vars(value, depth + 1))
+                            yield return inner;
+                }
+
+                break;
+            case JsonArray list:
+                foreach (var item in list)
+                    foreach (var inner in Vars(item, depth + 1))
+                        yield return inner;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The row key of <paramref name="classifier"/> (a key of the entry's map) in the instance <paramref name="call"/>
+    /// stands in: under the call's prefix inside a function, with the item and pass ids (<see cref="RunKeys.Of"/>'s
+    /// <c>:</c>, <c>/</c> and <c>#</c> parts) of the loops around it, which are the outer loops around the entry; <c>null</c>
+    /// when it stands in a loop the entry does not.
+    /// </summary>
+    private static string? InstanceKey(IReadOnlyDictionary<string, PlanEntry> map, PlanEntry entry, AgentCall call, string classifier)
+    {
+        var cut = call.Key.IndexOfAny([':', '#']);
+        var row = cut < 0 ? call.Key : call.Key[..cut];
+        var suffix = cut < 0 ? string.Empty : call.Key[cut..];
+        string baseKey;
+        if (call.Function == null)
+        {
+            if (row != entry.Key)
+                return null;
+            baseKey = classifier;
+        }
+        else
+        {
+            var local = entry.Key["node.".Length..];
+            if (!row.EndsWith("." + local, StringComparison.Ordinal))
+                return null;
+            baseKey = row[..^local.Length] + classifier["node.".Length..];
+        }
+
+        var around = Loops(map, entry.Key);
+        var its = Loops(map, classifier);
+        if (its.Count > around.Count || !its.SequenceEqual(around.Take(its.Count), StringComparer.Ordinal))
+            return null;
+        var parts = new List<string>();
+        for (var i = 0; i < suffix.Length; i++)
+        {
+            if (suffix[i] is ':' or '/' or '#')
+                parts.Add(string.Empty);
+            if (parts.Count > 0)
+                parts[^1] += suffix[i];
+        }
+
+        var drop = around.Count - its.Count;
+        return drop > parts.Count ? null : baseKey + string.Concat(parts.Take(parts.Count - drop));
+    }
+
+    /// <summary>The <c>for</c> and <c>while</c> entries around <paramref name="key"/> in <paramref name="map"/>, outermost first.</summary>
+    private static List<string> Loops(IReadOnlyDictionary<string, PlanEntry> map, string key)
+    {
+        var loops = new List<string>();
+        var steps = 0;
+        for (var at = map.GetValueOrDefault(key)?.Parent; at != null && steps++ <= map.Count && map.TryGetValue(at, out var parent); at = parent.Parent)
+        {
+            if (parent.Kind is PlanKind.For or PlanKind.While)
+                loops.Insert(0, at);
+        }
+
+        return loops;
+    }
+}
