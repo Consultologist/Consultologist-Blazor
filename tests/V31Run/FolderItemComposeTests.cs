@@ -1,4 +1,5 @@
 using System.Text.Json.Nodes;
+using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
@@ -129,6 +130,91 @@ public class FolderItemComposeTests
             "node.standards.pieces.part_draft", null, scope, new Dictionary<string, bool>(StringComparer.Ordinal), 100_000));
 
         Assert.Equal($"Under 'History of Present Illness':\nFor 'Section 1': {Draft}\n\n", Composed(composition));
+    }
+
+    [Fact]
+    public void AFolderItemsBody_CountsAgainstTheOutputLimit()
+    {
+        // The folder body writes the draft twice: 600,000 bytes each pass 1 MiB inside the folder item's own text (S05-014).
+        const string twice = "{{ input.consult_draft.content }}{{ input.consult_draft.content }}\n";
+        var plan = RunFixture.Plan(Standards(twice));
+        var scope = Scope("History of Present Illness", twice);
+        scope["input"]!["consult_draft"]!["content"] = new string('x', 600_000);
+
+        var composition = Compose(plan, scope);
+
+        Assert.Null(composition.Text);
+        Assert.Equal("Node 'section' stopped rendering: its output passed 1 MiB.", composition.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("S05-014", composition.Failure!, ""));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void AFunctionsFolderItem_IsFoundInItsOwnDefinitions_ThenThePackages(bool own)
+    {
+        // The function draft_section loops over the folder steps: its own (the package's steps, of other text, unlisted),
+        // or, holding none, the package's, listed in its uses.
+        const string step = "Use the draft: {{ param.draft.content }}\n";
+        var files = ResolveFixture.Functions()
+            .With("snippets/index.json", SourceFixture.Index(["standards", "steps"]))
+            .With("snippets/steps/index.json", SourceFixture.Index(["one"], extra: ", \"format\": \"standard_section\""))
+            .With("snippets/steps/one.md", SourceFixture.Md("{ \"title\": \"Package step\" }", own ? "The package's own text.\n" : step))
+            .With("functions/draft_section/each/index.json", SourceFixture.Json(SourceFixture.Node("for", "Each step", SourceFixture.ArrayOf(TemplateFixture.Plain), false, true,
+                "\"in\": \"snippet.steps\", \"parallel\": false, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": null, \"nodes\": [\"note\"], \"ret\": \"node.each.note\"")))
+            .With("functions/draft_section/each/note.md", SourceFixture.Agent("Noting the step", TemplateFixture.Plain, "Step:\n{{ item.content }}\n"));
+        if (own)
+        {
+            files.With("functions/draft_section/snippets/index.json", SourceFixture.Index(["steps"]))
+                .With("functions/draft_section/snippets/steps/index.json", SourceFixture.Index(["one"], extra: ", \"format\": \"standard_section\""))
+                .With("functions/draft_section/snippets/steps/one.md", SourceFixture.Md("{ \"title\": \"First step\" }", step));
+        }
+
+        var index = System.Text.Encoding.UTF8.GetString(files["functions/draft_section/index.json"])
+            .Replace("\"nodes\": [\"standard_draft\", \"patient_draft\", \"apply_instructions\"]",
+                "\"nodes\": [\"standard_draft\", \"patient_draft\", \"apply_instructions\", \"each\"]", StringComparison.Ordinal);
+        if (!own)
+            index = index.Replace("\"uses\": { \"snippets\": []", "\"uses\": { \"snippets\": [\"steps\"]", StringComparison.Ordinal);
+        files["functions/draft_section/index.json"] = System.Text.Encoding.UTF8.GetBytes(index);
+        var plan = RunFixture.Plan(files);
+        var scope = new JsonObject
+        {
+            ["item"] = new JsonObject { ["value"] = new JsonObject { ["title"] = "First step" }, ["content"] = step },
+            ["param"] = new JsonObject { ["draft"] = new JsonObject { ["content"] = Draft } },
+        };
+
+        var composition = BodyComposer.Compose(plan, new ComposeRequest(
+            "node.each.note", "draft_section", scope, new Dictionary<string, bool>(StringComparer.Ordinal), 100_000));
+
+        Assert.Equal($"Step:\nUse the draft: {Draft}\n\n", Composed(composition));
+    }
+
+    [Theory]
+    [InlineData("On {{ run.date }}.\n", null)]
+    [InlineData("{{~ snippet.standards.pmh.content }}\n", null)]
+    [InlineData("{{ item.value.title | renderer.line }}\n", null)]
+    [InlineData("Open {{ if item.value.title }}plainly.\n", null)]
+    [InlineData("Open {{ item.value.title\n", null)]
+    [InlineData("Open differently, {{ item.value.title }}.\n", "Open plainly.\n")]
+    [InlineData("Open differently.\n", "{{ input.consult_draft.content }}\n")]
+    public void AFolderBodyEditedAfterPublish_IsS07006(string edited, string? given)
+    {
+        // A document edited after publish: the folder item's body writes a run fact, places a unit, pipes into a renderer
+        // or no longer parses (the scope giving it as the runner would), or the scope's item.content is no longer the
+        // body the document holds (the text before the edit, or one that looks like a template): never a throw, and the
+        // scope's value is never parsed.
+        var files = Standards("Open plainly.\n");
+        var (_, compiled) = CompiledPackage.Publish(files, ResolveFixture.Published(), CompiledGoldenTests.Fixed);
+        var document = JsonNode.Parse(compiled!.Resolve)!;
+        document["snippets"]!["snippet.standards.hpi"]!["body"] = edited;
+        var (plan, _) = RunPlan.Build(document.ToJsonString(), compiled.ResolveHash, compiled.LockHash, null);
+
+        var composition = Compose(plan!, Scope("History of Present Illness", given ?? edited));
+
+        Assert.Null(composition.Text);
+        Assert.Equal(ResolveSentences.ResolveDoesNotMatch(plan!.Package, plan.Version).Sentence, composition.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("S07-006", composition.Failure!, ""));
     }
 
     [Theory]
