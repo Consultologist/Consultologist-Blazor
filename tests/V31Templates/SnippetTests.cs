@@ -257,7 +257,8 @@ public class SnippetTests
 
         var body = Body(Check(files), "nodes/draft.md");
 
-        Assert.Equal(new Placement("macro.m", "macro", false, 1), Assert.Single(body.Units).Body.Placements.Single());
+        Assert.Equal(new Placement("macro.m", "macro", false, 1), body.Units[0].Body.Placements.Single());
+        Assert.Equal(["snippet.a", "macro.m"], body.Units.Select(u => u.Site));
     }
 
     [Fact]

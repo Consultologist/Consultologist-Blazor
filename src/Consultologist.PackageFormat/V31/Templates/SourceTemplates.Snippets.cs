@@ -22,7 +22,7 @@ public static partial class SourceTemplates
 
     /// <summary>
     /// A snippet's body checked at one place: the body (<c>null</c> when it can't be checked), what that place does not
-    /// give it (reads and units as written, in order) and the parts and macros it places under the guard.
+    /// give it (reads and parts as written, in order) and the parts and macros it places that the place does not allow.
     /// </summary>
     private sealed record PlacedSnippet(CheckedBody? Body, IReadOnlyList<string> Unavailable, IReadOnlyList<string> Guarded)
     {
@@ -44,9 +44,11 @@ public static partial class SourceTemplates
         /// <paramref name="self"/> is <paramref name="body"/>'s own site (<c>null</c> for a template's body),
         /// <paramref name="reads"/> the row its snippets read by, <paramref name="parts"/> a prompt's declared parts,
         /// <paramref name="depth"/> how many snippets deep it is. For a snippet's body <paramref name="unavailable"/>
-        /// gathers the parts and macros it places that its place does not give, and <paramref name="guarded"/> those it
-        /// places, itself or through a snippet, in a part's text or a macro's instruction (said once, by the snippet
-        /// placed there). Each placement of a snippet says S05-022 for what the snippet's place does not give.
+        /// gathers the parts a prompt's, a <c>rendered</c> node's or a deliverable's snippet places (S05-022), and
+        /// <paramref name="guarded"/> the other parts and macros it places, itself or through a snippet, that its place
+        /// does not allow (said once, by the template that places the snippet: <see cref="Barred"/>). A macro is placed
+        /// by a prompt, a part's text or a prompt's snippet (<see cref="PlaceMacro"/>). Each placement of a snippet says
+        /// S05-022 for what the snippet's place does not give.
         /// </summary>
         private List<PlacedUnit> Expand(
             CheckedBody body, string? self, TemplateSite reads, IReadOnlyDictionary<string, PartUnit>? parts, int depth,
@@ -76,22 +78,22 @@ public static partial class SourceTemplates
                         }
 
                         if (guarded is not null)
-                        {
                             guarded.AddRange(inner);
-                        }
-                        else if (Guard(reads) is { } where)
-                        {
-                            foreach (var unit in inner.Distinct(StringComparer.Ordinal))
-                                Refusals.Add(DialectSentences.SnippetPlacesPartOrMacro(snippet.Name, unit, body.Host.Subject, where, body.Host.Path));
-                        }
+                        else
+                            Barred(inner, snippet.Name, body, placement, self, reads);
 
                         break;
+                    case "macro" when unavailable is null || reads == TemplateSite.Prompt:
+                        // A prompt's, a part's text's, or a snippet's in a prompt (part 05 § 8.3).
+                        PlaceMacro(placement, body, self, units);
+                        break;
                     case "part" or "macro" when unavailable is not null:
-                        // A snippet's own part or macro: the guard's, or a read its placer's place does not give (a part
-                        // belongs to one node's body; a macro is placed only where its placer may place one).
-                        if (Guard(reads) is not null)
+                        // A snippet's own part or macro its place does not allow: said by the template that places the
+                        // snippet (Barred: the guard, a macro's body, a node that is no agent), or a part a prompt's
+                        // snippet places, which its place does not give (a part belongs to one node's body).
+                        if (Guard(reads) is not null || placement.Kind == "macro" || reads == TemplateSite.MacroBody)
                             guarded!.Add(placement.Unit);
-                        else if (placement.Kind == "part" || !SiteReads.Of(reads).Roots.Contains("macro"))
+                        else
                             unavailable.Add(placement.Unit);
                         break;
                     case "part" when parts is not null:

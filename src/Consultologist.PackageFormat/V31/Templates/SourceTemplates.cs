@@ -52,10 +52,16 @@ public sealed record CheckedBody(
 /// <c>part.brief</c>), <paramref name="Within"/> the unit whose text places it (<c>null</c> for the body itself),
 /// <paramref name="Body"/> its text checked where it is placed (a snippet's body at the placer's place, with its
 /// reads; a part's text at its node's) and <paramref name="If"/> its header rule as written (a snippet's or a part's
-/// <c>if</c>; <c>null</c> for always, and for a folder item, which has none). Macros are Task 6's: it adds what a
-/// placed macro carries (its marker, its instruction and its body).
+/// <c>if</c>; <c>null</c> for always, and for a folder item, which has none). A macro (<c>macro.letrozole</c>,
+/// <c>macro.section_notes.hpi</c>; part 05 § 8) is placed as its instruction: <paramref name="Body"/> and
+/// <paramref name="Instruction"/> are its instruction checked at the placer's place, <paramref name="If"/> its own
+/// header <c>if</c> (a folder item's own; its folder's <c>if</c> stays in the folder's <c>index.json</c>), <paramref name="Marker"/> the marker its
+/// instruction holds (<c>null</c> when it does not hold its own exactly once) and <paramref name="MacroBody"/> its body
+/// checked at the same place; the three are <c>null</c> for a snippet or a part.
 /// </summary>
-public sealed record PlacedUnit(string Site, string? Within, CheckedBody Body, JsonNode? If);
+public sealed record PlacedUnit(
+    string Site, string? Within, CheckedBody Body, JsonNode? If,
+    MacroMarker? Marker = null, CheckedBody? Instruction = null, CheckedBody? MacroBody = null);
 
 /// <summary>
 /// #1504 (specVersion 31, area 07): what <see cref="SourceTemplates.Check"/> made of a package: its refusals and its
@@ -83,8 +89,9 @@ public sealed class PackageTemplates
 /// <c>nodes/</c>, and each renderer's (reading only its <c>value</c>, typed by its <c>input</c>). A body Scriban's reading
 /// already faults (<see cref="TemplateSyntax.Parse"/>) is reported and not typed. Every pipe into a renderer is typed
 /// against the renderer's <c>input</c> and recorded (<see cref="CheckedBody.Renders"/>). Each snippet a body places is
-/// checked there, and each part a prompt places is its node's text (<see cref="CheckedBody.Units"/>; part 05 §§ 3.2, 6, 7);
-/// every snippet is held to the dialect whether placed or not. Never throws on package content; every walk over
+/// checked there, each part a prompt places is its node's text, and each macro it places is its instruction and its body
+/// checked there (<see cref="CheckedBody.Units"/>; part 05 §§ 3.2, 6, 7, 8);
+/// every snippet and every macro is held to the dialect whether placed or not. Never throws on package content; every walk over
 /// snippets is bounded (a chain of 15, each cycle cut and said once, <see cref="UnitLimit"/> units a template).
 /// </summary>
 public static partial class SourceTemplates
@@ -110,7 +117,9 @@ public static partial class SourceTemplates
         }
 
         context.Definitions();
+        context.Macros();
         context.PartsOffAgents();
+        context.ProfileCarrying(bodies);
 
         var said = context.Refusals.Distinct().OrderBy(r => r.Path, StringComparer.Ordinal).ToList();
         return new TemplateCheck(
@@ -197,7 +206,10 @@ public static partial class SourceTemplates
                 return null;
             if (leaf is not null)
                 CountParts(body, leaf, parts!);
-            return body with { Units = Expand(body, null, host.Site, parts, 0, null, null) };
+            var units = Expand(body, null, host.Site, parts, 0, null, null);
+            if (leaf is not null)
+                PlacingNode(units, leaf, host);
+            return body with { Units = units };
         }
 
         /// <summary>
@@ -300,7 +312,7 @@ public static partial class SourceTemplates
                 var unplaced = host.Site == TemplateSite.SnippetBody && Unit(output) is { Kind: "part" or "macro" };
                 foreach (var path in output.Paths)
                 {
-                    if (unplaced)
+                    if (unplaced || MacroPath(output, path, scope))
                         continue;
                     if (host.Site == TemplateSite.PartText && path.Split('.')[0] == "part" && scope.All(v => v.Name != "part"))
                     {
@@ -528,22 +540,11 @@ public static partial class SourceTemplates
         /// </summary>
         private void Place(TemplateOutput output)
         {
-            if (Unit(output) is not { } unit)
+            // A macro's marker in its instruction is no placement; its form is said once per macro (Context.Macros).
+            if (Unit(output) is not { Kind: not "marker" } unit)
                 return;
             var tag = output.Tag;
-            var line = tag.Line;
-            if (tag.TildeRight)
-                Refusals.Add(DialectSentences.PlacesWithTildeRight(host.Subject, unit.Unit, line, host.Path));
-            if (tag.TildeLeft && tag.TextBefore)
-                Refusals.Add(DialectSentences.PlacesBlockInsideALine(host.Subject, unit.Unit, line, host.Path));
-            else if (tag.TildeLeft && tag.TextAfter)
-                Refusals.Add(DialectSentences.TextAfterBlock(host.Subject, unit.Unit, line, host.Path));
-            if (output.Enclosing.Count > 0)
-            {
-                Refusals.Add(DialectSentences.PlacesInsideAnIfOrFor(
-                    host.Subject, unit.Unit, line, output.Enclosing[^1] == "for" ? "a for" : "an if", host.Path));
-            }
-
+            Refusals.AddRange(Forms(host.Subject, unit.Unit, output, host.Path));
             placements.Add(unit with { Block = tag.TildeLeft && tag.AloneOnLine });
         }
 
@@ -554,13 +555,16 @@ public static partial class SourceTemplates
         /// <summary>
         /// The unit <paramref name="output"/> places, when its whole expression is one and the site reads its root:
         /// <c>snippet.&lt;id&gt;.content</c> or <c>snippet.&lt;folder&gt;.&lt;id&gt;.content</c>, <c>part.&lt;id&gt;</c>,
-        /// <c>macro.&lt;id&gt;</c> or <c>macro.&lt;folder&gt;.&lt;id&gt;</c> (a macro's marker, <c>….content</c>, is no placement).
+        /// <c>macro.&lt;id&gt;</c> or <c>macro.&lt;folder&gt;.&lt;id&gt;</c> (a macro's marker, <c>….content</c>, is no placement;
+        /// in a macro's instruction it is the kind <c>"marker"</c>, so that a <c>-</c> on it is said as on a placement).
         /// </summary>
         private Placement? Unit(TemplateOutput output)
         {
             if (host.Site == TemplateSite.Renderer || output.Path is not { } path || output.Pipes.Count > 0 || output.Paths.Count != 1)
                 return null;
             var s = path.Split('.');
+            if (host.Site == TemplateSite.MacroInstruction && s is ["macro", _, _, ..] && s[^1] == "content")
+                return new Placement(path, "marker", false, output.Tag.Line);
             var kind = s switch
             {
                 ["snippet", _, "content"] or ["snippet", _, _, "content"] => "snippet",

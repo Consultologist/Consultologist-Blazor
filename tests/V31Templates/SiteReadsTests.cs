@@ -50,7 +50,7 @@ public class SiteReadsTests
         // rendered node: never
         { "rendered", "top", "{{ profile.signature }}", "S05-021" },
         { "rendered", "top", "{{~ part.brief }}", "S05-020" },
-        { "rendered", "top", "{{~ macro.follow_up }}", "S05-020" },
+        { "rendered", "top", "{{~ macro.follow_up }}", "S05-047" },
         { "rendered", "top", "{{ deliverable.note.content }}", "S05-020" },
         // deliverable: reads
         { "deliverable", "top", "{{ node.plan.content }}", null },
@@ -65,7 +65,7 @@ public class SiteReadsTests
         { "deliverable", "top", "{{ item.value.title }}", "S05-020" },
         { "deliverable", "top", "{{ pass.number }}", "S05-020" },
         { "deliverable", "top", "{{~ part.brief }}", "S05-020" },
-        { "deliverable", "top", "{{~ macro.follow_up }}", "S05-020" },
+        { "deliverable", "top", "{{~ macro.follow_up }}", "S05-047" },
         { "deliverable", "top", "{{ deliverable.note.content }}", "S05-020" },
     };
 
