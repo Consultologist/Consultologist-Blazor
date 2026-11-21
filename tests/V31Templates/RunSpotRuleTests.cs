@@ -97,6 +97,48 @@ public class RunSpotRuleTests
     }
 
     [Fact]
+    public void TwoRunFactsInOneOutput_AreRefused()
+    {
+        // Part 05 § 4: an output that reads run.* reads nothing else, another run fact included.
+        var refusal = Single(Check(Package().WithAgent("draft", "{{ run.date | string.upcase run.id }}\n")));
+
+        Assert.Equal("S05-024", refusal.Id);
+        Assert.Equal("Node 'draft' reads run.id and run.date in one output at line 1; an output that reads a run fact reads nothing else.", refusal.Sentence);
+    }
+
+    [Fact]
+    public void ARunFactWithARunDependentValue_IsRefused_AsTheFirstReadSays()
+    {
+        var first = Single(Check(Today().WithAgent("draft", "{{ run.date | string.upcase node.today.value }}\n")));
+        var second = Single(Check(Today().WithAgent("draft", "{{ node.today.value | string.upcase run.date }}\n")));
+
+        Assert.Equal("S05-024", first.Id);
+        Assert.Equal("Node 'draft' reads node.today.value and run.date in one output at line 1; an output that reads a run fact reads nothing else.", first.Sentence);
+        Assert.Equal("S05-025", second.Id);
+        Assert.Equal("Node 'draft' reads run.date and the run-dependent node.today.value in one output at line 1; an output that reads a run fact reads nothing else.", second.Sentence);
+    }
+
+    [Fact]
+    public void TwoRunDependentValuesInOneOutput_AreRefused()
+    {
+        var files = Today().WithComputed("year", "\"date\"", "{ \"var\": \"run.date\" }", runDependent: true)
+            .WithAgent("draft", "{{ node.today.value | string.upcase node.year.value }}\n");
+
+        var refusal = Single(Check(files));
+
+        Assert.Equal("S05-025", refusal.Id);
+        Assert.Equal("Node 'draft' reads node.year.value and the run-dependent node.today.value in one output at line 1; an output that reads a run fact reads nothing else.", refusal.Sentence);
+    }
+
+    [Fact]
+    public void OneRunFactReadTwiceInOneOutput_IsOneSpot()
+    {
+        var body = Body(Check(Package().WithAgent("draft", "{{ run.date | string.upcase run.date }}\n")), "nodes/draft.md");
+
+        Assert.Equal([new TemplateRunSpot(1, "1:1", "run.date")], body.RunSpots);
+    }
+
+    [Fact]
     public void ARunDependentListAsAForsSource_IsRefused()
     {
         var files = Package()

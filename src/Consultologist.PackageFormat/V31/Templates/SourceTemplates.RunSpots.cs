@@ -6,7 +6,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 § 4; D4): run spots. An output that reads <c>run.*</c>, or a value declared
 /// run-dependent whose producer is not an agent, is a run spot, numbered in source order, and warns S05-060; one that
-/// also reads another path is S05-024 (S05-025 for a run-dependent value); such a read as a <c>for</c>'s source is
+/// also reads another path, another run fact or run-dependent value included, is S05-024 when its first such read is a
+/// run fact and S05-025 when it is a run-dependent value; such a read as a <c>for</c>'s source is
 /// S05-006 (in an <c>if</c> it is S05-007, said by the body-<c>if</c> rule).
 /// </summary>
 public static partial class SourceTemplates
@@ -21,21 +22,21 @@ public static partial class SourceTemplates
             foreach (var output in syntax.Outputs)
             {
                 var scope = Scope(output.Tag.Start, output.Depth);
-                var run = output.Paths.Where(p => IsRunFact(p, scope)).ToList();
-                var dependent = output.Paths.Where(p => !run.Contains(p) && IsRunDependent(p, scope)).ToList();
-                if (run.Count == 0 && dependent.Count == 0)
+                var paths = output.Paths.Distinct(StringComparer.Ordinal).ToList();
+                if (paths.FirstOrDefault(p => IsRunFact(p, scope) || IsRunDependent(p, scope)) is not { } reads)
                     continue;
 
+                // Part 05 § 4: the spot's read is the only thing the output reads; any other path (another run fact or
+                // run-dependent value included) is "something else", said by what the first spot read is.
                 var line = output.Tag.Line;
-                if (output.Paths.FirstOrDefault(p => !run.Contains(p) && !dependent.Contains(p)) is { } other)
+                if (paths.FirstOrDefault(p => p != reads) is { } other)
                 {
-                    Refusals.Add(run.Count > 0
-                        ? DialectSentences.ReadsRunWithMore(host.Subject, other, run[0]["run.".Length..].Split('.')[0], line, host.Path)
-                        : DialectSentences.ReadsRunDependentWithMore(host.Subject, other, dependent[0], line, host.Path));
+                    Refusals.Add(IsRunFact(reads, scope)
+                        ? DialectSentences.ReadsRunWithMore(host.Subject, other, reads["run.".Length..].Split('.')[0], line, host.Path)
+                        : DialectSentences.ReadsRunDependentWithMore(host.Subject, other, reads, line, host.Path));
                     continue;
                 }
 
-                var reads = output.Paths.First(p => run.Contains(p) || dependent.Contains(p));
                 var at = string.Create(CultureInfo.InvariantCulture, $"{line}:{output.Tag.Column}");
                 spots.Add(new TemplateRunSpot(spots.Count + 1, at, reads));
                 Warnings.Add(DialectSentences.ReadsRunFact(host.Subject, reads, line, host.Path));
