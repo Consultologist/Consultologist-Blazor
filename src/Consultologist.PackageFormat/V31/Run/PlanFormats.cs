@@ -46,8 +46,10 @@ public sealed class PlanFormats
 
     /// <summary>
     /// <paramref name="format"/> with every <c>{ "$ref": "#/$defs/&lt;key&gt;" }</c> replaced by that entry of the bundle,
-    /// <c>$id</c> and <c>$schema</c> dropped from each inlined entry (members beside a <c>$ref</c> are kept, the entry
-    /// joining them through <c>allOf</c>), to <see cref="MaxDepth"/> levels. A reference to a key the bundle does not have,
+    /// <c>$id</c>, <c>$schema</c> and <c>$defs</c> dropped from each inlined entry (members beside a <c>$ref</c> are kept,
+    /// the entry joining them through <c>allOf</c>), to <see cref="MaxDepth"/> levels. Inside an inlined entry a reference
+    /// is first one of the entry's own <c>$defs</c> (its format file's definitions, which the bundle keeps as written,
+    /// part 02 § 3.1), then the bundle's entry of that key. A reference to a key neither has,
     /// any other reference, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
     /// <c>false</c>, the schema nothing fits. Too large is past <see cref="FormatTypes.SchemaBudget"/> schemas, counted as
     /// publish counts them (A03-011), so a format file publish accepted is not too large here. A new tree: the bundle is
@@ -126,7 +128,7 @@ public sealed class PlanFormats
     }
 
     /// <summary>
-    /// One expansion: the keys being inlined (to find a cycle), the schemas written, and whether it failed. The schemas
+    /// One expansion: the entries and definitions being inlined (to find a cycle), the schemas written, and whether it failed. The schemas
     /// are counted as publish counts them for A03-011 (<see cref="FormatTypes.Expands"/>), so a format publish accepted
     /// expands here: a schema is the format itself, a value of <c>properties</c>, <c>items</c>, a member of
     /// <c>anyOf</c>, and each bundle entry inlined (the reference written in its place is not one). Any other member's
@@ -137,7 +139,10 @@ public sealed class PlanFormats
     /// </summary>
     private sealed class Walk(JsonObject defs)
     {
-        private readonly HashSet<string> inlining = new(StringComparer.Ordinal);
+        private readonly HashSet<JsonObject> inlining = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>The <c>$defs</c> of the bundle entry being inlined, its file's own definitions; null outside one, or when it has none.</summary>
+        private JsonObject? local;
         private int written;
         private int own;
 
@@ -218,18 +223,27 @@ public sealed class PlanFormats
                 if (reference is null || !reference.StartsWith(DefsPrefix, StringComparison.Ordinal))
                     return Fail();
                 var key = reference[DefsPrefix.Length..];
-                if (defs[key] is not JsonObject entry || !inlining.Add(key) || !Counted())
+
+                // The dialect resolves a reference against the file it is written in (part 02 § 3.1), and the bundle keeps a
+                // file's own definitions as written: the entry's own first, then the bundle's entry of that key.
+                var inFile = local != null && local.ContainsKey(key);
+                if ((inFile ? local![key] : defs[key]) is not JsonObject entry || !inlining.Add(entry) || !Counted())
                     return Fail();
 
+                // A bundle entry's references are its own file's; a definition of the file stays in the file.
+                var outer = local;
+                if (!inFile)
+                    local = entry["$defs"] as JsonObject;
                 var target = new JsonObject();
                 foreach (var (name, value) in entry)
                 {
-                    if (name is "$id" or "$schema")
+                    if (name is "$id" or "$schema" or "$defs")
                         continue;
                     target[name] = Member(name, value, depth + 1);
                 }
 
-                inlining.Remove(key);
+                local = outer;
+                inlining.Remove(entry);
                 if (Failed)
                     return null;
                 if (obj.Count == 1)
