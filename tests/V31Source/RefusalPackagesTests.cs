@@ -78,11 +78,14 @@ public class RefusalPackagesTests
     /// parts): the reader refuses a parts member on any other kind first, so no package reaches it. S05-060 (W-1, a run
     /// spot) and S05-061 (W-2, a markdown_block renderer inside a line): warnings; a package that gets them is accepted.
     /// And part 05's run-time sentences, said while a body renders or a reply is read, never at publish: S05-012, S05-014
-    /// and S05-062 (D12's limits), S05-053 to S05-059 (a reply's markers, part 05 § 8.6) and A07-006 (D13).
+    /// and S05-062 (D12's limits), S05-053 to S05-059 (a reply's markers, part 05 § 8.6) and A07-006 (D13). A07-014 (two
+    /// versions of one agent, #1504 ruling 4): the published agents catalogue binds each agent at one version, and a package
+    /// cannot choose its agents' versions, so no package reaches it against the published registry; only a deployment's
+    /// catalogue binding two formats to two versions of one agent does (<c>ResolveCompilerTests.TwoVersionsOfOneAgent_AreRefusedAtPublish</c>).
     /// </summary>
     private static readonly string[] TemplatesNotShipped =
     [
-        "S05-041", "S05-060", "S05-061",
+        "S05-041", "S05-060", "S05-061", "A07-014",
         "S05-012", "S05-014", "S05-053", "S05-054", "S05-055", "S05-056", "S05-057", "S05-058", "S05-059", "S05-062", "A07-006",
     ];
 

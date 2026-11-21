@@ -27,7 +27,7 @@ public class EngineCapabilitiesFactoryTests
 
         // The agents the golden binds are among the engine's.
         foreach (var (agent, version) in resolve["requires"]!["agents"]!.AsObject())
-            Assert.Contains(int.Parse((string)version!, System.Globalization.CultureInfo.InvariantCulture), engine.Agents[agent]);
+            Assert.Contains((int)version!, engine.Agents[agent]);
 
         var refusals = RequiresCheck.Engine(resolve, JsonNode.Parse(pair.Lock)!.AsObject(), engine);
 
@@ -181,7 +181,7 @@ public class EngineCapabilitiesFactoryTests
         // was a source of the engine's agents.
         var registry = new FakeRegistry();
         var (packageRef, pair) = registry.Put(AgentTurnActivityTests.MacrosGolden);
-        Assert.Equal("1", (string?)JsonNode.Parse(pair.Resolve)!["requires"]!["agents"]!["judgement"]);
+        Assert.Equal(1, (int?)JsonNode.Parse(pair.Resolve)!["requires"]!["agents"]!["judgement"]);
 
         var load = await V31Job.StoreOver(registry).TryLoadAsync(packageRef, CancellationToken.None);
         Assert.True(load!.Plan != null, $"{load.RefusalId} {load.OperatorDetail}");

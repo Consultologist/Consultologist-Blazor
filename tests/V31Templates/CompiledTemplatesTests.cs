@@ -301,7 +301,9 @@ public class CompiledTemplatesTests
     {
         var resolve = Schema("resolve");
         var @lock = Schema("lock");
-        foreach (var files in new[] { Placing(), Spotted(), ResolveFixture.NestedNote(), ResolveFixture.Functions(), ResolveFixture.Conditional(), MacroBodySnippets() })
+        // #1504 ruling 4 (R6): and one binding judgement 1, whose requires.agents holds the number.
+        var judged = Package().WithAgent("classify", "Does the plan for Margaret Okafor need a follow-up?\n\n{{ node.plan.content }}\n", "\"judgement\"");
+        foreach (var files in new[] { Placing(), Spotted(), ResolveFixture.NestedNote(), ResolveFixture.Functions(), ResolveFixture.Conditional(), MacroBodySnippets(), judged })
         {
             var compiled = Published(files);
             Assert.True(resolve.Validate(compiled.Resolve, null), "resolve.json does not fit resolve.schema.json.");

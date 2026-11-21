@@ -1,5 +1,7 @@
+using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Source;
+using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat.V31;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 
@@ -180,7 +182,7 @@ public class ResolveCompilerTests
         Assert.Equal("{\"blank\":\"^1.0.0\",\"size\":\"^1.0.0\"}", Canonical(requires["operations"]));
         Assert.Equal(["agent", "computed", "for", "while"], Strings(requires["kinds"]));
         Assert.Equal(["parallel"], Strings(requires["features"]));
-        Assert.Equal("{\"custom-json\":\"1\",\"test-json\":\"48\"}", Canonical(requires["agents"]));
+        Assert.Equal("{\"custom-json\":1,\"test-json\":48}", Canonical(requires["agents"]));
         Assert.Equal("{\"profile\":[]}", Canonical(document["needs"]));
 
         Assert.Equal(
@@ -484,7 +486,7 @@ public class ResolveCompilerTests
         Assert.Equal(["agent"], Strings(minimal["kinds"]));
         Assert.Equal("{}", Canonical(minimal["operations"]));
         Assert.Equal("[]", Canonical(minimal["features"]));
-        Assert.Equal("{\"test-json\":\"48\"}", Canonical(minimal["agents"]));
+        Assert.Equal("{\"test-json\":48}", Canonical(minimal["agents"]));
 
         var functions = Compile(ResolveFixture.Functions()).Document!["requires"]!;
         Assert.Equal(["agent", "computed", "for", "call"], Strings(functions["kinds"]));
@@ -503,6 +505,59 @@ public class ResolveCompilerTests
         var features = Strings(constants["features"]);
         Assert.Equal(kinds.Where(Strings(functions["kinds"]).Contains), Strings(functions["kinds"]));
         Assert.Equal(features.Where(Strings(functions["features"]).Contains), Strings(functions["features"]));
+    }
+
+    [Fact]
+    public void RequiresAgents_AreIntegerVersions()
+    {
+        // #1504 ruling 4 (R6): requires.agents maps an agent's name to its version as a number, as bindings carries it.
+        var files = TemplateFixture.Package()
+            .WithAgent("classify", "Does the plan for Margaret Okafor need a follow-up?\n\n{{ node.plan.content }}\n", "\"judgement\"");
+        var agents = Compile(files).Document!["requires"]!["agents"]!;
+
+        Assert.Equal(JsonValueKind.Number, agents["judgement"]!.GetValueKind());
+        Assert.Equal(1, (int)agents["judgement"]!);
+        Assert.Equal("{\"custom-json\":1,\"judgement\":1}", Canonical(agents));
+    }
+
+    [Fact]
+    public void TwoVersionsOfOneAgent_AreRefusedAtPublish()
+    {
+        // #1504 ruling 4 (R6): one version per agent. The published catalogue binds each agent at one version, so a
+        // deployment's catalogue that binds classification to judgement 2 is what makes two.
+        var published = ResolveFixture.Published();
+        var bindings = published.Bindings.DeepClone().AsObject();
+        bindings["formats"]!["classification"]!["generated"] = new JsonObject { ["agentName"] = "judgement", ["agentVersion"] = 2 };
+        var agents = published.Agents.DeepClone().AsObject();
+        agents["agents"]!["judgement"]!["2"] = agents["agents"]!["judgement"]!["1"]!.DeepClone();
+        var registry = published with { Bindings = bindings, Agents = agents };
+
+        var files = TemplateFixture.Package()
+            .WithAgent("classify", "Does the plan for Margaret Okafor need a follow-up?\n\n{{ node.plan.content }}\n", "\"judgement\"")
+            .WithAgent("sort", "Which clinic should see Margaret Okafor?\n\n{{ node.plan.content }}\n", "\"classification\"");
+        var check = SourceCheck.Run(files, registry);
+
+        var refusal = Assert.Single(check.Refusals);
+        V31Contract.AssertSentence(refusal);
+        Assert.Equal("A07-014", refusal.Id);
+        Assert.Equal(
+            "Nodes 'classify' and 'sort' bind agent 'judgement' at versions 1 and 2; a package binds one version of an agent.",
+            refusal.Sentence);
+        Assert.Equal("nodes/sort.md", refusal.Path);
+
+        // Both at one version is one agent, as the published catalogue binds them.
+        Assert.Empty(SourceCheck.Run(files, published).Refusals);
+    }
+
+    [Fact]
+    public void ANullTitle_CompilesToThePackagesName()
+    {
+        // #1504 ruling 5 (R7): the package's name, not name@version.
+        var files = Minimal().WithJson("manifest.json", m => m["title"] = null);
+        var document = Compile(files).Document!;
+
+        Assert.Equal((string?)document["package"]!["name"], (string?)document["title"]);
+        Assert.DoesNotContain("@", (string)document["title"]!, StringComparison.Ordinal);
     }
 
     [Fact]

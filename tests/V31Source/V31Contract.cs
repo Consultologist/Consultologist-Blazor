@@ -87,7 +87,7 @@ internal static class V31Contract
 
     /// <summary>
     /// #1504: area 07's own sentences (<c>A07-NNN</c>), as plan area-07-prompts-and-macros lists them: the first nine at
-    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5; A07-012 and A07-013, Task 8b).
+    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5; A07-012 and A07-013, Task 8b; A07-014, Task 12b).
     /// </summary>
     private static readonly Dictionary<string, string> TemplateAreaSentences = new()
     {
@@ -106,6 +106,7 @@ internal static class V31Contract
             + "a folder item's body read in a loop places no part, macro or snippet, pipes into no renderer and reads no run.* or run-dependent value.",
         ["A07-013"] = "Snippet '<id>' holds a tag at line <n>, and <subject> <passes it to function '<f>' as param.<p> | reads it in its expression>, "
             + "where it isn't rendered; keep a folder item's body plain text, or read it as item.content in its loop.",
+        ["A07-014"] = "Nodes '<a>' and '<b>' bind agent '<name>' at versions <m> and <n>; a package binds one version of an agent.",
     };
 
     private static string RepoRoot()
