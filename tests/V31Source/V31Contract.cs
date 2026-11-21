@@ -227,6 +227,16 @@ internal static class V31Contract
             row = (string)found!["sentence"]!;
         }
 
+        // #1504: S05-025's row is written as S05-024's middle ("… reads <path> and the run-dependent <value> in one output
+        // …"): the sentence is S05-024's with run.<fact> in that place.
+        if (refusal.Id == "S05-025")
+        {
+            var full = (string)Json("sentences.json")["sentences"]!.AsArray().First(s => (string?)s!["id"] == "S05-024")!["sentence"]!;
+            Assert.Equal("… reads <path> and the run-dependent <value> in one output …", row);
+            Assert.Contains(" and run.<fact> in one output ", full, StringComparison.Ordinal);
+            row = full.Replace(" and run.<fact> in one output ", " and the run-dependent <value> in one output ", StringComparison.Ordinal);
+        }
+
         var pattern = "^" + ToPattern(row) + "$";
         // Part 04 § 10.1 writes S04-009 for Loop "(also While, If, Case)": the word is the flow kind's.
         if (refusal.Id == "S04-009")
