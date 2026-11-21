@@ -19,7 +19,8 @@ namespace Consultologist.Api.V31;
 /// package ref, and only this deployment runs 31 (<see cref="SpecVersionAdmission.Runs31"/>) asks the compiled store: a
 /// version with no 31 stamp is today's path's (null, after one <c>publish.json</c> read). A load refusal is a start failure
 /// recorded on the job (<c>RecordStartFailure</c>, the clinician's sentence; the operator's in the log). Otherwise the
-/// request's typed inputs and its documents (read as today's start reads them) are checked with the account
+/// request's typed inputs and its documents (read as today's start reads them), with its <c>MacroChoices</c> read as
+/// boolean inputs (#1504, ruled by the owner on #1504, ruling 6; <see cref="V31StartChecks.Choices"/>), are checked with the account
 /// (<see cref="V31StartChecks"/>): any refusal is one recorded start failure holding every sentence. Then the inputs are
 /// held (<see cref="IRunInputsStore"/>, where the job's held inputs live), the entity initialised at specVersion 31 with
 /// the hashes and the limits, and <see cref="ConsultGenerationOrchestratorV31"/> scheduled with the job's id as its instance
@@ -94,12 +95,13 @@ public sealed class V31JobStarter(
         }
 
         request = ConsultGenerationJobStarter.NormalizeInputs(extraction.Request);
-        var supplied = Supplied(request);
+        // #1504 (ruled by the owner on #1504, ruling 6): each MacroChoices entry is its boolean input's value.
+        var (supplied, choiceRefusals) = V31StartChecks.Choices(plan, Supplied(request), request.MacroChoices);
         var profile = await ProfileAsync(plan, appUserId, cancellationToken);
         var timeZone = (await settings.GetAsync(appUserId, AccountSettingKeys.TimeZone, cancellationToken))?.Value;
 
         var (runInputs, inputRefusals) = V31StartChecks.Inputs(plan, supplied, new JsonObject(), profile);
-        var refusals = V31StartChecks.Account(plan, profile, timeZone).Concat(inputRefusals).ToList();
+        var refusals = V31StartChecks.Account(plan, profile, timeZone).Concat(choiceRefusals).Concat(inputRefusals).ToList();
         var header = Header(jobId, appUserId, $"{plan.Package}@{plan.Version}", origin, request, plan) with
         {
             InputDocumentOrigins = extraction.Origins is { Count: > 0 } origins ? origins : null,
@@ -109,9 +111,9 @@ public sealed class V31JobStarter(
             logger.LogWarning(
                 "Rejected 31 job start: the account or the inputs were refused. JobId={JobId}, Package={Package}@{Version}, Refusals={Refusals}",
                 jobId, plan.Package, plan.Version, string.Join(", ", refusals.Select(r => r.Id)));
-            // A06-013 quotes the caller's own ids, which on the email door can be a file name: the sender is told every
-            // other sentence, and nothing when that one is all there is.
-            var senderSafe = refusals.Where(r => r.Id != "A06-013").Select(r => r.Sentence).ToList();
+            // A06-013 (and A07-015, #1504) quote the caller's own ids, which on the email door can be a file name: the
+            // sender is told every other sentence, and nothing when those are all there is.
+            var senderSafe = refusals.Where(r => r.Id is not ("A06-013" or "A07-015")).Select(r => r.Sentence).ToList();
             return await RecordStartFailureAsync(
                 client, entityId, header, string.Join("\n", refusals.Select(r => r.Sentence)),
                 ConsultGenerationJobStartError.InputsMismatch, senderSafe.Count > 0 ? string.Join("\n", senderSafe) : null);
