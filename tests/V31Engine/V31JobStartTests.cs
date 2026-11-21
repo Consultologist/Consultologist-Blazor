@@ -43,7 +43,7 @@ public class V31JobStartTests
         typeof(ConsultGenerationJobEntity).GetProperty("State", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic)!;
 
     private static readonly Lazy<EngineCapabilities> ThisEngine =
-        new(() => new EngineCapabilitiesFactory(OutputContractCatalog.Load(), FormatCatalogLoader.Load()).Current());
+        new(() => V31Job.Factory().Current());
 
     private const string Draft = "Margaret Okafor, 61, referred for a second opinion on her anaemia. (Fictional.)";
 

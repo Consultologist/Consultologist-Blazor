@@ -9,7 +9,7 @@ namespace Consultologist.Api.Tests.V31Engine;
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 §§ 3.1, 3.4; D7, D12): one attempt of a 31 agent call: the prompt sent is the
-/// entry's composed body, to the agent the plan's bindings name for its format and producer; a 429 or another service
+/// entry's composed body (#1504: as <see cref="Consultologist.PackageFormat.V31.Templates.AgentTurn.Prepare"/> prepares it), to the agent the plan's bindings name for its format and producer; a 429 or another service
 /// failure is answered with the wait before the next attempt, the service's or the back-off's with its jitter.
 /// Content is fictional (Margaret Okafor, Dr A. Sample).
 /// </summary>
@@ -27,10 +27,12 @@ public class RunAgentNodeV31ActivityTests
 
         var outcome = await activity.RunAsync(Input(job, new AgentCall("node.plan", "node.plan", null, 1, false, DraftScope)), CancellationToken.None);
 
-        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Completed, "A reply for Dr A. Sample.", 0, null), outcome);
+        Assert.Equal((AgentOutcomeKind.Completed, "A reply for Dr A. Sample.", 0, null), Of(outcome));
         var sent = Assert.Single(agent.Sent);
         Assert.Equal("node.plan", sent.Stage);
-        Assert.Equal($"Plan the sections of a consultation note for the draft below, one section for each heading.\n\n{PlanRunnerLeavesTests.Draft}\n", sent.Message);
+        // #1504 (D8): a custom binding's prompt ends with the format sent, after the trailer
+        Assert.StartsWith($"Plan the sections of a consultation note for the draft below, one section for each heading.\n\n{PlanRunnerLeavesTests.Draft}", sent.Message, StringComparison.Ordinal);
+        Assert.Contains(Consultologist.PackageFormat.V31.Templates.AgentTurn.CustomTrailer, sent.Message, StringComparison.Ordinal);
         // bindings.section_plan.generated
         Assert.Equal(("custom-json", "1"), (sent.AgentName, sent.AgentVersion));
     }
@@ -59,7 +61,7 @@ public class RunAgentNodeV31ActivityTests
 
         var outcome = await activity.RunAsync(Input(job, Plan(1)), CancellationToken.None);
 
-        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Throttled, null, 1500, null), outcome);
+        Assert.Equal((AgentOutcomeKind.Throttled, (string?)null, 1500, (string?)null), Of(outcome));
     }
 
     [Fact]
@@ -131,7 +133,7 @@ public class RunAgentNodeV31ActivityTests
 
         var outcome = await activity.RunAsync(Input(job, Plan(1)), CancellationToken.None);
 
-        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Completed, "", 0, null), outcome);
+        Assert.Equal((AgentOutcomeKind.Completed, "", 0, (string?)null), Of(outcome));
     }
 
     [Fact]
@@ -161,7 +163,7 @@ public class RunAgentNodeV31ActivityTests
 
         var outcome = await activity.RunAsync(input, CancellationToken.None);
 
-        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"), outcome);
+        Assert.Equal((AgentOutcomeKind.Failed, (string?)null, 0, "plan"), Of(outcome));
         Assert.Empty(agent.Sent);
     }
 
@@ -172,30 +174,8 @@ public class RunAgentNodeV31ActivityTests
 
         var outcome = await activity.RunAsync(Input(job, new AgentCall("node.letter", "node.letter", null, 1, false, DraftScope)), CancellationToken.None);
 
-        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "plan"), outcome);
+        Assert.Equal((AgentOutcomeKind.Failed, (string?)null, 0, "plan"), Of(outcome));
         Assert.Empty(agent.Sent);
-    }
-
-    [Fact]
-    public async Task ABodyPastTheJobsStepBudget_IsACallThatCouldNotBeMade_Steps()
-    {
-        var (activity, agent, job) = Activity("nested-note", composer: new Fixed(new ComposedBody(null, true, null)));
-
-        var outcome = await activity.RunAsync(Input(job, Plan(1)) with { RenderSteps = 7 }, CancellationToken.None);
-
-        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "steps"), outcome);
-        Assert.Empty(agent.Sent);
-    }
-
-    [Fact]
-    public async Task TheBody_IsComposedWithTheJobsStepBudget()
-    {
-        var composer = new Fixed(new ComposedBody("Plan the note.", false, null));
-        var (activity, _, job) = Activity("nested-note", composer: composer);
-
-        await activity.RunAsync(Input(job, Plan(1)) with { RenderSteps = 7 }, CancellationToken.None);
-
-        Assert.Equal(7, composer.StepLimit);
     }
 
     [Fact]
@@ -205,7 +185,7 @@ public class RunAgentNodeV31ActivityTests
 
         var outcome = await activity.RunAsync(Input(job, Plan(1) with { Scope = new JsonObject() }), CancellationToken.None);
 
-        Assert.Equal(new AgentOutcome(AgentOutcomeKind.Failed, null, 0, "compose"), outcome);
+        Assert.Equal((AgentOutcomeKind.Failed, (string?)null, 0, "compose"), Of(outcome));
         Assert.Empty(agent.Sent);
     }
 
@@ -214,25 +194,17 @@ public class RunAgentNodeV31ActivityTests
     private static RunAgentNodeV31Input Input(V31Job job, AgentCall call) =>
         new(job.Ref.Name, job.Ref.Version, job.Pair.ResolveHash, new RunLimits().RenderSteps, call);
 
-    private static (RunAgentNodeV31Activity Activity, FakeAttempts Agent, V31Job Job) Activity(string golden, Random? random = null, IBodyComposer? composer = null)
+    /// <summary>What an outcome says, its detail and faults aside.</summary>
+    private static (AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind) Of(AgentOutcome outcome) =>
+        (outcome.Kind, outcome.Reply, outcome.WaitMilliseconds, outcome.ErrorKind);
+
+    private static (RunAgentNodeV31Activity Activity, FakeAttempts Agent, V31Job Job) Activity(string golden, Random? random = null)
     {
         var job = V31Job.Of(golden);
         var agent = new FakeAttempts();
-        var activity = new RunAgentNodeV31Activity(job.Store, agent, composer ?? new ScribanBodyComposer(),
+        var activity = new RunAgentNodeV31Activity(job.Store, agent, V31AgentsCatalogue.Load(),
             NullLogger<RunAgentNodeV31Activity>.Instance, random);
         return (activity, agent, job);
-    }
-
-    /// <summary>A composer that gives <paramref name="body"/>, remembering the step budget it was given.</summary>
-    private sealed class Fixed(ComposedBody body) : IBodyComposer
-    {
-        public int? StepLimit { get; private set; }
-
-        public ComposedBody Compose(RunPlan plan, string entryKey, string? function, JsonObject scope, int stepLimit)
-        {
-            StepLimit = stepLimit;
-            return body;
-        }
     }
 
     /// <summary>

@@ -20,7 +20,7 @@ public class CompiledPackageStoreTests
     private static readonly UTF8Encoding Utf8NoBom = new(false);
 
     private static readonly Lazy<EngineCapabilities> ThisEngine =
-        new(() => new EngineCapabilitiesFactory(OutputContractCatalog.Load(), FormatCatalogLoader.Load()).Current());
+        new(() => V31Job.Factory().Current());
 
     private static CompiledPackageStore Store(FakeRegistry registry, EngineCapabilities? engine = null, string? preview = "31") =>
         new(registry, registry, engine ?? ThisEngine.Value, SpecVersionAdmissionTests.With(preview),
