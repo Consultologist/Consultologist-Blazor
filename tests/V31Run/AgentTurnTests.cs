@@ -205,6 +205,21 @@ public class AgentTurnTests
     }
 
     [Fact]
+    public void ABodyFileWithNoLastLineEnding_KeepsAValuesLineEnding()
+    {
+        // Fix round 1 (I1): what is dropped is the file's last line ending, not a line ending a value writes at the end.
+        const string signature = "Dr A. Sample, consultant physician\n";
+        var plan = RunFixture.Plan(Package()
+            .WithMacro("signoff", "With thanks, {{ profile.signature }}")
+            .WithAgent("draft", "Draft the note for Margaret Okafor.\n{{~ macro.signoff }}\n")
+            .WithJson("nodes/draft.md", h => h["profileCarrying"] = true));
+
+        var prepared = Prepared(AgentTurn.Prepare(plan, Call("node.draft", Scope(("profile.signature", signature)), Placed("macro.signoff")), 100_000, Rejects));
+
+        Assert.Equal($"With thanks, {signature}", Assert.Single(prepared.Composition.Macros).Body);
+    }
+
+    [Fact]
     public void ASnippetInAMacroBody_IsRenderedWhenDecided_AndItsProfileReadOnlyThen()
     {
         // Fix round 1 (I2): the macro body's snippets are decided as placements are; one not placed writes and reads nothing.
