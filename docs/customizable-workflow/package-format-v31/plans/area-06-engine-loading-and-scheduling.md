@@ -353,13 +353,13 @@ Rules: a call is ready when its arguments' keys have settled; its `if` is decide
 
 **Interfaces — Produces:** `RunTrace.Of(FakeRunHost, ListRecorder, RunResult)`: one text: the dispatch sequence, then every row (`key state reason valueHash`) in the order recorded, every decision, the result. Replies come from a deterministic stub seeded by the key (`WorkflowStubOutputs`' idea: a value built from the entry's format and `CanonicalJson.HashText(key)`), so no golden holds invented clinical text beyond the fixtures'. `GOLDEN_UPDATE_V31=1` rewrites.
 
-- [ ] **Step 1: Write the tests.**
+- [x] **Step 1: Write the tests.**
   - `RunGoldenTests.AGoldenRun_IsWhatTheRunnerGives` (theory over the three compiled goldens, auto-release).
   - `ARun_IsTheSame_WhateverOrderRepliesArriveIn`: each golden run with 5 shuffled release orders gives the same rows, decisions and dispatch sequence as auto-release when the ceiling is 1, and the same rows and result (dispatch order of *ready* calls still by the fixed order at every dispatch point) at ceiling 16.
   - `TheCeiling_HoldsUnderNesting_AndDispatchIsDeterministic` (Review Focus 3's package: three nested parallel loops of 10 with `maxParallel` 3, 2, `null`, a call in the innermost, ceiling 4, shuffled releases, two runs with one seed): peak ≤ 4, every loop instance within its cap, both runs' dispatch sequences equal, 500-call limit raised for the test.
-- [ ] **Step 2: Generate the goldens; read each; run again without the flag.**
-- [ ] **Step 3: Run all V31; pass.**
-- [ ] **Step 4: Commit and push.** `Tests (#1503): three whole runs pinned, and the ceiling held under nesting`
+- [x] **Step 2: Generate the goldens; read each; run again without the flag.**
+- [x] **Step 3: Run all V31; pass.**
+- [x] **Step 4: Commit and push.** `Tests (#1503): three whole runs pinned, and the ceiling held under nesting`
 
 ### Task 10: Which versions the engine admits, and its limits
 
