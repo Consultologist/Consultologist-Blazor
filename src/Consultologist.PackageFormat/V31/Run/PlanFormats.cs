@@ -20,7 +20,10 @@ public sealed class PlanFormats
 
     private const string DefsPrefix = "#/$defs/";
 
-    /// <summary>The most schemas <see cref="Expand"/> writes for one format (<see cref="FormatTypes.SchemaBudget"/>); past it, <c>false</c>.</summary>
+    /// <summary>
+    /// The most schemas <see cref="Expand"/> writes from the bundle's entries for one format, and the most of the format's
+    /// own (<see cref="FormatTypes.SchemaBudget"/>, counted as publish counts them); past either, <c>false</c>.
+    /// </summary>
     private const int Budget = FormatTypes.SchemaBudget;
 
     /// <summary>The <c>$id</c>s of the text formats (part 02): their reply is the text itself.</summary>
@@ -46,7 +49,9 @@ public sealed class PlanFormats
     /// <c>$id</c> and <c>$schema</c> dropped from each inlined entry (members beside a <c>$ref</c> are kept, the entry
     /// joining them through <c>allOf</c>), to <see cref="MaxDepth"/> levels. A reference to a key the bundle does not have,
     /// any other reference, a reference reached again inside itself (a cycle), or an expansion too deep or too large gives
-    /// <c>false</c>, the schema nothing fits. A new tree: the bundle is not changed.
+    /// <c>false</c>, the schema nothing fits. Too large is past <see cref="FormatTypes.SchemaBudget"/> schemas, counted as
+    /// publish counts them (A03-011), so a format file publish accepted is not too large here. A new tree: the bundle is
+    /// not changed.
     /// </summary>
     public JsonNode Expand(JsonNode? format)
     {
@@ -120,19 +125,43 @@ public sealed class PlanFormats
         }
     }
 
-    /// <summary>One expansion: the keys being inlined (to find a cycle), the schemas written, and whether it failed.</summary>
+    /// <summary>
+    /// One expansion: the keys being inlined (to find a cycle), the schemas written, and whether it failed. The schemas
+    /// are counted as publish counts them for A03-011 (<see cref="FormatTypes.Expands"/>), so a format publish accepted
+    /// expands here: a schema is the format itself, a value of <c>properties</c>, <c>items</c>, a member of
+    /// <c>anyOf</c>, and each bundle entry inlined (the reference written in its place is not one). Any other member's
+    /// value (a keyword's, an annotation's, an <c>enum</c>'s list) is copied uncounted, as publish copies it; a reference
+    /// met there is inlined all the same, and its entry counted, so every inlining spends the budget. The schemas the
+    /// format writes itself, around the entries it refers to, are counted apart from the entries': publish holds each
+    /// format file to the budget, not the place that refers to it.
+    /// </summary>
     private sealed class Walk(JsonObject defs)
     {
         private readonly HashSet<string> inlining = new(StringComparer.Ordinal);
         private int written;
+        private int own;
 
         public bool Failed { get; private set; }
 
+        /// <summary><paramref name="node"/> where a schema is: counted when it is one written here (an object that is not a reference).</summary>
         public JsonNode? Schema(JsonNode? node, int depth)
         {
             if (Failed)
                 return null;
-            if (depth > MaxDepth || ++written > Budget)
+            if (node is JsonObject schema && !schema.ContainsKey("$ref") && !Counted())
+                return Fail();
+            return Copy(node, depth);
+        }
+
+        /// <summary>One more schema, within the budget: an entry's, or one of the format's own.</summary>
+        private bool Counted() => (inlining.Count > 0 ? ++written : ++own) <= Budget;
+
+        /// <summary><paramref name="node"/> copied, the references in it inlined, to <see cref="MaxDepth"/>.</summary>
+        private JsonNode? Copy(JsonNode? node, int depth)
+        {
+            if (Failed)
+                return null;
+            if (depth > MaxDepth)
                 return Fail();
 
             switch (node)
@@ -143,12 +172,40 @@ public sealed class PlanFormats
                 {
                     var copy = new JsonArray();
                     foreach (var item in array)
-                        copy.Add(Schema(item, depth + 1));
+                        copy.Add(Copy(item, depth + 1));
                     return Failed ? null : copy;
                 }
 
                 default:
                     return node?.DeepClone();
+            }
+        }
+
+        /// <summary>The value of an object's member <paramref name="name"/>, at <paramref name="depth"/>: the schemas publish counts, counted.</summary>
+        private JsonNode? Member(string name, JsonNode? value, int depth)
+        {
+            switch (name)
+            {
+                case "properties" when value is JsonObject properties && depth <= MaxDepth:
+                {
+                    var map = new JsonObject();
+                    foreach (var (property, schema) in properties)
+                        map[property] = Schema(schema, depth + 1);
+                    return Failed ? null : map;
+                }
+
+                case "items":
+                    return Schema(value, depth);
+                case "anyOf" when value is JsonArray members && depth <= MaxDepth:
+                {
+                    var list = new JsonArray();
+                    foreach (var member in members)
+                        list.Add(Schema(member, depth + 1));
+                    return Failed ? null : list;
+                }
+
+                default:
+                    return Copy(value, depth);
             }
         }
 
@@ -161,7 +218,7 @@ public sealed class PlanFormats
                 if (reference is null || !reference.StartsWith(DefsPrefix, StringComparison.Ordinal))
                     return Fail();
                 var key = reference[DefsPrefix.Length..];
-                if (defs[key] is not JsonObject entry || !inlining.Add(key))
+                if (defs[key] is not JsonObject entry || !inlining.Add(key) || !Counted())
                     return Fail();
 
                 var target = new JsonObject();
@@ -169,7 +226,7 @@ public sealed class PlanFormats
                 {
                     if (name is "$id" or "$schema")
                         continue;
-                    target[name] = Schema(value, depth + 1);
+                    target[name] = Member(name, value, depth + 1);
                 }
 
                 inlining.Remove(key);
@@ -187,7 +244,7 @@ public sealed class PlanFormats
                     continue;
 
                 // A member's value is a schema, a list or map of schemas, or an annotation: each is copied, its references inlined.
-                copy[name] = Schema(value, depth + 1);
+                copy[name] = Member(name, value, depth + 1);
             }
 
             if (Failed)
