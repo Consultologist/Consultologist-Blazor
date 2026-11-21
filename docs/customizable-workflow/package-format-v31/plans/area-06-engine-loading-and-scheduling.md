@@ -167,14 +167,14 @@ consultologist-package-format (m39-build)   v31/conformance/refusal-packages/**,
 - `CorvusFormatValueValidator.ValidateExpanded(JsonNode? value, JsonNode schema)`: validation of a self-contained schema (what `Validate` does after it expands).
 - `tests/V31Run/RunFixture.cs`: `Plan(GoldenCase)` and `Plan(Dictionary<string, byte[]> files, ITemplateReads reads)` (through `CompiledPackage.Publish` with `CompiledGoldenTests.Fixed`, then `RunPlan.Build`); used by every later task.
 
-- [ ] **Step 1: Write the failing tests.**
+- [x] **Step 1: Write the failing tests.**
   - `PublishedStampTests.RoundTrips`; `TryRead_RefusesAnythingElse` (theory: null, `""`, `"[]"`, a 30 stamp from `WorkflowPackageStamp.ToJson()`, `specVersion` 30, a hash of 63 hex, upper-case hex, not JSON) → null.
   - `RunPlanTests.TheGoldens_Build`: each of the three goldens builds; nested-note's `TopLevel` is `node.plan, node.section_count, node.sections, node.refine, deliverable.note`; `node.sections.paragraphs.draft_paragraph`'s `Parent` is `node.sections.paragraphs`, its `Depends` holds no key (it reads `item` only), `node.section_count.Depends` is `[node.plan]`, `node.refine.While` is compiled and `Printed("while")` is `node.refine.judge.value.verdict ≠ "good"`; functions' `draft_section` has three entries and `Ret` `node.apply_instructions`.
   - `RunPlanTests.EachPlan_HasItsOwnEvaluator`: two builds of one document give different `Evaluator` instances, each with the limit passed.
   - `RunPlanTests.ACorruptDocument_IsRefusedOrFails_NeverThrows`: from each golden, 300 mutations by `Random(31)` (delete a member, swap a value for another JSON kind, rename a key in `nodes`, point a `ret`, `parent`, `in`, `function` or a body id at a key that is not there, put a loop in its own body, drop a key from `graph.order`, replace a rule's operation with `eval`) → `Build` returns; when it returns a plan, the plan's every `Parent`, `Ret`, `Body` id and `function` names something present.
   - `PlanFormatsTests`: `Expand` of `{"$ref":"#/$defs/check_result"}` has no `$ref` and no `$id`; `Validate` accepts a `check_result`, refuses one missing `pass`; a list-of-`plaintext` format validates `["a"]`; `Read("{\"a\":1}", plaintext)` is the string; `Read("not json", concept_list)` is not parsed; a self-referencing `$defs` entry expands to `false` and validates nothing.
-- [ ] **Step 2: Run; fail.**  - [ ] **Step 3: Implement.**  - [ ] **Step 4: Run all V31; pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1503): the published stamp, and the plan an engine builds from resolve.json`
+- [x] **Step 2: Run; fail.**  - [x] **Step 3: Implement.**  - [x] **Step 4: Run all V31; pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1503): the published stamp, and the plan an engine builds from resolve.json`
 
 ### Task 4: The runner: leaves, readiness, the dispatch order and the ceiling
 
