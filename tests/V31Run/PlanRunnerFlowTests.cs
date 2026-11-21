@@ -637,9 +637,14 @@ public class PlanRunnerFlowTests
     [Fact]
     public async Task APassNodeRead_OfAFlowNodeEnclosingTheReader_IsNoEdge_AndReadsNotRun()
     {
-        // publish lets the judge read its own enclosing if as pass.node.gate (node.gate is A05-003): no edge that could
-        // never be met, and the read gives the if not yet settled
-        var plan = RunFixture.Plan(Gated(), GatedReads("pass.previous.node.gate.content", judge: "pass.node.gate.content"));
+        // publish refuses the judge reading its own enclosing if as pass.node.gate (A05-003, as node.gate; #1504 ruling 7,
+        // PassNodeReadsTests). A document that holds the read anyway (here: publish's, the read written in after) loads with
+        // no edge that could never be met, and the read gives the if not yet settled
+        var (_, compiled) = CompiledPackage.Publish(Gated(), ResolveFixture.Published(), CompiledGoldenTests.Fixed,
+            templates: GatedReads("pass.number", judge: "pass.previous.node.gate.content"));
+        var resolve = compiled!.Resolve.Replace("pass.previous.node.gate.content", "pass.node.gate.content", StringComparison.Ordinal);
+        Assert.NotEqual(compiled.Resolve, resolve);
+        var plan = RunPlan.Build(resolve, compiled.ResolveHash, compiled.LockHash, null).Plan!;
         Assert.Empty(plan.Entries["node.refine.gate.judge"].Depends);
         var host = NestedHost().Reply("node.refine.gate.judge", Good);
 
@@ -673,8 +678,9 @@ public class PlanRunnerFlowTests
     [Fact]
     public async Task APassNodeRead_OfANodeInsideAnInnerLoop_WaitsForTheLoop_AndReadsNotRun()
     {
-        // publish resolves pass.node.<id> anywhere in the while, an inner loop's body too; from outside that loop no
-        // instance is visible, so the reader waits for the loop and reads not_run (read the loop instead, part 04 § 4)
+        // pass.node.<id> names the id anywhere in the while, an inner loop's body too (a body's template saying it is
+        // S04-039 at publish, #1504 ruling 7; these stub reads skip that); from outside that loop no instance is visible,
+        // so the reader waits for the loop and reads not_run (read the loop instead, part 04 § 4)
         var reads = new StubTemplates(new Dictionary<string, string[]>
         {
             ["node.plan"] = ["input.consult_draft.content"],
@@ -738,7 +744,7 @@ public class PlanRunnerFlowTests
     /// the while <c>drafts</c> (the same check) of <c>draft</c>; with <paramref name="forBetween"/>, <c>drafts</c> sits in
     /// the loop <c>sections</c> over the input.
     /// </summary>
-    private static Dictionary<string, byte[]> NestedWhiles(bool forBetween)
+    internal static Dictionary<string, byte[]> NestedWhiles(bool forBetween)
     {
         const string Twice = "\"while\": { \"<\": [{ \"var\": \"pass.number\" }, 2] }, \"max\": 3, \"until\": null, \"checkFirst\": false, ";
         var inner = forBetween ? "nodes/rounds/sections/drafts" : "nodes/rounds/drafts";
@@ -830,7 +836,7 @@ public class PlanRunnerFlowTests
     /// The list input <c>sections</c> and the while <c>refine</c> whose body is the loop <c>notes</c> over it (a note per
     /// section) and <c>judge</c>, reading the notes; it returns the notes.
     /// </summary>
-    private static Dictionary<string, byte[]> LoopInWhile() => ResolveFixture.WithFormats(Minimal(), "section_request", "verdict")
+    internal static Dictionary<string, byte[]> LoopInWhile() => ResolveFixture.WithFormats(Minimal(), "section_request", "verdict")
         .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
             "{ \"label\": \"Sections\", \"description\": null, "
             + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))

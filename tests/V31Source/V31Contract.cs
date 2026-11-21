@@ -87,7 +87,7 @@ internal static class V31Contract
 
     /// <summary>
     /// #1504: area 07's own sentences (<c>A07-NNN</c>), as plan area-07-prompts-and-macros lists them: the first nine at
-    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5; A07-012 and A07-013, Task 8b; A07-014, Task 12b).
+    /// once (later tasks say the rest), then each as a task adds it (A07-010 and A07-011, Task 5; A07-012 and A07-013, Task 8b; A07-014, Task 12b; A07-015 and A07-016, Task 12c).
     /// </summary>
     private static readonly Dictionary<string, string> TemplateAreaSentences = new()
     {
@@ -107,6 +107,8 @@ internal static class V31Contract
         ["A07-013"] = "Snippet '<id>' holds a tag at line <n>, and <subject> <passes it to function '<f>' as param.<p> | reads it in its expression>, "
             + "where it isn't rendered; keep a folder item's body plain text, or read it as item.content in its loop.",
         ["A07-014"] = "Nodes '<a>' and '<b>' bind agent '<name>' at versions <m> and <n>; a package binds one version of an agent.",
+        ["A07-015"] = "MacroChoices names '<id>', which is not a boolean input of the package.",
+        ["A07-016"] = "Input '<id>' is given one value in Inputs and another in MacroChoices; send it once.",
     };
 
     private static string RepoRoot()
