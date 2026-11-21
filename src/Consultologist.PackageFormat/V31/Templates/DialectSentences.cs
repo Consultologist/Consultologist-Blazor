@@ -213,6 +213,16 @@ public static class DialectSentences
     public static SourceRefusal PlacesTooManyUnits(string subject, int limit, string path) =>
         new("A07-011", $"{subject} places more than {Count(limit)} parts, snippets and macros, counting what its parts and snippets place; place fewer.", path);
 
+    /// <summary>
+    /// A07-012 (part 05 § 6.2): the body of folder item <paramref name="id"/> (<c>&lt;folder&gt;/&lt;item&gt;</c>), which
+    /// <paramref name="subject"/> reads as <paramref name="read"/> (<c>item.content</c>) at <paramref name="line"/>,
+    /// <paramref name="does"/> what such a body may not: <c>places &lt;unit&gt;</c>, <c>pipes into renderer.&lt;id&gt;</c> or
+    /// <c>reads &lt;path&gt;</c> (a run spot).
+    /// </summary>
+    public static SourceRefusal FolderItemDoes(string id, string does, string subject, string read, int line, string path) =>
+        new("A07-012", $"Snippet '{id}' {does}, and {subject} reads it as {read} at line {Line(line)}; a folder item's body read in a loop "
+            + "places no part, macro or snippet, pipes into no renderer and reads no run.* or run-dependent value.", path);
+
     /// <summary>S05-042 (R-M1): macro <paramref name="id"/>'s body places <c>macro.<paramref name="other"/></c>, itself or through a snippet it places.</summary>
     public static SourceRefusal MacroBodyPlacesMacro(string id, string other, string path) =>
         new("S05-042", $"Macro '{id}' places macro.{other} in its body; {BodyIsOutput}", path);

@@ -247,7 +247,7 @@ public static partial class SourceTemplates
                 return;
             foreach (var body in bodies.Where(b => b.Host.Site == TemplateSite.Prompt))
             {
-                foreach (var reader in body.Units.Select(u => u.Body).Prepend(body))
+                foreach (var reader in body.Units.Select(u => u.Body).Prepend(body).SelectMany(b => b.FolderItems.Prepend(b)))
                 {
                     foreach (var read in reader.Reads)
                     {
@@ -263,9 +263,10 @@ public static partial class SourceTemplates
             }
         }
 
-        /// <summary>Whether <paramref name="body"/>, or a snippet it places, reads <c>profile.*</c>.</summary>
+        /// <summary>Whether <paramref name="body"/>, a snippet it places, or a folder item it reads as <c>item.content</c>, reads <c>profile.*</c>.</summary>
         private static bool ReadsProfile(CheckedBody body) =>
-            body.Reads.Concat(body.Units.SelectMany(u => u.Body.Reads)).Any(r => r.Head?.StartsWith("profile.", StringComparison.Ordinal) == true);
+            body.Units.Select(u => u.Body).Prepend(body).SelectMany(b => b.FolderItems.Prepend(b)).SelectMany(b => b.Reads)
+                .Any(r => r.Head?.StartsWith("profile.", StringComparison.Ordinal) == true);
 
         // ---- every macro, placed or not ------------------------------------------------------------
 

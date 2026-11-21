@@ -44,7 +44,15 @@ public sealed record CheckedBody(
     IReadOnlyList<Placement> Placements,
     IReadOnlyList<TemplateRender> Renders,
     IReadOnlyList<TemplateRunSpot> RunSpots,
-    IReadOnlyList<PlacedUnit> Units);
+    IReadOnlyList<PlacedUnit> Units)
+{
+    /// <summary>
+    /// #1504 (part 05 § 6.2): the body of each item of each snippet folder this body reads as <c>item.content</c> (a loop's
+    /// item over <c>snippet.&lt;folder&gt;</c>, or a <c>parent</c> of it), checked here as a snippet body at this body's
+    /// place, each once, in the order read; none is a unit of <c>placements</c> (a folder item has no <c>if</c>).
+    /// </summary>
+    public IReadOnlyList<CheckedBody> FolderItems { get; init; } = [];
+}
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 §§ 3.2, 6.3, 7.2; D2): one unit a body places, as D2's <c>placements</c>
@@ -78,7 +86,8 @@ public sealed record TemplateCheck(IReadOnlyList<SourceRefusal> Refusals, IReadO
 /// already faults (<see cref="TemplateSyntax.Parse"/>) is reported and not typed. Every pipe into a renderer is typed
 /// against the renderer's <c>input</c> and recorded (<see cref="CheckedBody.Renders"/>). Each snippet a body places is
 /// checked there, each part a prompt places is its node's text, and each macro it places is its instruction and its body
-/// checked there (<see cref="CheckedBody.Units"/>; part 05 §§ 3.2, 6, 7, 8);
+/// checked there (<see cref="CheckedBody.Units"/>; part 05 §§ 3.2, 6, 7, 8), and each item's body of a snippet folder
+/// it reads as <c>item.content</c> too (<see cref="CheckedBody.FolderItems"/>; part 05 § 6.2);
 /// every snippet and every macro, placed or not, is held to the rules that need only its text (its syntax, a snippet's
 /// format and header, a snippet cycle, a macro's markers, placements and Markdown), and its reads are typed only where it
 /// is placed (an unplaced one's are not). Never throws on package content; every walk over
@@ -204,7 +213,8 @@ public static partial class SourceTemplates
         /// One body: its syntax faults (and nothing more), or its reads, <c>if</c>s, placements and run spots;
         /// for a snippet's body <paramref name="reads"/> is the row of § 3.1 its placer reads by, and
         /// <paramref name="unavailable"/> gathers, in order, the reads that place does not give (S05-022, said per
-        /// placement by <see cref="Expand"/>, since only the placer and the line differ).
+        /// placement by <see cref="Expand"/>, since only the placer and the line differ). The folder items it reads as
+        /// <c>item.content</c> are checked at its place too (<see cref="FolderItems"/>).
         /// </summary>
         private CheckedBody? Body(TemplateHost host, TemplateSyntax syntax, TemplateSite? reads = null, List<string>? unavailable = null)
         {
@@ -219,7 +229,8 @@ public static partial class SourceTemplates
             var checkedBody = body.Run();
             Refusals.AddRange(body.Refusals);
             Warnings.AddRange(body.Warnings);
-            return checkedBody;
+            var items = FolderItems(checkedBody, reads ?? host.Site);
+            return items.Count == 0 ? checkedBody : checkedBody with { FolderItems = items };
         }
     }
 

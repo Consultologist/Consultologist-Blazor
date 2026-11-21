@@ -112,29 +112,41 @@ public sealed class PackageTemplates : ITemplateReads
         var unsent = substituted.Except(sent, StringComparer.Ordinal).ToList();
         var places = body.Units.Where(u => u.Instruction is not null).Select(u => u.Site).ToList();
         var profile = body.Units.Any(u => u.MacroBody is { } macro
-            && new[] { macro }.Concat(macro.Units.Select(m => m.Body)).Any(b => b.Reads.Any(r => r.Written.StartsWith("profile.", StringComparison.Ordinal))));
+            && new[] { macro }.Concat(macro.Units.Select(m => m.Body)).SelectMany(b => b.FolderItems.Prepend(b))
+                .Any(b => b.Reads.Any(r => r.Written.StartsWith("profile.", StringComparison.Ordinal))));
         return new TemplateReads(reads, places, renders, spots, profile, unsent);
     }
 
     /// <summary>
     /// <paramref name="body"/> and every body it places, each with whether it is sent to the model: its own text, each
     /// unit's (a part's text, a snippet's body, a macro's instruction), then for a macro its body and the snippets placed
-    /// in it, which are substituted into the reply.
+    /// in it, which are substituted into the reply; each followed by the folder items' bodies it reads as
+    /// <c>item.content</c> (part 05 § 6.2: rendered where they are read, so their reads are the reader's).
     /// </summary>
     private static IEnumerable<(CheckedBody Body, bool Sent)> Placed(CheckedBody body)
     {
-        yield return (body, true);
+        foreach (var each in WithFolderItems(body, true))
+            yield return each;
         foreach (var unit in body.Units)
         {
-            yield return (unit.Body, true);
+            foreach (var each in WithFolderItems(unit.Body, true))
+                yield return each;
             if (unit.MacroBody is { } macro)
             {
-                yield return (macro, false);
+                foreach (var each in WithFolderItems(macro, false))
+                    yield return each;
                 foreach (var inner in macro.Units)
-                    yield return (inner.Body, false);
+                {
+                    foreach (var each in WithFolderItems(inner.Body, false))
+                        yield return each;
+                }
             }
         }
     }
+
+    /// <summary><paramref name="body"/>, then the folder items' bodies it reads as <c>item.content</c> (part 05 § 6.2), each <paramref name="sent"/> as it is.</summary>
+    private static IEnumerable<(CheckedBody Body, bool Sent)> WithFolderItems(CheckedBody body, bool sent) =>
+        body.FolderItems.Select(item => (item, sent)).Prepend((body, sent));
 
     /// <summary>The reads of <paramref name="body"/> as written, in source order, that read a value: not a <c>for</c> variable's, a position's or a renderer's <c>value</c>.</summary>
     private static IEnumerable<string> ReadsOf(CheckedBody body)
