@@ -8,7 +8,8 @@ namespace Consultologist.Api.Tests.V31Logic;
 /// #1501: every expression site of a package source (part 03 § 3; D2, D4, D5, D28), checked as the third step of
 /// <see cref="SourceCheck.Run"/>: each kind of site under its subject and file, the inputs and run facts typed by
 /// <see cref="PackageScope"/>, the other roots and everything inside a function deferred, a scope from outside used,
-/// and the run-fact warnings of § 11.2.
+/// and the run-fact warnings of § 11.2. #1502 (area 05): <see cref="SourceCheck.Run"/> now gives area 05's scope, so the
+/// deferral is seen through <see cref="SourceExpressions.Check"/> with none.
 /// </summary>
 public class SourceExpressionsTests
 {
@@ -188,13 +189,23 @@ public class SourceExpressionsTests
         Assert.Contains("(boolean | null)", refusal.Sentence, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Without a scope from outside, <see cref="PackageScope"/> defers the other roots; <see cref="SourceCheck.Run"/>
+    /// gives area 05's (#1502), which resolves them.
+    /// </summary>
     [Fact]
     public void OtherRoots_AreDeferred()
     {
-        var result = Run(Set(SourceFixture.Minimal(), "nodes/plan.md", "if",
-            """{"===":[{"var":"node.anything.value.x"},{"var":"item.value.kind"}]}"""));
+        var files = Set(SourceFixture.Minimal(), "nodes/plan.md", "if",
+            """{"===":[{"var":"node.anything.value.x"},{"var":"item.value.kind"}]}""");
+        var parsed = SourceParser.Parse(files, Registry.Value.Names);
+        var types = SourceTypes.Check(parsed.Package!, Registry.Value);
 
-        Assert.True(result.Refusals.Count == 0, Said(result));
+        var deferred = SourceExpressions.Check(parsed.Package!, types.Types!);
+        Assert.Empty(deferred.Refusals);
+
+        var resolved = Run(files);
+        Assert.Equal(["S03-014", "S03-014"], resolved.Refusals.Select(r => r.Id));
     }
 
     [Fact]
@@ -202,11 +213,15 @@ public class SourceExpressionsTests
     {
         const string file = "functions/draft_section/standard_draft.md";
 
-        // Area 05 says S04-050 for an input read inside a function.
-        var input = Run(Set(SourceFixture.Full(), file, "if", """{"var":"input.nope.value"}"""));
-        Assert.True(input.Refusals.Count == 0, Said(input));
-        var site = Assert.Single(input.Expressions!.Sites, s => s.Context.Site.Path == file);
+        // PackageScope defers an input read inside a function; area 05 says S04-050 for it (#1502).
+        var files = Set(SourceFixture.Full(), file, "if", """{"var":"input.nope.value"}""");
+        var parsed = SourceParser.Parse(files, Registry.Value.Names);
+        var deferred = SourceExpressions.Check(parsed.Package!, SourceTypes.Check(parsed.Package!, Registry.Value).Types!);
+        Assert.Empty(deferred.Refusals);
+        var site = Assert.Single(deferred.Expressions!.Sites, s => s.Context.Site.Path == file);
         Assert.Equal("draft_section", site.Context.Function!.Id);
+        var input = Run(files);
+        Assert.Equal("S04-050", Assert.Single(input.Refusals).Id);
 
         var profile = Run(Set(SourceFixture.Full(), file, "if", """{"var":"profile.name"}"""));
         var refusal = Assert.Single(profile.Refusals);

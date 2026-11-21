@@ -16,6 +16,7 @@ namespace Consultologist.Api.Tests.V31Source;
 /// has a case too.
 /// #1501 (specVersion 31, area 04): every case is judged on its expressions too, the third step, and every sentence of
 /// <see cref="ExpressionSentences"/> a package can reach has a case, except <c>LogicNotShipped</c>.
+/// #1502 (specVersion 31, area 05): and every sentence of <see cref="ResolveSentences"/>.
 /// </summary>
 public class RefusalPackagesTests
 {
@@ -80,11 +81,11 @@ public class RefusalPackagesTests
     [Fact]
     public void EverySentence_TheCheckerCanSay_HasACase()
     {
-        // Each method of SourceSentences, FormatSentences and ExpressionSentences that returns a refusal makes one sentence
+        // Each method of SourceSentences, FormatSentences, ExpressionSentences and ResolveSentences that returns a refusal makes one sentence
         // with a fixed id; calling it with any arguments gives that id (FormatSentences.Subject, which
         // returns text, is not one; nor is ExpressionSentences.Shape, which gives the sentence of a fault of the
         // written form by calling the others).
-        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences))
+        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences))
             .Except(NotShipped)
             .Except(TypesNotShipped)
             .Except(LogicNotShipped)

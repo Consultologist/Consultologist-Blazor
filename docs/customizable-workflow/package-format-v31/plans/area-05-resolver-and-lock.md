@@ -117,7 +117,7 @@ consultologist-package-format (m39-build)   v31/conformance/refusal-packages/**,
 
 Rules: inside a function `input.*`, `run.*`, `check.*` and an outer `item` or `pass` are `Refused` with S04-050 / S04-051 (`profile.*` never reaches the scope: S03-018 is said first); `param.<id>` outside a function, or an id the function does not declare, is `Unknown`. `item` with no enclosing loop is S04-026's sibling for expressions: `Unknown` unless a row fits (S04-040 for `item.parent`; S04-036, S04-037, S04-038 for `pass`). A node of that id that exists inside a loop the site is outside of is S04-039. Member types are D14's. A loop over `.items` gives `item` the element of § 2.6 (`item.state`, `item.value`, `item.label`, `item.nodes.<id>.value`).
 
-- [ ] **Step 1: Write the failing tests.** `ResolveFixture` builds, on `SourceFixture.Minimal()`, the packages the tests name: `NestedNote()` (part 04 § 2.8's two loops and § 3.5's while, with the formats of part 07 § 2.9), `Conditional()` (§ 5.4's `case` and `if` over an array input), `Functions()` (§ 7.11's `draft_section`, its call in a loop over a snippet folder, and the check loop over `.items`). Tests:
+- [x] **Step 1: Write the failing tests.** `ResolveFixture` builds, on `SourceFixture.Minimal()`, the packages the tests name: `NestedNote()` (part 04 § 2.8's two loops and § 3.5's while, with the formats of part 07 § 2.9), `Conditional()` (§ 5.4's `case` and `if` over an array input), `Functions()` (§ 7.11's `draft_section`, its call in a loop over a snippet folder, and the check loop over `.items`). Tests:
   - `ReferenceStringTests.Parse` (theory): `node.plan.value.sections` → 4 segments; `""`, `"node..x"`, `"node.x.value.0"`, `" node.x"`, null → null.
   - `ScopeTreeTests.Visible_ResolvesOutward`: in `NestedNote()`, from `draft_paragraph`'s frame `node.outline` is `node.sections.outline`, `node.plan` is `node.plan`, `node.judge` is null; from the top level `node.outline` is null and `Hidden` gives it.
   - `ScopeTreeTests.SiblingScopes_ResolveToTheirOwn`: two sibling loops each with `draft` and a reader beside it: each reader resolves `node.draft` to its own loop's key; a function with a node `plan` resolves `node.plan` to `node.plan` of the function, and its `Function` is set; `node.coverage` and `check.coverage` resolve to different nodes.
@@ -126,10 +126,10 @@ Rules: inside a function `input.*`, `run.*`, `check.*` and an outer `item` or `p
   - `ResolvedScopeTests.AnyReference_IsResolvedOrRefused_NeverThrows`: for 2,000 strings built by `Random(31)` from the segments `node check input item pass param run parent previous history number value content items state plan sections outline x 0` joined by 0 to 300 dots, at every frame of `NestedNote()` and `Functions()`, `Parse` then `Resolve` returns.
   - `SourceResolveTests.TheExamples_Resolve`: `SourceCheck.Run` on the three fixtures has no refusal and `Expressions` holds no site with a null `Type.Format` that reads `node`, `item`, `pass` or `param` (nothing is deferred any more, macro and snippet sites aside).
   - `SourceResolveTests.AnExpressionReadingAnUnknownNode_IsS03014`: `{"var":"node.nothing.value"}` in a computed node.
-- [ ] **Step 2: Run them; they fail to compile.**
-- [ ] **Step 3: Implement.** Correct, as part of the step, the valid packages of areas 02 to 04's refusal cases that read things the real scope now refuses (04-D44 names S03-020 and S03-030), and `SourceExpressionsTests` cases that asserted deferral; add refusal cases for S04-036 to S04-040, S04-050, S04-051 and re-export (Global Constraints).
-- [ ] **Step 4: Run `--filter "FullyQualifiedName~V31"`; all pass.**
-- [ ] **Step 5: Commit and push.** `PackageFormat (#1502): references resolved to keys, and the scope every expression is read in`
+- [x] **Step 2: Run them; they fail to compile.**
+- [x] **Step 3: Implement.** Correct, as part of the step, the valid packages of areas 02 to 04's refusal cases that read things the real scope now refuses (04-D44 names S03-020 and S03-030), and `SourceExpressionsTests` cases that asserted deferral; add refusal cases for S04-036 to S04-040, S04-050, S04-051 and re-export (Global Constraints).
+- [x] **Step 4: Run `--filter "FullyQualifiedName~V31"`; all pass.**
+- [x] **Step 5: Commit and push.** `PackageFormat (#1502): references resolved to keys, and the scope every expression is read in`
 
 ### Task 2: Loops
 

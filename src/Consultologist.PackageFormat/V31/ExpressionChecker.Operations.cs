@@ -519,8 +519,11 @@ public static partial class ExpressionChecker
         return others.Count == 1 ? others[0] : (null, null);
     }
 
-    /// <summary>A list format's <c>items</c>, taken out so that it reads alone (its <c>#/$defs</c> carried, as <see cref="FormatReads"/> does); null when none.</summary>
-    private static JsonNode? ItemsOf(JsonNode? format, FormatSet formats) =>
+    /// <summary>
+    /// A list format's <c>items</c>, taken out so that it reads alone (its <c>#/$defs</c> carried, as <see cref="FormatReads"/> does); null when none.
+    /// #1502 (area 05): a loop's element is read the same way (<see cref="ScopeTree"/>).
+    /// </summary>
+    internal static JsonNode? ItemsOf(JsonNode? format, FormatSet formats) =>
         CoreWithDefs(format, formats) is ({ } schema, var defs) && schema["items"] is { } items ? FormatReads.Carried(items, defs) : null;
 
     /// <summary>An object format's properties in written order, each taken out so that it reads alone (its <c>#/$defs</c> carried).</summary>

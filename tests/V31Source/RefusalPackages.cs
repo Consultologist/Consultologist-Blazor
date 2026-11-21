@@ -29,7 +29,8 @@ internal sealed record RefusalCase(string Id, string About, Dictionary<string, b
 /// (<see cref="RefusalPackagesExport"/>), never by hand. #1500 (specVersion 31, area 03): every case
 /// is held to the reader and the type rules together, and chapter 2's cases are
 /// <c>RefusalPackages.Types.cs</c>'s. #1501 (specVersion 31, area 04): and to the expression rules, the third
-/// step; chapter 3's cases are <c>RefusalPackages.Logic.cs</c>'s.
+/// step; chapter 3's cases are <c>RefusalPackages.Logic.cs</c>'s. #1502 (specVersion 31, area 05): and to the resolve
+/// step before them; the resolver's cases are <c>RefusalPackages.Resolve.cs</c>'s.
 /// </summary>
 internal static partial class RefusalPackages
 {
@@ -62,7 +63,7 @@ internal static partial class RefusalPackages
     public static IReadOnlyList<RefusalCase> All() =>
         Intake().Concat(Layout()).Concat(Headers()).Concat(Members()).Concat(Ids()).Concat(Kinds())
             .Concat(Loops()).Concat(Branches()).Concat(Functions()).Concat(Scopes()).Concat(Registry())
-            .Concat(Types()).Concat(Logic())
+            .Concat(Types()).Concat(Logic()).Concat(Resolve())
             .OrderBy(c => c.Id, StringComparer.Ordinal)
             .ToList();
 
@@ -228,7 +229,7 @@ internal static partial class RefusalPackages
             "A body where none may be: a computed node keeps everything in its header (chapter 1 § 1.4). Invalid: "
             + "nodes/section_count.md has a line after its closing fence. Valid: nothing after the fence.",
             WithComputed(),
-            WithComputed().With("nodes/section_count.md", Text(WithComputed(), "nodes/section_count.md") + "Count the sections of the plan.\n"));
+            WithComputed().With("nodes/section_count.md", Text(WithComputed(), "nodes/section_count.md") + "Measure the plan.\n"));
 
         yield return new RefusalCase("A02-005",
             "A plain JSON file whose root is not an object (chapter 1 § 1.4; this implementation's sentence). Invalid: "
@@ -634,17 +635,20 @@ internal static partial class RefusalPackages
             .With("nodes/sections/outline.md", Agent("Outlining the section", Plain,
                 "Outline the section '{{ item.value.title }}' of the note as a short list of points.\n"));
 
-    /// <summary>A <c>while</c>, <c>refine</c>, of at most 3 passes, drafting a summary and judging it.</summary>
+    /// <summary>
+    /// A <c>while</c>, <c>refine</c>, of at most 3 passes, drafting a summary and judging it: it runs again while the
+    /// judge still has something to say (#1502: a text read is tested by blank, not compared, now that node reads are typed).
+    /// </summary>
     private static Dictionary<string, byte[]> WithWhile() =>
         MinimalListing("refine")
             .With("nodes/refine/index.json", Json(Node("while", "Refining the summary", Plain, false, true,
-                "\"while\": { \"!==\": [{ \"var\": \"node.judge.value\" }, \"good\"] }, \"max\": 3, "
+                "\"while\": { \"!\": [{ \"blank\": [{ \"var\": \"node.judge.content\" }] }] }, \"max\": 3, "
                 + "\"until\": null, \"checkFirst\": false, \"nodes\": [\"draft_summary\", \"judge\"], "
                 + "\"ret\": \"node.refine.draft_summary\"")))
             .With("nodes/refine/draft_summary.md", Agent("Drafting the summary", Plain,
                 "Summarise the note in two sentences for Dr A. Sample.\n"))
             .With("nodes/refine/judge.md", Agent("Judging the summary", Plain,
-                "Answer good, or revise, for the summary below.\n\n{{ node.draft_summary.content }}\n"));
+                "Say what the summary below still needs; write nothing when it is good.\n\n{{ node.draft_summary.content }}\n"));
 
     /// <summary>An <c>if</c>, <c>billing_gate</c>, whose then body renders one line of billing text.</summary>
     private static Dictionary<string, byte[]> WithIf() =>
@@ -707,12 +711,15 @@ internal static partial class RefusalPackages
                 SourceFixture.Deliverable("Consult letter", Plain, "null", "release"),
                 "Re: Margaret Okafor\n\n{{ node.plan.content }}\n\nDr A. Sample\n"));
 
-    /// <summary>A computed node, <c>section_count</c>, counting the plan's sections.</summary>
+    /// <summary>
+    /// A computed node, <c>section_count</c>, measuring the plan, a <c>plaintext</c> (#1502: its size, now that node reads
+    /// are typed; the plan of <see cref="SourceFixture.Minimal"/> has no sections to count).
+    /// </summary>
     private static Dictionary<string, byte[]> WithComputed() =>
         MinimalListing("section_count")
             .With("nodes/section_count.md", Md(
-                Node("computed", "Counting the sections", "\"number\"", true, true,
-                    "\"if\": null, \"expression\": { \"size\": [{ \"var\": \"node.plan.value.sections\" }] }"),
+                Node("computed", "Measuring the plan", "\"number\"", true, true,
+                    "\"if\": null, \"expression\": { \"size\": [{ \"var\": \"node.plan.content\" }] }"),
                 ""));
 
     /// <summary>A package format of verdicts named <paramref name="id"/>.</summary>
