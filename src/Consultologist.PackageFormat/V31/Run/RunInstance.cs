@@ -63,6 +63,45 @@ internal sealed class RunInstance
     /// <summary>Whether it has settled.</summary>
     public bool IsSettled => Phase == InstancePhase.Settled;
 
+    /// <summary>
+    /// Whether it is ready: for every key its entry depends on, other than its own descendants (a flow node's rule reading
+    /// its body), the instance that stands for that key as seen from its frame has settled. That instance is the key's own
+    /// when one is visible; otherwise the nearest ancestor of the key (along its <c>Parent</c> chain) that has a visible
+    /// instance, since the key's own lives in a frame not yet opened, and a flow node settles only after its frames do. A
+    /// key with neither (outside every frame the reader sees) does not hold it back, and reads <c>not_run</c>.
+    /// </summary>
+    public bool IsReady()
+    {
+        var map = Frame.Map;
+        foreach (var key in Entry.Depends)
+        {
+            if (IsDescendant(map, key, Entry.Key))
+                continue;
+
+            RunInstance? standing = null;
+            var steps = 0;
+            for (var at = key; at != null && standing == null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
+                standing = Frame.Find(at);
+            if (standing is { IsSettled: false })
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Whether <paramref name="key"/>'s chain of parents in <paramref name="map"/> reaches <paramref name="ancestor"/> (bounded by the map's size).</summary>
+    private static bool IsDescendant(IReadOnlyDictionary<string, PlanEntry> map, string key, string ancestor)
+    {
+        var steps = 0;
+        for (var at = map.GetValueOrDefault(key)?.Parent; at != null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
+        {
+            if (at == ancestor)
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>Settles it as <paramref name="state"/>, read as <paramref name="read"/>.</summary>
     public void Settle(RowState state, JsonObject read)
     {

@@ -40,7 +40,11 @@ public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState
 /// </summary>
 public sealed record RunDecision(string Site, string Member, string Printed, bool? Result, string? Branch, DateTime DecidedAtUtc);
 
-/// <summary>#1503 (specVersion 31, area 06): where the run's rows and decisions go (area 09 stores them).</summary>
+/// <summary>
+/// #1503 (specVersion 31, area 06): where the run's rows and decisions go (area 09 stores them). The runner awaits each task
+/// inline, in the orchestration, so an implementation's tasks must complete synchronously (a Durable entity signal,
+/// telemetry) or be durable, replay-safe tasks the orchestration's context gave; never other I/O.
+/// </summary>
 public interface IRunRecorder
 {
     /// <summary>Records a finished row.</summary>

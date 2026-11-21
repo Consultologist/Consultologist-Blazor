@@ -168,42 +168,11 @@ public sealed partial class PlanRunner
                 {
                     if (failure != null)
                         return;
-                    if (IsReady(instance) && await StepAsync(instance))
+                    if (instance.IsReady() && await StepAsync(instance))
                         moved = true;
                 }
             }
             while (moved && failure == null);
-        }
-
-        /// <summary>
-        /// Whether every key <paramref name="instance"/>'s entry depends on that is visible from its frame has settled. Its
-        /// own descendants (a flow node's rule reading its body) are never waited on.
-        /// </summary>
-        private static bool IsReady(RunInstance instance)
-        {
-            var entry = instance.Entry;
-            foreach (var key in entry.Depends)
-            {
-                if (IsDescendant(instance.Frame.Map, key, entry.Key))
-                    continue;
-                if (instance.Frame.Find(key) is { IsSettled: false })
-                    return false;
-            }
-
-            return true;
-        }
-
-        /// <summary>Whether <paramref name="key"/>'s chain of parents in <paramref name="map"/> reaches <paramref name="ancestor"/> (bounded by the map's size).</summary>
-        private static bool IsDescendant(IReadOnlyDictionary<string, PlanEntry> map, string key, string ancestor)
-        {
-            var steps = 0;
-            for (var at = map.GetValueOrDefault(key)?.Parent; at != null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
-            {
-                if (at == ancestor)
-                    return true;
-            }
-
-            return false;
         }
 
         /// <summary>
@@ -289,7 +258,7 @@ public sealed partial class PlanRunner
                     // A render takes no slot.
                     instance.Phase = InstancePhase.Running;
                     var render = new RenderCall(instance.Key, entry.Key, instance.Frame.Function,
-                        scope.Data(entry, instance.Frame, entry.Reads), limits.RenderSteps);
+                        scope.Data(entry, instance.Frame, CompiledReads(entry)), limits.RenderSteps);
                     flights.Add(new Flight(instance, host.RenderAsync(render), Agent: false));
                     continue;
                 }
@@ -308,10 +277,18 @@ public sealed partial class PlanRunner
                 instance.Phase = InstancePhase.Running;
                 instance.Attempt = 1;
                 var call = new AgentCall(instance.Key, entry.Key, instance.Frame.Function, instance.Attempt, false,
-                    scope.Data(entry, instance.Frame, entry.Reads));
+                    scope.Data(entry, instance.Frame, CompiledReads(entry)));
                 flights.Add(new Flight(instance, host.CallAgentAsync(call), Agent: true));
             }
         }
+
+        /// <summary>
+        /// What a call's scope holds: exactly the entry's compiled <c>reads</c> (its body's and its header's, as publish wrote
+        /// them), never more, since Durable keeps an activity's input in its history. <see cref="RunPlan.Build"/> has checked
+        /// it is a list of strings.
+        /// </summary>
+        private static IEnumerable<string> CompiledReads(PlanEntry entry) =>
+            entry.Json["reads"] is JsonArray reads ? reads.Select(r => SourceLayout.Text(r)).OfType<string>() : [];
 
         /// <summary>Whether the <c>maxParallel</c> of every loop around <paramref name="instance"/> allows one more call (Task 6; at the top level there is none).</summary>
         private static bool CapsAllow(RunInstance instance) => true;
