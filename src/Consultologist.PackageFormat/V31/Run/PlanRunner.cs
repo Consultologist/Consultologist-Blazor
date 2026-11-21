@@ -37,13 +37,14 @@ public sealed record RunResult(
 /// (<see cref="RunInstance.Rank"/>), an agent call only while fewer than <see cref="RunLimits.MaxAgentCalls"/> are in flight;
 /// then it waits, by <see cref="Task.WhenAny(IEnumerable{Task})"/> over what is in flight, for one to finish, and settles
 /// it. A node that fails fails the job: nothing more is dispatched and nothing in flight is awaited. The run ends when
-/// nothing is in flight and nothing is ready.
+/// nothing is in flight and nothing is ready, or when it reaches <see cref="RunLimits.JobMinutes"/> (it then times out, each
+/// call in flight recorded cancelled). An agent's reply, its repair and its retries are <c>PlanRunner.Agents.cs</c>'s.
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IRunHost"/>'s (and the recorder's), reads no clock but
 /// <see cref="IRunHost.UtcNow"/>, and iterates only in the fixed order or list order. It never throws on package content or
-/// model output; a fault of the host or the recorder is theirs and passes through. Tasks 5 to 8 add retries,
-/// <c>for</c>, <c>while</c>/<c>if</c>/<c>case</c> and <c>call</c> as the other parts of this partial class.
+/// model output; a fault of the host or the recorder is theirs and passes through. Tasks 6 to 8 add <c>for</c>,
+/// <c>while</c>/<c>if</c>/<c>case</c> and <c>call</c> as the other parts of this partial class.
 /// </remarks>
 public sealed partial class PlanRunner
 {
@@ -72,8 +73,16 @@ public sealed partial class PlanRunner
         return new Run(this, inputs, startedAtUtc).RunAsync();
     }
 
-    /// <summary>A call in flight: the instance and the host's task.</summary>
-    private sealed record Flight(RunInstance Instance, Task Task, bool Agent);
+    /// <summary>What a flight waits on: an agent call's attempt, a render, or the wait before an agent call's next attempt.</summary>
+    private enum FlightKind
+    {
+        Agent,
+        Render,
+        Retry,
+    }
+
+    /// <summary>Something in flight: the instance and the host's task. An instance has at most one at a time.</summary>
+    private sealed record Flight(RunInstance Instance, Task Task, FlightKind Kind);
 
     /// <summary>One run: its frames and instances, what is in flight, its counters and its failure.</summary>
     private sealed partial class Run(PlanRunner runner, RunInputs inputs, DateTime startedAtUtc)
@@ -94,7 +103,11 @@ public sealed partial class PlanRunner
         private int agentCalls;
         private int agentsInFlight;
         private int peakInFlight;
-        private (string? Sentence, string Key)? failure;
+        private (string? Sentence, string? Key)? failure;
+        private bool timedOut;
+
+        /// <summary>The host's timer for the job's time left, made the first time the run waits.</summary>
+        private Task? jobTimer;
 
         /// <summary>When the orchestration started (the job's time limit runs from it).</summary>
         public DateTime StartedAtUtc { get; } = startedAtUtc;
@@ -103,6 +116,9 @@ public sealed partial class PlanRunner
         {
             foreach (var key in plan.TopLevel)
                 Add(top, plan.Entries[key]);
+
+            if (PastTheJobLimit())
+                await TimeOutAsync();
 
             while (failure == null)
             {
@@ -121,11 +137,25 @@ public sealed partial class PlanRunner
                     break;
                 }
 
-                var finished = await Task.WhenAny(flights.Select(f => f.Task));
+                jobTimer ??= host.DelayAsync(StartedAtUtc + TimeSpan.FromMinutes(limits.JobMinutes) - host.UtcNow);
+                var finished = await Task.WhenAny(flights.Select(f => f.Task).Append(jobTimer));
+                if (ReferenceEquals(finished, jobTimer) || PastTheJobLimit())
+                {
+                    // Nothing that finished at or after the limit is read.
+                    await TimeOutAsync();
+                    break;
+                }
+
                 var flight = flights.First(f => ReferenceEquals(f.Task, finished));
                 flights.Remove(flight);
                 await LandAsync(flight);
             }
+
+            // What is still in flight is never awaited: its late answer changes nothing, and its fault is never unobserved.
+            foreach (var abandoned in flights)
+                Observe(abandoned.Task);
+            if (jobTimer != null)
+                Observe(jobTimer);
 
             var values = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
             foreach (var instance in top.Instances)
@@ -135,7 +165,7 @@ public sealed partial class PlanRunner
             }
 
             return new RunResult(
-                failure == null ? RunState.Completed : RunState.Failed,
+                timedOut ? RunState.TimedOut : failure == null ? RunState.Completed : RunState.Failed,
                 failure?.Sentence,
                 failure?.Key,
                 values,
@@ -259,7 +289,7 @@ public sealed partial class PlanRunner
                     instance.Phase = InstancePhase.Running;
                     var render = new RenderCall(instance.Key, entry.Key, instance.Frame.Function,
                         scope.Data(entry, instance.Frame, CompiledReads(entry)), limits.RenderSteps);
-                    flights.Add(new Flight(instance, host.RenderAsync(render), Agent: false));
+                    flights.Add(new Flight(instance, host.RenderAsync(render), FlightKind.Render));
                     continue;
                 }
 
@@ -275,10 +305,9 @@ public sealed partial class PlanRunner
                 agentsInFlight++;
                 peakInFlight = Math.Max(peakInFlight, agentsInFlight);
                 instance.Phase = InstancePhase.Running;
-                instance.Attempt = 1;
-                var call = new AgentCall(instance.Key, entry.Key, instance.Frame.Function, instance.Attempt, false,
+                var call = new AgentCall(instance.Key, entry.Key, instance.Frame.Function, 1, false,
                     scope.Data(entry, instance.Frame, CompiledReads(entry)));
-                flights.Add(new Flight(instance, host.CallAgentAsync(call), Agent: true));
+                StartAgent(instance, call);
             }
         }
 
@@ -293,45 +322,25 @@ public sealed partial class PlanRunner
         /// <summary>Whether the <c>maxParallel</c> of every loop around <paramref name="instance"/> allows one more call (Task 6; at the top level there is none).</summary>
         private static bool CapsAllow(RunInstance instance) => true;
 
-        /// <summary>Settles a call that finished.</summary>
+        /// <summary>
+        /// Moves on what finished: an agent call's attempt (its slot is freed once the node settles, a repair or a retry
+        /// keeping it), the wait before its next attempt, or a render.
+        /// </summary>
         private async Task LandAsync(Flight flight)
         {
-            if (flight.Agent)
+            switch (flight.Kind)
             {
-                agentsInFlight--;
-                await AgentAsync(flight.Instance, await (Task<AgentOutcome>)flight.Task);
-            }
-            else
-            {
-                await RenderedAsync(flight.Instance, await (Task<RenderOutcome>)flight.Task);
-            }
-        }
-
-        /// <summary>
-        /// An agent call's outcome: a reply is read as its format's value (part 02: a text format's reply is the text). A
-        /// throttled or failed attempt fails the node with part 09 § 9's sentence; Task 5 adds the retries before it, and
-        /// what an invalid reply does (<c>onInvalid</c>).
-        /// </summary>
-        private async Task AgentAsync(RunInstance instance, AgentOutcome outcome)
-        {
-            switch (outcome.Kind)
-            {
-                case AgentOutcomeKind.Completed:
-                    var (value, parsed) = plan.Formats.Read(outcome.Reply ?? "", instance.Entry.Format);
-                    if (!parsed)
-                    {
-                        await FailAsync(instance, null); // Task 5: the reply goes to onInvalid
-                        return;
-                    }
-
-                    await CompleteAsync(instance, value, RowState.Completed);
+                case FlightKind.Agent:
+                    await AgentAsync(flight.Instance, await (Task<AgentOutcome>)flight.Task);
+                    if (flight.Instance.IsSettled)
+                        agentsInFlight--;
                     return;
-                case AgentOutcomeKind.Throttled:
-                    await FailAsync(instance, $"The model service stayed busy for {Count(limits.CapacityWaitMinutes)} minutes. Run the workflow again later.");
+                case FlightKind.Retry:
+                    await flight.Task;
+                    CallAgain(flight.Instance);
                     return;
                 default:
-                    await FailAsync(instance,
-                        $"The model service {ErrorWords(outcome.ErrorKind)} {Count(instance.Attempt)} times in a row. Run the workflow again later.");
+                    await RenderedAsync(flight.Instance, await (Task<RenderOutcome>)flight.Task);
                     return;
             }
         }
@@ -371,7 +380,7 @@ public sealed partial class PlanRunner
         }
 
         /// <summary>Fails <paramref name="instance"/>, and the job with it, with <paramref name="sentence"/>.</summary>
-        private Task FailAsync(RunInstance instance, string? sentence)
+        private Task FailAsync(RunInstance instance, string sentence)
         {
             failure ??= (sentence, instance.Key);
             return SettleAsync(instance, RowState.Failed, sentence, RunScope.Absent("failed"), null);
@@ -382,6 +391,8 @@ public sealed partial class PlanRunner
         {
             instance.Settle(state, read);
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
+            if (instance.Entry.Kind == PlanKind.Agent)
+                AgentDetail(instance, detail);
             return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail));
         }
 
