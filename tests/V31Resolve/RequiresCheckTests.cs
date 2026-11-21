@@ -35,7 +35,8 @@ public class RequiresCheckTests
         string scriban = "7.2.6",
         IReadOnlyList<BreakPoint>? breakPoints = null,
         IEnumerable<string>? kinds = null,
-        IReadOnlyDictionary<string, IReadOnlySet<int>>? agents = null)
+        IReadOnlyDictionary<string, IReadOnlySet<int>>? agents = null,
+        IReadOnlyDictionary<string, string>? libraries = null)
     {
         var required = Pair.Value.Resolve["requires"]!["agents"]!.AsObject()
             .ToDictionary(
@@ -49,7 +50,8 @@ public class RequiresCheckTests
             (kinds ?? AllKinds).ToHashSet(StringComparer.Ordinal),
             AllFeatures.ToHashSet(StringComparer.Ordinal),
             agents ?? required,
-            breakPoints ?? []);
+            breakPoints ?? [],
+            libraries ?? Pair.Value.Lock["libraries"]!.AsObject().ToDictionary(l => l.Key, l => (string)l.Value!, StringComparer.Ordinal));
     }
 
     private static IReadOnlyList<SourceRefusal> Said(IReadOnlyList<SourceRefusal> refusals)
@@ -110,6 +112,41 @@ public class RequiresCheckTests
         Assert.Equal(["S07-003", "S07-003"], refusals.Select(r => r.Id));
         Assert.Contains("needs the evaluator ^1.0.0; this engine runs the evaluator 1.0.1.", refusals[0].Sentence);
         Assert.Contains("needs size ^1.0.0; this engine runs size 1.1.0.", refusals[1].Sentence);
+    }
+
+    [Fact]
+    public void ABreakPointOfALibrary_StatesTheEnginesVersionOfIt()
+    {
+        // The lock is at Markdig 0.41.3 and Corvus.JsonSchema 4.3.17 (LockCompilerTests.Example).
+        var breakPoints = new[] { new BreakPoint("Markdig", "0.42.0"), new BreakPoint("Corvus.JsonSchema", "5.0.0") };
+        var libraries = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["Corvus.JsonSchema"] = "5.8.12",
+            ["Corvus.Text.Json.JsonLogic"] = "5.8.11",
+            ["Markdig"] = "0.42.1",
+            ["Scriban"] = "7.2.6",
+        };
+
+        var refusals = Said(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints, libraries: libraries)));
+        Assert.Equal(["S07-003", "S07-003"], refusals.Select(r => r.Id));
+        Assert.Equal(
+            "This workflow (example-nested-note@v2026.12.1) needs Corvus.JsonSchema ^4.3.17; this engine runs Corvus.JsonSchema 5.8.12. "
+            + "Publish a new version of the workflow to run it on this engine.",
+            refusals[0].Sentence);
+        Assert.Equal(
+            "This workflow (example-nested-note@v2026.12.1) needs Markdig ^0.41.3; this engine runs Markdig 0.42.1. "
+            + "Publish a new version of the workflow to run it on this engine.",
+            refusals[1].Sentence);
+        Assert.All(refusals, r => Assert.Equal("lock.json", r.Path));
+
+        // An engine still before a break point is not refused for it; one that does not say its version of a library
+        // with a break point is refused, naming its version unknown.
+        var before = new Dictionary<string, string>(libraries, StringComparer.Ordinal) { ["Markdig"] = "0.41.9", ["Corvus.JsonSchema"] = "4.9.0" };
+        Assert.Empty(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints, libraries: before)));
+        var unsaid = libraries.Where(l => l.Key != "Markdig").ToDictionary(l => l.Key, l => l.Value, StringComparer.Ordinal);
+        unsaid["Corvus.JsonSchema"] = "4.9.0";
+        var refusal = Assert.Single(Said(RequiresCheck.Engine(Resolve(), Lock(), Engine(breakPoints: breakPoints, libraries: unsaid))));
+        Assert.Contains("needs Markdig ^0.41.3; this engine runs Markdig unknown.", refusal.Sentence);
     }
 
     [Fact]

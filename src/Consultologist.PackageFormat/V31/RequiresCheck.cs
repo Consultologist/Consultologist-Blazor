@@ -13,8 +13,10 @@ public sealed record BreakPoint(string Component, string Version);
 /// <summary>
 /// #1502 (specVersion 31, area 05, D10): what an engine runs, as <see cref="RequiresCheck.Engine"/> holds a package to it:
 /// the evaluator's and Scriban's exact versions, each operation's (name to version), the node kinds and features it
-/// supports, each attested agent's versions (name to versions), and its break points (part 07 § 4.4). Engine
-/// configuration: area 06 builds it.
+/// supports, each attested agent's versions (name to versions), its break points (part 07 § 4.4), and the exact
+/// version of each library <c>lock.json</c> locks (<paramref name="Libraries"/>, by <c>lock.json</c>'s keys:
+/// <c>Markdig</c>, <c>Corvus.Text.Json.JsonLogic</c>, <c>Corvus.JsonSchema</c>), which a break point of one is held
+/// to. Engine configuration: area 06 builds it.
 /// </summary>
 public sealed record EngineCapabilities(
     string Evaluator,
@@ -23,7 +25,8 @@ public sealed record EngineCapabilities(
     IReadOnlySet<string> Kinds,
     IReadOnlySet<string> Features,
     IReadOnlyDictionary<string, IReadOnlySet<int>> Agents,
-    IReadOnlyList<BreakPoint> BreakPoints);
+    IReadOnlyList<BreakPoint> BreakPoints,
+    IReadOnlyDictionary<string, string> Libraries);
 
 /// <summary>
 /// #1502 (specVersion 31, area 05, D10): what an engine checks before a job starts (part 07 § 3, § 4.2, § 4.4, § 10 "At
@@ -60,10 +63,11 @@ public static class RequiresCheck
     /// <paramref name="lock"/>, on <paramref name="engine"/>, in this order: S07-003 for Scriban, the evaluator, then
     /// each operation <c>requires.operations</c> names (ordinal), when the engine's version is outside the range, the
     /// operation is missing, the locked version is not a version, or the package is locked before one of the
-    /// component's break points with the engine at or past it; S07-003 for another locked library locked before one of
-    /// its break points; S07-004 for each kind, then each feature, the engine does not support; S07-005 for each agent
-    /// (ordinal) at a version the engine does not have. At most one refusal per component. A null argument is the
-    /// caller's error.
+    /// component's break points with the engine at or past it; S07-003 for another locked library (ordinal) locked before
+    /// one of its break points with the engine's version of it (<see cref="EngineCapabilities.Libraries"/>) at or past it,
+    /// or not given, naming that library and the engine's version of it (or <c>unknown</c>); S07-004 for each kind, then
+    /// each feature, the engine does not support; S07-005 for each agent (ordinal) at a version the engine does not have.
+    /// At most one refusal per component. A null argument is the caller's error.
     /// </summary>
     public static IReadOnlyList<SourceRefusal> Engine(JsonObject resolve, JsonObject @lock, EngineCapabilities engine)
     {
@@ -103,15 +107,16 @@ public static class RequiresCheck
         }
 
         // The other locked libraries (Markdig, the two Corvus libraries) have no range: only their break points hold them,
-        // and the engine, whose configuration lists the break point, is at it.
+        // each against the engine's own version of the library; an engine that does not say its version is held to it.
         foreach (var point in (engine.BreakPoints ?? []).Where(p => p?.Component is { } c && c != Scriban && LockCompiler.Member(libraries, c) != null)
                      .GroupBy(p => p.Component, StringComparer.Ordinal).OrderBy(g => g.Key, StringComparer.Ordinal))
         {
             var locked = Text(libraries, point.Key);
-            if (point.FirstOrDefault(p => CaretRange.Compare(locked ?? "", p.Version) < 0) is { } passed)
+            var running = engine.Libraries?.GetValueOrDefault(point.Key) is { Length: > 0 } v ? v : null;
+            if (point.Any(p => CaretRange.Compare(locked ?? "", p.Version) < 0 && (running == null || CaretRange.Compare(running, p.Version) >= 0)))
             {
                 refusals.Add(ResolveSentences.ComponentOutOfRange(
-                    package, version, point.Key, locked == null ? Unknown : CaretRange.From(locked), passed.Version, ResolveCompiler.LockFile));
+                    package, version, point.Key, locked == null ? Unknown : CaretRange.From(locked), running ?? Unknown, ResolveCompiler.LockFile));
             }
         }
 
