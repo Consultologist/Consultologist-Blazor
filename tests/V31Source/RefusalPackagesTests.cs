@@ -59,8 +59,17 @@ public class RefusalPackagesTests
     /// (<c>ITemplateReads</c>, area 07's) says, and <c>SourceCheck.Run</c> without it never judges it (D1). S04-072,
     /// S04-073, S04-079 and S04-080: part 04 § 10.2's notes, measured against the engine's limits (<c>PublishNotes</c>,
     /// D11); a package that gets them is accepted.
+    /// Part 07 § 10's sentences, none a publish refusal of a package source (D10): S07-003, S07-004 and S07-005 are said at
+    /// job start, of <c>requires</c> and the lock against an engine (<c>RequiresCheck.Engine</c>), and S06-031 and S06-032
+    /// at job start, of <c>needs.profile</c> against the account's profile (<c>RequiresCheck.Profile</c>); S07-006 and
+    /// S07-017 at load, of the stored pair against its stamp (<c>CompiledPackage.Verify</c>); S07-016 at import, of the
+    /// compiled copies intake drops; S07-015 by CI, of a compiled copy committed to the examples repository.
     /// </summary>
-    private static readonly string[] ResolveNotShipped = ["S04-063", "S04-072", "S04-073", "S04-074", "S04-079", "S04-080"];
+    private static readonly string[] ResolveNotShipped =
+    [
+        "S04-063", "S04-072", "S04-073", "S04-074", "S04-079", "S04-080",
+        "S06-031", "S06-032", "S07-003", "S07-004", "S07-005", "S07-006", "S07-015", "S07-016", "S07-017",
+    ];
 
     /// <summary>
     /// The ids of <see cref="LogicNotShipped"/> that no public method of <see cref="ExpressionSentences"/> returning a
@@ -213,6 +222,7 @@ public class RefusalPackagesTests
         var t when t == typeof(bool) => true,
         var t when t == typeof(ExpressionSite) => new ExpressionSite(ExpressionSiteKind.NodeIf, "x", "if", "x", null, null),
         var t when t == typeof(LineageValue) => new LineageValue(true, "x"),
+        var t when t == typeof(IReadOnlyList<string>) => new[] { "resolve.json" },
         _ => "x",
     };
 }

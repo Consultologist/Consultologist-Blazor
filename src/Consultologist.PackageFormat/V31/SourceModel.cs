@@ -18,7 +18,15 @@ public sealed record SourceParseResult(
     SourcePackage? Package,
     IReadOnlyList<SourceRefusal> Refusals,
     IReadOnlyList<string> Normalised,
-    IReadOnlyDictionary<string, string> Files);
+    IReadOnlyDictionary<string, string> Files)
+{
+    /// <summary>
+    /// #1502 (specVersion 31, area 05): the compiled copies and the publish report intake dropped unread at the root
+    /// (<see cref="SourceIntakeResult.Dropped"/>), sorted, whatever the outcome; the Editor's import says S07-016 of them
+    /// (<see cref="ResolveSentences.ImportIgnored"/>).
+    /// </summary>
+    public IReadOnlyList<string> Dropped { get; init; } = [];
+}
 
 /// <summary>
 /// #1499: a package source read whole (part 01 § 2): the manifest, the nine top-level folders and

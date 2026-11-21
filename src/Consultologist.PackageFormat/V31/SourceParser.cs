@@ -35,7 +35,7 @@ public static partial class SourceParser
         // Intake's refusals keep intake's order: each file's in path order, then the bounds in the table's.
         var intake = SourceIntake.Read(upload);
         if (intake.Refusals.Count > 0)
-            return new SourceParseResult(null, intake.Refusals, intake.Normalised, intake.Files);
+            return new SourceParseResult(null, intake.Refusals, intake.Normalised, intake.Files) { Dropped = intake.Dropped };
 
         var walk = new SourceWalk(intake.Files, registry);
         ReadRoot(walk);
@@ -56,7 +56,7 @@ public static partial class SourceParser
         SourceScopes.Check(tree, walk.Refusals);
 
         var refusals = Order(walk.Refusals);
-        return new SourceParseResult(refusals.Count == 0 ? tree : null, refusals, intake.Normalised, intake.Files);
+        return new SourceParseResult(refusals.Count == 0 ? tree : null, refusals, intake.Normalised, intake.Files) { Dropped = intake.Dropped };
     }
 
     /// <summary>Each refusal once (same id, sentence and path), ordered by path, then in the order found.</summary>

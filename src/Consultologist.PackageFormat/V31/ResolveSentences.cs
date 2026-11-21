@@ -213,6 +213,54 @@ internal static class ResolveSentences
     public static SourceRefusal CallsPastLimit(long n, int limit) =>
         new("S04-080", $"Up to {Number(n)} agent calls could run in one job; this engine runs at most {Number(limit)} per job, and fails the job beyond that.", "");
 
+    /// <summary>
+    /// S07-003 (at job start, part 07 § 10): the package needs <paramref name="component"/> (<c>Scriban</c>, <c>the
+    /// evaluator</c> or an operation's name) in <paramref name="range"/>, and the engine runs
+    /// <paramref name="engineVersion"/>; also said of a package locked before one of the engine's break points (§ 4.4).
+    /// </summary>
+    public static SourceRefusal ComponentOutOfRange(string package, string version, string component, string range, string engineVersion, string path) =>
+        new("S07-003", $"This workflow ({package}@{version}) needs {component} {range}; this engine runs {component} {engineVersion}. Publish a new version of the workflow to run it on this engine.", path);
+
+    /// <summary>S07-004 (at job start): the package needs the <paramref name="kindOrFeature"/> (<c>kind</c> or <c>feature</c>) <paramref name="name"/>, which the engine does not support.</summary>
+    public static SourceRefusal NotSupported(string package, string version, string kindOrFeature, string name, string path) =>
+        new("S07-004", $"This workflow ({package}@{version}) needs {kindOrFeature} '{name}', which this engine doesn't support. Publish a new version of the workflow to run it on this engine.", path);
+
+    /// <summary>S07-005 (at job start): the package needs the attested agent <paramref name="agent"/> at <paramref name="agentVersion"/>, which the engine does not have.</summary>
+    public static SourceRefusal AgentMissing(string package, string version, string agent, string agentVersion, string path) =>
+        new("S07-005", $"This workflow ({package}@{version}) needs agent {agent} version {agentVersion}, which this engine doesn't have. Publish a new version of the workflow to run it on this engine.", path);
+
+    /// <summary>S07-006 (at load, part 07 § 10): the compiled document's bytes are not canonical, or do not hash to the stamp's <c>resolveHash</c>.</summary>
+    public static SourceRefusal ResolveDoesNotMatch(string package, string version) =>
+        new("S07-006", $"Workflow {package}@{version} can't run: its compiled document doesn't match the hash published for it.", CompiledPackage.ResolveFile);
+
+    /// <summary>S07-017 (at load): the lock's bytes are not canonical or do not hash to the stamp's <c>lockHash</c>, or the lock and the compiled document do not name each other.</summary>
+    public static SourceRefusal LockDoesNotMatch(string package, string version) =>
+        new("S07-017", $"Workflow {package}@{version} can't run: its lock doesn't match the hash published for it, or doesn't belong to its compiled document.", ResolveCompiler.LockFile);
+
+    /// <summary>S07-015 (a warning CI gives in the examples repository, § 7): the compiled copy at <paramref name="path"/> is committed.</summary>
+    public static SourceRefusal EvidenceCommitted(string path) =>
+        new("S07-015", $"{path} is evidence written only by publish; it is ignored and shouldn't be committed.", path);
+
+    /// <summary>
+    /// S07-016 (the Editor, on import, § 7): said once when the compiled copies intake <paramref name="dropped"/>
+    /// (<see cref="SourceParseResult.Dropped"/>) hold <c>resolve.json</c> or <c>lock.json</c>; null when they hold neither.
+    /// </summary>
+    public static SourceRefusal? ImportIgnored(IReadOnlyList<string> dropped)
+    {
+        ArgumentNullException.ThrowIfNull(dropped);
+        return dropped.Any(d => d is "resolve.json" or ResolveCompiler.LockFile)
+            ? new("S07-016", "This package's resolve.json and lock.json were ignored; publishing writes new ones.", "")
+            : null;
+    }
+
+    /// <summary>S06-031 (at start, part 07 § 10; part 06): the package reads <c>profile.signature</c> and the account has none set.</summary>
+    public static SourceRefusal SignatureNotSet() =>
+        new("S06-031", "This workflow needs your signature. Choose one in Profile.", "");
+
+    /// <summary>S06-032 (at start): the package reads a profile field other than the signature, labelled <paramref name="label"/> (<c>v31/profile.json</c>), and the account has none set.</summary>
+    public static SourceRefusal ProfileFieldNotSet(string label) =>
+        new("S06-032", $"This workflow needs your {label}. Set it in Profile, under Letter details.", "");
+
     private static string Bool(bool value) => value ? "true" : "false";
 
     private static string Number(long value) => value.ToString(System.Globalization.CultureInfo.InvariantCulture);
