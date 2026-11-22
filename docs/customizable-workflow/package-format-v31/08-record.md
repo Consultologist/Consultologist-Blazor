@@ -88,11 +88,18 @@ check.part_coverage.coverage                  a check inside a check loop
 deliverable.emr.note                          deliverables/emr/note.md
 ```
 
-**A row key** is the rooted key, then `:` and the item path for an instance inside a loop or a
-`while` (v30's path grammar, unchanged): `node.sections.paragraphs.draft_paragraph:2/1`,
-`node.refine.judge:3`, `node.standards.section.standard_draft:3`, `check.part_coverage.coverage:2`.
-`.` separates scopes, `/` separates path segments and `:` separates the key from the path; no id or
-item id contains any of the three, and item paths never contain `:`.
+**A row key** is the rooted key, then `:` and the ids of the items the instance sits in, from the
+outermost loop inward, joined by `/`; and `#<n>` for a pass of a `while`, written where the `while`
+sits in that path ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 2; area 06's row shapes are the contract):
+`node.sections.paragraphs.draft_paragraph:2/1`, `node.refine.judge#3` (the third pass of `refine`),
+`node.refine.sections#2:3` (item 3 of the second pass),
+`node.standards.section.standard_draft:3`, `check.part_coverage.coverage:2`. `.` separates scopes,
+`/` separates item ids, `:` separates the key from the path and `#` marks a pass; **no id or item id
+contains any of the four,** and item paths never contain `:` or `#`.
+
+**Item ids are 1-based everywhere a person sees them** ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 2): a loop's items by
+position, array inputs included (an array input's first element is item `1`, as the other loops'
+items always were).
 
 **Function calls:** inner rows are keyed through the call node's rooted key, never the function's
 name. The function's name is on the call's row (§ 7). Two calls to the same function get different
@@ -125,10 +132,17 @@ always a sub-row, since item paths never contain `:`
 
 | Sub-row | Id |
 |---|---|
-| a renderer use | `<row key>/render:<n>`, `n` its 1-based position in the body: `node.identify_problem/render:1`, `node.sections.paragraphs.draft_paragraph:2/1/render:1` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891), [in a loop](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6959888097)) |
+| a renderer use | `<row key>/render:<n>`, `n` its 1-based number among the renderer uses of the whole entry, counted across every unit its text could place (the prompt, its parts, its snippets and macros), placed or not, so the ids of one row may have gaps ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 6): `node.identify_problem/render:1`, `node.sections.paragraphs.draft_paragraph:2/1/render:1` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6957680891), [in a loop](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6959888097)) |
 | a macro row | `<row key>/macro:<macro id>`: `node.assessment/macro:letrozole_prescription_text` |
-| a run spot | `<row key>/spot:<n>` |
+| a run spot | `<row key>/spot:<n>`, `n` its 1-based order of filling |
 | a decision | `<owner key>/if:<site>` (§ 5.2): `node.standards.assessment:7/if:macro.letrozole_prescription_text` |
+
+**A renderer use or a run spot inside a template `for` repeats per iteration** (decided in the build,
+#1506). Each sub-row then carries `pass`, an array of integers or `null`: one number per enclosing
+template loop, 1-based, as a substitution's (§ 10). `render:<n>`'s `<n>` stays the use's number in
+the entry, and a run spot's id is `<row key>/spot:<n>` with `<n>` the 1-based order in which the
+spots were filled, its `site` staying the body's site number. An id and its `pass` name one
+sub-row.
 
 ## 3. The job header
 
@@ -244,7 +258,8 @@ Milestone 40: #1439 and #1445.
 **One sub-row per pipe step,** in the order the steps appear in the body, per instance (per item and
 pass), inside the consuming row's `renders`. A chain (`{{ node.extract.value | renderer.concept_list
 | renderer.bullets }}`) gives one sub-row per step (`…/render:1`, `…/render:2`)
-([part 05](05-templates-and-macros.md)). It's never a node row and never scheduled
+([part 05](05-templates-and-macros.md)). The number is the entry's (§ 2.3), so a row's ids may skip one.
+It's never a node row and never scheduled
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1397#issuecomment-6877988508)):
 
 | Member | Type | Null | Meaning |
@@ -254,9 +269,10 @@ pass), inside the consuming row's `renders`. A chain (`{{ node.extract.value | r
 | `templateHash` | string | never | the renderer's `bodyHash` in `resolve.json`, or for a built-in renderer its template's hash at the locked version |
 | `source` | string | never | the path piped in (`node.extract.value`), or the previous step's sub-row id in a chain |
 | `inputHash` | string | never | the hash of the piped value (canonical JSON for data, UTF-8 for text) |
+| `pass` | array of integer | allowed | one number per enclosing template loop, 1-based; `null` when the use is in no template loop (§ 2.3) |
 | `inputSize` | string | allowed | a size summary from the input's format, for example `"14 concepts"`; `null` when none applies |
 | `outputHash` | string | never | the hash of the rendered text |
-| `outputLength` | integer | never | the rendered text's length in characters |
+| `outputLength` | integer | never | the rendered text's length **in runes** ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 5) |
 | `runDependent` | boolean | never | `true` when the piped value is a `run.*` fact or run-dependent; the run spot then covers the whole pipeline ([part 05](05-templates-and-macros.md)) |
 
 The input value and rendered text are produced text, under the 7-day retention (§ 11).
