@@ -1848,7 +1848,8 @@ envelope is passed on, and its format refuses it.
 - **The body substituted.** It is the macro's body rendered in the prompt's data (`profile.*` readable, `run.*`
   filled directly), after dropping exactly one file-final line ending. A `plaintext` macro in a `markdown_block` or
   `markdown_inline` node is escaped first with `MarkdownEscape.Escape` (D14, D7: a backslash before each of the 32
-  ASCII punctuation characters, nothing else; version `1.0.0`). `contentHash` is of the text substituted. A snippet
+  ASCII punctuation characters, and since #1505's ruling R9 the first space or tab leading each line written `&#32;`
+  or `&#9;`, nothing else; version `1.0.0`). `contentHash` is of the text substituted. A snippet
   a macro's body places is rendered when its decision holds.
 
 With faults, `Finish` returns the reply as it came, with `AgentOutcome.Invalid` set. The runner never reads that
@@ -1948,10 +1949,15 @@ Each family is exported by a test that does nothing without `CONFORMANCE_EXPORT_
   - a dialect case is composed by `BodyComposer` over a published plan, and a macro case is also finished by
     `AgentTurn`;
   - a renderer case is a built-in renderer over the concept cases, piped in a published prompt;
-  - the escape vectors are `MarkdownEscape.Escape` over the 32 ASCII punctuation characters and ten sentences.
+  - the escape vectors are `MarkdownEscape.Escape` over the 32 ASCII punctuation characters and ten sentences (#1505,
+    R9, added three: a line led by one space, lines led by a tab, and a run of spaces mid-line; 45 vectors).
 
   The same bytes are the in-repo goldens under `tests/V31Templates/Golden/`. `DialectGoldenTests` holds them to the
-  code and the pinned families to them, and `GOLDEN_UPDATE_V31=1` rewrites them.
+  code and the pinned families to them, and `GOLDEN_UPDATE_V31=1` rewrites them. Since #1505's ruling R11 the three
+  families are shared with area 08, so the export merges into them (`DialectGoldensExport.ExportTo`): a case it
+  produces is written afresh, a case already there that it does not produce is kept with its index entry, and an
+  escape vector is kept unless the export writes one with the same `plain`. `TheSharedFamilies_KeepEveryCase` fails
+  when a `renderer-goldens` case or an escape vector present at pin bdc1ee6 is no longer exported.
 - **`tests/V31Run/Golden/macros.run.txt`** pins a whole run with a classifier, a folder macro placed by a part, and a
   run spot, each row's detail included.
 

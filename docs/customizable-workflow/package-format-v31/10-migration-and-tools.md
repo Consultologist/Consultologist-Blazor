@@ -435,8 +435,8 @@ library's generators as for every spec bump
   moves case mapping or word characters is caught.
 - **Number vectors:** IEEE doubles, non-finite results giving `null`, and `integer` as a kind of
   `number` (part 03 § 7).
-- **Markdown escape vectors:** CommonMark's backslash escapes for ASCII punctuation
-  ([part 06](06-checks-deliverables-profile.md)).
+- **Markdown escape vectors:** CommonMark's backslash escapes for ASCII punctuation, and the
+  first space or tab of each line as its character reference ([part 06](06-checks-deliverables-profile.md)).
 - **Fixtures for the compiled documents:** fixture packages with their expected `resolve.json` and
   `lock.json` bytes and hashes, `requires` and `needs`, and the publish report (including the
   ceiling note and test results).
