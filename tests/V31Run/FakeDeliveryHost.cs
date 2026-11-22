@@ -101,6 +101,19 @@ internal sealed class FakeDeliveryHost : IDeliveryHost
     /// </summary>
     public void MoveClock(TimeSpan by) => UtcNow += by;
 
+    /// <summary>
+    /// Ends every delay due at or before <see cref="Start"/> + <paramref name="by"/>, without moving the clock: a replay step
+    /// reading a timer's event that fired before the step's clock.
+    /// </summary>
+    public void EndDelaysDueBy(TimeSpan by)
+    {
+        foreach (var timer in timers.Where(t => t.Due <= Start + by).ToList())
+        {
+            timers.Remove(timer);
+            timer.Done.TrySetResult();
+        }
+    }
+
     /// <summary>Answers the oldest held send named <paramref name="name"/> with <paramref name="outcome"/>, inline.</summary>
     public void Answer(string name, DeliverySendOutcome outcome)
     {
@@ -122,4 +135,61 @@ internal sealed class FakeDeliveryHost : IDeliveryHost
         Assert.True(run.IsCompleted, "The delivery has not ended: something it waits on never ended.");
         return run;
     });
+
+    /// <summary>
+    /// Runs delivery as Durable replay steps do: <paramref name="start"/> starts the run under a context that queues each
+    /// continuation of the runner; each of <paramref name="steps"/> then ends or answers what it will outside that context,
+    /// and only after it the runner reads what finished, in one go (the queue is run to its end). The run must have ended
+    /// after the last step.
+    /// </summary>
+    public static Task<DeliveryResult> DriveInSteps(Func<Task<DeliveryResult>> start, params Action[] steps) => Task.Run(() =>
+    {
+        var context = new StepContext();
+        var run = context.Within(start);
+        foreach (var step in steps)
+        {
+            step();
+            context.Within(() => context.RunQueued());
+        }
+
+        Assert.True(run.IsCompleted, "The delivery has not ended: something it waits on never ended.");
+        return run;
+    });
+
+    /// <summary>A context that queues what is posted to it, run by <see cref="RunQueued"/> in order on the caller's thread.</summary>
+    private sealed class StepContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Callback, object? State)> queue = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => queue.Enqueue((d, state));
+
+        public override void Send(SendOrPostCallback d, object? state) => d(state);
+
+        public void RunQueued()
+        {
+            while (queue.TryDequeue(out var next))
+                next.Callback(next.State);
+        }
+
+        /// <summary>Runs <paramref name="body"/> with this context current, then puts the caller's back.</summary>
+        public T Within<T>(Func<T> body)
+        {
+            var before = Current;
+            SetSynchronizationContext(this);
+            try
+            {
+                return body();
+            }
+            finally
+            {
+                SetSynchronizationContext(before);
+            }
+        }
+
+        public void Within(Action body) => Within(() =>
+        {
+            body();
+            return 0;
+        });
+    }
 }

@@ -210,11 +210,19 @@ public sealed class DeliveryRunner
         }
 
         /// <summary>
-        /// The window closed: each destination not final, in the fixed order, is failed, a send still in flight recorded as the
-        /// attempt <c>failed: window</c> (its result is never read).
+        /// The window closed. A send that has already finished, unread (a Durable step reads what finished before it in one go),
+        /// is landed first, in the order started: an email that went out is <c>sent</c>, and a failure keeps its error kind.
+        /// Then each destination not final, in the fixed order, is failed, a send still in flight recorded as the attempt
+        /// <c>failed: window</c> (its result is never read).
         /// </summary>
         private void Close()
         {
+            foreach (var finished in flights.Where(f => f is { Wait: false, Task.IsCompleted: true }).ToList())
+            {
+                flights.Remove(finished);
+                Land(finished, ((Task<DeliverySendOutcome>)finished.Task).GetAwaiter().GetResult());
+            }
+
             foreach (var destination in destinations.Where(d => d.Result == null))
             {
                 if (flights.FirstOrDefault(f => f.To == destination) is { Wait: false } sending)

@@ -220,6 +220,52 @@ public class DeliveryRunnerTests
         Assert.Equal(0, host.OutstandingDelays);
     }
 
+    [Theory]
+    [InlineData("a retry wait")]
+    [InlineData("the window")]
+    public async Task ASend_ThatFinishedInTheStepThatCloses_IsSent(string closedBy)
+    {
+        // Under Durable Functions a step reads what finished before it in one go. The note's retry wait (due at +2, read by a
+        // step whose clock is past the close) or the window's timer ends delivery in the same step in which the letter's
+        // send finished, unread: the letter went out, so it is sent, never failed: window.
+        IReadOnlyList<DeliverableOutcome> outcomes =
+        [
+            Outcome("deliverable.note", ["email"]),
+            Outcome("deliverable.letter", ["email"]),
+        ];
+        var host = new FakeDeliveryHost()
+            .Script("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.Failed, "error"))
+            .Hold("delivery:deliverable.letter/email");
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 5), host, new ListRecorder());
+
+        var result = await FakeDeliveryHost.DriveInSteps(
+            () => runner.RunAsync(outcomes),
+            () =>
+            {
+                if (closedBy == "a retry wait")
+                {
+                    host.MoveClock(TimeSpan.FromMinutes(5));
+                    host.EndDelaysDueBy(TimeSpan.FromMinutes(2));
+                }
+                else
+                {
+                    host.Advance(TimeSpan.FromMinutes(5));
+                }
+
+                host.Answer("delivery:deliverable.letter/email", new DeliverySendOutcome(DeliverySendResult.Sent, null));
+            });
+
+        Assert.Equal(2, host.Sends.Count);
+        Assert.Equal(["delivery:deliverable.note/email", "delivery:deliverable.letter/email"], result.Rows.Select(r => r.Key));
+        var (note, letter) = (result.Rows[0], result.Rows[1]);
+        Assert.Equal(("failed", "failed: email"), (note.Result, note.Reason));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "failed: error")], note.Attempts);
+        Assert.Equal(("sent", null, FakeDeliveryHost.Start), (letter.Result, letter.Reason, letter.AtUtc));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "sent")], letter.Attempts);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
     [Fact]
     public async Task ASecondAttempt_ThatSends_IsSent()
     {
