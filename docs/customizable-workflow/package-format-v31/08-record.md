@@ -37,8 +37,9 @@ twins.
   computed` as before. At 12 **every row records the node's `producer`** (§ 4)
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1385#issuecomment-6981863868)).
 - **The record holds hashes, ids, counts, reasons and names, never element values** (#369's rule),
-  with the exceptions storage 11 made (an item name drawn from a field) and the ones this part adds:
-  run facts and run spot outputs (§ 8), and printed conditions (§ 5), which are package text.
+  with the exceptions storage 11 made (an item name, now only when it comes from package text) and
+  the ones this part adds: run facts and the outputs of run spots that read raw `run.*` facts (§ 8),
+  and printed conditions (§ 5), which are package text.
 
 ### 1.1 Where the record is stored
 
@@ -49,6 +50,21 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
   The partition key is the job id; the row key is the rooted row key (§ 2.1) escaped for Azure
   Tables, with the true key kept as a property (`key`). Node, check, call, deliverable and decision
   rows are all stored this way; sub-rows (§ 2.3) stay inside their row.
+- **Retained text is never in a row** (decided in the build, #1506). Every text § 11's right-hand
+  column names lives in the job's text blobs, beside the record. A row member that would hold such a
+  text holds `null` and its hash instead (`itemName` with `itemNameHash`, § 4; a run spot's `output`,
+  § 8.2). So the sweep deletes blobs and never rewrites a row, and `recordHash` can be proved for the
+  record's whole life.
+- **Where each thing is stored** (decided in the build, #1506):
+  - **Rows** are in the table `ConsultGenerationRecordRows`: partition key the job id, row key the
+    escaped row key, and the properties `key`, `section` (`node`, `check`, `deliverable`,
+    `delivery` or `decision`), `row` (the row's canonical JSON, continued in `row1`, `row2`… past
+    30,000 characters) and `hash`.
+  - **Retained text** is in the blobs `{appUserId}/{jobId}/text/{sha256 hex of the key}.{part}.json`
+    in the account's outputs container, `part` being `produced` (written by the activity that made
+    the text) or `settled` (written with the row).
+  - **The canonical record document** is the blob `{appUserId}/{jobId}/record.json` in the same
+    container, which the sweep never deletes.
 - **A row write is insert-if-absent,** keyed by job and rooted key ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical second
   write (a Durable replay) is a no-op; a differing one is refused and recorded as an engine fault.
 - **A job that has finished producing and has deliveries to make is `delivering`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)),
@@ -422,7 +438,7 @@ Only the facts read are present. Run facts aren't patient text, so they're outsi
 
 ### 8.2 Run spots and the two hashes
 
-For a body that reads `run.*` (a prompt, a `rendered` node, a deliverable, a snippet or macro body),
+For a body that reads `run.*` (a prompt, a `rendered` node, a deliverable, or a snippet placed in one),
 the record carries **the sent-text hash** (the main hash, as today), **the run-neutral hash** (the
 same text with each run spot left as its `{{run:<n>}}` marker), and **each run spot**
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6920426229),
@@ -434,17 +450,21 @@ the whole pipeline.
 |---|---|---|---|
 | `id` | string | never | `<row key>/spot:<n>` |
 | `site` | integer | never | the spot's position in the body (`resolve.json`'s `runSpots`) |
+| `pass` | array of integer | allowed | one number per enclosing template loop, 1-based; `null` for a spot in no template loop (§ 2.3) |
+| `start` | integer | never | where the spot's output begins in the sent text, in runes ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 5) |
+| `length` | integer | never | the output's length, in runes |
 | `reads` | string | never | what it reads (`run.date`, or a run-dependent value's path) |
 | `valueHash` | string | never | the hash of the value read |
-| `output` | string | never | the formatted output (`"16 November 2026"`). **Kept permanently only when the spot reads raw `run.*` facts**; a spot that is also input- or model-derived (a run-dependent `computed` value that reads an input) follows 7-day retention ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
+| `output` | string | allowed | the formatted output (`"16 November 2026"`), **in the row only when the spot reads raw `run.*` facts**, and then kept for the life of the record; a spot that is also input- or model-derived (a run-dependent `computed` value that reads an input) has `output` `null`, its text is in the retained text under 7-day retention, and `outputHash` stays ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); decided in the build, #1506) |
 | `outputHash` | string | never | the output's hash |
 
 - **The sent text is rebuilt exactly** from the run-neutral text and the spot outputs, each put
-  at the position recorded while rendering, never found by searching the text ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so the main
+  at the position recorded while rendering (`start`, in runes), never found by searching the text ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), so the main
   hash stays provable.
 - **Runs are compared on the run-neutral hash.** Beside any body whose two hashes differ, History says
   the difference is due to run facts.
 - **A body with no run spots has one hash;** its `runNeutralHash` is `null`.
+- **A macro body's `run.*` is filled in directly,** with no spot in the placing body ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7073314482), ruling 2): macro bodies are not among the bodies that carry spots in the body they are placed in. The macro's own row carries its `runNeutralHash` and `runSpots` (§ 4.3), so macro rows compare across runs.
 - Deliverables carry the same members on their row (§ 10).
 
 ## 9. Profile reads
@@ -474,7 +494,7 @@ template's provenance ([decided](https://github.com/Consultologist/Consultologis
 | `delivery` | array of delivery row key | never | the delivery rows of a released deliverable, one per destination (below); `[]` for a deliverable that wasn't released. The results are on those rows, not on this one |
 | `check` | string | allowed | the check row key that gated it, linking to the check's row; `null` when ungated |
 | `sites` | array of `{ site: integer, at: string, expr: string, loop: string \| null }` | never | each expression in the template, in source order, with its line and column. Package text, kept |
-| `substitutions` | array of substitution | never | each evaluation: `{ site, pass: integer[] \| null, reads: string, hash: string, size: integer, renders: string \| null }`; `pass` holds one number per enclosing template loop |
+| `substitutions` | array of substitution | never | each evaluation: `{ site, pass: integer[] \| null, reads: string, hash: string, start: integer, size: integer, renders: string \| null }`; `pass` holds one number per enclosing template loop. `start` and `size` say where its text sits in the composed text, in runes (decided in the build, #1506), `size` `0` for a value that writes nothing (a `null`) |
 | `renders` | array of renderer sub-row | never | as on node rows (§ 4.2) |
 | `runNeutralHash`, `runSpots` | | | as on node rows (§ 8.2) |
 | `modelDerived`, `runDependent`, `profileCarrying` | boolean | never | as on node rows |
@@ -488,11 +508,13 @@ The results are written once the job has succeeded: *not sent: EMR isn't set up 
 delivery rows under their deliverable.
 
 **Replay:** substituting the recorded values into the template, in site and pass order, must
-reproduce `composedHash`. A deliverable row shows only a one-line check status; the check's row
+reproduce `composedHash`. It is checked by position, never by search: the composed text's slice at
+each substitution (`start`, for `size` runes) hashes to the substitution's `hash`, and substitutions
+never overlap (decided in the build, #1506). A deliverable row shows only a one-line check status; the check's row
 holds the result.
 
 **A deliverable whose gating check was skipped by its own `if` is released,** and recorded with the
-reason above; an empty `all_pass`, by contrast, fails. **A bundle holds released deliverables
+reason above; an empty `all_pass`, by contrast, fails. **A `blocked` deliverable is kept** (ruled by the owner on #1507, item 3, and on [#1506](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7055768051)): its row holds `composedHash`, `check`, `stateReason`, `sites` and `substitutions` like any other, its composed text is in the retained text, under 7-day retention with the hashes kept, and it is never delivered (`delivery: []`). History and the planned lineage view show it, and a later release after review (#1524, Milestone 40) would act on it. **A bundle holds released deliverables
 only;** History lists what was left out and why
 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)).
 
@@ -511,8 +533,8 @@ only;** History lists what was left out and why
 
 Retention goes by where text came from, not what it says, and holds for every package, medical or
 not ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1395#issuecomment-6978700251)).
-The sweep (`DropText`) deletes what the right-hand column names and stamps `textDroppedAtUtc`, as
-today. Every hash stays, so a sub-row or substitution keeps its reference, format, size and hash and
+The sweep (`DropText`) deletes the text blobs that hold what the right-hand column names and stamps
+`textDroppedAtUtc`, as today; **no row is rewritten** (§ 1.1). Every hash stays, so a sub-row or substitution keeps its reference, format, size and hash and
 says the text was deleted under retention.
 
 **Hashes of short values** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660), option c): every hash stays, short values' included. A hash of a
