@@ -430,9 +430,9 @@ public sealed partial class PlanRunner
                     continue;
                 }
 
-                if (!Opens(instance))
+                if (!await OpensAsync(instance))
                     return moved;
-                Open(instance, loop, item);
+                await Open(instance, loop, item);
                 moved = true;
             }
 
@@ -482,7 +482,7 @@ public sealed partial class PlanRunner
         /// <c>{ id, value[, content], parent }</c>, or for a loop over <c>.items</c> the production item's element with its
         /// <c>id</c> and <c>parent</c>; <c>parent</c> is the enclosing loop's item (part 04 § 2.6).
         /// </summary>
-        private void Open(RunInstance instance, LoopState loop, LoopItem item)
+        private async Task Open(RunInstance instance, LoopState loop, LoopItem item)
         {
             var frame = instance.Frame;
             var binding = ItemOf(loop, item);
@@ -496,7 +496,7 @@ public sealed partial class PlanRunner
             foreach (var key in instance.Entry.Body)
             {
                 if (frame.Map.TryGetValue(key, out var body))
-                    Add(item.Frame, body);
+                    await Add(item.Frame, body);
             }
         }
 

@@ -127,6 +127,9 @@ public sealed partial class PlanRunner
         /// <summary>How many instances the run has opened, against <see cref="RunLimits.JobInstances"/>.</summary>
         private int opened;
 
+        /// <summary>The instance most recently opened (it takes a top-level overflow of the instances limit).</summary>
+        private RunInstance? lastOpened;
+
         /// <summary>The calls in flight, in the order dispatched.</summary>
         private readonly List<Flight> flights = [];
 
@@ -157,7 +160,7 @@ public sealed partial class PlanRunner
         public async Task<RunResult> RunAsync()
         {
             foreach (var key in plan.TopLevel)
-                Add(top, plan.Entries[key]);
+                await Add(top, plan.Entries[key]);
 
             try
             {
@@ -238,27 +241,35 @@ public sealed partial class PlanRunner
         // ---- the round ----------------------------------------------------------------------
 
         /// <summary>The instance of <paramref name="entry"/> in <paramref name="frame"/>, added to the run.</summary>
-        private void Add(RunFrame frame, PlanEntry entry)
+        private async Task Add(RunFrame frame, PlanEntry entry)
         {
-            if (!Opens(frame.Owner))
+            if (!await OpensAsync(frame.Owner))
                 return;
             var instance = frame.Add(entry);
             instance.Sequence = made++;
+            lastOpened = instance;
             pending.Add(instance);
         }
 
         /// <summary>
         /// #1506 (R2, D1): whether the run may open one more instance (a node, check or deliverable instance, a loop item, a
-        /// pass, a call's body). Past <see cref="RunLimits.JobInstances"/> the job fails with A09-001, naming
-        /// <paramref name="owner"/> when there is one, and the instance is not opened.
+        /// pass, a call's body). Past <see cref="RunLimits.JobInstances"/> the instance is not opened and the job fails with
+        /// A09-001 through <see cref="FailAsync"/>, which settles <paramref name="owner"/> (the loop, while, branch or call
+        /// whose step it was) as failed and records its row, so the result's key names that row. A top-level overflow has no
+        /// owner: the most recently opened instance still unsettled takes the failure, so the key is never null.
         /// </summary>
-        private bool Opens(RunInstance? owner)
+        private async Task<bool> OpensAsync(RunInstance? owner)
         {
             if (failure != null)
                 return false;
             if (opened >= limits.JobInstances)
             {
-                failure = (RunSentences.JobInstances(limits.JobInstances), owner?.Key);
+                var target = owner is { IsSettled: false } ? owner : lastOpened is { IsSettled: false } ? lastOpened : owner ?? lastOpened;
+                var sentence = RunSentences.JobInstances(limits.JobInstances);
+                if (target != null && !target.IsSettled)
+                    await FailAsync(target, sentence);
+                else
+                    failure = (sentence, target?.Key);
                 return false;
             }
 

@@ -58,7 +58,7 @@ public sealed partial class PlanRunner
                 foreach (var key in function.Body)
                 {
                     if (function.Entries.TryGetValue(key, out var body))
-                        Add(frame, body);
+                        await Add(frame, body);
                 }
 
                 return true;

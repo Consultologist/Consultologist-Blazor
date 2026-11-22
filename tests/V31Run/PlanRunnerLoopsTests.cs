@@ -145,6 +145,35 @@ public class PlanRunnerLoopsTests
         V31Contract.AssertSentence(new SourceRefusal("A09-001", result.Sentence!, ""));
         Assert.True(host.Dispatched.Count(k => k.StartsWith("node.drafts.", StringComparison.Ordinal)) < 5);
         Assert.True(recorder.Rows.Count(r => r.Key.Contains(':', StringComparison.Ordinal)) <= 5);
+
+        // the step that opened one too many has its row, failed with the sentence
+        Assert.NotNull(result.FailedKey);
+        var failed = recorder.Row(result.FailedKey!);
+        Assert.Equal(RowState.Failed, failed.State);
+        Assert.Equal(result.Sentence, failed.Reason);
+    }
+
+    [Fact]
+    public async Task TheInstancesLimit_HoldsAtExactlyWhatARunOpens()
+    {
+        var plan = RunFixture.Plan(InputLoop(Members()), InputLoopReads());
+        var inputs = Sections(Rows("S1", "S2", "S3"));
+
+        // every instance a run opens (a node, an item, a deliverable) records one row
+        var open = new ListRecorder();
+        var whole = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true), open).RunAsync(inputs, FakeRunHost.Start);
+        Assert.Equal(RunState.Completed, whole.State);
+        var opened = open.Rows.Count;
+
+        var exact = await new PlanRunner(plan, new RunLimits(JobInstances: opened), new FakeRunHost(auto: true), new ListRecorder()).RunAsync(inputs, FakeRunHost.Start);
+        Assert.Equal(RunState.Completed, exact.State);
+
+        var recorder = new ListRecorder();
+        var under = await new PlanRunner(plan, new RunLimits(JobInstances: opened - 1), new FakeRunHost(auto: true), recorder).RunAsync(inputs, FakeRunHost.Start);
+        Assert.Equal(RunState.Failed, under.State);
+        Assert.Equal($"The job reached {opened - 1} steps, the most this engine runs for one job.", under.Sentence);
+        V31Contract.AssertSentence(new SourceRefusal("A09-001", under.Sentence!, ""));
+        Assert.Equal(RowState.Failed, recorder.Row(under.FailedKey!).State);
     }
 
     // ---- sizes ------------------------------------------------------------------------------------

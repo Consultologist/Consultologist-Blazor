@@ -128,7 +128,7 @@ public sealed partial class PlanRunner
             var entry = instance.Entry;
             var outer = instance.Frame;
             var number = loop.Passes.Count + 1;
-            if (!Opens(instance))
+            if (!await OpensAsync(instance))
                 return;
             var binding = new JsonObject
             {
@@ -161,7 +161,7 @@ public sealed partial class PlanRunner
             foreach (var key in entry.Body)
             {
                 if (outer.Map.TryGetValue(key, out var body))
-                    Add(frame, body);
+                    await Add(frame, body);
             }
         }
 
@@ -295,7 +295,7 @@ public sealed partial class PlanRunner
                 foreach (var key in chosen.Nodes)
                 {
                     if (frame.Map.TryGetValue(key, out var body))
-                        Add(frame, body);
+                        await Add(frame, body);
                 }
 
                 return true;
