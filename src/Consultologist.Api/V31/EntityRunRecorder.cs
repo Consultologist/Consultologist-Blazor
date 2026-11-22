@@ -52,7 +52,9 @@ public sealed class EntityRunRecorder(TaskOrchestrationContext context, ConsultG
         RowState.NotRun => "not_run",
         RowState.Failed => "failed",
         RowState.Cancelled => "cancelled",
-        RowState.Composed => "composed",
+        RowState.Released => "released",
+        RowState.Held => "held",
+        RowState.Blocked => "blocked",
         _ => state.ToString(),
     };
 }

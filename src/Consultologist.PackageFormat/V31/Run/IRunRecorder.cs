@@ -20,8 +20,14 @@ public enum RowState
     /// <summary>It was still running when the job's time ran out.</summary>
     Cancelled,
 
-    /// <summary>A deliverable rendered: area 08 takes it from there.</summary>
-    Composed,
+    /// <summary>#1505 (area 08; part 06 § 7): a deliverable composed and released (its check passed, was skipped, or it has none).</summary>
+    Released,
+
+    /// <summary>#1505 (area 08; part 06 § 6.6): a deliverable composed empty under <c>whenEmpty: hold</c>.</summary>
+    Held,
+
+    /// <summary>#1505 (area 08; part 06 § 7; R2): a deliverable composed and withheld: its gate did not pass, or could not run.</summary>
+    Blocked,
 }
 
 /// <summary>

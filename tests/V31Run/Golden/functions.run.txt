@@ -30,7 +30,7 @@ check.section_coverage:hpi | completed | - | sha256:0ae958b89419b2c013f5115b04e2
 check.section_coverage:assessment_plan | completed | - | sha256:0ae958b89419b2c013f5115b04e2e7e4a24d31153f695b9633ecc4a8bbe104ff
 check.section_coverage | completed | - | sha256:6a6d44be69d9d0fb17d93b7eaa4f7bc0fab354500f5106118f7ad0549159223d
 check.all_sections | completed | - | sha256:cbcff544c0c6a87d405b5fe381e1f32f9108f2bf73159c4cdbcaca040f8e1271
-deliverable.emr.consult | composed | - | sha256:1f13b0a28390318422908f80004b86d3618bef049b612ed2de73919ac54d5d7d
+deliverable.emr.consult | released | - | sha256:1f13b0a28390318422908f80004b86d3618bef049b612ed2de73919ac54d5d7d
 
 # decisions
 node.standards.section.standard_draft:hpi | self | not blank(param.standard.value.title) | true
@@ -46,7 +46,7 @@ agentCalls | 9
 peakInFlight | 6
 value | check.all_sections | sha256:2d05066d899539afbf00c434cd0a604c6cc6c333073a7af3f9d61aece58cb05c
 value | check.section_coverage | sha256:34498b8f1720f49bc5f6011a6e0536608bc97853d9dc732f4e30856ede55494e
-value | deliverable.emr.consult | sha256:fdc0ee7a2fd9eb6399c95de2b5f6d5d8aaf6c0a6dd8983a40912e84bc6e5ed42
+value | deliverable.emr.consult | sha256:eda63364976a2db62f2d78538c032a41d3eb1544efd3550efa9469c568065680
 value | node.extract_input_terms | sha256:68462c575e0fca952056c05a3fce0b7792f7969d77d7c85b84769d5e5982859a
 value | node.extract_note_terms | sha256:bb1399c92f42e863541fe835f7d772c35f4858166ed5ec2d65dc4c2fecf5ed4c
 value | node.plan | sha256:a53173b62e9ea748eb5cd35a302e3690483a9e7000d7789bc33346240a945003

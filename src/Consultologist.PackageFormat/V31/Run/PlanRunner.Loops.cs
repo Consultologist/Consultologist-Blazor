@@ -617,7 +617,9 @@ public sealed partial class PlanRunner
             RowState.NotRun => RunScope.NotRun,
             RowState.Failed => "failed",
             RowState.Cancelled => "cancelled",
-            _ => "composed",
+            RowState.Released => "released",
+            RowState.Held => "held",
+            _ => "blocked",
         };
     }
 }

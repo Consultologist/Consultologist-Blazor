@@ -14,6 +14,9 @@ internal enum InstancePhase
     /// <summary>Its call is in flight.</summary>
     Running,
 
+    /// <summary>#1505 (area 08; D5): a deliverable composed, waiting for its gate check to settle before its outcome.</summary>
+    Composed,
+
     /// <summary>It has its row state and its read form.</summary>
     Settled,
 }
@@ -81,6 +84,21 @@ internal sealed class RunInstance
     /// <summary>#1504 (area 07; part 08 §§ 4, 10): the row detail its last call's outcome gave (part 08's names), or null.</summary>
     public JsonObject? CallDetail { get; set; }
 
+    /// <summary>
+    /// #1505 (area 08; D3): a deliverable's composed read form, <c>{ value, content, state: "composed" }</c>, once its render
+    /// gave a text: what its gate set reads, as soon as it is composed; null before, and for every other kind.
+    /// </summary>
+    public JsonObject? Composed { get; set; }
+
+    /// <summary>#1505 (area 08): a deliverable's composed text (its <c>.content</c>), or null when it never composed.</summary>
+    public string? ComposedText { get; set; }
+
+    /// <summary>#1505 (area 08): the hash of <see cref="ComposedText"/>, or null.</summary>
+    public string? ComposedHash { get; set; }
+
+    /// <summary>#1504 (D4): a deliverable's run-neutral text, kept from its render for its released or held read form; or null.</summary>
+    public string? Neutral { get; set; }
+
     /// <summary><see cref="Entry"/>'s dependencies other than its own descendants, worked out once.</summary>
     private IReadOnlyList<string>? outside;
 
@@ -90,7 +108,9 @@ internal sealed class RunInstance
     /// instance that stands for that key as seen from its frame has settled. That instance is the key's own
     /// when one is visible; otherwise the nearest ancestor of the key (along its <c>Parent</c> chain) that has a visible
     /// instance, since the key's own lives in a frame not yet opened, and a flow node settles only after its frames do. A
-    /// key with neither (outside every frame the reader sees) does not hold it back, and reads <c>not_run</c>.
+    /// key with neither (outside every frame the reader sees) does not hold it back, and reads <c>not_run</c>. #1505 (area 08;
+    /// D3): a deliverable the entry reads composed (<see cref="PlanEntry.ReadsComposed"/>) holds it back only until it is
+    /// composed; any other reader waits for its outcome.
     /// </summary>
     public bool IsReady(string? except = null)
     {
@@ -105,7 +125,7 @@ internal sealed class RunInstance
             var steps = 0;
             for (var at = key; at != null && standing == null && steps++ <= map.Count; at = map.GetValueOrDefault(at)?.Parent)
                 standing = Frame.Find(at);
-            if (standing is { IsSettled: false })
+            if (standing is { IsSettled: false } && !(standing.Composed != null && Entry.ReadsComposed.Contains(key)))
                 return false;
         }
 

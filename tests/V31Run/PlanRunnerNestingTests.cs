@@ -59,7 +59,7 @@ public class PlanRunnerNestingTests
         Assert.Equal(first.Host.Dispatched, second.Host.Dispatched);
         Assert.Equal(RunTrace.Of(first.Host, first.Recorder, first.Result), RunTrace.Of(second.Host, second.Recorder, second.Result));
         Assert.Equal(Ten * Ten * Ten, first.Host.Dispatched.Distinct(StringComparer.Ordinal).Count());
-        Assert.All(first.Recorder.Rows, r => Assert.True(r.State is RowState.Completed or RowState.Composed, $"{r.Key} is {r.State}"));
+        Assert.All(first.Recorder.Rows, r => Assert.True(r.State is RowState.Completed or RowState.Released, $"{r.Key} is {r.State}"));
     }
 
     [Theory]

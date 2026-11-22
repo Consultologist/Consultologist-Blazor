@@ -37,4 +37,34 @@ public static class RunSentences
 
     /// <summary>A06-008: a body failed to render for another reason; never the template engine's message, which can quote a value.</summary>
     public static string CouldNotRender(string subject) => $"{subject} couldn't be rendered.";
+
+    /// <summary>#1505 (area 08; part 06 § 6.6; part 08 § 10) A08-005: a deliverable composed empty under <c>whenEmpty: fail</c>.</summary>
+    public static string EmptyDeliverable(string id, string label) =>
+        $"Deliverable '{id}' was empty, and the workflow fails an empty {label}.";
+
+    /// <summary>#1505 (part 06 § 6.6) S08-003: a deliverable composed empty under <c>whenEmpty: hold</c>.</summary>
+    public const string HeldEmpty = "held: empty";
+
+    /// <summary>#1505 (part 06 § 7; D6) S08-007: a deliverable's gate check returned <c>pass: false</c>.</summary>
+    public static string BlockedByCheck(string check, string detail) => $"blocked: check '{check}' failed ({detail})";
+
+    /// <summary>#1505 (part 06 § 7; D4, D6) S08-008: a deliverable's gate check failed to run; <paramref name="error"/> its sentence.</summary>
+    public static string BlockedCouldNotRun(string check, string error)
+    {
+        ArgumentNullException.ThrowIfNull(error);
+        return $"blocked: check '{check}' could not run ({(error.EndsWith('.') ? error[..^1] : error)})";
+    }
+
+    /// <summary>#1505 (part 06 § 7) S06-006: a deliverable released because its gate check was skipped by its own <c>if</c>.</summary>
+    public static string ReleasedCheckSkipped(string check) => $"released: check '{check}' didn't apply (its if was false)";
+
+    /// <summary>
+    /// #1505 (part 06 § 5; D6) S08-007's <c>&lt;detail&gt;</c>, from a <c>check_result</c> alone and never its
+    /// <c>message</c>: with <c>passed</c> and <c>total</c>, <c>&lt;passed&gt; of &lt;total&gt; passed</c>; else with
+    /// <c>uncovered</c>, <c>&lt;n&gt; terms missing</c> (<c>1 term missing</c>); else <c>it did not pass</c>.
+    /// </summary>
+    public static string CheckDetail(int? passed, int? total, int? uncovered) =>
+        passed is { } p && total is { } t ? $"{p.ToString(CultureInfo.InvariantCulture)} of {t.ToString(CultureInfo.InvariantCulture)} passed"
+        : uncovered is { } n ? (n == 1 ? "1 term missing" : $"{n.ToString(CultureInfo.InvariantCulture)} terms missing")
+        : "it did not pass";
 }

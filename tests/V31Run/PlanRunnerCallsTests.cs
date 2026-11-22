@@ -469,7 +469,7 @@ public class PlanRunnerCallsTests
         Assert.Equal("Text of node.standards.section.apply_instructions:hpi.", (string?)checks[0]!["item"]!["nodes"]!["section"]!["value"]);
         Assert.Equal(RowState.Completed, recorder.Row("check.section_coverage.coverage:assessment_plan").State);
         Assert.True((bool)result.Values["check.all_sections"]!["value"]!["pass"]!);
-        Assert.Equal("composed", (string?)result.Values["deliverable.emr.consult"]!["state"]);
+        Assert.Equal("released", (string?)result.Values["deliverable.emr.consult"]!["state"]);
     }
 
     // ---- failures inside a function ---------------------------------------------------------------
@@ -553,9 +553,12 @@ public class PlanRunnerCallsTests
         Assert.True(result.State == RunState.Completed, $"{result.State}: {result.FailedKey} {result.Sentence}");
         Assert.Equal(plan.TopLevel.Order(StringComparer.Ordinal), result.Values.Keys.Order(StringComparer.Ordinal));
         Assert.NotEmpty(host.Calls);
-        Assert.All(recorder.Rows, r => Assert.True(r.State is RowState.Completed or RowState.Composed or RowState.Skipped or RowState.NotRun,
+        // #1505: a deliverable's outcome is one the job goes on with (the stubs' terms do not cover checked-note's plan, so
+        // its note is blocked)
+        Assert.All(recorder.Rows, r => Assert.True(
+            r.State is RowState.Completed or RowState.Released or RowState.Blocked or RowState.Skipped or RowState.NotRun,
             $"{r.Key} is {r.State}"));
-        Assert.Contains(recorder.Rows, r => r.State == RowState.Composed);
+        Assert.Contains(recorder.Rows, r => r.State == RowState.Released);
     }
 
     // ---- fixtures ---------------------------------------------------------------------------------

@@ -98,7 +98,7 @@ public class PlanRunnerFlowTests
         Assert.Equal("stopped at its bound of 3; the check never stopped holding", reason);
         V31Contract.AssertSentence(new SourceRefusal("S04-005", reason, ""));
         Assert.Equal([true, true, true], recorder.Decisions.Where(d => d.Site == "node.refine").Select(d => d.Result));
-        Assert.Equal(RowState.Composed, recorder.Row("deliverable.note").State);
+        Assert.Equal(RowState.Released, recorder.Row("deliverable.note").State);
     }
 
     [Fact]
@@ -592,8 +592,8 @@ public class PlanRunnerFlowTests
         Assert.Equal(2, (int)result.Values["node.section_count"]!["value"]!);
         Assert.Equal(3, result.Values["node.sections"]!["value"]!.AsArray().Sum(s => s!.AsArray().Count));
         Assert.Equal(1, (int)result.Values["node.refine"]!["passes"]!);
-        Assert.Equal("composed", (string?)result.Values["deliverable.note"]!["state"]);
-        Assert.All(recorder.Rows, r => Assert.True(r.State is RowState.Completed or RowState.Composed, $"{r.Key} is {r.State}"));
+        Assert.Equal("released", (string?)result.Values["deliverable.note"]!["state"]);
+        Assert.All(recorder.Rows, r => Assert.True(r.State is RowState.Completed or RowState.Released, $"{r.Key} is {r.State}"));
     }
 
     [Theory]

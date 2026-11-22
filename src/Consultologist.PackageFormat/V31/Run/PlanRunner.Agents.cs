@@ -161,7 +161,7 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            await CompleteAsync(instance, value, RowState.Completed);
+            await CompleteAsync(instance, value);
         }
 
         /// <summary>

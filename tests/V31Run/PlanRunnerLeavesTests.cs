@@ -12,7 +12,7 @@ namespace Consultologist.Api.Tests.V31Run;
 /// leaves. An agent is called with exactly what its body reads; a computed node is evaluated inline, with no call, and its
 /// value held to its format (A06-003, 04-D49); an <c>if</c> that is false skips its leaf, and a reader sees <c>null</c>; a
 /// condition that fails fails its node; a node is ready when what it reads has settled; a deliverable renders, takes no
-/// slot and settles composed. Content is fictional (Margaret Okafor, Dr A. Sample).
+/// slot and, ungated, is released when composed (#1505). Content is fictional (Margaret Okafor, Dr A. Sample).
 /// </summary>
 public class PlanRunnerLeavesTests
 {
@@ -403,7 +403,7 @@ public class PlanRunnerLeavesTests
     // ---- deliverables ---------------------------------------------------------------------------
 
     [Fact]
-    public async Task ADeliverable_IsRenderedAndSettlesComposed()
+    public async Task ADeliverable_IsRendered_AndReleasedWhenComposed()
     {
         var plan = RunFixture.Plan(Minimal(), MinimalReads());
         var host = new FakeRunHost(auto: true).Reply("node.plan", "History, examination, plan.");
@@ -418,10 +418,10 @@ public class PlanRunnerLeavesTests
         Assert.Equal(new JsonObject { ["node"] = new JsonObject { ["plan"] = new JsonObject { ["content"] = "History, examination, plan." } } }.ToJsonString(),
             render.Scope.ToJsonString());
         var row = recorder.Row("deliverable.note");
-        Assert.Equal(RowState.Composed, row.State);
+        Assert.Equal(RowState.Released, row.State);
         Assert.Equal(PlanKind.Deliverable, row.Kind);
         Assert.Equal(CanonicalJson.HashText("Rendered deliverable.note."), row.ValueHash);
-        Assert.Equal("composed", (string?)result.Values["deliverable.note"]!["state"]);
+        Assert.Equal("released", (string?)result.Values["deliverable.note"]!["state"]);
         Assert.Equal("Rendered deliverable.note.", (string?)result.Values["deliverable.note"]!["content"]);
 
         // the deliverable takes no slot

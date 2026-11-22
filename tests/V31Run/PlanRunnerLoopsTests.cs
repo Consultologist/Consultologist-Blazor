@@ -64,7 +64,7 @@ public class PlanRunnerLoopsTests
         Assert.Equal(RowState.Completed, recorder.Row("node.sections.paragraphs:2/3").State);
         Assert.Equal(RowState.Completed, recorder.Row("node.sections:1").State);
         Assert.Equal(3, (int)recorder.Row("node.sections.paragraphs:2").Detail["count"]!);
-        Assert.Equal(RowState.Composed, recorder.Row("deliverable.note").State);
+        Assert.Equal(RowState.Released, recorder.Row("deliverable.note").State);
 
         // every row inside an item carries the innermost item's name (part 08 § 4); rows outside a loop carry null
         Assert.Equal("History", (string?)recorder.Row("node.sections.outline:1").Detail["itemName"]);
@@ -121,7 +121,7 @@ public class PlanRunnerLoopsTests
         Assert.Equal(0, (int)row.Detail["count"]!);
         Assert.Equal("end", (string?)row.Detail["stopped"]);
         Assert.Null(row.Detail["reason"]);
-        Assert.Equal(RowState.Composed, recorder.Row("deliverable.note").State);
+        Assert.Equal(RowState.Released, recorder.Row("deliverable.note").State);
     }
 
     [Fact]
