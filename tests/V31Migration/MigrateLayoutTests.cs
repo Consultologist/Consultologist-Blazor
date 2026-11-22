@@ -211,7 +211,8 @@ public class MigrateLayoutTests
 
         // A lone \r changes the file's bytes, so it is said (A10-026); \r\n and a BOM are not.
         var notice = "snippets/snomed_tool_guidance.md: a carriage return that didn't end a line became a line end.";
-        Assert.Equal(plain.Notices.Append(notice), loneCr.Notices);
+        Assert.Contains(notice, loneCr.Notices);
+        Assert.Equal(plain.Notices, loneCr.Notices.Where(n => n != notice));
         V31Contract.AssertSentence(new SourceRefusal("A10-026", notice, ""));
         Assert.Equal(plain.Notices, crlf.Notices);
         Assert.Equal(plain.Notices, bommed.Notices);

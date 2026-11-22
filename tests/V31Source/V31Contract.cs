@@ -148,6 +148,8 @@ internal static class V31Contract
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
+        ["A10-001"] = "the body's if at line <n> does more than choose text to show; write it as parts with their own if.",
+        ["A10-005"] = "the template uses <construct> at line <n>, which the 31 dialect doesn't have; rewrite it.",
         ["A10-006"] = "Renamed <kind> '<id>' to '<new id>': '<id>' is reserved at 31.",
         ["A10-008"] = "<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.",
         ["A10-012"] = "The package is at specVersion <n>; migration starts at 5.",
@@ -172,6 +174,11 @@ internal static class V31Contract
         ["A10-032"] = "the case switches on classifier '<id>', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.",
         ["A10-033"] = "The chosen rename of '<id>' to '<new id>' cannot be made: '<new id>' <is already taken | is not a 31 id>; choose another.",
         ["A10-034"] = "Renamed <kind> '<id>' to '<new id>': an id is at most 64 characters at 31.",
+        ["A10-035"] = "the body's if at line <n> decides what a <snippet | macro | rendered node> body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.",
+        ["A10-036"] = "macro '<id>' is placed under different conditions by nodes <ids>; a macro has one if, so place it under one condition, or split it into one macro per condition.",
+        ["A10-037"] = "the template writes <path> at line <n>, which is <an object | a list> at 31; read a member, loop over it or pipe it into a renderer.",
+        ["A10-038"] = "the template can't be read at line <n>; close every tag, if and for.",
+        ["A10-039"] = "the template reads <path> at line <n>, which a 31 <prompt | rendered node> doesn't read; rewrite it.",
     };
 
     private static string RepoRoot()

@@ -85,7 +85,8 @@ public class MigrateNodesTests
             { "kind": "rendered", "producer": "computed", "label": "Patient header", "description": null, "format": "plaintext",
               "reproducible": true, "modelDerived": false, "runDependent": false, "profileCarrying": false, "if": null }
             """), header.ToJsonString());
-        Assert.Equal(files["prompts/patient_header.md"], body);
+        // The templates pass rewrites its reads (a date input is read as its value); the rest is 30's template.
+        Assert.Equal(files["prompts/patient_header.md"].Replace("{{ input.seen_on }}", "{{ input.seen_on.value }}", StringComparison.Ordinal), body);
     }
 
     [Fact]
@@ -308,7 +309,7 @@ public class MigrateNodesTests
         var (header, _) = Md(result, "nodes/topic_tally.md");
         const string text = "\"Topic section length: \" | string.append (node.topic_loop.content | string.size)";
         Assert.Equal(JsonValue.Create(text)!.ToJsonString(), header["expression"]!.ToJsonString());
-        var edit = Assert.Single(result.HandEdits);
+        var edit = Assert.Single(result.HandEdits, e => e.Contains("nodes/topic_tally.md", StringComparison.Ordinal));
         Assert.Equal(
             $"Hand edit needed in nodes/topic_tally.md, expression: The condition '{text}' uses string.append, which has no JSON Logic form at 31: rewrite it by hand. The condition '{text}' uses string.size, which has no JSON Logic form at 31: rewrite it by hand.",
             edit);

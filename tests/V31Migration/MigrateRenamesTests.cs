@@ -142,9 +142,10 @@ public class MigrateRenamesTests
         Assert.Equal("format_format", (string?)MigrateNodesTests.Md(result, "nodes/pass_while/check_node.md").Header["format"]);
         Assert.Contains("formats/format_format.json", result.Files.Keys);
         Assert.Contains("nodes/con_node.md", result.Files.Keys);
-        var summary = Body(result, "nodes/pass_while/draft_summary.md");
+        // The pass reads are in the part the templates pass lifted the 30 if into: the whole file holds them.
+        var summary = result.Files["nodes/pass_while/draft_summary.md"];
         Assert.Contains("{{ pass.previous.node.check_node.value.feedback }}", summary, StringComparison.Ordinal);
-        Assert.Contains("{{ input.value_input }}", summary, StringComparison.Ordinal);
+        Assert.Contains("{{ input.value_input.content }}", summary, StringComparison.Ordinal);
         Assert.Equal("node.pass_while", result.Keys["pass"]);
         Assert.Equal("node.pass_while.check_node", result.Keys["check"]);
         Assert.Equal("node.con_node", result.Keys["con"]);
@@ -187,7 +188,7 @@ public class MigrateRenamesTests
         Assert.Contains("snippets/snippet_snippet.md", result.Files.Keys);
         Assert.Contains("snippets/standards/item_snippet.md", result.Files.Keys);
         Assert.Contains("item_snippet", Json(result, "snippets/standards/index.json")["items"]!.AsArray().Select(i => (string?)i));
-        Assert.Contains("{{ macro.macro_macro.prompt }}", Body(result, "snippets/standards/assessment_plan.md"), StringComparison.Ordinal);
+        Assert.Contains("{{ macro.macro_macro }}", Body(result, "snippets/standards/assessment_plan.md"), StringComparison.Ordinal);
 
         string[] notices =
         [
@@ -253,7 +254,7 @@ public class MigrateRenamesTests
         var numbered = first[..62] + "_2";
         Assert.Equal([cut, numbered], inputs);
         Assert.All(inputs, id => Assert.Null(SourceIds.Check(id, "manifest.json")));
-        Assert.Contains($"{{{{ input.{cut} }}}}", Body(result, "nodes/refine/draft_summary.md"), StringComparison.Ordinal);
+        Assert.Contains($"{{{{ input.{cut}.content }}}}", Body(result, "nodes/refine/draft_summary.md"), StringComparison.Ordinal);
         string[] notices =
         [
             $"Renamed input '{first}' to '{cut}': an id is at most 64 characters at 31.",
@@ -274,7 +275,7 @@ public class MigrateRenamesTests
         var nested = Run(json, files, MigrationFixture.Options("example-nested-note"));
 
         Assert.Contains("value", Json(nested, "formats/verdict.json")["properties"]!.AsObject().Select(p => p.Key));
-        Assert.Contains("{{ pass.previous.node.judge.value.value }}", Body(nested, "nodes/refine/draft_summary.md"), StringComparison.Ordinal);
+        Assert.Contains("{{ pass.previous.node.judge.value.value }}", nested.Files["nodes/refine/draft_summary.md"], StringComparison.Ordinal);
         Assert.DoesNotContain(nested.Report.Renames, n => n.Contains("'value'", StringComparison.Ordinal));
 
         var (intakeJson, intakeFiles) = Package("example-structured-intake");
@@ -286,7 +287,7 @@ public class MigrateRenamesTests
 
         var patient = JsonNode.Parse(intake.ManifestJson)!["inputs"]!["patient"]!.ToJsonString();
         Assert.Contains("\"title\"", patient, StringComparison.Ordinal);
-        Assert.Contains("{{ input.patient.title }}", Body(intake, "nodes/sections_note_section/note_section.md"), StringComparison.Ordinal);
+        Assert.Contains("{{ input.patient.value.title }}", Body(intake, "nodes/sections_note_section/note_section.md"), StringComparison.Ordinal);
         Assert.Empty(intake.Report.Renames);
     }
 

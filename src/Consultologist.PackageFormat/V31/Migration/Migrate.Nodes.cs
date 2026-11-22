@@ -169,7 +169,7 @@ internal static partial class Migrate
     /// 31's <c>size(null)</c> is null where 30 counted 0). One the converter refuses stays 30's text, a JSON string the
     /// checker refuses (D3), with one hand edit whose reason is the converter's notice.
     /// </summary>
-    private static JsonNode Condition(
+    internal static JsonNode Condition(
         Migrated m, string file, string member, string text, ConversionScope scope, ConversionKind kind, JsonNode? declared = null)
     {
         var result = WorkflowConditionConverter.FromScriban(text, scope, kind, declared);

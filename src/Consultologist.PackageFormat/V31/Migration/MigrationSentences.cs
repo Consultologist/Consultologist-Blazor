@@ -209,4 +209,64 @@ internal static class MigrationSentences
     /// </summary>
     public static string RenamedTooLong(string kind, string id, string newId) =>
         $"Renamed {kind} '{id}' to '{newId}': an id is at most 64 characters at 31.";
+
+    /// <summary>
+    /// A10-001 (part 10 § 1.4, part 05 § 2.5): a reason: the body <c>if</c> at <paramref name="line"/> of the 31 file tests
+    /// a value, so 31 refuses it in a body, and it is too complex to lift into parts (an <c>else if</c>, an <c>if</c> inside
+    /// another <c>if</c> or a <c>for</c>, an <c>if</c> inside a line of text, a test mixing a recorded fact with a value).
+    /// </summary>
+    public static string IfTooComplex(int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"the body's if at line {line} does more than choose text to show; write it as parts with their own if.");
+
+    /// <summary>
+    /// A10-005 (part 05 § 2, <c>scriban-dialect.md</c> § 10): a reason: the body uses <paramref name="construct"/> (a
+    /// statement, an operator or a built-in as written, <c>item.label</c>, a 30 run fact) at <paramref name="line"/> of
+    /// the 31 file, which the dialect has no form for.
+    /// </summary>
+    public static string NotInDialect(string construct, int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"the template uses {construct} at line {line}, which the 31 dialect doesn't have; rewrite it.");
+
+    /// <summary>S10-004 (part 10 § 1.4, part 05 § 3.1): a reason: a 30 prompt reads <c>profile.&lt;field&gt;</c>, which a 31 prompt never reads.</summary>
+    public static string ProfileInPrompt(string field) =>
+        $"the prompt reads profile.{field}, which a 31 prompt doesn't read; move it to a deliverable or a macro body.";
+
+    /// <summary>
+    /// A10-035 (part 05 §§ 2.5, 6.3, 7): a reason: the body <c>if</c> at <paramref name="line"/> tests a value in a body
+    /// that has no parts (<paramref name="site"/>: <c>snippet</c>, <c>macro</c> or <c>rendered node</c>), so it cannot be
+    /// lifted; a snippet with its own <c>if</c> may be placed in each of those bodies.
+    /// </summary>
+    public static string IfWithoutParts(int line, string site) =>
+        string.Create(CultureInfo.InvariantCulture, $"the body's if at line {line} decides what a {site} body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.");
+
+    /// <summary>
+    /// A10-036 (part 10 § 1.2's hoist row, A10-002's sibling): a reason: <paramref name="macro"/> is placed by the prompts of
+    /// <paramref name="nodes"/> under different conditions (a hoisted body <c>if</c> in one, another or none in the other),
+    /// and a macro has one <c>if</c>.
+    /// </summary>
+    public static string PlacedUnderConditions(string macro, IReadOnlyList<string> nodes)
+    {
+        ArgumentNullException.ThrowIfNull(nodes);
+        var quoted = nodes.Select(n => $"'{n}'").ToList();
+        var listed = quoted.Count < 2 ? string.Concat(quoted) : string.Join(", ", quoted.Take(quoted.Count - 1)) + " and " + quoted[^1];
+        return $"macro '{macro}' is placed under different conditions by nodes {listed}; a macro has one if, so place it under one condition, or split it into one macro per condition.";
+    }
+
+    /// <summary>
+    /// A10-037 (part 10 § 1.2's bare-read row, A07-007): a reason: a 30 bare read at <paramref name="line"/>, written whole,
+    /// is <paramref name="path"/> at 31, an object or a list (<paramref name="list"/>), which no output writes.
+    /// </summary>
+    public static string WritesWhole(string path, int line, bool list) =>
+        string.Create(CultureInfo.InvariantCulture, $"the template writes {path} at line {line}, which is {(list ? "a list" : "an object")} at 31; read a member, loop over it or pipe it into a renderer.");
+
+    /// <summary>A10-038 (part 10 § 1.4, A07-005): a reason: the body cannot be read as a template from <paramref name="line"/> on (a tag, an <c>if</c> or a <c>for</c> never closed).</summary>
+    public static string Unreadable(int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"the template can't be read at line {line}; close every tag, if and for.");
+
+    /// <summary>
+    /// A10-039 (part 05 § 3.1): a reason: the body reads <paramref name="path"/> at <paramref name="line"/>, a root its
+    /// <paramref name="site"/> (<c>prompt</c>, <c>rendered node</c>) never reads at 31 (<c>deliverable.*</c>, a
+    /// <c>rendered</c> node's <c>profile.*</c>).
+    /// </summary>
+    public static string ReadNotAllowed(string path, int line, string site) =>
+        string.Create(CultureInfo.InvariantCulture, $"the template reads {path} at line {line}, which a 31 {site} doesn't read; rewrite it.");
 }

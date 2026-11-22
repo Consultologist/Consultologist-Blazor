@@ -25,6 +25,13 @@ internal sealed class MigratedFile(JsonObject json, string? body)
 internal sealed record SitePlace(JsonNode? Item, bool ItemIsFolderItem, bool InWhile);
 
 /// <summary>
+/// #1507 (specVersion 31, area 10; R6, part 10 § 1.2's hoist row): the condition of a body <c>if</c> hoisted off a macro
+/// placement: <paramref name="Logic"/> as <see cref="Migrate.Condition"/> wrote it (canonical JSON Logic, or 30's text as a
+/// JSON string when the converter refused it, with its hand edit said) and <paramref name="Text30"/> as 30 wrote it.
+/// </summary>
+internal sealed record PlacementRule(JsonNode Logic, string Text30);
+
+/// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.2, D1): the working set of one migration, which every pass after the chain
 /// shares. It holds the 30 package as read and checked (<see cref="Manifest30"/>, <see cref="Root30"/>,
 /// <see cref="Files30"/>, <see cref="Resolved30"/>, <see cref="Walk30"/>), the 31 set as a model (<see cref="Manifest"/>
@@ -126,6 +133,23 @@ internal sealed class Migrated
 
     /// <summary>Each condition site's place, by the site's 30 owner id (Task 7), for <see cref="Scope"/>; none is the package's top level.</summary>
     public Dictionary<string, SitePlace> Places { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// R6, part 10 § 1.2's hoist row (Task 9): each body <c>if</c> hoisted off a macro placement, keyed by the node whose
+    /// prompt placed it (its 30 id, as renamed) and the macro (its id; a folder macro's <c>&lt;folder&gt;/&lt;id&gt;</c>):
+    /// the condition converted (<see cref="Migrate.Condition"/>: its JSON Logic, or 30's text as a JSON string with a hand
+    /// edit) and the 30 text. Task 10 writes it into the macro's <c>if</c>, joined with the macro's own by <c>and</c>.
+    /// </summary>
+    public Dictionary<(string Owner, string Macro), PlacementRule> PlacementRules { get; } = [];
+
+    /// <summary>
+    /// Task 9: each 30 macro's body rewritten into the 31 dialect (<see cref="TemplateRewriter"/>), by the macro's file
+    /// (<c>macros/&lt;id&gt;.md</c>, <c>macros/&lt;folder&gt;/&lt;id&gt;.md</c>, the same path at 30 and 31), for Task 10 to write.
+    /// </summary>
+    public SortedDictionary<string, string> MacroBodies { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>The hand-edit notices said so far, in order (<see cref="HandEdit"/>).</summary>
+    public IReadOnlyList<string> HandEditNotices => _handEdits;
 
     /// <summary>The report's lists (D9), each also in <see cref="Migration31Result.Notices"/>.</summary>
     public List<string> Renames { get; } = [];

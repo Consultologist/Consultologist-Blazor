@@ -98,6 +98,11 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-032 | reason | `the case switches on classifier '<id>', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.` (a `case` on a 30 classifier: `classification`'s `value` is a plain string at 31 and its `with` is dropped, so S04-044 refuses the subject; the branches are still written from 30's values; Task 7, fix round 1) |
 | A10-033 | refusal | `The chosen rename of '<id>' to '<new id>' cannot be made: '<new id>' <is already taken \| is not a 31 id>; choose another.` (a `Migration31Options.Renames` entry the run cannot use; Task 8) |
 | A10-034 | notice | `Renamed <kind> '<id>' to '<new id>': an id is at most 64 characters at 31.` (30 has no bound on an id's length; part 01 § 7; Task 8) |
+| A10-035 | reason | `the body's if at line <n> decides what a <snippet \| macro \| rendered node> body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.` (a body `if` testing a value in a body that has no parts, part 05 §§ 2.5, 7; Task 9) |
+| A10-036 | reason | `macro '<id>' is placed under different conditions by nodes <ids>; a macro has one if, so place it under one condition, or split it into one macro per condition.` (A10-002's sibling: a hoisted placement condition that differs between the prompts placing the macro; R6; Task 9) |
+| A10-037 | reason | `the template writes <path> at line <n>, which is <an object \| a list> at 31; read a member, loop over it or pipe it into a renderer.` (a 30 bare read written whole whose `.value` is an object or a list, A07-007; Task 9) |
+| A10-038 | reason | `the template can't be read at line <n>; close every tag, if and for.` (a body Scriban cannot parse, A07-005; Task 9) |
+| A10-039 | reason | `the template reads <path> at line <n>, which a 31 <prompt \| rendered node> doesn't read; rewrite it.` (part 05 § 3.1's "never" column: a prompt's `deliverable.*`, a `rendered` node's `profile.*` or `deliverable.*`; Task 9) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 
@@ -322,7 +327,7 @@ consultologist-package-format (m39-build)   package-format-v31.md ch. 10, v31/sc
 **Interfaces:**
 - Produces (internal): `TemplateRewriter.Rewrite(string body, TemplateSite30 site, Migrated migrated) : RewrittenBody` with `Text`, `Parts` (id → `{ if, text }` for the node's `parts` member), `HandEdits`; edits are made by source span, last to first, so text outside tags keeps its bytes.
 
-- [ ] **Step 1: Write the failing tests**, each on the smallest body that shows it, then on the named file of `vendored/`:
+- [x] **Step 1: Write the failing tests**, each on the smallest body that shows it, then on the named file of `vendored/`:
   - `ABareInputRead_GainsContentOrValue`: `{{ input.consult_draft }}` → `{{ input.consult_draft.content }}` (`example-macros/prompts/summary.md`); a number input → `.value`; `input.patient.sex` → `input.patient.value.sex`.
   - `ANodeRead_KeepsItsMember`, `AClassifierValue_ReadsItsValueMember`.
   - `AConceptPipe_BecomesARendererPipe`: `{{ node.x | concept_bullets }}` → `{{ node.x.value | renderer.concept_bullets }}`.
@@ -334,10 +339,12 @@ consultologist-package-format (m39-build)   package-format-v31.md ch. 10, v31/sc
   - `AProfileReadInAPrompt_IsAHandEdit` (S10-002 with S10-004; the read stays). `ABodyIfTooComplex_IsAHandEdit` (A10-001: an `else if`, a nested `if`, an `if` inside a line of text). `ABuiltinOutsideTheDialect_IsAHandEdit` (A10-005; `array.join` is checked against the dialect's list first).
   - `TextOutsideTags_IsNeverRewritten` (Review Focus 4). `ABodyThatDoesNotParse_IsAHandEdit_NeverAThrow`.
   - `EveryVendoredPrompt_RewritesOrSaysWhy`: over every prompt, snippet and macro body of the 16 packages, the rewritten body passes the dialect (`TemplateSyntax`/`DialectRules` report nothing) or carries a hand edit.
-- [ ] **Step 2: Run; they fail.**
-- [ ] **Step 3: Implement** with a Scriban visitor over each tag's tree for the reads, and a tag scanner (`TemplateTags`) for whitespace marks.
-- [ ] **Step 4: Run; green.**
-- [ ] **Step 5: Commit and push.**
+- [x] **Step 2: Run; they fail.**
+- [x] **Step 3: Implement** with a Scriban visitor over each tag's tree for the reads, and a tag scanner (`TemplateTags`) for whitespace marks.
+- [x] **Step 4: Run; green.**
+- [x] **Step 5: Commit and push.**
+
+  *Recorded in the build:* the pass (`Migrate.Templates`, after the nodes pass) rewrites each agent's prompt (its lifted `if`s its `parts`, `null` when none), each `rendered` body, each snippet's and folder item's body, and each macro body into `Migrated.MacroBodies` (by file, for Task 10). It also rewrites `{{ macro.x.prompt }}` to the placement `{{ macro.x }}` everywhere (part 05 § 10), leaving `macro.x.content` reads to D4 (Task 10). `item.label` is `item.value.<itemLabel>` of the innermost loop, else a hand edit (A10-005). A hoisted condition is in `Migrated.PlacementRules[(owner, macro)]` (a folder macro keyed `<folder>/<id>`), converted with `Condition` on the macro's file, member `if`; a macro whose prompts place it under different conditions (`example-macros`' `counselling`: `standing_draft` and `patient_line`) is A10-036. `patient_line.md`'s `{{~ if … ~}}` holds a placement, so it is hoisted rather than kept (A07-009); `~` stays on every statement that stays. `pass.number` is not one of part 05 § 2.5's recorded facts (the dialect has loop position, state and a check's pass), so `example-nested-note`'s `{{ if pass.number > 1 }}` is lifted into a part, not kept. `(x | string.strip) == ""` is refused by the converter (S03-002, Task 3), so `test/general`'s, `general`'s and `example-two-documents`' lifted parts are hand edits on `parts.when_<n>.if`. A part's text keeps 30's bytes: the branch less what its tags' marks removed, split on `\n`. A body still faulted by `TemplateSyntax` gets one A10-005 per fault. Task 8's leftover is fixed: the renames split a header only off the files 30 read headers of (`Resolved30.Headers`, and a snippet or macro file a rename moved).
 
 ### Task 10: Macros, choices as inputs, and `MacroChoices`
 
