@@ -30,7 +30,7 @@ public static class RenderTurn
 
         Composition composition;
         if (call.Function == null && plan.Entries.GetValueOrDefault(call.EntryKey) is { Kind: PlanKind.Deliverable } deliverable
-            && IsObjectFormat(plan.Formats.Expand(deliverable.Format), 0))
+            && plan.Formats.IsObject(deliverable.Format))
         {
             composition = ObjectText(plan, deliverable, call.Scope);
         }
@@ -58,18 +58,16 @@ public static class RenderTurn
     /// <summary>
     /// D8: the object deliverable <paramref name="entry"/>'s text: the RFC 8785 JSON of the value its one output tag reads
     /// (<c>node.&lt;x&gt;.value</c>, its head rooted through <c>names</c>, D1) in <paramref name="scope"/>, with no final line
-    /// end; <c>null</c> writes <c>null</c>. No run spot, renderer or unit. A body that is not that one tag is not what publish
-    /// wrote (S07-006); a read the scope lacks fails as an absent member does in any body (A06-008).
+    /// end; <c>null</c> writes <c>null</c>. No run spot, renderer or unit. A body not of <see cref="SourceTemplates.OneValueRead"/>'s form is not
+    /// what publish wrote (S07-006); a read the scope lacks fails as an absent member does in any body (A06-008).
     /// </summary>
     private static Composition ObjectText(RunPlan plan, PlanEntry entry, JsonObject scope)
     {
-        var syntax = SourceLayout.Text(entry.Json["body"]) is { } body ? TemplateSyntax.Parse(body) : null;
-        if (syntax is not { Faults.Count: 0, Outputs: [{ Pipes.Count: 0, Paths.Count: 1, Path: { } path }] } || path.Split('.') is not ["node", _, _, ..] segments
-            || segments[^1] != "value")
-        {
+        // The form publish held the body to (S06-023), by the same definition.
+        if ((SourceLayout.Text(entry.Json["body"]) is { } body ? SourceTemplates.OneValueRead(TemplateSyntax.Parse(body)) : null) is not { } path)
             return Failed(ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
-        }
 
+        var segments = path.Split('.');
         var head = string.Join('.', segments[..2]);
         var rooted = SourceLayout.Text((entry.Json["names"] as JsonObject)?[head]) ?? head;
         JsonNode? at = scope;
@@ -83,25 +81,4 @@ public static class RenderTurn
     }
 
     private static Composition Failed(string sentence) => new(null, null, sentence, false, [], [], [], []);
-
-    /// <summary>
-    /// Whether the expanded format <paramref name="schema"/> is an object format: <c>type</c> <c>object</c> (alone or with
-    /// <c>null</c>), or an <c>anyOf</c> of one such member and <c>null</c>, as publish's shape reads it. A text format is not.
-    /// </summary>
-    private static bool IsObjectFormat(JsonNode? schema, int depth)
-    {
-        if (depth > PlanFormats.MaxDepth || schema is not JsonObject obj)
-            return false;
-        if (obj["anyOf"] is JsonArray members)
-        {
-            var others = members.Where(m => !(m is JsonObject member && SourceLayout.Text(member["type"]) == "null")).ToList();
-            return others.Count == 1 && others.Count < members.Count && IsObjectFormat(others[0], depth + 1);
-        }
-
-        return obj["type"] switch
-        {
-            JsonArray types => types.Select(SourceLayout.Text).Where(t => t != "null").ToList() is ["object"],
-            var type => SourceLayout.Text(type) == "object",
-        };
-    }
 }

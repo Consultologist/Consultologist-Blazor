@@ -30,13 +30,32 @@ public static partial class SourceTemplates
     /// <summary>How much of a line S06-022 quotes (D9).</summary>
     private const int QuotedLine = 40;
 
+    /// <summary>
+    /// D8: the one read an object deliverable's body writes, when <paramref name="syntax"/> is of that form: unfaulted, and
+    /// exactly one tag, an unpiped output of one path <c>node.&lt;x&gt;.value</c> (or deeper, ending in <c>.value</c>), with
+    /// nothing before it and at most a final line end after it (its whitespace marks are the tag's); otherwise <c>null</c>.
+    /// The one definition of the form: publish refuses a body not of it (S06-023), and the run reads the value it names.
+    /// </summary>
+    internal static string? OneValueRead(TemplateSyntax syntax)
+    {
+        ArgumentNullException.ThrowIfNull(syntax);
+        if (syntax.Faults.Count != 0 || syntax.Tags.Count != 1 || syntax.Outputs.Count != 1)
+            return null;
+        var output = syntax.Outputs[0];
+        if (output is not { Pipes.Count: 0, Paths.Count: 1, Path: { } path } || path.Split('.') is not ["node", _, .., "value"])
+            return null;
+        var after = syntax.Text[Math.Clamp(output.Tag.End, 0, syntax.Text.Length)..];
+        return output.Tag.Start == 0 && after is ("" or "\n" or "\r\n") ? path : null;
+    }
+
     private sealed partial class Context
     {
         /// <summary>
         /// <paramref name="body"/>, the body of <paramref name="deliverable"/> with its units, held to its format: its
         /// refusals added, and, for a <c>markdown_block</c> deliverable, its <see cref="CheckedBody.Escapes"/> set.
+        /// <paramref name="refused"/> is whether checking the body (its reads, its units) already said a refusal.
         /// </summary>
-        private CheckedBody Deliverable(CheckedBody body, SourceDeliverable deliverable)
+        private CheckedBody Deliverable(CheckedBody body, SourceDeliverable deliverable, bool refused)
         {
             var formats = resolution.Tree.FormatsOf(body.Host.Frame);
             var format = deliverable.Header["format"];
@@ -52,7 +71,7 @@ public static partial class SourceTemplates
                     MarkdownLines(body.Syntax, deliverable);
                     return body;
                 case var _ when FormatTypes.Shape(format, formats) == FormatShape.Object:
-                    if (!OneValue(body, format, formats))
+                    if (!OneValue(body, format, formats, refused))
                         Refusals.Add(DeliverableSentences.IsObject(deliverable.Id, TypeStrings.Print(format, formats), deliverable.Path));
                     return body;
                 default:
@@ -133,23 +152,16 @@ public static partial class SourceTemplates
             };
 
         /// <summary>
-        /// D8: <paramref name="body"/> is exactly one output tag writing <c>node.&lt;x&gt;.value</c>, unpiped, whose format
-        /// is <paramref name="format"/> by type equality (or unknown: a read that failed typing is refused where it is read,
-        /// once); nothing before the tag, and at most a final line end after it.
+        /// D8: <paramref name="body"/> is of <see cref="OneValueRead"/>'s form, and its one write's format is
+        /// <paramref name="format"/> by type equality. A write whose format is unknown passes only when the body was already refused (<paramref name="refused"/>: the read
+        /// that failed typing is said where it is read, once); an untyped read no refusal stands for is S06-023's.
         /// </summary>
-        private static bool OneValue(CheckedBody body, JsonNode? format, FormatSet formats)
+        private static bool OneValue(CheckedBody body, JsonNode? format, FormatSet formats, bool refused)
         {
-            var syntax = body.Syntax;
-            if (syntax.Tags.Count != 1 || syntax.Outputs.Count != 1 || body.Writes.Count != 1)
-                return false;
-            var output = syntax.Outputs[0];
-            if (output is not { Pipes.Count: 0, Paths.Count: 1, Path: { } path } || path.Split('.') is not ["node", _, .., "value"])
-                return false;
-            var after = syntax.Text[Math.Clamp(output.Tag.End, 0, syntax.Text.Length)..];
-            if (output.Tag.Start != 0 || after is not ("" or "\n" or "\r\n"))
+            if (OneValueRead(body.Syntax) is null || body.Writes.Count != 1)
                 return false;
             // A read that failed typing is already refused where it is read: the form is right, so say nothing more.
-            return body.Writes[0].Format is not { } written || FormatTypes.Same(written, format, formats);
+            return body.Writes[0].Format is { } written ? FormatTypes.Same(written, format, formats) : refused;
         }
 
         /// <summary>

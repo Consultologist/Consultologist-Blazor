@@ -213,6 +213,7 @@ public static partial class SourceTemplates
         {
             var leaf = host is { Site: TemplateSite.Prompt, Declaration: SourceLeaf agent } ? agent : null;
             var parts = leaf is null ? null : Parts(leaf, host);
+            var said = Refusals.Count;
             if (Body(host, TemplateSyntax.Parse(text), null) is not { } body)
                 return null;
             if (leaf is not null)
@@ -221,7 +222,7 @@ public static partial class SourceTemplates
             if (leaf is not null)
                 PlacingNode(units, leaf, host);
             body = body with { Units = units };
-            return host is { Site: TemplateSite.Deliverable, Declaration: SourceDeliverable deliverable } ? Deliverable(body, deliverable) : body;
+            return host is { Site: TemplateSite.Deliverable, Declaration: SourceDeliverable deliverable } ? Deliverable(body, deliverable, Refusals.Count > said) : body;
         }
 
         /// <summary>

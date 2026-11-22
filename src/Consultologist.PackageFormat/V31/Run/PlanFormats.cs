@@ -89,6 +89,13 @@ public sealed class PlanFormats
         Target(format) is { } entry && SourceLayout.Text(entry["$id"]) is { } id && TextIds.Contains(id) ? id[(id.LastIndexOf(':') + 1)..] : null;
 
     /// <summary>
+    /// #1505 (area 08; part 06 § 6.4; D8): whether <paramref name="format"/> is an object format: publish's own reading of a
+    /// format's shape (<see cref="FormatTypes.Shape"/>, here <see cref="FormatTypes.ExpandedShape"/> of <see cref="Expand"/>)
+    /// is <see cref="FormatShape.Object"/>. A text format is not.
+    /// </summary>
+    public bool IsObject(JsonNode? format) => FormatTypes.ExpandedShape(Expand(format)) == FormatShape.Object;
+
+    /// <summary>
     /// A model's <paramref name="reply"/> as a value of <paramref name="format"/>: for a text format the reply itself, as a
     /// string; otherwise the reply parsed as JSON (to <see cref="MaxReplyDepth"/> levels, a repeated member refused), with
     /// <c>Parsed</c> false when it is not.
