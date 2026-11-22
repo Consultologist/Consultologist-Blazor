@@ -338,6 +338,34 @@ public class V31JobStartTests
         Assert.Empty(on.Inputs.Documents);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("31")]
+    public async Task A30Start_NeverReadsThe31EnginesCapabilities(string? preview)
+    {
+        // #1505 R15 (the final review): the 31 store's engine capabilities hold the 31 agents catalogue; a 5-30 start, with
+        // the preview unset or admitting 31, never builds them, so a defect in agents/v31 cannot fail it
+        var touched = 0;
+        var capabilities = new Lazy<EngineCapabilities>(() =>
+        {
+            Interlocked.Increment(ref touched);
+            throw new InvalidOperationException("The 31 agents catalogue was read.");
+        });
+        var package = ByteEquivalenceFixtures.Load("example-prior-letters");
+        var inputs = new Dictionary<string, ConsultInputValue>(StringComparer.Ordinal)
+        {
+            ["consult_draft"] = ConsultInputValue.OfText(Draft),
+            ["prior_letters"] = ConsultInputValue.OfArray([ConsultInputValue.OfText("Dear Dr A. Sample, Margaret Okafor was seen in clinic. (Fictional.)")]),
+        };
+
+        var start = new Start(preview, package30: package, engineCapabilities: capabilities);
+        var outcome = await start.RunAsync(PackageRefOf(package), inputs);
+
+        Assert.Null(outcome.Error);
+        Assert.Equal(nameof(ConsultGenerationOrchestrator), Assert.Single(start.Scheduled).Name);
+        Assert.Equal(0, touched);
+    }
+
     [Fact]
     public async Task ExamplePriorLetters_WithNoLetters_StartsAt31()
     {
@@ -723,7 +751,7 @@ public class V31JobStartTests
     {
         private readonly ConsultGenerationJobStarter _starter;
 
-        public Start(string? preview, string? timeZone = Zone, WorkflowPackage? package30 = null, string? signatures = null)
+        public Start(string? preview, string? timeZone = Zone, WorkflowPackage? package30 = null, string? signatures = null, Lazy<EngineCapabilities>? engineCapabilities = null)
         {
             var settings = Substitute.For<IAccountSettingsStore>();
             if (timeZone != null)
@@ -766,7 +794,7 @@ public class V31JobStartTests
 
             var admission = SpecVersionAdmissionTests.With(preview);
             var limits = new EngineLimitSettings(new ConfigurationBuilder().Build());
-            Store = new CountingStore(new CompiledPackageStore(Registry, Registry, ThisEngine.Value, admission, limits));
+            Store = new CountingStore(new CompiledPackageStore(Registry, Registry, engineCapabilities ?? ThisEngine, admission, limits));
             var engine = EngineAttestation.Current(V29Catalog.Catalog, null);
             _starter = new ConsultGenerationJobStarter(
                 NullLogger<ConsultGenerationJobStarter>.Instance,

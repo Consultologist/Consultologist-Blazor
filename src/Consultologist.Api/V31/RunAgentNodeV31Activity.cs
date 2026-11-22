@@ -39,7 +39,7 @@ public sealed record RunAgentNodeV31Input(string PackageName, string PackageVers
 public sealed class RunAgentNodeV31Activity(
     ICompiledPackageStore store,
     IAgentAttempts agent,
-    V31AgentsCatalogue catalogue,
+    Lazy<V31AgentsCatalogue> catalogue,
     ILogger<RunAgentNodeV31Activity> logger,
     Random? random = null)
 {
@@ -56,13 +56,13 @@ public sealed class RunAgentNodeV31Activity(
         var entry = plan == null ? null : V31Entries.Find(plan, call.EntryKey, call.Function);
         if (plan == null || entry == null || Binding(plan, entry) is not { } binding
             || !int.TryParse(binding.AgentVersion, NumberStyles.None, CultureInfo.InvariantCulture, out var version)
-            || !catalogue.Holds(binding.AgentName, version))
+            || !catalogue.Value.Holds(binding.AgentName, version))
         {
             return CouldNotCall(call, "plan");
         }
 
         var (agentName, agentVersion) = binding;
-        var prepared = AgentTurn.Prepare(plan, call, input.RenderSteps, catalogue.StrictRejects(agentName, version));
+        var prepared = AgentTurn.Prepare(plan, call, input.RenderSteps, catalogue.Value.StrictRejects(agentName, version));
         V31EngineFaults.Log(logger, prepared.Composition.EngineFault, call.Key, call.EntryKey, call.Function);
         if (prepared.Text is not { } prompt)
             return CouldNotCall(call, prepared.ErrorKind ?? "plan");

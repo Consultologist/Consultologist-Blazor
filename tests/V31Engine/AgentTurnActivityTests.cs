@@ -359,7 +359,7 @@ public class AgentTurnActivityTests
             Assert.True(load.Plan != null, $"{load.RefusalId} {load.OperatorDetail}");
             Plan = load.Plan!;
             Agent = new FakeAttempts(this);
-            _agent = new RunAgentNodeV31Activity(store, Agent, Catalogue, AgentLog, new Random(1));
+            _agent = new RunAgentNodeV31Activity(store, Agent, new Lazy<V31AgentsCatalogue>(() => Catalogue), AgentLog, new Random(1));
             _render = new RenderNodeV31Activity(store, RenderLog);
             _rule = new EvaluateRuleV31Activity(store, NullLogger<EvaluateRuleV31Activity>.Instance);
         }

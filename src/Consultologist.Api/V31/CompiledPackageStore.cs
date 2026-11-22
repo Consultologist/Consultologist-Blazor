@@ -73,12 +73,14 @@ public interface ICompiledPackageStore
 /// (<see cref="RequiresCheck.Engine"/>: the first sentence on the job, all of them for the operator), and built into a
 /// plan with the engine's regex limit. A plan is cached in memory per <c>name@version</c>, holding its
 /// <c>resolveHash</c>; a stamped folder never changes, so a second load reads nothing. A refusal is not cached. Safe to
-/// call concurrently: two first loads may both build, and the first plan stored is the one both return.
+/// call concurrently: two first loads may both build, and the first plan stored is the one both return. The engine's
+/// capabilities are read only here, for a stamped version, so a host that does not run 31 never builds them, nor the 31
+/// agents catalogue they hold (#1505 R15).
 /// </summary>
 public sealed class CompiledPackageStore(
     IRegistryFiles files,
     IWorkflowPackageVersions versions,
-    EngineCapabilities engine,
+    Lazy<EngineCapabilities> engine,
     SpecVersionAdmission admission,
     EngineLimitSettings limits) : ICompiledPackageStore
 {
@@ -152,7 +154,7 @@ public sealed class CompiledPackageStore(
             return Shown(ResolveSentences.ResolveDoesNotMatch(name, version), name, version);
 
         // #1504 (R6): a document that is not what publish wrote (S07-006, an agent's version not an integer) is shown as S09-009.
-        var lacking = RequiresCheck.Engine(resolve, @lock, engine);
+        var lacking = RequiresCheck.Engine(resolve, @lock, engine.Value);
         if (lacking.FirstOrDefault(r => r.Id == S07HashId) is { } unwritten)
             return Shown(unwritten, name, version);
         if (lacking.Count > 0)

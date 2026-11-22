@@ -41,7 +41,7 @@ public class PlanRefusalLogTests
         AssertLogged(renderLog, load);
 
         var agentLog = new CapturingLogger<RunAgentNodeV31Activity>();
-        await new RunAgentNodeV31Activity(store, Substitute.For<IAgentAttempts>(), V31AgentsCatalogue.Load(), agentLog)
+        await new RunAgentNodeV31Activity(store, Substitute.For<IAgentAttempts>(), new Lazy<V31AgentsCatalogue>(() => V31AgentsCatalogue.Load()), agentLog)
             .RunAsync(new RunAgentNodeV31Input(packageRef.Name, packageRef.Version, "sha256:r", 100, new AgentCall("node.a", "node.a", null, 1, false, new JsonObject())), CancellationToken.None);
         AssertLogged(agentLog, load);
 

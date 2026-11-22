@@ -23,7 +23,7 @@ public class CompiledPackageStoreTests
         new(() => V31Job.Factory().Current());
 
     private static CompiledPackageStore Store(FakeRegistry registry, EngineCapabilities? engine = null, string? preview = "31") =>
-        new(registry, registry, engine ?? ThisEngine.Value, SpecVersionAdmissionTests.With(preview),
+        new(registry, registry, engine == null ? ThisEngine : new Lazy<EngineCapabilities>(() => engine), SpecVersionAdmissionTests.With(preview),
             new EngineLimitSettings(new ConfigurationBuilder().Build()));
 
     private static CompiledGoldenTests.GoldenCase Golden(string name = "nested-note") =>

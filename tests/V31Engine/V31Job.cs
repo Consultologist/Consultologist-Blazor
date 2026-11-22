@@ -112,7 +112,7 @@ internal sealed class V31Job
 
     /// <summary>The engine's store over <paramref name="registry"/>, 31 admitted.</summary>
     public static CompiledPackageStore StoreOver(FakeRegistry registry) =>
-        new(registry, registry, ThisEngine.Value, SpecVersionAdmissionTests.With("31"), new EngineLimitSettings(new ConfigurationBuilder().Build()));
+        new(registry, registry, ThisEngine, SpecVersionAdmissionTests.With("31"), new EngineLimitSettings(new ConfigurationBuilder().Build()));
 
     /// <summary>The orchestration input Task 13's start would give.</summary>
     public ConsultGenerationOrchestrationInputV31 Input() => new(

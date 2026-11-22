@@ -2,6 +2,8 @@ using System.Reflection;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.V31;
 using Consultologist.Api.Workflow;
+using Consultologist.PackageFormat.V31;
+using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -66,6 +68,61 @@ public class CompositionTests
     }
 
     [Fact]
+    public void WithPreviewUnset_NoRegistrationAndNoFunctionClass_ReadsTheV31Catalogue()
+    {
+        // #1505 ruling 7 (R15), the final review: not only the startup resolve. Every registration of the host's container
+        // (the job starter, whose 31 branch's store holds the engine's capabilities, among them) and every function class,
+        // built as the worker builds one, is built with a catalogue that throws when touched, and none touches it. Only the
+        // catalogue's own seams are left out: the catalogue, the capabilities built from it, and their factory.
+        var touched = 0;
+        var collection = HostCollection(services => services.AddSingleton<V31AgentsCatalogue>(_ =>
+        {
+            Interlocked.Increment(ref touched);
+            throw new InvalidOperationException(CatalogueRead);
+        }));
+        using var provider = collection.BuildServiceProvider();
+        using var scope = provider.CreateScope();
+        var services = scope.ServiceProvider;
+        Type[] seams = [typeof(V31AgentsCatalogue), typeof(EngineCapabilities), typeof(EngineCapabilitiesFactory),
+            typeof(Lazy<V31AgentsCatalogue>), typeof(Lazy<EngineCapabilities>)];
+
+        var readers = new List<string>();
+        var built = 0;
+        void Build(string name, Func<object?> build)
+        {
+            try
+            {
+                build();
+                built++;
+            }
+            catch (Exception ex) when (ReadsTheCatalogue(ex))
+            {
+                readers.Add(name);
+            }
+            catch (Exception)
+            {
+                // a registration this test's configuration cannot build (a setting it lacks); it did not read the catalogue
+            }
+        }
+
+        foreach (var descriptor in collection.Where(d => !d.ServiceType.IsGenericTypeDefinition && !seams.Contains(d.ServiceType)))
+            Build(descriptor.ServiceType.FullName!, () => services.GetServices(descriptor.ServiceType).ToList());
+
+        var functionClasses = typeof(ApiServices).Assembly.GetTypes()
+            .Where(t => t is { IsClass: true, IsAbstract: false } && !t.ContainsGenericParameters
+                && t.GetMethods(BindingFlags.Instance | BindingFlags.Public).Any(m => m.GetCustomAttribute<FunctionAttribute>() != null))
+            .ToList();
+        Assert.Contains(typeof(RunAgentNodeV31Activity), functionClasses);
+        foreach (var type in functionClasses)
+            Build(type.FullName!, () => ActivatorUtilities.CreateInstance(services, type));
+
+        Assert.Empty(readers);
+        Assert.Equal(0, touched);
+        Assert.True(built > 100, $"only {built} registrations and function classes were built");
+        Assert.IsType<ConsultGenerationJobStarter>(services.GetRequiredService<IConsultGenerationJobStarter>());
+    }
+
+    [Fact]
     public void WithPreviewAdmitting31_StartupResolvesIt()
     {
         using var provider = HostServices(preview: "31");
@@ -77,8 +134,25 @@ public class CompositionTests
         Assert.Contains("agents/v31", Assert.Throws<InvalidOperationException>(() => ApiServices.ResolveAtStartup(broken)).Message);
     }
 
+    private const string CatalogueRead = "The 31 agents catalogue was read.";
+
+    private static bool ReadsTheCatalogue(Exception? ex)
+    {
+        for (; ex != null; ex = ex.InnerException)
+        {
+            if (ex.Message.Contains(CatalogueRead, StringComparison.Ordinal))
+                return true;
+        }
+
+        return false;
+    }
+
     /// <summary>The host's registrations over a configuration a test can give: a local storage connection string; then <paramref name="change"/>.</summary>
-    private static ServiceProvider HostServices(Action<IServiceCollection>? change = null, string? preview = null)
+    private static ServiceProvider HostServices(Action<IServiceCollection>? change = null, string? preview = null) =>
+        HostCollection(change, preview).BuildServiceProvider();
+
+    /// <summary>The collection <see cref="HostServices"/> builds.</summary>
+    private static ServiceCollection HostCollection(Action<IServiceCollection>? change = null, string? preview = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -93,7 +167,7 @@ public class CompositionTests
         services.AddLogging();
         services.AddApiServices();
         change?.Invoke(services);
-        return services.BuildServiceProvider();
+        return services;
     }
 
     /// <summary>The one instance field of <paramref name="owner"/> typed <typeparamref name="T"/> (a primary constructor's capture included).</summary>
