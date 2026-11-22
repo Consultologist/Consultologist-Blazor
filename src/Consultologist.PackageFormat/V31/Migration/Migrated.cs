@@ -101,7 +101,7 @@ internal sealed class Migrated
     /// <summary>The 30 texts resolved: the bodies with their headers stripped, and each snippet and macro header by path.</summary>
     public WorkflowResolvedTexts Resolved30 { get; }
 
-    /// <summary>The 30 walk: every template and every condition site, with the context 30 typed it in.</summary>
+    /// <summary>The 30 walk: every template (each node's prompt among them) and every condition site, with the context 30 typed it in.</summary>
     public WorkflowDerivedEdges.Walk Walk30 { get; }
 
     public Migration31Options Options { get; }
@@ -232,7 +232,9 @@ internal sealed class Migrated
             if (errors.Count > 0)
                 return (null, errors.Select(e => MigrationSentences.AtRung(WorkflowPackageMigrationChain.Target, e)).ToList());
 
-            var walk = WorkflowDerivedEdges.WalkOf(manifest, normalised, options.Formats30);
+            // The walk reads each node's prompt from its implied file (prompts/<id>.md), as the Editor walks a 30 package;
+            // the manifest as read names none, and a walk of it holds no prompt.
+            var walk = WorkflowDerivedEdges.WalkOf(WorkflowImpliedPaths.WithImpliedPrompts(manifest, normalised), normalised, options.Formats30);
             return (new Migrated(resolved.Manifest, root30, normalised, resolved, walk, options), []);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

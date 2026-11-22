@@ -7,7 +7,8 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// #1507 (specVersion 31, area 10; part 10 § 1.2 the template rows, § 1.4; part 05 §§ 2, 3, 6, 7; R6): the templates
 /// pass. Every 30 body is rewritten into the 31 dialect (<see cref="TemplateRewriter"/>): each agent node's prompt (its
 /// lifted <c>if</c>s written as its <c>parts</c>) and each <c>rendered</c> node's body, in 30's node order; each snippet's
-/// body and each folder item's; each macro's body, kept for the macros pass (<see cref="Migrated.MacroBodies"/>). A macro
+/// body and each folder item's; each macro's body, kept for the macros pass (<see cref="Migrated.MacroBodies"/>), a macro it
+/// places a hand edit (A10-041: a 31 macro body places none). A macro
 /// whose placements (in prompts and snippet bodies, <see cref="Migrated.MacroPlacements"/>) carry different conditions, one
 /// of them a hoisted body <c>if</c>, is a hand edit on its <c>if</c> (A10-036): a macro has one <c>if</c>.
 /// </summary>
@@ -58,14 +59,26 @@ internal static partial class Migrate
 
         foreach (var file in MacroFiles(m))
         {
-            if (m.Resolved30.Files.TryGetValue(file, out var body))
-                m.MacroBodies[file] = TemplateRewriter.Rewrite(body, new TemplateSite30(TemplateSite.MacroBody, file, null), m).Text;
+            if (!m.Resolved30.Files.TryGetValue(file, out var body))
+                continue;
+
+            // A macro that becomes a snippet (D4) is written at snippets/<id>.md, so its hand edits name that file.
+            var snippet = m.Manifest30.Macros?.FirstOrDefault(x => x.File == file) is { } single && Renames.BecomesSnippet(m, single.Id)
+                ? $"snippets/{single.Id}.md"
+                : null;
+            var rewritten = TemplateRewriter.Rewrite(body, new TemplateSite30(TemplateSite.MacroBody, snippet ?? file, null), m);
+            m.MacroBodies[file] = rewritten.Text;
+
+            // Part 05 § 8.3, § 8.7: a macro's body places no macro (S05-042), so one 30 placed there is a hand edit, never
+            // counted among the placed macro's placements. (30 refuses it too: a macro's text is placed after a reply.)
+            foreach (var placed in snippet is null ? rewritten.Macros.Select(p => p.Macro).Distinct(StringComparer.Ordinal) : [])
+                m.HandEdit(file, "body", MigrationSentences.BodyPlacesMacro(placed));
         }
 
         PlacementConditions(m);
     }
 
-    /// <summary>Every 30 macro file: a single macro's, then each folder's items in its index's order.</summary>
+    /// <summary>Every 30 macro file (also the 31 file of a macro that stays one): a single macro's, then each folder's items in its index's order.</summary>
     private static IEnumerable<string> MacroFiles(Migrated m)
     {
         foreach (var macro in m.Manifest30.Macros ?? [])
@@ -98,12 +111,16 @@ internal static partial class Migrate
     /// R6 (part 10 § 1.2's hoist row): each macro's placements (<see cref="Migrated.MacroPlacements"/>, in prompts and
     /// snippet bodies). When one carries a hoisted condition and all carry the same one, it is the macro's
     /// (<see cref="Migrated.PlacementRules"/>); when they differ, within one body or across several (a hoisted condition on
-    /// one, another or none on another), the macro's one <c>if</c> cannot hold them: one hand edit on it (A10-036).
+    /// one, another or none on another), the macro's one <c>if</c> cannot hold them: one hand edit on it (A10-036). With
+    /// <paramref name="only"/>, just those macros are judged (the macros pass, once a node instance added a placement).
     /// </summary>
-    private static void PlacementConditions(Migrated m)
+    private static void PlacementConditions(Migrated m, IReadOnlySet<string>? only = null)
     {
         foreach (var placements in m.MacroPlacements.GroupBy(p => p.Macro, StringComparer.Ordinal))
         {
+            if (only is not null && !only.Contains(placements.Key))
+                continue;
+            m.PlacementRules.Remove(placements.Key);
             var rules = placements.Select(p => p.Rule).ToList();
             if (rules.All(r => r is null))
                 continue;

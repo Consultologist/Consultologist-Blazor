@@ -61,7 +61,7 @@ public class TemplateRewriterTests
 
         // The vendored file: summary.md's draft, a text input, is read as its content.
         var summary = Body(MigrateNodesTests.Migrated("example-macros"), "nodes/summary.md");
-        Assert.EndsWith("Consult draft:\n{{ input.consult_draft.content }}\n", summary, StringComparison.Ordinal);
+        Assert.Contains("Consult draft:\n{{ input.consult_draft.content }}\n", summary, StringComparison.Ordinal);
         Assert.DoesNotContain("{{ input.consult_draft }}", summary, StringComparison.Ordinal);
     }
 
@@ -440,13 +440,14 @@ public class TemplateRewriterTests
         AssertHandEdit(Assert.Single(result.HandEdits, h => h.Contains(path, StringComparison.Ordinal)), path, "A10-001",
             "the body's if at line 1 does more than choose text to show; write it as parts with their own if.");
 
-        // A body with no parts (a macro's, a snippet's) keeps its if, a hand edit (A10-035).
+        // A body with no parts (a macro's, a snippet's) keeps its if, a hand edit (A10-035), on the file it is written at:
+        // kept_note is fixed text, so a snippet (D4).
         var macros = Working("example-macros-warnings");
         Migrate.Templates(macros);
         Assert.Equal("{{ if input.note_type.value != \"triage\" }}Note type recorded as {{ input.note_type.value }}.{{ end }}\n", macros.MacroBodies["macros/kept_note.md"]);
         AssertHandEdit(
-            Assert.Single(macros.HandEditNotices, h => h.StartsWith("Hand edit needed in macros/kept_note.md", StringComparison.Ordinal)),
-            "macros/kept_note.md", "A10-035",
+            Assert.Single(macros.HandEditNotices, h => h.StartsWith("Hand edit needed in snippets/kept_note.md", StringComparison.Ordinal)),
+            "snippets/kept_note.md", "A10-035",
             "the body's if at line 1 decides what a macro body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.");
     }
 

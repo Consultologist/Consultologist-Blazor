@@ -437,7 +437,8 @@ public class MigrateLayoutTests
         var (_, files30) = ByteEquivalenceFixtures.ReadPackage("test/general");
         var result = Migrated("test/general");
 
-        Assert.Equal(Compact("""{ "description": null, "items": ["snomed_tool_guidance", "standards"] }"""),
+        // The 30 snippets in order, then the macro the macros pass makes fixed text (D4: test, renamed test_snippet).
+        Assert.Equal(Compact("""{ "description": null, "items": ["snomed_tool_guidance", "standards", "test_snippet"] }"""),
             JsonOf(result, "snippets/index.json").ToJsonString());
 
         // A single snippet: label, description null, if null (Task 7 converts a 30 if), format markdown_block.

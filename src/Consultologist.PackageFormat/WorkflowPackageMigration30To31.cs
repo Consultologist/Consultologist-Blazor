@@ -89,7 +89,8 @@ public static class WorkflowPackageMigration30To31
     /// choice that cannot be made, A10-033), then rewritten pass by pass on one working set (<see cref="Migrated"/>): the layout, the
     /// manifest and the formats (<see cref="V31.Migration.Migrate.Layout"/>), the inputs
     /// (<see cref="V31.Migration.Migrate.Inputs"/>), the nodes, the flows and their conditions
-    /// (<see cref="V31.Migration.Migrate.Nodes"/>), the template bodies (<see cref="V31.Migration.Migrate.Templates"/>). The
+    /// (<see cref="V31.Migration.Migrate.Nodes"/>), the template bodies (<see cref="V31.Migration.Migrate.Templates"/>), the
+    /// macros and their choices (<see cref="V31.Migration.Migrate.Macros"/>). The
     /// files are serialised once, at the end.
     /// </summary>
     public static Migration31Result Migrate(string manifestJson, IReadOnlyDictionary<string, string> files, Migration31Options options)
@@ -147,6 +148,7 @@ public static class WorkflowPackageMigration30To31
         V31.Migration.Migrate.Inputs(migrated);
         V31.Migration.Migrate.Nodes(migrated);
         V31.Migration.Migrate.Templates(migrated);
+        V31.Migration.Migrate.Macros(migrated);
         return migrated.Result(at30.Notices);
     }
 

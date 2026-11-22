@@ -43,14 +43,15 @@ internal sealed record MacroPlacement(string Macro, string? Owner, string File, 
 /// Scriban's parser gives each tag's tree; the reads it holds are rewritten (a bare <c>input.x</c> to its <c>.content</c>
 /// or <c>.value</c>, <c>input.x.f</c> to <c>input.x.value.f</c>, a bare node to its member, a classifier's
 /// <c>.value</c> to <c>.value.value</c>, a check's <c>node.</c> to <c>check.</c>, <c>item.label</c> to its loop's
-/// <c>itemLabel</c> field, <c>macro.x.prompt</c> to the placement <c>macro.x</c>, a pipe to a 30 renderer to the
+/// <c>itemLabel</c> field, <c>macro.x.prompt</c> to the placement <c>macro.x</c>, <c>macro.x.content</c> of a macro
+/// that becomes a snippet to <c>snippet.x.content</c> (D4), a pipe to a 30 renderer to the
 /// <c>renderer.</c> pipe of the node's <c>.value</c>, a <c>for</c> over a loop node to its <c>.items</c> with
 /// <c>.skipped</c> its <c>state</c>), and the tag scanner (<see cref="TemplateTags"/>) gives the whitespace marks, a
 /// <c>-</c> becoming a <c>~</c> and a placement keeping only the forms § 2.6 allows. A body <c>if</c> that tests a value is
 /// lifted, in a prompt, into parts (<c>when_&lt;n&gt;</c>, with its negation for an <c>else</c>), or hoisted off the one
 /// macro it places onto that placement (<see cref="RewrittenBody.Macros"/>); a <c>for</c> over a macro folder is unrolled. Every edit is
 /// made by source span, last to first, so text outside tags keeps its bytes. What cannot be decided stays as 30 wrote it,
-/// with one hand edit each (A10-001, A10-005, A10-035, A10-037 to A10-039, S10-004); a body that still breaks a statement
+/// with one hand edit each (A10-001, A10-004, A10-005, A10-035, A10-037 to A10-040, S10-004); a body that still breaks a statement
 /// rule of the dialect (<see cref="TemplateSyntax"/>) has one hand edit per fault. Never throws on package content.
 /// </summary>
 internal static class TemplateRewriter
@@ -642,7 +643,11 @@ internal static class TemplateRewriter
                             Macros.Add(new MacroPlacement($"{folder}/{id}", site.OwnerId, site.File, null));
                             break;
                         case "content":
+                            // D4: a folder macro never becomes a snippet, so its fixed-text read is a marker at 31.
                             inner.Add(Start(expression), End(expression), $"macro.{folder}.{id}.content");
+                            var key = $"{folder}/{id}";
+                            var both = outputs.Any(o => Member(o, variable!) == "prompt");
+                            inner.Say(Start(expression), line => both ? MigrationSentences.ReadBothWays(key) : MigrationSentences.ReadAsFixedText(key, line));
                             break;
                         default:
                             Output(output, vars, inner, depth);
@@ -855,6 +860,18 @@ internal static class TemplateRewriter
                     return new Written("snippet", null, null, false);
                 case "snippet" when names is [_, "content"] or [_, _, "content"]:
                     return new Written("snippet", null, null, false);
+                case "macro" when chain.Names is [{ } fixedText, "content"] && chain.Steps.All(s => s.Token is not null)
+                    && m.Manifest30.Macros?.Any(x => x.Id == fixedText && !x.File.EndsWith('/')) == true:
+                    // D4: 30's fixed-text read. A macro that becomes a snippet is read as one; any other is a marker at 31.
+                    if (Migrate.Renames.BecomesSnippet(m, fixedText))
+                    {
+                        sink.Add(Start(chain.Root), End(chain.Root), "snippet");
+                        return new Written("snippet", null, null, false);
+                    }
+
+                    var both = m.Walk30.Templates.Any(t => t.References.MacroPrompts.Contains(fixedText));
+                    sink.Say(Start(whole), line => both ? MigrationSentences.ReadBothWays(fixedText) : MigrationSentences.ReadAsFixedText(fixedText, line));
+                    return Nothing;
                 case "macro" when MacroOf(chain) is { } macro:
                     // Part 05 § 10: 30's {{ macro.x.prompt }} is the placement {{ macro.x }}.
                     sink.Add(End(steps[^2].Token!), End(steps[^1].Token!), string.Empty);

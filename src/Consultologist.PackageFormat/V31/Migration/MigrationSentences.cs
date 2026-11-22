@@ -268,4 +268,42 @@ internal static class MigrationSentences
     /// </summary>
     public static string ReadNotAllowed(string path, int line, string site) =>
         string.Create(CultureInfo.InvariantCulture, $"the template reads {path} at line {line}, which a 31 {site} doesn't read; rewrite it.");
+
+    /// <summary>
+    /// A10-003 (part 10 § 1.4, D3; part 05 § 10): a reason: a 30 node instance placed macro <paramref name="macro"/>'s text
+    /// <paramref name="where"/> (<c>before</c>, <c>after</c>) the node's reply; at 31 the model places its marker, so the
+    /// instruction must say where.
+    /// </summary>
+    public static string PlacedByTheEngine(string macro, string where) =>
+        $"macro '{macro}' was placed {where} the reply by the engine; say in its instruction where the model writes its marker.";
+
+    /// <summary>A10-004 (D4): a reason: macro <paramref name="macro"/> is read both as <c>.content</c> (fixed text) and as <c>.prompt</c> (an instruction) at 30.</summary>
+    public static string ReadBothWays(string macro) =>
+        $"macro '{macro}' is read both as fixed text and as an instruction; split it into a snippet and a macro.";
+
+    /// <summary>
+    /// A10-007 (part 10 § 1.3, part 02 § 10): the optional macro <paramref name="macro"/> is now offered by the optional
+    /// boolean input <paramref name="input"/> its <c>if</c> reads (the macro's id, or with <c>_macro</c> when an input had it).
+    /// </summary>
+    public static string OfferedByInput(string macro, string input) =>
+        $"Macro '{macro}' is now offered by the input '{input}'.";
+
+    /// <summary>
+    /// A10-040 (D4): a reason: a 30 body reads macro <paramref name="macro"/>'s <c>.content</c> (fixed text) at
+    /// <paramref name="line"/>, but the macro does not become a snippet (it has an <c>if</c>, is optional, is a folder's, or is
+    /// placed by a node instance or on a deliverable with a condition), and at 31 <c>macro.&lt;id&gt;.content</c> is a marker.
+    /// </summary>
+    public static string ReadAsFixedText(string macro, int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"macro '{macro}' is read as fixed text at line {line}, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.");
+
+    /// <summary>A10-041 (part 05 § 8.3, § 8.7): a reason: a 30 macro's body places macro <paramref name="placed"/> (its <c>.prompt</c>), which no 31 macro body does.</summary>
+    public static string BodyPlacesMacro(string placed) =>
+        $"the body places macro '{placed}', which a 31 macro body cannot; place it in the prompt instead.";
+
+    /// <summary>
+    /// A10-042 (D5; part 05 § 8.4): a reason: the 30 instruction is itself a template (it renders a tag before the model
+    /// sees it), and a 31 instruction is plain lines holding the macro's own marker once.
+    /// </summary>
+    public const string InstructionIsATemplate =
+        "the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.";
 }

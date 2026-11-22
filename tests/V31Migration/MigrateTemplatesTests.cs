@@ -91,7 +91,10 @@ public class MigrateTemplatesTests
                 bodies.Add((path, $"parts.{id}.text", TemplateSite.Prompt, string.Join('\n', part!["text"]!.AsArray().Select(l => (string)l!))));
         }
 
-        bodies.AddRange(m.MacroBodies.Select(b => (b.Key, "body", TemplateSite.MacroBody, b.Value)));
+        // A macro that becomes a snippet (D4) is written, and its hand edits said, at snippets/<id>.md.
+        string Written(string path) =>
+            m.Manifest30.Macros?.FirstOrDefault(x => x.File == path) is { } macro && Migrate.Renames.BecomesSnippet(m, macro.Id) ? $"snippets/{macro.Id}.md" : path;
+        bodies.AddRange(m.MacroBodies.Select(b => (Written(b.Key), "body", TemplateSite.MacroBody, b.Value)));
         Assert.NotEmpty(bodies);
 
         foreach (var (file, member, site, text) in bodies)
