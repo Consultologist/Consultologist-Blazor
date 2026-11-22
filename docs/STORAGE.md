@@ -242,10 +242,13 @@ which is only ever in blobs:
 
 - **The table `ConsultGenerationRecordRows`**, on the records account (the `ConsultGenerationRecordStorage` section if
   set, else `AccountStorage`, as the other job tables; created on a 31 job's first write). One row per record row:
-  partition key the job id, row key the record key escaped for Azure Tables (a key past 512 characters is `~` and its
-  SHA-256 hex), and the properties `key` (the true key), `section` (`node`, `check`, `deliverable`, `delivery` or
+  partition key the job id, row key the record key escaped for Azure Tables (an escaped key past 512 UTF-16 characters is `~`
+  and its SHA-256 hex), and the properties `key` (the true key), `section` (`node`, `check`, `deliverable`, `delivery` or
   `decision`), `row` (the row's canonical JSON, continued in `row1`, `row2`… past 30,000 characters) and `hash`. A row is
-  written once (insert-if-absent) and never rewritten. Holds hashes, ids, counts, reasons and package text only.
+  written once (insert-if-absent) and never rewritten. Holds hashes, ids, counts, reasons and package text only. A row
+  larger than a table row holds (1 MiB, in UTF-16) is not written, and its job fails with A09-002 naming its key. The
+  job index row of a storage-12 job carries `RecordStorage` (12), which the sweep and closure read instead of the
+  job's entity; a 5–30 job's index row has no such property.
 - **The blobs**, in `<kind>-job-outputs` beside the job's output blob, under `{appUserId}/{jobId}/`:
   - `text/{sha256 hex of the row key}.produced.json` and `….settled.json`: the retained text (replies, prompts as sent,
     renderer inputs and outputs, composed deliverables, item names from inputs or models, a `check_result`'s lists,

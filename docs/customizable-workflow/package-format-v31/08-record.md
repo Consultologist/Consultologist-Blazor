@@ -68,7 +68,10 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
     assembled again from them (when the blob is gone), and is kept only if it hashes to `recordHash` (decided in the
     build, #1506).
 - **A row write is insert-if-absent,** keyed by job and rooted key ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical second
-  write (a Durable replay) is a no-op; a differing one is refused and recorded as an engine fault.
+  write (a Durable replay) is a no-op; a differing one is refused and recorded as an engine fault:
+  the first row stays, the job fails with A06-010, and its record is sealed with the first row. A row
+  larger than a table row holds (1 MiB) is not written; the other rows of its round are, and the job
+  fails with A09-002, naming the row by its key (decided in the build, #1506; [part 09](09-engine-and-pages.md) § 9).
 - **A job that has finished producing and has deliveries to make is `delivering`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)),
   shown as *"Delivering…"*, between producing and its terminal state. The document is viewable
   throughout. Each delivery attempt is a row in the same record, keyed
@@ -111,8 +114,12 @@ retained text (§ 11). The header notes the end state: `status` (`Completed`, `F
 
 **`recordHash`** is `sha256:` and the lowercase hex of the SHA-256 over the document's UTF-8 bytes.
 It is written once on the job header and never changes, before or after the text drop, since the
-document holds no retained text. Rows stored twice with the same bytes are one row; two different
-rows under one key are an engine fault, and the record is not sealed.
+document holds no retained text. Rows stored twice with the same bytes are one row. A second,
+different row under a key already stored is refused: the first row stays, the job fails as an engine
+fault (A06-010), and its record is sealed with the first row. **Once the job is terminal its header
+never changes** (decided in the build, #1506): no later signal (a cancel, a second finalize, a late
+header write) writes a member the header holds, so a document assembled again from the rows hashes to
+the same `recordHash`.
 - **Built under #1490** (record storage 12).
 
 ## 2. Keys
@@ -226,11 +233,12 @@ record document and on History's job header; a member with no value is `null`, n
 | `effectiveInputHash` | string (`sha256:…`) | allowed | the hash of the job's inputs as storage 11 defines it, at `effectiveInputHashVersion` |
 | `effectiveInputHashVersion` | integer | allowed | `7` at 31 |
 | `inputs` | array of input | never | each input, by `id` in ordinal order (§ 3.1); `[]` for none |
-| `tokens` | object | allowed | the job's token totals; `null` in this build: the tokens are on the agent rows (`tokens`, § 4) |
+| `tokens` | object `{ input, output, total }` | allowed | the job's token totals: each the sum of the agent rows' `tokens` member of that name (§ 4); `null` when the job made no model call |
 
 **Unchanged and still recorded:** `packageSpecVersion` (31), `workflowPackage`, `packageFormatRef`,
 `provenanceRef`, `formatsRef`, `catalogRef`, `engineCommit`, `engineRelease`, `apiHost`, the
-terminology snapshot. `formatsRef` and the agents catalogue version now also appear in `lockHash`'s
+terminology snapshot (`terminology`; `null` at 31, since a 31 job's start reads no terminology server,
+and written all the same). `formatsRef` and the agents catalogue version now also appear in `lockHash`'s
 document; the header keeps them for readers of older records.
 
 **Retired at 12** (never written by a 31 job; older records are read exactly as today):
@@ -256,7 +264,8 @@ its value as `effectiveInputHash` takes it, never the value. An input a document
 members above and `kind`, `extractor`, `pageCount`, `fileSha256` and `textSha256`; an input of
 several elements lists them, in order, as `elements`, each with its own `origin` and, for a
 document, those members. In an `ocr` object, `service` and `model` are the OCR service and its
-model. `extractor` stays for older records. #1438 (Milestone 40) builds on them.
+model. `extractor` (the extraction's name and version, as storage 11 writes it) stays, for readers of
+older records. #1438 (Milestone 40) builds on them.
 
 **An input element from a previous run's deliverable** (#874) starts out **model-derived**, and its
 origin links to the job it came from. Typed text and uploaded documents start clean
@@ -268,9 +277,10 @@ origin links to the job it came from. Typed text and uploaded documents start cl
 
 ## 4. Node rows
 
-A production node instance's row keeps every storage 11 member (`label`, `status`, `inputHash`,
-`outputHash`, `hashVersion`, `tokens`, `validation`, `reason`, the clock and failure members, …) and
-gains the members below. Their names are
+A production node instance's row keeps storage 11's members (`label`, `status`, `inputHash`,
+`outputHash`, `hashVersion`, `tokens`, and the clock members `startedAtUtc`, `completedAtUtc` and
+`durationMs`), some under their storage 12 names: storage 11's `validation` is `invalid` at 12, and
+its `reason` and failure members are `stateReason`. It gains the members below. Their names are
 [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633).
 
 | Member | Type | Null | Meaning |
@@ -302,6 +312,9 @@ gains the members below. Their names are
 | `retries` | array of `{ atUtc: string, waitMs: integer, kind: "capacity" \| "service", error: string \| null }` | never | each retry the call needed, with its back-off ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): `kind` is `"capacity"` for a 429 and `"service"` for another service failure; `error` is that failure's kind (`"timeout"`, `"5xx"`, `"connection"`), never its content, and `null` for capacity. `[]` for none |
 | `profileReads` | array of `{ field: string, hash: string }` | never | each `profile.*` read by a macro body placed in this node's prompt, by hash (§ 9); `[]` for none |
 | `stateReason` | string | allowed | the sentence for a row that didn't complete: *skipped: …* (§ 5), *not run: beyond max <n>* ([part 04](04-loops-and-functions.md)), or a failure's reason (a `matches` text over 1 MiB, [part 03](03-expressions.md); the model service's limits or a total-work limit, [part 09](09-engine-and-pages.md) § 3.4); for a row still running when the job limit passed, `cancelled` with *cancelled: the job didn't finish within <n> minutes* ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)); `null` when completed |
+| `startedAtUtc` | string | allowed | storage 11's clock (decided in the build, #1506): when the instance started, as round-trip UTC text from the orchestration's replay-safe clock: an agent or render call sent, a computed node evaluated, a flow node first stepped, a loop item's or a pass's frame opened. `null` for a row that never started (skipped, not run, or refused by a limit before it started) |
+| `completedAtUtc` | string | allowed | when the row settled, from the same clock; `null` with `startedAtUtc` |
+| `durationMs` | integer | allowed | the whole milliseconds from `startedAtUtc` to `completedAtUtc`; `null` with them |
 
 **`cancelled`** is a row state at 12 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): an activity still running when the job limit passes
 is recorded `cancelled`, and its late result, if one arrives, is ignored and never written.
@@ -479,6 +492,7 @@ The record holds a check's result once; a deliverable refers to it. Member names
 | `uncoveredHash`, `untestedHash` | string | allowed | the canonical hash of the `check_result`'s `uncovered` and `untested` lists; `null` when the list is `null` |
 | `uncoveredSize`, `untestedSize` | integer | allowed | the number of elements in those lists; `null` with the hash |
 | `count` | integer | allowed | on a check loop's own row, its item count; `null` on others |
+| `startedAtUtc`, `completedAtUtc`, `durationMs` | string, string, integer | allowed | as on node rows (§ 4) |
 
 The `check_result`'s `uncovered` and `untested` lists come from inputs, so they follow the text
 retention rule: shown while retained, then deleted, with their hash kept for good (§ 11). Its
@@ -588,6 +602,7 @@ template's provenance ([decided](https://github.com/Consultologist/Consultologis
 | `renders` | array of renderer sub-row | never | as on node rows (§ 4.2) |
 | `runNeutralHash`, `runSpots` | | | as on node rows (§ 8.2) |
 | `modelDerived`, `runDependent`, `profileCarrying` | boolean | never | as on node rows |
+| `startedAtUtc`, `completedAtUtc`, `durationMs` | string, string, integer | allowed | as on node rows (§ 4): when its render was sent and when its outcome was decided |
 
 **A delivery row** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)) is written for each destination of a released deliverable, keyed
 `delivery:<deliverable>/<destination>`, and is the one place a result is recorded. Its members are

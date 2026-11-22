@@ -399,7 +399,25 @@ and by the delivery runner after each delivery row. A flush is one `write-record
 then one `RecordV31Rows` entity operation counting what was stored, so an event never names a row that is not there.
 A row is written once, insert-if-absent. A Durable replay writes the same rows in another batch split and finds each
 already stored: that is a no-op. A row that differs by a byte from the stored one is refused, logged as
-`V31 record conflict. JobId, Key` (hashes only), leaves the stored row alone and fails the job with A06-010.
+`V31 record conflict. JobId, Key` (hashes only), leaves the stored row alone and fails the job with A06-010; the job's
+record is then sealed with the first row. A row larger than a table row holds (1 MiB, counted as Azure does, in UTF-16)
+is not written: the store answers `RecordWrite.TooLarge`, the round's other rows are written and counted,
+`write-record-rows-v31` returns the keys (`TooLarge`, a trailing optional member of its result), and the recorder
+throws `RecordRowTooLargeException`; the orchestration fails the job with **A09-002**, *"The job's record of '<row key>'
+is larger than this engine stores. Tell the operator."*, and logs `V31 record row too large. JobId, Key, Chars` (no row
+content). There is no spill: the table is the only permanent store.
+
+**An engine fault keeps its last round.** When a run throws (an activity's fault, a conflict, a row too large), the
+runner first records each gate check's row it still holds, `effect: null`, and the exception leaves it unchanged (a
+recording that throws then never replaces it). The orchestration's catch flushes the recorder, best-effort (its failure
+is logged with the exception's type only), before it finalizes the job, so the sealed record holds every row recorded.
+A flush clears its buffer before it writes, so a flush that failed or met a conflict writes nothing twice.
+
+**A terminal job is frozen.** From the moment a storage-12 job is `Completed`, `Failed` or `Cancelled`, no entity
+operation writes a member its record header reads: `Cancel`, `FinalizeJob`, `RecordV31Header`, `Initialize`,
+`RecordStartFailure`, `MarkNodeFailed` return at once, and `RecordV31Rows` counts rows but adds no tokens. The stamp
+(`RecordV31Seal`) is a signal sent after `record.json` is written, so it cannot be the guard; the state is. So a
+document restored from the rows (below) always hashes to the stamp. A 5–30 job is not frozen: it re-finalizes as before.
 
 **The row table.** `ConsultGenerationRecordRows`, created on a 31 job's first write. Partition key the job id, row key
 the row's key escaped for Azure Tables (`RecordKeys.Escape`: the characters a row key refuses, and `!`, `%` and `~`,
@@ -453,12 +471,22 @@ job that is not the caller's or is below storage 12):
   cannot be sealed or read.
 - **The event `row-finished`** (D16): one per stored row except decisions, key `row:<key>`, payload exactly
   `{ "key", "section", "status" }`, materialised from the row table and placed before `done` (see
-  `docs/CONSULT_GENERATION_EVENTS.md`). A browser fetches the row from `Rows?key=`.
+  `docs/CONSULT_GENERATION_EVENTS.md`). A browser fetches the row from `Rows?key=`. An SSE connection lists the row
+  table only when the job's row count (`rows` on the response) has moved since its last listing, and always for the
+  terminal response. A poll (`GET` of the job) holds no state, so it lists the table on every poll once the job has a
+  stored row (none before); each listing appends the row events, which the event store keeps once by key. That remaining
+  cost, one table listing and one event-store call per poll of a running 31 job, is bounded by the poll rate.
+- A rows route whose store faults, or meets a stored row that is not JSON, answers 500 *"The record isn't available yet.
+  Try again."* with CORS, and logs `V31 rows not available. JobId, ExceptionType`.
 
 **Retention and closure.** The 7-day sweep calls `IRecordTextDrop` first: it seals the job if need be, deletes the
 job's `text/` blobs, and only then signals `DropText`. The sweep never deletes `record.json` (the lifecycle policy
 does, at 30 days, and the next read restores it, above), and `recordHash` still holds afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
-closure, which a rerun resumes. The blobs go with the account's prefix.
+closure, which a rerun resumes. The blobs go with the account's prefix. Both know a storage-12 job from its index row
+(`ConsultGenerationJobIndex`'s `RecordStorage`, written only for a job at storage 12 or later), so for a 5–30 job they
+make the calls they made before 31: no entity read and no record store. A 5–30 row is written through the entity type
+it always was, so its stored properties are unchanged. A 31 job indexed before this column existed has none and is
+treated as 5–30; such jobs exist only on dev preview, so nothing is migrated.
 
 **Deploying: drain 31 orchestrations first.** A 31 history now holds `write-record-rows-v31` and `seal-record-v31`
 calls, and the entity gains the operations `RecordV31Rows` and `RecordV31Seal`. An orchestration in flight across this
