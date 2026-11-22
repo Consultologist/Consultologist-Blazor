@@ -63,7 +63,12 @@ public sealed record RenderCall(string Key, string EntryKey, string? Function, J
 /// null when no run spot was filled, and <paramref name="Detail"/> the row's detail in part 08's names
 /// (<see cref="RenderTurn"/>).
 /// </summary>
-public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null);
+public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null)
+{
+    /// <summary>#1505 ruling 6 (R14): <see cref="Templates.Composition.EngineFault"/> of the failed render, for the activity to log; not serialised.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? EngineFault { get; init; }
+}
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): everything outside the run that <see cref="PlanRunner"/> talks to: agent calls, renders,

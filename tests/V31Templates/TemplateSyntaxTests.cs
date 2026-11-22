@@ -189,6 +189,34 @@ public class TemplateSyntaxTests
     }
 
     [Fact]
+    public void AnEngineFault_AtPublish_CarriesItsTypeOnTheRefusal()
+    {
+        // Publish has no logger in this build: each A08-006 refusal carries the exception's type for the caller that logs,
+        // outside its sentence and its serialised shape.
+        TemplateSyntax.TestParser.Value = _ => throw new InvalidOperationException("Margaret Okafor");
+        IReadOnlyList<PackageFormat.V31.SourceRefusal> refusals;
+        try
+        {
+            refusals = PackageFormat.V31.SourceCheck.Run(V31Resolve.ResolveFixture.Functions(), V31Resolve.ResolveFixture.Published()).Refusals;
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.NotEmpty(refusals);
+        Assert.All(refusals, r =>
+        {
+            Assert.Equal("A08-006", r.Id);
+            Assert.Equal("System.InvalidOperationException", r.EngineFault);
+            Assert.DoesNotContain("Margaret", r.Sentence, StringComparison.Ordinal);
+            Assert.DoesNotContain("EngineFault", System.Text.Json.JsonSerializer.Serialize(r), StringComparison.Ordinal);
+        });
+        Assert.All(PackageFormat.V31.SourceCheck.Run(V31Resolve.ResolveFixture.Functions(), V31Resolve.ResolveFixture.Published()).Refusals,
+            r => Assert.Null(r.EngineFault));
+    }
+
+    [Fact]
     public void WhatScribanSaysOfUnreadableText_IsStillTheAuthors()
     {
         // Scriban's own exception for text it cannot read, and a stack too shallow for the text, are A07-005 at line 1.

@@ -73,7 +73,15 @@ public sealed record TemplateSyntax(
     /// fault instead, its <see cref="DialectFault.Fill"/> the exception's type alone (this library has no logger: the
     /// caller logs it), never its message or the body.
     /// </summary>
-    public static TemplateSyntax Parse(string text) => Parse(text, static body => Template.Parse(body));
+    public static TemplateSyntax Parse(string text) => Parse(text, TestParser.Value ?? ScribanParse);
+
+    /// <summary>
+    /// The seam through which a test makes every <see cref="Parse(string)"/> of its own flow use another parser (one that
+    /// throws); <c>null</c>, Scriban's, everywhere else.
+    /// </summary>
+    internal static readonly AsyncLocal<Func<string, Template>?> TestParser = new();
+
+    private static readonly Func<string, Template> ScribanParse = static body => Template.Parse(body);
 
     /// <summary><see cref="Parse(string)"/> with <paramref name="parse"/> in Scriban's place: the seam through which a test makes the parser fail.</summary>
     internal static TemplateSyntax Parse(string text, Func<string, Template> parse)

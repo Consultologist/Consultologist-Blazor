@@ -74,7 +74,7 @@ public static partial class BodyComposer
         try
         {
             if (composing.Plan(body, null, 0) is not { } top)
-                return Failed(notPublished);
+                return Failed(notPublished) with { EngineFault = composing.EngineFault };
             var text = composing.Render(top, composing.Globals(), out var spots);
             if (Encoding.UTF8.GetByteCount(text) > OutputLimit)
                 return Failed(RunSentences.OutputPassedLimit(composing.Subject));
@@ -88,7 +88,7 @@ public static partial class BodyComposer
             var stop = composing.Stop ?? Stopped(exception);
             if (stop is { TooManySteps: true })
                 return new Composition(null, null, null, true, [], [], [], []);
-            return Failed(stop?.Sentence ?? RunSentences.CouldNotRender(composing.Subject));
+            return Failed(stop?.Sentence ?? RunSentences.CouldNotRender(composing.Subject)) with { EngineFault = composing.EngineFault };
         }
     }
 
@@ -138,6 +138,9 @@ public static partial class BodyComposer
 
         /// <summary>The entry's subject in sentences (<c>Node 'x'</c>, <c>… in function 'f'</c>).</summary>
         public string Subject { get; } = RunSentences.Subject(entry, request.Function);
+
+        /// <summary>#1505 ruling 6 (R14): the exception type of the first A08-006 met reading a text, or null.</summary>
+        public string? EngineFault { get; private set; }
 
         /// <summary>S07-006 for the plan's package: what a text publish did not write is said with.</summary>
         public string NotPublished { get; } = notPublished;
@@ -242,6 +245,7 @@ public static partial class BodyComposer
                 return known;
             (Template, TemplateSyntax)? read = null;
             var syntax = TemplateSyntax.Parse(text);
+            EngineFault ??= syntax.Faults.FirstOrDefault(f => f.Id == "A08-006")?.Fill.FirstOrDefault();
             if (syntax.Faults.Count == 0)
             {
                 var template = Template.Parse(text);

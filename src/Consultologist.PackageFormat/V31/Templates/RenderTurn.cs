@@ -43,7 +43,7 @@ public static class RenderTurn
         if (composition.TooManySteps)
             return new RenderOutcome(null, true, null);
         if (composition.Text is not { } text)
-            return new RenderOutcome(null, false, composition.Failure);
+            return new RenderOutcome(null, false, composition.Failure) { EngineFault = composition.EngineFault };
 
         var detail = new JsonObject
         {
@@ -66,8 +66,12 @@ public static class RenderTurn
     private static Composition ObjectText(RunPlan plan, PlanEntry entry, JsonObject scope)
     {
         // The form publish held the body to (S06-023), by the same definition.
-        if ((SourceLayout.Text(entry.Json["body"]) is { } body ? SourceTemplates.OneValueRead(TemplateSyntax.Parse(body)) : null) is not { } path)
-            return Failed(ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
+        var syntax = SourceLayout.Text(entry.Json["body"]) is { } body ? TemplateSyntax.Parse(body) : null;
+        if ((syntax == null ? null : SourceTemplates.OneValueRead(syntax)) is not { } path)
+        {
+            return Failed(ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence)
+                with { EngineFault = syntax?.Faults.FirstOrDefault(f => f.Id == "A08-006")?.Fill.FirstOrDefault() };
+        }
 
         var segments = path.Split('.');
         var head = string.Join('.', segments[..2]);

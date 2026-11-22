@@ -347,7 +347,7 @@ public static class DialectSentences
             "S05-063" => ReadsPosition(subject, Fill(0), Fill(1), fault.Line, path),
             "A07-004" => ForForm(subject, Fill(0), fault.Line, path),
             "A07-005" => CannotBeRead(subject, fault.Line, path),
-            "A08-006" => EngineFailedReading(subject, path),
+            "A08-006" => EngineFailedReading(subject, path) with { EngineFault = Fill(0) },
             _ => throw new ArgumentException($"{fault.Id} is no dialect sentence.", nameof(fault)),
         };
     }
