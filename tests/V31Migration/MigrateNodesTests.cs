@@ -137,7 +137,7 @@ public class MigrateNodesTests
     [Fact]
     public void Prose_IsPlaintext_InAMigratedNode()
     {
-        var (header, _) = Md(Migrated("example-nested-note"), "nodes/parts/paragraphs/draft_paragraph.md");
+        var (header, _) = Md(Migrated("example-nested-note"), "nodes/sections/paragraphs/draft_paragraph.md");
 
         Assert.Equal("plaintext", (string?)header["format"]);
     }
@@ -163,8 +163,8 @@ public class MigrateNodesTests
         });
 
         Assert.Equal("fail", (string?)Md(result, "nodes/plan.md").Header["onInvalid"]);                      // kept
-        Assert.Equal("fail", (string?)Md(result, "nodes/parts/paragraphs/draft_paragraph.md").Header["onInvalid"]); // none: 30's default
-        Assert.Equal("retry", (string?)Md(result, "nodes/parts/outline.md").Header["onInvalid"]);             // kept
+        Assert.Equal("fail", (string?)Md(result, "nodes/sections/paragraphs/draft_paragraph.md").Header["onInvalid"]); // none: 30's default
+        Assert.Equal("retry", (string?)Md(result, "nodes/sections/outline.md").Header["onInvalid"]);             // kept
         Assert.Equal("fail", (string?)Md(result, "nodes/refine/judge.md").Header["onInvalid"]);               // flag
 
         const string notice = "Node 'judge' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.";

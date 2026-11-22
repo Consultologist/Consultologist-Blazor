@@ -85,7 +85,8 @@ public static class WorkflowPackageMigration30To31
     /// <paramref name="manifestJson"/> and <paramref name="files"/> (without <c>manifest.json</c>) migrated to 31 with
     /// <paramref name="options"/>. The 30 package (raised by the chain when older) is read and checked at 30
     /// (<see cref="Migrated.Read"/>: a file that is not strict JSON, A10-019; a package 30 refuses, A10-017; a reader that
-    /// fails on it, A10-020), then rewritten pass by pass on one working set (<see cref="Migrated"/>): the layout, the
+    /// fails on it, A10-020), its reserved and long ids renamed (<see cref="V31.Migration.Migrate.Renames"/>, § 1.9: a hand
+    /// choice that cannot be made, A10-033), then rewritten pass by pass on one working set (<see cref="Migrated"/>): the layout, the
     /// manifest and the formats (<see cref="V31.Migration.Migrate.Layout"/>), the inputs
     /// (<see cref="V31.Migration.Migrate.Inputs"/>), the nodes, the flows and their conditions
     /// (<see cref="V31.Migration.Migrate.Nodes"/>). The files are serialised once, at the end.
@@ -117,10 +118,17 @@ public static class WorkflowPackageMigration30To31
             return Refused(manifestJson, files, at30.Refusals);
         }
 
-        var (migrated, refusals) = Migrated.Read(at30.ManifestJson, at30.Files, options);
-        if (migrated is null)
+        var (read, refusals) = Migrated.Read(at30.ManifestJson, at30.Files, options);
+        if (read is null)
         {
             return Refused(manifestJson, files, refusals);
+        }
+
+        // § 1.9: the reserved and long ids are renamed on the 30 package before any 31 file is written.
+        var (migrated, renameRefusals) = V31.Migration.Migrate.Renames.Apply(read);
+        if (migrated is null)
+        {
+            return Refused(manifestJson, files, renameRefusals);
         }
 
         // A10-026: a lone \r became a line end (part 01 § 2.4 refuses one), so the file's bytes changed there.

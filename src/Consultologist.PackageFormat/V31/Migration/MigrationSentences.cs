@@ -179,4 +179,34 @@ internal static class MigrationSentences
     /// </summary>
     public static string LoneCarriageReturn(string file) =>
         $"{file}: a carriage return that didn't end a line became a line end.";
+
+    /// <summary>
+    /// A10-006 (part 10 § 1.9, part 01 § 6, D6): the <paramref name="kind"/> (<c>node</c>, <c>input</c>, <c>macro</c>,
+    /// <c>snippet</c>, <c>format</c>, <c>deliverable</c>) <paramref name="id"/>, a word or a Windows name 31 reserves, was
+    /// renamed <paramref name="newId"/>: the hand choice, or the id with its kind as a suffix.
+    /// </summary>
+    public static string RenamedReserved(string kind, string id, string newId) =>
+        $"Renamed {kind} '{id}' to '{newId}': '{id}' is reserved at 31.";
+
+    /// <summary>
+    /// S10-006 (part 10 § 1.9): <paramref name="id"/>'s suffixed form <paramref name="tried"/> (<c>&lt;id&gt;_&lt;kind&gt;</c>)
+    /// was already an id, so the rename took the first free numeric suffix, <paramref name="newId"/>.
+    /// </summary>
+    public static string RenameTaken(string id, string newId, string tried) =>
+        $"Renamed '{id}' to '{newId}'; '{tried}' was already taken.";
+
+    /// <summary>
+    /// A10-033 (part 10 § 1.9, D6): the hand-chosen rename of <paramref name="id"/> to <paramref name="newId"/>
+    /// (<see cref="Migration31Options.Renames"/>) cannot be made: <paramref name="newId"/> is not a good 31 id (part 01
+    /// § 6) or is already one. A refusal: the operator's choice is never replaced by another.
+    /// </summary>
+    public static string ChosenRenameRefused(string id, string newId, bool taken) =>
+        $"The chosen rename of '{id}' to '{newId}' cannot be made: '{newId}' {(taken ? "is already taken" : "is not a 31 id")}; choose another.";
+
+    /// <summary>
+    /// A10-034 (part 01 § 6, § 7 <c>idLength</c>; part 10 § 1.9): the <paramref name="kind"/> <paramref name="id"/>, longer
+    /// than 31's 64 characters (30 had no bound), was shortened to <paramref name="newId"/>.
+    /// </summary>
+    public static string RenamedTooLong(string kind, string id, string newId) =>
+        $"Renamed {kind} '{id}' to '{newId}': an id is at most 64 characters at 31.";
 }

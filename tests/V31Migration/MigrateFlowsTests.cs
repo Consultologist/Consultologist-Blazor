@@ -35,7 +35,7 @@ public class MigrateFlowsTests
     [Fact]
     public void TheNestedNotesLoops_AreTheSpecsExamples()
     {
-        // Part 04 § 2.8, under the 30 id parts (Task 8 renames it sections).
+        // Part 04 § 2.8: the 30 loop parts, renamed sections by the hand choice (§ 1.9, D6).
         var result = Migrated("example-nested-note");
 
         AssertExample("""
@@ -45,8 +45,8 @@ public class MigrateFlowsTests
               "in": "node.plan.value.sections",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": "title",
-              "nodes": ["outline", "paragraphs"], "ret": "node.parts.paragraphs" }
-            """, Json(result, "nodes/parts/index.json"), SourceShapes.FlowFor);
+              "nodes": ["outline", "paragraphs"], "ret": "node.sections.paragraphs" }
+            """, Json(result, "nodes/sections/index.json"), SourceShapes.FlowFor);
         AssertExample("""
             { "kind": "for", "producer": "computed", "label": "Paragraphs", "description": null,
               "format": { "type": "array", "items": { "$ref": "plaintext" } },
@@ -54,8 +54,8 @@ public class MigrateFlowsTests
               "in": "node.outline.value.points",
               "parallel": true, "maxParallel": null, "until": null, "max": null,
               "itemLabel": null,
-              "nodes": ["draft_paragraph"], "ret": "node.parts.paragraphs.draft_paragraph" }
-            """, Json(result, "nodes/parts/paragraphs/index.json"), SourceShapes.FlowFor);
+              "nodes": ["draft_paragraph"], "ret": "node.sections.paragraphs.draft_paragraph" }
+            """, Json(result, "nodes/sections/paragraphs/index.json"), SourceShapes.FlowFor);
     }
 
     [Fact]
@@ -154,7 +154,7 @@ public class MigrateFlowsTests
     [Theory]
     [InlineData("example-conditional-sections", "nodes/sections_draft/index.json", "input.sections.value")]         // an input fan
     [InlineData("example-problem-list", "nodes/problems/index.json", "node.find_problems.value.problems")]          // a node's list
-    [InlineData("example-nested-note", "nodes/parts/paragraphs/index.json", "node.outline.value.points")]           // a body node's list
+    [InlineData("example-nested-note", "nodes/sections/paragraphs/index.json", "node.outline.value.points")]           // a body node's list
     [InlineData("example-classifier-scope", "nodes/plan_sections/index.json", "snippet.plan_sections")]             // a snippet folder
     public void In_IsAReferenceString(string package, string path, string @in) =>
         Assert.Equal(@in, (string?)Json(Migrated(package), path)["in"]);
@@ -167,7 +167,7 @@ public class MigrateFlowsTests
         Assert.Equal("title", (string?)Json(result, "nodes/topic_loop/index.json")["itemLabel"]);                  // the input's
         Assert.Equal("title", (string?)Json(result, "nodes/section_loop/index.json")["itemLabel"]);                // the loop's
         Assert.Equal("heading", (string?)Json(result, "nodes/section_loop/point_loop/index.json")["itemLabel"]);   // the loop's
-        Assert.Null(Json(Migrated("example-nested-note"), "nodes/parts/paragraphs/index.json")["itemLabel"]);      // none
+        Assert.Null(Json(Migrated("example-nested-note"), "nodes/sections/paragraphs/index.json")["itemLabel"]);      // none
 
         // Two loops over one input both take its labelField.
         var twice = Migrated("example-conditional-sections");

@@ -111,6 +111,16 @@ internal sealed class Migrated
     /// <summary>Each 30 node id to its 31 rooted key, each deliverable id to <c>deliverable.&lt;id&gt;</c> (Tasks 7, 11).</summary>
     public Dictionary<string, string> Keys { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Each node the renames pass renamed (<see cref="Migrate.Renames"/>), its 31 id to its id in the package as given,
+    /// so that <see cref="Result"/>'s <see cref="Migration31Result.Keys"/> stays keyed by the given 30 id (D1, D12). Every
+    /// pass after the renames reads and writes the new ids only.
+    /// </summary>
+    public Dictionary<string, string> NodeIds30 { get; } = new(StringComparer.Ordinal);
+
+    /// <summary>Each deliverable the renames pass renamed, its 31 id to its id in the package as given (as <see cref="NodeIds30"/>).</summary>
+    public Dictionary<string, string> DeliverableIds30 { get; } = new(StringComparer.Ordinal);
+
     /// <summary>Where 31 reads each 30 node, by 30 id (Task 7), for <see cref="Scope"/>.</summary>
     public Dictionary<string, ConversionRead> NodeReads { get; } = new(StringComparer.Ordinal);
 
@@ -317,12 +327,25 @@ internal sealed class Migrated
         return files;
     }
 
-    /// <summary>The run's result: the 31 manifest and files, <paramref name="chainNotices"/> then this run's notices, and the report.</summary>
-    public Migration31Result Result(IReadOnlyList<string> chainNotices) =>
-        new(Json(Manifest), Files(), [.. chainNotices, .. _notices], [])
+    /// <summary>
+    /// The run's result: the 31 manifest and files, <paramref name="chainNotices"/> then this run's notices, and the report.
+    /// <see cref="Migration31Result.Keys"/> is keyed by each node's and deliverable's id in the package as given
+    /// (<see cref="NodeIds30"/>, <see cref="DeliverableIds30"/>); its values are the 31 keys, new ids in them.
+    /// </summary>
+    public Migration31Result Result(IReadOnlyList<string> chainNotices)
+    {
+        var keys = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var (id, key) in Keys)
+        {
+            var given = key.StartsWith("deliverable.", StringComparison.Ordinal) ? DeliverableIds30 : NodeIds30;
+            keys[given.GetValueOrDefault(id, id)] = key;
+        }
+
+        return new(Json(Manifest), Files(), [.. chainNotices, .. _notices], [])
         {
             HandEdits = _handEdits.ToList(),
             Report = new MigrationNotes(Renames.ToList(), MacroInputs.ToList(), BlankConversions.ToList(), Suggestions.ToList(), Reproducible.ToList()),
-            Keys = new Dictionary<string, string>(Keys, StringComparer.Ordinal),
+            Keys = keys,
         };
+    }
 }
