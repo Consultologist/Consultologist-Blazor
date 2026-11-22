@@ -330,6 +330,33 @@ public class MigrateNodesTests
         V31Contract.AssertSentence(new SourceRefusal("A10-008", notice, ""));
     }
 
+    [Theory]
+    [InlineData("(node.plan_gate.content | string.strip) == \"\"", """{"blank":[{"var":"node.plan_gate.content"}]}""",
+        "deliverables/single.md, if: 'trim(node.plan_gate.content) = \"\"' became blank(node.plan_gate.content); it now also holds when node.plan_gate.content is null.")]
+    [InlineData("(node.plan_gate.content | string.strip) != \"\"", """{"!":[{"blank":[{"var":"node.plan_gate.content"}]}]}""",
+        "deliverables/single.md, if: 'trim(node.plan_gate.content) ≠ \"\"' became not blank(node.plan_gate.content); it now no longer holds when node.plan_gate.content is null.")]
+    [InlineData("(input.consult_draft | string.strip) == \"\"", """{"blank":[{"var":"input.consult_draft.content"}]}""", null)]
+    public void ATrimComparedWithEmptyText_IsBlank_AndListedWhenItCanBeNull(string condition, string logic, string? notice)
+    {
+        // Part 05 § 7 and Task 12 fix round 1's ruling: a trimmed text compared with "" is blank. A node that did not run
+        // (plan_gate, an if whose test failed) is null at 31, which blank holds, where 30 compared it as not empty: said
+        // (A10-050) and listed beside A10-008. An input not given read "" at 30, so its form answers as before, unsaid.
+        var result = Migrated("composer-sources", root =>
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "single")["if"] = condition);
+
+        Assert.Equal(logic, Md(result, "deliverables/single.md").Header["if"]!.ToJsonString());
+        Assert.DoesNotContain(result.HandEdits, e => e.Contains("deliverables/single.md", StringComparison.Ordinal));
+        if (notice is null)
+        {
+            Assert.Empty(result.Report.BlankConversions);
+            return;
+        }
+
+        Assert.Equal(notice, Assert.Single(result.Report.BlankConversions));
+        Assert.Contains(notice, result.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-050", notice, ""));
+    }
+
     [Fact]
     public void ASizeOfAListThatCanBeNull_IsSaid()
     {

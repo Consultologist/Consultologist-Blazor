@@ -80,10 +80,11 @@ public class MigrateDeliverablesTests
         Assert.Equal("hold", (string?)MigrateNodesTests.Md(MigrateNodesTests.Migrated("test/general"), "deliverables/consult.md").Header["whenEmpty"]);
         Assert.Equal("fail", (string?)MigrateNodesTests.Md(MigrateNodesTests.Migrated("example-nested-note"), "deliverables/note.md").Header["whenEmpty"]);
 
-        // An if the converter refuses stays 30's text with one hand edit, through the one condition helper.
+        // An if the converter refuses (string.upcase has no JSON Logic form; string.strip compared with "" is blank since
+        // fix round 1 of Task 12, part 05 § 7) stays 30's text with one hand edit, through the one condition helper.
         var refused = MigrateNodesTests.Migrated("composer-gates", root =>
-            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "patient_copy")["if"] = "(input.consult_draft | string.strip) == \"\"");
-        Assert.Equal("(input.consult_draft | string.strip) == \"\"", (string?)MigrateNodesTests.Md(refused, "deliverables/patient_copy.md").Header["if"]);
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "patient_copy")["if"] = "(input.consult_draft | string.upcase) == \"\"");
+        Assert.Equal("(input.consult_draft | string.upcase) == \"\"", (string?)MigrateNodesTests.Md(refused, "deliverables/patient_copy.md").Header["if"]);
         var edit = Assert.Single(refused.HandEdits, e => e.StartsWith("Hand edit needed in deliverables/patient_copy.md, if: ", StringComparison.Ordinal));
         V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "deliverables/patient_copy.md"));
 

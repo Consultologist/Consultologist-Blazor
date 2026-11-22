@@ -165,7 +165,8 @@ internal static partial class Migrate
     /// <summary>
     /// A 30 condition or <c>let</c> <paramref name="text"/> in <paramref name="file"/>'s <paramref name="member"/>,
     /// converted over <paramref name="scope"/> (part 10 § 2): its canonical JSON Logic, each <c>!x</c> on text that became
-    /// <c>blank(x)</c> listed (A10-008), and each <c>size</c> of a list that can be null said (A10-027, the Task 4 ruling:
+    /// <c>blank(x)</c> listed (A10-008), each <c>trim(x) == ""</c> written <c>blank(x)</c> that answers otherwise for a null
+    /// <c>x</c> listed (A10-050), and each <c>size</c> of a list that can be null said (A10-027, the Task 4 ruling:
     /// 31's <c>size(null)</c> is null where 30 counted 0). One the converter refuses stays 30's text, a JSON string the
     /// checker refuses (D3), with one hand edit whose reason is the converter's notice.
     /// </summary>
@@ -181,6 +182,8 @@ internal static partial class Migrate
 
         foreach (var blank in result.Blanks)
             m.Blank(MigrationSentences.BecameBlank(file, member, blank));
+        foreach (var trim in result.TrimBlanks)
+            m.Blank(MigrationSentences.TrimBecameBlank(file, member, trim));
         foreach (var list in ConditionTyping.NullableSizes(result.Logic, scope))
             m.Notice(MigrationSentences.SizeOfNullable(file, member, list));
         return result.Logic.DeepClone();

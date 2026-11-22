@@ -191,6 +191,7 @@ public class ConditionConverterTests
                 ["reads"] = new JsonArray(result.Reads.Select(r => (JsonNode?)JsonValue.Create(r)).ToArray()),
                 ["blankConversions"] = new JsonArray(result.BlankConversions.Select(r => (JsonNode?)JsonValue.Create(r)).ToArray()),
                 ["blanks"] = new JsonArray(result.Blanks.Select(b => (JsonNode?)new JsonObject { ["written"] = b.Written, ["printed"] = b.Printed }).ToArray()),
+                ["trimBlanks"] = new JsonArray(result.TrimBlanks.Select(b => (JsonNode?)new JsonObject { ["written"] = b.Written, ["printed"] = b.Printed }).ToArray()),
                 ["notices"] = new JsonArray(result.Notices.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()),
             });
         }
@@ -289,6 +290,43 @@ public class ConditionConverterTests
         Assert.Null(onString.Logic);
         Assert.Equal(["S03-009"], onString.NoticeIds);
         Assert.Equal(["The condition '!input.code' tests input.code.value (string) with not; not takes a boolean — test text with blank."], onString.Notices);
+    }
+
+    [Fact]
+    public void ATrimComparedWithEmptyText_IsBlank()
+    {
+        // Part 05 § 7 (the migrated test/general section_instructions.md): "the test moves to the part's if, using the blank
+        // operation". (x | string.strip) == "" is blank(x), its != and its ! are !blank(x), for a text x; R1 is not involved.
+        var scope = Scope(
+            inputs: new() { ["reason"] = Format("markdown_block") },
+            nodes: new() { ["summary"] = new ConversionRead("node.summary", Format("plaintext")) });
+
+        var input = WorkflowConditionConverter.FromScriban("(input.reason | string.strip) == \"\"", scope);
+        var notEqual = WorkflowConditionConverter.FromScriban("(string.strip input.reason) != \"\"", scope);
+        var not = WorkflowConditionConverter.FromScriban("!((input.reason | string.strip) == \"\")", scope);
+        var node = WorkflowConditionConverter.FromScriban("\"\" == (node.summary.content | string.strip)", scope);
+        var literal = WorkflowConditionConverter.FromScriban("(input.reason | string.strip) == \"none\"", scope);
+
+        Assert.Equal("""{"blank":[{"var":"input.reason.content"}]}""", CanonicalJson.Write(input.Logic));
+        Assert.Equal("boolean", input.ResultFormat);
+        Assert.Equal("""{"!":[{"blank":[{"var":"input.reason.content"}]}]}""", CanonicalJson.Write(notEqual.Logic));
+        Assert.Equal("""{"!":[{"blank":[{"var":"input.reason.content"}]}]}""", CanonicalJson.Write(not.Logic));
+        Assert.Equal("""{"blank":[{"var":"node.summary.content"}]}""", CanonicalJson.Write(node.Logic));
+        Assert.All(new[] { input, notEqual, not, node }, r => Assert.Empty(r.Blanks));
+        Assert.All(new[] { input, notEqual, not, node }, r => Assert.Empty(r.BlankConversions));
+
+        // An input not given read "" at 30, so the input forms answer as 30 did; a node that did not run is null at 31, which
+        // blank holds and 30's comparison did not (row.strip.node#0): that conversion is listed.
+        Assert.Empty(input.TrimBlanks);
+        Assert.Empty(notEqual.TrimBlanks);
+        var listed = Assert.Single(node.TrimBlanks);
+        Assert.Equal("\"\" = trim(node.summary.content)", listed.Written);
+        Assert.Equal("blank(node.summary.content)", listed.Printed);
+        Assert.Equal(["node.summary.content"], listed.Reads);
+
+        // Any other literal is still text compared with a literal (S03-002).
+        Assert.Null(literal.Logic);
+        Assert.Equal(["S03-002"], literal.NoticeIds);
     }
 
     private static void AssertBlank((string Written, string Printed, string[] Reads) expected, BlankConversion actual)

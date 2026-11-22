@@ -22,7 +22,11 @@ namespace Consultologist.PackageFormat.V31.Migration;
 internal static class ConditionTyping
 {
     /// <summary>What typing found: the rule (with <c>blank</c> written for <c>!</c> on text), the check, and the <c>!x</c>s that became <c>blank</c>.</summary>
-    public sealed record Typed(JsonNode? Logic, ExpressionCheck Check, IReadOnlyList<BlankConversion> Blanks);
+    public sealed record Typed(JsonNode? Logic, ExpressionCheck Check, IReadOnlyList<BlankConversion> Blanks)
+    {
+        /// <summary>Each <c>trim(x) == ""</c> written <c>blank(x)</c> whose answer can differ from 30's (<see cref="ConversionResult.TrimBlanks"/>).</summary>
+        public IReadOnlyList<BlankConversion> TrimBlanks { get; init; } = [];
+    }
 
     /// <summary>
     /// <paramref name="logic"/> (the tree's, owned by the caller and rewritten in place) typed at the site
@@ -43,8 +47,9 @@ internal static class ConditionTyping
             : new ExpressionSite(ExpressionSiteKind.Expression, subject, "expression", "", null, declared);
 
         var blanks = new List<BlankConversion>();
-        logic = Blank(logic, operand, scope, conversion.Formats, nots, blanks);
-        return new Typed(logic, ExpressionChecker.Check(logic, site, scope, conversion.Formats), blanks);
+        var trims = new List<BlankConversion>();
+        logic = Blank(logic, operand, scope, conversion.Formats, nots, blanks, trims);
+        return new Typed(logic, ExpressionChecker.Check(logic, site, scope, conversion.Formats), blanks) { TrimBlanks = trims };
     }
 
     /// <summary>
@@ -120,7 +125,7 @@ internal static class ConditionTyping
     /// <c>{ "blank": [x] }</c>, innermost first; each is added to <paramref name="blanks"/>, with <c>x</c> as written at 30
     /// (from <paramref name="nots"/>; its printed form when the tree did not say), printed at 31, and its reads.
     /// </summary>
-    private static JsonNode? Blank(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, IReadOnlyDictionary<JsonObject, string> nots, List<BlankConversion> blanks)
+    private static JsonNode? Blank(JsonNode? node, ExpressionSite operand, Scope scope, FormatSet formats, IReadOnlyDictionary<JsonObject, string> nots, List<BlankConversion> blanks, List<BlankConversion> trims)
     {
         switch (node)
         {
@@ -128,7 +133,7 @@ internal static class ConditionTyping
                 for (var i = 0; i < array.Count; i++)
                 {
                     var element = array[i];
-                    var rewritten = Blank(element, operand, scope, formats, nots, blanks);
+                    var rewritten = Blank(element, operand, scope, formats, nots, blanks, trims);
                     if (!ReferenceEquals(element, rewritten))
                     {
                         array[i] = rewritten;
@@ -148,7 +153,7 @@ internal static class ConditionTyping
                     foreach (var field in fields.Select(f => f.Key).ToList())
                     {
                         var value = fields[field];
-                        var rewritten = Blank(value, operand, scope, formats, nots, blanks);
+                        var rewritten = Blank(value, operand, scope, formats, nots, blanks, trims);
                         if (!ReferenceEquals(value, rewritten))
                         {
                             fields[field] = rewritten;
@@ -158,7 +163,12 @@ internal static class ConditionTyping
                     return obj;
                 }
 
-                Blank(operands, operand, scope, formats, nots, blanks);
+                Blank(operands, operand, scope, formats, nots, blanks, trims);
+                if (TrimIsEmpty(name, operands, operand, scope, formats, trims) is { } blank)
+                {
+                    return blank;
+                }
+
                 if (name == "!" && operands is JsonArray { Count: 1 } not
                     && ExpressionChecker.Check(not[0], operand, scope, formats) is { Refusals.Count: 0, Type.Format: { } format }
                     && FormatTypes.Shape(format, formats) == FormatShape.Text)
@@ -174,6 +184,41 @@ internal static class ConditionTyping
             default:
                 return node;
         }
+    }
+
+    /// <summary>
+    /// Part 05 § 7 (the migrated <c>test/general</c>'s part <c>if</c>; part 10 § 2.2's <c>string.strip</c> row): a
+    /// <c>trim(x)</c> compared by <c>===</c> or <c>!==</c> with <c>""</c>, either side, for a text <c>x</c>, is
+    /// <c>{ "blank": [x] }</c> or <c>{ "!": [{ "blank": [x] }] }</c>; null for anything else. 30 read an input not given as
+    /// <c>""</c> and a folder item's text is always valued, so those answer as 30 did; an <c>x</c> that can be null
+    /// otherwise (a node that did not run, whose text 30 compared as not empty) is listed in <paramref name="trims"/>.
+    /// </summary>
+    private static JsonNode? TrimIsEmpty(string name, JsonNode? operands, ExpressionSite operand, Scope scope, FormatSet formats, List<BlankConversion> trims)
+    {
+        if (name is not ("===" or "!==") || operands is not JsonArray { Count: 2 } pair)
+        {
+            return null;
+        }
+
+        static bool IsEmpty(JsonNode? node) => node is JsonValue value && value.TryGetValue<string>(out var text) && text.Length == 0;
+        var trim = IsEmpty(pair[1]) ? pair[0] : IsEmpty(pair[0]) ? pair[1] : null;
+        if (trim is not JsonObject { Count: 1 } call || call["trim"] is not JsonArray { Count: 1 } trimmed
+            || ExpressionChecker.Check(trimmed[0], operand, scope, formats) is not { Refusals.Count: 0, Type: { Format: { } format } type }
+            || FormatTypes.Shape(format, formats) != FormatShape.Text)
+        {
+            return null;
+        }
+
+        var x = trimmed[0]!.DeepClone();
+        var blank = new JsonObject { ["blank"] = new JsonArray(x) };
+        JsonNode result = name == "===" ? blank : new JsonObject { ["!"] = new JsonArray(blank) };
+        var reads = JsonLogicShape.Paths(x);
+        if ((type.Nullable || FormatTypes.IsNullable(format, formats)) && reads.Any(r => !r.StartsWith("input.", StringComparison.Ordinal)))
+        {
+            trims.Add(new BlankConversion(JsonLogicPrinter.Print(new JsonObject { [name] = pair.DeepClone() }), JsonLogicPrinter.Print(result), reads));
+        }
+
+        return result;
     }
 
     /// <summary>

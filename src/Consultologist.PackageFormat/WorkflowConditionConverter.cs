@@ -74,6 +74,7 @@ public static class WorkflowConditionConverter
         {
             BlankConversions = [.. typed.Blanks.SelectMany(b => b.Reads).Distinct(StringComparer.Ordinal)],
             Blanks = typed.Blanks,
+            TrimBlanks = typed.TrimBlanks,
         };
     }
 
@@ -136,6 +137,15 @@ public sealed record ConversionResult(JsonNode? Logic, string? ResultFormat, IRe
 
     /// <summary>#1507 (§ 2.3, R1): each <c>!x</c> on text that became <c>blank(x)</c>, in written order: what the migration lists (A10-008).</summary>
     public IReadOnlyList<BlankConversion> Blanks { get; init; } = [];
+
+    /// <summary>
+    /// #1507 (part 05 § 7; part 10 § 2.2's <c>string.strip</c> row): each <c>trim(x) == ""</c> (or <c>!=</c>) on a text
+    /// written <c>blank(x)</c> (or <c>!blank(x)</c>) whose <c>x</c> can be null at 31 where 30 read text (a node that did
+    /// not run): <see cref="BlankConversion.Written"/> the 30 comparison as the printer shows it, <c>Printed</c> the 31 one.
+    /// What the migration lists (A10-050). A comparison of an input, which 30 read as <c>""</c> when not given, answers as
+    /// 30's did and is not listed.
+    /// </summary>
+    public IReadOnlyList<BlankConversion> TrimBlanks { get; init; } = [];
 
     /// <summary>The id of each notice's sentence, in the order of <see cref="Notices"/>: <c>S10-003</c>, or the 31 checker's own (<c>S03-008</c>, …).</summary>
     public IReadOnlyList<string> NoticeIds { get; init; } = [];

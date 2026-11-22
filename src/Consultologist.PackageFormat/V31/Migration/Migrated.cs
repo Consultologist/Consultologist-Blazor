@@ -285,7 +285,10 @@ internal sealed class Migrated
         Suggestions.Add(suggestion);
     }
 
-    /// <summary>A <c>!x</c> on text written <c>blank(x)</c> (A10-008, § 2.3): a notice, listed in the report's blank conversions.</summary>
+    /// <summary>
+    /// A <c>!x</c> on text written <c>blank(x)</c> (A10-008, § 2.3), or a <c>trim(x) == ""</c> written <c>blank(x)</c> that
+    /// answers otherwise for a null <c>x</c> (A10-050, part 05 § 7): a notice, listed in the report's blank conversions.
+    /// </summary>
     public void Blank(string notice)
     {
         _notices.Add(notice);

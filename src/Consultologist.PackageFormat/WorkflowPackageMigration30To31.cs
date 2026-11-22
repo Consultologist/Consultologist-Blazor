@@ -57,8 +57,8 @@ public sealed record Migration31Result(
 /// <summary>
 /// #1507 (part 10 § 3.2, D1, D9): the notices that need no edit, as the migration report lists them: the renames
 /// (A10-006, S10-006), the macro choices now inputs with a <c>_macro</c> suffix, the <c>!x</c> converted to
-/// <c>blank(x)</c> (A10-008), the suggested text formats (A10-021), and the <c>reproducible</c> claims that differed
-/// (A10-010).
+/// <c>blank(x)</c> (A10-008) and each <c>trim(x) == ""</c> whose <c>blank(x)</c> answers otherwise for a null <c>x</c>
+/// (A10-050), the suggested text formats (A10-021), and the <c>reproducible</c> claims that differed (A10-010).
 /// </summary>
 public sealed record MigrationNotes(
     IReadOnlyList<string> Renames,
