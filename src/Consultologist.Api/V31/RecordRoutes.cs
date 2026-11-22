@@ -57,46 +57,56 @@ public sealed class RecordRoutes(
             return refused;
         }
 
-        var key = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["key"];
-        if (key == null)
+        // #1506 (final review M1): as the record route does, a storage fault or a stored row that is not JSON answers a JSON
+        // error with CORS, which a page can read; the log holds the job and the exception's type, never a row
+        try
         {
-            var listed = await rows.ListAsync(jobId, cancellationToken);
-            var array = new JsonArray();
-            foreach (var row in listed.OrderBy(row => row.Key, StringComparer.Ordinal))
+            var key = System.Web.HttpUtility.ParseQueryString(req.Url.Query)["key"];
+            if (key == null)
             {
-                array.Add(new JsonObject { ["key"] = row.Key, ["section"] = row.Section, ["row"] = JsonNode.Parse(row.Json) });
+                var listed = await rows.ListAsync(jobId, cancellationToken);
+                var array = new JsonArray();
+                foreach (var row in listed.OrderBy(row => row.Key, StringComparer.Ordinal))
+                {
+                    array.Add(new JsonObject { ["key"] = row.Key, ["section"] = row.Section, ["row"] = JsonNode.Parse(row.Json) });
+                }
+
+                return await JsonAsync(req, HttpStatusCode.OK, new JsonObject { ["rows"] = array }, cancellationToken);
             }
 
-            return await JsonAsync(req, HttpStatusCode.OK, new JsonObject { ["rows"] = array }, cancellationToken);
-        }
-
-        var stored = await rows.ReadAsync(jobId, key, cancellationToken);
-        if (stored == null)
-        {
-            return await JsonAsync(req, HttpStatusCode.NotFound, new JsonObject { ["error"] = NoSuchRow }, cancellationToken);
-        }
-
-        var rowJson = JsonNode.Parse(stored.Json) as JsonObject;
-        var textDeleted = job!.TextDroppedAtUtc != null;
-        JsonObject? text = null;
-        if (!textDeleted && rowJson != null && HasText(stored.Section))
-        {
-            var kind = await new DurableRecordJobs(client, accounts).AccountKindAsync(job, cancellationToken);
-            text = OfferedText(stored.Section, rowJson, await blobs.ReadTextAsync(kind, job.AppUserId, jobId, key, cancellationToken));
-        }
-
-        return await JsonAsync(
-            req,
-            HttpStatusCode.OK,
-            new JsonObject
+            var stored = await rows.ReadAsync(jobId, key, cancellationToken);
+            if (stored == null)
             {
-                ["key"] = stored.Key,
-                ["section"] = stored.Section,
-                ["row"] = rowJson,
-                ["text"] = text,
-                ["textDeleted"] = textDeleted,
-            },
-            cancellationToken);
+                return await JsonAsync(req, HttpStatusCode.NotFound, new JsonObject { ["error"] = NoSuchRow }, cancellationToken);
+            }
+
+            var rowJson = JsonNode.Parse(stored.Json) as JsonObject;
+            var textDeleted = job!.TextDroppedAtUtc != null;
+            JsonObject? text = null;
+            if (!textDeleted && rowJson != null && HasText(stored.Section))
+            {
+                var kind = await new DurableRecordJobs(client, accounts).AccountKindAsync(job, cancellationToken);
+                text = OfferedText(stored.Section, rowJson, await blobs.ReadTextAsync(kind, job.AppUserId, jobId, key, cancellationToken));
+            }
+
+            return await JsonAsync(
+                req,
+                HttpStatusCode.OK,
+                new JsonObject
+                {
+                    ["key"] = stored.Key,
+                    ["section"] = stored.Section,
+                    ["row"] = rowJson,
+                    ["text"] = text,
+                    ["textDeleted"] = textDeleted,
+                },
+                cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning("V31 rows not available. JobId={JobId}, ExceptionType={ExceptionType}", jobId, ex.GetType().FullName);
+            return await JsonAsync(req, HttpStatusCode.InternalServerError, new JsonObject { ["error"] = NotAvailable }, cancellationToken);
+        }
     }
 
     [Function("GetConsultGenerationJobRecord")]

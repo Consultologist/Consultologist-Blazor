@@ -318,6 +318,44 @@ public class RecordRoutesTests
     }
 
     [Fact]
+    public async Task ARowsStorageFault_OrACorruptRow_IsAServerError_WithCors()
+    {
+        // #1506 (final review M1): the rows route answers as the record route does: a JSON error a page can read
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        const string origin = "https://app.consultologist.ai";
+        var log = new CapturingLogger<RecordRoutes>();
+        var down = Substitute.For<IRecordRowStore>();
+        down.ReadAsync(default!, default!, default).ReturnsForAnyArgs<Task<Consultologist.PackageFormat.V31.Run.RecordRow?>>(_ => throw new InvalidOperationException("The table service is down."));
+        down.ListAsync(default!, default).ReturnsForAnyArgs<Task<IReadOnlyList<Consultologist.PackageFormat.V31.Run.RecordRow>>>(_ => throw new InvalidOperationException("The table service is down."));
+        var faulty = new Routes(job, log, down);
+
+        foreach (var response in new[] { await faulty.RowsAsync("node.plan", "GET", origin), await faulty.RowsAsync(null, "GET", origin) })
+        {
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal(origin, Header(response, "Access-Control-Allow-Origin"));
+            Assert.Equal("The record isn't available yet. Try again.", ErrorOf(response));
+        }
+
+        Assert.All(log.Entries, e => Assert.Equal(
+            $"V31 rows not available. JobId={V31Job.JobId}, ExceptionType={typeof(InvalidOperationException).FullName}", e.Message));
+        Assert.Equal(2, log.Entries.Count);
+
+        // a stored row that is not JSON: the same answer, and its text never logged
+        await job.Rows.WriteAsync(V31Job.JobId,
+            [new Consultologist.PackageFormat.V31.Run.RecordRow("node", "node.corrupt", "{\"Margaret Okafor (fictional)")], CancellationToken.None);
+        var corruptLog = new CapturingLogger<RecordRoutes>();
+        var routes = new Routes(job, corruptLog);
+        foreach (var response in new[] { await routes.RowsAsync("node.corrupt", "GET", origin), await routes.RowsAsync(null, "GET", origin) })
+        {
+            Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+            Assert.Equal(origin, Header(response, "Access-Control-Allow-Origin"));
+        }
+
+        Assert.DoesNotContain("Okafor", corruptLog.Everything, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task ARecordThatCannotBeRestored_IsAServerError_SaidPlainly()
     {
         // the blob gone and a row that is not the sealed record's: never a body of nothing, never another document
@@ -548,7 +586,7 @@ public class RecordRoutesTests
         private readonly V31Job _job;
         private readonly RecordRoutes _functions;
 
-        public Routes(V31Job job, CapturingLogger<RecordRoutes>? log = null)
+        public Routes(V31Job job, CapturingLogger<RecordRoutes>? log = null, IRecordRowStore? rows = null)
         {
             _job = job;
             TableCallsAtStart = job.Rows.Table.Calls;
@@ -574,7 +612,7 @@ public class RecordRoutesTests
                 });
 
             _functions = new RecordRoutes(
-                authorizer, job.Rows, job.Blobs, new RecordSealers(job.Rows, job.Blobs, accounts, NullLogger<RecordSealer>.Instance), accounts,
+                authorizer, rows ?? job.Rows, job.Blobs, new RecordSealers(job.Rows, job.Blobs, accounts, NullLogger<RecordSealer>.Instance), accounts,
                 (Microsoft.Extensions.Logging.ILogger<RecordRoutes>?)log ?? NullLogger<RecordRoutes>.Instance);
         }
 
