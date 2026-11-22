@@ -85,6 +85,12 @@ internal sealed class RunInstance
     public JsonObject? CallDetail { get; set; }
 
     /// <summary>
+    /// #1506 (area 09; D2): the text its last call produced (<see cref="AgentOutcome.Produced"/>,
+    /// <see cref="RenderOutcome.Produced"/>), or null; the runner reads only the sent text from it, for its run spots' outputs.
+    /// </summary>
+    public JsonObject? CallProduced { get; set; }
+
+    /// <summary>
     /// #1505 (area 08; D3): a deliverable's composed read form, <c>{ value, content, state: "composed" }</c>, once its render
     /// gave a text: what its gate set reads, as soon as it is composed; null before, and for every other kind.
     /// </summary>

@@ -79,10 +79,10 @@ public class PlanRunnerLoopsTests
         Assert.Equal(RowState.Released, recorder.Row("deliverable.note").State);
 
         // every row inside an item carries the innermost item's name (part 08 § 4); rows outside a loop carry null
-        Assert.Equal("History", (string?)recorder.Row("node.sections.outline:1").Detail["itemName"]);
+        Assert.Equal("History", NodeRowTests.ItemName(recorder.Row("node.sections.outline:1")));
         Assert.False((bool)recorder.Row("node.sections.outline:1").Detail["positionName"]!);
-        Assert.Equal("Plan", (string?)recorder.Row("node.sections.paragraphs:2").Detail["itemName"]);
-        Assert.Equal("Paragraphs 3", (string?)recorder.Row("node.sections.paragraphs.draft_paragraph:2/3").Detail["itemName"]);
+        Assert.Equal("Plan", NodeRowTests.ItemName(recorder.Row("node.sections.paragraphs:2")));
+        Assert.Equal("Paragraphs 3", NodeRowTests.ItemName(recorder.Row("node.sections.paragraphs.draft_paragraph:2/3")));
         Assert.True((bool)recorder.Row("node.sections.paragraphs.draft_paragraph:2/3").Detail["positionName"]!);
         Assert.Null(recorder.Row("node.plan").Detail["itemName"]);
         Assert.Null(recorder.Row("node.sections").Detail["itemName"]);
@@ -455,7 +455,7 @@ public class PlanRunnerLoopsTests
 
         Assert.Equal(RunState.Completed, result.State);
         Assert.Equal(["node.plan", "node.drafts.draft:1"], host.Dispatched);
-        Assert.Equal("History", (string?)recorder.Row("node.drafts:1").Detail["itemName"]);
+        Assert.Equal("History", NodeRowTests.ItemName(recorder.Row("node.drafts:1")));
         foreach (var key in new[] { "node.drafts:2", "node.drafts:3" })
         {
             var row = recorder.Row(key);
@@ -485,7 +485,9 @@ public class PlanRunnerLoopsTests
 
         Assert.Equal(RunState.Completed, result.State);
         var named = recorder.Row("node.sections:1").Detail;
-        var name = (string)named["itemName"]!;
+        var name = NodeRowTests.ItemName(recorder.Row("node.sections:1"))!; // #1506 (D2): drawn from a model's reply, so on the settled text
+        Assert.Null(named["itemName"]);
+        Assert.Equal(CanonicalJson.HashText(name), (string?)named["itemNameHash"]);
         Assert.Equal(120, name.Length);
         Assert.EndsWith("…", name, StringComparison.Ordinal);
         Assert.Equal(title[..119] + "…", name);
@@ -501,7 +503,7 @@ public class PlanRunnerLoopsTests
         Assert.Equal("Sections 2", (string?)items[1]!["label"]);
 
         // with itemLabel null, items take position names
-        Assert.Equal("Paragraphs 1", (string?)recorder.Row("node.sections.paragraphs:1/1").Detail["itemName"]);
+        Assert.Equal("Paragraphs 1", NodeRowTests.ItemName(recorder.Row("node.sections.paragraphs:1/1")));
         Assert.True((bool)recorder.Row("node.sections.paragraphs:1/1").Detail["positionName"]!);
     }
 

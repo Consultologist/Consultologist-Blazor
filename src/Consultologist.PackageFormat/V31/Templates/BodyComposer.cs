@@ -86,7 +86,10 @@ public static partial class BodyComposer
             if (Encoding.UTF8.GetByteCount(text) > OutputLimit)
                 return Failed(RunSentences.OutputPassedLimit(composing.Subject));
             return new Composition(
-                text, NeutralText(text, spots), null, false, [.. spots.Select(s => s.Composed())], [.. composing.Renders], [.. composing.Offered], composing.PlacedUnits());
+                text, NeutralText(text, spots), null, false, InRunes(text, spots), [.. composing.Renders], [.. composing.Offered], composing.PlacedUnits())
+            {
+                RenderTexts = [.. composing.RenderTexts],
+            };
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
         {
@@ -160,6 +163,21 @@ public static partial class BodyComposer
 
         /// <summary>The renderer steps run, in the order run.</summary>
         public List<ComposedRender> Renders { get; } = [];
+
+        /// <summary>#1506 (area 09; D2): each renderer step's input and output text, in the order of <see cref="Renders"/>.</summary>
+        public List<RenderedText> RenderTexts { get; } = [];
+
+        /// <summary>
+        /// #1506 (area 09; D5): the iteration of each template <c>for</c> being run, outermost first, across every text this
+        /// composition renders (the body, its units, a macro's body, a renderer's), 1-based once its first iteration began.
+        /// </summary>
+        public List<int> Passes { get; } = [];
+
+        /// <summary>#1506 (area 09; D5): the pass of what is written now: one number per template <c>for</c> around it, or <c>null</c> outside every one.</summary>
+        public IReadOnlyList<int>? Pass() => Passes.Count == 0 ? null : [.. Passes];
+
+        /// <summary>#1506 (area 09; R9): how many macro bodies are being rendered around what is written now; a unit placed in one is substituted, not sent.</summary>
+        public int Substituting { get; set; }
 
         /// <summary>How many pipe steps into a renderer the entry's own texts number (the last <see cref="ComposedRender.N"/> of its <c>renders</c>).</summary>
         public int Numbered { get; private set; }
@@ -310,7 +328,7 @@ public static partial class BodyComposer
             unitTexts.Add(null);
             unitSplices.Add((-1, -1));
             var rendered = Render(placement.Text, Globals(), index, out var spots);
-            units[index] = new ComposedUnit(placement.Site, CanonicalJson.HashText(rendered));
+            units[index] = new ComposedUnit(placement.Site, CanonicalJson.HashText(rendered), Substituting == 0);
             unitTexts[index] = rendered;
             return new PlacedText(rendered, spots, index);
         }
@@ -516,12 +534,15 @@ internal sealed class ComposeContext : TemplateContext
     {
         base.OnEnterLoop(loop);
         iterations.Push(0);
+        Composing.Passes.Add(0);
     }
 
     protected override void OnExitLoop(ScriptLoopStatementBase loop)
     {
         if (iterations.Count > 0)
             iterations.Pop();
+        if (Composing.Passes.Count > 0)
+            Composing.Passes.RemoveAt(Composing.Passes.Count - 1);
         base.OnExitLoop(loop);
     }
 
@@ -534,6 +555,10 @@ internal sealed class ComposeContext : TemplateContext
             if (count > BodyComposer.IterationLimit)
                 throw Stopped(RunSentences.ForReachedLimit(Subject, Math.Max(loop.Span.Start.Line, 0) + 1));
         }
+
+        // #1506 (D5): the iteration starting is the innermost for's pass number
+        if (Composing.Passes.Count > 0)
+            Composing.Passes[^1]++;
 
         if (++Composing.Steps > Composing.Request.StepLimit)
             throw Composing.Stopped(new ComposeStop(null, tooManySteps: true));

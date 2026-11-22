@@ -317,9 +317,9 @@ public class PlanRunnerFlowTests
         Assert.Equal(["pass.1", "pass.2"], recorder.Decisions.Where(d => d.Owner == "node.sections.refine:2").Select(d => d.Site));
 
         // a row inside a pass inside an item carries the item's name
-        Assert.Equal("Plan", (string?)recorder.Row("node.sections.refine.judge:2#1").Detail["itemName"]);
-        Assert.Equal("Plan", (string?)recorder.Row("node.sections.refine:2#1").Detail["itemName"]);
-        Assert.Equal("History", (string?)recorder.Row("node.sections.refine:1").Detail["itemName"]);
+        Assert.Equal("Plan", NodeRowTests.ItemName(recorder.Row("node.sections.refine.judge:2#1")));
+        Assert.Equal("Plan", NodeRowTests.ItemName(recorder.Row("node.sections.refine:2#1")));
+        Assert.Equal("History", NodeRowTests.ItemName(recorder.Row("node.sections.refine:1")));
     }
 
     [Fact]
@@ -340,7 +340,7 @@ public class PlanRunnerFlowTests
         Assert.Equal(RowState.Completed, recorder.Row("node.refine.notes#2:2").State);
         Assert.Equal(["Text of node.refine.notes.note#2:1.", "Text of node.refine.notes.note#2:2."],
             result.Values["node.refine"]!["value"]!.AsArray().Select(v => (string)v!));
-        Assert.Equal("History", (string?)recorder.Row("node.refine.notes.note#2:1").Detail["itemName"]);
+        Assert.Equal("History", NodeRowTests.ItemName(recorder.Row("node.refine.notes.note#2:1")));
     }
 
     // ---- if ---------------------------------------------------------------------------------------
@@ -427,7 +427,7 @@ public class PlanRunnerFlowTests
         Assert.Equal(RowState.Skipped, row.State);
         Assert.Equal(Reason, row.Reason);
         V31Contract.AssertSentence(new SourceRefusal("S04-003", row.Reason!, ""));
-        Assert.Equal("Results", (string?)row.Detail["itemName"]);
+        Assert.Equal("Results", NodeRowTests.ItemName(row));
         Assert.Equal(RowState.Skipped, recorder.Row("node.patient_summaries:2").State);
         Assert.Equal(Reason, recorder.Row("node.patient_summaries:2").Reason);
         Assert.Equal(RowState.Completed, recorder.Row("node.patient_summaries.narrative_only:1").State);

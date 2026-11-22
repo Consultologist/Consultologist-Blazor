@@ -73,7 +73,7 @@ public class MacroReplyTests
     public void V4_AMarkerOfNoMacro()
     {
         AssertFault(Process("{{~ macro.letrozole.content }}\nAnd {{ macro.nothing_here.content }}.\n", false, Block),
-            "S05-056", "nothing_here", "The reply has a marker that names no macro.", "macro nothing_here: unknown");
+            "S05-056", "nothing_here", "The reply has a marker that names no macro.", "macro: unknown");
     }
 
     [Fact]
@@ -86,6 +86,10 @@ public class MacroReplyTests
         Assert.Equal("S05-056", fault.Id);
         Assert.Equal("The reply has a marker that names no macro.", fault.Sentence);
         Assert.DoesNotContain("smith_john", fault.Sentence);
+
+        // #1506 (the controller's ruling 2): nor does the row's reason, which is kept outside text retention
+        Assert.Equal("macro: unknown", fault.Reason);
+        Assert.DoesNotContain("smith_john", fault.Reason);
     }
 
     [Fact]

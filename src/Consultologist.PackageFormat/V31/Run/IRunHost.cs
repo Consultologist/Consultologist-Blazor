@@ -44,10 +44,15 @@ public sealed record AgentCall(
 /// (<c>retry-after</c>, else the back-off with its jitter) and the error's kind (<c>"timeout"</c>, <c>"error"</c> or
 /// <c>"unreachable"</c>; for <see cref="AgentOutcomeKind.Failed"/> <c>"steps"</c>, <c>"compose"</c> or <c>"plan"</c>), never
 /// its content. #1504 (area 07; part 08 §§ 4, 4.3): <paramref name="Detail"/> is the attempt's row detail in part 08's names
-/// (<see cref="AgentTurn"/>), and <paramref name="Invalid"/> the reply's marker faults, null when there were none.
+/// (<see cref="AgentTurn"/>), and <paramref name="Invalid"/> the reply's marker faults, null when there were none. #1506
+/// (area 09; part 08 § 4; R14): an attempt that called the model has <c>tokens { input, output, total }</c> in its detail.
+/// #1506 (area 09; D2, D10): <paramref name="Produced"/> is the text the attempt produced, which never rides in
+/// <paramref name="Detail"/>: <c>{ sent, neutral, renders: { "&lt;sub-row id&gt;[#&lt;pass&gt;]": { input, output } },
+/// macros: { "&lt;macro id&gt;": body } }</c> (<see cref="AgentTurn.Produced"/>); null when nothing was composed.
 /// </summary>
 public sealed record AgentOutcome(
-    AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind, JsonObject? Detail = null, IReadOnlyList<ReplyFault>? Invalid = null);
+    AgentOutcomeKind Kind, string? Reply, int WaitMilliseconds, string? ErrorKind, JsonObject? Detail = null, IReadOnlyList<ReplyFault>? Invalid = null,
+    JsonObject? Produced = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): one render of a rendered node or a deliverable, with its step budget. #1504 (area 07;
@@ -61,9 +66,11 @@ public sealed record RenderCall(string Key, string EntryKey, string? Function, J
 /// step budget; or <paramref name="Failure"/>, the composer's sentence for another failure. #1504 (area 07; part 05 § 4;
 /// part 08 §§ 8.2, 10): <paramref name="NeutralText"/> is the run-neutral text (<see cref="Composition.NeutralText"/>),
 /// null when no run spot was filled, and <paramref name="Detail"/> the row's detail in part 08's names
-/// (<see cref="RenderTurn"/>).
+/// (<see cref="RenderTurn"/>). #1506 (area 09; D2, D10): <paramref name="Produced"/> is the text the render produced
+/// beside its text, which never rides in <paramref name="Detail"/>: <c>{ neutral, renders: { "&lt;sub-row id&gt;[#&lt;pass&gt;]":
+/// { input, output } } }</c>; null when nothing was composed.
 /// </summary>
-public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null)
+public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null, JsonObject? Produced = null)
 {
     /// <summary>#1505 ruling 6 (R14): <see cref="Templates.Composition.EngineFault"/> of the failed render, for the activity to log; not serialised.</summary>
     [System.Text.Json.Serialization.JsonIgnore]

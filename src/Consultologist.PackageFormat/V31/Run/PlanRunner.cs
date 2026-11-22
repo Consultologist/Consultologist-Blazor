@@ -518,6 +518,7 @@ public sealed partial class PlanRunner
         private async Task RenderedAsync(RunInstance instance, RenderOutcome outcome)
         {
             instance.CallDetail = outcome.Detail;
+            instance.CallProduced = outcome.Produced;
             if (outcome.TooManySteps)
             {
                 await FailAsync(instance, RunSentences.StoppedRendering(Subject(instance), limits.RenderSteps));
@@ -570,26 +571,121 @@ public sealed partial class PlanRunner
             return SettleAsync(instance, RowState.Failed, sentence, RunScope.Absent("failed"), instance.ComposedHash);
         }
 
-        /// <summary>Settles <paramref name="instance"/> and records its row.</summary>
+        /// <summary>
+        /// Settles <paramref name="instance"/> and records its row: #1506 (area 09; part 08 § 4; D2) its detail the entry's
+        /// facts (<see cref="EntryDetail"/>), its item's name (<see cref="ItemNameDetail"/>) and its kind's members, and its
+        /// settled text beside it (<see cref="SettledText"/>), never in the detail.
+        /// </summary>
         private Task SettleAsync(RunInstance instance, RowState state, string? reason, JsonObject read, string? valueHash)
         {
             instance.Settle(state, read, reason);
             pending.Remove(instance);
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
-            ItemNameDetail(instance.Frame, detail);
+            EntryDetail(instance.Entry, detail);
+            var itemName = ItemNameDetail(instance.Frame, detail);
+            string? spotsIn = null;
             if (instance.Entry.Kind == PlanKind.Agent)
+            {
                 AgentDetail(instance, detail);
+                spotsIn = SourceLayout.Text(instance.CallProduced?["sent"]);
+            }
             else if (instance.Entry.Kind == PlanKind.Rendered)
+            {
                 Merge(instance.CallDetail, detail);
+                spotsIn = SourceLayout.Text(read["content"]);
+            }
             else if (instance.Entry.Kind == PlanKind.Deliverable)
+            {
                 DeliverableSettled(instance, state, reason, detail);
+                spotsIn = instance.ComposedText;
+            }
             else if (instance.Entry.Kind == PlanKind.For)
+            {
                 LoopDetail(instance, detail);
+            }
             else if (instance.Entry.Kind == PlanKind.While)
+            {
                 WhileDetail(instance, detail);
+            }
             else if (instance.Entry.Kind == PlanKind.Call)
+            {
                 CallDetail(instance, detail);
-            return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail));
+            }
+
+            var text = SettledText(read, itemName, RecordRows.SpotTexts(detail["runSpots"], spotsIn));
+            return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail, text));
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 §§ 4, 4.1): the entry's facts on its row, as <c>resolve.json</c> writes them: <c>label</c>,
+        /// <c>producer</c>, the three flags (an agent row always <c>modelDerived</c>), <c>formatHash</c> and <c>typeHash</c>
+        /// (<c>null</c> for a flow kind), and on an agent row its <c>agent</c>: the binding's attested agent and the binding.
+        /// </summary>
+        private void EntryDetail(PlanEntry entry, JsonObject detail)
+        {
+            var json = entry.Json;
+            var flow = entry.Kind is PlanKind.For or PlanKind.While or PlanKind.If or PlanKind.Case or PlanKind.Call;
+            detail["label"] = SourceLayout.Text(json["label"]) ?? entry.Id;
+            detail["producer"] = SourceLayout.Text(json["producer"]) ?? (entry.Kind == PlanKind.Agent ? "generated" : "computed");
+            detail["runDependent"] = IsTrue(json["runDependent"]);
+            detail["modelDerived"] = entry.Kind == PlanKind.Agent || IsTrue(json["modelDerived"]);
+            detail["profileCarrying"] = IsTrue(json["profileCarrying"]);
+            detail["formatHash"] = flow ? null : SourceLayout.Text(json["formatHash"]);
+            detail["typeHash"] = flow ? null : SourceLayout.Text(json["typeHash"]);
+            if (entry.Kind == PlanKind.Agent)
+                detail["agent"] = AgentOf(entry);
+        }
+
+        /// <summary>
+        /// Part 08 § 4.1's <c>agent</c> of an agent entry: <c>{ name, version, binding { format, producer, via } }</c> from the
+        /// plan's <c>bindings.&lt;format key&gt;.&lt;producer&gt;</c>; <c>null</c> when the plan names none (the call then failed).
+        /// </summary>
+        private JsonObject? AgentOf(PlanEntry entry)
+        {
+            const string defs = "#/$defs/";
+            if (entry.Format is not JsonObject format || SourceLayout.Text(format["$ref"]) is not { } reference
+                || !reference.StartsWith(defs, StringComparison.Ordinal) || SourceLayout.Text(entry.Json["producer"]) is not { } producer
+                || ((plan.Document["bindings"] as JsonObject)?[reference[defs.Length..]] as JsonObject)?[producer] is not JsonObject binding
+                || SourceLayout.Text(binding["agentName"]) is not { } name)
+            {
+                return null;
+            }
+
+            JsonNode? version = binding["agentVersion"] switch
+            {
+                JsonValue number when number.GetValueKind() == JsonValueKind.Number && number.TryGetValue<int>(out var n) => n,
+                JsonValue text when text.GetValueKind() == JsonValueKind.String
+                    && int.TryParse(text.GetValue<string>(), NumberStyles.None, CultureInfo.InvariantCulture, out var parsed) => parsed,
+                _ => null,
+            };
+            return new JsonObject
+            {
+                ["name"] = name,
+                ["version"] = version,
+                ["binding"] = new JsonObject { ["format"] = reference[defs.Length..], ["producer"] = producer, ["via"] = SourceLayout.Text(binding["via"]) },
+            };
+        }
+
+        private static bool IsTrue(JsonNode? node) => node is JsonValue value && value.GetValueKind() == JsonValueKind.True;
+
+        /// <summary>
+        /// #1506 (area 09; D2): a row's settled text, for the retained text and never the row: <c>content</c> (the read form's
+        /// <c>.content</c>), <c>value</c> (its <c>.value</c>'s canonical JSON when that is not text), <c>itemName</c> (a name not
+        /// drawn from package text, <paramref name="itemName"/>) and <c>spots</c> (<paramref name="spots"/>); <c>null</c> when
+        /// there is none.
+        /// </summary>
+        private static JsonObject? SettledText(JsonObject read, string? itemName, JsonObject? spots)
+        {
+            var text = new JsonObject();
+            if (SourceLayout.Text(read["content"]) is { } content)
+                text["content"] = content;
+            if (read["value"] is { } value && !(value is JsonValue v && v.GetValueKind() == JsonValueKind.String))
+                text["value"] = CanonicalJson.Write(value);
+            if (itemName != null)
+                text["itemName"] = itemName;
+            if (spots != null)
+                text["spots"] = spots;
+            return text.Count == 0 ? null : text;
         }
 
         // ---- words --------------------------------------------------------------------------

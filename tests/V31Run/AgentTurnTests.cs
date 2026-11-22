@@ -395,11 +395,11 @@ public class AgentTurnTests
         var macros = detail["macros"]!.AsArray().Select(m => m!.AsObject()).ToList();
         Assert.Equal(2, macros.Count);
         Assert.Equal(
-            $$"""{"id":"node.note/macro:{{Letrozole}}","macro":"macro.{{Letrozole}}","offered":false,"decisions":["node.note/if:macro.{{Letrozole}}"],"classifier":"node.prescribes_letrozole","placed":false,"form":null,"contentHash":null}""",
+            $$"""{"id":"node.note/macro:{{Letrozole}}","macro":"macro.{{Letrozole}}","offered":false,"decisions":["node.note/if:macro.{{Letrozole}}"],"classifier":"node.prescribes_letrozole","placed":false,"form":null,"contentHash":null,"runNeutralHash":null,"runSpots":[]}""",
             macros[0].ToJsonString());
         var followUp = MarkdownEscape.Escape("Follow up with Dr A. Sample in six weeks.");
         Assert.Equal(
-            $$"""{"id":"node.note/macro:follow_up","macro":"macro.follow_up","offered":true,"decisions":[],"classifier":null,"placed":false,"form":"inline","contentHash":"{{CanonicalJson.HashText(followUp)}}"}""",
+            $$"""{"id":"node.note/macro:follow_up","macro":"macro.follow_up","offered":true,"decisions":[],"classifier":null,"placed":false,"form":"inline","contentHash":"{{CanonicalJson.HashText(followUp)}}","runNeutralHash":null,"runSpots":[]}""",
             macros[1].ToJsonString());
 
         // Finished, the offered macro is placed; the detail is the prepared one with that said.
@@ -446,11 +446,11 @@ public class AgentTurnTests
         Assert.Equal("renderer.tag", (string)render["renderer"]!);
         Assert.Equal("item.value.title", (string)render["source"]!);
         Assert.Equal(
-            ["id", "renderer", "templateHash", "source", "inputHash", "inputSize", "outputHash", "outputLength", "runDependent"],
+            ["id", "renderer", "templateHash", "source", "inputHash", "pass", "inputSize", "outputHash", "outputLength", "runDependent"],
             render.Select(m => m.Key));
         var spot = Row(detail, "runSpots");
         Assert.Equal(
-            $$"""{"id":"node.sections.draft:2/spot:1","site":1,"reads":"run.date","valueHash":"{{CanonicalJson.Hash(JsonValue.Create("2026-11-21"))}}","output":"2026-11-21","outputHash":"{{CanonicalJson.HashText("2026-11-21")}}"}""",
+            $$"""{"id":"node.sections.draft:2/spot:1","site":1,"pass":null,"reads":"run.date","valueHash":"{{CanonicalJson.Hash(JsonValue.Create("2026-11-21"))}}","output":"2026-11-21","outputHash":"{{CanonicalJson.HashText("2026-11-21")}}","start":24,"length":10}""",
             spot.ToJsonString());
         Assert.Equal(CanonicalJson.HashText(prepared.Composition.NeutralText!), (string)detail["runNeutralHash"]!);
         var macro = Row(detail, "macros");

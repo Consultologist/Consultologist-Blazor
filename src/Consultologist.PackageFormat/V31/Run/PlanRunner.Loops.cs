@@ -35,6 +35,16 @@ public sealed partial class PlanRunner
         /// <summary>Whether <see cref="Name"/> is the position name (<c>&lt;loop label&gt; &lt;n&gt;</c>).</summary>
         public bool PositionName { get; set; }
 
+        /// <summary>#1506 (area 09; D2): whether it is a snippet folder's item, whose name comes from its header: package text.</summary>
+        public bool FromFolder { get; init; }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; D2): whether <see cref="Name"/> is package text (a position name, of the loop's label,
+        /// or a snippet folder item's header), so the row keeps it; else it is drawn from an input or a model and the row
+        /// keeps its hash.
+        /// </summary>
+        public bool NameFromPackage => PositionName || FromFolder;
+
         public RunFrame? Frame { get; set; }
 
         public RowState? State { get; set; }
@@ -228,7 +238,7 @@ public sealed partial class PlanRunner
             for (var i = 0; i < given.Count; i++)
             {
                 var (id, element, content, hasContent) = given[i];
-                var item = new LoopItem(i, id) { Available = true, Value = element, Content = content, HasContent = hasContent };
+                var item = new LoopItem(i, id) { Available = true, Value = element, Content = content, HasContent = hasContent, FromFolder = hasContent };
                 Name(loop, item, element);
                 loop.Items.Add(item);
             }
@@ -522,16 +532,13 @@ public sealed partial class PlanRunner
                 ["nodes"] = Nodes(instance, item),
             };
 
-            var detail = new JsonObject
-            {
-                ["function"] = instance.Frame.Function,
-                ["depth"] = instance.Frame.Depth,
-                ["itemName"] = item.Name,
-                ["positionName"] = item.PositionName,
-            };
+            var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
+            EntryDetail(instance.Entry, detail);
+            var name = NameDetail(item, detail);
+            var settled = new JsonObject { ["value"] = completed ? ret?["value"]?.DeepClone() : null, ["content"] = content };
             var key = RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), [.. instance.Frame.ItemPath, item.Id], instance.Frame.Passes);
             return recorder.RowAsync(new RunRow(key, instance.Entry.Key, PlanKind.For, state, reason,
-                content == null ? null : CanonicalJson.HashText(content), detail));
+                content == null ? null : CanonicalJson.HashText(content), detail, SettledText(settled, name, null)));
         }
 
         /// <summary>Each body node of an item by bare id: its <c>value</c>, <c>content</c> and <c>state</c> (<c>not_run</c> when the item never ran).</summary>
@@ -600,15 +607,29 @@ public sealed partial class PlanRunner
         /// <summary>
         /// Part 08 § 4's <c>itemName</c> on a row written in <paramref name="frame"/>: the name of the innermost loop item it
         /// runs in (through any frame between, a while's or a call's), with whether it is the position name; <c>null</c> and
-        /// <c>false</c> outside every loop.
+        /// <c>false</c> outside every loop. #1506 (D2): <see cref="NameDetail"/>'s, the name given back when the row keeps only
+        /// its hash.
         /// </summary>
-        private void ItemNameDetail(RunFrame frame, JsonObject detail)
+        private string? ItemNameDetail(RunFrame frame, JsonObject detail)
         {
             LoopItem? item = null;
             for (var at = frame; at != null && item == null; at = at.Parent)
                 item = itemFrames.GetValueOrDefault(at);
-            detail["itemName"] = item?.Name;
+            return NameDetail(item, detail);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; D2): <paramref name="item"/>'s name on a row: <c>itemName</c> the name when it is package
+        /// text (<see cref="LoopItem.NameFromPackage"/>), else <c>null</c> with <c>itemNameHash</c> the name's hash, the name
+        /// then given back for the settled text; <c>positionName</c>; all <c>null</c> (and <c>false</c>) for no item.
+        /// </summary>
+        private static string? NameDetail(LoopItem? item, JsonObject detail)
+        {
+            var kept = item is { NameFromPackage: true };
+            detail["itemName"] = kept ? item!.Name : null;
+            detail["itemNameHash"] = item == null || kept ? null : CanonicalJson.HashText(item.Name);
             detail["positionName"] = item?.PositionName ?? false;
+            return item == null || kept ? null : item.Name;
         }
     }
 

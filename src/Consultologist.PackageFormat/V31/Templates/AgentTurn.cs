@@ -19,6 +19,12 @@ public sealed record PreparedPrompt(
 {
     /// <summary>Whether the entry returns a text format, whose reply's markers are checked and replaced (part 05 § 8.3: a marker has no place in an object reply).</summary>
     public bool TextReply { get; init; }
+
+    /// <summary>
+    /// #1506 (area 09; D2, D10): the text the attempt produced, which never rides in <see cref="Detail"/>
+    /// (<see cref="AgentTurn.Produced"/>'s shape); <c>null</c> when the prompt was not prepared.
+    /// </summary>
+    public JsonObject? Produced { get; init; }
 }
 
 /// <summary>
@@ -78,6 +84,7 @@ public static class AgentTurn
             PackageMacros(plan, call.Function), null)
         {
             TextReply = plan.Formats.IsText(entry.Format),
+            Produced = Produced(call.Key, composition, sent, neutral),
         };
     }
 
@@ -98,15 +105,16 @@ public static class AgentTurn
 
         var value = prepared.Format?.Unwrap(reply) ?? reply;
         var detail = prepared.Detail.DeepClone().AsObject();
+        var produced = prepared.Produced?.DeepClone().AsObject();
         if (!prepared.TextReply)
-            return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail);
+            return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail, Produced: produced);
 
         var result = MacroReply.Process(value, prepared.Composition.Macros, prepared.PackageMacros, prepared.Ordered);
         if (result.Text is not { } text)
-            return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail, result.Faults);
+            return new AgentOutcome(AgentOutcomeKind.Completed, value, 0, null, detail, result.Faults, produced);
         foreach (var row in (detail["macros"] as JsonArray ?? []).OfType<JsonObject>())
             row["placed"] = SourceLayout.Text(row["macro"]) is { } site && result.Placed.Contains(site, StringComparer.Ordinal);
-        return new AgentOutcome(AgentOutcomeKind.Completed, text, 0, null, detail);
+        return new AgentOutcome(AgentOutcomeKind.Completed, text, 0, null, detail, Produced: produced);
     }
 
     private static PreparedPrompt Unprepared(Composition composition, string kind) => new(null, composition, [], null, false, [], kind);
@@ -244,36 +252,87 @@ public static class AgentTurn
         };
     }
 
-    /// <summary>Part 08 § 8.2's run spots of <paramref name="composition"/>, each named <c>&lt;key&gt;/spot:&lt;n&gt;</c>.</summary>
-    internal static JsonArray SpotRows(string key, Composition composition) =>
-        new([.. composition.Spots.Select(s => (JsonNode)new JsonObject
+    /// <summary>
+    /// Part 08 § 8.2's run spots <paramref name="spots"/>, each named <c>&lt;key&gt;/spot:&lt;n&gt;</c>, <c>n</c> its 1-based
+    /// order of filling (#1506, D5), with its body <c>site</c>, its <c>pass</c>, and its place in the sent text in runes
+    /// (R10): <c>{ id, site, pass, reads, valueHash, output, outputHash, start, length }</c>.
+    /// </summary>
+    internal static JsonArray SpotRows(string key, IReadOnlyList<ComposedSpot> spots) =>
+        new([.. spots.Select((s, i) => (JsonNode)new JsonObject
         {
-            ["id"] = $"{key}/spot:{s.Site}",
+            ["id"] = $"{key}/spot:{(i + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)}",
             ["site"] = s.Site,
+            ["pass"] = PassOf(s.Pass),
             ["reads"] = s.Reads,
             ["valueHash"] = s.ValueHash,
             ["output"] = s.Output,
             ["outputHash"] = s.OutputHash,
+            ["start"] = s.Start,
+            ["length"] = s.Length,
         })]);
 
-    /// <summary>Part 08 § 4.2's renderer sub-rows of <paramref name="composition"/>, each named <c>&lt;key&gt;/render:&lt;n&gt;</c>, a chain's <c>source</c> the step before's.</summary>
+    /// <summary>Part 08 § 8.2's run spots of <paramref name="composition"/> (<see cref="SpotRows(string, IReadOnlyList{ComposedSpot})"/>).</summary>
+    internal static JsonArray SpotRows(string key, Composition composition) => SpotRows(key, composition.Spots);
+
+    /// <summary>
+    /// Part 08 § 4.2's renderer sub-rows of <paramref name="composition"/>, each named <c>&lt;key&gt;/render:&lt;n&gt;</c>, a
+    /// chain's <c>source</c> the step before's, with (#1506, D5) its <c>pass</c>.
+    /// </summary>
     internal static JsonArray RenderRows(string key, Composition composition) =>
         new([.. composition.Renders.Select(r => (JsonNode)new JsonObject
         {
-            ["id"] = $"{key}/render:{r.N}",
+            ["id"] = $"{key}/render:{r.N.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
             ["renderer"] = r.Renderer,
             ["templateHash"] = r.TemplateHash,
             ["source"] = r.Source.StartsWith("render:", StringComparison.Ordinal) ? $"{key}/{r.Source}" : r.Source,
             ["inputHash"] = r.InputHash,
+            ["pass"] = PassOf(r.Pass),
             ["inputSize"] = r.InputSize,
             ["outputHash"] = r.OutputHash,
             ["outputLength"] = r.OutputLength,
             ["runDependent"] = r.RunDependent,
         })]);
 
-    /// <summary>Part 05 § 9's placed units of <paramref name="composition"/>: <c>{ site, hash }</c>.</summary>
+    /// <summary>Part 05 § 9's placed units of <paramref name="composition"/>: <c>{ site, hash, sent }</c> (#1506, R9: <c>sent</c> false for a snippet substituted into a macro's body).</summary>
     internal static JsonArray UnitRows(Composition composition) =>
-        new([.. composition.Units.Select(u => (JsonNode)new JsonObject { ["site"] = u.Site, ["hash"] = u.TextHash })]);
+        new([.. composition.Units.Select(u => (JsonNode)new JsonObject { ["site"] = u.Site, ["hash"] = u.TextHash, ["sent"] = u.Sent })]);
+
+    /// <summary>A sub-row's <c>pass</c>: its numbers, or <c>null</c> outside every template <c>for</c>.</summary>
+    private static JsonArray? PassOf(IReadOnlyList<int>? pass) =>
+        pass == null ? null : new JsonArray([.. pass.Select(n => (JsonNode)n)]);
+
+    /// <summary>
+    /// #1506 (area 09; D2, D10; the controller's ruling 1): the text an attempt produced, which never rides in a row's detail:
+    /// <c>{ sent, neutral, renders, macros }</c>: the prompt as sent; its run-neutral form (<c>null</c> with no run spot);
+    /// each renderer step's <c>{ input, output }</c> by its sub-row id, with <c>#</c> and its pass joined by <c>,</c> inside a
+    /// template <c>for</c> (<c>node.x/render:1#2</c>); and each offered macro's body as substituted, by its id
+    /// (<c>section_notes.hpi</c>).
+    /// </summary>
+    internal static JsonObject Produced(string key, Composition composition, string sent, string? neutral)
+    {
+        var produced = new JsonObject { ["sent"] = sent, ["neutral"] = neutral, ["renders"] = RenderTexts(key, composition) };
+        var macros = new JsonObject();
+        foreach (var macro in composition.Macros)
+            macros[macro.Site["macro.".Length..]] = macro.Body;
+        produced["macros"] = macros;
+        return produced;
+    }
+
+    /// <summary>#1506 (D2): each renderer step's <c>{ input, output }</c> by its sub-row id and pass (<see cref="Produced"/>).</summary>
+    internal static JsonObject RenderTexts(string key, Composition composition)
+    {
+        var renders = new JsonObject();
+        for (var i = 0; i < composition.Renders.Count && i < composition.RenderTexts.Count; i++)
+        {
+            var render = composition.Renders[i];
+            var id = $"{key}/render:{render.N.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+            if (render.Pass != null)
+                id += "#" + string.Join(',', render.Pass.Select(n => n.ToString(System.Globalization.CultureInfo.InvariantCulture)));
+            renders[id] = new JsonObject { ["input"] = composition.RenderTexts[i].Input, ["output"] = composition.RenderTexts[i].Output };
+        }
+
+        return renders;
+    }
 
     /// <summary>
     /// Part 08 § 4.3's macro row for each macro of the entry's <c>placements</c>, offered or not: <c>decisions</c> are the
@@ -306,9 +365,10 @@ public static class AgentTurn
             }
 
             var offered = composition.Macros.FirstOrDefault(m => m.Site == site);
+            var id = $"{call.Key}/macro:{site["macro.".Length..]}";
             rows.Add(new JsonObject
             {
-                ["id"] = $"{call.Key}/macro:{site["macro.".Length..]}",
+                ["id"] = id,
                 ["macro"] = site,
                 ["offered"] = offered != null,
                 ["decisions"] = new JsonArray([.. decisions.Select(d => (JsonNode)d)]),
@@ -316,6 +376,8 @@ public static class AgentTurn
                 ["placed"] = false,
                 ["form"] = offered == null ? null : offered.Block ? "block" : "inline",
                 ["contentHash"] = offered?.ContentHash,
+                ["runNeutralHash"] = offered?.NeutralText is { } neutral ? CanonicalJson.HashText(neutral) : null, // #1506 (R7)
+                ["runSpots"] = SpotRows(id, offered?.Spots ?? []),
             });
         }
 

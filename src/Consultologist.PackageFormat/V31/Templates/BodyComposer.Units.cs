@@ -58,7 +58,10 @@ public static partial class BodyComposer
 
                 if (IsEscaped(plan, statement))
                     plan.Escapes.Add(Offset(statement));
-                var spot = SpotOf(plan, statement);
+                var spot = SpotOf(plan, statement)
+                    ?? (site != null && site.StartsWith("macro.", StringComparison.Ordinal) && site.EndsWith(".content", StringComparison.Ordinal)
+                        ? MacroSpotOf(plan, statement)
+                        : null);
                 if (spot != null)
                     plan.Spots[Offset(statement)] = spot;
                 string? before = null;
@@ -140,11 +143,29 @@ public static partial class BodyComposer
             // so a line ending a value writes at the end stays.
             if (Plan(body.EndsWith('\n') ? body[..^1] : body, site + ".content", 1) is not { } bodyPlan)
                 throw Stopped(new ComposeStop(NotPublished));
-            var text = Render(bodyPlan, Globals());
-            if (RunPlan.Formats.TextFormat(macro!["format"]) == "plaintext" && RunPlan.Formats.TextFormat(Entry.Format) is "markdown_block" or "markdown_inline")
-                text = MarkdownEscape.Escape(text);
+            // #1506 (R7, R9): the body's run facts are its own spots, and a snippet placed in it is substituted, not sent.
+            string text;
+            IReadOnlyList<FilledSpot> bodySpots;
+            Substituting++;
+            try
+            {
+                text = Render(bodyPlan, Globals(), out bodySpots);
+            }
+            finally
+            {
+                Substituting--;
+            }
 
-            Offered.Add(new OfferedMacro(site, site + ".content", form == "block", text, CanonicalJson.HashText(text), ProfileReads(bodyPlan)));
+            if (RunPlan.Formats.TextFormat(macro!["format"]) == "plaintext" && RunPlan.Formats.TextFormat(Entry.Format) is "markdown_block" or "markdown_inline")
+            {
+                // escaped as one text, its spots' outputs with it and their places moved (D14)
+                var escaped = Escaped(new PlacedText(text, bodySpots));
+                text = escaped.Text;
+                bodySpots = escaped.Spots;
+            }
+
+            Offered.Add(new OfferedMacro(site, site + ".content", form == "block", text, CanonicalJson.HashText(text), ProfileReads(bodyPlan),
+                NeutralText(text, bodySpots), InRunes(text, bodySpots)));
             return new PlacedText(instruction, spots);
         }
 

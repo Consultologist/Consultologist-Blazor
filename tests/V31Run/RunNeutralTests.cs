@@ -56,8 +56,8 @@ public class RunNeutralTests
         Assert.Equal(CanonicalJson.HashText("Seen {{run:1}}\n"), (string?)stampRow["runNeutralHash"]);
         Assert.Equal(
             CanonicalJson.Write(JsonNode.Parse($$"""
-                [{ "id": "node.stamp/spot:1", "site": 1, "reads": "run.date", "valueHash": "{{CanonicalJson.Hash(JsonValue.Create("2026-11-21"))}}",
-                   "output": "21 November 2026", "outputHash": "{{CanonicalJson.HashText("21 November 2026")}}" }]
+                [{ "id": "node.stamp/spot:1", "site": 1, "pass": null, "reads": "run.date", "valueHash": "{{CanonicalJson.Hash(JsonValue.Create("2026-11-21"))}}",
+                   "output": "21 November 2026", "outputHash": "{{CanonicalJson.HashText("21 November 2026")}}", "start": 5, "length": 16 }]
                 """)),
             CanonicalJson.Write(stampRow["runSpots"]));
         var render = host.Renders.Single(r => r.Key == "node.stamp");

@@ -223,10 +223,13 @@ public sealed partial class PlanRunner
         {
             var content = state == RowState.Completed ? SourceLayout.Text(ret.Read?["content"]) : null;
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
-            ItemNameDetail(instance.Frame, detail);
+            EntryDetail(instance.Entry, detail);
+            var name = ItemNameDetail(instance.Frame, detail);
             detail["pass"] = number;
+            var settled = new JsonObject { ["value"] = state == RowState.Completed ? ret.Read?["value"]?.DeepClone() : null, ["content"] = content };
             return recorder.RowAsync(new RunRow(RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), frame.ItemPath, frame.Passes), instance.Entry.Key,
-                PlanKind.While, state, state == RowState.Completed ? null : ret.Reason, content == null ? null : CanonicalJson.HashText(content), detail));
+                PlanKind.While, state, state == RowState.Completed ? null : ret.Reason, content == null ? null : CanonicalJson.HashText(content), detail,
+                SettledText(settled, name, null)));
         }
 
         /// <summary>

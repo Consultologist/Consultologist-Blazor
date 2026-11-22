@@ -53,7 +53,10 @@ public static class RenderTurn
             ["renders"] = AgentTurn.RenderRows(call.Key, composition),
             ["units"] = AgentTurn.UnitRows(composition),
         };
-        return new RenderOutcome(text, false, null, composition.NeutralText, detail);
+
+        // #1506 (area 09; D2): the text the render produced beside its text, never in the detail
+        var produced = new JsonObject { ["neutral"] = composition.NeutralText, ["renders"] = AgentTurn.RenderTexts(call.Key, composition) };
+        return new RenderOutcome(text, false, null, composition.NeutralText, detail, produced);
     }
 
     /// <summary>

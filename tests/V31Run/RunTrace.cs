@@ -6,7 +6,7 @@ using Consultologist.PackageFormat.V31.Run;
 namespace Consultologist.Api.Tests.V31Run;
 
 /// <summary>
-/// #1503 (specVersion 31, area 06): a whole run as one text, for a golden. Four parts (#1504: five, with a composing host),
+/// #1503 (specVersion 31, area 06): a whole run as one text, for a golden. Four parts (#1504, #1506: five, with the rows' details),
 /// each under its heading: the agent calls in the order dispatched (row keys); every row in the order recorded, as <c>key | state | reason | value hash</c>
 /// (<c>-</c> for none); every decision in the order recorded, as <c>id | condition | result | reads | flags</c> (#1506: a
 /// <c>case</c>'s result its arm taken, its reads their paths, its flags <c>runDependent</c> and <c>modelDerived</c>
@@ -19,10 +19,9 @@ internal static class RunTrace
     public static string Of(FakeRunHost host, ListRecorder recorder, RunResult result) => Of(host.Dispatched, recorder, result);
 
     /// <summary>
-    /// The trace of a run whose agent calls went out as <paramref name="dispatched"/>. #1504: when a row carries a composed
-    /// call's detail (an <c>inputHash</c>: a host that composes, <see cref="ComposingRunHost"/>), a fifth part follows the
-    /// decisions, <c># details</c>: each such row, in the order recorded, as <c>key | &lt;its detail as canonical JSON&gt;</c>
-    /// (ids, keys, hashes and lengths only).
+    /// The trace of a run whose agent calls went out as <paramref name="dispatched"/>. #1504: a fifth part follows the
+    /// decisions, <c># details</c>; #1506 (area 09): every row, in the order recorded, as <c>key | &lt;the row in part 08's
+    /// shape (<see cref="RunRow.ToJson"/>) as canonical JSON&gt;</c> (ids, keys, hashes, lengths and package text only).
     /// </summary>
     public static string Of(IReadOnlyList<string> dispatched, ListRecorder recorder, RunResult result)
     {
@@ -39,12 +38,11 @@ internal static class RunTrace
         foreach (var decision in recorder.Decisions)
             text.Append(Decision(decision)).Append('\n');
 
-        var detailed = recorder.Rows.Where(r => r.Detail.ContainsKey("inputHash")).ToList();
-        if (detailed.Count > 0)
+        if (recorder.Rows.Count > 0)
         {
             text.Append("\n# details\n");
-            foreach (var row in detailed)
-                text.Append(row.Key).Append(" | ").Append(CanonicalJson.Write(row.Detail)).Append('\n');
+            foreach (var row in recorder.Rows)
+                text.Append(row.Key).Append(" | ").Append(CanonicalJson.Write(row.ToJson())).Append('\n');
         }
 
         text.Append("\n# result\n");

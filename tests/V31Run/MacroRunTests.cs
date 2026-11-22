@@ -108,7 +108,8 @@ public class MacroRunTests
         Assert.Equal(
             CanonicalJson.Write(JsonNode.Parse($$"""
                 { "id": "node.draft/macro:m", "macro": "macro.m", "offered": true, "decisions": ["node.draft/if:macro.m"],
-                  "classifier": "node.classify", "placed": true, "form": "block", "contentHash": "{{CanonicalJson.HashText(Body)}}" }
+                  "classifier": "node.classify", "placed": true, "form": "block", "contentHash": "{{CanonicalJson.HashText(Body)}}",
+                  "runNeutralHash": null, "runSpots": [] }
                 """)),
             CanonicalJson.Write(macro));
 

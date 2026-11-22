@@ -34,9 +34,28 @@ public enum RowState
 /// #1503 (specVersion 31, area 06): one finished row, as area 09 turns it into a storage row: the instance's key
 /// (<see cref="RunKeys.Of"/>), its entry's key and kind, its state, the reason for a state other than completed, the hash of
 /// its <c>.content</c>, and <paramref name="Detail"/> (counts, <c>stopped</c>, retries, <c>itemLabel</c>, <c>function</c>,
-/// <c>depth</c>). Never a value from an input or a model.
+/// <c>depth</c>; #1506: the entry's facts and what only the runner knows, in part 08's names). Never a value from an input
+/// or a model. #1506 (area 09; D2): <paramref name="Text"/> is the row's settled text, which never enters the row itself
+/// and goes to the retained text: <c>content</c> (the value's <c>.content</c>), <c>value</c> (the value's canonical JSON when
+/// it is not text), <c>itemName</c> (an item's name not drawn from package text) and <c>spots</c> (<c>{ "&lt;spot id&gt;":
+/// output }</c> for each run spot whose row <c>output</c> is <c>null</c>); <c>null</c> when there is none.
 /// </summary>
-public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail);
+public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail, JsonObject? Text = null)
+{
+    /// <summary>#1506 (area 09; part 08 § 2.2): the record's section the row is in, from its key's root: <c>node</c>, <c>check</c> or <c>deliverable</c>.</summary>
+    public string Section => Key.StartsWith("check.", StringComparison.Ordinal) ? "check"
+        : Key.StartsWith("deliverable.", StringComparison.Ordinal) ? "deliverable"
+        : "node";
+
+    /// <summary>
+    /// #1506 (area 09; part 08 §§ 4, 6, 7, 10): the row in part 08's shape for its <see cref="Section"/>, every member written
+    /// (<see cref="RecordRows"/>). A check's and a deliverable's are a node's for now (areas 09's Tasks 5 and 6).
+    /// </summary>
+    public JsonObject ToJson() => Section switch
+    {
+        _ => RecordRows.Node(this),
+    };
+}
 
 /// <summary>#1506 (specVersion 31, area 09; part 08 § 5.1; D4): one value a decision's rule read: its path as <c>resolve.json</c> writes it, and the canonical hash of the value (<c>null</c> hashes as <c>null</c>). Never the value.</summary>
 public sealed record RunRead(string Path, string Hash);

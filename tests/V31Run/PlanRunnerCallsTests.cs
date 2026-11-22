@@ -624,7 +624,7 @@ public class PlanRunnerCallsTests
     /// <c>example-minimal</c> with the top-level call <c>hpi_section</c> of <c>section_fn</c> (its agent <c>draft_text</c>
     /// and its call <c>refine_call</c> of <c>refine</c>, which returns its agent <c>judge</c>).
     /// </summary>
-    private static Dictionary<string, byte[]> Nested()
+    internal static Dictionary<string, byte[]> Nested()
     {
         var files = Minimal()
             .With("nodes/index.json", Index(["plan", "hpi_section"]))
@@ -656,7 +656,7 @@ public class PlanRunnerCallsTests
         return files;
     }
 
-    private static StubTemplates NestedReads() => new(new Dictionary<string, string[]>
+    internal static StubTemplates NestedReads() => new(new Dictionary<string, string[]>
     {
         ["node.plan"] = ["input.consult_draft.content"],
         ["section_fn/node.draft_text"] = ["param.draft.content"],

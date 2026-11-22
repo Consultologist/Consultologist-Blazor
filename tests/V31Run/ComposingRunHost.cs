@@ -58,22 +58,32 @@ internal sealed class ComposingRunHost(RunPlan plan, Func<AgentCall, PreparedPro
     /// <summary>A <c>judgement</c> reply: <paramref name="answer"/>, with a fixed reason.</summary>
     public static string Judgement(bool answer) => $$"""{"answer":{{(answer ? "true" : "false")}},"reason":"The plan says so."}""";
 
+    /// <summary>#1506 (area 09): each agent call's outcome, in the order of <see cref="Calls"/>.</summary>
+    public List<AgentOutcome> Outcomes { get; } = [];
+
+    /// <summary>#1506 (area 09): each render's outcome, in the order of <see cref="Renders"/>.</summary>
+    public List<RenderOutcome> RenderOutcomes { get; } = [];
+
     /// <inheritdoc/>
     public Task<AgentOutcome> CallAgentAsync(AgentCall call)
     {
         Calls.Add(call);
         var prepared = AgentTurn.Prepare(plan, call, StepLimit, StrictRejects);
         Prompts.Add(prepared);
-        return Task.FromResult(prepared.Text == null
+        var outcome = prepared.Text == null
             ? AgentTurn.Finish(prepared, "")
-            : AgentTurn.Finish(prepared, reply(call, prepared)));
+            : AgentTurn.Finish(prepared, reply(call, prepared));
+        Outcomes.Add(outcome);
+        return Task.FromResult(outcome);
     }
 
     /// <inheritdoc/>
     public Task<RenderOutcome> RenderAsync(RenderCall call)
     {
         Renders.Add(call);
-        return Task.FromResult(RenderTurn.Render(plan, call));
+        var outcome = RenderTurn.Render(plan, call);
+        RenderOutcomes.Add(outcome);
+        return Task.FromResult(outcome);
     }
 
     /// <summary>#1505 (R6): the rule evaluations asked for, in order.</summary>
