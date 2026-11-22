@@ -477,15 +477,15 @@ Runs before Task 8.
 
 **Area sentence:** A08-006 `<Subject> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it.` No package content produces it, so it has no refusal package: list it in `ChecksNotShipped` with that reason.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `AFolderItemsContent_IsMarkdownBlock`: in a `markdown_block` deliverable `{{ item.content }}` over a snippet folder is written as it is and is not in `escapes`, whatever the folder's `format`; in a `plaintext` deliverable it is S06-021. (Where the code already does so, the test pins it.)
   - `AFolderItemCarried_ThreeLoopsDeep_IsRefused` and a four-deep one (A07-013): a body with a tag passed out of its loop through `item.item.item…`, to a function parameter and to an expression.
   - `AnUnexpectedParserException_IsAnEngineFault`: through the smallest internal test seam that makes the parser throw an unexpected exception, `Parse` gives one A08-006 fault, not A07-005; what is logged or carried is the exception's type only, never the body's text; `OutOfMemoryException` still propagates; Scriban's expected parse errors and the depth limit are still A07-005.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.** Only what Scriban throws for unreadable text is A07-005; anything else is A08-006. If the library has no logger, carry the exception's type on the fault for the caller to log, and record the choice under Decisions.
-- [ ] **Step 4: Write the spec:** part 05 § 6.2 gains ruling 2's and ruling 5's sentences; `refusal-sentences.md` gains A08-006; the content repo's chapter 5 twin and the conformance README's A08 table. Add a refusal case for the deeper A07-013; export one filter at a time, check, push, pin.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): a folder item's body is markdown_block, A07-013 holds at every depth, and a parser fault is the engine's`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.** Only what Scriban throws for unreadable text is A07-005; anything else is A08-006. If the library has no logger, carry the exception's type on the fault for the caller to log, and record the choice under Decisions.
+- [x] **Step 4: Write the spec:** part 05 § 6.2 gains ruling 2's and ruling 5's sentences; `refusal-sentences.md` gains A08-006; the content repo's chapter 5 twin and the conformance README's A08 table. Add a refusal case for the deeper A07-013; export one filter at a time, check, push, pin.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): a folder item's body is markdown_block, A07-013 holds at every depth, and a parser fault is the engine's`; push.
 
 ### Task 17: The 31 catalogue is resolved only under preview; one golden switch (#1505 comment 4, rulings 7 and 8)
 
