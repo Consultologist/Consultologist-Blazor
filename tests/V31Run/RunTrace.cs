@@ -8,8 +8,9 @@ namespace Consultologist.Api.Tests.V31Run;
 /// <summary>
 /// #1503 (specVersion 31, area 06): a whole run as one text, for a golden. Four parts (#1504: five, with a composing host),
 /// each under its heading: the agent calls in the order dispatched (row keys); every row in the order recorded, as <c>key | state | reason | value hash</c>
-/// (<c>-</c> for none); every decision in the order recorded, as <c>site | member | printed condition | result</c> (a
-/// <c>case</c>'s branch taken); and the result: its state, sentence, failed key, agent calls, peak in flight, and each
+/// (<c>-</c> for none); every decision in the order recorded, as <c>id | condition | result | reads | flags</c> (#1506: a
+/// <c>case</c>'s result its arm taken, its reads their paths, its flags <c>runDependent</c> and <c>modelDerived</c>
+/// when true); and the result: its state, sentence, failed key, agent calls, peak in flight, and each
 /// top-level entry's read form as a hash. No clock value: a decision's time is the host's and is left out. LF line ends,
 /// a final line end.
 /// </summary>
@@ -61,10 +62,23 @@ internal static class RunTrace
     public static string Row(RunRow row) =>
         $"{row.Key} | {Word(row.State.ToString())} | {row.Reason ?? "-"} | {row.ValueHash ?? "-"}";
 
-    /// <summary>A decision as a trace line: <c>site | member | printed | result</c>, a <c>case</c>'s result its branch.</summary>
-    public static string Decision(RunDecision decision) =>
-        $"{decision.Site} | {decision.Member} | {decision.Printed} | "
-        + (decision.Result is { } result ? (result ? "true" : "false") : $"branch {decision.Branch ?? "-"}");
+    /// <summary>
+    /// #1506: a decision as a trace line: <c>id | condition | result | reads | flags</c>, a <c>case</c>'s result its arm
+    /// (<c>branch 2</c>, <c>branch else</c>), its reads' paths in order (their hashes are the values', which the trace never
+    /// shows apart from a row's), and its flags that hold (<c>-</c> for none of either).
+    /// </summary>
+    public static string Decision(RunDecision decision)
+    {
+        var flags = new List<string>();
+        if (decision.RunDependent)
+            flags.Add("runDependent");
+        if (decision.ModelDerived)
+            flags.Add("modelDerived");
+        return $"{decision.Id} | {decision.Condition} | "
+            + (decision.Result is { } result ? (result ? "true" : "false") : $"branch {decision.Branch ?? "-"}")
+            + $" | {(decision.Reads.Count == 0 ? "-" : string.Join(", ", decision.Reads.Select(r => r.Path)))}"
+            + $" | {(flags.Count == 0 ? "-" : string.Join(", ", flags))}";
+    }
 
     /// <summary>An enum member as the record words it: <c>NotRun</c> is <c>not_run</c>.</summary>
     private static string Word(string member)

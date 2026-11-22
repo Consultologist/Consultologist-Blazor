@@ -177,9 +177,9 @@ public class PlacedIfTests
         var (result, _, recorder) = await PlacementDecisionsTests.RunAsync(plan, host);
 
         Assert.True(result.State == RunState.Completed, result.Sentence);
-        var decision = Assert.Single(recorder.Decisions, d => d.Site == row && d.Member == "snippet.s");
+        var decision = Assert.Single(recorder.Decisions, d => d.Owner == row && d.Site == "snippet.s");
         Assert.True(decision.Result);
-        Assert.Contains(key, decision.Printed, StringComparison.Ordinal);
+        Assert.Contains(key, decision.Condition, StringComparison.Ordinal);
     }
     // ---- A longer circle through a placed unit's if ----------------------------------------------
 

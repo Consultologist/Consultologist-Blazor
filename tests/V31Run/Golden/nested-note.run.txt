@@ -32,11 +32,11 @@ node.refine | completed | - | sha256:5fc27c15141cc4668dbbdc53e78903df15d2d2e01b8
 deliverable.note | released | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
 
 # decisions
-node.sections.paragraphs.draft_paragraph:1/1 | self | not blank(item.parent.value.title) | true
-node.sections.paragraphs.draft_paragraph:1/2 | self | not blank(item.parent.value.title) | true
-node.sections.paragraphs.draft_paragraph:1/3 | self | not blank(item.parent.value.title) | true
-node.refine | pass.1 | node.refine.judge.value.verdict ≠ "good" | true
-node.refine | pass.2 | node.refine.judge.value.verdict ≠ "good" | false
+node.sections.paragraphs.draft_paragraph:1/1/if:self | not blank(item.parent.value.title) | true | item.parent.value.title | modelDerived
+node.sections.paragraphs.draft_paragraph:1/2/if:self | not blank(item.parent.value.title) | true | item.parent.value.title | modelDerived
+node.sections.paragraphs.draft_paragraph:1/3/if:self | not blank(item.parent.value.title) | true | item.parent.value.title | modelDerived
+node.refine/if:pass.1 | node.refine.judge.value.verdict ≠ "good" | true | node.refine.judge.value.verdict | modelDerived
+node.refine/if:pass.2 | node.refine.judge.value.verdict ≠ "good" | false | node.refine.judge.value.verdict | modelDerived
 
 # result
 state | completed

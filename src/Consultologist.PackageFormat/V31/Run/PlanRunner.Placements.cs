@@ -11,9 +11,9 @@ public sealed partial class PlanRunner
         /// a rendered node's or a deliverable's body once its gate held (its dependencies, its placements' reads among
         /// them, settled), in <see cref="PlanEntry.Placements"/> order, into <see cref="RunInstance.Placed"/>. A placement
         /// is decided only when the unit that places it (<see cref="PlanPlacement.Within"/>) is placed (a folder's macro,
-        /// with its folder), and a site once. A rule's decision is recorded (its site the placing row's key, its member the
-        /// placement's site) and is its result; a placement with no rule is placed, with no decision. Each rule reads the
-        /// instance's own place: its keys are rooted there, and its scope is the instance's frame. A rule that fails fails
+        /// with its folder), and a site once. A rule's decision is recorded (its owner the placing row's key, its site the
+        /// placement's site; #1506, D4: its reads its own rule's, not the entry's) and is its result; a placement with no
+        /// rule is placed, with no decision. Each rule reads the instance's own place: its keys are rooted there, and its scope is the instance's frame. A rule that fails fails
         /// the instance with part 03 § 11.3's sentence for the unit's <c>if</c>; false then.
         /// </summary>
         private async Task<bool> PlaceAsync(RunInstance instance)
@@ -40,7 +40,7 @@ public sealed partial class PlanRunner
                     return false;
                 }
 
-                await recorder.DecisionAsync(new RunDecision(instance.Key, placement.Site, placement.Printed ?? "", decision.Result, null, host.UtcNow));
+                await RecordDecisionAsync(instance, instance.Frame, placement.Site, placement.Rule, placement.Printed ?? "", data, decision.Result, null);
                 placed[placement.Site] = decision.Result;
             }
 

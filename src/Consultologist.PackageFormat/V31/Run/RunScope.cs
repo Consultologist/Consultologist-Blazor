@@ -215,6 +215,165 @@ internal sealed class RunScope(RunInputs inputs)
         return false;
     }
 
+    /// <summary>
+    /// #1506 (area 09; D4): the value at <paramref name="path"/> in <paramref name="data"/>, data <see cref="Data"/> gave (a
+    /// path under one placed whole walks into it as the read does); null when nothing is there. Never cloned.
+    /// </summary>
+    public static JsonNode? At(JsonObject data, string path)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        ArgumentNullException.ThrowIfNull(path);
+        return Walk(data, path.Split('.'), 0);
+    }
+
+    /// <summary>The flags of a read the runner cannot trace (D4): both, so model output is never marked not model-derived.</summary>
+    private static readonly (bool RunDependent, bool ModelDerived) Untraced = (true, true);
+
+    /// <summary>The flags of a read of nothing run-dependent or model-derived (a typed input, package text, a count).</summary>
+    private static readonly (bool RunDependent, bool ModelDerived) Clean = (false, false);
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 5.1; D4, R5): whether <paramref name="path"/>, read by <paramref name="entry"/>'s rule in
+    /// <paramref name="frame"/>, is run-dependent and model-derived: <c>run.*</c> is run-dependent; an input (typed or
+    /// uploaded) and a snippet folder (package text) are neither; <c>node.*</c>, <c>check.*</c> and <c>deliverable.*</c> take
+    /// the flags of the entry they name (its <c>runDependent</c> and <c>modelDerived</c> as <c>resolve.json</c> writes them);
+    /// <c>item</c> (past its <c>parent</c>s) the flags of its loop's source, read where the loop runs; <c>pass</c> (past its
+    /// <c>parent</c>s, through <c>previous</c> and <c>history</c>) the flags of the body node it names, a pass's
+    /// <c>number</c> neither, and a whole pass every node of its while; <c>param.&lt;id&gt;</c> the flags of the call's
+    /// argument, read where the call runs (the literal <c>null</c> neither). Anything else, or a read that names nothing, is
+    /// both. Bounded by the nesting of loops and calls.
+    /// </summary>
+    public static (bool RunDependent, bool ModelDerived) Lineage(PlanEntry entry, RunFrame frame, string path)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        ArgumentNullException.ThrowIfNull(frame);
+        ArgumentNullException.ThrowIfNull(path);
+        return Lineage(entry, frame, path, 0);
+    }
+
+    private static (bool RunDependent, bool ModelDerived) Lineage(PlanEntry entry, RunFrame frame, string path, int depth)
+    {
+        var segments = path.Split('.');
+        if (depth > MaxLineageDepth || segments.Any(s => s.Length == 0))
+            return Untraced;
+        switch (segments[0])
+        {
+            case "run":
+                return (true, false);
+            case "input" or "snippet":
+                return Clean;
+            case "node" or "check" or "deliverable":
+                for (var length = segments.Length; length >= 2; length--)
+                {
+                    if (frame.Map.GetValueOrDefault(string.Join('.', segments, 0, length)) is { } named)
+                        return Flags(named);
+                }
+
+                return Untraced;
+            case "item":
+            {
+                var at = 1;
+                var binding = frame.Binding(IsItemFrame);
+                while (at < segments.Length && segments[at] == "parent" && binding != null)
+                {
+                    at++;
+                    binding = binding.Parent?.Binding(IsItemFrame);
+                }
+
+                return binding?.Owner is { } loop && SourceLayout.Text(loop.Entry.Json["in"]) is { } source
+                    ? Lineage(loop.Entry, loop.Frame, source, depth + 1)
+                    : Untraced;
+            }
+
+            case "pass":
+                return PassLineage(entry, frame, segments);
+            case "param":
+            {
+                if (segments.Length < 2 || frame.Binding(f => f.Parameters != null)?.Owner is not { } call
+                    || call.Entry.Json["with"] is not JsonObject arguments || !arguments.TryGetPropertyValue(segments[1], out var argument))
+                {
+                    return Untraced;
+                }
+
+                if (argument is null)
+                    return Clean;
+                return SourceLayout.Text(argument) is { } reference ? Lineage(call.Entry, call.Frame, reference, depth + 1) : Untraced;
+            }
+
+            default:
+                return Untraced;
+        }
+    }
+
+    /// <summary>More nested loops and calls than any plan the engine runs: a chain of sources past it is not traced.</summary>
+    private const int MaxLineageDepth = 256;
+
+    /// <summary>Whether <paramref name="frame"/> is a loop item's (opened by a <c>for</c>).</summary>
+    private static bool IsItemFrame(RunFrame frame) => frame.Owner is { Entry.Kind: PlanKind.For };
+
+    /// <summary>
+    /// A read under <c>pass</c> (D4, R5): the while is found as <see cref="RunPlan"/>'s dependency edge finds it (the
+    /// reader's own when it is a while, else its enclosing one; each <c>parent</c> the next outward); past
+    /// <c>previous</c>s and <c>history.&lt;n&gt;</c>s, <c>node.&lt;id&gt;</c> is that while's node of that id,
+    /// <c>number</c> is a count, and nothing more is the whole pass: every node of the while.
+    /// </summary>
+    private static (bool RunDependent, bool ModelDerived) PassLineage(PlanEntry reader, RunFrame frame, string[] segments)
+    {
+        var map = frame.Map;
+        var at = 1;
+        while (at < segments.Length && segments[at] == "parent")
+            at++;
+
+        var up = at - 1;
+        string? loop = null;
+        var steps = 0;
+        for (var key = reader.Kind == PlanKind.While ? reader.Key : reader.Parent; key != null && steps++ <= map.Count; key = map.GetValueOrDefault(key)?.Parent)
+        {
+            if (map.GetValueOrDefault(key)?.Kind == PlanKind.While && up-- == 0)
+            {
+                loop = key;
+                break;
+            }
+        }
+
+        if (loop == null)
+            return Untraced;
+
+        while (at < segments.Length)
+        {
+            switch (segments[at])
+            {
+                case "previous":
+                    at++;
+                    continue;
+                case "history":
+                    at += 2;
+                    continue;
+                case "number":
+                    return Clean;
+                case "node" when at + 1 < segments.Length:
+                    return PassNode(map, e => e.Id, e => e.Parent, loop, segments[at + 1]) is { } key ? Flags(map[key]) : Untraced;
+                default:
+                    return Untraced;
+            }
+        }
+
+        var whole = Clean;
+        foreach (var (key, inside) in map)
+        {
+            if (Inside(map, e => e.Parent, key, loop))
+                whole = (whole.RunDependent || Flags(inside).RunDependent, whole.ModelDerived || Flags(inside).ModelDerived);
+        }
+
+        return whole;
+    }
+
+    /// <summary>An entry's flags as <c>resolve.json</c> writes them; a flag not written as a boolean is taken as true (D4).</summary>
+    private static (bool RunDependent, bool ModelDerived) Flags(PlanEntry entry) => (Flag(entry, "runDependent"), Flag(entry, "modelDerived"));
+
+    private static bool Flag(PlanEntry entry, string member) =>
+        entry.Json[member] is not JsonValue value || !value.TryGetValue<bool>(out var flag) || flag;
+
     /// <summary><paramref name="node"/> walked by <paramref name="segments"/> from <paramref name="from"/>: members of objects, positions in lists.</summary>
     private static JsonNode? Walk(JsonNode? node, string[] segments, int from)
     {

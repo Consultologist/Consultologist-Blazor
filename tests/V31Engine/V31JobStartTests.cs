@@ -417,7 +417,7 @@ public class V31JobStartTests
             new JsonObject(),
             new Dictionary<string, string?>(StringComparer.Ordinal));
         var (_, host, recorder) = await PlacementDecisionsTests.RunAsync(plan, PlacementDecisionsTests.Host(plan, _ => ComposingRunHost.Judgement(true)), inputs);
-        Assert.Equal([("macro.letrozole", choice)], PlacementDecisionsTests.Placements(recorder, "node.draft").Select(d => (d.Member, d.Result)));
+        Assert.Equal([("macro.letrozole", choice)], PlacementDecisionsTests.Placements(recorder, "node.draft").Select(d => (d.Site, d.Result)));
         Assert.Equal(choice, host.Calls.Single(c => c.Key == "node.draft").Placed!["macro.letrozole"]);
     }
 

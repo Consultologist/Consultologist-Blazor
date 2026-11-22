@@ -155,18 +155,18 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   ```
 - Produces: `PlanRule` on the plan: each compiled rule keeps its canonical JSON, its `Reads` (paths, in order of first appearance, no repeats) and its `ExpressionHash` (`CanonicalJson.Hash` of the rule's JSON); `PlanPlacement` keeps the same for its `if`. `RunScope.Lineage(PlanEntry entry, Frame frame, string path)` returns `(bool RunDependent, bool ModelDerived)` per D4.
 
-- [ ] **Step 1: Write the failing tests** in `RunDecisionTests`, on the existing run fixtures:
+- [x] **Step 1: Write the failing tests** in `RunDecisionTests`, on the existing run fixtures:
   - `AHeaderIf_RecordsItsReadsByHash`: for `input.kind.value === "table"` decided false, `Owner` is the row key, `Site` `self`, `Id` `<key>/if:self`, `Condition` `input.kind.value = "table"`, `Reads` is one read `input.kind.value` whose hash is `CanonicalJson.Hash` of the value, `ExpressionHash` is the hash of the rule's canonical JSON, and both flags are false.
   - `ADecisionReadingAnAgent_IsModelDerived`, `…ReadingRunDate_IsRunDependent`, `…ReadingAnEarlierPassOfAnAgent_IsModelDerived` (R5), `…ReadingAnItemOfAModelList_IsModelDerived`, `…ReadingAParamGivenAModelValue_IsModelDerived`.
   - `ACase_RecordsItsArmByPosition`: `Site` `case`, `Result` null, `Branch` `"2"`, `ToJson()["result"]` the string `"2"`; an unmatched subject gives `"else"`.
   - `APlacement_RecordsItsOwnRule`: a macro's `if` gives `Site` `macro.<id>` with that rule's reads only, not the entry's.
   - `AGatedInNode_NeverCalled_StillHasItsPlacementDecisions` (R6).
   - `ToJson_HasExactlyPart08sMembers`: the ten names of § 5.1, `decidedAtUtc` as round-trip UTC text.
-- [ ] **Step 2: Run** them. Expected: FAIL (compile errors first; then the reads and flags).
-- [ ] **Step 3: Implement.** The read's value comes from the scope data the rule was decided over; a rule decided in `evaluate-rule-v31` records the same reads from the scope it was sent.
-- [ ] **Step 4: Update `RunTrace`** to print `id | condition | result | reads (paths) | flags`; regenerate and read the goldens.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1506): a decision records its site, its reads by hash and its flags`; push.
+- [x] **Step 2: Run** them. Expected: FAIL (compile errors first; then the reads and flags).
+- [x] **Step 3: Implement.** The read's value comes from the scope data the rule was decided over; a rule decided in `evaluate-rule-v31` records the same reads from the scope it was sent.
+- [x] **Step 4: Update `RunTrace`** to print `id | condition | result | reads (paths) | flags`; regenerate and read the goldens.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1506): a decision records its site, its reads by hash and its flags`; push.
 
 ### Task 4: Node rows
 

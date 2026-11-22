@@ -151,9 +151,9 @@ public class PlanRunnerLeavesTests
         Assert.Null(row.ValueHash);
 
         var decision = Assert.Single(recorder.Decisions);
-        Assert.Equal("node.plan", decision.Site);
-        Assert.Equal("self", decision.Member);
-        Assert.Equal("input.include_billing.value = true", decision.Printed);
+        Assert.Equal("node.plan", decision.Owner);
+        Assert.Equal("self", decision.Site);
+        Assert.Equal("input.include_billing.value = true", decision.Condition);
         Assert.False(decision.Result);
         Assert.Equal(FakeRunHost.Start, decision.DecidedAtUtc);
 
@@ -446,7 +446,7 @@ public class PlanRunnerLeavesTests
         Assert.Equal(RowState.Skipped, row.State);
         Assert.Equal("skipped: input.include_billing.value = true is false", row.Reason);
         var decision = Assert.Single(recorder.Decisions);
-        Assert.Equal("deliverable.note", decision.Site);
+        Assert.Equal("deliverable.note", decision.Owner);
         Assert.False(decision.Result);
         Assert.Equal("skipped", (string?)result.Values["deliverable.note"]!["state"]);
     }

@@ -38,13 +38,64 @@ public enum RowState
 /// </summary>
 public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail);
 
+/// <summary>#1506 (specVersion 31, area 09; part 08 § 5.1; D4): one value a decision's rule read: its path as <c>resolve.json</c> writes it, and the canonical hash of the value (<c>null</c> hashes as <c>null</c>). Never the value.</summary>
+public sealed record RunRead(string Path, string Hash);
+
 /// <summary>
-/// #1503 (specVersion 31, area 06; part 08 § 5): one condition decided. <paramref name="Site"/> is the owner's row key,
-/// <paramref name="Member"/> the decision's site in part 08 § 5.2's words (<c>self</c> for a header <c>if</c>),
-/// <paramref name="Printed"/> the condition as the printer writes it, <paramref name="Result"/> its result (null for a
-/// <c>case</c>), <paramref name="Branch"/> a <c>case</c>'s branch taken, and the time from the host's clock.
+/// #1503 (specVersion 31, area 06; part 08 § 5); #1506 (area 09; R6, D3, D4): one condition decided, with part 08 § 5.1's
+/// members. <paramref name="Owner"/> is the row key (check row key, deliverable key) it concerns, <paramref name="Site"/>
+/// what was decided in part 08 § 5.2's words (<c>self</c>, <c>case</c>, <c>pass.&lt;n&gt;</c>, <c>until.&lt;i&gt;</c>,
+/// <c>macro.&lt;id&gt;</c>, …), <paramref name="Condition"/> the condition as the printer writes it (a <c>case</c>'s
+/// subject), <paramref name="ExpressionHash"/> the hash of its canonical JSON Logic, <paramref name="Result"/> its result
+/// (null for a <c>case</c>), <paramref name="Branch"/> a <c>case</c>'s arm taken (its 1-based position as text, or
+/// <c>else</c>), <paramref name="Reads"/> the paths its own rule reads with the hash of each value read, its two flags, and
+/// the time from the host's clock.
 /// </summary>
-public sealed record RunDecision(string Site, string Member, string Printed, bool? Result, string? Branch, DateTime DecidedAtUtc);
+public sealed record RunDecision(
+    string Owner,
+    string Site,
+    string Condition,
+    string ExpressionHash,
+    bool? Result,
+    string? Branch,
+    IReadOnlyList<RunRead> Reads,
+    bool RunDependent,
+    bool ModelDerived,
+    DateTime DecidedAtUtc)
+{
+    /// <summary>The decision's id: <c>&lt;owner&gt;/if:&lt;site&gt;</c> (part 08 § 5.1).</summary>
+    public string Id => $"{Owner}/if:{Site}";
+
+    /// <summary>
+    /// The decision as part 08 § 5.1 writes it, its ten members in that order: <c>result</c> the boolean, or a <c>case</c>'s
+    /// arm as text (D3); <c>reads</c> <c>[{ path, hash }]</c>; <c>decidedAtUtc</c> the round-trip UTC text.
+    /// </summary>
+    public JsonObject ToJson()
+    {
+        var reads = new JsonArray();
+        foreach (var read in Reads)
+            reads.Add(new JsonObject { ["path"] = read.Path, ["hash"] = read.Hash });
+        var at = DecidedAtUtc.Kind switch
+        {
+            DateTimeKind.Utc => DecidedAtUtc,
+            DateTimeKind.Local => DecidedAtUtc.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(DecidedAtUtc, DateTimeKind.Utc),
+        };
+        return new JsonObject
+        {
+            ["id"] = Id,
+            ["owner"] = Owner,
+            ["site"] = Site,
+            ["condition"] = Condition,
+            ["expressionHash"] = ExpressionHash,
+            ["result"] = Result is { } result ? JsonValue.Create(result) : JsonValue.Create(Branch),
+            ["reads"] = reads,
+            ["runDependent"] = RunDependent,
+            ["modelDerived"] = ModelDerived,
+            ["decidedAtUtc"] = at.ToString("O", System.Globalization.CultureInfo.InvariantCulture),
+        };
+    }
+}
 
 /// <summary>
 /// #1505 (specVersion 31, area 08; part 09 § 3.9; D14): something the operator is told of while the job runs.

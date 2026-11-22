@@ -33,10 +33,10 @@ check.all_sections | completed | - | sha256:cbcff544c0c6a87d405b5fe381e1f32f9108
 deliverable.emr.consult | released | - | sha256:1f13b0a28390318422908f80004b86d3618bef049b612ed2de73919ac54d5d7d
 
 # decisions
-node.standards.section.standard_draft:hpi | self | not blank(param.standard.value.title) | true
-node.standards.section.standard_draft:assessment_plan | self | not blank(param.standard.value.title) | true
-check.section_coverage.coverage:hpi | self | item.state = "completed" | true
-check.section_coverage.coverage:assessment_plan | self | item.state = "completed" | true
+node.standards.section.standard_draft:hpi/if:self | not blank(param.standard.value.title) | true | param.standard.value.title | -
+node.standards.section.standard_draft:assessment_plan/if:self | not blank(param.standard.value.title) | true | param.standard.value.title | -
+check.section_coverage.coverage:hpi/if:self | item.state = "completed" | true | item.state | modelDerived
+check.section_coverage.coverage:assessment_plan/if:self | item.state = "completed" | true | item.state | modelDerived
 
 # result
 state | completed

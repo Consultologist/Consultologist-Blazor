@@ -347,14 +347,15 @@ public sealed partial class PlanRunner
             if (entry.If is not { } rule)
                 return true;
 
-            var decision = await DecideRuleAsync(instance, rule, "if", scope.Data(entry, instance.Frame, entry.Reads));
+            var data = scope.Data(entry, instance.Frame, entry.Reads);
+            var decision = await DecideRuleAsync(instance, rule, "if", data);
             if (decision.Failure is { } failed)
             {
                 await FailLeafAsync(instance, RuleFailed(Subject(instance), "if", failed));
                 return false;
             }
 
-            await recorder.DecisionAsync(new RunDecision(instance.Key, "self", entry.Printed("if"), decision.Result, null, host.UtcNow));
+            await RecordDecisionAsync(instance, instance.Frame, "self", entry.Rules.GetValueOrDefault("if"), entry.Printed("if"), data, decision.Result, null);
             if (decision.Result)
                 return true;
 
@@ -409,6 +410,30 @@ public sealed partial class PlanRunner
 
         private static RuleCall RuleCallOf(RunInstance instance, string member, JsonObject data) =>
             new(instance.Key, instance.Entry.Key, instance.Frame.Function, member, data);
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 5; R6, D4): records a decision of <paramref name="instance"/> (its owner) at
+        /// <paramref name="site"/>: <paramref name="rule"/>'s reads, each with the hash of its value in <paramref name="data"/>
+        /// (the data the rule was decided over, inline or sent to the host), and the flags of what they read
+        /// (<see cref="RunScope.Lineage"/>, read in <paramref name="frame"/>, where the rule was decided). A rule the plan does
+        /// not hold (never, for a plan <see cref="RunPlan.Build"/> made) records no reads and both flags.
+        /// </summary>
+        private Task RecordDecisionAsync(
+            RunInstance instance, RunFrame frame, string site, PlanRule? rule, string condition, JsonObject data, bool? result, string? branch)
+        {
+            var reads = new List<RunRead>();
+            var (runDependent, modelDerived) = rule == null ? (true, true) : (false, false);
+            foreach (var path in rule?.Reads ?? [])
+            {
+                reads.Add(new RunRead(path, CanonicalJson.Hash(RunScope.At(data, path))));
+                var (run, model) = RunScope.Lineage(instance.Entry, frame, path);
+                runDependent |= run;
+                modelDerived |= model;
+            }
+
+            return recorder.DecisionAsync(new RunDecision(instance.Key, site, condition, rule?.ExpressionHash ?? CanonicalJson.Hash(null),
+                result, branch, reads, runDependent, modelDerived, host.UtcNow));
+        }
 
         /// <summary>
         /// Part 03 § 11.3's sentence for a rule that failed at run time; a host that answered from a plan not the job's

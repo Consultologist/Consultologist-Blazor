@@ -39,15 +39,15 @@ node.standing_sections | completed | - | sha256:0201c04a9f05dea3018c6b632e16d80f
 deliverable.note | released | - | sha256:43ccb7abed954f5d3d5b3ad767162e65a583d28abecb4c303fc43582e81088ec
 
 # decisions
-node.sections_draft.route:1 | case | item.value.kind | branch 1
-node.sections_draft.route:2 | case | item.value.kind | branch 2
-node.sections_draft.route:3 | case | item.value.kind | branch 3
-node.patient_summaries.narrative_only:1 | self | item.value.kind = "narrative" | true
-node.patient_summaries.narrative_only:2 | self | item.value.kind = "narrative" | false
-node.patient_summaries.narrative_only:3 | self | item.value.kind = "narrative" | false
-node.standing_sections.applies:1 | self | item.id ≠ "billing" or input.include_billing.value = true | true
-node.standing_sections.applies:2 | self | item.id ≠ "billing" or input.include_billing.value = true | true
-node.standing_sections.applies:3 | self | item.id ≠ "billing" or input.include_billing.value = true | true
+node.sections_draft.route:1/if:case | item.value.kind | branch 1 | item.value.kind | -
+node.sections_draft.route:2/if:case | item.value.kind | branch 2 | item.value.kind | -
+node.sections_draft.route:3/if:case | item.value.kind | branch 3 | item.value.kind | -
+node.patient_summaries.narrative_only:1/if:self | item.value.kind = "narrative" | true | item.value.kind | -
+node.patient_summaries.narrative_only:2/if:self | item.value.kind = "narrative" | false | item.value.kind | -
+node.patient_summaries.narrative_only:3/if:self | item.value.kind = "narrative" | false | item.value.kind | -
+node.standing_sections.applies:1/if:self | item.id ≠ "billing" or input.include_billing.value = true | true | item.id, input.include_billing.value | -
+node.standing_sections.applies:2/if:self | item.id ≠ "billing" or input.include_billing.value = true | true | item.id, input.include_billing.value | -
+node.standing_sections.applies:3/if:self | item.id ≠ "billing" or input.include_billing.value = true | true | item.id, input.include_billing.value | -
 
 # result
 state | completed

@@ -65,10 +65,10 @@ public class PlanRunnerFlowTests
         Assert.Equal(RowState.Completed, recorder.Row("node.refine.judge#2").State);
 
         // each decision with its pass
-        var decisions = recorder.Decisions.Where(d => d.Site == "node.refine").ToList();
-        Assert.Equal(["pass.1", "pass.2"], decisions.Select(d => d.Member));
+        var decisions = recorder.Decisions.Where(d => d.Owner == "node.refine").ToList();
+        Assert.Equal(["pass.1", "pass.2"], decisions.Select(d => d.Site));
         Assert.Equal([true, false], decisions.Select(d => d.Result));
-        Assert.All(decisions, d => Assert.Equal("node.refine.judge.value.verdict ≠ \"good\"", d.Printed));
+        Assert.All(decisions, d => Assert.Equal("node.refine.judge.value.verdict ≠ \"good\"", d.Condition));
 
         // the deliverable reads the last pass
         var render = host.Renders.Single(r => r.Key == "deliverable.note");
@@ -97,7 +97,7 @@ public class PlanRunnerFlowTests
         var reason = (string)row.Detail["reason"]!;
         Assert.Equal("stopped at its bound of 3; the check never stopped holding", reason);
         V31Contract.AssertSentence(new SourceRefusal("S04-005", reason, ""));
-        Assert.Equal([true, true, true], recorder.Decisions.Where(d => d.Site == "node.refine").Select(d => d.Result));
+        Assert.Equal([true, true, true], recorder.Decisions.Where(d => d.Owner == "node.refine").Select(d => d.Result));
         Assert.Equal(RowState.Released, recorder.Row("deliverable.note").State);
     }
 
@@ -130,8 +130,8 @@ public class PlanRunnerFlowTests
         Assert.Equal("skipped: input.include_billing.value = true is false", row.Reason);
         Assert.Equal(0, (int)row.Detail["passes"]!);
         Assert.DoesNotContain(recorder.Rows, r => r.Key.StartsWith("node.refine#", StringComparison.Ordinal) || r.Key.StartsWith("node.refine.", StringComparison.Ordinal));
-        var decision = Assert.Single(recorder.Decisions, d => d.Site == "node.refine");
-        Assert.Equal("pass.1", decision.Member);
+        var decision = Assert.Single(recorder.Decisions, d => d.Owner == "node.refine");
+        Assert.Equal("pass.1", decision.Site);
         Assert.False(decision.Result);
 
         // a reader of the while reads null
@@ -160,7 +160,7 @@ public class PlanRunnerFlowTests
             host.Dispatched.Where(k => k.StartsWith("node.refine.", StringComparison.Ordinal)));
         Assert.Equal("bound", (string?)result.Values["node.refine"]!["stopped"]);
         Assert.Equal("Text of node.refine.draft_summary#3.", (string?)result.Values["node.refine"]!["value"]);
-        Assert.Equal(["pass.1", "pass.2", "pass.3", "pass.4"], recorder.Decisions.Where(d => d.Site == "node.refine").Select(d => d.Member));
+        Assert.Equal(["pass.1", "pass.2", "pass.3", "pass.4"], recorder.Decisions.Where(d => d.Owner == "node.refine").Select(d => d.Site));
         Assert.True((bool)recorder.Row("node.refine").Detail["checkFirst"]!);
         V31Contract.AssertSentence(new SourceRefusal("S04-005", (string)recorder.Row("node.refine").Detail["reason"]!, ""));
     }
@@ -219,10 +219,10 @@ public class PlanRunnerFlowTests
         Assert.Null(recorder.Row("node.refine").Detail["reason"]);
 
         // after each pass the check, then the until while the check still holds
-        var decisions = recorder.Decisions.Where(d => d.Site == "node.refine").ToList();
-        Assert.Equal(["pass.1", "until.1", "pass.2", "until.2"], decisions.Select(d => d.Member));
+        var decisions = recorder.Decisions.Where(d => d.Owner == "node.refine").ToList();
+        Assert.Equal(["pass.1", "until.1", "pass.2", "until.2"], decisions.Select(d => d.Site));
         Assert.Equal([true, false, true, true], decisions.Select(d => d.Result));
-        Assert.Equal("pass.number = 2", decisions[1].Printed);
+        Assert.Equal("pass.number = 2", decisions[1].Condition);
     }
 
     [Fact]
@@ -268,7 +268,7 @@ public class PlanRunnerFlowTests
         Assert.Equal(RunState.Completed, result.State);
         Assert.Equal(2, (int)result.Values["node.refine"]!["passes"]!);
         Assert.Equal("check", (string?)result.Values["node.refine"]!["stopped"]);
-        Assert.Equal([true, false], recorder.Decisions.Where(d => d.Site == "node.refine").Select(d => d.Result));
+        Assert.Equal([true, false], recorder.Decisions.Where(d => d.Owner == "node.refine").Select(d => d.Result));
     }
 
     [Fact]
@@ -288,9 +288,9 @@ public class PlanRunnerFlowTests
         Assert.Equal(2, (int)read["passes"]!);
         Assert.Equal("check", (string?)read["stopped"]);
         Assert.Equal(2, read["history"]!.AsArray().Count);
-        var decisions = recorder.Decisions.Where(d => d.Site == "node.refine").ToList();
+        var decisions = recorder.Decisions.Where(d => d.Owner == "node.refine").ToList();
         Assert.Equal([true, false], decisions.Select(d => d.Result));
-        Assert.Equal("size(pass.history) < 1", decisions[0].Printed);
+        Assert.Equal("size(pass.history) < 1", decisions[0].Condition);
     }
 
     [Fact]
@@ -314,7 +314,7 @@ public class PlanRunnerFlowTests
         Assert.Equal(1, (int)recorder.Row("node.sections.refine:1").Detail["passes"]!);
         Assert.Equal(2, (int)recorder.Row("node.sections.refine:2").Detail["passes"]!);
         Assert.Equal(RowState.Completed, recorder.Row("node.sections.refine:2#1").State);
-        Assert.Equal(["pass.1", "pass.2"], recorder.Decisions.Where(d => d.Site == "node.sections.refine:2").Select(d => d.Member));
+        Assert.Equal(["pass.1", "pass.2"], recorder.Decisions.Where(d => d.Owner == "node.sections.refine:2").Select(d => d.Site));
 
         // a row inside a pass inside an item carries the item's name
         Assert.Equal("Plan", (string?)recorder.Row("node.sections.refine.judge:2#1").Detail["itemName"]);
@@ -368,10 +368,10 @@ public class PlanRunnerFlowTests
         Assert.Equal(RowState.Completed, row.State);
         Assert.Equal(PlanKind.If, row.Kind);
         Assert.Equal(CanonicalJson.HashText($"Text of {taken}."), row.ValueHash);
-        var decision = Assert.Single(recorder.Decisions, d => d.Site == "node.letter");
-        Assert.Equal("self", decision.Member);
+        var decision = Assert.Single(recorder.Decisions, d => d.Owner == "node.letter");
+        Assert.Equal("self", decision.Site);
         Assert.Equal(billing, decision.Result);
-        Assert.Equal("input.include_billing.value = true", decision.Printed);
+        Assert.Equal("input.include_billing.value = true", decision.Condition);
         Assert.Equal(FakeRunHost.Start, decision.DecidedAtUtc);
 
         // the deliverable reads the if once it has settled
@@ -391,7 +391,7 @@ public class PlanRunnerFlowTests
         Assert.Equal(RunState.Completed, result.State);
         Assert.DoesNotContain(recorder.Rows, r => r.Key.StartsWith("node.letter.with_billing", StringComparison.Ordinal)
             || r.Key.StartsWith("node.letter.billing_extra", StringComparison.Ordinal));
-        Assert.DoesNotContain(recorder.Decisions, d => d.Site.StartsWith("node.letter.", StringComparison.Ordinal));
+        Assert.DoesNotContain(recorder.Decisions, d => d.Owner.StartsWith("node.letter.", StringComparison.Ordinal));
         // the if inside the then branch reads skipped; a leaf beside it, never reached, not_run
         var scope = host.Renders.Single(r => r.Key == "deliverable.note").Scope;
         Assert.Equal("skipped", (string?)scope["node"]!["letter"]!["billing_extra"]!["state"]);
@@ -432,8 +432,8 @@ public class PlanRunnerFlowTests
         Assert.Equal(Reason, recorder.Row("node.patient_summaries:2").Reason);
         Assert.Equal(RowState.Completed, recorder.Row("node.patient_summaries.narrative_only:1").State);
 
-        var decision = Assert.Single(recorder.Decisions, d => d.Site == "node.patient_summaries.narrative_only:2");
-        Assert.Equal("self", decision.Member);
+        var decision = Assert.Single(recorder.Decisions, d => d.Owner == "node.patient_summaries.narrative_only:2");
+        Assert.Equal("self", decision.Site);
         Assert.False(decision.Result);
         Assert.Equal(["Text of node.patient_summaries.narrative_only.patient_summary:1."],
             result.Values["node.patient_summaries"]!["value"]!.AsArray().Select(v => (string)v!));
@@ -468,12 +468,12 @@ public class PlanRunnerFlowTests
         Assert.Equal("Text of node.sections_draft.route.table_draft:2.", (string?)result.Values["node.sections_draft"]!["items"]![1]!["value"]);
 
         // the decision records the branch taken
-        var decisions = recorder.Decisions.Where(d => d.Site.StartsWith("node.sections_draft.route:", StringComparison.Ordinal)).OrderBy(d => d.Site, StringComparer.Ordinal).ToList();
+        var decisions = recorder.Decisions.Where(d => d.Owner.StartsWith("node.sections_draft.route:", StringComparison.Ordinal)).OrderBy(d => d.Owner, StringComparer.Ordinal).ToList();
         Assert.Equal(["1", "2", "3"], decisions.Select(d => d.Branch));
         Assert.All(decisions, d =>
         {
-            Assert.Equal("case", d.Member);
-            Assert.Equal("item.value.kind", d.Printed);
+            Assert.Equal("case", d.Site);
+            Assert.Equal("item.value.kind", d.Condition);
             Assert.Null(d.Result);
         });
     }
@@ -491,9 +491,9 @@ public class PlanRunnerFlowTests
         Assert.Contains("node.opening.general_opening", host.Dispatched);
         Assert.DoesNotContain("node.opening.clinic_opening", host.Dispatched);
         Assert.Equal("Text of node.opening.general_opening.", (string?)result.Values["node.opening"]!["value"]);
-        var decision = Assert.Single(recorder.Decisions, d => d.Site == "node.opening");
+        var decision = Assert.Single(recorder.Decisions, d => d.Owner == "node.opening");
         Assert.Equal("else", decision.Branch);
-        Assert.Equal("input.encounter_kind.value", decision.Printed);
+        Assert.Equal("input.encounter_kind.value", decision.Condition);
     }
 
     [Theory]
@@ -510,7 +510,7 @@ public class PlanRunnerFlowTests
         Assert.Equal(RunState.Completed, result.State);
         Assert.Equal([taken], host.Dispatched.Where(k => k.StartsWith("node.opening.", StringComparison.Ordinal)));
         Assert.Equal($"Text of {taken}.", (string?)result.Values["node.opening"]!["content"]);
-        Assert.Equal(branch, Assert.Single(recorder.Decisions, d => d.Site == "node.opening").Branch);
+        Assert.Equal(branch, Assert.Single(recorder.Decisions, d => d.Owner == "node.opening").Branch);
     }
 
     [Fact]
@@ -551,7 +551,7 @@ public class PlanRunnerFlowTests
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(Supplied("sections", sections), FakeRunHost.Start);
 
         Assert.Equal(RunState.Completed, result.State);
-        Assert.Equal(recorder.Decisions.Count, recorder.Decisions.Select(d => (d.Site, d.Member)).Distinct().Count());
+        Assert.Equal(recorder.Decisions.Count, recorder.Decisions.Select(d => (d.Owner, d.Site)).Distinct().Count());
         string[] expected =
         [
             "node.patient_summaries.narrative_only:1 self item.value.kind = \"narrative\"",
@@ -564,17 +564,17 @@ public class PlanRunnerFlowTests
             "node.standing_sections.applies:2 self item.id ≠ \"billing\" or input.include_billing.value = true",
             "node.standing_sections.applies:3 self item.id ≠ \"billing\" or input.include_billing.value = true",
         ];
-        Assert.Equal(expected, recorder.Decisions.Select(d => $"{d.Site} {d.Member} {d.Printed}").Order(StringComparer.Ordinal));
+        Assert.Equal(expected, recorder.Decisions.Select(d => $"{d.Owner} {d.Site} {d.Condition}").Order(StringComparer.Ordinal));
         Assert.All(recorder.Decisions, d => Assert.Equal(FakeRunHost.Start, d.DecidedAtUtc));
 
         // the nested note: the paragraphs' header if per item, the while's check per pass
         var nested = new ListRecorder();
         var nestedHost = NestedHost().Reply("node.refine.judge#1", Revise).Reply("node.refine.judge#2", Good);
         await new PlanRunner(RunFixture.Plan("nested-note"), new RunLimits(), nestedHost, nested).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
-        Assert.Equal(nested.Decisions.Count, nested.Decisions.Select(d => (d.Site, d.Member)).Distinct().Count());
+        Assert.Equal(nested.Decisions.Count, nested.Decisions.Select(d => (d.Owner, d.Site)).Distinct().Count());
         Assert.Equal(["node.refine pass.1", "node.refine pass.2"],
-            nested.Decisions.Where(d => d.Site.StartsWith("node.refine", StringComparison.Ordinal)).Select(d => $"{d.Site} {d.Member}"));
-        Assert.Equal(3, nested.Decisions.Count(d => d.Site.StartsWith("node.sections.paragraphs.draft_paragraph:", StringComparison.Ordinal) && d.Member == "self"));
+            nested.Decisions.Where(d => d.Owner.StartsWith("node.refine", StringComparison.Ordinal)).Select(d => $"{d.Owner} {d.Site}"));
+        Assert.Equal(3, nested.Decisions.Count(d => d.Owner.StartsWith("node.sections.paragraphs.draft_paragraph:", StringComparison.Ordinal) && d.Site == "self"));
     }
 
     [Fact]
@@ -619,7 +619,7 @@ public class PlanRunnerFlowTests
             Assert.Equal("good", (string?)first["judge"]!["value"]!["verdict"]);
             Assert.Equal("completed", (string?)first["judge"]!["state"]);
             Assert.Equal("completed", (string?)first["gate"]!["state"]);
-            Assert.Equal([true, false], recorder.Decisions.Where(d => d.Site == "node.refine").Select(d => d.Result));
+            Assert.Equal([true, false], recorder.Decisions.Where(d => d.Owner == "node.refine").Select(d => d.Result));
         }
         else
         {

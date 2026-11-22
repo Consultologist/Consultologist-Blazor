@@ -11,9 +11,9 @@ node.draft | completed | - | sha256:67fa0a2311997b6cafdbf1f89c4b7279141894aeedf1
 deliverable.note | released | - | sha256:28628b92fc3d291edb013a480483fa237b4dd5aaa37f25804ac44a4a80492e5e
 
 # decisions
-node.draft | part.close | not blank(node.classify.value.reason) | true
-node.draft | macro-folder.section_notes | "says so" in node.classify.value.reason | true
-node.draft | macro.section_notes.hpi | node.classify.value.answer = true | true
+node.draft/if:part.close | not blank(node.classify.value.reason) | true | node.classify.value.reason | modelDerived
+node.draft/if:macro-folder.section_notes | "says so" in node.classify.value.reason | true | node.classify.value.reason | modelDerived
+node.draft/if:macro.section_notes.hpi | node.classify.value.answer = true | true | node.classify.value.answer | modelDerived
 
 # details
 node.plan | {"depth":0,"function":null,"hashVersion":7,"inputHash":"sha256:da45942951dafb3ce69cc5d8a53b4a08f7c09b391bf7a67a684a785e15b2cb6a","invalid":null,"itemName":null,"macros":[],"notSent":[],"positionName":false,"profileReads":[],"renders":[],"retries":[],"runNeutralHash":null,"runSpots":[],"sentFormatHash":"sha256:960ef47ddcf06828b0bed194dee48b6f3217ae8055d5553abde05e0c04c49bff","units":[]}

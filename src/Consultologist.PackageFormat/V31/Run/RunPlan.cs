@@ -208,6 +208,37 @@ public sealed class RunPlan
         }
     }
 
+    /// <summary>
+    /// Every <c>var</c> path of <paramref name="rule"/>, in the order written (a repeat each time it appears). #1506 (D4): a
+    /// decision's reads are its rule's in this order, without repeats.
+    /// </summary>
+    internal static IEnumerable<string> VarPaths(JsonNode? rule)
+    {
+        var paths = new List<string>();
+        var pending = new Stack<JsonNode?>();
+        pending.Push(rule);
+        while (pending.Count > 0)
+        {
+            switch (pending.Pop())
+            {
+                case JsonObject { Count: 1 } obj when obj.ContainsKey("var"):
+                    if (SourceLayout.Text(obj["var"]) is { } path)
+                        paths.Add(path);
+                    break;
+                case JsonObject obj:
+                    foreach (var (_, child) in obj.Reverse())
+                        pending.Push(child);
+                    break;
+                case JsonArray array:
+                    for (var i = array.Count - 1; i >= 0; i--)
+                        pending.Push(array[i]);
+                    break;
+            }
+        }
+
+        return paths;
+    }
+
     /// <summary>An entry while the plan is read: everything but what it depends on, which needs its whole map.</summary>
     private sealed record Draft(
         string Key,
@@ -217,6 +248,7 @@ public sealed class RunPlan
         string? Function,
         JsonObject Json,
         IReadOnlyDictionary<string, IJsonLogicRule> Rules,
+        IReadOnlyDictionary<string, PlanRule> Recorded,
         IReadOnlyList<string> Body,
         IReadOnlyList<PlanBranch> Branches,
         string? Ret,
@@ -414,8 +446,9 @@ public sealed class RunPlan
                 return null;
             }
 
-            // The rules, each compiled with its plainConverts list (D3).
+            // The rules, each compiled with its plainConverts list (D3), and (#1506, D4) each as a decision records it.
             var rules = new Dictionary<string, IJsonLogicRule>(StringComparer.Ordinal);
+            var recorded = new Dictionary<string, PlanRule>(StringComparer.Ordinal);
             var plainConverts = json["plainConverts"] as JsonObject;
             foreach (var member in RuleMembers)
             {
@@ -427,6 +460,7 @@ public sealed class RunPlan
                 if (compiled.Declined != null)
                     return null;
                 rules.Add(member, compiled);
+                recorded.Add(member, new PlanRule(rule));
             }
 
             var required = kind switch
@@ -484,6 +518,7 @@ public sealed class RunPlan
                     read.Add(caseElse);
                     branches = read;
                     extra.Add(subject);
+                    recorded.Add("case", new PlanRule(new JsonObject { ["var"] = subject }));
                     break;
                 }
 
@@ -523,7 +558,7 @@ public sealed class RunPlan
                 .Distinct(StringComparer.Ordinal)
                 .Order(StringComparer.Ordinal)
                 .ToList();
-            return new Draft(key, id, kind, parent, function, json, rules, body, branches, ret, check, allReads, placements, neutralReads);
+            return new Draft(key, id, kind, parent, function, json, rules, recorded, body, branches, ret, check, allReads, placements, neutralReads);
         }
 
         /// <summary>
@@ -557,6 +592,7 @@ public sealed class RunPlan
                 }
 
                 IJsonLogicRule? compiled = null;
+                PlanRule? recorded = null;
                 string? printed = null;
                 if (rule is not null)
                 {
@@ -566,11 +602,12 @@ public sealed class RunPlan
                     if (compiled.Declined != null)
                         return null;
                     printed = JsonLogicPrinter.Print(rule);
-                    reads.AddRange(VarPaths(rule));
+                    recorded = new PlanRule(rule);
+                    reads.AddRange(recorded.Reads);
                 }
 
                 seen.Add(site);
-                placements.Add(new PlanPlacement(site, within, compiled, printed, form));
+                placements.Add(new PlanPlacement(site, within, compiled, recorded, printed, form));
             }
 
             return placements;
@@ -722,7 +759,7 @@ public sealed class RunPlan
             {
                 var gates = gatedBy[draft.Key].Select(d => d.Key).OrderBy(order).ToList();
                 entries.Add(draft.Key, new PlanEntry(
-                    draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order(draft.Key), draft.Json, draft.Rules,
+                    draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order(draft.Key), draft.Json, draft.Rules, draft.Recorded,
                     draft.Body, draft.Branches, draft.Ret, draft.Reads, dependsOf[draft.Key].ToList(), draft.Placements, draft.NeutralReads,
                     draft.Check, gates, gating.GetValueOrDefault(draft.Key) ?? new HashSet<string>(StringComparer.Ordinal)));
             }
@@ -889,34 +926,6 @@ public sealed class RunPlan
                 return false;
             branch = found;
             return true;
-        }
-
-        /// <summary>Every <c>var</c> path of <paramref name="rule"/>.</summary>
-        private static IEnumerable<string> VarPaths(JsonNode? rule)
-        {
-            var paths = new List<string>();
-            var pending = new Stack<JsonNode?>();
-            pending.Push(rule);
-            while (pending.Count > 0)
-            {
-                switch (pending.Pop())
-                {
-                    case JsonObject { Count: 1 } obj when obj.ContainsKey("var"):
-                        if (SourceLayout.Text(obj["var"]) is { } path)
-                            paths.Add(path);
-                        break;
-                    case JsonObject obj:
-                        foreach (var (_, child) in obj)
-                            pending.Push(child);
-                        break;
-                    case JsonArray array:
-                        foreach (var child in array)
-                            pending.Push(child);
-                        break;
-                }
-            }
-
-            return paths;
         }
 
         /// <summary>Whether <paramref name="obj"/> has <paramref name="member"/> as a string or <c>null</c>, given in <paramref name="text"/>.</summary>

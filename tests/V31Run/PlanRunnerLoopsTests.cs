@@ -380,10 +380,10 @@ public class PlanRunnerLoopsTests
         }
 
         // a decision per evaluation, after items 1 and 2
-        var decisions = recorder.Decisions.Where(d => d.Site == "node.letters").ToList();
-        Assert.Equal(["until.1", "until.2"], decisions.Select(d => d.Member));
+        var decisions = recorder.Decisions.Where(d => d.Owner == "node.letters").ToList();
+        Assert.Equal(["until.1", "until.2"], decisions.Select(d => d.Site));
         Assert.Equal([false, true], decisions.Select(d => d.Result));
-        Assert.Equal("node.letters.read_letter.value.answers_question = true", decisions[0].Printed);
+        Assert.Equal("node.letters.read_letter.value.answers_question = true", decisions[0].Condition);
         Assert.Equal("until", (string?)recorder.Row("node.letters").Detail["stopped"]);
         Assert.Equal(4, (int)recorder.Row("node.letters").Detail["count"]!);
     }

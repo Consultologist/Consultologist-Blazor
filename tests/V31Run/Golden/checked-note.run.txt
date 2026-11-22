@@ -20,7 +20,7 @@ deliverable.note | blocked | blocked: check 'proofread' failed (it did not pass)
 deliverable.patient.patient_letter | released | - | sha256:bc8e591de9ab096c1d9cf0bd3ee1df342003b3c32456f92ef7b1ff0be599e9e7
 
 # decisions
-check.part_coverage.coverage:1 | self | item.state = "completed" | true
+check.part_coverage.coverage:1/if:self | item.state = "completed" | true | item.state | modelDerived
 
 # result
 state | completed

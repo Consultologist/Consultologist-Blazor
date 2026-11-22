@@ -203,14 +203,15 @@ public sealed partial class PlanRunner
         private async Task<bool?> DecideAsync(RunInstance instance, IJsonLogicRule rule, string member, string site, RunFrame frame)
         {
             var entry = instance.Entry;
-            var decision = await DecideRuleAsync(instance, rule, member, scope.Data(entry, frame, entry.Reads));
+            var data = scope.Data(entry, frame, entry.Reads);
+            var decision = await DecideRuleAsync(instance, rule, member, data);
             if (decision.Failure is { } failed)
             {
                 await FailAsync(instance, RuleFailed(Subject(instance), member, failed));
                 return null;
             }
 
-            await recorder.DecisionAsync(new RunDecision(instance.Key, site, entry.Printed(member), decision.Result, null, host.UtcNow));
+            await RecordDecisionAsync(instance, frame, site, entry.Rules.GetValueOrDefault(member), entry.Printed(member), data, decision.Result, null);
             return decision.Result;
         }
 
@@ -330,14 +331,15 @@ public sealed partial class PlanRunner
                 return null;
             }
 
-            var decision = await DecideRuleAsync(instance, rule, "if", scope.Data(entry, instance.Frame, entry.Reads));
+            var data = scope.Data(entry, instance.Frame, entry.Reads);
+            var decision = await DecideRuleAsync(instance, rule, "if", data);
             if (decision.Failure is { } failed)
             {
                 await FailAsync(instance, RuleFailed(Subject(instance), "if", failed));
                 return null;
             }
 
-            await recorder.DecisionAsync(new RunDecision(instance.Key, "self", entry.Printed("if"), decision.Result, null, host.UtcNow));
+            await RecordDecisionAsync(instance, instance.Frame, "self", entry.Rules.GetValueOrDefault("if"), entry.Printed("if"), data, decision.Result, null);
             var chosen = entry.Branches[decision.Result ? 0 : 1];
             if (chosen.Nodes.Count > 0)
                 return chosen;
@@ -357,7 +359,8 @@ public sealed partial class PlanRunner
         {
             var entry = instance.Entry;
             var subject = SourceLayout.Text(entry.Json["case"]) ?? "";
-            var value = At(scope.Data(entry, instance.Frame, [subject]), subject);
+            var data = scope.Data(entry, instance.Frame, [subject]);
+            var value = At(data, subject);
 
             int? matched = null;
             JsonNode? listed = null;
@@ -369,7 +372,7 @@ public sealed partial class PlanRunner
             }
 
             var branch = matched is { } at ? Number(at + 1) : "else";
-            await recorder.DecisionAsync(new RunDecision(instance.Key, "case", subject, null, branch, host.UtcNow));
+            await RecordDecisionAsync(instance, instance.Frame, "case", entry.Rules.GetValueOrDefault("case"), subject, data, null, branch);
             var chosen = entry.Branches[matched ?? entry.Branches.Count - 1];
             if (chosen.Nodes.Count > 0)
                 return chosen;

@@ -355,7 +355,7 @@ public class PlanRunnerCallsTests
         Assert.StartsWith("skipped: ", row.Reason);
         Assert.Equal("draft_section", (string?)row.Detail["function"]);
         Assert.Equal("[]", row.Detail["arguments"]!.ToJsonString());
-        Assert.Contains(recorder.Decisions, d => d.Site == "node.standards.section:hpi" && d.Member == "self" && d.Result == false);
+        Assert.Contains(recorder.Decisions, d => d.Owner == "node.standards.section:hpi" && d.Site == "self" && d.Result == false);
         Assert.Equal(RowState.Skipped, recorder.Row("node.standards:hpi").State);
         Assert.Single(result.Values["node.standards"]!["value"]!.AsArray());
     }

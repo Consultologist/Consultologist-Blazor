@@ -41,7 +41,7 @@ public sealed class EntityRunRecorder(TaskOrchestrationContext context, ConsultG
     {
         ArgumentNullException.ThrowIfNull(decision);
         return context.Entities.SignalEntityAsync(_entity, nameof(ConsultGenerationJobEntity.RecordV31Progress),
-            new ConsultGenerationV31Progress(decision.Site, null));
+            new ConsultGenerationV31Progress(decision.Owner, null));
     }
 
     /// <summary>

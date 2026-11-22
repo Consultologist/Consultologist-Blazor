@@ -378,7 +378,8 @@ public sealed partial class PlanRunner
 
                 if (loop.Parallel || entry.Until is not { } until || loop.StopAt != null)
                     continue;
-                var decision = await DecideRuleAsync(instance, until, "until", scope.Data(entry, frame, entry.Reads));
+                var data = scope.Data(entry, frame, entry.Reads);
+                var decision = await DecideRuleAsync(instance, until, "until", data);
                 if (decision.Failure is { } failed)
                 {
                     await FailAsync(instance, RuleFailed(Subject(instance), "until", failed));
@@ -386,8 +387,8 @@ public sealed partial class PlanRunner
                 }
 
                 var position = item.Position + 1;
-                await recorder.DecisionAsync(new RunDecision(instance.Key, $"until.{position.ToString(CultureInfo.InvariantCulture)}",
-                    entry.Printed("until"), decision.Result, null, host.UtcNow));
+                await RecordDecisionAsync(instance, frame, $"until.{position.ToString(CultureInfo.InvariantCulture)}",
+                    entry.Rules.GetValueOrDefault("until"), entry.Printed("until"), data, decision.Result, null);
                 if (decision.Result)
                     loop.StopAt = position;
             }
