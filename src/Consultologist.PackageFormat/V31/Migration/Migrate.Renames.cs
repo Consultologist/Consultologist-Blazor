@@ -102,15 +102,17 @@ internal static partial class Migrate
             var root = m.Root30.DeepClone().AsObject();
             var files = new Dictionary<string, string>(m.Files30, StringComparer.Ordinal);
             var folders = new Dictionary<(string Kind, string Id), string>();
+            // The files with a header (a snippet's, a macro's, as Migrated.Read reads them); a prompt has none.
+            var headed = new HashSet<string>(m.Resolved30.Headers.Keys, StringComparer.Ordinal);
             foreach (var rename in renames)
             {
                 var refused = rename.Kind switch
                 {
-                    Input => RenameInput(root, files, rename.Id, rename.NewId),
-                    Node => RenameNode(root, files, rename.Id, rename.NewId),
+                    Input => RenameInput(root, files, headed, rename.Id, rename.NewId),
+                    Node => RenameNode(root, files, headed, rename.Id, rename.NewId),
                     Format => RenameFormat(root, rename.Id, rename.NewId),
-                    Deliverable => RenameDeliverable(root, files, rename.Id, rename.NewId),
-                    _ => RenameText(root, files, rename, folders),
+                    Deliverable => RenameDeliverable(root, files, headed, rename.Id, rename.NewId),
+                    _ => RenameText(root, files, headed, rename, folders),
                 };
                 if (refused.Count > 0)
                     return (null, refused.Select(r => MigrationSentences.AtRung(WorkflowPackageMigrationChain.Target, r)).ToList());
@@ -300,7 +302,7 @@ internal static partial class Migrate
 
         private static readonly IReadOnlyList<string> NoRefusals = [];
 
-        private static IReadOnlyList<string> RenameInput(JsonObject root, Dictionary<string, string> files, string from, string to)
+        private static IReadOnlyList<string> RenameInput(JsonObject root, Dictionary<string, string> files, HashSet<string> headed, string from, string to)
         {
             foreach (var input in Objects(root["inputs"]))
             {
@@ -309,7 +311,7 @@ internal static partial class Migrate
             }
 
             (string, bool, bool) text(string t) => Reads(t, "input", from, to);
-            Everywhere(root, files, text);
+            Everywhere(root, files, headed, text);
             foreach (var node in Objects(root["nodes"]))
             {
                 if (node["with"] is not JsonObject with)
@@ -325,7 +327,7 @@ internal static partial class Migrate
             return NoRefusals;
         }
 
-        private static IReadOnlyList<string> RenameNode(JsonObject root, Dictionary<string, string> files, string from, string to)
+        private static IReadOnlyList<string> RenameNode(JsonObject root, Dictionary<string, string> files, HashSet<string> headed, string from, string to)
         {
             var loops = WorkflowNodeRename.LoopsHolding(root, from);
             if (Objects(root["nodes"]).FirstOrDefault(n => Str(n["id"]) == from) is { } node && node["prompt"] is null)
@@ -345,7 +347,7 @@ internal static partial class Migrate
                 return (passed, passed != t, parsed);
             }
 
-            Everywhere(root, files, text);
+            Everywhere(root, files, headed, text);
             return NoRefusals;
         }
 
@@ -369,7 +371,7 @@ internal static partial class Migrate
             return NoRefusals;
         }
 
-        private static IReadOnlyList<string> RenameDeliverable(JsonObject root, Dictionary<string, string> files, string from, string to)
+        private static IReadOnlyList<string> RenameDeliverable(JsonObject root, Dictionary<string, string> files, HashSet<string> headed, string from, string to)
         {
             foreach (var deliverable in Objects(root["deliverables"]))
             {
@@ -377,12 +379,13 @@ internal static partial class Migrate
                     deliverable["id"] = to;
             }
 
-            Everywhere(root, files, t => Reads(t, "deliverable", from, to));
+            Everywhere(root, files, headed, t => Reads(t, "deliverable", from, to));
             return NoRefusals;
         }
 
         /// <summary>A macro, a snippet, a folder or an item, by <see cref="WorkflowTextRename"/>; then each macro instruction that reads it.</summary>
-        private static IReadOnlyList<string> RenameText(JsonObject root, Dictionary<string, string> files, Rename rename, Dictionary<(string Kind, string Id), string> folders)
+        private static IReadOnlyList<string> RenameText(
+            JsonObject root, Dictionary<string, string> files, HashSet<string> headed, Rename rename, Dictionary<(string Kind, string Id), string> folders)
         {
             var macro = rename.Kind is Macro or MacroItem;
             var kind = rename.Kind switch
@@ -401,11 +404,16 @@ internal static partial class Migrate
             if (refusals.Count > 0)
                 return refusals;
 
+            var before = files.Keys.ToHashSet(StringComparer.Ordinal);
             foreach (var path in files.Keys.Where(p => IsTemplate(p) || p.EndsWith(".json", StringComparison.Ordinal)).ToList())
                 files.Remove(path);
             foreach (var (path, text) in templates)
                 files[path] = text;
-            foreach (var path in files.Keys.Where(IsTemplate).ToList())
+
+            // A snippet or macro file the rename moved keeps its header at its new path.
+            foreach (var path in files.Keys.Where(p => !before.Contains(p) && IsTemplate(p) && !p.StartsWith("prompts/", StringComparison.Ordinal)))
+                headed.Add(path);
+            foreach (var path in files.Keys.Where(headed.Contains).ToList())
                 files[path] = InstructionOnly(files[path], t => WorkflowTextRename.RenameInTemplate(t, kind, rename.Id, rename.NewId, folder));
 
             if (rename.IsFolder)
@@ -417,11 +425,14 @@ internal static partial class Migrate
 
         private delegate (string Text, bool Changed, bool Parsed) Rewrite(string text);
 
-        /// <summary>Every template file (body, header <c>if</c>, instruction) and every manifest condition and <c>for</c>, rewritten.</summary>
-        private static void Everywhere(JsonObject root, Dictionary<string, string> files, Rewrite rewrite)
+        /// <summary>
+        /// Every template file (body; for a file in <paramref name="headed"/>, its header's <c>if</c> and instruction too) and
+        /// every manifest condition and <c>for</c>, rewritten.
+        /// </summary>
+        private static void Everywhere(JsonObject root, Dictionary<string, string> files, HashSet<string> headed, Rewrite rewrite)
         {
             foreach (var path in files.Keys.Where(IsTemplate).ToList())
-                files[path] = File(files[path], rewrite);
+                files[path] = headed.Contains(path) ? File(files[path], rewrite) : Whole(files[path], rewrite);
 
             foreach (var (owner, member) in Gates(root))
             {
@@ -473,7 +484,14 @@ internal static partial class Migrate
         private static IEnumerable<JsonObject> Objects(JsonNode? array) =>
             array is JsonArray items ? items.OfType<JsonObject>().ToList() : [];
 
-        /// <summary>A template file rewritten: its body, and its header's <c>if</c> (a condition) and <c>instruction</c> (a template).</summary>
+        /// <summary>A file with no header (a prompt: a line <c>{</c> opening it is text) rewritten whole.</summary>
+        private static string Whole(string fileText, Rewrite rewrite)
+        {
+            var (text, changed, _) = rewrite(fileText);
+            return changed ? text : fileText;
+        }
+
+        /// <summary>A snippet or macro file rewritten: its body, and its header's <c>if</c> (a condition) and <c>instruction</c> (a template).</summary>
         private static string File(string fileText, Rewrite rewrite)
         {
             var (headerJson, body) = WorkflowTextHeaders.Split(fileText);

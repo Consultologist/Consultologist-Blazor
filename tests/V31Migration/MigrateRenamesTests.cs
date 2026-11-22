@@ -362,4 +362,21 @@ public class MigrateRenamesTests
         else
             Assert.NotSame(m, applied);
     }
+
+    [Fact]
+    public void AHeaderIsSplitOff_OnlyFromASnippetOrAMacroFile()
+    {
+        // A 30 prompt has no header: one that opens with a line '{' is all body, and a rename rewrites all of it. Only the
+        // files whose headers 30 read (a snippet's, a macro's) have one split off. (An unread prompt file reaches the
+        // rename: 30 refuses a header only on a prompt a node names.)
+        var (json, files) = Package("example-nested-note");
+        files["prompts/notes.md"] = "{\nSee {{ node.parts.content }}\n}\n{{ node.parts.content }}\n";
+        var (read, refusals) = PackageFormat.V31.Migration.Migrated.Read(json, files, MigrationFixture.Options("example-nested-note"));
+        Assert.Empty(refusals);
+
+        var (renamed, renameRefusals) = PackageFormat.V31.Migration.Migrate.Renames.Apply(read!);
+
+        Assert.Empty(renameRefusals);
+        Assert.Equal("{\nSee {{ node.sections.content }}\n}\n{{ node.sections.content }}\n", renamed!.Files30["prompts/notes.md"]);
+    }
 }
