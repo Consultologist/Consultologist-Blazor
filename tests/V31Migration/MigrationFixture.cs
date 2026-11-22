@@ -110,6 +110,88 @@ internal static class MigrationFixture
         return new ConversionScope(inputs, nodes, item, folderItem, inWhile, Formats()) { RequiredInputs = required };
     }
 
+    /// <summary>The value <c>vectors.json</c> writes for a read that has none: an absent input, a node with no output.</summary>
+    public const string Absent = "<absent>";
+
+    /// <summary>
+    /// The 31 data for one case of <c>vectors.json</c> (Task 4; part 03 § 6.1): <paramref name="scope"/> (read to value,
+    /// as supplied) placed where 31 reads it, the read types from <paramref name="reads"/> (the entry's). An input passes
+    /// through 31's start rules (<c>V31StartChecks.Inputs</c>, part 02 § 8): absent, <c>null</c> or text that is blank as
+    /// <c>blank()</c> judges is not given, so it is left out and <c>input.x.value</c> and <c>.content</c> read <c>null</c>;
+    /// otherwise it is <c>{ value, content }</c>, <c>content</c> the text for a text input (30's <c>text</c>, at 31
+    /// <c>markdown_block</c>) and <c>null</c> for any other. A node is placed at its 31 path (<see cref="ScopeOf"/>'s): one
+    /// absent was skipped, so <c>value</c> and <c>content</c> are <c>null</c>; else <c>value</c> is its value (a
+    /// classifier's <c>{ value }</c>) and <c>content</c> its text for a text format, else the value's canonical JSON (D11
+    /// of area 06). <c>item</c> is the case's item as written (<c>{ id }</c> or <c>{ value }</c>), <c>pass.number</c> and
+    /// <c>run.date</c> their values, and <c>profile.name</c> the profile's field.
+    /// </summary>
+    public static JsonObject DataOf(JsonObject scope, JsonObject reads)
+    {
+        var paths = ScopeOf(reads).Nodes;
+        var data = new JsonObject();
+        foreach (var (read, value) in scope)
+        {
+            var type = reads[read];
+            if (read.StartsWith("input.", StringComparison.Ordinal))
+            {
+                if (NotGiven(value))
+                {
+                    continue;
+                }
+
+                var text = TypeName(type) == "text";
+                Place(data, read, new JsonObject { ["value"] = value!.DeepClone(), ["content"] = text ? value.DeepClone() : null });
+            }
+            else if (read.StartsWith("node.", StringComparison.Ordinal))
+            {
+                var path = paths[read["node.".Length..]].Path;
+                if (value is JsonValue absent && absent.TryGetValue<string>(out var marker) && marker == Absent)
+                {
+                    Place(data, path, new JsonObject { ["value"] = null, ["content"] = null });
+                    continue;
+                }
+
+                var name = TypeName(type);
+                var nodeValue = name == "classification" ? new JsonObject { ["value"] = value!.DeepClone() } : value!.DeepClone();
+                var content = name == "text" ? (string?)value : CanonicalJson.Write(nodeValue);
+                Place(data, path, new JsonObject { ["value"] = nodeValue, ["content"] = content });
+            }
+            else
+            {
+                Place(data, read, value?.DeepClone());
+            }
+        }
+
+        return data;
+    }
+
+    /// <summary>Whether 31's start leaves a supplied value not given: absent, <c>null</c>, or text of nothing but white space.</summary>
+    private static bool NotGiven(JsonNode? value) =>
+        value is null
+        || (value is JsonValue text && text.TryGetValue<string>(out var s) && (s == Absent || s.EnumerateRunes().All(System.Text.Rune.IsWhiteSpace)));
+
+    /// <summary>A read type's name: the name itself, or an object's <c>type</c>.</summary>
+    private static string? TypeName(JsonNode? type) => type is JsonValue ? (string?)type : (string?)type?["type"];
+
+    /// <summary>Sets <paramref name="value"/> at the dotted <paramref name="path"/> under <paramref name="data"/>, making the objects on the way.</summary>
+    private static void Place(JsonObject data, string path, JsonNode? value)
+    {
+        var segments = path.Split('.');
+        var at = data;
+        foreach (var segment in segments[..^1])
+        {
+            if (at[segment] is not JsonObject next)
+            {
+                next = new JsonObject();
+                at[segment] = next;
+            }
+
+            at = next;
+        }
+
+        at[segments[^1]] = value;
+    }
+
     /// <summary>A 30 node's format at 31: <c>text</c> is <c>plaintext</c>, a classifier keeps <c>classification</c>, an object its schema made strict.</summary>
     private static JsonNode NodeFormat(JsonNode type)
     {
