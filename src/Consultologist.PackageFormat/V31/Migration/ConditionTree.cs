@@ -25,9 +25,12 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// <item>A number, <c>true</c>, <c>false</c> and a quoted string are the JSON literal; a <c>let</c>'s object is the
 /// <c>object</c> operation, its fields in canonical (ordinal) order; an array is a JSON array.</item>
 /// </list>
-/// Anything else adds one S10-003 notice per construct and gives <c>null</c>; so does a read of an input, a node, an
-/// item or a pass the scope does not hold. Never throws on package text; nesting past
-/// <see cref="SourceBounds.JsonDepth"/> is a notice.
+/// Anything else adds one S10-003 notice per construct (a call's arguments are walked too, so each reason is said) and
+/// gives <c>null</c>; so does a read of an input, a node, an item or a pass the scope does not hold. A read of
+/// <c>profile.*</c> is written as read, for the checker to refuse (S03-018), and so is any member of a node, an item or
+/// a pass: the checker holds it to what 31 reads there. Never throws on package text; operations nested past
+/// <see cref="SourceBounds.JsonDepth"/> (each writes at least one JSON level; parentheses write none) are a notice,
+/// and the converter measures the written depth itself.
 /// </summary>
 internal static class ConditionTree
 {
@@ -62,7 +65,8 @@ internal static class ConditionTree
             switch (expression)
             {
                 case ScriptNestedExpression nested:
-                    return Rule(nested.Expression, depth + 1);
+                    // Parentheses write nothing, so they add no depth.
+                    return Rule(nested.Expression, depth);
                 case ScriptBinaryExpression binary:
                     return Binary(binary, depth);
                 case ScriptUnaryExpression unary:
@@ -227,7 +231,7 @@ internal static class ConditionTree
             var chain = WorkflowTemplateTokens.Flatten(target);
             if (chain is null || chain.Segments.Any(s => s.Name is null || s.Quoted))
             {
-                return Refuse($"the call '{target}'");
+                return Refuse($"the call '{target}'", arguments, depth);
             }
 
             var name = string.Join('.', [chain.Root, .. chain.Segments.Select(s => s.Name!)]);
@@ -245,12 +249,12 @@ internal static class ConditionTree
 
             if (op is null)
             {
-                return Refuse(name);
+                return Refuse(name, arguments, depth);
             }
 
             if (arguments.Count != count)
             {
-                return Refuse($"{name} with {arguments.Count.ToString(CultureInfo.InvariantCulture)} arguments");
+                return Refuse($"{name} with {arguments.Count.ToString(CultureInfo.InvariantCulture)} arguments", arguments, depth);
             }
 
             if (op == "date.parse")
@@ -258,7 +262,7 @@ internal static class ConditionTree
                 // The literal string, typed date by its comparison (§ 2.2).
                 return arguments[0] is ScriptLiteral { Value: string date } && IsoDate.IsMatch(date)
                     ? JsonValue.Create(date)
-                    : Refuse("date.parse of anything but a YYYY-MM-DD literal");
+                    : Refuse("date.parse of anything but a YYYY-MM-DD literal", arguments, depth);
             }
 
             var operands = arguments.Select(a => Rule(a, depth + 1)).ToList();
@@ -314,8 +318,11 @@ internal static class ConditionTree
                     return steps is [var fact] && JsonLogicOperations.RunFacts.Contains(fact, StringComparer.Ordinal)
                         ? Var(written)
                         : Refuse($"the read {written}");
+                case "profile" when steps.Count > 0:
+                    // Written as read, so the 31 checker refuses it with its own sentence (S03-018, § 2.3).
+                    return Var(written);
                 default:
-                    // profile.*, snippet.*, macro.*, a local variable: no row of § 2.2 reads them.
+                    // snippet.*, macro.*, a local variable: no row of § 2.2 reads them.
                     return Refuse($"the read {written}");
             }
         }
@@ -403,6 +410,21 @@ internal static class ConditionTree
         private static JsonObject Operation(string name, JsonNode operands) => new() { [name] = operands };
 
         private JsonNode? NotInScope(string read) => Refuse($"{read}, which is not in scope here");
+
+        /// <summary>
+        /// <see cref="Refuse(string)"/> for a call, after its <paramref name="arguments"/> are walked, so a reason inside
+        /// them is said too (§ 2.3: one notice per reason).
+        /// </summary>
+        private JsonNode? Refuse(string construct, List<ScriptExpression?> arguments, int depth)
+        {
+            Refuse(construct);
+            foreach (var argument in arguments)
+            {
+                Rule(argument, depth + 1);
+            }
+
+            return null;
+        }
 
         private JsonNode? Refuse(string construct)
         {

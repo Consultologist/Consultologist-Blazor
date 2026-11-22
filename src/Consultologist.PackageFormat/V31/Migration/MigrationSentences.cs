@@ -16,4 +16,12 @@ internal static class MigrationSentences
     /// </summary>
     public static string NoJsonLogicForm(string expression, string construct) =>
         $"The condition '{expression}' uses {construct}, which has no JSON Logic form at 31: rewrite it by hand.";
+
+    /// <summary>
+    /// A10-008 (part 10 § 2.3, R1): the 30 <c>!&lt;path&gt;</c> in <paramref name="file"/>'s <paramref name="member"/> on
+    /// a text, written <c>blank(&lt;path&gt;)</c> (<paramref name="path"/> as <see cref="ConversionResult.BlankConversions"/>
+    /// gives it), which also holds for empty and white-space-only text, where 30's did not.
+    /// </summary>
+    public static string BecameBlank(string file, string member, string path) =>
+        $"{file}, {member}: '!{path}' became blank({path}); it now also holds for empty and white-space-only text.";
 }
