@@ -8,7 +8,7 @@ namespace Consultologist.Api.Tests.V31Types;
 /// <summary>
 /// #1500 (specVersion 31, area 03): the published formats' two hashes and type strings, frozen in
 /// <c>Golden/format-hashes.json</c>, so a change to either equality or to a published file shows.
-/// With <c>UPDATE_V31_GOLDENS=1</c> the test writes the golden into the source tree instead.
+/// With <c>GOLDEN_UPDATE_V31=1</c> the test writes the golden into the source tree instead.
 /// </summary>
 public class FormatHashGoldenTests
 {
@@ -37,13 +37,13 @@ public class FormatHashGoldenTests
         var text = hashes.ToJsonString(Indented) + "\n";
         var root = Path.GetDirectoryName(TypeFixture.RepoFile("Consultologist.sln"))!;
         var golden = Path.Combine(root, "tests", "V31Types", "Golden", "format-hashes.json");
-        if (Environment.GetEnvironmentVariable("UPDATE_V31_GOLDENS") == "1")
+        if (Environment.GetEnvironmentVariable("GOLDEN_UPDATE_V31") == "1")
         {
             Directory.CreateDirectory(Path.GetDirectoryName(golden)!);
             File.WriteAllText(golden, text);
         }
 
-        Assert.True(File.Exists(golden), $"{golden} is missing; run the test with UPDATE_V31_GOLDENS=1 to write it.");
+        Assert.True(File.Exists(golden), $"{golden} is missing; run the test with GOLDEN_UPDATE_V31=1 to write it.");
         Assert.Equal(11, hashes.Count);
         Assert.Equal(File.ReadAllText(golden).ReplaceLineEndings("\n"), text);
     }
