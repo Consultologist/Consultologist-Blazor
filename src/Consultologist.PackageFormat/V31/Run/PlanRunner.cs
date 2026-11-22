@@ -210,6 +210,22 @@ public sealed partial class PlanRunner
                     await recorder.FlushRoundAsync();
                 }
             }
+            catch (Exception) when (heldGates.Count > 0)
+            {
+                // #1506 (final review F2): an engine fault (the host's own exception) ends the run too; each gate's row still
+                // held is recorded first, effect null, so the caller's last flush stores it. The fault propagates as it was:
+                // a recording that throws here never replaces it.
+                try
+                {
+                    await RecordHeldGatesAsync();
+                }
+                catch (Exception)
+                {
+                    // the original fault wins
+                }
+
+                throw;
+            }
             finally
             {
                 // What is still in flight is never awaited: its late answer changes nothing, its timer is cancelled (an

@@ -2,6 +2,8 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Models;
+using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Source;
 using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.V31;
 using Consultologist.PackageFormat.V31;
@@ -156,6 +158,71 @@ public class StoredRunRecorderTests
         Assert.DoesNotContain("Okafor", logged, StringComparison.Ordinal);
         Assert.DoesNotContain(written.Rows.Single(r => r.Key == "node.plan").Json, logged, StringComparison.Ordinal);
         Assert.DoesNotContain("stored", logged, StringComparison.Ordinal);
+    }
+
+    // ---- #1506 (final review F2): an engine fault keeps the rows recorded since the last flush ---------------------------
+
+    /// <summary>
+    /// A gate that passes at once and gates <c>a</c>; the computed <c>after</c> reads the plan; <c>a</c>'s <c>if</c> is a
+    /// pattern on the plan, so it is decided in <c>evaluate-rule-v31</c> in the round <c>after</c> settles in.
+    /// </summary>
+    private static CompiledGoldenTests.GoldenCase GatedPattern() => new("gated-pattern",
+        () => CheckRowTests.Gated(["a"], "true")
+            .With("nodes/index.json", Consultologist.Api.Tests.V31Source.SourceFixture.Index(["plan", "after"]))
+            .With("nodes/after.md", Consultologist.Api.Tests.V31Source.SourceFixture.Md(
+                Consultologist.Api.Tests.V31Source.SourceFixture.Node("computed", "After the plan", "\"plaintext\"", true, true,
+                    "\"if\": null, \"expression\": { \"var\": \"node.plan.content\" }"), ""))
+            .WithJson("deliverables/a.md", h => h["if"] = JsonNode.Parse("{ \"matches\": [{ \"var\": \"node.plan.value\" }, \"Okafor\"] }")),
+        "a gate passing at once, a computed node after the plan, and a deliverable whose if is a pattern");
+
+    [Fact]
+    public async Task AnEngineFault_StoresTheRowsOfItsLastRound_AndTheHeldGate()
+    {
+        var job = V31Job.Of(GatedPattern());
+        var context = job.Context()
+            .On(ConsultGenerationActivityNames.EvaluateRuleV31, _ => throw new InvalidOperationException("Margaret Okafor's pattern service is down (fictional)."))
+            .WrapActivityFailures();
+
+        await Assert.ThrowsAsync<Microsoft.DurableTask.TaskFailedException>(() => V31Job.RunAsync(context));
+
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.Equal(ConsultGenerationOrchestratorV31.EngineFault, job.State.FailureError);
+        var rows = await job.Rows.ListAsync(V31Job.JobId, CancellationToken.None);
+        // the computed row settled in the round the fault ended, before the rule was asked for
+        Assert.Contains(rows, r => r.Key == "node.after");
+        var gate = Assert.Single(rows, r => r.Key == "check.gate");
+        Assert.Null(JsonNode.Parse(gate.Json)!["effect"]);
+        // the last write is before the job is final, and the entity counted what was stored
+        var lastWrite = context.Calls.FindLastIndex(c => c.Name == ConsultGenerationActivityNames.WriteRecordRowsV31);
+        Assert.True(lastWrite < context.Calls.FindLastIndex(c => c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob)));
+        Assert.Equal(rows.Count, job.State.V31Progress!.Rows + job.State.V31Progress.Decisions);
+        // and the sealed record holds them
+        var document = await job.Blobs.ReadRecordAsync(V31Job.AccountKind, "user-1", V31Job.JobId, CancellationToken.None);
+        Assert.Contains("\"check.gate\"", document!, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnEngineFault_WhoseLastFlushFails_StillFailsTheJob_WithTheOriginalFault()
+    {
+        var job = V31Job.Of(GatedPattern());
+        var writes = 0;
+        var real = job.Context();
+        var context = real
+            .On(ConsultGenerationActivityNames.EvaluateRuleV31, _ => throw new InvalidOperationException("The pattern service is down."))
+            .On(ConsultGenerationActivityNames.WriteRecordRowsV31, payload =>
+            {
+                if (++writes > 1)
+                    throw new InvalidOperationException("The record table is down.");
+                return new WriteRecordRowsV31Activity(job.Rows, job.Blobs, job.RecordLog)
+                    .RunAsync((WriteRecordRowsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult();
+            })
+            .WrapActivityFailures();
+
+        var fault = await Assert.ThrowsAsync<Microsoft.DurableTask.TaskFailedException>(() => V31Job.RunAsync(context));
+
+        Assert.Equal(ConsultGenerationActivityNames.EvaluateRuleV31, fault.TaskName);
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.Equal(ConsultGenerationOrchestratorV31.EngineFault, job.State.FailureError);
     }
 
     [Theory]

@@ -261,6 +261,78 @@ public class CheckRowTests
         Assert.Equal("check.gate", recorder.Rows[^1].Key); // recorded when the run ended
     }
 
+    [Fact]
+    public async Task ARunThatThrows_StillRecordsTheHeldGate_AndTheFaultPropagates()
+    {
+        // #1506 (final review F2): the host's own fault (an engine fault) throws out of the run; the gate's row is recorded
+        // first, effect null, and the fault is the host's, not replaced
+        var plan = RunFixture.Plan(Gated(["a"], "true"));
+        var host = new FakeRunHost(auto: true, plan).Fault("node.plan");
+        var recorder = new ListRecorder();
+
+        var fault = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start));
+
+        Assert.Equal("The fake host failed node.plan.", fault.Message);
+        var gate = Assert.Single(recorder.Rows, r => r.Key == "check.gate");
+        Assert.Null(gate.ToJson()["effect"]);
+        Assert.DoesNotContain(recorder.Rows, r => r.Key == "deliverable.a");
+    }
+
+    [Fact]
+    public async Task ARunThatTimesOut_RecordsTheHeldGateOnce()
+    {
+        // #1506 (final review F2; Task 5's review): the gate passed at once; the plan is still running when the time runs out
+        var plan = RunFixture.Plan(Gated(["a"], "true"));
+        var host = new FakeRunHost(auto: false, plan);
+        var recorder = new ListRecorder();
+
+        var result = await FakeRunHost.Drive(() =>
+        {
+            var run = new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+            host.Advance(TimeSpan.FromMinutes(31));
+            return run;
+        });
+
+        Assert.Equal(RunState.TimedOut, result.State);
+        var gate = Assert.Single(recorder.Rows, r => r.Key == "check.gate");
+        Assert.Null(gate.ToJson()["effect"]);
+    }
+
+    [Fact]
+    public async Task ARunPastTheInstancesLimit_RecordsTheHeldGateOnce()
+    {
+        // #1506 (final review F2; Task 5's review): the gate passes at once; the loop its deliverable reads opens its items
+        // once the plan is in, and the second item is one past the limit, before the deliverable settles
+        var plan = RunFixture.Plan(GatedLoop());
+        var inputs = PlanRunnerLeavesTests.Inputs();
+        inputs = inputs with
+        {
+            Inputs = new Dictionary<string, JsonNode?>(inputs.Inputs, StringComparer.Ordinal)
+            {
+                ["sections"] = new JsonObject
+                {
+                    ["value"] = new JsonArray(new JsonObject { ["title"] = "Plan", ["kind"] = "narrative" }, new JsonObject { ["title"] = "Follow-up", ["kind"] = "narrative" }),
+                    ["content"] = null,
+                    ["title"] = null,
+                },
+            },
+        };
+        var recorder = new ListRecorder();
+
+        var whole = await new PlanRunner(plan, new RunLimits(), new FakeRunHost(auto: true, plan), new ListRecorder()).RunAsync(inputs, FakeRunHost.Start);
+        Assert.Equal(RunState.Completed, whole.State);
+        var result = await new PlanRunner(plan, new RunLimits(JobInstances: 5), new FakeRunHost(auto: true, plan), recorder)
+            .RunAsync(inputs, FakeRunHost.Start);
+
+        Assert.Equal(RunState.Failed, result.State);
+        Assert.Equal(RunSentences.JobInstances(5), result.Sentence);
+        Assert.DoesNotContain(recorder.Rows, r => r.Key == "deliverable.a");
+        var gate = Assert.Single(recorder.Rows, r => r.Key == "check.gate");
+        Assert.True((bool)gate.ToJson()["pass"]!);
+        Assert.Null(gate.ToJson()["effect"]);
+    }
+
     // ---- fixtures -------------------------------------------------------------------------------
 
     private static async Task<JsonObject> WhenRowAsync(RunPlan plan, string date)
@@ -302,7 +374,26 @@ public class CheckRowTests
     /// Minimal whose deliverables <paramref name="ids"/> (in that order in the index), each reading the plan and held when
     /// empty, are all gated by the check <c>gate</c>, whose <c>pass</c> is <paramref name="pass"/>.
     /// </summary>
-    private static Dictionary<string, byte[]> Gated(string[] ids, string pass)
+    /// <summary>
+    /// <see cref="Gated"/> with one deliverable, <c>a</c>, reading the loop <c>drafts</c> over the list input <c>sections</c>,
+    /// over <c>wanted</c>, a computed node that reads the plan, so the loop runs only once the plan is in, so its items open after the gate has settled.
+    /// </summary>
+    private static Dictionary<string, byte[]> GatedLoop() =>
+        Consultologist.Api.Tests.V31Resolve.ResolveFixture.WithFormats(Gated(["a"], "true"), "section_request")
+            .WithJson("manifest.json", m => m["inputs"]!.AsObject()["sections"] = JsonNode.Parse(
+                "{ \"label\": \"Sections\", \"description\": null, "
+                + "\"format\": { \"type\": \"array\", \"items\": { \"$ref\": \"section_request\" } }, \"required\": true, \"channel\": null }"))
+            .With("nodes/index.json", Index(["plan", "wanted", "drafts"]))
+            .With("nodes/wanted.md", Md(Node("computed", "The sections wanted", ArrayOf("section_request"), true, true,
+                "\"if\": null, \"expression\": { \"if\": [{ \"blank\": [{ \"var\": \"node.plan.content\" }] }, [], "
+                + "{ \"var\": \"input.sections.value\" }] }"), ""))
+            .With("nodes/drafts/index.json", Json(Node("for", "Sections", ArrayOf(Plain), false, true,
+                "\"in\": \"node.wanted.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": \"title\", \"nodes\": [\"draft\"], \"ret\": \"node.drafts.draft\"")))
+            .With("nodes/drafts/draft.md", Agent("Drafting a section", Plain, "Write the section '{{ item.value.title }}'.\n"))
+            .With("deliverables/a.md", Md(Deliverable("Letter a", Plain, "\"check.gate\"", "hold"), "{{ node.drafts.content }}\n"));
+
+    internal static Dictionary<string, byte[]> Gated(string[] ids, string pass)
     {
         var files = Minimal()
             .Without("deliverables/note.md")

@@ -156,7 +156,10 @@ public interface IRunRecorder
     /// <summary>
     /// #1506 (area 09; D12): everything recorded so far is to be written. The runner awaits it once at the end of each round
     /// that recorded a row or a decision and once before it returns; the delivery runner after each delivery row.
-    /// A run that throws (an engine fault) does not flush what it recorded since the last flush.
+    /// A run that throws (an engine fault) records its held gates' rows (<c>effect</c> <c>null</c>) before the exception
+    /// leaves it, but does not flush: its caller flushes what was recorded since the last flush, best-effort, before it
+    /// fails the job (#1506, final review F2). An implementation clears what it flushes before writing it, so a flush that
+    /// failed or met a conflict leaves nothing to write twice.
     /// </summary>
     Task FlushAsync();
 }

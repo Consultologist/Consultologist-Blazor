@@ -69,6 +69,8 @@ public sealed class ConsultGenerationOrchestratorV31
             ?? throw new InvalidOperationException("A 31 job's orchestration input is required.");
         var logger = context.CreateReplaySafeLogger(nameof(ConsultGenerationOrchestratorV31));
         var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), input.JobId);
+        // #1506 (final review F2): outside the try, so the catch can store what the run recorded since its last flush
+        StoredRunRecorder? recorder = null;
 
         try
         {
@@ -137,7 +139,7 @@ public sealed class ConsultGenerationOrchestratorV31
                     held.RecordedRunFacts));
 
             var inputs = InputsOf(document, held.RunFacts ?? new JsonObject());
-            var recorder = new StoredRunRecorder(context, input);
+            recorder = new StoredRunRecorder(context, input);
             var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input, limits), recorder)
                 .RunAsync(inputs, startedAtUtc);
 
@@ -169,6 +171,24 @@ public sealed class ConsultGenerationOrchestratorV31
                 "ConsultGenerationOrchestratorV31 failed. JobId={JobId}, ExceptionType={ExceptionType}",
                 input.JobId,
                 FaultType(ex));
+
+            // #1506 (final review F2): the rows recorded since the last flush (the runner recorded its held gates before the
+            // fault left it) are stored before the job is final, best-effort: a flush that failed or met a conflict cleared its
+            // buffer, so nothing is written twice, and a failure here never replaces the fault.
+            if (recorder != null)
+            {
+                try
+                {
+                    await recorder.FlushAsync();
+                }
+                catch (Exception flush)
+                {
+                    logger.LogWarning(
+                        "ConsultGenerationOrchestratorV31 record flush after a fault failed. JobId={JobId}, ExceptionType={ExceptionType}",
+                        input.JobId,
+                        FaultType(flush));
+                }
+            }
 
             try
             {
