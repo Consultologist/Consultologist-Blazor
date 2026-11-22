@@ -414,15 +414,15 @@ public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? F
 **Interfaces:**
 - Produces: `ConsultGenerationRequest.SignatureBlockId` (`string?`); the entity state's `SignatureBlockId` and `SignatureChosen` (write-once at `Initialize`); `V31StartChecks.Signature(SignatureBlockSet blocks, string? requested)` → `(SignatureBlock? Block, string? Chosen, string? Refusal)`; `V31StartChecks.NoDeliverableCanExist(RunPlan plan, RunInputs inputs)` → `bool`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `TheChosenBlock_IsTheDefault` (`signatureChosen` `default`, `signatureBlockId` the `ChosenId`); `ABlockNamedByTheRequest_IsThisJobs` (`job`, and `profile.signature` is that block's text); `NamingTheChosenBlock_IsStillTheDefault`; `ABlockThatIsNotTheAccounts_RefusesTheStart` (A08-004); `ABlankBlock_CountsAsNotSet` (S06-031); `APackageThatReadsNoSignature_RecordsNeither`; `A30Start_IgnoresTheMember`.
   - `ALetterDetail_OverItsLimit_IsRefused` (120, 200, 4,000; at the limit it saves); `ATimeZone_ThatIsNotIana_IsRefused`.
   - `TheEmailIntake_RepliesWithTheStartsSentence` for S06-031, S06-032 and S06-008 (pin it; fix the reply if it says anything else).
   - `AStart_WhereNoDeliverableCanExist_IsRefused` (R8: `NoApplicableDeliverable`, today's wording); `…_WithADeliverableWhoseIfReadsANode_Starts`; `…_WithAnUnconditionalDeliverable_Starts`.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the solution's tests. Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1505): a job's signature block is chosen, checked and recorded by id; Letter details keep their limits`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the solution's tests. Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1505): a job's signature block is chosen, checked and recorded by id; Letter details keep their limits`; push.
 
 ### Task 14: The guides and the conformance record
 
