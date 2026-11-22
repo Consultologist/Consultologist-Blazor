@@ -38,6 +38,20 @@ public class EvaluateRuleV31ActivityTests
     }
 
     [Fact]
+    public async Task TheActivity_TimesAPattern_AtTheJobsRecordedLimit_NotTheSettingsNow()
+    {
+        // the store's plan is built with the engine's setting now (2000 ms); the job's start recorded 1 ms, and that limit
+        // is the one the pattern is timed at (A06-001 says it)
+        var (activity, _, job) = Activity();
+        var text = new string('a', 1 << 20);
+
+        var outcome = await activity.RunAsync(Input(job, new RuleCall("node.slow", "node.slow", null, "expression", Scope(text))) with { RegexMilliseconds = 1 },
+            CancellationToken.None);
+
+        Assert.Equal(new RuleOutcome(null, "MatchTooSlow", 0.001, "matches"), outcome);
+    }
+
+    [Fact]
     public async Task TheActivity_OfAPlanThatIsNotTheJobs_Fails()
     {
         var (activity, _, job) = Activity();
@@ -55,13 +69,16 @@ public class EvaluateRuleV31ActivityTests
 
     /// <summary>
     /// The activity over a published package: <see cref="SourceFixture.Minimal"/> whose plan is gated on a pattern, with the
-    /// computed <c>named</c>, an object whose <c>named</c> is the same pattern.
+    /// computed <c>named</c>, an object whose <c>named</c> is the same pattern, and the computed <c>slow</c>, a pattern that
+    /// backtracks on a long run of one letter.
     /// </summary>
     private static (EvaluateRuleV31Activity Activity, CapturingLogger<EvaluateRuleV31Activity> Log, EvaluateRuleV31Input Job) Activity()
     {
         var golden = new CompiledGoldenTests.GoldenCase("pattern-rules", () => SourceFixture.Minimal()
             .WithJson("nodes/plan.md", h => h["if"] = JsonNode.Parse(Pattern))
-            .With("nodes/index.json", SourceFixture.Index(["plan", "named"]))
+            .With("nodes/index.json", SourceFixture.Index(["plan", "named", "slow"]))
+            .With("nodes/slow.md", SourceFixture.Md(SourceFixture.Node("computed", "Testing the draft slowly", "\"boolean\"", true, false,
+                "\"if\": null, \"expression\": { \"matches\": [{ \"var\": \"input.consult_draft.content\" }, \"(.*a.{100}){3}b\"] }"), ""))
             .With("nodes/named.md", SourceFixture.Md(SourceFixture.Node("computed", "Naming the patient",
                 "{ \"type\": \"object\", \"properties\": { \"named\": { \"type\": \"boolean\" } }, \"required\": [\"named\"], \"additionalProperties\": false }",
                 true, false, $"\"if\": null, \"expression\": {{ \"object\": {{ \"named\": {Pattern} }} }}"), "")),
@@ -69,7 +86,7 @@ public class EvaluateRuleV31ActivityTests
         var registry = new FakeRegistry();
         var (packageRef, pair) = registry.Put(golden);
         var log = new CapturingLogger<EvaluateRuleV31Activity>();
-        var job = new EvaluateRuleV31Input(packageRef.Name, packageRef.Version, pair.ResolveHash, new RuleCall("", "", null, "", []));
+        var job = new EvaluateRuleV31Input(packageRef.Name, packageRef.Version, pair.ResolveHash, 2000, new RuleCall("", "", null, "", []));
         return (new EvaluateRuleV31Activity(V31Job.StoreOver(registry), log), log, job);
     }
 

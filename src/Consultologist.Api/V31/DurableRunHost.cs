@@ -11,7 +11,7 @@ namespace Consultologist.Api.V31;
 /// each given the call with the job's package version and <c>resolveHash</c> (an agent's also the job's recorded
 /// <c>renderSteps</c>, from <paramref name="limits"/>), with no retry policy (the runner retries); #1505 (R6) a rule that holds
 /// <c>matches</c> or <c>has_word</c> is <see cref="ConsultGenerationActivityNames.EvaluateRuleV31"/>, given the call the same
-/// way, with no retry policy, so its outcome is in the history and a replay reads it;
+/// way and the job's recorded regex limit, with no retry policy, so its outcome is in the history and a replay reads it;
 /// a wait is a durable timer, cancelled with the runner's token (an outstanding timer keeps an orchestration from completing).
 /// </summary>
 public sealed class DurableRunHost(TaskOrchestrationContext context, ConsultGenerationOrchestrationInputV31 input, RunLimits limits) : IRunHost
@@ -31,7 +31,7 @@ public sealed class DurableRunHost(TaskOrchestrationContext context, ConsultGene
     public Task<RuleOutcome> EvaluateAsync(RuleCall call) =>
         context.CallActivityAsync<RuleOutcome>(
             ConsultGenerationActivityNames.EvaluateRuleV31,
-            new EvaluateRuleV31Input(input.PackageName, input.PackageVersion, input.ResolveHash, call));
+            new EvaluateRuleV31Input(input.PackageName, input.PackageVersion, input.ResolveHash, input.RegexMilliseconds, call));
 
     public Task DelayAsync(TimeSpan wait, CancellationToken cancel) =>
         context.CreateTimer(context.CurrentUtcDateTime + (wait > TimeSpan.Zero ? wait : TimeSpan.Zero), cancel);

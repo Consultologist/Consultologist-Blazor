@@ -325,7 +325,7 @@ public class AgentTurnActivityTests
         Assert.Equal(CanonicalJson.Write(detail), CanonicalJson.Write(renderedBack.Detail));
 
         // #1505 (R6): a rule's evaluation, its value a node and its failure the kind, the limit and the detail
-        var ruleInput = new EvaluateRuleV31Input("example", "1.0.0", "sha256:r", new RuleCall("node.draft", "node.draft", null, "macro.m", scope));
+        var ruleInput = new EvaluateRuleV31Input("example", "1.0.0", "sha256:r", 2000, new RuleCall("node.draft", "node.draft", null, "macro.m", scope));
         Assert.Equal(Json(ruleInput), Json(RoundTrip(ruleInput)));
         foreach (var ruled in new[] { new RuleOutcome(JsonValue.Create(true), null, null), new RuleOutcome(new JsonObject { ["named"] = false }, null, null),
             new RuleOutcome(null, "MatchTooSlow", 0.05, "has_word") })
@@ -421,7 +421,7 @@ public class AgentTurnActivityTests
         }
 
         public async Task<RuleOutcome> EvaluateAsync(RuleCall call) =>
-            RoundTrip(await _rule.RunAsync(RoundTrip(new EvaluateRuleV31Input(_ref.Name, _ref.Version, _pair.ResolveHash, call)), CancellationToken.None));
+            RoundTrip(await _rule.RunAsync(RoundTrip(new EvaluateRuleV31Input(_ref.Name, _ref.Version, _pair.ResolveHash, 2000, call)), CancellationToken.None));
 
         public Task DelayAsync(TimeSpan wait, CancellationToken cancel) =>
             wait < TimeSpan.FromMinutes(1) ? Task.CompletedTask : Task.Delay(Timeout.Infinite, cancel);
