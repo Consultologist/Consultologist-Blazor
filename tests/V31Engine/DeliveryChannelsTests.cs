@@ -90,6 +90,16 @@ public class DeliveryChannelsTests
     }
 
     [Fact]
+    public void TheCompletedReply_OpensWithWhatTheBundleSplicesAfter()
+    {
+        // The final review: a bundle's labels line goes after MailDeliveryChannel.Opening only when the 5-30 reply starts with
+        // it; a reworded reply would drop the line silently, so the two are held together here.
+        var (_, body) = EmailIntakeReply.Compose("https://app.example.com", JobId, "Completed");
+
+        Assert.StartsWith(MailDeliveryChannel.Opening, body, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Pdf_WithNoPassword_IsNotSetUp()
     {
         Set(AccountSettingKeys.DeliveryPassword, null);

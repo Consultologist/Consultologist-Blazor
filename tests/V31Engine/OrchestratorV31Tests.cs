@@ -20,6 +20,13 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// </summary>
 public class OrchestratorV31Tests
 {
+    [Theory]
+    [InlineData(RowState.Released, "released")]
+    [InlineData(RowState.Held, "held")]
+    [InlineData(RowState.Blocked, "blocked")]
+    public void ADeliverablesRowState_IsNamedForTheEntity(RowState state, string name) =>
+        Assert.Equal(name, EntityRunRecorder.StateName(state));
+
     [Fact]
     public async Task AJob_RunsToCompleted()
     {
