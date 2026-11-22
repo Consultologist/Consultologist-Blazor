@@ -806,7 +806,10 @@ value.
    not. Since #1504 ruling 7 a read of this pass's node (`pass.node.<id>`, `pass.parent.node.<id>`) is
    an edge as `node.<id>` is, so two body nodes reading each other that way, or a node reading through
    it a flow node that encloses it, are A05-003; one naming a node inside an inner loop that does not
-   enclose the reader is S04-039.
+   enclose the reader is S04-039. Since #1504 (area 07) a templated node also reads what each rule of its
+   `placements` reads (a part's, snippet's, macro's and macro folder's `if`, nested ones included, rooted at
+   its place), as `RunPlan` counts them. A part's `if` is one of the node's conditions already; the others are
+   edges for this check only, and count in neither `reads` nor the flags.
 2. S03-036 for a leaf's or check's flag. S04-016 for a flow node's or call's flag. S04-015 for a
    flow node's or call's `reproducible`.
 3. S03-044 for a decision reading a profile-carrying value. Through the seam, a prompt reading one is
@@ -1688,8 +1691,11 @@ spot. `warnings` gains the dialect's S05-060 and S05-061.
   (`SourceTemplates.PlacedRules`). As a definition it stays deferred (`ResolvedScopes`). A snippet's read that
   place does not give is S05-022, naming the placer and the line: no such node, a package node in a function,
   `item` outside a loop. A macro's is S04-063 when a function has no node it reads, and the checker's sentence
-  otherwise (S03-014 for a name that is not there). A unit whose `if` reads the node that places it is A05-003.
-  So every rule `placements` roots reads only what its place has, and a package publish accepts loads.
+  otherwise (S03-014 for a name that is not there). So every rule `placements` roots reads only what its place
+  has. At run time those reads are dependencies of the placing node, so the derived step's circle check counts them
+  as that node's edges (`SourceDerived.Circles`, `Vertex.Placed`): a unit whose `if` reads the node that places it,
+  or a node that reads it, directly or through others, is A05-003, worded as any circle. So, as far as placement
+  rules go, a package publish accepts builds a `RunPlan`.
 
 ### Run spots
 
