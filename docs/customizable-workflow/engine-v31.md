@@ -428,6 +428,14 @@ reached four ways:
   is tried again at the next pass (`RecordNotSealedException`, logged with the job id and the exception's type);
 - the first read of a terminal job that has no `recordHash`: `GET ConsultGenerationJobs/{jobId}/Record`.
 
+**Restoring.** `record.json` sits in the text account, whose 30-day lifecycle policy deletes it. The document is a
+materialisation of the rows under the header (decided in the build, #1506), so `RecordSealer.ReadSealedAsync`, which
+the `Record` route reads through, seals the job if need be, reads the blob and, when a stamped job's blob is gone,
+assembles the document again and writes it back only if it hashes to the stamped `recordHash`. It logs
+`V31 record restored. JobId, Bytes, RecordHash`; a document that does not hash to the stamp is an engine fault, logged
+`V31 record could not be restored. JobId, Expected, Got` (hashes only), with nothing written and the route answering
+500. The rows and the entity's stamp are what must outlive the policy.
+
 **The size of a record.** Sealing logs one line, `V31 record sealed. JobId, Rows, Bytes, RecordHash`: the rows
 assembled and the document's UTF-8 byte count. It is the number for the go/no-go gate's record-size estimate (index § 5);
 the dev dry run's largest-package job gives the figure to compare with the gate. The line holds ids, counts and a hash
@@ -448,8 +456,8 @@ job that is not the caller's or is below storage 12):
   `docs/CONSULT_GENERATION_EVENTS.md`). A browser fetches the row from `Rows?key=`.
 
 **Retention and closure.** The 7-day sweep calls `IRecordTextDrop` first: it seals the job if need be, deletes the
-job's `text/` blobs, and only then signals `DropText`. `record.json` is never deleted, and `recordHash` still holds
-afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
+job's `text/` blobs, and only then signals `DropText`. The sweep never deletes `record.json` (the lifecycle policy
+does, at 30 days, and the next read restores it, above), and `recordHash` still holds afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
 closure, which a rerun resumes. The blobs go with the account's prefix.
 
 **Deploying: drain 31 orchestrations first.** A 31 history now holds `write-record-rows-v31` and `seal-record-v31`

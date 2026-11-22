@@ -64,7 +64,9 @@ moves** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issue
     in the account's outputs container, `part` being `produced` (written by the activity that made
     the text) or `settled` (written with the row).
   - **The canonical record document** is the blob `{appUserId}/{jobId}/record.json` in the same
-    container, which the sweep never deletes.
+    container, which the sweep never deletes. It is a materialisation of the rows under the header: it may be
+    assembled again from them (when the blob is gone), and is kept only if it hashes to `recordHash` (decided in the
+    build, #1506).
 - **A row write is insert-if-absent,** keyed by job and rooted key ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677)): an identical second
   write (a Durable replay) is a no-op; a differing one is refused and recorded as an engine fault.
 - **A job that has finished producing and has deliveries to make is `delivering`** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6994467727)),

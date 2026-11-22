@@ -255,9 +255,11 @@ which is only ever in blobs:
 **What deletes what.** The 7-day text sweep seals the job if it is not yet sealed, then deletes the `text/` blobs
 (`DropText` follows), and rewrites no row, so `recordHash` holds after the drop; a job it cannot seal keeps its text for
 the next pass. It never deletes `record.json` or a row. The 30-day lifecycle policy above is a blunt ceiling over every
-blob of the container, `record.json` included, so as written it also removes the sealed document at 30 days: the rows
-stay, but a stamped job is not sealed again, so `GET …/Record` then answers that the record isn't available. Decide
-whether the policy should skip `record.json` (a prefix or tag filter) before the record is relied on past 30 days. Account closure (#559)
+blob of the container, `record.json` included, so it removes the sealed document at 30 days. The document is a
+materialisation (decided in the build, #1506): the next read (`GET …/Record`) assembles it again from the rows and the
+header, checks it against the stamped `recordHash`, and writes it back only if it matches (a mismatch is an engine
+fault, logged with both hashes, and nothing is written). What must outlive the policy is the table's rows and the
+entity's stamp, and both do: neither is in the text account. Account closure (#559)
 deletes every row of every job of the account (`DeleteJobAsync`, after the job's events) and, with the account's
 `{appUserId}/` prefix, every blob. A 5–30 job has none of this.
 
