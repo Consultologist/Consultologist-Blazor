@@ -149,6 +149,8 @@ public class DeliverableFormatsTests
     [InlineData("* star", "* star")]
     [InlineData("a **b** c", "a **b** c")]
     [InlineData("# Plan for Margaret Okafor, seen by Dr A. Sample in clinic", "# Plan for Margaret Okafor, seen by Dr A")]
+    // An astral character across the 40th character is left out whole, not split into half a surrogate pair.
+    [InlineData("# Plan for Margaret Okafor, seen by Dr \U0001F600 in clinic", "# Plan for Margaret Okafor, seen by Dr ")]
     public void APlaintextDeliverable_WritingAHeading_IsRefused(string line, string quoted) =>
         AssertRefusal(WithNote("plaintext", $"Dear Margaret Okafor,\n\nYour plan:\n{line}\n{{{{ node.summary.content }}}}\n"),
             "S06-022", $"Deliverable 'note' is plaintext, and line 4 writes Markdown ('{quoted}').");
@@ -178,4 +180,15 @@ public class DeliverableFormatsTests
     public void AnObjectDeliverable_WritingAnythingElse_IsRefused(string body) =>
         AssertRefusal(WithNote("section_plan", body),
             "S06-023", "Deliverable 'note' is section_plan; its template is {{ node.<x>.value }} and nothing else.");
+
+    [Fact]
+    public void AnObjectDeliverable_WhoseReadFailsTyping_IsRefusedOnce()
+    {
+        // The form is right; the read's own refusal is the one said, and S06-023 is not said on top of it.
+        var check = SourceCheck.Run(WithNote("section_plan", "{{ node.missing.value }}\n"), ResolveFixture.Published());
+
+        Assert.True(check.Refusals.Count == 1, ResolveFixture.Said(check));
+        Assert.NotEqual("S06-023", check.Refusals[0].Id);
+        V31Contract.AssertSentence(check.Refusals[0]);
+    }
 }

@@ -134,7 +134,8 @@ public static partial class SourceTemplates
 
         /// <summary>
         /// D8: <paramref name="body"/> is exactly one output tag writing <c>node.&lt;x&gt;.value</c>, unpiped, whose format
-        /// is <paramref name="format"/> by type equality; nothing before the tag, and at most a final line end after it.
+        /// is <paramref name="format"/> by type equality (or unknown: a read that failed typing is refused where it is read,
+        /// once); nothing before the tag, and at most a final line end after it.
         /// </summary>
         private static bool OneValue(CheckedBody body, JsonNode? format, FormatSet formats)
         {
@@ -147,7 +148,8 @@ public static partial class SourceTemplates
             var after = syntax.Text[Math.Clamp(output.Tag.End, 0, syntax.Text.Length)..];
             if (output.Tag.Start != 0 || after is not ("" or "\n" or "\r\n"))
                 return false;
-            return body.Writes[0].Format is { } written && FormatTypes.Same(written, format, formats);
+            // A read that failed typing is already refused where it is read: the form is right, so say nothing more.
+            return body.Writes[0].Format is not { } written || FormatTypes.Same(written, format, formats);
         }
 
         /// <summary>
@@ -175,11 +177,31 @@ public static partial class SourceTemplates
                 {
                     var quoted = text[start..end].Trim();
                     Refusals.Add(DeliverableSentences.WritesMarkdown(
-                        deliverable.Id, line, quoted.Length > QuotedLine ? quoted[..QuotedLine] : quoted, deliverable.Path));
+                        deliverable.Id, line, Cut(quoted), deliverable.Path));
                 }
 
                 (start, line) = (end + 1, line + 1);
             }
+        }
+
+        /// <summary>
+        /// <paramref name="quoted"/> cut to at most 40 characters (UTF-16 units) on a text-element boundary, so a surrogate
+        /// pair or a combined character at the cut is left out whole, never split.
+        /// </summary>
+        private static string Cut(string quoted)
+        {
+            if (quoted.Length <= QuotedLine)
+                return quoted;
+            var length = 0;
+            while (length < quoted.Length)
+            {
+                var next = StringInfo.GetNextTextElementLength(quoted, length);
+                if (length + next > QuotedLine)
+                    break;
+                length += next;
+            }
+
+            return quoted[..length];
         }
 
         /// <summary>Whether the line <c>[start, end)</c> of <paramref name="text"/> writes Markdown by D9.</summary>
