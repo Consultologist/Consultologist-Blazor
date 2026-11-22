@@ -13,9 +13,10 @@ namespace Consultologist.Api.Tests.V31Templates;
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 §§ 3.2, 6.3 R-R3, 8.2; part 04 § 7.10; Review Focus 4): a placed snippet's or
 /// macro's header <c>if</c> is judged where it is placed, at each placer's frame, through nested placements: a read the
-/// place does not give is refused at publish (S05-022 for a snippet, S03-014 or S04-063 for a macro), and a unit whose
-/// <c>if</c> reads the node that places it reads in a circle (A05-003), so every package publish accepts loads. A valid
-/// <c>if</c> at each kind of place publishes, builds a <see cref="RunPlan"/> and is decided on its own place's keys.
+/// place does not give is refused at publish (S05-022 for a snippet, S03-014 or S04-063 for a macro), and a circle
+/// through a placed unit's <c>if</c> (reading the node that places it, or a node that reads it, directly or through
+/// others) is A05-003, as <see cref="RunPlan"/> would refuse it at load. A valid <c>if</c> at each kind of place, and
+/// the same shapes without the back-read, publish, build a <see cref="RunPlan"/> and are decided on their place's keys.
 /// Content is fictional (Margaret Okafor, Dr A. Sample).
 /// </summary>
 public class PlacedIfTests
@@ -179,5 +180,93 @@ public class PlacedIfTests
         var decision = Assert.Single(recorder.Decisions, d => d.Site == row && d.Member == "snippet.s");
         Assert.True(decision.Result);
         Assert.Contains(key, decision.Printed, StringComparison.Ordinal);
+    }
+    // ---- A longer circle through a placed unit's if ----------------------------------------------
+
+    /// <summary>
+    /// <c>classify</c> reads <paramref name="classifyReads"/> (<c>node.draft</c>: the circle; <c>node.plan</c>: none), and
+    /// <c>draft</c> places what <paramref name="unit"/> names, whose <c>if</c> reads <c>node.classify.value.answer</c>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Longer(string unit, string classifyReads = "node.draft")
+    {
+        var files = Package()
+            .WithAgent("classify", $"Does the draft for Margaret Okafor need a follow-up?\n\n{{{{ {classifyReads}.content }}}}\n", "\"judgement\"");
+        return unit switch
+        {
+            "snippet" => WithRuledSnippet(files, "s", Answer)
+                .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{~ snippet.s.content }}\n"),
+            "macro" => files
+                .WithMacroOf("m", "Follow up with Dr A. Sample in six weeks.\n", ["End with {{ macro.m.content }}"], condition: Answer)
+                .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{ macro.m }}\n"),
+            "macro folder" => files
+                .Listed("macros/index.json", "f")
+                .With("macros/f/index.json", Index(["m"], extra: $", \"if\": {Answer}"))
+                .With("macros/f/m.md", Md(
+                    "{ \"label\": \"Macro m\", \"description\": null, \"if\": null, \"format\": \"plaintext\", "
+                    + "\"instruction\": [\"End with {{ macro.f.m.content }}\"] }", "Follow up with Dr A. Sample in six weeks.\n"))
+                .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{ macro.f.m }}\n"),
+            "part" => files
+                .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{~ part.brief }}\n")
+                .WithJson("nodes/draft.md", h => h["parts"] = JsonNode.Parse(
+                    $"{{ \"brief\": {{ \"if\": {Answer}, \"text\": [\"Be brief.\"] }} }}")),
+            _ => throw new ArgumentOutOfRangeException(nameof(unit)),
+        };
+    }
+
+    /// <summary>
+    /// The three-node circle: <c>classify</c> reads <c>review</c>, <c>review</c> reads <c>draft</c>, and <c>draft</c>
+    /// places <c>outer</c>, which places <c>s</c>, whose <c>if</c> reads <c>classify</c> (none when
+    /// <paramref name="classifyReads"/> is <c>node.plan</c>).
+    /// </summary>
+    private static Dictionary<string, byte[]> ThroughANestedSnippet(string classifyReads = "node.review") =>
+        WithRuledSnippet(Package(), "s", Answer)
+            .WithSnippet("outer", "Follow up {{ snippet.s.content }}.")
+            .WithAgent("classify", $"Does the review for Margaret Okafor need a follow-up?\n\n{{{{ {classifyReads}.content }}}}\n", "\"judgement\"")
+            .WithAgent("review", "Review the draft for Margaret Okafor.\n\n{{ node.draft.content }}\n")
+            .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{~ snippet.outer.content }}\n");
+
+    private const string Circle = ": nodes can't read each other in a circle. Break the circle.";
+
+    [Theory]
+    [InlineData("snippet")]
+    [InlineData("macro")]
+    [InlineData("macro folder")]
+    [InlineData("part")]
+    public void APlacedUnitsIf_ReadingANodeThatReadsItsPlacer_IsACircle(string unit)
+    {
+        var (refusals, compiled) = CompiledPackage.Publish(Longer(unit), ResolveFixture.Published(), CompiledGoldenTests.Fixed);
+
+        Assert.Null(compiled);
+        var refusal = Assert.Single(refusals);
+        V31Contract.AssertSentence(refusal);
+        Assert.Equal(("A05-003", "nodes/classify.md", $"Node 'classify' reads node 'draft', which reads node 'classify'{Circle}"),
+            (refusal.Id, refusal.Path, refusal.Sentence));
+    }
+
+    [Fact]
+    public void ANestedSnippetsIf_InAThreeNodeCircle_IsACircle()
+    {
+        var (refusals, compiled) = CompiledPackage.Publish(ThroughANestedSnippet(), ResolveFixture.Published(), CompiledGoldenTests.Fixed);
+
+        Assert.Null(compiled);
+        var refusal = Assert.Single(refusals);
+        V31Contract.AssertSentence(refusal);
+        Assert.Equal(("A05-003", "nodes/classify.md",
+                $"Node 'classify' reads node 'review', which reads node 'draft', which reads node 'classify'{Circle}"),
+            (refusal.Id, refusal.Path, refusal.Sentence));
+    }
+
+    [Theory]
+    [InlineData("snippet")]
+    [InlineData("macro")]
+    [InlineData("macro folder")]
+    [InlineData("part")]
+    [InlineData("nested snippet")]
+    public void TheSameShape_WithoutTheBackRead_PublishesAndBuildsARunPlan(string unit)
+    {
+        var plan = RunFixture.Plan(unit == "nested snippet" ? ThroughANestedSnippet("node.plan") : Longer(unit, "node.plan"));
+
+        var draft = plan.Entries.Values.Single(e => e.Id == "draft");
+        Assert.Contains("node.classify", draft.Depends);
     }
 }
