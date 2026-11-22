@@ -120,7 +120,9 @@ public class MigrateNodesTests
         var (header, _) = Md(result, "nodes/tally.md");
         Assert.Equal("computed", (string?)header["kind"]);
         Assert.Equal(format, (string?)header["format"]);
-        Assert.IsNotType<JsonValue>(header["expression"]);
+        // Converted, not left as 30's text (D3's hand-edit form, a JSON string holding the let as written); a text let's
+        // logic is a JSON string too, without 30's quotes.
+        Assert.NotEqual(JsonValue.Create(let).ToJsonString(), header["expression"]!.ToJsonString());
         Assert.Empty(result.HandEdits);
     }
 
