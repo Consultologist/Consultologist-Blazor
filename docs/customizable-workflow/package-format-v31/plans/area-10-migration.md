@@ -96,6 +96,8 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-030 | notice | `Node '<id>' declared <member> at 30, which 31 has no member for; it was dropped.` (D16: a classifier's `with`, a computed or rendered node's `onInvalid` or `failIfEmpty`; Task 7) |
 | A10-031 | reason | `a package format's root is an object or a list at 31; make it one, or use a registry format.` (part 02 § 3.3: a package format whose root is `null` alone or a scalar; Task 7, fixing Task 6) |
 | A10-032 | reason | `the case switches on classifier '<id>', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.` (a `case` on a 30 classifier: `classification`'s `value` is a plain string at 31 and its `with` is dropped, so S04-044 refuses the subject; the branches are still written from 30's values; Task 7, fix round 1) |
+| A10-033 | refusal | `The chosen rename of '<id>' to '<new id>' cannot be made: '<new id>' <is already taken \| is not a 31 id>; choose another.` (a `Migration31Options.Renames` entry the run cannot use; Task 8) |
+| A10-034 | notice | `Renamed <kind> '<id>' to '<new id>': an id is at most 64 characters at 31.` (30 has no bound on an id's length; part 01 § 7; Task 8) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 
@@ -303,11 +305,13 @@ consultologist-package-format (m39-build)   package-format-v31.md ch. 10, v31/sc
 **Interfaces:**
 - Produces (internal): `Renames.Plan(Migrated) : IReadOnlyDictionary<(string Kind, string Id), string>`, applied before any file is written, so every later pass writes new ids; `Migrated.Keys` uses new ids.
 
-- [ ] **Step 1: Write the failing tests.** `Parts_BecomesSections_InExampleNestedNote` (with `ExampleChoices`: the folder is `nodes/sections/`, every `ret`, `in`, condition and template reads `node.sections…`; A10-006 in `Report.Renames`). `WithNoChoice_TheKindIsTheSuffix` (`parts` → `parts_for`; a `while` → `_while`; an agent → `_node`; an input → `_input`; a macro → `_macro`; a snippet → `_snippet`; a format → `_format`; a deliverable → `_deliverable`). `ACollidingRename_GetsANumber` (`parts_for` taken → `parts_for_2`, S10-006). `ALongId_IsShortenedFirst` (the result is at most 64 characters). `ObjectFieldNames_AreNeverRenamed` (a field `title` or `value` of an input or a format stays). `ARename_TouchesReferencesOnly` (Review Focus 2). `AnIdThatFailsThe31Pattern_IsRenamedToo` only if 30 admits ids 31's pattern refuses (check `WorkflowPackageValidator`'s id rule against `^[a-z][a-z0-9_]*$`; if 30's rule is no wider, write `ThirtysIds_AlreadyFitThe31Pattern` instead).
-- [ ] **Step 2: Run; they fail.**
-- [ ] **Step 3: Implement** over the token machinery the 30 renamers use (`WorkflowTemplateTokens`, `WorkflowNodeRename`, `WorkflowTextRename`), covering the sites `RenameInManifest` misses (`while`, `until`, `let`, `for`).
-- [ ] **Step 4: Run; green.**
-- [ ] **Step 5: Commit and push.**
+- [x] **Step 1: Write the failing tests.** `Parts_BecomesSections_InExampleNestedNote` (with `ExampleChoices`: the folder is `nodes/sections/`, every `ret`, `in`, condition and template reads `node.sections…`; A10-006 in `Report.Renames`). `WithNoChoice_TheKindIsTheSuffix` (`parts` → `parts_for`; a `while` → `_while`; an agent → `_node`; an input → `_input`; a macro → `_macro`; a snippet → `_snippet`; a format → `_format`; a deliverable → `_deliverable`). `ACollidingRename_GetsANumber` (`parts_for` taken → `parts_for_2`, S10-006). `ALongId_IsShortenedFirst` (the result is at most 64 characters). `ObjectFieldNames_AreNeverRenamed` (a field `title` or `value` of an input or a format stays). `ARename_TouchesReferencesOnly` (Review Focus 2). `AnIdThatFailsThe31Pattern_IsRenamedToo` only if 30 admits ids 31's pattern refuses (check `WorkflowPackageValidator`'s id rule against `^[a-z][a-z0-9_]*$`; if 30's rule is no wider, write `ThirtysIds_AlreadyFitThe31Pattern` instead).
+- [x] **Step 2: Run; they fail.**
+- [x] **Step 3: Implement** over the token machinery the 30 renamers use (`WorkflowTemplateTokens`, `WorkflowNodeRename`, `WorkflowTextRename`), covering the sites `RenameInManifest` misses (`while`, `until`, `let`, `for`).
+- [x] **Step 4: Run; green.**
+- [x] **Step 5: Commit and push.**
+
+  *Recorded in the build:* the pass (`Migrate.Renames`, run between `Migrated.Read` and the layout) renames on the 30 package and reads it again, so every later pass sees only new ids. `Keys` stays keyed by the id as given (D1, D12), its values the new keys (`parts` → `node.sections`). Besides the reserved words it renames the Windows names (`ReservedIds.Windows`, `con` → `con_node`) and an id past 64 characters, which 30 admits (cut to 64, A10-034). A flow takes its member as its suffix (`_for`, `_while`, `_if`, `_case`), a leaf `_node`, a `terms_subset` node `_check`; a macro that D4 makes a snippet `_snippet` (`test/general`'s `test` → `test_snippet`). An id is taken when its namespace holds it (nodes; inputs; macros and snippets together; one folder's items; formats with the registry's names; deliverables) or the file it implies exists. A hand choice that is no 31 id or is taken refuses the run (A10-033). 30's id pattern is 31's, so `ThirtysIds_AlreadyFitThe31Pattern` was written.
 
 ### Task 9: Bodies — reads, pipes, whitespace, parts, unroll and hoist
 
