@@ -331,6 +331,33 @@ public class DeliverableComposeTests
     }
 
     [Theory]
+    [InlineData("section_plan", "{{ node.plan.value }}\n")]
+    [InlineData("markdown_block", "## Plan\n{{ node.plan.content }}\n")]
+    public void AnEngineFault_ReadingTheBody_IsNotThePackagesFault(string format, string body)
+    {
+        // #1505 R14 (the final review): the engine failing to read a body (A08-006, logged by the activity) fails the
+        // deliverable with A06-008, never S07-006, which would say the package's compiled document was not what was published.
+        var plan = RunFixture.Plan(WithNote(format, body));
+        var scope = BodyComposerTests.Scope(("node.plan.value", JsonNode.Parse("{ \"sections\": [] }")), ("node.plan.content", "The plan."));
+
+        TemplateSyntax.TestParser.Value = _ => throw new InvalidOperationException("Margaret Okafor's plan");
+        RenderOutcome outcome;
+        try
+        {
+            outcome = Render(plan, scope);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Null(outcome.Text);
+        Assert.Equal("System.InvalidOperationException", outcome.EngineFault);
+        Assert.Equal("Deliverable 'note' couldn't be rendered.", outcome.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("A06-008", outcome.Failure!, ""));
+    }
+
+    [Theory]
     [InlineData("{{ node.plan.value }}", true)]
     [InlineData("{{ node.plan.value }}\r\n", true)]
     [InlineData("{{~ node.plan.value ~}}\n", true)]

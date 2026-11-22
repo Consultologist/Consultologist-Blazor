@@ -61,7 +61,7 @@ public static class RenderTurn
     /// (<c>node.&lt;x&gt;.value</c>, its head rooted through <c>names</c>, D1) in <paramref name="scope"/>, with no final line
     /// end; <c>null</c> writes <c>null</c>; past <see cref="BodyComposer.OutputLimit"/> bytes of UTF-8, S05-014, as any
     /// composed text is. No run spot, renderer or unit. A body not of <see cref="SourceTemplates.OneValueRead"/>'s form is not
-    /// what publish wrote (S07-006); a read the scope lacks fails as an absent member does in any body (A06-008).
+    /// what publish wrote (S07-006), unless the engine failed reading it (A08-006: A06-008); a read the scope lacks fails as an absent member does in any body (A06-008).
     /// </summary>
     private static Composition ObjectText(RunPlan plan, PlanEntry entry, JsonObject scope)
     {
@@ -69,8 +69,10 @@ public static class RenderTurn
         var syntax = SourceLayout.Text(entry.Json["body"]) is { } body ? TemplateSyntax.Parse(body) : null;
         if ((syntax == null ? null : SourceTemplates.OneValueRead(syntax)) is not { } path)
         {
-            return Failed(ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence)
-                with { EngineFault = syntax?.Faults.FirstOrDefault(f => f.Id == "A08-006")?.Fill.FirstOrDefault() };
+            // The engine failing to read the body (A08-006) is its own fault, A06-008, never S07-006 (#1505 R14).
+            return syntax?.Faults.FirstOrDefault(f => f.Id == "A08-006")?.Fill.FirstOrDefault() is { } fault
+                ? Failed(RunSentences.CouldNotRender(RunSentences.Subject(entry, null))) with { EngineFault = fault }
+                : Failed(ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
         }
 
         var segments = path.Split('.');

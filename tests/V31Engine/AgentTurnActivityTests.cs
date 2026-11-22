@@ -232,7 +232,7 @@ public class AgentTurnActivityTests
         }
 
         Assert.Null(outcome.Text);
-        Assert.NotNull(outcome.Failure);
+        Assert.EndsWith("couldn't be rendered.", outcome.Failure, StringComparison.Ordinal); // A06-008, not the package's S07-006
         var line = Assert.Single(EngineFaults(run.RenderLog));
         Assert.Contains("node.stamp", line, StringComparison.Ordinal);
         Assert.Contains("System.NullReferenceException", line, StringComparison.Ordinal);

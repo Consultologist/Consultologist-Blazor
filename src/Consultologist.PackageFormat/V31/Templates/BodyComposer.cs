@@ -41,7 +41,7 @@ public static partial class BodyComposer
     /// Composes the body of <paramref name="request"/>'s entry (<c>plan.Functions[function].Entries[key]</c> inside a
     /// function, else <c>plan.Entries[key]</c>). An entry the plan lacks, one with no body, or a text a placement or a
     /// renderer reaches that is not a dialect template (it does not parse, or breaks a statement rule) is not what publish
-    /// wrote: S07-006. A <c>for</c> past <see cref="IterationLimit"/> is S05-012 at its line in the text that holds it;
+    /// wrote: S07-006, unless the engine failed reading a text (A08-006, <see cref="Composition.EngineFault"/>): A06-008. A <c>for</c> past <see cref="IterationLimit"/> is S05-012 at its line in the text that holds it;
     /// output past <see cref="OutputLimit"/> S05-014; <c>array.join</c> over a <c>null</c> element A07-006; the steps
     /// (each iteration of any <c>for</c>, in the body, its units and its renderers) past <see cref="ComposeRequest.StepLimit"/>
     /// <see cref="Composition.TooManySteps"/>; any other failure A06-008, never Scriban's message. Never throws on the
@@ -73,8 +73,15 @@ public static partial class BodyComposer
         var composing = new Composing(plan, entry, function, request, notPublished);
         try
         {
+            // A body the engine failed to read (A08-006, which the activity logs) is the engine's fault, so it fails with
+            // A06-008, never S07-006, which would say the compiled document is not what was published (#1505 R14).
             if (composing.Plan(body, null, 0) is not { } top)
-                return Failed(notPublished) with { EngineFault = composing.EngineFault };
+            {
+                return composing.EngineFault is { } fault
+                    ? Failed(RunSentences.CouldNotRender(composing.Subject)) with { EngineFault = fault }
+                    : Failed(notPublished);
+            }
+
             var text = composing.Render(top, composing.Globals(), out var spots);
             if (Encoding.UTF8.GetByteCount(text) > OutputLimit)
                 return Failed(RunSentences.OutputPassedLimit(composing.Subject));
