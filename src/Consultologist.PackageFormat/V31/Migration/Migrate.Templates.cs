@@ -8,8 +8,8 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// pass. Every 30 body is rewritten into the 31 dialect (<see cref="TemplateRewriter"/>): each agent node's prompt (its
 /// lifted <c>if</c>s written as its <c>parts</c>) and each <c>rendered</c> node's body, in 30's node order; each snippet's
 /// body and each folder item's; each macro's body, kept for the macros pass (<see cref="Migrated.MacroBodies"/>). A macro
-/// the prompts place under different conditions, one of them a hoisted body <c>if</c>, is a hand edit on its <c>if</c>
-/// (A10-036): a macro has one <c>if</c>.
+/// whose placements (in prompts and snippet bodies, <see cref="Migrated.MacroPlacements"/>) carry different conditions, one
+/// of them a hoisted body <c>if</c>, is a hand edit on its <c>if</c> (A10-036): a macro has one <c>if</c>.
 /// </summary>
 internal static partial class Migrate
 {
@@ -18,7 +18,6 @@ internal static partial class Migrate
     {
         ArgumentNullException.ThrowIfNull(m);
         var tree = new NodeTree(m.Manifest30.Nodes ?? []);
-        var placed = new Dictionary<string, List<string>>(StringComparer.Ordinal);
 
         foreach (var id in tree.ById.Keys)
         {
@@ -38,12 +37,7 @@ internal static partial class Migrate
             source.Body = rewritten.Text;
             if (kind == TemplateSite.Prompt)
                 source.Json["parts"] = rewritten.Parts.Count > 0 ? rewritten.Parts : null;
-            foreach (var macro in rewritten.Macros)
-            {
-                if (!placed.TryGetValue(macro, out var owners))
-                    placed[macro] = owners = [];
-                owners.Add(id);
-            }
+            m.MacroPlacements.AddRange(rewritten.Macros);
         }
 
         foreach (var (id, path) in m.Manifest30.Snippets ?? [])
@@ -54,7 +48,11 @@ internal static partial class Migrate
             foreach (var file in files)
             {
                 if (m.Sources.TryGetValue(file, out var snippet) && snippet.Body is { } body)
-                    snippet.Body = TemplateRewriter.Rewrite(body, new TemplateSite30(TemplateSite.SnippetBody, file, null), m).Text;
+                {
+                    var rewritten = TemplateRewriter.Rewrite(body, new TemplateSite30(TemplateSite.SnippetBody, file, null), m);
+                    snippet.Body = rewritten.Text;
+                    m.MacroPlacements.AddRange(rewritten.Macros);
+                }
             }
         }
 
@@ -64,7 +62,7 @@ internal static partial class Migrate
                 m.MacroBodies[file] = TemplateRewriter.Rewrite(body, new TemplateSite30(TemplateSite.MacroBody, file, null), m).Text;
         }
 
-        PlacementConditions(m, placed);
+        PlacementConditions(m);
     }
 
     /// <summary>Every 30 macro file: a single macro's, then each folder's items in its index's order.</summary>
@@ -97,22 +95,27 @@ internal static partial class Migrate
     }
 
     /// <summary>
-    /// R6 (part 10 § 1.2's hoist row): a macro whose placements in the prompts of <paramref name="placed"/> (macro → the
-    /// nodes placing it, in 30's order) come under different conditions, a hoisted one among them, cannot take them into
-    /// its one <c>if</c>: one hand edit on the macro's <c>if</c> (A10-036).
+    /// R6 (part 10 § 1.2's hoist row): each macro's placements (<see cref="Migrated.MacroPlacements"/>, in prompts and
+    /// snippet bodies). When one carries a hoisted condition and all carry the same one, it is the macro's
+    /// (<see cref="Migrated.PlacementRules"/>); when they differ, within one body or across several (a hoisted condition on
+    /// one, another or none on another), the macro's one <c>if</c> cannot hold them: one hand edit on it (A10-036).
     /// </summary>
-    private static void PlacementConditions(Migrated m, Dictionary<string, List<string>> placed)
+    private static void PlacementConditions(Migrated m)
     {
-        foreach (var (macro, owners) in placed)
+        foreach (var placements in m.MacroPlacements.GroupBy(p => p.Macro, StringComparer.Ordinal))
         {
-            var rules = owners.Select(o => m.PlacementRules.GetValueOrDefault((o, macro))?.Logic).ToList();
+            var rules = placements.Select(p => p.Rule).ToList();
             if (rules.All(r => r is null))
                 continue;
-            if (rules.Select(r => r is null ? "" : CanonicalJson.Write(r)).Distinct(StringComparer.Ordinal).Count() > 1)
+            if (rules.Select(r => r is null ? "" : CanonicalJson.Write(r.Logic)).Distinct(StringComparer.Ordinal).Count() == 1)
             {
-                var file = m.Manifest30.Macros?.FirstOrDefault(x => x.Id == macro && !x.File.EndsWith('/'))?.File ?? $"macros/{macro}.md";
-                m.HandEdit(file, "if", MigrationSentences.PlacedUnderConditions(macro, owners.Distinct(StringComparer.Ordinal).ToList()));
+                m.PlacementRules[placements.Key] = rules[0]!;
+                continue;
             }
+
+            var macro = placements.Key;
+            var file = m.Manifest30.Macros?.FirstOrDefault(x => x.Id == macro && !x.File.EndsWith('/'))?.File ?? $"macros/{macro}.md";
+            m.HandEdit(file, "if", MigrationSentences.PlacedUnderConditions(macro, placements.Select(p => p.File).Distinct(StringComparer.Ordinal).ToList()));
         }
     }
 }

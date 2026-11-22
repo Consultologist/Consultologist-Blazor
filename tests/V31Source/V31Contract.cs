@@ -144,7 +144,8 @@ internal static class V31Contract
     /// A10-020: a 30 file or package that does not read; A10-021: a package format's free-text field, part 02 § 11; A10-022
     /// to A10-025: the reasons of the first pass's hand edits, part 10 § 1.4; A10-026: a lone carriage return made a line end,
     /// part 01 § 2.4; A10-013 and A10-027 to A10-032: the nodes pass's notices and reasons, part 10 § 1.2, D16, the Task 4
-    /// ruling on size, part 04 § 5.2, part 02 § 3.3; A10-006, A10-033 and A10-034: the renames pass, part 10 § 1.9, part 01 §§ 6 and 7, D6).
+    /// ruling on size, part 04 § 5.2, part 02 § 3.3; A10-006, A10-033 and A10-034: the renames pass, part 10 § 1.9, part 01 §§ 6 and 7, D6;
+    /// A10-001, A10-005 and A10-035 to A10-039: the templates pass's reasons, part 10 § 1.2, § 1.4, part 05 §§ 2, 3.1, 7, R6).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -175,7 +176,7 @@ internal static class V31Contract
         ["A10-033"] = "The chosen rename of '<id>' to '<new id>' cannot be made: '<new id>' <is already taken | is not a 31 id>; choose another.",
         ["A10-034"] = "Renamed <kind> '<id>' to '<new id>': an id is at most 64 characters at 31.",
         ["A10-035"] = "the body's if at line <n> decides what a <snippet | macro | rendered node> body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.",
-        ["A10-036"] = "macro '<id>' is placed under different conditions by nodes <ids>; a macro has one if, so place it under one condition, or split it into one macro per condition.",
+        ["A10-036"] = "macro '<id>' is placed under different conditions in <files>; a macro has one if, so place it under one condition, or split it into one macro per condition.",
         ["A10-037"] = "the template writes <path> at line <n>, which is <an object | a list> at 31; read a member, loop over it or pipe it into a renderer.",
         ["A10-038"] = "the template can't be read at line <n>; close every tag, if and for.",
         ["A10-039"] = "the template reads <path> at line <n>, which a 31 <prompt | rendered node> doesn't read; rewrite it.",

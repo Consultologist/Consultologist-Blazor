@@ -135,12 +135,19 @@ internal sealed class Migrated
     public Dictionary<string, SitePlace> Places { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
-    /// R6, part 10 § 1.2's hoist row (Task 9): each body <c>if</c> hoisted off a macro placement, keyed by the node whose
-    /// prompt placed it (its 30 id, as renamed) and the macro (its id; a folder macro's <c>&lt;folder&gt;/&lt;id&gt;</c>):
-    /// the condition converted (<see cref="Migrate.Condition"/>: its JSON Logic, or 30's text as a JSON string with a hand
-    /// edit) and the 30 text. Task 10 writes it into the macro's <c>if</c>, joined with the macro's own by <c>and</c>.
+    /// R6 (Task 9): every macro placement the prompts and snippet bodies make at 31, in order (30's nodes, then the
+    /// snippets), each with the body <c>if</c> hoisted off it or <c>null</c>.
     /// </summary>
-    public Dictionary<(string Owner, string Macro), PlacementRule> PlacementRules { get; } = [];
+    public List<MacroPlacement> MacroPlacements { get; } = [];
+
+    /// <summary>
+    /// R6, part 10 § 1.2's hoist row (Task 9): each macro (its id; a folder macro's <c>&lt;folder&gt;/&lt;id&gt;</c>) whose
+    /// placements all carry one hoisted condition: that condition converted (<see cref="Migrate.Condition"/>: its JSON
+    /// Logic, or 30's text as a JSON string with a hand edit) and its 30 text. Task 10 writes it into the macro's <c>if</c>,
+    /// joined with the macro's own (and its 30 instance's) by <c>and</c>. A macro whose placements differ has no entry and
+    /// one hand edit (A10-036).
+    /// </summary>
+    public Dictionary<string, PlacementRule> PlacementRules { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
     /// Task 9: each 30 macro's body rewritten into the 31 dialect (<see cref="TemplateRewriter"/>), by the macro's file

@@ -21,13 +21,21 @@ internal sealed record TemplateSite30(TemplateSite Site, string File, string? Ow
 /// #1507 (specVersion 31, area 10): a 30 body in the 31 dialect. <paramref name="Text"/> is the body;
 /// <paramref name="Parts"/> the node's <c>parts</c> member (part id → <c>{ "if", "text" }</c>, part 05 § 7.1), empty when
 /// no <c>if</c> was lifted; <paramref name="HandEdits"/> the hand-edit notices said for this body, in order (each is also in
-/// the run's notices). <see cref="Macros"/> are the macros the body places (a macro's id, a folder macro's
-/// <c>&lt;folder&gt;/&lt;id&gt;</c>), in order.
+/// the run's notices). <see cref="Macros"/> are the macro placements the body makes, in order, each with the condition
+/// hoisted onto it.
 /// </summary>
 internal sealed record RewrittenBody(string Text, JsonObject Parts, IReadOnlyList<string> HandEdits)
 {
-    public IReadOnlyList<string> Macros { get; init; } = [];
+    public IReadOnlyList<MacroPlacement> Macros { get; init; } = [];
 }
+
+/// <summary>
+/// #1507 (specVersion 31, area 10; R6): one macro placement a 30 body makes at 31: the macro (its id; a folder macro's
+/// <c>&lt;folder&gt;/&lt;id&gt;</c>), the node whose prompt it is in (<c>null</c> in a snippet's body), the 31 file it is in,
+/// and the body <c>if</c> hoisted off it (<c>null</c>: placed with no condition, a part's text and an unrolled folder
+/// included).
+/// </summary>
+internal sealed record MacroPlacement(string Macro, string? Owner, string File, PlacementRule? Rule);
 
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.2, its bare-read, renderer, whitespace, lifted-<c>if</c>, unroll and hoist
@@ -40,7 +48,7 @@ internal sealed record RewrittenBody(string Text, JsonObject Parts, IReadOnlyLis
 /// <c>.skipped</c> its <c>state</c>), and the tag scanner (<see cref="TemplateTags"/>) gives the whitespace marks, a
 /// <c>-</c> becoming a <c>~</c> and a placement keeping only the forms § 2.6 allows. A body <c>if</c> that tests a value is
 /// lifted, in a prompt, into parts (<c>when_&lt;n&gt;</c>, with its negation for an <c>else</c>), or hoisted off the one
-/// macro it places into <see cref="Migrated.PlacementRules"/>; a <c>for</c> over a macro folder is unrolled. Every edit is
+/// macro it places onto that placement (<see cref="RewrittenBody.Macros"/>); a <c>for</c> over a macro folder is unrolled. Every edit is
 /// made by source span, last to first, so text outside tags keeps its bytes. What cannot be decided stays as 30 wrote it,
 /// with one hand edit each (A10-001, A10-005, A10-035, A10-037 to A10-039, S10-004); a body that still breaks a statement
 /// rule of the dialect (<see cref="TemplateSyntax"/>) has one hand edit per fault. Never throws on package content.
@@ -64,7 +72,26 @@ internal static class TemplateRewriter
     }
 
     /// <summary>One edit of the source: <c>[Start, End)</c> replaced by <paramref name="Text"/>; a span edit replaces a whole construct (its tags are not marked again).</summary>
-    private readonly record struct Edit(int Start, int End, string Text, bool Span);
+    internal readonly record struct Edit(int Start, int End, string Text, bool Span);
+
+    /// <summary>
+    /// <paramref name="edits"/> in source order, those that would overlap one kept before them set apart (an insertion at a
+    /// replacement's start comes first). None overlaps by construction; one that would is said, never applied half.
+    /// </summary>
+    internal static (List<Edit> Kept, List<Edit> Dropped) Order(IEnumerable<Edit> edits)
+    {
+        var kept = new List<Edit>();
+        var dropped = new List<Edit>();
+        foreach (var edit in edits.OrderBy(e => e.Start).ThenBy(e => e.End))
+        {
+            if (kept.Count > 0 && edit.Start < kept[^1].End)
+                dropped.Add(edit);
+            else
+                kept.Add(edit);
+        }
+
+        return (kept, dropped);
+    }
 
     /// <summary>Something the rewrite cannot decide, found at <paramref name="Offset"/> of the 30 body; its reason is made from the line it lands on in the 31 text.</summary>
     private sealed record Issue(int Offset, Func<int, string> Reason);
@@ -132,6 +159,9 @@ internal static class TemplateRewriter
         // Inside an if already said as a hand edit, whose placements are that edit's.
         private int said;
 
+        // The condition hoisted onto the placement being rewritten, while a hoisted branch is walked.
+        private PlacementRule? hoisting;
+
         public Run(string text, TemplateSite30 site, Migrated m)
         {
             this.text = text;
@@ -144,7 +174,7 @@ internal static class TemplateRewriter
 
         public JsonObject Parts { get; } = [];
 
-        public List<string> Macros { get; } = [];
+        public List<MacroPlacement> Macros { get; } = [];
 
         private FormatSet Formats => scope.Value.Formats;
 
@@ -257,7 +287,7 @@ internal static class TemplateRewriter
             if (written.Placement is not null && TagAt(output.Span.Start.Offset) is { } tag)
                 placements.Add(tag.Start);
             if (written.Macro is { } macro)
-                Macros.Add(macro);
+                Macros.Add(new MacroPlacement(macro, site.OwnerId, site.File, hoisting));
             if (written.Placement is not null && depth > 0 && said == 0)
                 sink.Say(Start(head), line => MigrationSentences.NotInDialect("a placement inside an if or a for", line));
             if (written.WholePath is { } path)
@@ -302,13 +332,19 @@ internal static class TemplateRewriter
             var tests = conditions.Select(c => Classify(c, vars)).ToList();
             if (tests.All(t => t == Test.Fact))
             {
+                // 30's skipped is a state test at 31, which must handle every state or end with an else (S05-009): an
+                // empty else keeps 30's bytes. It takes the end tag's left mark, so the branch before it is trimmed as before.
+                if (otherwise is null && conditions.Any(c => HasSkipped(c, vars)) && TagAt(End(node)) is { } last)
+                    sink.Add(last.Start, last.Start, "{{" + (last.TildeLeft || last.DashLeft ? "~" : string.Empty) + " else }}");
                 Keep(conditions, bodies, otherwise, vars, sink, depth);
                 return;
             }
 
             if (TagAt(Start(node)) is not { } ifTag || TagAt(End(node)) is not { } endTag)
             {
-                Keep(conditions, bodies, otherwise, vars, sink, depth);
+                // Every statement stands in a tag the lexer found; if one ever does not, the if is still an edit.
+                sink.Say(Start(node), MigrationSentences.IfTooComplex);
+                Said(() => Keep(conditions, bodies, otherwise, vars, sink, depth));
                 return;
             }
 
@@ -378,23 +414,27 @@ internal static class TemplateRewriter
 
         /// <summary>
         /// R6: the body <c>if</c> around the one macro placement becomes the placement alone (<c>{{ macro.x }}</c>), and its
-        /// condition, converted at the node's place, joins the placement's rule by <c>and</c>.
+        /// condition, converted at the node's place, is that placement's rule (<see cref="MacroPlacement.Rule"/>).
         /// </summary>
         private void Hoist(
             ScriptIfStatement node, string macro, string condition, TemplateTag ifTag, TemplateTag endTag,
             ImmutableDictionary<string, Variable> vars, Sink sink, int depth)
         {
+            var logic = Migrate.Condition(m, MacroFile(macro), "if", condition, scope.Value, ConversionKind.Condition);
             var (from, to) = Inner(ifTag, endTag);
             var inner = new Sink(from, to, sink, ifTag.Start);
-            Block(node.Then, vars, inner, depth);
+            hoisting = new PlacementRule(logic, condition);
+            try
+            {
+                Block(node.Then, vars, inner, depth);
+            }
+            finally
+            {
+                hoisting = null;
+            }
+
             var (start, end) = Outer(ifTag, endTag);
             sink.Replace(start, end, Apply(inner).Text);
-
-            var logic = Migrate.Condition(m, MacroFile(macro), "if", condition, scope.Value, ConversionKind.Condition);
-            var key = (site.OwnerId ?? string.Empty, macro);
-            m.PlacementRules[key] = m.PlacementRules.TryGetValue(key, out var known)
-                ? new PlacementRule(new JsonObject { ["and"] = new JsonArray(known.Logic.DeepClone(), logic) }, $"({known.Text30}) && ({condition})")
-                : new PlacementRule(logic, condition);
         }
 
         /// <summary>
@@ -434,7 +474,8 @@ internal static class TemplateRewriter
             {
                 var id = "when_" + nextPart.ToString(System.Globalization.CultureInfo.InvariantCulture);
                 nextPart++;
-                if (!Parts.ContainsKey(id) && !text.Contains("part." + id, StringComparison.Ordinal))
+                // A whole token only: part.when_1 is not taken by part.when_10.
+                if (!Parts.ContainsKey(id) && !System.Text.RegularExpressions.Regex.IsMatch(text, @"(?<![A-Za-z0-9_.])part\." + id + "(?![A-Za-z0-9_])"))
                     return id;
             }
         }
@@ -598,7 +639,7 @@ internal static class TemplateRewriter
                             inner.Add(Start(expression), End(expression), $"macro.{folder}.{id}");
                             if (TagAt(Start(output)) is { } tag)
                                 placements.Add(tag.Start);
-                            Macros.Add($"{folder}/{id}");
+                            Macros.Add(new MacroPlacement($"{folder}/{id}", site.OwnerId, site.File, null));
                             break;
                         case "content":
                             inner.Add(Start(expression), End(expression), $"macro.{folder}.{id}.content");
@@ -842,6 +883,14 @@ internal static class TemplateRewriter
         private static bool Skipped(Chain chain, ImmutableDictionary<string, Variable> vars) =>
             vars.TryGetValue(chain.Name, out var variable) && variable.Loop is not null && chain.Names is ["skipped"];
 
+        /// <summary>Whether a test reads a loop element's 30 <c>skipped</c> anywhere.</summary>
+        private static bool HasSkipped(ScriptNode? node, ImmutableDictionary<string, Variable> vars) => node switch
+        {
+            null => false,
+            ScriptExpression expression when Flatten(expression) is { } chain => Skipped(chain, vars),
+            _ => node.Children.Any(c => HasSkipped(c, vars)),
+        };
+
         private static string Wrapped(string test, bool wrap) => wrap ? "(" + test + ")" : test;
 
         // ----- the package -----------------------------------------------------------------------------------------
@@ -921,15 +970,11 @@ internal static class TemplateRewriter
             foreach (var tag in tags.Where(t => t.Start >= sink.From && t.End <= sink.To && !spans.Any(s => t.Start < s.End && t.End > s.Start)))
                 Marks(tag, edits);
 
-            var ordered = edits.OrderBy(e => e.Start).ThenBy(e => e.End).ToList();
-            var kept = new List<Edit>();
-            foreach (var edit in ordered)
+            var (kept, dropped) = Order(edits);
+            foreach (var edit in dropped)
             {
-                // Edits never overlap (an insertion at a replacement's start comes first); one that would is dropped
-                // rather than garble the text.
-                if (kept.Count > 0 && edit.Start < kept[^1].End)
-                    continue;
-                kept.Add(edit);
+                // Its 30 construct stays as it was: a hand edit, said where it stands.
+                sink.Say(edit.Start, line => MigrationSentences.NotInDialect("a tag the migration could not rewrite", line));
             }
 
             var result = new StringBuilder();

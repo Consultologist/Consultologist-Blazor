@@ -77,29 +77,32 @@ public class MigrateTemplatesTests
     {
         var m = Templated(package);
 
-        var bodies = new List<(string File, string Text)>();
+        var bodies = new List<(string File, string Member, TemplateSite Site, string Text)>();
         foreach (var (path, file) in m.Sources)
         {
             if (file.Body is not { } body || !(path.StartsWith("nodes/", StringComparison.Ordinal) || path.StartsWith("snippets/", StringComparison.Ordinal)))
                 continue;
-            if (path.StartsWith("nodes/", StringComparison.Ordinal) && (string?)file.Json["kind"] is not ("agent" or "rendered"))
+            var site = path.StartsWith("snippets/", StringComparison.Ordinal) ? TemplateSite.SnippetBody
+                : (string?)file.Json["kind"] switch { "agent" => TemplateSite.Prompt, "rendered" => TemplateSite.Rendered, _ => (TemplateSite?)null };
+            if (site is not { } kind)
                 continue;
-            bodies.Add((path, body));
-            foreach (var (_, part) in file.Json["parts"] as JsonObject ?? [])
-                bodies.Add((path, string.Join('\n', part!["text"]!.AsArray().Select(l => (string)l!))));
+            bodies.Add((path, "body", kind, body));
+            foreach (var (id, part) in file.Json["parts"] as JsonObject ?? [])
+                bodies.Add((path, $"parts.{id}.text", TemplateSite.Prompt, string.Join('\n', part!["text"]!.AsArray().Select(l => (string)l!))));
         }
 
-        bodies.AddRange(m.MacroBodies.Select(b => (b.Key, b.Value)));
+        bodies.AddRange(m.MacroBodies.Select(b => (b.Key, "body", TemplateSite.MacroBody, b.Value)));
         Assert.NotEmpty(bodies);
 
-        foreach (var (file, text) in bodies)
+        foreach (var (file, member, site, text) in bodies)
         {
-            var problems = Problems(text);
-            if (problems.Count > 0)
+            // A hand edit excuses only the construct it names: one on this file and member whose reason is that rule's.
+            var edits = m.HandEditNotices.Where(h => h.StartsWith($"Hand edit needed in {file}, {member}: ", StringComparison.Ordinal)).ToList();
+            foreach (var (problem, excuses) in Problems(text, site))
             {
                 Assert.True(
-                    m.HandEditNotices.Any(h => h.StartsWith($"Hand edit needed in {file}, ", StringComparison.Ordinal)),
-                    $"{file} breaks the 31 dialect with no hand edit: {string.Join("; ", problems)}\n{text}");
+                    excuses.Any(e => edits.Any(h => h.Contains(e, StringComparison.Ordinal))),
+                    $"{file}, {member} breaks the 31 dialect with no hand edit for it: {problem}\n{text}");
             }
         }
 
@@ -109,45 +112,86 @@ public class MigrateTemplatesTests
     [Fact]
     public void TheVendoredBodies_ThatNeedNoEdit_PassTheDialect()
     {
-        // The check above is not vacuous: most bodies need no edit and pass.
+        // The check above is not vacuous: most bodies need no edit and pass, and each rule it holds finds its construct.
         var m = Templated("example-two-documents");
-        var file = m.Sources["nodes/extract_patient_concepts.md"].Body!;
-        Assert.Empty(Problems(file));
-        Assert.Contains("Bare node", string.Join(";", Problems("{{ node.extract_patient_concepts }}")), StringComparison.Ordinal);
-        Assert.Contains("placement", string.Join(";", Problems("{{ if for.first }}{{ macro.x }}{{ end }}")), StringComparison.Ordinal);
-        Assert.Contains("body if", string.Join(";", Problems("{{ if input.x.value }}a{{ end }}")), StringComparison.Ordinal);
+        Assert.Empty(Problems(m.Sources["nodes/extract_patient_concepts.md"].Body!, TemplateSite.Prompt));
+        string Said(string text, TemplateSite site = TemplateSite.Prompt) => string.Join(";", Problems(text, site).Select(p => p.Problem));
+        Assert.Contains("bare node or input", Said("{{ node.extract_patient_concepts }}"), StringComparison.Ordinal);
+        Assert.Contains("placement", Said("{{ if for.first }}{{ macro.x }}{{ end }}"), StringComparison.Ordinal);
+        Assert.Contains("body if", Said("{{ if input.x.value }}a{{ end }}"), StringComparison.Ordinal);
+        Assert.Contains("S05-009", Said("{{ for s in node.x.items }}{{ if s.state != \"skipped\" }}a{{ end }}{{ end }}"), StringComparison.Ordinal);
+        Assert.Contains("S05-010", Said("{{ for s in node.x.items }}{{ if s.state == \"done\" }}a{{ else }}{{ end }}{{ end }}"), StringComparison.Ordinal);
+        Assert.Contains("profile", Said("{{ profile.name }}"), StringComparison.Ordinal);
+        Assert.Empty(Problems("{{ profile.name }}", TemplateSite.MacroBody));
+        Assert.Contains("deliverable", Said("{{ deliverable.note.content }}"), StringComparison.Ordinal);
+        Assert.Contains("S05-001", Said("{{ case input.x.value }}{{ when \"a\" }}a{{ end }}", TemplateSite.MacroBody), StringComparison.Ordinal);
     }
 
     /// <summary>
-    /// What the dialect refuses in <paramref name="text"/> by its form alone: a statement fault (<see cref="TemplateSyntax"/>),
-    /// a placement inside an <c>if</c> or a <c>for</c> (A07-009), a body <c>if</c> testing something other than a recorded
-    /// fact (S05-007), a bare <c>node.x</c> or <c>input.x</c> (A07-008), 30's <c>.prompt</c> and its renderer names.
+    /// What the dialect refuses in <paramref name="text"/> at <paramref name="site"/> by its form, each with the reasons of
+    /// the hand edits that may excuse it: a statement fault (<see cref="TemplateSyntax"/>: A10-005, A10-038); a placement
+    /// inside an <c>if</c> or a <c>for</c> (A07-009: A10-005's placement, or the <c>if</c>'s A10-001 or A10-035); a body
+    /// <c>if</c> test outside § 2.5 (S05-007, <see cref="DialectRules.TestForm"/>), a state test that misses a state with no
+    /// <c>else</c> (S05-009) or compares with a value outside the closed set (S05-010) (A10-001, A10-035); a bare
+    /// <c>node.x</c> or <c>input.x</c> (A07-008: never excused); a prompt's <c>profile.*</c> (S10-004) or a prompt's or
+    /// <c>rendered</c> body's <c>deliverable.*</c> (A10-039); 30's <c>.prompt</c> and renderer names (never excused).
     /// </summary>
-    private static List<string> Problems(string text)
+    private static List<(string Problem, string[] Excuses)> Problems(string text, TemplateSite site)
     {
+        string[] ifEdits = ["the body's if at line", "decides what a"];
         var syntax = TemplateSyntax.Parse(text);
-        var problems = syntax.Faults.Select(f => $"{f.Id} at line {f.Line}").ToList();
+        var problems = syntax.Faults.Select(f => ($"{f.Id} at line {f.Line}", new[] { "the template uses ", "can't be read" })).ToList();
         foreach (var output in syntax.Outputs)
         {
             if (output.Depth > 0 && output.Path is { } path && output.Pipes.Count == 0
                 && (path.Split('.') is ["part", _] or ["macro", _] or ["macro", _, not "content"] or ["snippet", _, "content"] or ["snippet", _, _, "content"]))
-                problems.Add($"placement {path} inside {string.Join(" ", output.Enclosing)}");
+                problems.Add(($"placement {path} inside {string.Join(" ", output.Enclosing)}", ["a placement inside an if or a for", .. ifEdits]));
             foreach (var read in output.Paths)
             {
                 if (read.Split('.') is ["node" or "input", _])
-                    problems.Add($"Bare node or input {read}");
+                    problems.Add(($"bare node or input {read}", []));
                 if (read.EndsWith(".prompt", StringComparison.Ordinal) && read.StartsWith("macro.", StringComparison.Ordinal))
-                    problems.Add($"30's {read}");
+                    problems.Add(($"30's {read}", []));
+                if (read.StartsWith("profile.", StringComparison.Ordinal) && site == TemplateSite.Prompt)
+                    problems.Add(($"a prompt reads {read}", ["which a 31 prompt doesn't read"]));
+                if (read.StartsWith("deliverable.", StringComparison.Ordinal) && site is TemplateSite.Prompt or TemplateSite.Rendered)
+                    problems.Add(($"reads {read}", ["which a 31 prompt doesn't read", "which a 31 rendered node doesn't read"]));
             }
 
             if (output.Pipes.Any(p => p.Name is "concept_bullets" or "concept_context"))
-                problems.Add("30's renderer pipe");
+                problems.Add(("30's renderer pipe", []));
         }
 
         foreach (var chain in syntax.Ifs)
         {
-            foreach (var test in chain.Tests.Where(t => DialectRules.TestForm(t) == BodyTest.Refused))
-                problems.Add($"body if tests {test.Text}");
+            var handled = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var test in chain.Tests)
+            {
+                switch (DialectRules.TestForm(test))
+                {
+                    case BodyTest.Refused:
+                        problems.Add(($"body if tests {test.Text}", ifEdits));
+                        break;
+                    case BodyTest.State:
+                        var literal = test.Literal![1..^1];
+                        if (!DialectRules.States.Contains(literal, StringComparer.Ordinal))
+                        {
+                            problems.Add(($"S05-010: {test.Text}", ifEdits));
+                            break;
+                        }
+
+                        if (!handled.TryGetValue(test.Path!, out var states))
+                            handled[test.Path!] = states = new HashSet<string>(StringComparer.Ordinal);
+                        states.UnionWith(test.Operator == "==" ? [literal] : DialectRules.States.Where(s => s != literal));
+                        break;
+                }
+            }
+
+            if (!chain.HasElse)
+            {
+                foreach (var (path, states) in handled.Where(h => DialectRules.States.Any(s => !h.Value.Contains(s))))
+                    problems.Add(($"S05-009: {path} misses a state", ifEdits));
+            }
         }
 
         return problems;

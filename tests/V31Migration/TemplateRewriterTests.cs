@@ -141,9 +141,14 @@ public class TemplateRewriterTests
 
         // Part 04 § 2.6: the items, a body node through .nodes, and the state for 30's skipped.
         Assert.Equal(
-            "{{ for s in node.sections.items }}{{ if s.state != \"skipped\" }}{{ s.nodes.outline.content }}: {{ s.content }}{{ end }}{{ end }}\n",
+            "{{ for s in node.sections.items }}{{ if s.state != \"skipped\" }}{{ s.nodes.outline.content }}: {{ s.content }}{{ else }}{{ end }}{{ end }}\n",
             rewritten.Text);
         Assert.Empty(rewritten.HandEdits);
+
+        // A state test must handle every state or end with an else (S05-009): one rewritten from skipped gains an empty
+        // else, which takes the end tag's left mark, so the text before it is trimmed as at 30.
+        var marked = Prompt(m, "draft_summary", "{{ for s in node.sections }}\n{{~ if s.skipped ~}}\nleft out\n{{~ end ~}}\n{{ end }}\n");
+        Assert.Equal("{{ for s in node.sections.items }}\n{{~ if s.state == \"skipped\" ~}}\nleft out\n{{~ else }}{{~ end ~}}\n{{ end }}\n", marked.Text);
 
         Assert.Equal(
             """
@@ -160,7 +165,7 @@ public class TemplateRewriterTests
             """,
             Body(MigrateNodesTests.Migrated("example-conditional-sections"), "nodes/coverage.md"));
         Assert.Contains(
-            "Prior letters, as read:\n{{ for letter in node.letters.items }}{{ if letter.state != \"skipped\" }}{{ letter.content }}\n\n{{ end }}{{ end }}\nConsult draft:",
+            "Prior letters, as read:\n{{ for letter in node.letters.items }}{{ if letter.state != \"skipped\" }}{{ letter.content }}\n\n{{ else }}{{ end }}{{ end }}\nConsult draft:",
             Body(MigrateNodesTests.Migrated("example-prior-letters"), "nodes/assessment.md"),
             StringComparison.Ordinal);
     }
@@ -213,6 +218,10 @@ public class TemplateRewriterTests
         Assert.Equal("See part.when_1.\n{{ part.when_2 }}\n", taken.Text);
         Assert.Equal(["when_2"], taken.Parts.Select(p => p.Key));
 
+        // A whole token only: part.when_10 does not take when_1.
+        var longer = Prompt(m, "consult_note_section", "See part.when_10.\n{{ if input.include_billing == true }}Bill.{{ end }}\n");
+        Assert.Equal(["when_1"], longer.Parts.Select(p => p.Key));
+
         // A lifted condition is converted as every condition is: !x on text is blank, and said (A10-008).
         var blank = Prompt(m, "consult_note_section", "{{ if !input.consult_draft }}\nNo referral.\n{{ end }}\n");
         Assert.Equal("""{"blank":[{"var":"input.consult_draft.content"}]}""", blank.Parts["when_1"]!["if"]!.ToJsonString());
@@ -256,28 +265,60 @@ public class TemplateRewriterTests
 
         Assert.Equal("Style:\n{{ macro.house_style }}\nEnd.\n", rewritten.Text);
         Assert.Empty(rewritten.Parts);
-        Assert.Equal(["house_style"], rewritten.Macros);
-        var rule = m.PlacementRules[("summary", "house_style")];
-        Assert.Equal("""{"===":[{"var":"input.include_counselling.value"},true]}""", rule.Logic.ToJsonString());
-        Assert.Equal("input.include_counselling == true", rule.Text30);
+        var placed = Assert.Single(rewritten.Macros);
+        Assert.Equal(("house_style", "summary", "nodes/summary.md"), (placed.Macro, placed.Owner, placed.File));
+        Assert.Equal("""{"===":[{"var":"input.include_counselling.value"},true]}""", placed.Rule!.Logic.ToJsonString());
+        Assert.Equal("input.include_counselling == true", placed.Rule.Text30);
 
-        // A second condition on the same placement joins the rule by and.
-        Prompt(m, "summary", "{{ if input.note_type == \"consult\" }}{{ macro.house_style.prompt }}{{ end }}\n");
+        // Each placement carries its own condition, or none: two in one prompt are two rules, never joined.
+        var two = Prompt(m, "summary",
+            "{{ if input.include_counselling == true }}{{ macro.house_style.prompt }}{{ end }}\n{{ if input.note_type == \"consult\" }}{{ macro.house_style.prompt }}{{ end }}\n{{ macro.house_style.prompt }}\n");
         Assert.Equal(
-            """{"and":[{"===":[{"var":"input.include_counselling.value"},true]},{"===":[{"var":"input.note_type.value"},"consult"]}]}""",
-            m.PlacementRules[("summary", "house_style")].Logic.ToJsonString());
+            ["""{"===":[{"var":"input.include_counselling.value"},true]}""", """{"===":[{"var":"input.note_type.value"},"consult"]}""", null],
+            two.Macros.Select(p => p.Rule?.Logic.ToJsonString()));
 
-        // The vendored file: standing_draft.md, and its rule.
+        // The vendored file: standing_draft.md; patient_line.md hoists another condition for the same macro, so the one if
+        // cannot hold both (A10-036) and the macro has no rule.
         var vendored = Working("example-macros");
         Migrate.Templates(vendored);
         Assert.Contains("Section standard:\n{{ item.content }}\n\n{{ macro.counselling }}\n{{ macro.silent_reminder }}\n", vendored.Sources["nodes/standing_sections/standing_draft.md"].Body, StringComparison.Ordinal);
-        Assert.Equal("""{"===":[{"var":"input.include_counselling.value"},true]}""", vendored.PlacementRules[("standing_draft", "counselling")].Logic.ToJsonString());
-
-        // patient_line.md hoists another condition for the same macro: one if cannot hold both (A10-036).
-        Assert.Equal("""{"===":[{"var":"input.note_type.value"},"follow_up"]}""", vendored.PlacementRules[("patient_line", "counselling")].Logic.ToJsonString());
+        Assert.Equal(
+            ["""{"===":[{"var":"input.include_counselling.value"},true]}""", """{"===":[{"var":"input.note_type.value"},"follow_up"]}"""],
+            vendored.MacroPlacements.Where(p => p.Macro == "counselling").Select(p => p.Rule?.Logic.ToJsonString()));
+        Assert.False(vendored.PlacementRules.ContainsKey("counselling"));
         var edit = Assert.Single(vendored.HandEditNotices, h => h.StartsWith("Hand edit needed in macros/counselling.md, if: ", StringComparison.Ordinal));
-        const string reason = "macro 'counselling' is placed under different conditions by nodes 'standing_draft' and 'patient_line'; a macro has one if, so place it under one condition, or split it into one macro per condition.";
+        const string reason = "macro 'counselling' is placed under different conditions in nodes/standing_sections/standing_draft.md and nodes/patient_line.md; a macro has one if, so place it under one condition, or split it into one macro per condition.";
         AssertHandEdit(edit, "macros/counselling.md", "A10-036", reason);
+    }
+
+    [Theory]
+    [InlineData("{{ if input.include_counselling == true }}{{ macro.preamble.prompt }}{{ end }}\n{{ macro.preamble.prompt }}\n", "nodes/summary.md")]
+    [InlineData("{{ if input.include_counselling == true }}{{ macro.preamble.prompt }}{{ end }}\n{{ if input.note_type == \"consult\" }}{{ macro.preamble.prompt }}{{ end }}\n", "nodes/summary.md")]
+    [InlineData("{{ if input.include_counselling == true }}{{ macro.house_style.prompt }}{{ end }}\n", "nodes/summary.md and snippets/style.md")]
+    public void PlacementsThatDisagree_InOneBodyOrSeveral_AreAHandEdit(string summary, string files)
+    {
+        // One hoisted and one plain in one prompt; two different hoists in one prompt; a hoist against a snippet's plain
+        // placement (style.md places house_style). Each is appended to summary.md (30 refuses a macro no body places).
+        var m = Working("example-macros", f => f["prompts/summary.md"] += summary);
+
+        Migrate.Templates(m);
+
+        var macro = summary.Contains("preamble", StringComparison.Ordinal) ? "preamble" : "house_style";
+        Assert.False(m.PlacementRules.ContainsKey(macro));
+        var edit = Assert.Single(m.HandEditNotices, h => h.StartsWith($"Hand edit needed in macros/{macro}.md, if: ", StringComparison.Ordinal));
+        AssertHandEdit(edit, $"macros/{macro}.md", "A10-036",
+            $"macro '{macro}' is placed under different conditions in {files}; a macro has one if, so place it under one condition, or split it into one macro per condition.");
+    }
+
+    [Fact]
+    public void PlacementsThatAgree_GiveTheMacroItsRule()
+    {
+        var m = Working("example-macros", f => f["prompts/summary.md"] += "{{ if input.include_counselling == true }}{{ macro.preamble.prompt }}{{ end }}\n");
+
+        Migrate.Templates(m);
+
+        Assert.Equal("""{"===":[{"var":"input.include_counselling.value"},true]}""", m.PlacementRules["preamble"].Logic.ToJsonString());
+        Assert.DoesNotContain(m.HandEditNotices, h => h.Contains("macros/preamble.md", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -290,7 +331,8 @@ public class TemplateRewriterTests
         Assert.Equal(
             "Reminders:\n- Red flags (red_flags): {{ macro.notes.red_flags }}\n- Safety net (safety_net): {{ macro.notes.safety_net }}\n\nEnd.\n",
             rewritten.Text);
-        Assert.Equal(["notes/red_flags", "notes/safety_net"], rewritten.Macros);
+        Assert.Equal(["notes/red_flags", "notes/safety_net"], rewritten.Macros.Select(p => p.Macro));
+        Assert.All(rewritten.Macros, p => Assert.Null(p.Rule));
         Assert.Empty(rewritten.HandEdits);
 
         // One the rewrite cannot write out (a statement in its body) stays, a hand edit (A10-005).
@@ -473,5 +515,21 @@ public class TemplateRewriterTests
         V31Contract.AssertSentence(new SourceRefusal("A10-038", reason, ""));
         if (line > 0)
             Assert.Equal($"the template can't be read at line {line}; close every tag, if and for.", reason);
+    }
+
+    [Fact]
+    public void AnEditThatWouldOverlap_IsSetApart_NeverAppliedHalf()
+    {
+        // No two edits overlap by construction; one that would is set apart (and said as a hand edit), not applied.
+        var (kept, dropped) = TemplateRewriter.Order(
+        [
+            new TemplateRewriter.Edit(10, 20, "x", true),
+            new TemplateRewriter.Edit(4, 4, ".value", false),
+            new TemplateRewriter.Edit(10, 10, "~", false),
+            new TemplateRewriter.Edit(15, 16, "", false),
+        ]);
+
+        Assert.Equal([4, 10, 10], kept.Select(e => e.Start));
+        Assert.Equal(15, Assert.Single(dropped).Start);
     }
 }

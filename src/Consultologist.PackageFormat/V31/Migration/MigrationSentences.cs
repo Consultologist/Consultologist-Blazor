@@ -239,16 +239,15 @@ internal static class MigrationSentences
         string.Create(CultureInfo.InvariantCulture, $"the body's if at line {line} decides what a {site} body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.");
 
     /// <summary>
-    /// A10-036 (part 10 § 1.2's hoist row, A10-002's sibling): a reason: <paramref name="macro"/> is placed by the prompts of
-    /// <paramref name="nodes"/> under different conditions (a hoisted body <c>if</c> in one, another or none in the other),
-    /// and a macro has one <c>if</c>.
+    /// A10-036 (part 10 § 1.2's hoist row, A10-002's sibling): a reason: <paramref name="macro"/>'s placements in
+    /// <paramref name="files"/> (one or several) carry different conditions (a hoisted body <c>if</c> on one, another or
+    /// none on another), and a macro has one <c>if</c>.
     /// </summary>
-    public static string PlacedUnderConditions(string macro, IReadOnlyList<string> nodes)
+    public static string PlacedUnderConditions(string macro, IReadOnlyList<string> files)
     {
-        ArgumentNullException.ThrowIfNull(nodes);
-        var quoted = nodes.Select(n => $"'{n}'").ToList();
-        var listed = quoted.Count < 2 ? string.Concat(quoted) : string.Join(", ", quoted.Take(quoted.Count - 1)) + " and " + quoted[^1];
-        return $"macro '{macro}' is placed under different conditions by nodes {listed}; a macro has one if, so place it under one condition, or split it into one macro per condition.";
+        ArgumentNullException.ThrowIfNull(files);
+        var listed = files.Count < 2 ? string.Concat(files) : string.Join(", ", files.Take(files.Count - 1)) + " and " + files[^1];
+        return $"macro '{macro}' is placed under different conditions in {listed}; a macro has one if, so place it under one condition, or split it into one macro per condition.";
     }
 
     /// <summary>
