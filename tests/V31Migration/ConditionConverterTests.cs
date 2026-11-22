@@ -81,6 +81,7 @@ public class ConditionConverterTests
     [InlineData("row.input.x-y", """{"===":[{"var":"input.patient.value.name"},"Margaret Okafor"]}""")]
     [InlineData("row.literal.number", """{"===":[{"var":"input.age.value"},65]}""")]
     [InlineData("row.literal.false", """{"===":[{"var":"input.urgent.value"},false]}""")]
+    [InlineData("row.read.node-content", """{"===":[{"var":"node.summary.content"},"Reviewed in clinic."]}""")]
     [InlineData("row.read.node-value", """{"===":[{"var":"node.triage.value.priority"},"high"]}""")]
     [InlineData("row.read.item-id", """{"===":[{"var":"item.id"},"plan"]}""")]
     [InlineData("row.read.item-value", """{"===":[{"var":"item.value.kind"},"table"]}""")]
@@ -189,6 +190,7 @@ public class ConditionConverterTests
                 ["resultFormat"] = result.ResultFormat,
                 ["reads"] = new JsonArray(result.Reads.Select(r => (JsonNode?)JsonValue.Create(r)).ToArray()),
                 ["blankConversions"] = new JsonArray(result.BlankConversions.Select(r => (JsonNode?)JsonValue.Create(r)).ToArray()),
+                ["blanks"] = new JsonArray(result.Blanks.Select(b => (JsonNode?)new JsonObject { ["written"] = b.Written, ["printed"] = b.Printed }).ToArray()),
                 ["notices"] = new JsonArray(result.Notices.Select(n => (JsonNode?)JsonValue.Create(n)).ToArray()),
             });
         }
@@ -262,8 +264,10 @@ public class ConditionConverterTests
 
         Assert.Equal("""{"blank":[{"var":"node.summary.content"}]}""", CanonicalJson.Write(node.Logic));
         Assert.Equal(["node.summary.content"], node.BlankConversions);
+        AssertBlank(("node.summary.content", "node.summary.content", ["node.summary.content"]), node.Blanks.Single());
         Assert.Equal("""{"blank":[{"var":"input.reason.content"}]}""", CanonicalJson.Write(input.Logic));
         Assert.Equal(["input.reason.content"], input.BlankConversions);
+        AssertBlank(("input.reason", "input.reason.content", ["input.reason.content"]), input.Blanks.Single());
         Assert.Equal("boolean", input.ResultFormat);
         Assert.Equal("""{"!":[{"var":"input.urgent.value"}]}""", CanonicalJson.Write(boolean.Logic));
         Assert.Empty(boolean.BlankConversions);
@@ -273,16 +277,25 @@ public class ConditionConverterTests
     public void NotOnTextInsideAnOperation_BecomesBlank_AndNotOnAStringIsTheCheckersSentence()
     {
         var scope = Scope(
-            inputs: new() { ["reason"] = Format("markdown_block"), ["urgent"] = Format("boolean"), ["code"] = Format("string") });
+            inputs: new() { ["reason"] = Format("markdown_block"), ["urgent"] = Format("boolean"), ["code"] = Format("string") },
+            required: ["reason", "urgent", "code"]);
 
         var inside = WorkflowConditionConverter.FromScriban("input.urgent && !(string.strip input.reason)", scope);
         var onString = WorkflowConditionConverter.FromScriban("!input.code", scope);
 
         Assert.Equal("""{"and":[{"var":"input.urgent.value"},{"blank":[{"trim":[{"var":"input.reason.content"}]}]}]}""", CanonicalJson.Write(inside.Logic));
-        Assert.Equal(["trim(input.reason.content)"], inside.BlankConversions);
+        Assert.Equal(["input.reason.content"], inside.BlankConversions);
+        AssertBlank(("(string.strip input.reason)", "trim(input.reason.content)", ["input.reason.content"]), inside.Blanks.Single());
         Assert.Null(onString.Logic);
         Assert.Equal(["S03-009"], onString.NoticeIds);
         Assert.Equal(["The condition '!input.code' tests input.code.value (string) with not; not takes a boolean — test text with blank."], onString.Notices);
+    }
+
+    private static void AssertBlank((string Written, string Printed, string[] Reads) expected, BlankConversion actual)
+    {
+        Assert.Equal(expected.Written, actual.Written);
+        Assert.Equal(expected.Printed, actual.Printed);
+        Assert.Equal(expected.Reads, actual.Reads);
     }
 
     [Fact]
@@ -293,7 +306,7 @@ public class ConditionConverterTests
             ["refuse.builtin.upcase"] = ("S10-003", "The condition '(string.upcase input.reason) == \"BREATHLESSNESS\"' uses string.upcase, which has no JSON Logic form at 31: rewrite it by hand."),
             ["refuse.builtin.round"] = ("S10-003", "The condition '(math.round input.age) == 65' uses math.round, which has no JSON Logic form at 31: rewrite it by hand."),
             ["refuse.builtin.first"] = ("S10-003", "The condition '(input.problems | array.first) == \"\"' uses array.first, which has no JSON Logic form at 31: rewrite it by hand."),
-            ["refuse.text-less-than"] = ("S03-008", "The condition 'input.reason < \"m\"' orders input.reason.content (markdown_block); <, >, ≤ and ≥ compare numbers or dates."),
+            ["refuse.text-less-than"] = ("S03-008", "The condition 'input.reason < \"m\"' orders input.reason.content (markdown_block | null); <, >, ≤ and ≥ compare numbers or dates."),
             ["refuse.profile"] = ("S03-018", "The condition 'profile.name == \"Dr A. Sample\"' reads profile.name; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."),
             ["refuse.assignment"] = ("S10-003", "The condition 'x = 1' uses an assignment, which has no JSON Logic form at 31: rewrite it by hand."),
             ["refuse.template"] = ("S10-003", "The condition '{{ input.kind }}' uses a template, which has no JSON Logic form at 31: rewrite it by hand."),
@@ -316,7 +329,7 @@ public class ConditionConverterTests
     [Fact]
     public void ACondition_YieldsABoolean()
     {
-        var scope = Scope(inputs: new() { ["age"] = Format("number") });
+        var scope = Scope(inputs: new() { ["age"] = Format("number") }, required: ["age"]);
 
         var condition = WorkflowConditionConverter.FromScriban("input.age", scope);
         var value = WorkflowConditionConverter.FromScriban("input.age", scope, ConversionKind.Value);
@@ -332,7 +345,7 @@ public class ConditionConverterTests
     [Fact]
     public void AValue_IsHeldToItsDeclaredFormat()
     {
-        var scope = Scope(inputs: new() { ["age"] = Format("number") });
+        var scope = Scope(inputs: new() { ["age"] = Format("number") }, required: ["age"]);
 
         var fits = WorkflowConditionConverter.FromScriban("input.age + 1", scope, ConversionKind.Value, JsonValue.Create("number"));
         var misfit = WorkflowConditionConverter.FromScriban("input.age + 1", scope, ConversionKind.Value, JsonValue.Create("boolean"));
@@ -343,6 +356,36 @@ public class ConditionConverterTests
         Assert.Equal(["S03-026"], misfit.NoticeIds);
         Assert.Null(noFormat.Logic);
         Assert.Equal(["A04-008"], noFormat.NoticeIds);
+    }
+
+    [Fact]
+    public void AnOptionalRead_IsNullable_AsTheCheckerHoldsIt()
+    {
+        // A 30 let declared number reading an optional input yields number | null at 31: publish refuses it (S03-026), so
+        // the converter does too; over a required input, or a node that always has a value, it converts. (An operation's
+        // result is never nullable for typing, D25: input.age + 1 is number either way.)
+        var inputs = new Dictionary<string, JsonNode> { ["age"] = Format("number") };
+        var nodes = new Dictionary<string, ConversionRead> { ["score"] = new ConversionRead("node.score", JsonValue.Create("number")) };
+        var optional = Scope(inputs: inputs, nodes: nodes);
+        var required = Scope(inputs: inputs, nodes: nodes, required: ["age"]);
+        var valued = Scope(nodes: new() { ["score"] = new ConversionRead("node.score", JsonValue.Create("number")) { AlwaysValued = true } });
+        var number = JsonValue.Create("number");
+
+        var overOptional = WorkflowConditionConverter.FromScriban("input.age", optional, ConversionKind.Value, number);
+        var overRequired = WorkflowConditionConverter.FromScriban("input.age", required, ConversionKind.Value, number);
+        var sum = WorkflowConditionConverter.FromScriban("input.age + 1", optional, ConversionKind.Value, number);
+        var overNode = WorkflowConditionConverter.FromScriban("node.score.value", required, ConversionKind.Value, number);
+        var overValuedNode = WorkflowConditionConverter.FromScriban("node.score.value", valued, ConversionKind.Value, number);
+
+        Assert.Null(overOptional.Logic);
+        Assert.Equal(["S03-026"], overOptional.NoticeIds);
+        V31Contract.AssertSentence(new SourceRefusal(overOptional.NoticeIds[0], overOptional.Notices[0], ""));
+        Assert.Equal("Computed node 'input.age' yields number | null; it declares number.", overOptional.Notices[0]);
+        Assert.Equal("""{"var":"input.age.value"}""", CanonicalJson.Write(overRequired.Logic));
+        Assert.Equal("number", overRequired.ResultFormat);
+        Assert.Equal("number", sum.ResultFormat);
+        Assert.Equal(["S03-026"], overNode.NoticeIds);
+        Assert.Equal("number", overValuedNode.ResultFormat);
     }
 
     [Theory]
@@ -359,7 +402,11 @@ public class ConditionConverterTests
     {
         Assert.Equal(["input.urgent.value", "input.kind.value", "input.age.value"], Convert("row.and3").Reads);
         // An object's fields are written in canonical order, so its reads are too.
-        Assert.Equal(["input.age.value", "node.triage.value.priority"], Convert("row.let-object").Reads);
+        var scope = Scope(
+            inputs: new() { ["age"] = Format("number"), ["kind"] = Format("""{"type":"string","enum":["a","b"]}""") },
+            required: ["age", "kind"]);
+        var declared = JsonNode.Parse("""{"type":"object","additionalProperties":false,"required":["priority","age"],"properties":{"priority":{"type":"string","enum":["a","b"]},"age":{"type":"number"}}}""");
+        Assert.Equal(["input.age.value", "input.kind.value"], WorkflowConditionConverter.FromScriban("{ priority: input.kind, age: input.age }", scope, ConversionKind.Value, declared).Reads);
         Assert.Equal(["input.note_type.value", "input.include_counselling.value"], Convert("example-macros.brief_plan.md.if").Reads);
     }
 
@@ -377,13 +424,20 @@ public class ConditionConverterTests
     }
 
     [Fact]
-    public void ABlankConversion_IsSaidWithA10_008() =>
-        V31Contract.AssertSentence(new SourceRefusal("A10-008", MigrationSentences.BecameBlank("nodes/gate.md", "if", "input.reason.content"), ""));
+    public void ABlankConversion_IsSaidWithA10_008()
+    {
+        var blank = Convert("row.not-text.input").Blanks.Single();
+        var sentence = MigrationSentences.BecameBlank("nodes/gate.md", "if", blank);
+
+        Assert.Equal("nodes/gate.md, if: '!input.reason' became blank(input.reason.content); it now also holds for empty and white-space-only text.", sentence);
+        V31Contract.AssertSentence(new SourceRefusal("A10-008", sentence, ""));
+    }
 
     /// <summary>
     /// Review Focus 1, and the edges of the table: each expression with the logic it converts to, or <c>null</c> with the
     /// ids of its notices, in order. The scope: an optional boolean <c>flag</c>, an enum <c>kind</c> (<c>new</c>,
-    /// <c>review</c>), a text <c>reason</c>, a number <c>age</c>, a list of text <c>problems</c>, a string <c>notes</c>,
+    /// <c>review</c>), a text <c>reason</c>, a number <c>age</c>, a list of text <c>problems</c>, a string <c>notes</c> (all
+    /// but <c>flag</c> required),
     /// a node <c>summary</c> of plain text, a snippet folder's item and a <c>while</c>'s pass.
     /// </summary>
     [Theory]
@@ -403,11 +457,16 @@ public class ConditionConverterTests
     [InlineData("input.notes == '{% x'", """{"===":[{"var":"input.notes.value"},"{% x"]}""", "")]
     [InlineData("input.notes == \"{{\" || {{ x }}", null, "S10-003")]
     [InlineData("input.kind == null", null, "S10-003")]
-    [InlineData("item.foo == \"x\"", null, "S03-014")]
+    [InlineData("item.foo == \"x\"", null, "S10-003")]
+    [InlineData("item.value.kind == \"x\"", null, "S03-014")]
     [InlineData("item.id == \"plan\" && item.content == \"\"", null, "S03-002")]
-    [InlineData("pass.foo == 1", null, "S03-014")]
-    [InlineData("node.summary.foo == \"x\"", null, "S03-014")]
-    [InlineData("node.summary.state == \"completed\"", null, "S03-014")]
+    [InlineData("pass.foo == 1", null, "S10-003")]
+    [InlineData("pass.previous.number == 1", null, "S10-003")]
+    [InlineData("pass.node.summary.content == \"x\"", null, "S10-003")]
+    [InlineData("node.summary.foo == \"x\"", null, "S10-003")]
+    [InlineData("node.summary.state == \"completed\"", null, "S10-003")]
+    [InlineData("(node.summary.items | array.size) > 0", null, "S10-003")]
+    [InlineData("node.summary.value.foo == \"x\"", null, "S03-014")]
     [InlineData("input.kind.foo == \"x\"", null, "S03-014")]
     [InlineData("snippet.x.content == \"x\"", null, "S10-003")]
     [InlineData("string.append \"a\" (input.reason | string.size)", null, "S10-003 S10-003")]
@@ -439,6 +498,10 @@ public class ConditionConverterTests
 
         Assert.Equal(logic, result.Logic is null ? null : CanonicalJson.Write(result.Logic));
         Assert.Equal(ids, string.Join(' ', result.NoticeIds));
+        for (var i = 0; i < result.Notices.Count; i++)
+        {
+            V31Contract.AssertSentence(new SourceRefusal(result.NoticeIds[i], result.Notices[i], ""));
+        }
     }
 
     [Fact]
@@ -489,7 +552,10 @@ public class ConditionConverterTests
             null,
             true,
             true,
-            MigrationFixture.Formats());
+            MigrationFixture.Formats())
+        {
+            RequiredInputs = new HashSet<string>(["kind", "reason", "age", "problems", "notes"], StringComparer.Ordinal),
+        };
 
     private static void AssertMembersInCanonicalOrder(JsonNode? node)
     {
@@ -519,12 +585,16 @@ public class ConditionConverterTests
 
     private static ConversionScope Scope(
         Dictionary<string, JsonNode>? inputs = null,
-        Dictionary<string, ConversionRead>? nodes = null) =>
+        Dictionary<string, ConversionRead>? nodes = null,
+        string[]? required = null) =>
         new(
             inputs ?? new Dictionary<string, JsonNode>(StringComparer.Ordinal),
             nodes ?? new Dictionary<string, ConversionRead>(StringComparer.Ordinal),
             null,
             false,
             false,
-            MigrationFixture.Formats());
+            MigrationFixture.Formats())
+        {
+            RequiredInputs = new HashSet<string>(required ?? [], StringComparer.Ordinal),
+        };
 }

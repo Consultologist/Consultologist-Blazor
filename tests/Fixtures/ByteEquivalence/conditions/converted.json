@@ -15,6 +15,7 @@
         "input.audience.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -23,6 +24,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition 'item.value.title != \"Plan\"' compares item.value.title (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
       ]
@@ -42,6 +44,7 @@
         "input.visit.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -59,6 +62,7 @@
         "input.visit.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -76,6 +80,7 @@
         "input.visit.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -93,6 +98,7 @@
         "item.value.kind"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -110,6 +116,7 @@
         "input.redraft.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -127,6 +134,7 @@
         "node.judge.value.verdict"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -144,6 +152,7 @@
         "input.include_plan.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -156,6 +165,7 @@
         "input.tone.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -164,6 +174,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand.",
         "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.size, which has no JSON Logic form at 31: rewrite it by hand."
@@ -184,6 +195,7 @@
         "node.scope.value.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -201,6 +213,7 @@
         "node.scope.value.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -218,6 +231,7 @@
         "node.scope.value.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -235,6 +249,7 @@
         "input.encounter_kind.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -252,6 +267,7 @@
         "input.encounter_kind.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -264,6 +280,7 @@
         "item.value.kind"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -281,6 +298,7 @@
         "item.value.kind"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -311,6 +329,7 @@
         "input.include_billing.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -328,6 +347,7 @@
         "item.id"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -340,6 +360,7 @@
         "item.value.kind"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -357,6 +378,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -374,6 +396,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -391,6 +414,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -433,6 +457,7 @@
         "input.include_counselling.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -450,6 +475,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -467,6 +493,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -484,6 +511,7 @@
         "item.id"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -496,6 +524,7 @@
         "item.value.kind"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -513,6 +542,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -530,6 +560,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -547,6 +578,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -589,6 +621,7 @@
         "input.include_counselling.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -606,6 +639,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -623,6 +657,7 @@
         "input.note_type.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -639,6 +674,7 @@
         "node.plan.value.sections"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -656,6 +692,7 @@
         "node.judge.value.verdict"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -673,6 +710,7 @@
         "node.read_letter.value.answers_question"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -690,6 +728,7 @@
         "node.follow_up.value.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -707,6 +746,7 @@
         "input.patient.value.age"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -724,6 +764,7 @@
         "input.length_of_stay.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -745,6 +786,7 @@
         "input.prior_notes.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -762,6 +804,7 @@
         "node.tone.value.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -779,6 +822,7 @@
         "node.tone.value.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -796,6 +840,7 @@
         "node.triage.value.priority"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -804,8 +849,9 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
-        "The condition 'node.summary.content == \"Reviewed in clinic.\"' compares node.summary.content (plaintext) with a literal; text is tested by whether it is blank, its size, or in."
+        "The condition 'node.summary.content == \"Reviewed in clinic.\"' compares node.summary.content (plaintext | null) with a literal; text is tested by whether it is blank, its size, or in."
       ]
     },
     {
@@ -823,6 +869,7 @@
         "item.id"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -840,6 +887,7 @@
         "item.value.kind"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -857,6 +905,7 @@
         "pass.number"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -874,6 +923,7 @@
         "run.date"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -882,8 +932,9 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
-        "The condition 'input.reason == \"Breathlessness\"' compares input.reason.content (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+        "The condition 'input.reason == \"Breathlessness\"' compares input.reason.content (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
       ]
     },
     {
@@ -892,6 +943,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition 'input.patient.name == \"Margaret Okafor\"' compares input.patient.value.name (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
       ]
@@ -911,6 +963,7 @@
         "input.kind.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -928,6 +981,7 @@
         "input.kind.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -945,6 +999,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -962,6 +1017,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -979,6 +1035,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -996,6 +1053,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1030,6 +1088,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1064,6 +1123,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1080,6 +1140,7 @@
         "input.urgent.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1098,6 +1159,12 @@
       "blankConversions": [
         "node.summary.content"
       ],
+      "blanks": [
+        {
+          "written": "node.summary.content",
+          "printed": "node.summary.content"
+        }
+      ],
       "notices": []
     },
     {
@@ -1115,6 +1182,12 @@
       ],
       "blankConversions": [
         "input.reason.content"
+      ],
+      "blanks": [
+        {
+          "written": "input.reason",
+          "printed": "input.reason.content"
+        }
       ],
       "notices": []
     },
@@ -1138,6 +1211,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1160,6 +1234,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1182,6 +1257,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1204,6 +1280,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1226,6 +1303,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1248,6 +1326,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1269,6 +1348,7 @@
         "input.problems.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1290,6 +1370,7 @@
         "input.problems.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1298,6 +1379,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '(string.downcase input.reason) == \"breathlessness\"' compares lower(input.reason.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
       ]
@@ -1308,6 +1390,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '(string.strip input.reason) == \"\"' compares trim(input.reason.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
       ]
@@ -1318,6 +1401,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '(node.summary.content | string.strip) == \"\"' compares trim(node.summary.content) (plaintext) with a literal; text is tested by whether it is blank, its size, or in."
       ]
@@ -1337,6 +1421,7 @@
         "input.reason.content"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1354,6 +1439,7 @@
         "input.reason.content"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1371,6 +1457,7 @@
         "input.reason.content"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1388,6 +1475,7 @@
         "input.seen_on.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1405,6 +1493,7 @@
         "input.seen_on.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1422,6 +1511,7 @@
         "input.age.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1439,6 +1529,7 @@
         "input.urgent.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1456,6 +1547,7 @@
         "input.urgent.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
@@ -1473,27 +1565,19 @@
         "input.kind.value"
       ],
       "blankConversions": [],
+      "blanks": [],
       "notices": []
     },
     {
       "id": "row.let-object",
-      "logic": {
-        "object": {
-          "age": {
-            "var": "input.age.value"
-          },
-          "priority": {
-            "var": "node.triage.value.priority"
-          }
-        }
-      },
-      "resultFormat": "triage_summary",
-      "reads": [
-        "input.age.value",
-        "node.triage.value.priority"
-      ],
+      "logic": null,
+      "resultFormat": null,
+      "reads": [],
       "blankConversions": [],
-      "notices": []
+      "blanks": [],
+      "notices": [
+        "Computed node '{ priority: node.triage.value.priority, age: input.age }' builds triage_summary with age as number | null; the format declares it number."
+      ]
     },
     {
       "id": "row.let-array",
@@ -1501,8 +1585,9 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
-        "The condition '{ reasons: [input.reason, node.summary.content] }' mixes markdown_block and plaintext in a list; they have one type."
+        "Computed node '{ reasons: [input.reason, node.summary.content] }' mixes markdown_block | null and plaintext | null in a list; they have one type."
       ]
     },
     {
@@ -1511,6 +1596,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '(string.upcase input.reason) == \"BREATHLESSNESS\"' uses string.upcase, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1521,6 +1607,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '(math.round input.age) == 65' uses math.round, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1531,6 +1618,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '(input.problems | array.first) == \"\"' uses array.first, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1541,8 +1629,9 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
-        "The condition 'input.reason < \"m\"' orders input.reason.content (markdown_block); <, >, ≤ and ≥ compare numbers or dates."
+        "The condition 'input.reason < \"m\"' orders input.reason.content (markdown_block | null); <, >, ≤ and ≥ compare numbers or dates."
       ]
     },
     {
@@ -1551,6 +1640,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition 'profile.name == \"Dr A. Sample\"' reads profile.name; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."
       ]
@@ -1561,6 +1651,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition 'x = 1' uses an assignment, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1571,6 +1662,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition '{{ input.kind }}' uses a template, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1581,6 +1673,7 @@
       "resultFormat": null,
       "reads": [],
       "blankConversions": [],
+      "blanks": [],
       "notices": [
         "The condition 'input.urgent; input.kind == \"new\"' uses more than one statement, which has no JSON Logic form at 31: rewrite it by hand."
       ]

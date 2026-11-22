@@ -10,10 +10,11 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// #1507 (specVersion 31, area 10): what the migration tests share. The 30 expressions of
 /// <c>conditions/expressions.json</c> (area 01's, read, never rewritten), and <see cref="ScopeOf"/>, the
 /// <see cref="ConversionScope"/> an entry's <c>reads</c> describe at 31: each input's 30 type as part 02 § 11 maps
-/// it (<c>text</c> → <c>markdown_block</c>, <c>enum</c> → a <c>string</c> with a plain <c>enum</c>, <c>date</c> →
+/// it, required when the read says <c>required: true</c> and nullable otherwise (<c>text</c> → <c>markdown_block</c>, <c>enum</c> → a <c>string</c> with a plain <c>enum</c>, <c>date</c> →
 /// <c>date</c>, <c>fields</c> → <c>properties</c> with every field in <c>required</c> and an optional one nullable),
 /// each 30 node <c>x</c> at the path <c>node.x</c> (<c>text</c> → <c>plaintext</c>, as <c>prose</c> becomes;
-/// <c>classification</c> kept; an object schema made strict the same way), the loop's item, and
+/// <c>classification</c> kept; an object schema made strict the same way), always valued when the read is
+/// <c>settled</c> and nullable otherwise, the loop's item, and
 /// <c>pass.number</c> readable when it is read.
 /// </summary>
 internal static class MigrationFixture
@@ -66,6 +67,7 @@ internal static class MigrationFixture
     public static ConversionScope ScopeOf(JsonObject reads)
     {
         var inputs = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
+        var required = new HashSet<string>(StringComparer.Ordinal);
         var nodes = new Dictionary<string, ConversionRead>(StringComparer.Ordinal);
         JsonNode? item = null;
         var folderItem = false;
@@ -76,10 +78,17 @@ internal static class MigrationFixture
             if (read.StartsWith("input.", StringComparison.Ordinal))
             {
                 inputs[read["input.".Length..]] = Format(type!, nullable: false);
+                if (type is JsonObject { } declared && declared["required"]?.GetValue<bool>() == true)
+                {
+                    required.Add(read["input.".Length..]);
+                }
             }
             else if (read.StartsWith("node.", StringComparison.Ordinal))
             {
-                nodes[read["node.".Length..]] = new ConversionRead(read, NodeFormat(type!));
+                nodes[read["node.".Length..]] = new ConversionRead(read, NodeFormat(type!))
+                {
+                    AlwaysValued = type is JsonObject { } settled && settled["settled"]?.GetValue<bool>() == true,
+                };
             }
             else if (read == "item")
             {
@@ -98,7 +107,7 @@ internal static class MigrationFixture
             }
         }
 
-        return new ConversionScope(inputs, nodes, item, folderItem, inWhile, Formats());
+        return new ConversionScope(inputs, nodes, item, folderItem, inWhile, Formats()) { RequiredInputs = required };
     }
 
     /// <summary>A 30 node's format at 31: <c>text</c> is <c>plaintext</c>, a classifier keeps <c>classification</c>, an object its schema made strict.</summary>
