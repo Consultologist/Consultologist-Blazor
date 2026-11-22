@@ -395,15 +395,15 @@ public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? F
 - Produces: `public sealed record OperatorAlert(string Kind, string? JobId, string? Key, int? Number)`; `OperatorAlertKinds`: `job-failed`, `capacity-wait`, `job-slow`, `delivery-failed`, and for areas 10 and 11 `publish-failed`, `exporter-warning`. `IOperatorAlerts.RaiseAsync(OperatorAlert alert, CancellationToken ct)`; the activity `alert-operator-v31` calls it.
 - Produces: `[Function("OperatorWeeklySummary")]` on `%OperatorWeeklySummarySchedule%`, and `OperatorSummary.Compose(IReadOnlyList<(string Status, TimeSpan? Duration)> jobs)` → subject and body: jobs, failures, p50 and p90 duration (nearest-rank), and D14's two lines.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `CapacityWaitsPastFiveMinutes_RaiseOneNotice` (two nodes waiting 3 minutes each: one notice, at the second); `AJobAtEightyPercent_RaisesOneNotice`; `AQuickJob_RaisesNone_AndLeavesNoTimer`.
   - `AnAlert_IsLogged_AndMailedWhenAnAddressIsSet`; `…_IsOnlyLogged_WhenNoneIs`; `AnAlertsBody_HoldsIdsAndCountsOnly`; `AMailFault_NeverFailsTheCaller`.
   - Orchestration: `AFailedJob_AlertsTheOperator` (also a timed-out one and an engine fault), `AFailedDelivery_AlertsTheOperator`, `ACompletedJob_AlertsNoOne`.
   - `TheSummary_CountsAndRanks` (10 jobs, 2 failed, durations 1 to 10 minutes: p50 5 minutes, p90 9 minutes); `WithNoSchedule_TheTimerIsOff` (the pattern `TextRetentionSweep` uses).
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.** The summary reads the week's jobs from the source `Workflow/OperatorUsage.cs` reads. Document `Operators__AlertAddress` and `OperatorWeeklySummarySchedule` in `docs/CONFIGURATION.md`.
-- [ ] **Step 4: Run** the solution's tests. Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1505): the operator is alerted of a failed job, a long 429 wait, a slow job and a failed delivery, and sent a weekly summary`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.** The summary reads the week's jobs from the source `Workflow/OperatorUsage.cs` reads. Document `Operators__AlertAddress` and `OperatorWeeklySummarySchedule` in `docs/CONFIGURATION.md`.
+- [x] **Step 4: Run** the solution's tests. Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1505): the operator is alerted of a failed job, a long 429 wait, a slow job and a failed delivery, and sent a weekly summary`; push.
 
 ### Task 13: The profile at job start (D15, D16, R8)
 
