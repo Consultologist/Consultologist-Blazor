@@ -133,15 +133,25 @@ public sealed partial class PlanRunner
 
         /// <summary>
         /// #1505 (part 08 § 10): a deliverable's row is final: its detail is its render's (<see cref="Merge"/>) with
-        /// <c>check</c> (the gate's key, or <c>null</c>) and <c>composedHash</c>, and its outcome is kept for <see cref="RunResult.Deliverables"/> (a deliverable cancelled by the
-        /// job's time limit has none).
+        /// <c>check</c> (the gate's row key, or <c>null</c>) and <c>composedHash</c>, and its outcome is kept for <see cref="RunResult.Deliverables"/> (a deliverable cancelled by the
+        /// job's time limit has none). #1506 (area 09; part 08 § 10; R1): with its template's hash, its format, its
+        /// template's sites (package text, so a deliverable never composed has them too) and the delivery rows of a
+        /// released one (<c>[]</c> otherwise: a blocked deliverable is never delivered).
         /// </summary>
         private void DeliverableSettled(RunInstance instance, RowState state, string? reason, JsonObject detail)
         {
             var entry = instance.Entry;
             Merge(instance.CallDetail, detail);
-            detail["check"] = entry.Check;
+            var gate = entry.Check == null ? null : instance.Frame.Find(entry.Check)?.Key ?? entry.Check;
+            var format = plan.Formats.TextFormat(entry.Format) ?? BundleKey(entry.Format) ?? "";
+            var kinds = entry.Json["delivery"] is JsonArray listed ? listed.Select(k => SourceLayout.Text(k)).OfType<string>().ToList() : [];
+            detail["templateHash"] = SourceLayout.Text(entry.Json["bodyHash"]);
+            detail["format"] = format;
+            detail["check"] = gate;
             detail["composedHash"] = instance.ComposedHash;
+            detail["delivery"] = new JsonArray([.. (state == RowState.Released ? kinds : []).Select(k => (JsonNode)DeliveryPlan.Key(instance.Key, k))]);
+            if (!detail.ContainsKey("sites"))
+                detail["sites"] = SourceLayout.Text(entry.Json["body"]) is { } body ? BodyComposer.SiteRows(BodyComposer.Sites(TemplateSyntax.Parse(body))) : new JsonArray();
             DeliverableState? outcome = state switch
             {
                 RowState.Released => DeliverableState.Released,
@@ -158,14 +168,14 @@ public sealed partial class PlanRunner
             outcomes.Add((entry.Order, new DeliverableOutcome(
                 instance.Key,
                 SourceLayout.Text(entry.Json["label"]) ?? entry.Id,
-                plan.Formats.TextFormat(entry.Format) ?? BundleKey(entry.Format) ?? "",
+                format,
                 rest.Length > entry.Id.Length ? rest[..^(entry.Id.Length + 1)] : "",
                 decided,
                 reason,
-                entry.Check == null ? null : instance.Frame.Find(entry.Check)?.Key ?? entry.Check,
+                gate,
                 instance.ComposedText,
                 instance.ComposedHash,
-                entry.Json["delivery"] is JsonArray kinds ? kinds.Select(k => SourceLayout.Text(k)).OfType<string>().ToList() : [],
+                kinds,
                 SourceLayout.Text(entry.Json["bundle"]))));
         }
 

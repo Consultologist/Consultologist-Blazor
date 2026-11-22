@@ -11,7 +11,7 @@ namespace Consultologist.PackageFormat.V31.Run;
 /// <c>null</c> otherwise), then the detail's other members (a loop's, a while's, a pass's and a call's own) as they are.
 /// Never a value from an input or a model: only what the detail and the row hold. A check's row is <see cref="Check"/>
 /// (part 08 § 6), with a computed value's two hashes (<see cref="ComputedInputHash"/>, <see cref="ComputedNeutralHash"/>,
-/// D9) used by computed node rows too; a deliverable's (Task 6) is added beside them.
+/// D9) used by computed node rows too; a deliverable's is <see cref="Deliverable"/> (part 08 § 10).
 /// </summary>
 internal static class RecordRows
 {
@@ -181,6 +181,64 @@ internal static class RecordRows
         }
 
         return text;
+    }
+
+    /// <summary>Part 08 § 13's <c>workflowOutputHashVersions</c> of a 31 deliverable row's <c>composedHash</c>.</summary>
+    public const int DeliverableHashVersion = 4;
+
+    /// <summary>
+    /// The members of a deliverable row after <c>key</c> (part 08 § 10), in order, each with its default when the detail does
+    /// not give it; <c>state</c>, <c>stateReason</c> and <c>hashVersion</c> are the row's own.
+    /// </summary>
+    private static readonly (string Name, Func<JsonNode?> Default)[] DeliverableMembers =
+    [
+        ("label", () => null),
+        ("templateHash", () => null),
+        ("format", () => null),
+        ("state", () => null),
+        ("stateReason", () => null),
+        ("composedHash", () => null),
+        ("hashVersion", () => DeliverableHashVersion),
+        ("delivery", () => new JsonArray()),
+        ("check", () => null),
+        ("sites", () => new JsonArray()),
+        ("substitutions", () => new JsonArray()),
+        ("renders", () => new JsonArray()),
+        ("runNeutralHash", () => null),
+        ("runSpots", () => new JsonArray()),
+        ("units", () => new JsonArray()),
+        ("profileReads", () => new JsonArray()),
+        ("modelDerived", () => false),
+        ("runDependent", () => false),
+        ("profileCarrying", () => false),
+    ];
+
+    /// <summary>
+    /// #1506 (area 09; part 08 §§ 9, 10; R1, D6): a deliverable row, its members in part 08 § 10's order and no others:
+    /// <c>key</c>, then from the detail (or the default) <c>label</c>, <c>templateHash</c> (its template's <c>bodyHash</c>),
+    /// <c>format</c>, <c>state</c> the row's state word (<c>released</c>, <c>held</c>, <c>failed</c>, <c>skipped</c>,
+    /// <c>blocked</c>), <c>stateReason</c> the row's reason, <c>composedHash</c>, <c>hashVersion</c> 4, <c>delivery</c> (the
+    /// delivery row keys of a released deliverable, else <c>[]</c>), <c>check</c> (its gate's row key), <c>sites</c>,
+    /// <c>substitutions</c> (no value), <c>renders</c>, <c>runNeutralHash</c>, <c>runSpots</c>, <c>units</c>,
+    /// <c>profileReads</c> and the three flags. Its composed text is the retained text's, never the row's.
+    /// </summary>
+    public static JsonObject Deliverable(RunRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var detail = row.Detail;
+        var json = new JsonObject { ["key"] = row.Key };
+        foreach (var (name, fallback) in DeliverableMembers)
+        {
+            json[name] = name switch
+            {
+                "state" => PlanRunner.StateWord(row.State),
+                "stateReason" => row.Reason,
+                "hashVersion" => DeliverableHashVersion,
+                _ => detail.TryGetPropertyValue(name, out var given) ? given?.DeepClone() : fallback(),
+            };
+        }
+
+        return json;
     }
 
     /// <summary>A <c>check_result</c>'s count as a whole number, or <c>null</c> when it is not one.</summary>

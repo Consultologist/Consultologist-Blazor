@@ -624,6 +624,13 @@ public sealed partial class PlanRunner
             }
 
             var text = SettledText(read, itemName, RecordRows.SpotTexts(detail["runSpots"], spotsIn));
+            if (instance.Entry.Kind == PlanKind.Deliverable && instance.ComposedText is { } composed)
+            {
+                // #1506 (R1): a deliverable that composed keeps its composed text, released, held, blocked or failed empty
+                text ??= [];
+                text["content"] = composed;
+            }
+
             if (IsCheck(instance.Key))
                 text = WithLists(text, CheckDetail(instance, read, detail));
             var row = new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail, text);

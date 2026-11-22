@@ -239,7 +239,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: `RenderOutcome` gains `JsonObject? Produced` (substitution values by index, renderer inputs and outputs by sub-row id and pass), which Task 10's activity writes to the text blob and strips before it answers; in-process hosts keep it.
 - Produces: `public static class RecordReplay { public static bool Verify(string composedText, JsonArray substitutions, out string? fault); }` (D6).
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `EachOutputTag_IsASite`: a template of three tags, one inside a `for`, gives three sites with `at` and `expr`, the looped one naming its `loop`.
   - `ASubstitution_SaysWhereItsTextSits`: for `Dear {{ input.name.value }} 🙂 {{ node.plan.content }}`, the slices of the composed text at each `start`/`size` (runes) are the values, each `hash` is the slice's hash, and `RecordReplay.Verify` is true.
   - `ALoopOverNothing_HasNoSubstitutions`, `ANullRead_WritesNothing` (`size` 0, the hash of the empty text), `TwoTagsSideBySide_DoNotOverlap`, `AnEscapedRead_IsRecordedAfterEscaping`, `ACombiningMark_CountsAsItsRunes` (Review Focus 5).
@@ -248,11 +248,11 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `AProfileRead_IsASubstitution`: `reads` `profile.signature`, by hash; `profileReads` lists it.
   - `ADeliverableRow_HasPart08sMembers`, `ABlockedDeliverable_KeepsItsHashAndIsNeverDelivered` (R1: `state` `blocked`, `composedHash` set, `delivery` `[]`, `Text["content"]` the composed text), `AReleasedDeliverable_NamesItsDeliveryRows` (`delivery:deliverable.note/email`), `ASkippedDeliverable_HasNoComposedHash`.
   - `Verify_RefusesAMovedSubstitution`: shifting one `start` by one makes it false with a fault naming the site.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.** Positions are counted as the composer writes, as run spots' are; an object-format deliverable has one substitution covering its whole text.
-- [ ] **Step 4: Regenerate and read** the goldens.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1506): a deliverable row records its sites and substitutions, replayable by position`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.** Positions are counted as the composer writes, as run spots' are; an object-format deliverable has one substitution covering its whole text.
+- [x] **Step 4: Regenerate and read** the goldens.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1506): a deliverable row records its sites and substitutions, replayable by position`; push.
 
 ### Task 7: The canonical record document
 

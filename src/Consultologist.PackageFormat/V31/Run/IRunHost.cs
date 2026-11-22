@@ -68,7 +68,8 @@ public sealed record RenderCall(string Key, string EntryKey, string? Function, J
 /// null when no run spot was filled, and <paramref name="Detail"/> the row's detail in part 08's names
 /// (<see cref="RenderTurn"/>). #1506 (area 09; D2, D10): <paramref name="Produced"/> is the text the render produced
 /// beside its text, which never rides in <paramref name="Detail"/>: <c>{ neutral, renders: { "&lt;sub-row id&gt;[#&lt;pass&gt;]":
-/// { input, output } } }</c>; null when nothing was composed.
+/// { input, output } } }</c>, and for a deliverable (part 08 § 10, D6) <c>substitutions</c>, the text each of the detail's
+/// <c>substitutions</c> wrote, at the same index; null when nothing was composed.
 /// </summary>
 public sealed record RenderOutcome(string? Text, bool TooManySteps, string? Failure, string? NeutralText = null, JsonObject? Detail = null, JsonObject? Produced = null)
 {

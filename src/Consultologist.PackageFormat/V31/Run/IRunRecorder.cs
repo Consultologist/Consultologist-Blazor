@@ -51,12 +51,13 @@ public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState
 
     /// <summary>
     /// #1506 (area 09; part 08 §§ 4, 6, 7, 10): the row in part 08's shape for its <see cref="Section"/>, every member written
-    /// (<see cref="RecordRows"/>): a check's is part 08 § 6's (<see cref="RecordRows.Check"/>); a deliverable's is a node's for
-    /// now (area 09's Task 6).
+    /// (<see cref="RecordRows"/>): a check's is part 08 § 6's (<see cref="RecordRows.Check"/>); a deliverable's part 08 § 10's
+    /// (<see cref="RecordRows.Deliverable"/>).
     /// </summary>
     public JsonObject ToJson() => Section switch
     {
         "check" => RecordRows.Check(this),
+        "deliverable" => RecordRows.Deliverable(this),
         _ => RecordRows.Node(this),
     };
 }

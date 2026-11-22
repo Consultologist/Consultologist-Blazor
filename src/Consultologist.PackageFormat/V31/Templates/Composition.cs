@@ -45,6 +45,50 @@ public sealed record Composition(
     /// </summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public IReadOnlyList<RenderedText> RenderTexts { get; init; } = [];
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 10; part 06 § 9): each output tag of the composed body, in source order (package text).
+    /// A placed unit's tags are not sites of their own: they are substituted at the site of the tag that places them.
+    /// </summary>
+    public IReadOnlyList<ComposedSite> Sites { get; init; } = [];
+
+    /// <summary>
+    /// #1506 (area 09; part 08 §§ 9, 10; R10, D5, D6): each evaluation of a site that wrote, in the order of the text (so in
+    /// order and never overlapping): where its text sits in <see cref="Text"/>, in runes. Each holds its
+    /// <see cref="Substitution.Value"/>, produced text, so the list is not serialised; the row takes all but the value.
+    /// </summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public IReadOnlyList<Substitution> Substitutions { get; init; } = [];
+}
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; part 08 § 10): one site of a deliverable's template: its 1-based number in source order,
+/// <paramref name="At"/> the tag's <c>&lt;line&gt;:&lt;column&gt;</c> (1-based) in the body, <paramref name="Expr"/> the
+/// tag's expression as written, and <paramref name="Loop"/> the nearest template <c>for</c> around it
+/// (<c>&lt;variable&gt; in &lt;source&gt;</c> as written), <c>null</c> in none. Package text.
+/// </summary>
+public sealed record ComposedSite(int Site, string At, string Expr, string? Loop);
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; part 08 §§ 9, 10; part 06 § 9; R10, D5, D6): one evaluation of a site.
+/// <paramref name="Site"/> is the site's number (for a tag inside a placed unit, the placing tag's); <paramref name="Pass"/>
+/// one 1-based number per template <c>for</c> around it, outermost first, <c>null</c> in none; <paramref name="Reads"/> the
+/// path it reads (its head rooted through <c>names</c>; a run spot's what the spot reads); <paramref name="Hash"/> the hash
+/// of the text it wrote; <paramref name="Start"/> and <paramref name="Size"/> where that text sits in the composed text, in
+/// runes (<c>0</c> for a value that wrote nothing); <paramref name="Renders"/> the last renderer step of its chain as
+/// <c>render:&lt;n&gt;</c> (the row names it by the row's key), <c>null</c> for none; and <paramref name="Value"/> the text
+/// written, after escaping: produced text, which never enters a row.
+/// </summary>
+public sealed record Substitution(int Site, IReadOnlyList<int>? Pass, string Reads, string Hash, int Start, int Size, string? Renders, string Value)
+{
+    /// <inheritdoc/>
+    public bool Equals(Substitution? other) =>
+        other is not null && Site == other.Site && Reads == other.Reads && Hash == other.Hash && Start == other.Start && Size == other.Size
+        && Renders == other.Renders && Value == other.Value
+        && (Pass == null ? other.Pass == null : other.Pass != null && Pass.SequenceEqual(other.Pass));
+
+    /// <inheritdoc/>
+    public override int GetHashCode() => HashCode.Combine(Site, Reads, Hash, Start, Size, Renders, Value);
 }
 
 /// <summary>#1506 (specVersion 31, area 09; part 08 § 4.2; D2): one renderer step's input (its text, or its canonical JSON for data) and its output, as produced text.</summary>

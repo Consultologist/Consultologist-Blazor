@@ -18,7 +18,8 @@ public sealed record TemplatePipe(string Name, IReadOnlyList<string> Arguments, 
 /// Parentheses around the head, or around a piped head (<c>(x | f) | g</c>), are taken off, so <c>(node.e.value)</c> is
 /// the path <c>node.e.value</c>. <paramref name="Head"/> is the head as written without them; <paramref name="HeadType"/>
 /// the built-in type of a head that is a literal or a test (<c>"string"</c>, <c>"integer"</c>, <c>"number"</c>,
-/// <c>"boolean"</c>, <c>"null"</c>), else <c>null</c>.
+/// <c>"boolean"</c>, <c>"null"</c>), else <c>null</c>. #1506 (area 09; part 08 § 10): <paramref name="Loop"/> is the nearest
+/// <c>for</c> around it as written (<c>&lt;variable&gt; in &lt;source&gt;</c>), <c>null</c> in none.
 /// </summary>
 public sealed record TemplateOutput(
     TemplateTag Tag,
@@ -28,7 +29,8 @@ public sealed record TemplateOutput(
     int Depth,
     IReadOnlyList<string> Enclosing,
     string Head,
-    string? HeadType);
+    string? HeadType,
+    string? Loop = null);
 
 /// <summary>#1504 (specVersion 31, area 07; part 05 § 2.1): a <c>for</c>: its variable, what it iterates as written, its tag, and the number of <c>if</c> and <c>for</c> around it.</summary>
 public sealed record TemplateFor(string Variable, string Source, TemplateTag Tag, int Depth);
@@ -172,6 +174,7 @@ public sealed record TemplateSyntax(
         private readonly List<TemplateFor> _fors = [];
         private readonly List<TemplateIf> _ifs = [];
         private readonly List<string> _enclosing = [];
+        private readonly List<string> _loops = [];
         private int _deepest;
         private int _deepestLine;
 
@@ -218,7 +221,8 @@ public sealed record TemplateSyntax(
                 var paths = new List<string>();
                 CollectPaths(expression, paths);
                 _outputs.Add(new TemplateOutput(
-                    TagOf(node), Chain(head), steps.Select(Pipe).ToList(), paths, _enclosing.Count, [.. _enclosing], Slice(head), TypeOf(head)));
+                    TagOf(node), Chain(head), steps.Select(Pipe).ToList(), paths, _enclosing.Count, [.. _enclosing], Slice(head), TypeOf(head),
+                    _loops.Count == 0 ? null : _loops[^1]));
             }
 
             Walk(node.Expression);
@@ -252,6 +256,7 @@ public sealed record TemplateSyntax(
                 }
             }
 
+            _loops.Add($"{variable} in {Slice(node.Iterator)}");
             Nest("for", node, () =>
             {
                 Walk(node.Body);
@@ -262,6 +267,7 @@ public sealed record TemplateSyntax(
                     Walk(otherwise.Body);
                 }
             });
+            _loops.RemoveAt(_loops.Count - 1);
         }
 
         public override void Visit(ScriptIfStatement node)

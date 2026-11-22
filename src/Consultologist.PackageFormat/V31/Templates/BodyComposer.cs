@@ -82,13 +82,15 @@ public static partial class BodyComposer
                     : Failed(notPublished);
             }
 
-            var text = composing.Render(top, composing.Globals(), out var spots);
+            var text = composing.Render(top, composing.Globals(), -1, out var spots, out var substitutions);
             if (Encoding.UTF8.GetByteCount(text) > OutputLimit)
                 return Failed(RunSentences.OutputPassedLimit(composing.Subject));
             return new Composition(
                 text, NeutralText(text, spots), null, false, InRunes(text, spots), [.. composing.Renders], [.. composing.Offered], composing.PlacedUnits())
             {
                 RenderTexts = [.. composing.RenderTexts],
+                Sites = Sites(top.Syntax),
+                Substitutions = InRunes(text, substitutions),
             };
         }
         catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -290,10 +292,14 @@ public static partial class BodyComposer
         /// in it, at their places in the text it gives (<paramref name="spots"/>, in the order of the text).
         /// </summary>
         public string Render(TextPlan text, ScriptObject globals, out IReadOnlyList<FilledSpot> spots) =>
-            Render(text, globals, -1, out spots);
+            Render(text, globals, -1, out spots, out _);
 
-        /// <summary>Renders <paramref name="text"/>, the text of the unit at <paramref name="unit"/> (<c>-1</c> for none).</summary>
-        private string Render(TextPlan text, ScriptObject globals, int unit, out IReadOnlyList<FilledSpot> spots)
+        /// <summary>
+        /// Renders <paramref name="text"/>, the text of the unit at <paramref name="unit"/> (<c>-1</c> for none), giving the run
+        /// spots and (#1506, D6) the substitutions written in it, at their places in the text it gives, in its order.
+        /// </summary>
+        public string Render(
+            TextPlan text, ScriptObject globals, int unit, out IReadOnlyList<FilledSpot> spots, out IReadOnlyList<WrittenSubstitution> substitutions)
         {
             var output = new LimitedOutput(this);
             var context = new ComposeContext(this, text, builtins, output);
@@ -309,6 +315,7 @@ public static partial class BodyComposer
             }
 
             spots = context.Spots;
+            substitutions = context.Substitutions;
             return output.ToString();
         }
 
@@ -327,11 +334,14 @@ public static partial class BodyComposer
             units.Add(null);
             unitTexts.Add(null);
             unitSplices.Add((-1, -1));
-            var rendered = Render(placement.Text, Globals(), index, out var spots);
+            var rendered = Render(placement.Text, Globals(), index, out var spots, out var substitutions);
             units[index] = new ComposedUnit(placement.Site, CanonicalJson.HashText(rendered), Substituting == 0);
             unitTexts[index] = rendered;
-            return new PlacedText(rendered, spots, index);
+            return new PlacedText(rendered, spots, index, substitutions);
         }
+
+        /// <summary>The site of the unit at <paramref name="unit"/> (<c>snippet.…</c>, <c>part.…</c>), or <c>null</c>.</summary>
+        public string? UnitSite(int unit) => unit >= 0 && unit < units.Count ? units[unit]?.Site : null;
 
         /// <summary>Records that the unit at <paramref name="unit"/> was spliced at <paramref name="start"/> of the text being rendered.</summary>
         public void Spliced(int unit, int start)
@@ -410,6 +420,9 @@ public static partial class BodyComposer
         /// entry's <c>escapes</c>), by the statement's offset: a placement among them is its unit's text escaped whole.
         /// </summary>
         public HashSet<int> Escapes { get; } = [];
+
+        /// <summary>#1506 (area 09; D6): each output statement's site (<see cref="Composing.SiteOf"/>) by the statement's offset, once found.</summary>
+        public Dictionary<int, SiteTag?> Sites { get; } = [];
     }
 
     /// <summary>A unit placed at one tag: its <paramref name="Site"/>, its kind (<c>snippet</c>, <c>part</c>, <c>macro</c>), and its text planned at that place (a macro's instruction).</summary>
@@ -453,6 +466,15 @@ internal sealed class ComposeContext : TemplateContext
     /// <summary>The run spots written to <see cref="Written"/>, at their places in it, in the order written (part 05 § 4).</summary>
     public List<BodyComposer.FilledSpot> Spots { get; } = [];
 
+    /// <summary>
+    /// #1506 (area 09; part 08 § 10; D6): the substitutions written to <see cref="Written"/>, at their places in it, in the
+    /// order written: one per output tag evaluated, a placed unit's own at the site of the tag that placed it.
+    /// </summary>
+    public List<BodyComposer.WrittenSubstitution> Substitutions { get; } = [];
+
+    /// <summary>The site of the output tag being evaluated, which a unit it places takes for its substitutions; <c>null</c> outside one.</summary>
+    private int? writingSite;
+
     public string Subject => Composing.Subject;
 
     /// <summary>Records and gives the stop to throw: <paramref name="sentence"/>, or A06-008 for <c>null</c>.</summary>
@@ -476,6 +498,8 @@ internal sealed class ComposeContext : TemplateContext
         }
 
         var escaped = Text.Escapes.Contains(offset);
+        if (Composing.SiteOf(Text, statement) is { } site)
+            return Substituted(statement, aliasReturnedFunction, site, escaped);
         if (Text.Spots.TryGetValue(offset, out var spot))
         {
             Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction), escaped);
@@ -485,6 +509,50 @@ internal sealed class ComposeContext : TemplateContext
         if (!escaped)
             return base.Evaluate(scriptNode, aliasReturnedFunction);
         WriteValue(base.Evaluate(statement, aliasReturnedFunction), escape: true);
+        return null;
+    }
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 10; part 06 § 9; D5, D6): the output <paramref name="statement"/> of <paramref name="site"/>
+    /// written as any output is (a run spot by <see cref="BodyComposer.Composing.WriteSpot"/>, a value by D13, escaped when the
+    /// entry's <c>escapes</c> lists it) and recorded as a substitution where its text stands: its pass, what it read, the
+    /// last renderer step its chain ran. A placement records none of its own: its unit's substitutions are spliced with it, at
+    /// this site.
+    /// </summary>
+    private object? Substituted(ScriptExpressionStatement statement, bool aliasReturnedFunction, BodyComposer.SiteTag site, bool escaped)
+    {
+        var pass = Composing.Pass();
+        var start = Written.Length;
+        var renders = Composing.Renders.Count;
+        var outer = writingSite;
+        writingSite = site.Site;
+        string reads;
+        try
+        {
+            if (Text.Spots.TryGetValue(BodyComposer.Offset(statement), out var spot))
+            {
+                Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction), escaped);
+                reads = spot.Reads;
+            }
+            else
+            {
+                WriteValue(base.Evaluate(statement, aliasReturnedFunction), escaped);
+                reads = site.Reads;
+            }
+        }
+        finally
+        {
+            writingSite = outer;
+        }
+
+        if (!site.Placement)
+        {
+            var last = Composing.Renders.Count > renders
+                ? string.Create(CultureInfo.InvariantCulture, $"render:{Composing.Renders[^1].N}")
+                : null;
+            Substitutions.Add(new BodyComposer.WrittenSubstitution(site.Site, pass, reads, start, Written.Length - start, last));
+        }
+
         return null;
     }
 
@@ -508,13 +576,14 @@ internal sealed class ComposeContext : TemplateContext
             {
                 if (placed.Unit >= 0)
                     Composing.EscapedUnits(placed.Unit);
-                placed = BodyComposer.Escaped(placed);
+                placed = BodyComposer.Escaped(placed, Composing.UnitSite(placed.Unit), Composing.Pass());
             }
             var start = Written.Length;
             Composing.Spliced(placed.Unit, start);
             if (placed.Text.Length > 0)
                 Write(placed.Text);
             Spots.AddRange(placed.Spots.Select(s => s with { Start = s.Start + start }));
+            Substitutions.AddRange((placed.Substitutions ?? []).Select(s => s with { Site = writingSite ?? s.Site, Start = s.Start + start }));
             return;
         }
 

@@ -503,7 +503,8 @@ public class DeliverableComposeTests
     public async Task TheMacrosDeliverable_IsItsDraftEscaped()
     {
         // macros.run.txt's markdown_block deliverable reads the plain-text draft, so it composes the draft escaped (its
-        // ';' and '.' are ASCII punctuation), and its pinned inputHash is the hash of that escaped text.
+        // ';' and '.' are ASCII punctuation), and its pinned composedHash (#1506: part 08 § 10's row, which has no inputHash)
+        // is the hash of that escaped text.
         var plan = RunFixture.Plan(RunGoldenTests.Macros());
         Assert.Equal("[{\"at\":\"1:1\",\"unit\":null}]", CanonicalJson.Write(plan.Entries[Note].Json["escapes"]));
         var golden = File.ReadAllLines(Path.Combine(RunGoldenTests.GoldenFolder(), "macros.run.txt"));
@@ -516,7 +517,7 @@ public class DeliverableComposeTests
         Assert.Contains("Dr A\\. Sample\\.", content, StringComparison.Ordinal);
         Assert.Equal(MarkdownEscape.Escape(draft!) + "\n", content);
         Assert.Equal(CanonicalJson.HashText(content!), (string?)recorder.Row(Note).Detail["inputHash"]);
-        Assert.Equal((string?)pinned["inputHash"], (string?)recorder.Row(Note).Detail["inputHash"]);
+        Assert.Equal((string?)pinned["composedHash"], (string?)recorder.Row(Note).Detail["inputHash"]);
     }
 
     /// <summary>The macros run (<see cref="RunGoldenTests.Macros"/>'s hosts and inputs) of <paramref name="plan"/>, asserted completed.</summary>

@@ -190,17 +190,19 @@ public static partial class BodyComposer
 
     /// <summary>
     /// A placed unit's rendered text and the run spots written in it (at places in that text), as its placement writes it,
-    /// and the index of its <see cref="ComposedUnit"/> among the composition's (<c>-1</c> for a macro's instruction).
+    /// and the index of its <see cref="ComposedUnit"/> among the composition's (<c>-1</c> for a macro's instruction); #1506
+    /// (D6) with the substitutions written in it, at places in that text.
     /// </summary>
-    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots, int Unit = -1);
+    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots, int Unit = -1, IReadOnlyList<WrittenSubstitution>? Substitutions = null);
 
     /// <summary>
     /// #1505 (area 08, D7): <paramref name="placed"/> escaped whole as plain text in Markdown, each run spot in it with its
     /// output (and a <c>text</c> spot's run-neutral output) escaped and its place moved to where it now stands. R9: the
     /// text is escaped piece by piece as one text, so a piece (a spot's output, or the text between spots) is a line start
     /// only where it starts a line of <paramref name="placed"/>; one that continues a line keeps its leading space or tab.
+    /// #1506 (D6): its substitutions are moved with it (<see cref="EscapedSubstitutions"/>).
     /// </summary>
-    internal static PlacedText Escaped(PlacedText placed)
+    internal static PlacedText Escaped(PlacedText placed, string? site = null, IReadOnlyList<int>? pass = null)
     {
         var text = placed.Text;
         var escaped = new StringBuilder(text.Length);
@@ -220,7 +222,53 @@ public static partial class BodyComposer
             at = spot.Start + spot.Length;
         }
 
-        return new PlacedText(escaped.Append(MarkdownEscape.Escape(text[at..], MarkdownEscape.StartsLine(text, at))).ToString(), spots, placed.Unit);
+        var whole = escaped.Append(MarkdownEscape.Escape(text[at..], MarkdownEscape.StartsLine(text, at))).ToString();
+        return new PlacedText(whole, spots, placed.Unit, EscapedSubstitutions(placed, whole, site, pass));
+    }
+
+    /// <summary>
+    /// #1506 (area 09; part 06 § 9; D6): the substitutions of <paramref name="placed"/> where they stand in its text escaped
+    /// whole (<paramref name="escaped"/>). The text is escaped again piece by piece, cut at every substitution's and spot's
+    /// bounds, each piece a line start only where it starts a line; when that gives the same text, each substitution is moved
+    /// to where its bounds now stand. When it does not (an escape that reads across a cut), the unit's text is recorded as one
+    /// substitution of the unit <paramref name="site"/> at <paramref name="pass"/>, so the positions are never wrong.
+    /// </summary>
+    private static IReadOnlyList<WrittenSubstitution>? EscapedSubstitutions(PlacedText placed, string escaped, string? site, IReadOnlyList<int>? pass)
+    {
+        if (placed.Substitutions is not { Count: > 0 } substitutions)
+            return placed.Substitutions;
+        var text = placed.Text;
+        var cuts = new SortedSet<int> { 0, text.Length };
+        foreach (var s in substitutions)
+        {
+            cuts.Add(Math.Clamp(s.Start, 0, text.Length));
+            cuts.Add(Math.Clamp(s.Start + s.Length, 0, text.Length));
+        }
+
+        foreach (var spot in placed.Spots)
+        {
+            cuts.Add(Math.Clamp(spot.Start, 0, text.Length));
+            cuts.Add(Math.Clamp(spot.Start + spot.Length, 0, text.Length));
+        }
+
+        var moved = new Dictionary<int, int>();
+        var again = new StringBuilder(escaped.Length);
+        int? before = null;
+        foreach (var cut in cuts)
+        {
+            if (before is { } from)
+                again.Append(MarkdownEscape.Escape(text[from..cut], MarkdownEscape.StartsLine(text, from)));
+            moved[cut] = again.Length;
+            before = cut;
+        }
+
+        if (!string.Equals(again.ToString(), escaped, StringComparison.Ordinal))
+            return site == null ? [] : [new WrittenSubstitution(0, pass, site, 0, escaped.Length, null)];
+        return [.. substitutions.Select(s =>
+        {
+            var start = moved[Math.Clamp(s.Start, 0, text.Length)];
+            return s with { Start = start, Length = moved[Math.Clamp(s.Start + s.Length, 0, text.Length)] - start };
+        })];
     }
 
     /// <summary>
