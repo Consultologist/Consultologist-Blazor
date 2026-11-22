@@ -1283,8 +1283,8 @@ check item *i* opens when production item *i* settles, so checking overlaps prod
 - An `if` that is false or `null` skips the leaf, with `JsonLogicPrinter.Reason`'s printed reason and a
   `RunDecision`. A condition that fails fails the node with `ExpressionSentences.RunTime`.
 - A computed `null` is a value (04-D49). Any other computed value that does not fit its format is A06-003.
-- A rendered node or a deliverable renders through the host. A deliverable settles `Composed`, and area 08 takes
-  it from there. A render past its steps is S05-062.
+- A rendered node or a deliverable renders through the host. A deliverable is composed, and (area 08) its outcome
+  is decided: `Released`, `Held`, `Blocked`, `Skipped` or `Failed`. A render past its steps is S05-062.
 - `.content` is a text format's text, else the canonical JSON of the value (D11). `ValueHash` is
   `CanonicalJson.HashText` of `.content`.
 
@@ -1397,14 +1397,14 @@ package's level. `Scope` is `RunScope.Data` over exactly the entry's compiled `r
 | `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)` | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's byte-equivalence run and area 11's in-package tests bring their own |
 | `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | area 09 (the record's storage), replacing the engine's `EntityRunRecorder` (D12: counts on the job's entity, telemetry by key, state and hash) |
 | `AgentTurn`, `RenderTurn` (in the library, since area 07) | `AgentTurn.Prepare(plan, call, stepLimit, strictRejects)`, `AgentTurn.Finish(prepared, reply)`, `RenderTurn.Render(plan, call)` | the engine's two activities call them; area 07 removed the Api's `IBodyComposer` and `ScribanBodyComposer` (see "templates" below) |
-| A rendered deliverable settles `Composed` | the runner stops there | area 08 (outcome, gating, delivery) |
+| A rendered deliverable's outcome (area 08: `RunResult.Deliverables`) | the runner stops there | area 08 (delivery) |
 | `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts` | area 12's Create page, which calls the same checks |
 | `SpecVersionAdmission` (in the Api) | `Admits`, `Runs31`, `NotSupported` | area 11 (publish, import, `WorkflowPackages/Current`) |
 
 `RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail)`
 and `RunDecision(string Site, string Member, string Printed, bool? Result, string? Branch, DateTime DecidedAtUtc)`
-are what area 09 turns into the record. `RowState` is `Completed`, `Skipped`, `NotRun`, `Failed`, `Cancelled` or
-`Composed`. A decision's `Member` is part 08 § 5.2's site (`self`, `pass.<n>`, `until.<n>`, `case`, and since area 07 a placement's
+are what area 09 turns into the record. `RowState` is `Completed`, `Skipped`, `NotRun`, `Failed`, `Cancelled`, and
+(area 08, for a deliverable) `Released`, `Held` or `Blocked`. A decision's `Member` is part 08 § 5.2's site (`self`, `pass.<n>`, `until.<n>`, `case`, and since area 07 a placement's
 `part.<id>`, `snippet.<id>`, `macro.<id>` or `macro-folder.<id>`), and its time
 comes from the host's clock. No row or decision carries a value from an input or a model: only keys, states,
 reasons, hashes, counts and package text.
