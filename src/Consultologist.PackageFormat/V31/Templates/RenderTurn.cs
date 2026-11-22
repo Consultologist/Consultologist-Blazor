@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json.Nodes;
 using Consultologist.PackageFormat.V31.Run;
 
@@ -58,7 +59,8 @@ public static class RenderTurn
     /// <summary>
     /// D8: the object deliverable <paramref name="entry"/>'s text: the RFC 8785 JSON of the value its one output tag reads
     /// (<c>node.&lt;x&gt;.value</c>, its head rooted through <c>names</c>, D1) in <paramref name="scope"/>, with no final line
-    /// end; <c>null</c> writes <c>null</c>. No run spot, renderer or unit. A body not of <see cref="SourceTemplates.OneValueRead"/>'s form is not
+    /// end; <c>null</c> writes <c>null</c>; past <see cref="BodyComposer.OutputLimit"/> bytes of UTF-8, S05-014, as any
+    /// composed text is. No run spot, renderer or unit. A body not of <see cref="SourceTemplates.OneValueRead"/>'s form is not
     /// what publish wrote (S07-006); a read the scope lacks fails as an absent member does in any body (A06-008).
     /// </summary>
     private static Composition ObjectText(RunPlan plan, PlanEntry entry, JsonObject scope)
@@ -77,7 +79,11 @@ public static class RenderTurn
                 return Failed(RunSentences.CouldNotRender(RunSentences.Subject(entry, null)));
         }
 
-        return new Composition(CanonicalJson.Write(at), null, null, false, [], [], [], []);
+        // Part 05 § 2.3 (S05-014): the text is held to the composition's output limit as any composed text is.
+        var text = CanonicalJson.Write(at);
+        if (Encoding.UTF8.GetByteCount(text) > BodyComposer.OutputLimit)
+            return Failed(RunSentences.OutputPassedLimit(RunSentences.Subject(entry, null)));
+        return new Composition(text, null, null, false, [], [], [], []);
     }
 
     private static Composition Failed(string sentence) => new(null, null, sentence, false, [], [], [], []);
