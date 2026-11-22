@@ -101,8 +101,9 @@ public class RunGoldenTests
     [Fact]
     public async Task TheCheckedNoteOutcomes_AreWhatTheRunnerGives()
     {
-        // #1505 (area 08; part 06 § 7): checked-note on the stubs, but the one section's draft covers none of its planned
-        // terms (its section_terms reply an empty list), so the gate proofread fails and the note is blocked; and the patient
+        // #1505 (area 08; part 06 § 7): checked-note on the stubs. The one section's draft covers none of its planned terms
+        // (the stubs' terms never match the plan's, so the note is blocked on the default stubs too; here its section_terms
+        // reply an empty list, which the golden records), so the gate proofread fails and the note is blocked; and the patient
         // letter, ungated, renders only white space, so under whenEmpty: hold it is held. Each row's reason says which.
         var plan = RunFixture.Plan("checked-note");
         var host = RunFixture.Stubbed(plan)

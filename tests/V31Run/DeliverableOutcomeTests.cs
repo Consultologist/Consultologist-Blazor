@@ -88,6 +88,8 @@ public class DeliverableOutcomeTests
         // Review Focus 2: a fixed heading is content; an object deliverable is never empty
         { "markdown_block", "hold", "## Plan\n", DeliverableState.Released },
         { "section_plan", "fail", "{\"sections\":[]}", DeliverableState.Released },
+        // D8: an object deliverable whose value is null composes "null" (DeliverableComposeTests), which is not empty either
+        { "section_plan", "fail", "null", DeliverableState.Released },
     };
 
     [Theory]
@@ -245,26 +247,51 @@ public class DeliverableOutcomeTests
         Assert.Equal(Composed, (string?)result.Values["deliverable.note"]!["content"]);
     }
 
-    [Fact]
-    public async Task AGateThatCannotRun_BlocksIt()
+    /// <summary>A <c>check_result</c> built by <c>object</c> whose <c>pass</c> is the input <c>include_billing</c> (text when it escaped validation).</summary>
+    private static readonly string PassIsTheInput = Result("{ \"var\": \"input.include_billing.value\" }");
+
+    /// <summary>A <c>check_result</c> whose <c>pass</c> searches the draft (a rule the host evaluates, R6).</summary>
+    private static readonly string PassSearchesTheDraft = Result("{ \"matches\": [{ \"var\": \"input.consult_draft.content\" }, \"TSH\"] }");
+
+    public static TheoryData<string, string, string, RunInputs, RuleOutcome?, string> GatesThatCannotRun() => new()
     {
-        // D4: the gate's if yields text at run time (an input that escaped validation): the gate's row is failed with its
-        // sentence, the job is not, and the note is blocked with S08-008, its <error> that sentence without its full stop.
-        var plan = RunFixture.Plan(Gated(Check("Every section covers its planned terms", Result("true"),
-            condition: "{ \"var\": \"input.include_billing.value\" }")));
-        var (result, recorder) = await RunAsync(plan, new FakeRunHost(auto: true).Render("deliverable.note", Rendered(Composed)), Escaped());
+        // its if yields text: an input that escaped validation
+        { "if", "{ \"var\": \"input.include_billing.value\" }", Result("true"), Escaped(), null,
+            "Check 'all_sections' if yields text; a condition yields a boolean." },
+        // its expression fails at run time: matches over a draft past 1 MiB
+        { "expression", "null", PassSearchesTheDraft, Drafted(new string('x', IRegexp.MaxTextBytes + 1)), null,
+            "Computed node 'all_sections' expression could not be decided: matches was given 1.1 MiB of text; the most is 1 MiB." },
+        // its expression computes null (the host's stored outcome)
+        { "null", "null", PassSearchesTheDraft, Escaped(), new RuleOutcome(null, null, null),
+            "Node 'all_sections' computed a value that isn't check_result." },
+        // its expression computes an object that is not a check_result: pass is text
+        { "not a check_result", "null", PassIsTheInput, Escaped(), null,
+            "Node 'all_sections' computed a value that isn't check_result." },
+    };
+
+    [Theory]
+    [MemberData(nameof(GatesThatCannotRun))]
+    public async Task AGateThatCannotRun_BlocksIt(string _, string condition, string expression, RunInputs inputs, RuleOutcome? stored, string reason)
+    {
+        // D4: the gate cannot run, or computes what is not a check_result: the gate's row is failed with its sentence, the job
+        // is not, and the note is blocked with S08-008, its <error> that sentence without its full stop.
+        var plan = RunFixture.Plan(Gated(Check("Every section covers its planned terms", expression, condition: condition)));
+        var host = new FakeRunHost(auto: true, plan).Render("deliverable.note", Rendered(Composed));
+        if (stored != null)
+            host.Rule("check.all_sections", "expression", stored);
+        var (result, recorder) = await RunAsync(plan, host, inputs);
 
         Assert.Equal(RunState.Completed, result.State);
         Assert.Null(result.FailedKey);
         var gate = recorder.Row("check.all_sections");
         Assert.Equal(RowState.Failed, gate.State);
-        Assert.Equal("Check 'all_sections' if yields text; a condition yields a boolean.", gate.Reason);
+        Assert.Equal(reason, gate.Reason);
         Assert.Equal("failed", (string?)result.Values["check.all_sections"]!["state"]);
         Assert.Null(result.Values["check.all_sections"]!["value"]);
 
         var row = recorder.Row("deliverable.note");
         Assert.Equal(RowState.Blocked, row.State);
-        Assert.Equal("blocked: check 'all_sections' could not run (Check 'all_sections' if yields text; a condition yields a boolean)", row.Reason);
+        Assert.Equal($"blocked: check 'all_sections' could not run ({reason[..^1]})", row.Reason);
         V31Contract.AssertSentence(new SourceRefusal("S08-008", row.Reason!, ""));
     }
 
@@ -361,16 +388,19 @@ public class DeliverableOutcomeTests
             + $"\"required\": {(required ? "true" : "false")}, \"channel\": null }}"));
 
     /// <summary>The inputs with the boolean <c>include_billing</c> supplied as text (a value that escaped validation).</summary>
-    private static RunInputs Escaped()
+    private static RunInputs Escaped() => Billed("yes");
+
+    /// <summary>The inputs with <c>include_billing</c>'s value <paramref name="value"/>.</summary>
+    private static RunInputs Billed(JsonNode? value) => With("include_billing", new JsonObject { ["value"] = value, ["content"] = null, ["title"] = null });
+
+    /// <summary>The inputs with <c>include_billing</c> true and the draft <paramref name="draft"/>.</summary>
+    private static RunInputs Drafted(string draft) => With("consult_draft", new JsonObject { ["value"] = draft, ["content"] = draft, ["title"] = null },
+        Billed(true));
+
+    private static RunInputs With(string id, JsonObject input, RunInputs? from = null)
     {
-        var inputs = PlanRunnerLeavesTests.Inputs();
-        return inputs with
-        {
-            Inputs = new Dictionary<string, JsonNode?>(inputs.Inputs, StringComparer.Ordinal)
-            {
-                ["include_billing"] = new JsonObject { ["value"] = "yes", ["content"] = null, ["title"] = null },
-            },
-        };
+        var inputs = from ?? PlanRunnerLeavesTests.Inputs();
+        return inputs with { Inputs = new Dictionary<string, JsonNode?>(inputs.Inputs, StringComparer.Ordinal) { [id] = input } };
     }
 
     /// <summary>A check file: a <c>computed</c> check of <paramref name="expression"/>, with the <c>if</c> <paramref name="condition"/>.</summary>
