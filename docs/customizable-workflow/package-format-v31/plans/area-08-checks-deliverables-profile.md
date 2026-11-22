@@ -316,7 +316,7 @@ public sealed class DeliveryRunner(RunLimits limits, IDeliveryHost host, IRunRec
 
 - Produces: `IRunRecorder.DeliveryAsync(DeliveryRow row)`, called once per row when its result is final. `Result` is `sent`, `not sent` or `failed`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `ASend_PerKind_PerReleasedDeliverable`: two released deliverables in `["email", "pdf"]`, one held, one in `[]`: four sends, in plan order then kind order; the held and the undelivered one have none.
   - `ABundle_IsOneSendPerKind_OfItsReleasedDeliverables` (D11): three in a `zip` folder, one blocked: one send holding two documents, and two rows with one result.
   - `NotSetUp_IsRecordedAtOnce_AndNeverRetried` (Review Focus 5): row `not sent`, reason `not sent: EMR isn't set up for this account`, one call.
@@ -324,10 +324,10 @@ public sealed class DeliveryRunner(RunLimits limits, IDeliveryHost host, IRunRec
   - `TheWindow_ClosesOnWhatIsUnsent` (Review Focus 4): with `DeliveryMinutes` 5 the third attempt never starts; a send in flight at the close is `failed`; `FakeDeliveryHost.OutstandingDelays` is 0 after.
   - `ASecondAttempt_ThatSends_IsSent`: `AtUtc` is the host's time of the send.
   - `AFailedJob_RecordsNotSent`: `NotSentJobFailed` gives one row per destination of each released deliverable, reason `not sent: the job failed`.
-- [ ] **Step 2: Run.** Expected: FAIL (the types do not exist).
-- [ ] **Step 3: Implement.** Sends run side by side; rows are recorded in the fixed order of `Sends` once all are final or the window closes; every timer is cancelled at the end, as `PlanRunner` does.
-- [ ] **Step 4: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 5: Commit** `PackageFormat (#1505): delivery at the end: a send per destination, retried inside its window`; push.
+- [x] **Step 2: Run.** Expected: FAIL (the types do not exist).
+- [x] **Step 3: Implement.** Sends run side by side; rows are recorded in the fixed order of `Sends` once all are final or the window closes; every timer is cancelled at the end, as `PlanRunner` does.
+- [x] **Step 4: Run** the V31 filter. Expected: PASS.
+- [x] **Step 5: Commit** `PackageFormat (#1505): delivery at the end: a send per destination, retried inside its window`; push.
 
 ### Task 10: A pattern's decision is stored (R6)
 
