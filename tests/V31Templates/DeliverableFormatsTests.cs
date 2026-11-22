@@ -1,6 +1,7 @@
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat.V31;
+using Consultologist.PackageFormat.V31.Templates;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 using static Consultologist.Api.Tests.V31Templates.TemplateFixture;
 
@@ -166,6 +167,7 @@ public class DeliverableFormatsTests
         var check = Accepted(WithNote("section_plan", body));
 
         Assert.Empty(check.Templates!.Escapes(NoteKey));
+        Assert.Equal("node.plan.value", SourceTemplates.OneValueRead(TemplateSyntax.Parse(body)));
     }
 
     [Theory]
@@ -177,9 +179,14 @@ public class DeliverableFormatsTests
     [InlineData("{{ node.judge.value }}\n")]
     [InlineData("{{ node.plan.value | renderer.plan_text }}\n")]
     [InlineData("The plan.\n")]
-    public void AnObjectDeliverable_WritingAnythingElse_IsRefused(string body) =>
+    public void AnObjectDeliverable_WritingAnythingElse_IsRefused(string body)
+    {
         AssertRefusal(WithNote("section_plan", body),
             "S06-023", "Deliverable 'note' is section_plan; its template is {{ node.<x>.value }} and nothing else.");
+
+        // The form is one definition, which the run reads too: only a read of another format is of the form and refused.
+        Assert.Equal(body == "{{ node.judge.value }}\n", SourceTemplates.OneValueRead(TemplateSyntax.Parse(body)) is not null);
+    }
 
     [Fact]
     public void AnObjectDeliverable_WhoseReadFailsTyping_IsRefusedOnce()
@@ -190,5 +197,20 @@ public class DeliverableFormatsTests
         Assert.True(check.Refusals.Count == 1, ResolveFixture.Said(check));
         Assert.NotEqual("S06-023", check.Refusals[0].Id);
         V31Contract.AssertSentence(check.Refusals[0]);
+    }
+
+    [Fact]
+    public void AnUntypedUnrefusedRead_NeverReachesAnObjectDeliverable()
+    {
+        // The one way a node's read comes back untyped with no refusal of its own (a deferred head: a loop whose source is
+        // refused) is refused by the resolver, and publish stops there: the dialect never judges the deliverable. Were it to,
+        // OneValue would say S06-023 for it, as no refusal stands for it in the body.
+        var check = SourceCheck.Run(
+            WithNote("section_plan", "{{ node.drafts.value }}\n").WithLoop("drafts", "node.nothing.value", "draft", "Draft a section.\n"),
+            ResolveFixture.Published());
+
+        var said = Assert.Single(check.Refusals);
+        Assert.Equal(("S03-014", "nodes/drafts/index.json"), (said.Id, said.Path));
+        Assert.Null(check.Templates);
     }
 }

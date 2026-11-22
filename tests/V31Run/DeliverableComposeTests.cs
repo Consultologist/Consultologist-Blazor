@@ -1,5 +1,7 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Source;
+using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
 using Consultologist.PackageFormat.V31.Templates;
@@ -19,6 +21,8 @@ namespace Consultologist.Api.Tests.V31Run;
 public class DeliverableComposeTests
 {
     private const string Note = "deliverable.note";
+
+    private const string NoteFile = "deliverables/note.md";
 
     /// <summary>
     /// <see cref="TemplateFixture.Package"/> with the list input <c>lines</c> (nullable strings), the plain-text agent
@@ -92,6 +96,68 @@ public class DeliverableComposeTests
     }
 
     [Fact]
+    public void APlacedPlainTextSnippet_IsRecordedAsSpliced()
+    {
+        // Part 06 § 9: escaped reads are recorded after escaping, so a unit escaped whole is recorded by the hash of the
+        // text spliced; a Markdown unit, written as it is, by its own.
+        var plan = RunFixture.Plan(WithNote("markdown_block", "## Plan\n{{~ snippet.closing.content }}\n{{~ snippet.sign_off.content }}\n")
+            .WithSnippet("closing", "**Next steps:** {{ node.summary.content }}", "markdown_block")
+            .WithSnippet("sign_off", "Dr A. Sample, {{ node.summary.content }}"));
+
+        var outcome = Render(
+            plan, BodyComposerTests.Scope(("node.summary.content", "see *you* soon")), BodyComposerTests.Placed("snippet.closing", "snippet.sign_off"));
+
+        Composed(outcome);
+        Assert.Equal(
+            CanonicalJson.Write(new JsonArray(
+                new JsonObject { ["site"] = "snippet.closing", ["hash"] = CanonicalJson.HashText("**Next steps:** see \\*you\\* soon") },
+                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Dr A\\. Sample\\, see \\*you\\* soon") })),
+            CanonicalJson.Write(outcome.Detail!["units"]));
+    }
+
+    [Fact]
+    public void APlainRead_InAPlacedInlineSnippet_IsEscaped()
+    {
+        var plan = RunFixture.Plan(WithNote("markdown_block", "Next: {{ snippet.next.content }}.\n")
+            .WithSnippet("next", "_see_ {{ node.summary.content }}", "markdown_inline"));
+        Assert.Equal("[{\"at\":\"1:7\",\"unit\":\"snippet.next\"}]", CanonicalJson.Write(plan.Entries[Note].Json["escapes"]));
+
+        var text = Composed(Render(plan, BodyComposerTests.Scope(("node.summary.content", "Dr A. Sample")), BodyComposerTests.Placed("snippet.next")));
+
+        Assert.Equal("Next: _see_ Dr A\\. Sample.\n", text);
+    }
+
+    [Fact]
+    public void NumbersAndBooleans_AreEscapedAsWritten()
+    {
+        // D13 writes the value, then D7 escapes it: a minus sign and a decimal point are ASCII punctuation; true is not.
+        var plan = RunFixture.Plan(WithNote("markdown_block", "{{ node.count.value }} / {{ node.rate.value }} / {{ node.urgent.value }}\n")
+            .WithComputed("count", "\"number\"", "{ \"-\": [0, 3] }")
+            .WithComputed("rate", "\"number\"", "{ \"/\": [3, 2] }")
+            .WithComputed("urgent", "\"boolean\"", "{ \"===\": [1, 1] }"));
+
+        var text = Composed(Render(plan, BodyComposerTests.Scope(
+            ("node.count.value", JsonValue.Create(-3)), ("node.rate.value", JsonNode.Parse("1.5")), ("node.urgent.value", true))));
+
+        Assert.Equal("\\-3 / 1\\.5 / true\n", text);
+    }
+
+    [Fact]
+    public void Escaping_PastTheOutputLimit_IsS05014()
+    {
+        // The plain text fits the limit; escaped, each '.' is two characters, and the text passes it.
+        var plan = RunFixture.Plan(WithNote("markdown_block", "{{ node.summary.content }}"));
+        var plain = new string('.', (BodyComposer.OutputLimit / 2) + 1);
+        Assert.True(plain.Length <= BodyComposer.OutputLimit);
+
+        var outcome = Render(plan, BodyComposerTests.Scope(("node.summary.content", plain)));
+
+        Assert.Null(outcome.Text);
+        Assert.Equal(RunSentences.OutputPassedLimit("Deliverable 'note'"), outcome.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("S05-014", outcome.Failure!, ""));
+    }
+
+    [Fact]
     public void ARenderersOutput_IsNotEscaped()
     {
         var plan = RunFixture.Plan(WithNote("markdown_block", "{{ node.summary.value | renderer.bullets }}"));
@@ -133,15 +199,196 @@ public class DeliverableComposeTests
     }
 
     [Fact]
+    public void AnObjectDeliverable_PastTheOutputLimit_IsS05014()
+    {
+        var plan = RunFixture.Plan(WithNote("section_plan", "{{ node.plan.value }}\n"));
+        var value = new JsonObject { ["sections"] = new JsonArray(), ["note"] = new string('x', BodyComposer.OutputLimit) };
+
+        var outcome = Render(plan, BodyComposerTests.Scope(("node.plan.value", value)));
+
+        Assert.Null(outcome.Text);
+        Assert.Equal(RunSentences.OutputPassedLimit("Deliverable 'note'"), outcome.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("S05-014", outcome.Failure!, ""));
+    }
+
+    [Fact]
+    public void AnObjectDeliverable_WhoseValueIsAbsent_Fails()
+    {
+        // A scope that lacks the read is what strict variables fail in any body: A06-008, never a throw.
+        var plan = RunFixture.Plan(WithNote("section_plan", "{{ node.plan.value }}\n"));
+
+        var outcome = Render(plan, new JsonObject());
+
+        Assert.Null(outcome.Text);
+        Assert.Equal("Deliverable 'note' couldn't be rendered.", outcome.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("A06-008", outcome.Failure!, ""));
+    }
+
+    [Theory]
+    [InlineData("{{ node.plan.value }}", true)]
+    [InlineData("{{ node.plan.value }}\r\n", true)]
+    [InlineData("{{~ node.plan.value ~}}\n", true)]
+    [InlineData("Plan: {{ node.plan.value }}\n", false)]
+    [InlineData("{{ node.plan.value }}\nThe plan.\n", false)]
+    [InlineData(" {{ node.plan.value }}\n", false)]
+    [InlineData("{{ node.plan.value }}\n\n", false)]
+    [InlineData("{{ node.plan.value }}{{ node.plan.value }}\n", false)]
+    [InlineData("{{ node.plan.content }}\n", false)]
+    [InlineData("{{ node.plan.value | renderer.plan_text }}\n", false)]
+    [InlineData("{{ if true }}{{ node.plan.value }}{{ end }}", false)]
+    public void AnObjectBody_IsHeldToPublishsForm_AtRunTime(string body, bool isForm)
+    {
+        // D8's form has one definition (SourceTemplates.OneValueRead): a document whose object deliverable's body is not of
+        // it (forged: publish refuses it, S06-023) fails with S07-006; one that is composes its value.
+        var (_, compiled) = CompiledPackage.Publish(WithNote("section_plan", "{{ node.plan.value }}\n"), ResolveFixture.Published(), CompiledGoldenTests.Fixed);
+        var document = JsonNode.Parse(compiled!.Resolve)!;
+        document["deliverables"]![Note]!["body"] = body;
+        var (plan, _) = RunPlan.Build(document.ToJsonString(), compiled.ResolveHash, compiled.LockHash, null);
+        Assert.Equal(isForm, SourceTemplates.OneValueRead(TemplateSyntax.Parse(body)) is not null);
+
+        var outcome = Render(plan!, BodyComposerTests.Scope(("node.plan.value", JsonNode.Parse("{ \"sections\": [] }"))));
+
+        if (isForm)
+        {
+            Assert.Equal("{\"sections\":[]}", Composed(outcome));
+            return;
+        }
+
+        Assert.Null(outcome.Text);
+        Assert.Equal(ResolveSentences.ResolveDoesNotMatch(plan!.Package, plan.Version).Sentence, outcome.Failure);
+        V31Contract.AssertSentence(new SourceRefusal("S07-006", outcome.Failure!, ""));
+    }
+
+    [Theory]
+    [InlineData("\"judgement\"", null)]
+    [InlineData("\"concept_list\"", null)]
+    [InlineData("\"classification\"", null)]
+    [InlineData("\"plaintext\"", null)]
+    [InlineData("\"markdown_block\"", null)]
+    [InlineData("\"probe\"", "{ \"type\": \"object\", \"required\": [\"a\"], \"additionalProperties\": false, \"properties\": { \"a\": { \"$ref\": \"plaintext\" } } }")]
+    [InlineData("\"probe\"", "{ \"type\": [\"object\", \"null\"], \"required\": [\"a\"], \"additionalProperties\": false, \"properties\": { \"a\": { \"$ref\": \"plaintext\" } } }")]
+    [InlineData("\"probe\"", "{ \"type\": \"array\", \"items\": { \"$ref\": \"plaintext\" } }")]
+    public void TheRun_ReadsAFormatsShape_AsPublishDoes(string format, string? probe)
+    {
+        // One reading of a format's shape: publish's (FormatTypes.Shape, through names) and the run's (the same reading of
+        // the bundle's expansion) agree, so the run's object deliverable is publish's FormatShape.Object.
+        var files = Package().WithAgent("probe", "Describe the plan for Margaret Okafor.\n\n{{ node.plan.content }}\n", format);
+        if (probe != null)
+            files.Listed("formats/index.json", "probe").With("formats/probe.json", Json("{ \"$schema\": \"urn:consultologist:spec:31:dialect\", " + probe[1..]));
+        var registry = ResolveFixture.Published();
+        var package = SourceParser.Parse(files, registry.Names).Package!;
+        var plan = RunFixture.Plan(files);
+        var publish = FormatTypes.Shape(JsonNode.Parse(format), FormatSet.ForPackage(registry, package.Definitions.Formats.Items));
+        var run = plan.Entries["node.probe"].Format;
+        Assert.NotEqual(FormatShape.Unknown, publish);
+
+        Assert.Equal(publish, FormatTypes.ExpandedShape(plan.Formats.Expand(run)));
+        Assert.Equal(publish == FormatShape.Object, plan.Formats.IsObject(run));
+    }
+
+    [Fact]
+    public void TheRun_ReadsANestedFormatsShape_AsPublishDoes()
+    {
+        // Inside a format: a reference with a description beside it, a nullable reference and a union of two, each read
+        // the same by publish (the source's names) and by the run (the bundle's expansion of the entry).
+        const string probe = "{ \"$schema\": \"urn:consultologist:spec:31:dialect\", \"type\": \"object\", "
+            + "\"required\": [\"described\", \"maybe\", \"either\", \"words\"], \"additionalProperties\": false, \"properties\": { "
+            + "\"described\": { \"$ref\": \"section_plan\", \"description\": \"The plan.\" }, "
+            + "\"maybe\": { \"anyOf\": [{ \"$ref\": \"verdict\" }, { \"type\": \"null\" }] }, "
+            + "\"either\": { \"anyOf\": [{ \"$ref\": \"section_plan\" }, { \"$ref\": \"verdict\" }] }, "
+            + "\"words\": { \"type\": [\"array\", \"null\"], \"items\": { \"$ref\": \"plaintext\" } } } }";
+        var files = Package().WithAgent("probe", "Describe the plan for Margaret Okafor.\n\n{{ node.plan.content }}\n", "\"probe\"")
+            .Listed("formats/index.json", "probe").With("formats/probe.json", Json(probe));
+        var registry = ResolveFixture.Published();
+        var package = SourceParser.Parse(files, registry.Names).Package!;
+        var set = FormatSet.ForPackage(registry, package.Definitions.Formats.Items);
+        var plan = RunFixture.Plan(files);
+        var expanded = plan.Formats.Expand(plan.Entries["node.probe"].Format);
+        var source = JsonNode.Parse(probe)!["properties"]!.AsObject();
+
+        var shapes = source.Select(p => (p.Key, FormatTypes.Shape(p.Value, set))).ToList();
+
+        Assert.Equal(
+            [("described", FormatShape.Object), ("maybe", FormatShape.Object), ("either", FormatShape.Union), ("words", FormatShape.List)],
+            shapes);
+        Assert.Equal(shapes, source.Select(p => (p.Key, FormatTypes.ExpandedShape(expanded["properties"]![p.Key]))).ToList());
+    }
+
+    [Fact]
+    public void AReferenceWithADescription_IsAnObjectFormat_AsPublishReadsIt()
+    {
+        // Publish's shape follows a reference with annotations beside it; the bundle's expansion wraps the entry it inlines
+        // in an allOf beside them, and the run reads it as the same object format. (A package's format file is an object or
+        // a list at its top, A03-001, so a bundle entry is never itself a bare reference.)
+        var bundle = JsonNode.Parse(
+            "{ \"$defs\": { "
+            + "\"plan\": { \"$id\": \"urn:example:plan\", \"type\": \"object\", \"properties\": { \"a\": { \"type\": \"string\" } } }, "
+            + "\"words\": { \"$id\": \"urn:example:words\", \"type\": \"array\", \"items\": { \"type\": \"string\" } } } }");
+        var formats = new PlanFormats(bundle);
+
+        var annotated = JsonNode.Parse("{ \"$ref\": \"#/$defs/plan\", \"description\": \"The plan, as data.\" }");
+        Assert.IsType<JsonArray>(formats.Expand(annotated)["allOf"]);
+        Assert.True(formats.IsObject(annotated));
+        Assert.True(formats.IsObject(JsonNode.Parse("{ \"$ref\": \"#/$defs/plan\" }")));
+        Assert.True(formats.IsObject(JsonNode.Parse(
+            "{ \"anyOf\": [{ \"$ref\": \"#/$defs/plan\", \"title\": \"Plan\" }, { \"type\": \"null\" }] }")));
+        Assert.False(formats.IsObject(JsonNode.Parse("{ \"$ref\": \"#/$defs/words\" }")));
+        Assert.False(formats.IsObject(JsonNode.Parse("{ \"$ref\": \"#/$defs/absent\" }")));
+    }
+
+    [Theory]
+    [InlineData("section_plan", "plan")]
+    [InlineData("concept_list", "terms")]
+    public void ANamedObjectFormat_IsAnObjectFormat_AtRunTime(string format, string node)
+    {
+        var plan = RunFixture.Plan(WithNote(format, $"{{{{ node.{node}.value }}}}\n")
+            .WithAgent("terms", "List the clinical terms in the draft.\n\n{{ input.consult_draft.content }}\n", "\"concept_list\""));
+
+        Assert.True(plan.Formats.IsObject(plan.Entries[Note].Format));
+        Assert.False(plan.Formats.IsObject(plan.Entries["node.summary"].Format));
+    }
+
+    [Fact]
     public async Task ADocumentWithoutEscapes_ComposesAsBefore()
     {
-        // macros.run.txt pins the deliverable's composed hash from before escaping existed (the four compiled goldens' runs
-        // render on FakeRunHost and compose nothing); its deliverable lists no escapes, and composes the same text.
-        var plan = RunFixture.Plan(RunGoldenTests.Macros());
+        // The macros run's package with its deliverable made plaintext, which lists no escapes, composes exactly what the
+        // markdown_block one composed before area 08: the deliverable's inputHash macros.run.txt pinned then. (The four
+        // compiled goldens' runs render on FakeRunHost and compose nothing.)
+        const string before = "sha256:203d6cc06b4759876c05d587d247d3d8bfbd4a3fd79be9050fb4bb25c6821bd9";
+        var plan = RunFixture.Plan(RunGoldenTests.Macros()
+            .With(NoteFile, Md(Deliverable("Consultation note", Plain, "null", "hold"), "{{ node.draft.content }}\n")));
         Assert.Equal("[]", CanonicalJson.Write(plan.Entries[Note].Json["escapes"]));
+
+        var (result, recorder) = await MacrosRun(plan);
+
+        var draft = (string?)result.Values["node.draft"]!["content"];
+        Assert.Equal(draft + "\n", (string?)result.Values[Note]!["content"]);
+        Assert.Equal(before, (string?)recorder.Row(Note).Detail["inputHash"]);
+    }
+
+    [Fact]
+    public async Task TheMacrosDeliverable_IsItsDraftEscaped()
+    {
+        // macros.run.txt's markdown_block deliverable reads the plain-text draft, so it composes the draft escaped (its
+        // ';' and '.' are ASCII punctuation), and its pinned inputHash is the hash of that escaped text.
+        var plan = RunFixture.Plan(RunGoldenTests.Macros());
+        Assert.Equal("[{\"at\":\"1:1\",\"unit\":null}]", CanonicalJson.Write(plan.Entries[Note].Json["escapes"]));
         var golden = File.ReadAllLines(Path.Combine(RunGoldenTests.GoldenFolder(), "macros.run.txt"));
         var pinned = JsonNode.Parse(golden.Single(l => l.StartsWith(Note + " | {", StringComparison.Ordinal))[(Note.Length + 3)..])!;
 
+        var (result, recorder) = await MacrosRun(plan);
+
+        var draft = (string?)result.Values["node.draft"]!["content"];
+        var content = (string?)result.Values[Note]!["content"];
+        Assert.Contains("Dr A\\. Sample\\.", content, StringComparison.Ordinal);
+        Assert.Equal(MarkdownEscape.Escape(draft!) + "\n", content);
+        Assert.Equal(CanonicalJson.HashText(content!), (string?)recorder.Row(Note).Detail["inputHash"]);
+        Assert.Equal((string?)pinned["inputHash"], (string?)recorder.Row(Note).Detail["inputHash"]);
+    }
+
+    /// <summary>The macros run (<see cref="RunGoldenTests.Macros"/>'s hosts and inputs) of <paramref name="plan"/>, asserted completed.</summary>
+    private static async Task<(RunResult Result, ListRecorder Recorder)> MacrosRun(RunPlan plan)
+    {
         var host = new ComposingRunHost(plan, (call, prompt) =>
             call.EntryKey == "node.plan" ? PlacementDecisionsTests.Sections
             : prompt.TextReply ? ComposingRunHost.EchoMarkers(call, prompt)
@@ -149,10 +396,7 @@ public class DeliverableComposeTests
         var recorder = new ListRecorder(() => host.Calls.Count);
         var inputs = RunFixture.GoldenInputs() with { RunFacts = new JsonObject { ["date"] = "2026-11-21" } };
         var result = await new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(inputs, FakeRunHost.Start);
-
         Assert.Equal(RunState.Completed, result.State);
-        var draft = (string?)result.Values["node.draft"]!["content"];
-        Assert.Equal(draft + "\n", (string?)result.Values[Note]!["content"]);
-        Assert.Equal((string?)pinned["inputHash"], (string?)recorder.Row(Note).Detail["inputHash"]);
+        return (result, recorder);
     }
 }
