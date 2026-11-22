@@ -22,6 +22,18 @@ public class PlanRunnerLoopsTests
 
     private const string Concepts = """{"concepts":[]}""";
 
+    // ---- an item's state word ---------------------------------------------------------------------
+
+    [Fact]
+    public void AnItemsStateWord_NamesEachState_AndNoOtherReadsAsBlocked()
+    {
+        // #1505 (the final review): one arm per state, as EntityRunRecorder.StateName; a state added later is not "blocked"
+        Assert.Equal(
+            ["completed", "skipped", "not_run", "failed", "cancelled", "released", "held", "blocked"],
+            Enum.GetValues<RowState>().Select(PlanRunner.StateWord));
+        Assert.NotEqual("blocked", PlanRunner.StateWord((RowState)99));
+    }
+
     // ---- nesting ----------------------------------------------------------------------------------
 
     [Fact]

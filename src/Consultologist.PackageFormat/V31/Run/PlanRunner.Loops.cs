@@ -608,18 +608,19 @@ public sealed partial class PlanRunner
             detail["itemName"] = item?.Name;
             detail["positionName"] = item?.PositionName ?? false;
         }
-
-        /// <summary>A row state as a reader reads it (part 04 § 2.6).</summary>
-        private static string StateWord(RowState state) => state switch
-        {
-            RowState.Completed => "completed",
-            RowState.Skipped => "skipped",
-            RowState.NotRun => RunScope.NotRun,
-            RowState.Failed => "failed",
-            RowState.Cancelled => "cancelled",
-            RowState.Released => "released",
-            RowState.Held => "held",
-            _ => "blocked",
-        };
     }
+
+    /// <summary>A row state as a reader reads it (part 04 § 2.6); one arm per state, so a state added later is never read as another.</summary>
+    internal static string StateWord(RowState state) => state switch
+    {
+        RowState.Completed => "completed",
+        RowState.Skipped => "skipped",
+        RowState.NotRun => RunScope.NotRun,
+        RowState.Failed => "failed",
+        RowState.Cancelled => "cancelled",
+        RowState.Released => "released",
+        RowState.Held => "held",
+        RowState.Blocked => "blocked",
+        _ => state.ToString(),
+    };
 }
