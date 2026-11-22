@@ -265,6 +265,96 @@ internal static class ResolveFixture
         return files;
     }
 
+    // ---- Checks reading a deliverable (#1505, area 08; D1 to D3) ---------------------------------
+
+    /// <summary>
+    /// A check of <paramref name="label"/> whose <c>pass</c> is <paramref name="pass"/> (a JSON Logic boolean), built with
+    /// <c>object</c>; <paramref name="modelDerived"/> as its header declares it.
+    /// </summary>
+    internal static string ObjectCheck(string label, string pass, bool modelDerived = true) =>
+        Md(SourceFixture.Node("computed", label, "\"check_result\"", true, modelDerived,
+            $"\"if\": null, \"expression\": {{ \"object\": {{ \"pass\": {pass}, \"message\": null, \"uncovered\": null, "
+            + "\"untested\": null, \"passed\": null, \"total\": null } }"), "");
+
+    /// <summary>A JSON Logic test that <paramref name="path"/> (a deliverable's <c>.content</c>) is not blank.</summary>
+    internal static string NotBlank(string path) => $"{{ \"!\": [{{ \"blank\": [{{ \"var\": \"{path}\" }}] }}] }}";
+
+    /// <summary>
+    /// <see cref="Functions"/> with the consult note gated by the check <c>proofread</c> instead, which reads the note's
+    /// <c>.content</c> (not blank), the check <c>consult_words</c> (the note has words: an aggregate the gate reads, which
+    /// reads the note too) and <c>all_sections</c>' pass.
+    /// </summary>
+    public static Dictionary<string, byte[]> Proofread()
+    {
+        var files = Functions()
+            .With("checks/index.json", Index(["section_coverage", "all_sections", "consult_words", "proofread"]))
+            .With("checks/consult_words.md", ObjectCheck("The note has words",
+                "{ \">\": [{ \"words\": [{ \"var\": \"deliverable.emr.consult.content\" }] }, 0] }"))
+            .With("checks/proofread.md", ObjectCheck("Proofreading the note",
+                $"{{ \"and\": [{NotBlank("deliverable.emr.consult.content")}, {{ \"var\": \"check.consult_words.value.pass\" }}, "
+                + "{ \"var\": \"check.all_sections.value.pass\" }] }"));
+        return files.WithJson("deliverables/emr/consult.md", h => h["check"] = "check.proofread");
+    }
+
+    // ---- CheckedNote ---------------------------------------------------------------------------
+
+    /// <summary>
+    /// <c>example-checked-note</c>, part 06 § 3.4's package cut down: the agent <c>plan</c> (a <c>section_plan</c>), the
+    /// loop <c>sections</c> over its sections (each with its planned terms, its draft and the terms the draft covers), the
+    /// check loop <c>part_coverage</c> over <c>node.sections.items</c>, the aggregate <c>all_sections_covered</c> over its
+    /// <c>.items</c>, and the check <c>proofread</c> gating the note: the note's <c>.content</c> is not blank and every
+    /// section is covered. The note (<c>markdown_block</c>, in <c>deliverables/</c>, delivered to the EMR) and the
+    /// ungated patient letter (<c>plaintext</c>, in <c>deliverables/patient</c>, delivered by email and PDF, held when
+    /// empty). Fictional (Margaret Okafor, Dr A. Sample).
+    /// </summary>
+    public static Dictionary<string, byte[]> CheckedNote()
+    {
+        var files = WithFormats(Minimal(), "section_plan")
+            .With("nodes/index.json", Index(["plan", "sections"]))
+            .With("nodes/plan.md", Agent("Planning the sections", "\"section_plan\"",
+                "Plan the sections of Margaret Okafor's consultation note for the draft below, one section for each heading.\n\n"
+                + "{{ input.consult_draft.content }}\n"))
+            .With("nodes/sections/index.json", Json(SourceFixture.Node("for", "Sections", ArrayOf(Plain), false, true,
+                "\"in\": \"node.plan.value.sections\", \"parallel\": true, \"maxParallel\": null, \"until\": null, "
+                + "\"max\": null, \"itemLabel\": \"title\", \"nodes\": [\"planned_terms\", \"draft\", \"section_terms\"], "
+                + "\"ret\": \"node.sections.draft\"")))
+            .With("nodes/sections/planned_terms.md", Agent("The terms the plan names", "\"concept_list\"",
+                "List the clinical terms the plan names for the section '{{ item.value.title }}'.\n"))
+            .With("nodes/sections/draft.md", Agent("Drafting the section", Plain,
+                "Write the section '{{ item.value.title }}' of the note for Dr A. Sample.\n\n{{ input.consult_draft.content }}\n"))
+            .With("nodes/sections/section_terms.md", Agent("The terms the draft covers", "\"concept_list\"",
+                "List the clinical terms this section covers.\n\n{{ node.draft.content }}\n"));
+
+        files.With("checks/index.json", Index(["part_coverage", "all_sections_covered", "proofread"]))
+            .With("checks/part_coverage/index.json", Json(SourceFixture.Node("for", "Section coverage", ArrayOf("check_result"), true, true,
+                "\"in\": \"node.sections.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, "
+                + "\"max\": null, \"itemLabel\": \"label\", \"nodes\": [\"coverage\"], \"ret\": \"check.part_coverage.coverage\"")))
+            .With("checks/part_coverage/coverage.md", Md(
+                SourceFixture.Node("computed", "Section covers its planned terms", "\"check_result\"", true, true,
+                    "\"if\": { \"===\": [{ \"var\": \"item.state\" }, \"completed\"] }, "
+                    + "\"expression\": { \"terms_subset\": [{ \"var\": \"item.nodes.planned_terms.value\" }, "
+                    + "{ \"var\": \"item.nodes.section_terms.value\" }, \"The section does not cover every term its plan names.\"] }"),
+                ""))
+            .With("checks/all_sections_covered.md", Md(
+                SourceFixture.Node("computed", "Every section covers its planned terms", "\"check_result\"", true, true,
+                    "\"if\": null, \"expression\": { \"all_pass\": [{ \"var\": \"check.part_coverage.items\" }, "
+                    + "\"Not every section covers its planned terms.\"] }"),
+                ""))
+            .With("checks/proofread.md", ObjectCheck("Proofreading the note",
+                $"{{ \"and\": [{NotBlank("deliverable.note.content")}, {{ \"var\": \"check.all_sections_covered.value.pass\" }}] }}"));
+
+        files.Without("deliverables/note.md")
+            .With("deliverables/index.json", Index(["note", "patient"], extra: ", \"delivery\": [\"emr\"], \"bundle\": null"))
+            .With("deliverables/note.md", Md(
+                Deliverable("Consultation note", "\"markdown_block\"", "\"check.proofread\"", "fail"),
+                "## Sections\n\n{{ node.sections.content }}\n"))
+            .With("deliverables/patient/index.json", Index(["patient_letter"], extra: ", \"delivery\": [\"email\", \"pdf\"], \"bundle\": null"))
+            .With("deliverables/patient/patient_letter.md", Md(
+                Deliverable("Letter to the patient", Plain, "null", "hold"),
+                "Dear Margaret Okafor,\n\nThis is what we talked about at your visit.\n\n{{ node.sections.content }}\n\nDr A. Sample\n"));
+        return files;
+    }
+
     // ---- Formats -------------------------------------------------------------------------------
 
     private static readonly Dictionary<string, string> FormatFiles = new(StringComparer.Ordinal)

@@ -136,7 +136,8 @@ public sealed class RunPlan
     /// <c>node.</c>, <c>check.</c> or <c>deliverable.</c> that names no entry of its scope; dependencies that form a circle, or
     /// an entry depending on its own ancestor; a function that calls itself, directly or through others; a call whose
     /// <c>with</c> is not exactly its function's parameters; a deliverable inside a flow node; an input not in
-    /// <c>inputOrder</c>; a rule the evaluator declines; #1504, a <c>placements</c> entry not as publish writes it) is not what publish wrote, and is refused with S07-006 for its package. Never throws on the
+    /// <c>inputOrder</c>; a rule the evaluator declines; #1504, a <c>placements</c> entry not as publish writes it; #1505, a
+    /// deliverable read by an entry outside <c>checks</c>, or its <c>.state</c> read in its gate set) is not what publish wrote, and is refused with S07-006 for its package. Never throws on the
     /// document; a null argument is the caller's error, and so is a time limit the evaluator refuses.
     /// </summary>
     public static (RunPlan? Plan, SourceRefusal? Refusal) Build(string resolve, string resolveHash, string lockHash, TimeSpan? matchTimeLimit)
@@ -655,11 +656,14 @@ public sealed class RunPlan
         /// The entries of one scope (the package's map, or a function's), each with what it depends on; null when a read
         /// under <c>node.</c>, <c>check.</c> or <c>deliverable.</c> names no entry of the scope, when an entry depends on one
         /// of its ancestors, or when the dependencies, with each flow node depending on its children, form a circle.
+        /// #1505 (area 08; D1, D3): and, for the package's map, when an entry outside <c>checks</c> reads a deliverable,
+        /// or a check in a deliverable's gate set reads its <c>.state</c>; each entry is told its <c>Check</c>,
+        /// <c>Gates</c> and <c>ReadsComposed</c>.
         /// </summary>
         private static Dictionary<string, PlanEntry>? Scope(Dictionary<string, Draft> map, Func<string, int> order)
         {
-            var entries = new Dictionary<string, PlanEntry>(StringComparer.Ordinal);
             var edges = new Dictionary<string, IEnumerable<string>>(StringComparer.Ordinal);
+            var dependsOf = new Dictionary<string, SortedSet<string>>(StringComparer.Ordinal);
             foreach (var draft in map.Values)
             {
                 var depends = new SortedSet<string>(StringComparer.Ordinal);
@@ -691,18 +695,71 @@ public sealed class RunPlan
                         continue;
                     }
 
+                    // #1505 (D1): only a check reads a deliverable (S03-019 at publish elsewhere, S05-020 in a template).
+                    if (map[named].Kind == PlanKind.Deliverable && !draft.Key.StartsWith("check.", StringComparison.Ordinal))
+                        return null;
                     if (named != draft.Key)
                         depends.Add(named);
                 }
 
                 // An entry reading one of its ancestors is a circle (A05-003 at publish); the containment edges below find it.
                 edges[draft.Key] = depends.Concat(draft.Children).ToList();
-                entries.Add(draft.Key, new PlanEntry(
-                    draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order(draft.Key), draft.Json, draft.Rules,
-                    draft.Body, draft.Branches, draft.Ret, draft.Reads, depends.ToList(), draft.Placements, draft.NeutralReads));
+                dependsOf[draft.Key] = depends;
             }
 
-            return Acyclic(edges) ? entries : null;
+            if (!Acyclic(edges) || Gating(map, dependsOf) is not { } gating)
+                return null;
+
+            var entries = new Dictionary<string, PlanEntry>(StringComparer.Ordinal);
+            foreach (var draft in map.Values)
+            {
+                var gates = map.Values.Where(d => d.Check == draft.Key).Select(d => d.Key).OrderBy(order).ToList();
+                entries.Add(draft.Key, new PlanEntry(
+                    draft.Key, draft.Id, draft.Kind, draft.Parent, draft.Function, order(draft.Key), draft.Json, draft.Rules,
+                    draft.Body, draft.Branches, draft.Ret, draft.Reads, dependsOf[draft.Key].ToList(), draft.Placements, draft.NeutralReads,
+                    draft.Check, gates, gating.GetValueOrDefault(draft.Key) ?? new HashSet<string>(StringComparer.Ordinal)));
+            }
+
+            return entries;
+        }
+
+        /// <summary>
+        /// D3: for each entry, the deliverables it reads composed: those it reads (depends on) whose gate set holds it. A
+        /// deliverable's gate set is its <c>check</c> and every check that check depends on, transitively, over the checks
+        /// entries (each flow node with its children). Null when a check in a gate set reads that deliverable's
+        /// <c>.state</c> (A08-003 at publish).
+        /// </summary>
+        private static Dictionary<string, HashSet<string>>? Gating(Dictionary<string, Draft> map, Dictionary<string, SortedSet<string>> dependsOf)
+        {
+            var composed = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+            foreach (var deliverable in map.Values.Where(d => d.Kind == PlanKind.Deliverable && d.Check != null).OrderBy(d => d.Key, StringComparer.Ordinal))
+            {
+                var set = new HashSet<string>(StringComparer.Ordinal) { deliverable.Check! };
+                var pending = new Queue<string>([deliverable.Check!]);
+                while (pending.Count > 0)
+                {
+                    var at = pending.Dequeue();
+                    if (!map.TryGetValue(at, out var draft))
+                        continue;
+                    foreach (var next in dependsOf[at].Concat(draft.Children))
+                    {
+                        if (next.StartsWith("check.", StringComparison.Ordinal) && set.Add(next))
+                            pending.Enqueue(next);
+                    }
+                }
+
+                foreach (var key in set.Where(k => map.ContainsKey(k) && dependsOf[k].Contains(deliverable.Key)))
+                {
+                    if (map[key].Reads.Any(path => Named(path, map) == deliverable.Key && path[deliverable.Key.Length..] is var rest
+                            && (rest == ".state" || rest.StartsWith(".state.", StringComparison.Ordinal))))
+                        return null;
+                    if (!composed.TryGetValue(key, out var reads))
+                        composed[key] = reads = new HashSet<string>(StringComparer.Ordinal);
+                    reads.Add(deliverable.Key);
+                }
+            }
+
+            return composed;
         }
 
         /// <summary>Whether the directed graph <paramref name="edges"/> (each key to the keys it needs) has no circle; iterative (Kahn's).</summary>

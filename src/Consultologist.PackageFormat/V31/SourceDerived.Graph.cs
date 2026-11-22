@@ -481,6 +481,13 @@ internal sealed class DerivedGraph
                 var member = s[0] is "node" or "check" && s.Count > 2 ? s[2] : null;
                 return new GraphRead(path, s[0] == "input" ? key : prefix + key, key, s.Count > 2 ? $"{key}.{s[2]}" : key, false, false,
                     Carries: !RunFact(member));
+            case "deliverable" when frame is { InChecks: true }:
+                // #1505 (area 08; D1, D3): a check reads a deliverable as content: the deliverable's vertex, its key the longest
+                // that names one; its .state is the engine's fact about it, and carries no flag.
+                if (Tree.Resolve(reference, frame, "", "", condition: true, reader) is not { Key: { } deliverable, Length: var length })
+                    return plain;
+                var read = s[length - 1];
+                return new GraphRead(path, deliverable, deliverable, $"{deliverable}.{read}", false, false, Carries: read != "state");
             case "pass" when frame != null:
                 return Pass(path, s, frame, prefix);
             case "pass":

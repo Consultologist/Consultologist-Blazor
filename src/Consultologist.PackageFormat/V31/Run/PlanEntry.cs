@@ -73,7 +73,10 @@ public sealed class PlanEntry
         IReadOnlyList<string> reads,
         IReadOnlyList<string> depends,
         IReadOnlyList<PlanPlacement> placements,
-        IReadOnlyList<string> neutralReads)
+        IReadOnlyList<string> neutralReads,
+        string? check,
+        IReadOnlyList<string> gates,
+        IReadOnlySet<string> readsComposed)
     {
         Key = key;
         Id = id;
@@ -93,6 +96,9 @@ public sealed class PlanEntry
         Depends = depends;
         Placements = placements;
         NeutralReads = neutralReads;
+        Check = check;
+        Gates = gates;
+        ReadsComposed = readsComposed;
     }
 
     /// <summary>The rooted key (<c>node.sections.paragraphs.draft_paragraph</c>); in a function, local to it.</summary>
@@ -170,6 +176,19 @@ public sealed class PlanEntry
     /// A call's scope holds them beside its compiled <c>reads</c>.
     /// </summary>
     internal IReadOnlyList<string> NeutralReads { get; }
+
+    /// <summary>#1505 (area 08; part 06 § 7): a deliverable's gate, the key of the check its <c>check</c> names; null for an ungated deliverable and every other kind.</summary>
+    public string? Check { get; }
+
+    /// <summary>#1505 (area 08): the keys of the deliverables this check gates (whose <c>check</c> names it), in <c>graph.order</c>; empty otherwise.</summary>
+    public IReadOnlyList<string> Gates { get; }
+
+    /// <summary>
+    /// #1505 (area 08; D3): the keys of the deliverables this entry reads as composed: it reads them and is in their
+    /// gate set (their <c>check</c> and every check that check depends on, transitively, its loops' bodies included), so
+    /// it reads each as soon as it is composed, not its outcome. Empty for every entry outside <c>checks</c>.
+    /// </summary>
+    public IReadOnlySet<string> ReadsComposed { get; }
 
     /// <summary><see cref="JsonLogicPrinter.Print"/> of the rule held in <paramref name="member"/> (<c>if</c>, <c>expression</c>, <c>while</c>, <c>until</c>).</summary>
     public string Printed(string member)

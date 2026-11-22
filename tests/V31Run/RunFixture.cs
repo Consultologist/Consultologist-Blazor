@@ -14,7 +14,7 @@ namespace Consultologist.Api.Tests.V31Run;
 /// </summary>
 internal static class RunFixture
 {
-    /// <summary>The plan of one of the three goldens.</summary>
+    /// <summary>The plan of one of the compiled goldens.</summary>
     public static RunPlan Plan(CompiledGoldenTests.GoldenCase golden, TimeSpan? matchTimeLimit = null) =>
         Plan(golden.Source(), null, matchTimeLimit);
 

@@ -6,12 +6,12 @@ using Consultologist.PackageFormat.V31;
 namespace Consultologist.Api.Tests.V31Resolve;
 
 /// <summary>
-/// #1502 (specVersion 31, area 05): the compiled documents of three packages frozen as goldens (part 07 § 1: the same
+/// #1502 (specVersion 31, area 05): the compiled documents of four packages frozen as goldens (part 07 § 1: the same
 /// source and the same toolchain give the same bytes; § 4.3). <see cref="CompiledPackage.Publish"/> on
-/// <see cref="ResolveFixture.NestedNote"/>, <see cref="ResolveFixture.Conditional"/> and
-/// <see cref="ResolveFixture.Functions"/> with <see cref="Fixed"/>, the toolchain written by hand so that a machine's patch
-/// level never moves a golden, gives exactly the bytes of <c>Golden/&lt;name&gt;.resolve.json</c> and
-/// <c>Golden/&lt;name&gt;.lock.json</c>: canonical, one line, no final newline. With <c>GOLDEN_UPDATE_V31=1</c> the test
+/// <see cref="ResolveFixture.NestedNote"/>, <see cref="ResolveFixture.Conditional"/>,
+/// <see cref="ResolveFixture.Functions"/> and (#1505, area 08) <see cref="ResolveFixture.CheckedNote"/> with
+/// <see cref="Fixed"/>, the toolchain written by hand so that a machine's patch level never moves a golden, gives exactly
+/// the bytes of <c>Golden/&lt;name&gt;.resolve.json</c> and <c>Golden/&lt;name&gt;.lock.json</c>: canonical, one line, no final newline. With <c>GOLDEN_UPDATE_V31=1</c> the test
 /// rewrites them instead; a rewritten golden is read before it is committed. What each body reads is what the dialect
 /// says (#1504, area 07, D18: no stub). The same cases are the conformance family <c>compiled-documents</c>
 /// (<see cref="CompiledDocumentsExport"/>), which the pinned content repo must hold as published here.
@@ -45,7 +45,7 @@ public class CompiledGoldenTests
         "agents@v2026.12.1",
         null);
 
-    /// <summary>The three goldens, by name.</summary>
+    /// <summary>The goldens, by name.</summary>
     internal static IReadOnlyList<GoldenCase> Cases() =>
     [
         new("nested-note",
@@ -65,6 +65,14 @@ public class CompiledGoldenTests
             + "snippet folder standards; the check loop section_coverage over the loop's .items and the check "
             + "all_sections; and the deliverable deliverable.emr.consult, gated by all_sections, in the delivery folder "
             + "emr, which delivers to emr and email as one zip."),
+        new("checked-note",
+            () => Named(ResolveFixture.CheckedNote(), "example-checked-note", "Checked note demo"),
+            "example-checked-note, chapter 6 § 6.3.4's package cut down: an agent planning the sections, the loop sections "
+            + "drafting each with its planned terms and the terms it covers; the check loop part_coverage over the loop's "
+            + ".items, the aggregate all_sections_covered over its .items, and the check proofread, which reads the "
+            + "composed note's .content and gates it; the note (markdown_block, delivered to emr, failing when empty) and an "
+            + "ungated patient letter (plaintext) in the delivery folder patient, delivered by email and pdf and held when "
+            + "empty."),
     ];
 
     public static TheoryData<string> Names() => new(Cases().Select(c => c.Name));

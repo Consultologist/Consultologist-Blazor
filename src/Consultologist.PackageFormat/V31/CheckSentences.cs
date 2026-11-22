@@ -32,4 +32,13 @@ internal static class CheckSentences
     /// <summary>A08-001 (R-C1): a deliverable's <c>check</c> (<paramref name="reference"/>, as written) that names no check at the top of <c>checks/</c>.</summary>
     public static SourceRefusal CheckedBy(string deliverable, string reference, string path) =>
         new("A08-001", $"Deliverable '{deliverable}' is checked by {reference}; a deliverable's check names a check.*.", path);
+
+    /// <summary>
+    /// A08-003 (D3): the check <paramref name="id"/>, in the gate set of <paramref name="deliverable"/> (its key without
+    /// the root, as the read names it) through its check <paramref name="gate"/>, reads the deliverable's <c>.state</c>,
+    /// which that check decides.
+    /// </summary>
+    public static SourceRefusal ReadsStateItDecides(string id, string deliverable, string gate, string path) =>
+        new("A08-003", $"Check '{id}' reads deliverable.{deliverable}.state, and deliverable '{deliverable}' waits for check '{id}' "
+            + $"through its check '{gate}': read its .content, or read the state in a check it doesn't wait for.", path);
 }

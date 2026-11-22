@@ -10,11 +10,12 @@ namespace Consultologist.PackageFormat.V31;
 /// condition's read, a <c>case</c> subject's), <c>for</c> (a loop's source), <c>aligned</c> (a production loop to the
 /// loop over its <c>.items</c>, beside its <c>for</c>), <c>ret</c> (a body's <c>ret</c> to its flow node),
 /// <c>calls</c> (<c>function.&lt;id&gt;</c> to the call), <c>placed</c> (a macro to the body that places it, through
-/// the seam) and <c>gates</c> (a deliverable's <c>check</c>). A function is a sealed scope with keys of its own, so what
+/// the seam) and <c>gates</c> (a deliverable's <c>check</c>); #1505 (area 08): a check's read of a deliverable is a
+/// <c>reads</c> (or <c>if</c>) edge from the deliverable. A function is a sealed scope with keys of its own, so what
 /// its body reads is in its entries, not here. <c>order</c>: every key of <c>inputs</c>, <c>nodes</c>, <c>checks</c>
 /// and <c>deliverables</c>, a flow node with its bodies after it, each level in a topological order of the edges
-/// between what it holds, ties by source order (A05-003 refused a circle; were one left, the earliest in source order
-/// goes first).
+/// between what it holds but <c>gates</c> (#1505: a deliverable composes before its gate runs), ties by source order
+/// (A05-003 refused a circle; were one left, the earliest in source order goes first).
 /// </summary>
 public static partial class ResolveCompiler
 {
@@ -97,7 +98,8 @@ public static partial class ResolveCompiler
                     if (context.Tree.Source(loop).OverItems)
                         add(from, key, "aligned");
                     break;
-                case "node" or "check" or "input" or "profile":
+                case "node" or "check" or "input" or "profile" or "deliverable":
+                    // #1505 (area 08; D1): a check's read of a deliverable is a reads edge from it.
                     add(from, key, "reads");
                     break;
             }
@@ -105,7 +107,7 @@ public static partial class ResolveCompiler
 
         foreach (var read in entry.ConditionReads)
         {
-            if (read.Key is { } from && Root(from) is "node" or "check" or "input" or "profile")
+            if (read.Key is { } from && Root(from) is "node" or "check" or "input" or "profile" or "deliverable")
                 add(from, key, "if");
             else if (read.Key == null && Fact(read.Path) is { } fact)
                 add(fact, key, "if");
@@ -147,7 +149,9 @@ public static partial class ResolveCompiler
 
         public Ordering(Context context, List<Edge> edges)
         {
-            this.edges = edges;
+            // #1505 (area 08; part 06 §§ 6.7, 7): a deliverable is composed before its gate runs, so a gates edge orders
+            // nothing: a gate that reads its deliverable comes after it, by the reads edge.
+            this.edges = edges.Where(e => e.Kind != "gates").ToList();
             var package = context.Package;
             foreach (var input in package.Manifest.Inputs)
                 Place($"input.{input.Id}", null);

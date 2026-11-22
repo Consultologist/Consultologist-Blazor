@@ -72,6 +72,15 @@ internal static partial class RefusalPackages
             ResolveFixture.Functions(),
             ResolveFixture.Functions().Edit(ConsultFile, "\"check\": \"check.all_sections\"", "\"check\": \"node.extract_note_terms\""));
 
+        yield return new RefusalCase("A08-003",
+            "A check the deliverable waits for reads its .content, not its .state (chapter 6 §§ 6.1.2, 6.7; this implementation's "
+            + "sentence). The consult note is gated by the check proofread, which reads the note and the check consult_words. "
+            + "Invalid: consult_words reads the note's state, which proofread decides. Valid: it counts the note's words.",
+            ResolveFixture.Proofread(),
+            ResolveFixture.Proofread().Edit("checks/consult_words.md",
+                "{ \">\": [{ \"words\": [{ \"var\": \"deliverable.emr.consult.content\" }] }, 0] }",
+                "{ \"===\": [{ \"var\": \"deliverable.emr.consult.state\" }, \"released\"] }"));
+
         yield return new RefusalCase("S06-018",
             "A deliverable can't read its own check (chapter 6 § 6.6.3). The consult note is gated by the check all_sections, and "
             + "the package has a second check, notes_covered, gating nothing. Invalid: the note writes all_sections' message. "

@@ -523,6 +523,38 @@ public class ResolveCompilerTests
         PresentAndNull(silent, "bundle");
     }
 
+    [Fact]
+    public void ACheck_ReadsADeliverablesContent()
+    {
+        // #1505 (area 08; D1, D3): a check reads a deliverable: a reads edge from the deliverable beside the gates edge
+        // back, and graph.order composes the deliverable before the checks that read it, after what it reads.
+        var document = Compile(ResolveFixture.Proofread()).Document!;
+        var proofread = document["checks"]!["check.proofread"]!;
+        Assert.Contains("deliverable.emr.consult.content", Strings(proofread["reads"]));
+        Assert.True((bool)proofread["modelDerived"]!);
+
+        var edges = Edges(document);
+        Assert.Contains(("deliverable.emr.consult", "check.proofread", "reads"), edges);
+        Assert.Contains(("deliverable.emr.consult", "check.consult_words", "reads"), edges);
+        Assert.Contains(("check.proofread", "deliverable.emr.consult", "gates"), edges);
+
+        var order = Strings(document["graph"]!["order"]).ToList();
+        Assert.True(order.IndexOf("node.standards") < order.IndexOf("deliverable.emr.consult"), string.Join(", ", order));
+        Assert.True(order.IndexOf("deliverable.emr.consult") < order.IndexOf("check.consult_words"), string.Join(", ", order));
+        Assert.True(order.IndexOf("check.consult_words") < order.IndexOf("check.proofread"), string.Join(", ", order));
+    }
+
+    [Fact]
+    public void ACheck_ReadingADeliverableInItsIf_IsAnIfEdge()
+    {
+        var files = ResolveFixture.Proofread()
+            .WithJson("checks/index.json", index => index["items"]!.AsArray().Add("delivered"))
+            .With("checks/delivered.md", ResolveFixture.ObjectCheck("The note went out", "true", modelDerived: false))
+            .WithJson("checks/delivered.md", h => h["if"] = JsonNode.Parse("{ \"===\": [{ \"var\": \"deliverable.emr.consult.state\" }, \"released\"] }"));
+        var edges = Edges(Compile(files).Document!);
+        Assert.Contains(("deliverable.emr.consult", "check.delivered", "if"), edges);
+    }
+
     // ---- requires ------------------------------------------------------------------------------
 
     [Fact]

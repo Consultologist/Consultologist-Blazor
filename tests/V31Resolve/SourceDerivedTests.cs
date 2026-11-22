@@ -736,6 +736,132 @@ public class SourceDerivedTests
         Accepted(ResolveFixture.NestedNote(), new StubTemplates(reads, everyBody: false));
     }
 
+    // ---- Checks reading a deliverable (#1505, area 08; D1 to D3) -------------------------------
+
+    private const string Consult = "deliverables/emr/consult.md";
+
+    /// <summary><see cref="SourceCheck.Run"/> with the dialect as the seam (every body known): one refusal, asserted as written.</summary>
+    private static void AssertDialectRefusal(Dictionary<string, byte[]> files, string id, string sentence, string path)
+    {
+        var result = ResolveFixture.Run(files);
+        Assert.True(result.Refusals.Count == 1, ResolveFixture.Said(result));
+        V31Contract.AssertSentence(result.Refusals[0]);
+        Assert.Equal((id, sentence, path), (result.Refusals[0].Id, result.Refusals[0].Sentence, result.Refusals[0].Path));
+    }
+
+    /// <summary><see cref="SourceCheck.Run"/> with the dialect as the seam, asserted accepted.</summary>
+    private static PackageDerived DialectAccepted(Dictionary<string, byte[]> files)
+    {
+        var result = ResolveFixture.Run(files);
+        Assert.True(result.Refusals.Count == 0, ResolveFixture.Said(result));
+        return result.Derived!;
+    }
+
+    /// <summary><paramref name="files"/> with <paramref name="id"/> listed last in <c>checks/</c>, its file <paramref name="file"/>.</summary>
+    private static Dictionary<string, byte[]> WithCheck(Dictionary<string, byte[]> files, string id, string file) =>
+        files.WithJson("checks/index.json", index => index["items"]!.AsArray().Add(id)).With($"checks/{id}.md", file);
+
+    /// <summary>
+    /// <see cref="ResolveFixture.Functions"/> with a second note, <c>deliverable.emr.summary</c>, and two gates: the consult
+    /// note's <c>gate_a</c> reads <paramref name="aReads"/>, the summary's <c>gate_b</c> reads <paramref name="bReads"/>
+    /// (each a deliverable's <c>.content</c> it must not find blank).
+    /// </summary>
+    private static Dictionary<string, byte[]> TwoGates(string aReads, string bReads)
+    {
+        var files = ResolveFixture.Functions()
+            .WithJson("deliverables/emr/index.json", index => index["items"]!.AsArray().Add("summary"))
+            .With("deliverables/emr/summary.md", Md(
+                Deliverable("Summary note", "\"markdown_block\"", "\"check.gate_b\"", "hold"), "## Summary\n\n{{ node.standards.content }}\n"))
+            .WithJson(Consult, h => h["check"] = "check.gate_a");
+        files = WithCheck(files, "gate_a", ResolveFixture.ObjectCheck("Gating the consult note", ResolveFixture.NotBlank(aReads)));
+        return WithCheck(files, "gate_b", ResolveFixture.ObjectCheck("Gating the summary", ResolveFixture.NotBlank(bReads)));
+    }
+
+    [Fact]
+    public void ACheck_ReadingADeliverable_TakesItsFlags()
+    {
+        var derived = DialectAccepted(ResolveFixture.Proofread());
+
+        var proofread = derived.Entries["check.proofread"];
+        Assert.Contains("deliverable.emr.consult.content", proofread.Reads);
+        Assert.Contains(proofread.ContentReads, r => (r.Path, r.Key) == ("deliverable.emr.consult.content", "deliverable.emr.consult"));
+        Assert.True(proofread.ModelDerived);
+        Assert.True(derived.Entries["deliverable.emr.consult"].ModelDerived);
+        Assert.True(proofread.Reproducible);
+        Assert.True(derived.Entries["check.consult_words"].ModelDerived);
+    }
+
+    [Fact]
+    public void ACheck_OfAModelDerivedDeliverable_IsModelDerived() =>
+        AssertDialectRefusal(ResolveFixture.Proofread().WithJson("checks/consult_words.md", h => h["modelDerived"] = false),
+            "S03-036", "Node 'consult_words' declares modelDerived false, but its reads make it true: deliverable.emr.consult.content.",
+            "checks/consult_words.md");
+
+    [Fact]
+    public void AComputedNode_ReadingADeliverable_IsStillRefused() =>
+        AssertDialectRefusal(Listing(ResolveFixture.Functions(), "note_length")
+                .With("nodes/note_length.md", Md(SourceFixture.Node("computed", "Measuring the note", "\"number\"", true, true,
+                    "\"if\": null, \"expression\": { \"words\": [{ \"var\": \"deliverable.emr.consult.content\" }] }"), "")),
+            "S03-019", "Computed node 'note_length' reads deliverable.emr.consult.content; JSON Logic reads input, node, check, item, pass, param and run.",
+            "nodes/note_length.md");
+
+    [Fact]
+    public void ADeliverablesIf_ReadingADeliverable_IsStillRefused() =>
+        AssertDialectRefusal(ResolveFixture.Proofread()
+                .WithJson(Consult, h => h["if"] = JsonNode.Parse("{ \"===\": [{ \"var\": \"deliverable.emr.consult.state\" }, \"released\"] }")),
+            "S03-019", "Deliverable 'consult' reads deliverable.emr.consult.state; JSON Logic reads input, node, check, item, pass, param and run.",
+            Consult);
+
+    [Fact]
+    public void ACheck_ReadingAMemberADeliverableLacks_IsRefused() =>
+        AssertDialectRefusal(WithCheck(ResolveFixture.Functions(), "listed",
+                ResolveFixture.ObjectCheck("Listing the note", "{ \">\": [{ \"size\": [{ \"var\": \"deliverable.emr.consult.items\" }] }, 0] }")),
+            "S03-014", "Computed node 'listed' reads deliverable.emr.consult.items, which doesn't exist here.", "checks/listed.md");
+
+    [Fact]
+    public void AGate_ReadingItsDeliverablesState_IsRefused() =>
+        AssertDialectRefusal(ResolveFixture.Proofread().WithJson("checks/consult_words.md", h => h["expression"]!["object"]!["pass"] =
+                JsonNode.Parse("{ \"===\": [{ \"var\": \"deliverable.emr.consult.state\" }, \"released\"] }")),
+            "A08-003", "Check 'consult_words' reads deliverable.emr.consult.state, and deliverable 'emr.consult' waits for check "
+            + "'consult_words' through its check 'proofread': read its .content, or read the state in a check it doesn't wait for.",
+            "checks/consult_words.md");
+
+    [Fact]
+    public void ACheckOutsideTheGateSet_MayReadState()
+    {
+        // delivered reads the note's outcome; no gate waits for it, so it waits for the note's gate (D3).
+        var derived = DialectAccepted(WithCheck(ResolveFixture.Proofread(), "delivered", ResolveFixture.ObjectCheck("The note went out",
+            "{ \"===\": [{ \"var\": \"deliverable.emr.consult.state\" }, \"released\"] }", modelDerived: false)));
+        Assert.False(derived.Entries["check.delivered"].ModelDerived);
+        Assert.Equal(["deliverable.emr.consult.state"], derived.Entries["check.delivered"].Reads);
+    }
+
+    [Fact]
+    public void ACheckOutsideTheGateSet_ReadingAGateOfItsDeliverable_IsNoCircle() =>
+        DialectAccepted(WithCheck(ResolveFixture.Proofread(), "delivered", ResolveFixture.ObjectCheck("The note went out",
+            $"{{ \"and\": [{ResolveFixture.NotBlank("deliverable.emr.consult.content")}, {{ \"var\": \"check.proofread.value.pass\" }}] }}")));
+
+    [Fact]
+    public void TwoGates_ReadingEachOthersDeliverable_AreACircle() =>
+        AssertDialectRefusal(TwoGates("deliverable.emr.summary.content", "deliverable.emr.consult.content"),
+            "A05-003", "Node 'gate_a' reads node 'gate_b', which reads node 'gate_a': nodes can't read each other in a circle. Break the circle.",
+            "checks/gate_a.md");
+
+    [Fact]
+    public void AGate_ReadingAnotherDeliverable_Publishes()
+    {
+        var derived = DialectAccepted(TwoGates("deliverable.emr.summary.content", "deliverable.emr.summary.content"));
+        Assert.Contains("deliverable.emr.summary.content", derived.Entries["check.gate_a"].Reads);
+    }
+
+    [Fact]
+    public void ACheckLoopsBody_ReadingItsGatesDeliverable_IsNoCircle() =>
+        // The check loop is in the gate set of the consult note (all_sections, its gate, reads it): its body reads the
+        // composed note, an ordinary edge.
+        DialectAccepted(ResolveFixture.Functions().WithJson("checks/section_coverage/coverage.md", h => h["if"] = JsonNode.Parse(
+            "{ \"and\": [{ \"===\": [{ \"var\": \"item.state\" }, \"completed\"] }, "
+            + ResolveFixture.NotBlank("deliverable.emr.consult.content") + "] }")));
+
     // ---- Warnings ------------------------------------------------------------------------------
 
     [Fact]

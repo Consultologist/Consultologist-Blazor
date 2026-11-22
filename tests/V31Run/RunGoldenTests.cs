@@ -9,7 +9,7 @@ using Consultologist.PackageFormat.V31.Run;
 namespace Consultologist.Api.Tests.V31Run;
 
 /// <summary>
-/// #1503 (specVersion 31, area 06; part 09 § 3.2; Review Focus 3): whole runs of the three compiled goldens, pinned. Each
+/// #1503 (specVersion 31, area 06; part 09 § 3.2; Review Focus 3): whole runs of the compiled goldens, pinned. Each
 /// golden's plan, run on <see cref="RunFixture.GoldenInputs"/> with part 10 § 3.1's stubs seeded by each row key
 /// (<see cref="RunFixture.StubReply"/>) answered at once, gives exactly <c>Golden/&lt;name&gt;.run.txt</c>
 /// (<see cref="RunTrace"/>); with <c>GOLDEN_UPDATE_V31=1</c> the test rewrites it instead, to be read before it is committed.

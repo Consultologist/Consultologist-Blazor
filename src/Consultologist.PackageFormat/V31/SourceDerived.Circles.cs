@@ -9,13 +9,19 @@ public static partial class SourceDerived
     /// <c>pass.node.&lt;id&gt;</c>, as <c>node.&lt;id&gt;</c>: #1504, ruled by the owner, ruling 7, part 04 § 3.3), except an
     /// earlier pass (<c>pass.previous…</c>, <c>pass.history</c>), a loop's <c>item</c> reading the loop's source, and a flow
     /// node waiting for its body. #1504 (area 07): a templated node also reads what each rule of its <c>placements</c>
-    /// reads at its place (<see cref="Vertex.Placed"/>), as <c>RunPlan</c> counts them among its dependencies. Each set of nodes that reach each other is said once, from its ordinal-first node, as the shortest
-    /// circle back to it (the nodes read taken in ordinal order), at that node's file. Each walk visits a vertex once.
+    /// reads at its place (<see cref="Vertex.Placed"/>), as <c>RunPlan</c> counts them among its dependencies. #1505 (area
+    /// 08; D3): the deliverables are vertices too, each reading what its body and its <c>if</c> read, and a check reading
+    /// a deliverable reads it; a check outside the deliverable's gate set (<see cref="GateSets"/>) waits for its outcome,
+    /// so it also reads the deliverable's gate. Each set of vertices that reach each other is said once, from its
+    /// ordinal-first node, as the shortest circle back to it (the vertices read taken in ordinal order), at that node's
+    /// file, each named by its bare id (a deliverable by its key without its root: the row's words name nodes, 05-D34).
+    /// Before the circles, A08-003 for a check in a deliverable's gate set reading its <c>.state</c>, which it decides.
+    /// Each walk visits a vertex once.
     /// </summary>
     private static void Circles(DerivedGraph graph, List<SourceRefusal> refusals)
     {
         var vertices = graph.Vertices
-            .Where(v => !v.Union && (v.Declaration is SourceNode || v.Id.StartsWith("item:", StringComparison.Ordinal)))
+            .Where(v => !v.Union && (v.Declaration is SourceNode or SourceDeliverable || v.Id.StartsWith("item:", StringComparison.Ordinal)))
             .ToList();
         var ids = vertices.Select(v => v.Id).ToHashSet(StringComparer.Ordinal);
         var edges = vertices.ToDictionary(v => v.Id, v => v.Content.Concat(v.Conditions).Concat(v.Placed)
@@ -23,8 +29,33 @@ public static partial class SourceDerived
             .Select(r => r.Id!)
             .Concat(v.Contains.Where(ids.Contains))
             .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
             .ToList(), StringComparer.Ordinal);
+
+        // D3: a reader in the gate set reads the composed deliverable (an ordinary edge, and not its .state, A08-003);
+        // every other reader waits for the outcome, and so for the gate.
+        foreach (var (deliverable, gate, set) in GateSets(graph, edges).ToList())
+        {
+            foreach (var reader in vertices.Where(v => v.Declaration is SourceNode))
+            {
+                var reads = reader.Content.Concat(reader.Conditions).Where(r => !r.Earlier && r.Id == deliverable.Key).ToList();
+                if (reads.Count == 0)
+                    continue;
+                if (!set.Contains(reader.Id))
+                {
+                    edges[reader.Id].Add(gate.Id);
+                    continue;
+                }
+
+                if (reads.Any(r => r.Canonical == $"{deliverable.Key}.state"))
+                {
+                    var check = (SourceNode)reader.Declaration!;
+                    refusals.Add(CheckSentences.ReadsStateItDecides(check.Id, Bare(deliverable), ((SourceNode)gate.Declaration!).Id, HeaderFile(check)));
+                }
+            }
+        }
+
+        foreach (var key in edges.Keys)
+            edges[key] = edges[key].Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
 
         var reach = vertices.ToDictionary(v => v.Id, v => Reachable(v.Id, edges), StringComparer.Ordinal);
         var said = new HashSet<string>(StringComparer.Ordinal);
@@ -35,10 +66,56 @@ public static partial class SourceDerived
             var ring = ids.Where(id => id == start || (reach[start].Contains(id) && reach[id].Contains(start))).ToHashSet(StringComparer.Ordinal);
             said.UnionWith(ring);
             var chain = Shortest(start, ring, edges)
-                .Select(id => graph.ById[id].Declaration).OfType<SourceNode>().Select(n => n.Id).ToList();
+                .Select(id => graph.ById[id].Declaration switch
+                {
+                    SourceNode node => node.Id,
+                    SourceDeliverable deliverable => Bare(deliverable),
+                    _ => null,
+                })
+                .OfType<string>().ToList();
             var first = (SourceNode)graph.ById[start].Declaration!;
             var after = chain.Count > 1 ? string.Join("', which reads node '", chain.Skip(1)) : first.Id;
             refusals.Add(ResolveSentences.ReadInACircle(first.Id, after, HeaderFile(first)));
+        }
+    }
+
+    /// <summary>A deliverable's key without its root, as a check reads it (<c>emr.note</c> of <c>deliverable.emr.note</c>).</summary>
+    private static string Bare(SourceDeliverable deliverable) =>
+        deliverable.Key.StartsWith("deliverable.", StringComparison.Ordinal) ? deliverable.Key["deliverable.".Length..] : deliverable.Key;
+
+    /// <summary>
+    /// D3: each gated deliverable, in folder order, with its gate (the check its <c>check</c> names) and its gate set: the
+    /// gate and every check the gate depends on, transitively, through checks only (a check's reads and conditions, a
+    /// check loop's source and <c>item</c>, its <c>ret</c> and its body), as <c>RunPlan</c> derives it from
+    /// <c>Depends</c> over <c>checks</c>. A check reached only through a node or another deliverable is not in it.
+    /// </summary>
+    private static IEnumerable<(SourceDeliverable Deliverable, Vertex Gate, HashSet<string> Set)> GateSets(
+        DerivedGraph graph, Dictionary<string, List<string>> edges)
+    {
+        static bool InChecks(string id) =>
+            id.StartsWith("check.", StringComparison.Ordinal) || id.StartsWith("item:check.", StringComparison.Ordinal);
+
+        foreach (var vertex in graph.Vertices.Where(v => v.Declaration is SourceDeliverable))
+        {
+            var deliverable = (SourceDeliverable)vertex.Declaration!;
+            if (SourceLayout.Text(deliverable.Header["check"]) is not { } gateKey
+                || !graph.ById.TryGetValue(gateKey, out var gate) || gate.Declaration is not SourceNode || !edges.ContainsKey(gate.Id))
+            {
+                continue;
+            }
+
+            var set = new HashSet<string>(StringComparer.Ordinal) { gate.Id };
+            var queue = new Queue<string>([gate.Id]);
+            while (queue.Count > 0)
+            {
+                foreach (var next in edges[queue.Dequeue()].Where(InChecks))
+                {
+                    if (set.Add(next))
+                        queue.Enqueue(next);
+                }
+            }
+
+            yield return (deliverable, gate, set);
         }
     }
 
