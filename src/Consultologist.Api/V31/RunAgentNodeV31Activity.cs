@@ -63,6 +63,7 @@ public sealed class RunAgentNodeV31Activity(
 
         var (agentName, agentVersion) = binding;
         var prepared = AgentTurn.Prepare(plan, call, input.RenderSteps, catalogue.StrictRejects(agentName, version));
+        V31EngineFaults.Log(logger, prepared.Composition.EngineFault, call.Key, call.EntryKey, call.Function);
         if (prepared.Text is not { } prompt)
             return CouldNotCall(call, prepared.ErrorKind ?? "plan");
 

@@ -17,8 +17,12 @@ namespace Consultologist.Api.Tests;
 internal sealed class CapturingLogger<T> : ILogger<T>
 {
     private readonly List<string> _recorded = [];
+    private readonly List<(LogLevel Level, string Message)> _entries = [];
 
     internal IReadOnlyList<string> Recorded => _recorded;
+
+    /// <summary>Each line logged, with its level and its rendered message.</summary>
+    internal IReadOnlyList<(LogLevel Level, string Message)> Entries => _entries;
 
     /// <summary>Everything written, as one string to search.</summary>
     internal string Everything => string.Join("\n", _recorded);
@@ -40,6 +44,7 @@ internal sealed class CapturingLogger<T> : ILogger<T>
         Func<TState, Exception?, string> formatter)
     {
         _recorded.Add(formatter(state, exception));
+        _entries.Add((logLevel, formatter(state, exception)));
         Record(state);
 
         if (exception != null)

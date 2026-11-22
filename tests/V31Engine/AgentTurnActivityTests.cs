@@ -179,6 +179,90 @@ public class AgentTurnActivityTests
         Assert.Equal(CanonicalJson.HashText(outcome.NeutralText!), (string?)run.Recorder.Row("node.stamp").Detail["runNeutralHash"]);
     }
 
+    // ---- an engine fault in reading a template (#1505 ruling 6, R14) -----------------------------------
+
+    /// <summary>The error lines of <paramref name="log"/> that say A08-006.</summary>
+    private static List<string> EngineFaults<T>(CapturingLogger<T> log) =>
+        log.Entries.Where(e => e.Level == LogLevel.Error && e.Message.Contains("A08-006", StringComparison.Ordinal)).Select(e => e.Message).ToList();
+
+    private static Func<string, Scriban.Template> Throwing(Exception exception) => _ => throw exception;
+
+    [Fact]
+    public async Task AnEngineFault_ComposingAPrompt_IsLoggedOnce_ByItsType()
+    {
+        var run = new ActivityRun(MacrosGolden);
+        var call = await run.CallOfAsync("node.draft");
+
+        TemplateSyntax.TestParser.Value = Throwing(new InvalidOperationException("Margaret Okafor's history"));
+        AgentOutcome outcome;
+        try
+        {
+            outcome = await run.AgentAsync(call);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Equal((AgentOutcomeKind.Failed, "compose"), (outcome.Kind, outcome.ErrorKind));
+        Assert.Empty(run.Agent.Sent);
+        var line = Assert.Single(EngineFaults(run.AgentLog));
+        Assert.Contains("node.draft", line, StringComparison.Ordinal);
+        Assert.Contains("System.InvalidOperationException", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("Margaret", run.AgentLog.Everything, StringComparison.Ordinal);
+        Assert.DoesNotContain("Draft", run.AgentLog.Everything, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AnEngineFault_InARender_IsLoggedOnce_ByItsType()
+    {
+        var run = new ActivityRun(MacrosGolden);
+        await run.RunAsync(RunFixture.GoldenInputs() with { RunFacts = new JsonObject { ["date"] = "2026-11-21" } });
+        var (call, _) = run.Renders.Single(r => r.Call.Key == "node.stamp");
+
+        TemplateSyntax.TestParser.Value = Throwing(new NullReferenceException("Seen 21 November 2026"));
+        RenderOutcome outcome;
+        try
+        {
+            outcome = await run.RenderAsync(call);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Null(outcome.Text);
+        Assert.NotNull(outcome.Failure);
+        var line = Assert.Single(EngineFaults(run.RenderLog));
+        Assert.Contains("node.stamp", line, StringComparison.Ordinal);
+        Assert.Contains("System.NullReferenceException", line, StringComparison.Ordinal);
+        Assert.DoesNotContain("Seen", run.RenderLog.Everything, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task TheAuthorsFault_LogsNoEngineFault()
+    {
+        // What Scriban throws for unreadable text is A07-005, the author's: the call fails as before and nothing says A08-006.
+        var run = new ActivityRun(MacrosGolden);
+        var call = await run.CallOfAsync("node.draft");
+        var (render, _) = run.Renders.Single(r => r.Call.Key == "node.stamp");
+
+        TemplateSyntax.TestParser.Value = Throwing(new Scriban.Syntax.ScriptRuntimeException(default, "unreadable"));
+        try
+        {
+            Assert.Equal(AgentOutcomeKind.Failed, (await run.AgentAsync(call)).Kind);
+            Assert.Null((await run.RenderAsync(render)).Text);
+        }
+        finally
+        {
+            TemplateSyntax.TestParser.Value = null;
+        }
+
+        Assert.Empty(EngineFaults(run.AgentLog));
+        Assert.Empty(EngineFaults(run.RenderLog));
+        Assert.DoesNotContain(run.AgentLog.Entries.Concat(run.RenderLog.Entries), e => e.Level == LogLevel.Error);
+    }
+
     [Fact]
     public async Task NoLogLine_CarriesText()
     {
