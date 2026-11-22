@@ -90,9 +90,9 @@ internal static class TemplateFixture
                 "\"if\": null, \"expression\": { \"terms_subset\": [{ \"var\": \"node.extract_input_terms.value\" }, "
                 + "{ \"var\": \"node.extract_note_terms.value\" }, \"The plan does not cover every term of the draft.\"] }"), ""));
 
-    /// <summary>Gives the deliverable <c>note</c> <paramref name="body"/>.</summary>
+    /// <summary>Gives the deliverable <c>note</c> <paramref name="body"/>, a <c>markdown_block</c> (it reads the draft, which is Markdown: part 06 § 6.4).</summary>
     public static Dictionary<string, byte[]> WithDeliverable(this Dictionary<string, byte[]> files, string body) =>
-        files.With("deliverables/note.md", Md(Deliverable("Consultation note", Plain, "null", "hold"), body));
+        files.With("deliverables/note.md", Md(Deliverable("Consultation note", "\"markdown_block\"", "null", "hold"), body));
 
     /// <summary>The reader, the types, the resolver and the expressions (each asserted to accept), then the dialect.</summary>
     public static TemplateCheck Check(Dictionary<string, byte[]> files) => Check(files, null);

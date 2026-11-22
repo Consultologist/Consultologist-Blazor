@@ -5,7 +5,7 @@ namespace Consultologist.Api.Tests.V31Source;
 
 /// <summary>
 /// #1505 (specVersion 31, area 08): the <c>refusal-packages</c> cases of <c>checks/</c> and of what gates a deliverable
-/// (chapter 6 §§ 6.1, 6.3, 6.4), and of a deliverable's header and its delivery folder (§§ 6.6.1, 6.6.3, 6.8): one for
+/// (chapter 6 §§ 6.1, 6.3, 6.4), and of a deliverable's header, its reads and its delivery folder (§§ 6.6.1, 6.6.3, 6.6.4, 6.8): one for
 /// every publish sentence of <see cref="Consultologist.PackageFormat.V31.CheckSentences"/> and
 /// <see cref="Consultologist.PackageFormat.V31.DeliverableSentences"/>. Each side is <see cref="ResolveFixture.Functions"/>
 /// (its production loop <c>standards</c>, the check loop <c>section_coverage</c> over its <c>.items</c>, the check
@@ -94,6 +94,24 @@ internal static partial class RefusalPackages
             ResolveFixture.Functions(),
             ResolveFixture.Functions().Edit(ConsultFile, "\"format\": \"markdown_block\"", "\"format\": \"markdown_inline\""));
 
+        yield return new RefusalCase("S06-021",
+            "A deliverable's reads fit its format: a Markdown one writes no object (chapter 6 § 6.6.4). The consult note is "
+            + "markdown_block. Invalid: it writes the draft's terms, a concept_list. Valid: the sections' text.",
+            ResolveFixture.Functions(),
+            ResolveFixture.Functions().Edit(ConsultFile, "{{ node.standards.content }}", "{{ node.extract_input_terms.value }}"));
+
+        yield return new RefusalCase("S06-022",
+            "A plain-text deliverable writes no Markdown syntax (chapter 6 § 6.6.4). The consult note is plaintext. Invalid: "
+            + "its first line is the heading '## Sections'. Valid: the line 'Sections'.",
+            PlainConsult(),
+            PlainConsult().Edit(ConsultFile, "Sections\n\n", "## Sections\n\n"));
+
+        yield return new RefusalCase("S06-023",
+            "An object deliverable's template is one node's value of its format and nothing else (chapter 6 § 6.6.4). The "
+            + "consult note is a concept_list. Invalid: it writes 'The terms: ' before the draft's terms. Valid: the terms alone.",
+            TermsConsult(),
+            TermsConsult().Edit(ConsultFile, "{{ node.extract_input_terms.value }}", "The terms: {{ node.extract_input_terms.value }}"));
+
         yield return new RefusalCase("S06-025",
             "A deliverable's whenEmpty is release, hold or fail (chapter 6 § 6.6.1). Invalid: the consult note's is skip. "
             + "Valid: hold.",
@@ -120,6 +138,18 @@ internal static partial class RefusalPackages
     private static Dictionary<string, byte[]> WithCheckRead() =>
         WithSecondCheck("notes_covered").Edit(ConsultFile, "{{ node.standards.content }}\n",
             "{{ node.standards.content }}\n\n{{ check.notes_covered.value.message }}\n");
+
+    /// <summary><see cref="ResolveFixture.Functions"/> with the consult note <c>plaintext</c>, its heading the plain line <c>Sections</c>.</summary>
+    private static Dictionary<string, byte[]> PlainConsult() =>
+        ResolveFixture.Functions()
+            .Edit(ConsultFile, "\"format\": \"markdown_block\"", "\"format\": \"plaintext\"")
+            .Edit(ConsultFile, "## Sections\n", "Sections\n");
+
+    /// <summary><see cref="ResolveFixture.Functions"/> with the consult note a <c>concept_list</c>, its body the draft's terms (D8).</summary>
+    private static Dictionary<string, byte[]> TermsConsult() =>
+        ResolveFixture.Functions()
+            .Edit(ConsultFile, "\"format\": \"markdown_block\"", "\"format\": \"concept_list\"")
+            .Edit(ConsultFile, "## Sections\n\n{{ node.standards.content }}\n", "{{ node.extract_input_terms.value }}\n");
 
     /// <summary><see cref="ResolveFixture.Functions"/> with a second check, <paramref name="id"/>, of the same terms, gating nothing.</summary>
     private static Dictionary<string, byte[]> WithSecondCheck(string id) =>

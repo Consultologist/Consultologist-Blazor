@@ -103,6 +103,18 @@ public sealed class PackageTemplates : ITemplateReads
     internal IEnumerable<TypedRead> TypedReads(object declaration) =>
         tops.TryGetValue(declaration, out var body) ? Placed(body).SelectMany(b => b.Body.Reads) : [];
 
+    /// <summary>
+    /// #1505 (area 08; D7): the output tags of the deliverable <paramref name="deliverableKey"/>
+    /// (<c>deliverable.emr.consult</c>) whose value is escaped, in order of appearance with the snippets it places
+    /// expanded, each with the unit whose text holds it (<c>null</c> for the body) and its <c>&lt;line&gt;:&lt;column&gt;</c>;
+    /// <c>[]</c> for a <c>plaintext</c> or object deliverable, and for a key that names none.
+    /// </summary>
+    public IReadOnlyList<(string? Unit, string At)> Escapes(string deliverableKey)
+    {
+        ArgumentNullException.ThrowIfNull(deliverableKey);
+        return Bodies.FirstOrDefault(b => b.Host.Declaration is SourceDeliverable d && d.Key == deliverableKey)?.Escapes ?? [];
+    }
+
     // ---- a template ------------------------------------------------------------------------------
 
     private static TemplateReads Template(CheckedBody body)

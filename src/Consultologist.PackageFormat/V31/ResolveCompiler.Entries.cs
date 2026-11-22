@@ -336,7 +336,7 @@ public static partial class ResolveCompiler
         /// A deliverable: its header as written (<c>format</c> rewritten, the <c>if</c>'s paths as keys), then
         /// <c>delivery</c> and <c>bundle</c> as the <c>index.json</c> of <paramref name="folder"/>, the folder that holds
         /// it, writes them (part 06 § 8: delivery is declared on folders only, with no inheritance; the engine loads only
-        /// <c>resolve.json</c>, part 07 § 1), and the derived members.
+        /// <c>resolve.json</c>, part 07 § 1), and the derived members, <c>escapes</c> among them (D7).
         /// </summary>
         private JsonObject Deliverable(SourceDeliverable deliverable, SourceDeliveryFolder folder)
         {
@@ -351,6 +351,12 @@ public static partial class ResolveCompiler
             Derived(entry, deliverable.Id, null, derived);
             PlainConverts(entry, deliverable);
             Body(entry, deliverable.Body, derived);
+            // #1505 (area 08; D7): the outputs composition escapes, in the shape of runSpots' unit and at.
+            entry["escapes"] = new JsonArray((context.Check.Templates?.Escapes(deliverable.Key) ?? []).Select(e => (JsonNode?)new JsonObject
+            {
+                ["unit"] = e.Unit,
+                ["at"] = e.At,
+            }).ToArray());
             Templated(entry, deliverable, null, Tree.PackageRoot, null);
             Hashes(entry, deliverable.Header["format"], context.Types.Formats, null);
             return entry;

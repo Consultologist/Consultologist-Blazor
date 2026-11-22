@@ -17,6 +17,24 @@ internal static class DeliverableSentences
     public static SourceRefusal HasFormat(string id, string format, string path) =>
         new("S06-020", $"Deliverable '{id}' has format {format}; a deliverable is markdown_block, plaintext or an object format.", path);
 
+    /// <summary>
+    /// S06-021 (R-D5, part 06 § 6.4): a deliverable of <paramref name="format"/> (<c>markdown_block</c> or <c>plaintext</c>)
+    /// whose body writes <paramref name="path"/> (as written; a chain's last renderer, <c>renderer.&lt;id&gt;</c>, for a
+    /// piped value), of <paramref name="readFormat"/> (printed), at line <paramref name="line"/>, which its format does not
+    /// take; <paramref name="fix"/> is <c>Convert it in a node</c> (Markdown in a plain-text deliverable) or
+    /// <c>Use a renderer or a node</c> (an object or a list).
+    /// </summary>
+    public static SourceRefusal ReadsFormat(string id, string format, string path, string readFormat, int line, string fix, string file) =>
+        new("S06-021", $"Deliverable '{id}' is {format}, and reads {path} ({readFormat}) at line {line}. {fix}.", file);
+
+    /// <summary>S06-022 (R-D6, D9): a <c>plaintext</c> deliverable whose body's line <paramref name="line"/> writes Markdown; <paramref name="text"/> is the line trimmed, cut to 40 characters.</summary>
+    public static SourceRefusal WritesMarkdown(string id, int line, string text, string file) =>
+        new("S06-022", $"Deliverable '{id}' is plaintext, and line {line} writes Markdown ('{text}').", file);
+
+    /// <summary>S06-023 (R-D7, D8): a deliverable of the object format <paramref name="format"/> (as written) whose body is anything but one tag writing a node's <c>.value</c> of that format.</summary>
+    public static SourceRefusal IsObject(string id, string format, string file) =>
+        new("S06-023", $"Deliverable '{id}' is {format}; its template is {{{{ node.<x>.value }}}} and nothing else.", file);
+
     /// <summary>S06-025 (R-D10): a deliverable whose <c>whenEmpty</c> (<paramref name="value"/>, as written) is not <c>release</c>, <c>hold</c> or <c>fail</c>.</summary>
     public static SourceRefusal HasWhenEmpty(string id, string value, string path) =>
         new("S06-025", $"Deliverable '{id}' has whenEmpty {value}; write release, hold or fail.", path);

@@ -66,14 +66,25 @@ public class SourceDeliverablesTests
     public void ADeliverable_OfPlaintext_Publishes() =>
         AssertPublishes(WithConsult("\"plaintext\"", "Consult note for Margaret Okafor.\n"));
 
-    // Its body is fixed text here: until area 08's D8 says what an object deliverable's body is, writing the object is
-    // A07-007's.
+    // D8: an object deliverable's body is one tag writing a node's .value of its format; a node of that format is added
+    // where the fixture has none.
     [Theory]
     [InlineData("concept_list")]
     [InlineData("check_result")]
     [InlineData("standard_section")]
-    public void ADeliverable_OfANamedObjectFormat_Publishes(string format) =>
-        AssertPublishes(WithConsult($"\"{format}\"", "The terms of the draft.\n"));
+    public void ADeliverable_OfANamedObjectFormat_Publishes(string format)
+    {
+        var files = WithConsult($"\"{format}\"", format == "concept_list" ? "{{ node.extract_input_terms.value }}\n" : "{{ node.picked.value }}\n");
+        if (format != "concept_list")
+        {
+            files.WithJson("nodes/index.json", index => index["items"]!.AsArray().Add("picked"))
+                .With("nodes/picked.md", format == "check_result"
+                    ? ResolveFixture.ObjectCheck("Picking a result", "true", modelDerived: false)
+                    : Agent($"Picking a {format}", $"\"{format}\"", "Pick one for the consult draft.\n\n{{ input.consult_draft.content }}\n"));
+        }
+
+        AssertPublishes(files);
+    }
 
     [Fact]
     public void ADeliverable_OfMarkdownInline_IsRefused() =>
