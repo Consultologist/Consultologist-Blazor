@@ -374,14 +374,14 @@ public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? F
 - Produces: `public sealed record DeliverV31Input(string JobId, string AppUserId, DeliverySend Send)` and the activity `deliver-v31` (`ConsultGenerationActivityNames.DeliverV31`) → `DeliverySendOutcome`: one attempt, no retry policy, never throwing for a send's failure (`Failed` with `ErrorKind` `error`, `too-large` or `unreachable`).
 - Produces: `internal interface IDeliveryChannel { string Kind { get; } Task<DeliverySendOutcome> SendAsync(DeliverV31Input input, CancellationToken ct); }` with `EmailDeliveryChannel` and `PdfDeliveryChannel` (D10, D11); a kind with no channel is `NotSetUp`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - Channels: `Email_WithNoAddress_IsNotSetUp`, `Email_TurnedOff_IsNotSetUp`, `Email_Sends_TheLinkOnlyMessage` (the body holds the job's History link and no document text); `Pdf_WithNoPassword_IsNotSetUp`; `Pdf_AttachesAProtectedPdf_PerDocument` (a `plaintext` deliverable's text is escaped to Markdown first; an object one is a fenced block); `Pdf_OfABundle_AttachesOneZip` (`application/zip`, holding one PDF per document); `Pdf_OverTheAttachmentBudget_Fails` (`too-large`, the 2 MB budget of `SendEmailIntakeReplyActivity`); `AMailFault_IsAFailedSend_NotAThrow`.
   - Activity: `AKindWithNoChannel_IsNotSetUp` (`emr`, `zip`).
   - Orchestration: `ACompletedJob_Delivers_ThenCompletes` (calls in order: `MarkDelivering`, `deliver-v31` per send, `FinalizeJob` Completed; custom status `delivering` in between); `AJobWithNothingToDeliver_NeverEntersDelivering`; `AFailedDelivery_LeavesTheJobCompleted` (Review Focus 4); `AFailedJob_DeliversNothing_AndRecordsNotSent`; `ABlockedDeliverable_IsNeverSent`.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.** `DurableDeliveryHost` is `DurableRunHost`'s twin (the activity, durable timers, the replay-safe clock). `EntityRunRecorder.DeliveryAsync` logs the row's key, kind, result and attempt count and signals `RecordV31Progress`. The 5–30 delivery path is untouched: `DeliveryRecordTests` and `EmailIntakeReplyTests` stay green.
-- [ ] **Step 4: Run** the solution's tests (shared code changed). Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1505): a 31 job delivers its released deliverables, then completes`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.** `DurableDeliveryHost` is `DurableRunHost`'s twin (the activity, durable timers, the replay-safe clock). `EntityRunRecorder.DeliveryAsync` logs the row's key, kind, result and attempt count and signals `RecordV31Progress`. The 5–30 delivery path is untouched: `DeliveryRecordTests` and `EmailIntakeReplyTests` stay green.
+- [x] **Step 4: Run** the solution's tests (shared code changed). Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1505): a 31 job delivers its released deliverables, then completes`; push.
 
 ### Task 12: Monitoring and alerts (D14)
 
