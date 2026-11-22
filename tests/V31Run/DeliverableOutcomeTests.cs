@@ -356,7 +356,8 @@ public class DeliverableOutcomeTests
     public async Task ARow_IsRecordedOnce_WhenTheOutcomeIsFinal()
     {
         // The gate proofread reads the note composed (D3: it is the note's gate set) and passes on its .content; the note's
-        // one row is recorded once that outcome is final, after the gate's row.
+        // one row is recorded once that outcome is final. #1506 (area 09; D7): the gate's own row waits for the note's, so its
+        // effect is written on its one row.
         var files = Gated(Check("Proofreading the note", Result(ResolveFixture.NotBlank("deliverable.note.content")), modelDerived: true));
         var plan = RunFixture.Plan(files);
         Assert.Contains("deliverable.note", plan.Entries["check.all_sections"].ReadsComposed);
@@ -364,7 +365,8 @@ public class DeliverableOutcomeTests
 
         Assert.Equal(RunState.Completed, result.State);
         Assert.Single(recorder.Rows, r => r.Key == "deliverable.note");
-        Assert.Equal(["node.plan", "check.all_sections", "deliverable.note"], recorder.Rows.Select(r => r.Key));
+        Assert.Equal(["node.plan", "deliverable.note", "check.all_sections"], recorder.Rows.Select(r => r.Key));
+        Assert.Equal("released", (string?)recorder.Row("check.all_sections").ToJson()["effect"]);
         Assert.True((bool)result.Values["check.all_sections"]!["value"]!["pass"]!);
         Assert.Equal(RowState.Released, recorder.Row("deliverable.note").State);
         Assert.Equal("released", (string?)result.Values["deliverable.note"]!["state"]);

@@ -38,7 +38,9 @@ public enum RowState
 /// or a model. #1506 (area 09; D2): <paramref name="Text"/> is the row's settled text, which never enters the row itself
 /// and goes to the retained text: <c>content</c> (the value's <c>.content</c>), <c>value</c> (the value's canonical JSON when
 /// it is not text), <c>itemName</c> (an item's name not drawn from package text) and <c>spots</c> (<c>{ "&lt;spot id&gt;":
-/// output }</c> for each run spot whose row <c>output</c> is <c>null</c>); <c>null</c> when there is none.
+/// output }</c> for each run spot whose row <c>output</c> is <c>null</c>), and on a check's row <c>uncovered</c> and
+/// <c>untested</c> (its <c>check_result</c>'s lists, which come from inputs; the row holds their hashes and sizes);
+/// <c>null</c> when there is none.
 /// </summary>
 public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState State, string? Reason, string? ValueHash, JsonObject Detail, JsonObject? Text = null)
 {
@@ -49,10 +51,12 @@ public sealed record RunRow(string Key, string EntryKey, PlanKind Kind, RowState
 
     /// <summary>
     /// #1506 (area 09; part 08 §§ 4, 6, 7, 10): the row in part 08's shape for its <see cref="Section"/>, every member written
-    /// (<see cref="RecordRows"/>). A check's and a deliverable's are a node's for now (areas 09's Tasks 5 and 6).
+    /// (<see cref="RecordRows"/>): a check's is part 08 § 6's (<see cref="RecordRows.Check"/>); a deliverable's is a node's for
+    /// now (area 09's Task 6).
     /// </summary>
     public JsonObject ToJson() => Section switch
     {
+        "check" => RecordRows.Check(this),
         _ => RecordRows.Node(this),
     };
 }

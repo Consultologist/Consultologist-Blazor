@@ -169,6 +169,63 @@ public sealed partial class PlanRunner
                 SourceLayout.Text(entry.Json["bundle"]))));
         }
 
+        /// <summary>#1506 (area 09; D7): the gate checks settled whose rows wait for their deliverables, in the order they settled.</summary>
+        private readonly List<(RunInstance Gate, RunRow Row)> heldGates = [];
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7): records <paramref name="gate"/>'s held row once every deliverable it gates has
+        /// settled, its <c>effect</c> their outcome (<see cref="GateEffect"/>); until then it stays held. Its value, its
+        /// decisions and its deliverables' outcomes were all settled as before: only its row waits.
+        /// </summary>
+        private async Task ReleaseGateAsync(RunInstance gate)
+        {
+            var at = heldGates.FindIndex(h => ReferenceEquals(h.Gate, gate));
+            if (at < 0)
+                return;
+            var settled = new List<(string Key, RowState State)>();
+            foreach (var key in gate.Entry.Gates)
+            {
+                if (gate.Frame.Find(key) is not { IsSettled: true, State: { } state } deliverable)
+                    return;
+                settled.Add((deliverable.Key, state));
+            }
+
+            var row = heldGates[at].Row;
+            heldGates.RemoveAt(at);
+            row.Detail["effect"] = GateEffect(settled);
+            await recorder.RowAsync(row);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; D7): when the run ends, whatever the end (completed, failed, timed out), each gate's row still held
+        /// is recorded with <c>effect</c> <c>null</c>: what it would have caused is not known.
+        /// </summary>
+        private async Task RecordHeldGatesAsync()
+        {
+            foreach (var (_, row) in heldGates)
+            {
+                row.Detail["effect"] = null;
+                await recorder.RowAsync(row);
+            }
+
+            heldGates.Clear();
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7): a gate's <c>effect</c> from its deliverables' states: the state word
+        /// (<c>released</c>, <c>held</c>, <c>blocked</c>; <c>skipped</c> for one its own <c>if</c> skipped) for one deliverable;
+        /// for more, <c>&lt;word&gt; &lt;deliverable key&gt;</c> joined by <c>; </c> in key order. <c>null</c> when one failed
+        /// or was cancelled: the job ended there, and what the gate caused is not known.
+        /// </summary>
+        private static string? GateEffect(List<(string Key, RowState State)> settled)
+        {
+            if (settled.Count == 0 || settled.Any(s => s.State is not (RowState.Released or RowState.Held or RowState.Blocked or RowState.Skipped)))
+                return null;
+            if (settled.Count == 1)
+                return StateWord(settled[0].State);
+            return string.Join("; ", settled.OrderBy(s => s.Key, StringComparer.Ordinal).Select(s => $"{StateWord(s.State)} {s.Key}"));
+        }
+
         /// <summary>A composed deliverable's read form once released or held: <c>{ value, content, state }</c>, with its <c>neutral</c> text when it has one.</summary>
         private static JsonObject Final(RunInstance instance, string state)
         {

@@ -221,6 +221,8 @@ public sealed partial class PlanRunner
                 timers.Dispose();
             }
 
+            await RecordHeldGatesAsync();
+
             var values = new Dictionary<string, JsonNode?>(StringComparer.Ordinal);
             foreach (var instance in top.Instances)
             {
@@ -376,7 +378,9 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            var value = await EvaluateRuleAsync(instance, expression, "expression", scope.Data(entry, instance.Frame, entry.Reads));
+            var data = scope.Data(entry, instance.Frame, entry.Reads);
+            instance.EvaluatedOver = data;
+            var value = await EvaluateRuleAsync(instance, expression, "expression", data);
             if (value.Failure is { } failed)
             {
                 await FailLeafAsync(instance, RuleFailed(ComputedSubject(instance), "expression", failed));
@@ -574,9 +578,12 @@ public sealed partial class PlanRunner
         /// <summary>
         /// Settles <paramref name="instance"/> and records its row: #1506 (area 09; part 08 § 4; D2) its detail the entry's
         /// facts (<see cref="EntryDetail"/>), its item's name (<see cref="ItemNameDetail"/>) and its kind's members, and its
-        /// settled text beside it (<see cref="SettledText"/>), never in the detail.
+        /// settled text beside it (<see cref="SettledText"/>), never in the detail. A computed row has its two hashes
+        /// (<see cref="ComputedHashes"/>, D9) and a check's row part 08 § 6's members (<see cref="CheckDetail"/>). #1506 (D7): a
+        /// gate check's row is held until the last deliverable it gates has settled (<see cref="ReleaseGateAsync"/>), so its
+        /// <c>effect</c> is written on its one row; a deliverable's row, once recorded, may release its gate's.
         /// </summary>
-        private Task SettleAsync(RunInstance instance, RowState state, string? reason, JsonObject read, string? valueHash)
+        private async Task SettleAsync(RunInstance instance, RowState state, string? reason, JsonObject read, string? valueHash)
         {
             instance.Settle(state, read, reason);
             pending.Remove(instance);
@@ -611,9 +618,163 @@ public sealed partial class PlanRunner
             {
                 CallDetail(instance, detail);
             }
+            else if (instance.Entry.Kind == PlanKind.Computed)
+            {
+                ComputedHashes(instance, detail);
+            }
 
             var text = SettledText(read, itemName, RecordRows.SpotTexts(detail["runSpots"], spotsIn));
-            return recorder.RowAsync(new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail, text));
+            if (IsCheck(instance.Key))
+                text = WithLists(text, CheckDetail(instance, read, detail));
+            var row = new RunRow(instance.Key, instance.Entry.Key, instance.Entry.Kind, state, reason, valueHash, detail, text);
+            if (instance.Entry.Gates.Count > 0)
+            {
+                heldGates.Add((instance, row));
+                await ReleaseGateAsync(instance);
+                return;
+            }
+
+            await recorder.RowAsync(row);
+            if (instance.Entry.Kind == PlanKind.Deliverable && instance.Entry.Check is { } check && instance.Frame.Find(check) is { } gate)
+                await ReleaseGateAsync(gate);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; D9): a computed row's <c>inputHash</c>, over its <c>expression</c> and the values it
+        /// read (its rule's reads, each hashed from the data it was evaluated over), and when the row is run-dependent its
+        /// <c>runNeutralHash</c>, the same with the run-dependent reads' hashes left out (<see cref="RunScope.Lineage"/>, read
+        /// in its frame). Neither when the expression was never evaluated (skipped by its <c>if</c>, never reached).
+        /// </summary>
+        private static void ComputedHashes(RunInstance instance, JsonObject detail)
+        {
+            if (instance.EvaluatedOver is not { } data || !instance.Entry.Rules.TryGetValue("expression", out var rule))
+                return;
+            var reads = rule.Reads.Select(path => new RunRead(path, CanonicalJson.Hash(RunScope.At(data, path)))).ToList();
+            detail["inputHash"] = RecordRows.ComputedInputHash(rule.Json, reads);
+            if (IsTrue(detail["runDependent"]))
+            {
+                var dependent = reads.Where(r => RunScope.Lineage(instance.Entry, instance.Frame, r.Path).RunDependent).Select(r => r.Path);
+                detail["runNeutralHash"] = RecordRows.ComputedNeutralHash(rule.Json, reads, dependent);
+            }
+        }
+
+        /// <summary>#1506 (area 09; part 08 § 2.2): whether a row key is in the record's checks section (its root is <c>check.</c>).</summary>
+        private static bool IsCheck(string key) => key.StartsWith("check.", StringComparison.Ordinal);
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7, D8): a check's row members from what only the runner knows: <c>alignedWith</c>
+        /// (<see cref="AlignedWith(RunFrame)"/>), <c>checked</c> and <c>reads</c> (<see cref="CheckReads"/>, over the data its
+        /// expression was evaluated over, else its reads now), its <c>check_result</c>'s members (<see cref="RecordRows.CheckResult"/>)
+        /// and its <c>effect</c>: for a check that gates nothing, <c>read by &lt;its first reader&gt;</c> or <c>null</c>
+        /// (<see cref="ReadBy"/>); a gate's is written when its row is released. Gives back the result's lists for the
+        /// settled text.
+        /// </summary>
+        private JsonObject? CheckDetail(RunInstance instance, JsonObject read, JsonObject detail)
+        {
+            var entry = instance.Entry;
+            detail["alignedWith"] = AlignedWith(instance.Frame);
+            var (target, reads) = CheckReads(instance, instance.EvaluatedOver ?? scope.Data(entry, instance.Frame, entry.Reads));
+            detail["checked"] = target;
+            detail["reads"] = reads;
+            var lists = RecordRows.CheckResult(read["value"], detail);
+            detail["effect"] = entry.Gates.Count > 0 ? null : ReadBy(entry, instance.Frame.Map);
+            return lists;
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D8): what a check ran on and its other reads. <c>checked</c> is the one deliverable its
+        /// reads name, with its composed hash; with none, the one node they name, with the hash of its <c>.content</c>; else
+        /// <c>null</c>. <c>reads</c> is every other path it reads (<see cref="CompiledReads"/>, in path order), each with the
+        /// canonical hash of the value in <paramref name="data"/>.
+        /// </summary>
+        private static (JsonObject? Checked, JsonArray Reads) CheckReads(RunInstance instance, JsonObject data)
+        {
+            var map = instance.Frame.Map;
+            var named = CompiledReads(instance.Entry).Select(path => (Path: path, Key: NamedKey(map, path))).ToList();
+            var deliverables = named.Select(n => n.Key).OfType<string>().Where(k => k.StartsWith("deliverable.", StringComparison.Ordinal)).Distinct(StringComparer.Ordinal).ToList();
+            var nodes = named.Select(n => n.Key).OfType<string>().Where(k => k.StartsWith("node.", StringComparison.Ordinal)).Distinct(StringComparer.Ordinal).ToList();
+            var target = deliverables.Count == 1 ? deliverables[0] : deliverables.Count == 0 && nodes.Count == 1 ? nodes[0] : null;
+
+            JsonObject? found = null;
+            if (target != null)
+            {
+                var standing = instance.Frame.Find(target);
+                var hash = standing == null ? null
+                    : standing.Entry.Kind == PlanKind.Deliverable ? standing.ComposedHash
+                    : SourceLayout.Text(standing.Read?["content"]) is { } content ? CanonicalJson.HashText(content)
+                    : null;
+                found = new JsonObject { ["ref"] = standing?.Key ?? target, ["hash"] = hash };
+            }
+
+            var reads = new JsonArray();
+            foreach (var (path, key) in named)
+            {
+                if (target != null && key == target)
+                    continue;
+                reads.Add(new JsonObject { ["path"] = path, ["hash"] = CanonicalJson.Hash(RunScope.At(data, path)) });
+            }
+
+            return (found, reads);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; D7, D8): an entry's compiled reads, its <c>reads</c> as publish wrote them (in order, each path once,
+        /// none under another); <see cref="PlanEntry.Reads"/> when it has none.
+        /// </summary>
+        private static IReadOnlyList<string> CompiledReads(PlanEntry entry) =>
+            entry.Json["reads"] is JsonArray reads
+                ? reads.Select(r => SourceLayout.Text(r)).OfType<string>().Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList()
+                : entry.Reads;
+
+        /// <summary>The key of <paramref name="map"/> a read of <paramref name="path"/> names: the longest key that is the path or a prefix of it at a dot; null for none.</summary>
+        private static string? NamedKey(IReadOnlyDictionary<string, PlanEntry> map, string path)
+        {
+            var segments = path.Split('.');
+            for (var length = segments.Length; length >= 2; length--)
+            {
+                var key = string.Join('.', segments, 0, length);
+                if (map.ContainsKey(key))
+                    return key;
+            }
+
+            return null;
+        }
+
+        /// <summary>#1506 (D7): each check entry's <c>read by</c> effect once worked out, by entry (reference equality: only looked up).</summary>
+        private readonly Dictionary<PlanEntry, string?> readers = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; D7): <c>read by &lt;key&gt;</c>, the first in key order of the entries of
+        /// <paramref name="map"/> whose compiled reads (<see cref="CompiledReads"/>) name <paramref name="check"/>; <c>null</c>
+        /// when none does.
+        /// </summary>
+        private string? ReadBy(PlanEntry check, IReadOnlyDictionary<string, PlanEntry> map)
+        {
+            if (readers.TryGetValue(check, out var known))
+                return known;
+            string? first = null;
+            foreach (var (key, entry) in map)
+            {
+                if (ReferenceEquals(entry, check) || (first != null && string.CompareOrdinal(key, first) >= 0))
+                    continue;
+                if (CompiledReads(entry).Any(path => NamedKey(map, path) == check.Key))
+                    first = key;
+            }
+
+            var effect = first == null ? null : $"read by {first}";
+            readers[check] = effect;
+            return effect;
+        }
+
+        /// <summary>#1506 (area 09; part 08 §§ 6, 11): <paramref name="text"/> with a check result's lists (<paramref name="lists"/>) added.</summary>
+        private static JsonObject? WithLists(JsonObject? text, JsonObject? lists)
+        {
+            if (lists == null)
+                return text;
+            text ??= [];
+            foreach (var (name, list) in lists)
+                text[name] = list?.DeepClone();
+            return text;
         }
 
         /// <summary>

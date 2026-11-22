@@ -537,8 +537,52 @@ public sealed partial class PlanRunner
             var name = NameDetail(item, detail);
             var settled = new JsonObject { ["value"] = completed ? ret?["value"]?.DeepClone() : null, ["content"] = content };
             var key = RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), [.. instance.Frame.ItemPath, item.Id], instance.Frame.Passes);
+            var text = SettledText(settled, name, null);
+            if (IsCheck(key))
+            {
+                // #1506 (area 09; part 08 § 6): a check loop's item row is a check row: aligned with its production item, its
+                // check_result's members, and the loop's effect; what it checked and read are on the check rows inside it
+                detail["alignedWith"] = AlignedWith(instance, item);
+                text = WithLists(text, RecordRows.CheckResult(settled["value"], detail));
+                detail["effect"] = ReadBy(instance.Entry, instance.Frame.Map);
+            }
+
             return recorder.RowAsync(new RunRow(key, instance.Entry.Key, PlanKind.For, state, reason,
-                content == null ? null : CanonicalJson.HashText(content), detail, SettledText(settled, name, null)));
+                content == null ? null : CanonicalJson.HashText(content), detail, text));
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 6; part 06 § 3.1): the <c>alignedWith</c> of a row written in <paramref name="frame"/>: for
+        /// a row inside an item of a loop over a production loop's <c>.items</c> (the innermost item it runs in), the row key
+        /// of the production item with the same id (<see cref="AlignedWith(RunInstance, LoopItem)"/>); else <c>null</c>.
+        /// </summary>
+        private string? AlignedWith(RunFrame frame)
+        {
+            for (var at = frame; at != null; at = at.Parent)
+            {
+                if (itemFrames.TryGetValue(at, out var item))
+                    return at.Owner is { } loop ? AlignedWith(loop, item) : null;
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 06 § 3.1): the row key of the production item <paramref name="item"/> of the loop
+        /// <paramref name="instance"/> lines up with (<c>node.sections:2</c> for item 2 of a loop over
+        /// <c>node.sections.items</c>): the production loop's instance key with the item's id, as <see cref="RunKeys.Of"/>
+        /// writes it; <c>null</c> when the loop does not iterate a production loop's <c>.items</c>.
+        /// </summary>
+        private string? AlignedWith(RunInstance instance, LoopItem item)
+        {
+            if (!loops.TryGetValue(instance, out var loop) || loop.Production == null
+                || ItemsSource(instance) is not { } source || instance.Frame.Find(source) is not { } production)
+            {
+                return null;
+            }
+
+            var frame = production.Frame;
+            return RunKeys.Of(frame.Rooted(production.Entry.Key), [.. frame.ItemPath, item.Id], frame.Passes);
         }
 
         /// <summary>Each body node of an item by bare id: its <c>value</c>, <c>content</c> and <c>state</c> (<c>not_run</c> when the item never ran).</summary>

@@ -102,6 +102,12 @@ internal sealed class RunInstance
     /// <summary>#1505 (area 08): the hash of <see cref="ComposedText"/>, or null.</summary>
     public string? ComposedHash { get; set; }
 
+    /// <summary>
+    /// #1506 (area 09; D9): for a computed node or check whose <c>expression</c> was evaluated, the data it was evaluated
+    /// over (<see cref="RunScope.Data"/>), for its row's <c>inputHash</c> and <c>reads</c>; null before, and for every other kind.
+    /// </summary>
+    public JsonObject? EvaluatedOver { get; set; }
+
     /// <summary>#1504 (D4): a deliverable's run-neutral text, kept from its render for its released or held read form; or null.</summary>
     public string? Neutral { get; set; }
 

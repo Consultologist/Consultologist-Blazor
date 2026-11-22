@@ -9,8 +9,9 @@ namespace Consultologist.PackageFormat.V31.Run;
 /// row's <see cref="RunRow.Detail"/> with what only it knows (the entry's facts, the call's sub-rows, a loop's or a call's own
 /// members); this writes every member part 08 names, in its order, each absent one with its default (<c>[]</c> for a list,
 /// <c>null</c> otherwise), then the detail's other members (a loop's, a while's, a pass's and a call's own) as they are.
-/// Never a value from an input or a model: only what the detail and the row hold. A check's row (Task 5) and a
-/// deliverable's (Task 6) are added beside <see cref="Node"/>.
+/// Never a value from an input or a model: only what the detail and the row hold. A check's row is <see cref="Check"/>
+/// (part 08 § 6), with a computed value's two hashes (<see cref="ComputedInputHash"/>, <see cref="ComputedNeutralHash"/>,
+/// D9) used by computed node rows too; a deliverable's (Task 6) is added beside them.
 /// </summary>
 internal static class RecordRows
 {
@@ -86,6 +87,133 @@ internal static class RecordRows
         }
 
         return json;
+    }
+
+    /// <summary>
+    /// The members of a check row after <c>key</c>, <c>kind</c>, <c>label</c> and <c>status</c> (part 08 § 6), in order, each
+    /// with its default when the detail does not give it; <c>outputHash</c> and <c>stateReason</c> are the row's own.
+    /// </summary>
+    private static readonly (string Name, Func<JsonNode?> Default)[] CheckMembers =
+    [
+        ("itemName", () => null),
+        ("itemNameHash", () => null),
+        ("alignedWith", () => null),
+        ("checked", () => null),
+        ("reads", () => new JsonArray()),
+        ("inputHash", () => null),
+        ("outputHash", () => null),
+        ("runNeutralHash", () => null),
+        ("producer", () => "computed"),
+        ("modelDerived", () => false),
+        ("runDependent", () => false),
+        ("profileCarrying", () => false),
+        ("pass", () => null),
+        ("failWith", () => null),
+        ("passed", () => null),
+        ("total", () => null),
+        ("uncoveredHash", () => null),
+        ("uncoveredSize", () => null),
+        ("untestedHash", () => null),
+        ("untestedSize", () => null),
+        ("effect", () => null),
+        ("count", () => null),
+    ];
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 6; part 06 §§ 2.1, 5; D7, D8): a check row, its members in part 08 § 6's order and no
+    /// others: <c>key</c>, <c>kind</c> (<c>computed</c>, or <c>for</c> for a check loop's own row and its items), <c>label</c>,
+    /// <c>status</c>, then from the detail (or the default) <c>itemName</c>, <c>itemNameHash</c>, <c>alignedWith</c>,
+    /// <c>checked</c>, <c>reads</c>, <c>inputHash</c>, <c>outputHash</c> (the row's hash of its <c>.content</c>),
+    /// <c>runNeutralHash</c>, <c>producer</c>, the three flags, the <c>check_result</c>'s members (<see cref="CheckResult"/>),
+    /// <c>effect</c> and <c>count</c>, and last <c>stateReason</c>, the row's reason.
+    /// </summary>
+    public static JsonObject Check(RunRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        var detail = row.Detail;
+        var json = new JsonObject
+        {
+            ["key"] = row.Key,
+            ["kind"] = KindWord(row.Kind),
+            ["label"] = detail["label"]?.DeepClone(),
+            ["status"] = Status(row.State),
+        };
+        foreach (var (name, fallback) in CheckMembers)
+        {
+            if (name == "outputHash")
+                json[name] = row.ValueHash;
+            else
+                json[name] = detail.TryGetPropertyValue(name, out var given) ? given?.DeepClone() : fallback();
+        }
+
+        json["stateReason"] = row.Reason;
+        return json;
+    }
+
+    /// <summary>
+    /// #1506 (area 09; part 08 §§ 6, 11; part 06 § 2.1; D2): a <c>check_result</c>'s members on its row's
+    /// <paramref name="detail"/>: <c>pass</c> its verdict (<c>null</c> when <paramref name="value"/> is not one: the check was
+    /// skipped or failed to run), <c>failWith</c> its <c>message</c> only when it did not pass, <c>passed</c> and
+    /// <c>total</c> its counts, and its <c>uncovered</c> and <c>untested</c> lists by canonical hash and element count
+    /// (<c>null</c> both for a list that is <c>null</c>). The lists themselves come from inputs, so they are returned for
+    /// the settled text and never written to the detail; <c>null</c> when there is neither.
+    /// </summary>
+    public static JsonObject? CheckResult(JsonNode? value, JsonObject detail)
+    {
+        ArgumentNullException.ThrowIfNull(detail);
+        var result = value as JsonObject;
+        bool? pass = result?["pass"] is JsonValue verdict && verdict.TryGetValue<bool>(out var passed) ? passed : null;
+        detail["pass"] = pass;
+        detail["failWith"] = pass == false ? SourceLayout.Text(result!["message"]) : null;
+        detail["passed"] = Count(result?["passed"]);
+        detail["total"] = Count(result?["total"]);
+        JsonObject? text = null;
+        foreach (var list in new[] { "uncovered", "untested" })
+        {
+            var items = result?[list] as JsonArray;
+            detail[$"{list}Hash"] = items == null ? null : CanonicalJson.Hash(items);
+            detail[$"{list}Size"] = items?.Count;
+            if (items != null)
+            {
+                text ??= [];
+                text[list] = items.DeepClone();
+            }
+        }
+
+        return text;
+    }
+
+    /// <summary>A <c>check_result</c>'s count as a whole number, or <c>null</c> when it is not one.</summary>
+    private static int? Count(JsonNode? node) =>
+        node is JsonValue value && value.GetValueKind() == System.Text.Json.JsonValueKind.Number && value.TryGetValue<int>(out var whole) ? whole : null;
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 4; D9): a computed row's (and a check's) <c>inputHash</c>: the hash of the canonical JSON
+    /// <c>{ "expression": &lt;rule&gt;, "reads": [ { "path", "hash" } … ] }</c>, <paramref name="rule"/> the rule as
+    /// <c>resolve.json</c> writes it, <paramref name="reads"/> the values it read by hash, in path order.
+    /// </summary>
+    public static string ComputedInputHash(JsonNode? rule, IReadOnlyList<RunRead> reads) => ComputedNeutralHash(rule, reads, []);
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 4; D9): a run-dependent computed row's <c>runNeutralHash</c>: <see cref="ComputedInputHash"/>
+    /// with the hashes of the reads at <paramref name="runDependentPaths"/> left out (their paths stay), so it covers the
+    /// expression and its other reads, not the run-dependent values.
+    /// </summary>
+    public static string ComputedNeutralHash(JsonNode? rule, IReadOnlyList<RunRead> reads, IEnumerable<string> runDependentPaths)
+    {
+        ArgumentNullException.ThrowIfNull(reads);
+        ArgumentNullException.ThrowIfNull(runDependentPaths);
+        var left = new HashSet<string>(runDependentPaths, StringComparer.Ordinal);
+        var list = new JsonArray();
+        foreach (var read in reads.OrderBy(r => r.Path, StringComparer.Ordinal))
+        {
+            var item = new JsonObject { ["path"] = read.Path };
+            if (!left.Contains(read.Path))
+                item["hash"] = read.Hash;
+            list.Add(item);
+        }
+
+        return CanonicalJson.Hash(new JsonObject { ["expression"] = rule?.DeepClone(), ["reads"] = list });
     }
 
     /// <summary>Part 08 § 2.1's rooted key of a row key: the key up to its first <c>:</c> (its items) or <c>#</c> (a pass).</summary>

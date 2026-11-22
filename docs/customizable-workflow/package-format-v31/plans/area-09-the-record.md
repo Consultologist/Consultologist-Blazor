@@ -212,7 +212,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: `RecordRows.Check(RunRow row)`: `key`, `kind` (`computed` or `for`), `label`, `status`, `itemName`, `itemNameHash`, `alignedWith`, `checked { ref, hash }`, `reads [{ path, hash }]`, `inputHash`, `outputHash`, `runNeutralHash`, `producer`, `modelDerived`, `runDependent`, `profileCarrying`, `pass`, `failWith`, `passed`, `total`, `uncoveredHash`, `uncoveredSize`, `untestedHash`, `untestedSize`, `effect`, `count`, `stateReason`. `Text` gains `uncovered` and `untested` (the lists).
 - Produces: `RecordRows.ComputedInputHash(JsonNode rule, IReadOnlyList<RunRead> reads)` and `ComputedNeutralHash(rule, reads, runDependentPaths)` (D9), used for computed node rows too.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `ACheckRow_HasPart08sMembers`: on `checked-note`, `check.proofread` has `checked.ref` `deliverable.note` with the composed hash, `pass` the verdict, `failWith` null when it passed and the package's sentence when it failed, `producer` `computed`.
   - `ACheckResultsLists_AreByHash`: `uncoveredHash` is the canonical hash of the list, `uncoveredSize` its count, the list itself only in `Text`; `passed` and `total` are on the row.
   - `AGatesEffect_IsItsDeliverablesState`: `released` when it passed, `blocked` when it failed, `held` for an empty held deliverable; a gate of two deliverables writes `blocked deliverable.a; released deliverable.b`; the gate's row is recorded after its deliverables settle and exactly once.
@@ -220,11 +220,11 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `ACheckLoopsItem_IsAlignedWithItsProductionItem`: `check.part_coverage.coverage:2` has `alignedWith` `node.sections:2`; the loop's own row has `kind` `for` and `count`.
   - `AComputedRowsInputHash_CoversItsRuleAndItsReads`: equals `ComputedInputHash`; changing a read value changes it; for a run-dependent value `runNeutralHash` is unchanged when only `run.date` changes.
   - `ARunThatFailsBeforeAGateSettles_StillRecordsTheCheck`: `effect` null.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Regenerate and read** the goldens.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1506): check rows, and a computed value's two hashes`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Regenerate and read** the goldens.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1506): check rows, and a computed value's two hashes`; push.
 
 ### Task 6: Deliverable rows: sites, substitutions and replay
 
