@@ -465,8 +465,9 @@ public class OrchestratorV31Tests
         var sends = Sends(context);
         Assert.True(delivering >= 0);
         Assert.All(sends, s => Assert.InRange(s.At, delivering + 1, finalize - 1));
-        // #1506 (D12): the last send is the last activity but the delivery row's write
-        Assert.Equal(context.Calls.FindLastIndex(c => c.Kind == "activity" && c.Name != ConsultGenerationActivityNames.WriteRecordRowsV31), sends[^1].At);
+        // #1506 (D12, D13): the last send is the last activity but the delivery row's write and the seal after FinalizeJob
+        Assert.Equal(context.Calls.FindLastIndex(c => c.Kind == "activity"
+            && c.Name is not (ConsultGenerationActivityNames.WriteRecordRowsV31 or ConsultGenerationActivityNames.SealRecordV31)), sends[^1].At);
         Assert.Contains(context.Calls.Skip(sends[^1].At + 1), c => c.Name == ConsultGenerationActivityNames.WriteRecordRowsV31);
         Assert.Equal([("email", 1), ("pdf", 1)], sends.Select(s => (s.Input.Send.Kind, s.Input.Send.Attempt)));
         Assert.All(sends, s =>
@@ -717,6 +718,41 @@ public class OrchestratorV31Tests
     /// <summary>checked-note, changed by <paramref name="change"/>, as a package of the test's own.</summary>
     private static CompiledGoldenTests.GoldenCase CheckedNote(string name, Func<Dictionary<string, byte[]>, Dictionary<string, byte[]>> change) =>
         new(name, () => change(CompiledGoldenTests.Cases().Single(c => c.Name == "checked-note").Source()), name);
+
+    // ---- #1506 (area 09; D13): the record sealed at the end ---------------------------------------------------------------
+
+    [Theory]
+    [InlineData("completed")]
+    [InlineData("a failed node")]
+    [InlineData("a plan whose hash is not the job's")]
+    [InlineData("inputs the retention drop deleted")]
+    public async Task EveryEnd_SealsTheRecord_OnceAfterFinalizeJob(string how)
+    {
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        switch (how)
+        {
+            case "a failed node":
+                job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
+                break;
+            case "a plan whose hash is not the job's":
+                job.ResolveHash = "sha256:" + new string('0', 64);
+                break;
+            case "inputs the retention drop deleted":
+                job.Inputs.Documents.Clear();
+                break;
+        }
+
+        var context = job.Context();
+        await V31Job.RunAsync(context);
+
+        var seal = Assert.Single(context.Calls, c => c.Name == ConsultGenerationActivityNames.SealRecordV31);
+        Assert.Equal(V31Job.JobId, JsonSerializer.Deserialize<SealRecordV31Input>(seal.InputJson)!.JobId);
+        Assert.True(context.Calls.IndexOf(seal) > context.Calls.FindLastIndex(c => c.Name == nameof(ConsultGenerationJobEntity.FinalizeJob)));
+        Assert.Equal(how == "completed" ? ConsultGenerationJobStatuses.Completed : ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.NotNull(job.State.RecordHash);
+        Assert.NotNull(await job.Blobs.ReadRecordAsync(V31Job.AccountKind, "user-1", V31Job.JobId, CancellationToken.None));
+    }
 
     [Fact]
     public async Task AFunctionsJob_RunsItsCallsInline()

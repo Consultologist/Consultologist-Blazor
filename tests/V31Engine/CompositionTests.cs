@@ -57,6 +57,19 @@ public class CompositionTests
     }
 
     [Fact]
+    public void TheHostsRegistrations_GiveTheSealer_ToItsActivityAndTheCancelRoute()
+    {
+        // #1506 (Task 11): the job routes take the sealers through an optional parameter, so a registration gone missing
+        // would silently leave a cancelled 31 job unsealed until a read or the sweep
+        using var provider = HostServices();
+        using var scope = provider.CreateScope();
+        var sealers = scope.ServiceProvider.GetRequiredService<RecordSealers>();
+
+        Assert.Same(sealers, FieldOf<RecordSealers>(ActivatorUtilities.CreateInstance<ConsultGenerationJobs>(scope.ServiceProvider)));
+        Assert.Same(sealers, FieldOf<RecordSealers>(ActivatorUtilities.CreateInstance<SealRecordV31Activity>(scope.ServiceProvider)));
+    }
+
+    [Fact]
     public void TheHostsStartup_LoadsThe31AgentsCatalogue_SoADefectStopsTheHost()
     {
         // #1504 (D9): what Program.cs resolves before the host runs (ApiServices.ResolveAtStartup) includes the 31 agents

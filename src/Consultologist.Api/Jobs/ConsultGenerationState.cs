@@ -45,12 +45,45 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // #1506 (part 08 § 1): a 31 job is record storage 12 — rooted keys, the record beside the entity.
         state.SchemaVersion = state.PackageSpecVersion >= 31 ? 12 : state.PackageSpecVersion >= 30 ? 11 : state.PackageSpecVersion >= 29 ? 10 : state.PackageSpecVersion >= 27 ? 9 : state.PackageSpecVersion >= 26 ? 8 : at25;
 
-    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore)
+    public ConsultGenerationJobEntity(IConsultGenerationJobIndexStore indexStore, IJobOutputsBlobStore outputsStore, IJobInputsBlobStore inputsStore, IAccountUsageStore usageStore, ILogger<ConsultGenerationJobEntity>? logger = null)
     {
         _indexStore = indexStore;
         _outputsStore = outputsStore;
         _inputsStore = inputsStore;
         _usageStore = usageStore;
+        _logger = logger;
+    }
+
+    /// <summary>#1506 (D13): the seal's refusal is logged here; optional, so the tests' entities need none.</summary>
+    private readonly ILogger<ConsultGenerationJobEntity>? _logger;
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 §§ 1.1, 3; D13): a 31 job's record sealed: its <c>recordHash</c> and the
+    /// document's length in bytes, write-once. A job below record storage 12, or not terminal, takes none; a second seal
+    /// with the same hash changes nothing, and one with another hash changes nothing and is logged with both hashes.
+    /// Not written to the index (it holds no record member).
+    /// </summary>
+    public void RecordV31Seal(ConsultGenerationV31Seal input)
+    {
+        var state = EnsureState();
+        if (state.SchemaVersion < 12 || !IsTerminal(state.Status))
+            return;
+
+        if (state.RecordHash is { } sealedHash)
+        {
+            if (!string.Equals(sealedHash, input.RecordHash, StringComparison.Ordinal))
+            {
+                _logger?.LogWarning(
+                    "V31 record seal refused: the job is sealed already. JobId={JobId}, RecordHash={RecordHash}, Offered={Offered}",
+                    state.JobId, sealedHash, input.RecordHash);
+            }
+
+            return;
+        }
+
+        state.RecordHash = input.RecordHash;
+        state.RecordBytes = input.Bytes;
+        State = state;
     }
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
@@ -1907,6 +1940,12 @@ public sealed class ConsultV31ProgressState
     public ConsultGenerationV31Tokens? Tokens { get; set; }
 }
 
+/// <summary>
+/// #1506 (specVersion 31, area 09; D13): a 31 job's seal for <see cref="ConsultGenerationJobEntity.RecordV31Seal"/>: the hash of
+/// its canonical record document and the document's length in UTF-8 bytes.
+/// </summary>
+public sealed record ConsultGenerationV31Seal(string RecordHash, long Bytes);
+
 public sealed record ConsultGenerationJobFinalize(
     string Status,
     string? Error = null,
@@ -3071,6 +3110,12 @@ public static class ConsultGenerationActivityNames
     /// text, then the rows, each written once. A row that differs from the one stored is named in the result, never thrown.
     /// </summary>
     public const string WriteRecordRowsV31 = "write-record-rows-v31";
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 § 1.1; D13): a 31 job's record sealed once it is terminal, after
+    /// <c>FinalizeJob</c> on every path. Best-effort: its failure is logged and never fails the job. No Durable retry policy.
+    /// </summary>
+    public const string SealRecordV31 = "seal-record-v31";
 }
 
 public static class ConsultGenerationItemSteps

@@ -176,6 +176,48 @@ internal sealed class FakeRecordRowStore : IRecordRowStore
     public Task DeleteJobAsync(string jobId, CancellationToken ct) => _store.DeleteJobAsync(jobId, ct);
 }
 
+/// <summary>
+/// #1506 (Task 11): the sealer's view of a job over a real entity, as <see cref="DurableRecordJobs"/> gives it over the
+/// Durable client: the entity's state, the account kind its held inputs were written under (else <see cref="FallbackKind"/>,
+/// the account's), and the seal stamped through the entity's own operation. Counts what was asked of it.
+/// </summary>
+internal sealed class EntityRecordJobs(Consultologist.Api.Jobs.ConsultGenerationJobEntity entity, string? fallbackKind = null) : IRecordJobs
+{
+    private static readonly System.Reflection.PropertyInfo StateProperty =
+        typeof(Consultologist.Api.Jobs.ConsultGenerationJobEntity).GetProperty(
+            "State", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)!;
+
+    public string? FallbackKind { get; } = fallbackKind;
+
+    public int Reads { get; private set; }
+
+    public int KindReads { get; private set; }
+
+    public List<(string RecordHash, long Bytes)> Stamps { get; } = [];
+
+    /// <summary>Null: the job does not exist (as the client answers for an entity with no state).</summary>
+    public bool Missing { get; set; }
+
+    public Task<Consultologist.Api.Jobs.ConsultGenerationJobState?> ReadAsync(string jobId, CancellationToken ct)
+    {
+        Reads++;
+        return Task.FromResult(Missing ? null : (Consultologist.Api.Jobs.ConsultGenerationJobState?)StateProperty.GetValue(entity));
+    }
+
+    public Task<string?> AccountKindAsync(Consultologist.Api.Jobs.ConsultGenerationJobState job, CancellationToken ct)
+    {
+        KindReads++;
+        return Task.FromResult(DurableRecordJobs.KindOfHeldInputs(job) ?? FallbackKind);
+    }
+
+    public Task StampAsync(string jobId, string recordHash, long bytes, CancellationToken ct)
+    {
+        Stamps.Add((recordHash, bytes));
+        entity.RecordV31Seal(new Consultologist.Api.Jobs.ConsultGenerationV31Seal(recordHash, bytes));
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>#1506 (Task 9): the blob store for tests of the engine: <see cref="BlobRecordStore"/> over <see cref="InMemoryRecordBlobs"/>.</summary>
 internal sealed class FakeRecordBlobStore : IRecordBlobStore
 {

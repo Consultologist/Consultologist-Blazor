@@ -81,6 +81,8 @@ internal sealed class V31Job
             HeldInputs, Usage);
         var state = ConsultGenerationJobState.Create(JobId, "user-1", Array.Empty<IReadOnlyDictionary<string, string>>());
         state.PackageSpecVersion = 31;
+        // #1506 (Task 11): record storage 12, as the start's Initialize stamps a 31 job (the sealer seals from 12 only)
+        state.SchemaVersion = 12;
         // as Task 13's start leaves it: the run-inputs document is the job's held inputs
         state.InputsBlob = Inputs.WriteAsync(AccountKind, "user-1", JobId, Document(RunFixture.GoldenInputs()), CancellationToken.None).GetAwaiter().GetResult();
         StateProperty.SetValue(Entity, state);
@@ -111,6 +113,20 @@ internal sealed class V31Job
 
     /// <summary>#1506 (Task 10): what <c>write-record-rows-v31</c> logged.</summary>
     public CapturingLogger<WriteRecordRowsV31Activity> RecordLog { get; } = new();
+
+    /// <summary>#1506 (Task 11): the sealer's view of the job: the entity, read and stamped as the Durable client would.</summary>
+    public EntityRecordJobs RecordJobs => _recordJobs ??= new EntityRecordJobs(Entity, AccountKind);
+
+    private EntityRecordJobs? _recordJobs;
+
+    /// <summary>#1506 (Task 11): what the sealer logged.</summary>
+    public CapturingLogger<RecordSealer> SealLog { get; } = new();
+
+    /// <summary>#1506 (Task 11): the real sealer over <see cref="RecordJobs"/>, <see cref="Rows"/> and <see cref="Blobs"/>.</summary>
+    public RecordSealer Sealer => new(RecordJobs, Rows, Blobs, SealLog);
+
+    /// <summary>#1506 (Task 11): answers each <c>seal-record-v31</c> call (by default, the real activity over <see cref="Sealer"/>).</summary>
+    public Func<SealRecordV31Input, SealedRecord?>? Seal { get; set; }
 
     /// <summary>The job inputs' store the entity drops the held inputs through.</summary>
     public IJobInputsBlobStore HeldInputs { get; } = Substitute.For<IJobInputsBlobStore>();
@@ -184,6 +200,10 @@ internal sealed class V31Job
             .On(ConsultGenerationActivityNames.WriteRecordRowsV31, payload =>
                 new WriteRecordRowsV31Activity(Rows, Blobs, RecordLog)
                     .RunAsync((WriteRecordRowsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            // #1506 (Task 11): the record sealed by the real activity over the fake stores and the entity
+            .On(ConsultGenerationActivityNames.SealRecordV31, payload => Seal is { } seal
+                ? seal((SealRecordV31Input)payload!)
+                : SealRecordV31Activity.RunAsync((SealRecordV31Input)payload!, Sealer, CancellationToken.None).GetAwaiter().GetResult())
             // #1503 (D9): the input is DrainAware; the drain is off here and check-drain is left out of the calls the
             // tests read (the drain's own tests answer it recorded: DrainDoorsTests).
             .Unrecorded(ConsultGenerationActivityNames.CheckDrain, _ => false);

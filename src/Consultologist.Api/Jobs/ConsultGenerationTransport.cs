@@ -106,6 +106,8 @@ public sealed class ConsultGenerationJobs
     private readonly IJobOutputsBlobStore _outputsStore;
     private readonly IJobInputsBlobStore _inputsStore;
     private readonly IConsultGenerationLinkStore _linkStore;
+    // #1506 (D13): a cancelled 31 job's record is sealed here; optional, so a host or a test without one cancels as before.
+    private readonly V31.RecordSealers? _recordSealers;
 
     public ConsultGenerationJobs(
         ILogger<ConsultGenerationJobs> logger,
@@ -117,8 +119,10 @@ public sealed class ConsultGenerationJobs
         IAccountSettingsStore settingsStore,
         IJobOutputsBlobStore outputsStore,
         IJobInputsBlobStore inputsStore,
-        IConsultGenerationLinkStore linkStore)
+        IConsultGenerationLinkStore linkStore,
+        V31.RecordSealers? recordSealers = null)
     {
+        _recordSealers = recordSealers;
         _logger = logger;
         _authorizer = authorizer;
         _eventStore = eventStore;
@@ -365,6 +369,9 @@ public sealed class ConsultGenerationJobs
             "Cancelled a scheduled consult run. JobId={JobId}, AppUserId={AppUserId}",
             jobId,
             account.AppUserId);
+
+        // #1506 (D13): a 31 job's record, sealed best-effort; never a 5–30 job's
+        await SealCancelledAsync(_recordSealers?.For(client), response.SchemaVersion, jobId, _logger, cancellationToken);
 
         await TrySendCancellationReplyAsync(jobId, account.Email, cancellationToken);
 
@@ -772,6 +779,28 @@ public sealed class ConsultGenerationJobs
     /// </summary>
     /// <summary>#1302: the release hold's sentence when new jobs are on hold, else null.</summary>
     internal static string? RefusalForHold(IJobIntakeHold hold) => hold.IsHeld ? JobIntakeHold.Sentence : null;
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; D13): a cancelled 31 job (record storage 12) has no orchestration step left to seal
+    /// its record, so the cancel route asks for it. Best-effort: <c>Cancel</c> was signalled, so the entity may not be
+    /// terminal yet, and the sealer then answers null; the read of the job and the retention sweep seal it after. A failure
+    /// is logged by its type, never thrown: the cancel already happened. A 5–30 job is never asked about.
+    /// </summary>
+    internal static async Task SealCancelledAsync(V31.IRecordSealer? sealer, int? schemaVersion, string jobId, ILogger logger, CancellationToken cancellationToken)
+    {
+        if (sealer == null || schemaVersion is not >= 12)
+            return;
+
+        try
+        {
+            await sealer.EnsureSealedAsync(jobId, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(
+                "V31 record not sealed at cancel. JobId={JobId}, ExceptionType={ExceptionType}", jobId, ex.GetType().FullName);
+        }
+    }
 
     internal static string? RefusalForCancel(string status) => status switch
     {

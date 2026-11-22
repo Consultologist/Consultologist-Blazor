@@ -415,17 +415,17 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   It reads the entity's state (through `DurableTaskClient`, as the job routes do); a terminal `SchemaVersion` 12 job with no `RecordHash`: lists the rows, assembles, `WriteRecordAsync`; when a document is already there it hashes that one; signals `RecordV31Seal(RecordHash, Bytes)` (write-once on the entity); logs `V31 record sealed. JobId, Rows, Bytes, RecordHash`.
 - Produces: activity `seal-record-v31` calling it, awaited by the orchestration after `FinalizeJob` on every path (the catch included, where its failure is logged and never replaces the fault); the cancel route calls the sealer after it finalises a 31 job.
 
-- [ ] **Step 1: Write the failing tests** (Review Focus 3):
+- [x] **Step 1: Write the failing tests** (Review Focus 3):
   - `ACompletedJob_IsSealed`: the document equals `Assemble(header, rows)`, `RecordHash` is its hash, the header's `status` is `Completed`, and the entity holds the hash and the byte count.
   - `SealingTwice_GivesTheSameHash`, also when the second call races the first (the blob is there, the entity is not yet stamped).
   - `AFailedJob`, `ACancelledJob`, `ATimedOutJob` and `AJobThatNeverStarted` (a start failure, no rows) are each sealed with their end state.
   - `ADeliveringJob_IsNotSealed`: null, and no blob; it is sealed after delivery ends, with its delivery rows under their deliverables.
   - `A30Job_IsNeverSealed`.
   - `AnEngineFault_StillSeals`: the orchestration's catch path leaves a sealed record with `status` `Failed`; a sealer that throws there does not change the job's error.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the whole suite. Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1506): the record is sealed at every terminal state`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the whole suite. Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1506): the record is sealed at every terminal state`; push.
 
 ### Task 12: Serving the record
 

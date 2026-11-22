@@ -229,6 +229,8 @@ public static class ApiServices
         services.AddSingleton<IJobOutputsBlobStore, JobOutputsBlobStore>();
         // #1506 (D10): a 31 job's retained text and canonical record, beside the outputs.
         services.AddSingleton<Consultologist.Api.V31.IRecordBlobStore, Consultologist.Api.V31.BlobRecordStore>();
+        // #1506 (D13): the record's sealer over a function's Durable client (seal-record-v31, the cancel route).
+        services.AddSingleton<Consultologist.Api.V31.RecordSealers>();
         // #547: the held inputs — written by the starter, read by History and the
         // rerun, deleted by the retention drop.
         services.AddSingleton<JobInputsBlobStore>();

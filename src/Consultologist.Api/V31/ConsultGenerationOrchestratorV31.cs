@@ -185,6 +185,9 @@ public sealed class ConsultGenerationOrchestratorV31
                     cleanup.GetType().FullName);
             }
 
+            // #1506 (D13): the record sealed with the job failed; best-effort, so it never replaces the fault
+            await SealRecordV31Activity.SealAsync(context, input.JobId, logger);
+
             // #1505 (D14): an engine fault is a failed job too; the alert's own failure is logged, never thrown.
             await AlertOperatorV31Activity.RaiseAsync(context, new OperatorAlert(OperatorAlertKinds.JobFailed, input.JobId, null, null), logger);
             throw;
@@ -228,7 +231,8 @@ public sealed class ConsultGenerationOrchestratorV31
     }
 
     /// <summary>
-    /// Finalises the job on its entity and publishes its status; #1505 (part 09 § 3.9; D14): a failed job then alerts the
+    /// Finalises the job on its entity and publishes its status; #1506 (D13) seals its record
+    /// (<see cref="SealRecordV31Activity.SealAsync"/>); #1505 (part 09 § 3.9; D14): a failed job then alerts the
     /// operator, with the key of what failed (<paramref name="failedKey"/>; none for a time-out or a job that failed before
     /// its run).
     /// </summary>
@@ -241,6 +245,8 @@ public sealed class ConsultGenerationOrchestratorV31
             nameof(ConsultGenerationJobEntity.FinalizeJob),
             new ConsultGenerationJobFinalize(status, error, input.AccountKind));
         context.SetCustomStatus(new { status });
+        // #1506 (D13): the job is terminal now; its record is sealed, best-effort (the read and the sweep seal it otherwise)
+        await SealRecordV31Activity.SealAsync(context, input.JobId, logger);
         if (status == ConsultGenerationJobStatuses.Failed)
             await AlertOperatorV31Activity.RaiseAsync(context, new OperatorAlert(OperatorAlertKinds.JobFailed, input.JobId, failedKey, null), logger);
     }
