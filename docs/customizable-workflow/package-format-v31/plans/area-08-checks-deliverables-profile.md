@@ -93,17 +93,17 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 **Interfaces:**
 - Produces: a vertex's flags follow `Content` **and** earlier-pass reads; `reproducible`, circles and `graph.order` are as before.
 
-- [ ] **Step 1: Confirm R7.** Run `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~ALocalName_ReadsItsRootedKey|FullyQualifiedName~ANullTitle_CompilesToThePackagesName|FullyQualifiedName~PassNodeReadsTests|FullyQualifiedName~RequiresCheckTests"`. Expected: PASS, and `tests/V31Resolve/Golden/functions.resolve.json` holds integer `requires.agents` values. Build nothing; the PR records each as "already done by area 07".
-- [ ] **Step 2: Write the failing tests** in `SourceDerivedTests`:
+- [x] **Step 1: Confirm R7.** Run `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~ALocalName_ReadsItsRootedKey|FullyQualifiedName~ANullTitle_CompilesToThePackagesName|FullyQualifiedName~PassNodeReadsTests|FullyQualifiedName~RequiresCheckTests"`. Expected: PASS, and `tests/V31Resolve/Golden/functions.resolve.json` holds integer `requires.agents` values. Build nothing; the PR records each as "already done by area 07".
+- [x] **Step 2: Write the failing tests** in `SourceDerivedTests`:
   - `AnEarlierPassRead_OfAnAgent_IsModelDerived`: a while whose computed body node reads only `pass.previous.node.draft.content` (an agent) and declares `modelDerived: false` is refused with S03-036 naming `modelDerived`; declared `true` it publishes.
   - `AnEarlierPassRead_OfARunFact_IsRunDependent` and `…_OfProfileText_IsProfileCarrying`: the same for the other two flags.
   - `ACondition_ReadingProfileTextOfAnEarlierPass_IsRefused`: S03-044 (it is already; pin it).
   - `EarlierPasses_StayOutOfTheOrderAndTheCircles`: two while-body nodes that read each other through `pass.previous` publish, and `graph.order` is unchanged from the golden.
-- [ ] **Step 3: Run** them. Expected: the first three FAIL (the flag is derived `false`).
-- [ ] **Step 4: Implement.** The flags are derived over `Content` plus the reads marked `Earlier` (they keep their vertex id); `reproducible` already walks both; circles keep dropping `Earlier`.
-- [ ] **Step 5: Regenerate and read** every golden and refusal package whose header flags flip (`GOLDEN_UPDATE_V31=1`, then the export of *Global Constraints*); `nested-note`'s `refine` body is the likely one. Each changed header flag goes in the PR's *Goldens to review*.
-- [ ] **Step 6: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 7: Commit** `PackageFormat (#1505): the lineage flags follow earlier-pass reads`, the content repo's export, the pin; push.
+- [x] **Step 3: Run** them. Expected: the first three FAIL (the flag is derived `false`).
+- [x] **Step 4: Implement.** The flags are derived over `Content` plus the reads marked `Earlier` (they keep their vertex id); `reproducible` already walks both; circles keep dropping `Earlier`.
+- [x] **Step 5: Regenerate and read** every golden and refusal package whose header flags flip (`GOLDEN_UPDATE_V31=1`, then the export of *Global Constraints*); `nested-note`'s `refine` body is the likely one. Each changed header flag goes in the PR's *Goldens to review*.
+- [x] **Step 6: Run** the V31 filter. Expected: PASS.
+- [x] **Step 7: Commit** `PackageFormat (#1505): the lineage flags follow earlier-pass reads`, the content repo's export, the pin; push.
 
 ### Task 2: `delivery` and `bundle` named in the contract (R4)
 
@@ -112,11 +112,11 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Content repo: `v31/schemas/resolve.schema.json` (the deliverable entry), `package-format-v31.md` chapter 7's twin of § 2.5, `v31/conformance/schemas/resolve/` (one valid and one invalid instance)
 - Test: `tests/V31Resolve/ResolveCompilerTests.cs`
 
-- [ ] **Step 1: Write the failing test** `ADeliverableEntry_FitsThePublishedSchema_WithItsDeliveryAndBundle`: each deliverable of the three goldens validates against the pinned schema's deliverable definition, which requires `delivery` (an array of `email`, `pdf`, `emr`, `zip`) and `bundle` (`"zip"` or `null`).
-- [ ] **Step 2: Run** it. Expected: FAIL (the schema does not name them).
-- [ ] **Step 3: Edit the contract.** Part 07 § 2.5 gains one paragraph: each `deliverables` entry carries `delivery` and `bundle` as its delivery folder's `index.json` writes them (`[]` and `null` when the folder writes none), because the engine loads only `resolve.json`. The schema gains the two properties, required; add `valid-deliverable-delivery.json` and `invalid-deliverable-missing-bundle.json`.
-- [ ] **Step 4: Run** `python3 scripts/check-v31.py` there, push, move the pin, run the test. Expected: PASS.
-- [ ] **Step 5: Commit** `Docs (#1505): part 07 names delivery and bundle on a deliverable entry`; push.
+- [x] **Step 1: Write the failing test** `ADeliverableEntry_FitsThePublishedSchema_WithItsDeliveryAndBundle`: each deliverable of the three goldens validates against the pinned schema's deliverable definition, which requires `delivery` (an array of `email`, `pdf`, `emr`, `zip`) and `bundle` (`"zip"` or `null`).
+- [x] **Step 2: Run** it. Expected: FAIL (the schema does not name them).
+- [x] **Step 3: Edit the contract.** Part 07 § 2.5 gains one paragraph: each `deliverables` entry carries `delivery` and `bundle` as its delivery folder's `index.json` writes them (`[]` and `null` when the folder writes none), because the engine loads only `resolve.json`. The schema gains the two properties, required; add `valid-deliverable-delivery.json` and `invalid-deliverable-missing-bundle.json`.
+- [x] **Step 4: Run** `python3 scripts/check-v31.py` there, push, move the pin, run the test. Expected: PASS.
+- [x] **Step 5: Commit** `Docs (#1505): part 07 names delivery and bundle on a deliverable entry`; push.
 
 ### Task 3: Checks at publish
 
@@ -129,16 +129,16 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: `internal static class CheckSentences` with `HasFormat(id, format, path)` S06-009, `HasKind(id, kind, path)` S06-010, `HoldsKind(path, kind)` S06-011, `LoopRunsOver(id, source, path)` S06-014, `GateIfReadsNullable(id, deliverable, readPath, path)` S06-035, `CheckedBy(deliverable, reference, path)` A08-001, each a `SourceRefusal`.
 - Produces: `internal static class SourceChecks { static IReadOnlyList<SourceRefusal> Check(SourcePackage package, ScopeTree? tree) }`: the shape rules need no tree; S06-014, S06-035 and A08-001 run once the resolver has one.
 
-- [ ] **Step 1: Write the failing tests**, one per rule (D17, D18), each asserting exactly one refusal with the id and `V31Contract.AssertSentence`:
+- [x] **Step 1: Write the failing tests**, one per rule (D17, D18), each asserting exactly one refusal with the id and `V31Contract.AssertSentence`:
   - `ACheck_ThatIsAnAgent_IsRefused` (S06-010), `ACheck_WithAnotherFormat_IsRefused` (S06-009: `format: "boolean"`), `AWhile_InChecks_IsRefused` and `ACall_InChecks_IsRefused` (S06-011: `checks/again/index.json in checks/ is while; …`);
   - `ACheckLoop_OverAnInput_IsRefused` and `…_OverANodesValue_IsRefused` (S06-014), `ACheckLoop_OverACheckLoopsItems_Publishes`;
   - `AGateChecksIf_ReadingANullableValue_IsRefused` (S06-035), `ACheckThatGatesNothing_MayReadOne`;
   - `ADeliverablesCheck_NamingANode_IsRefused`, `…_NamingNoCheck_IsRefused`, `…_NamingACheckInsideALoop_IsRefused` (A08-001).
-- [ ] **Step 2: Run** them. Expected: FAIL (each publishes, or is refused under another id).
-- [ ] **Step 3: Implement** `SourceChecks.Check`; the functions golden (`ResolveFixture.Functions()`) must still publish.
-- [ ] **Step 4: Add the refusal cases** S06-009, S06-010, S06-011, S06-014, S06-035, A08-001 to `RefusalPackages.Checks.cs` (each invalid package one `.Edit` from its valid one); add the A08 table to the conformance README; export, check, push, pin.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): checks/ holds computed checks and the loops over them`; push.
+- [x] **Step 2: Run** them. Expected: FAIL (each publishes, or is refused under another id).
+- [x] **Step 3: Implement** `SourceChecks.Check`; the functions golden (`ResolveFixture.Functions()`) must still publish.
+- [x] **Step 4: Add the refusal cases** S06-009, S06-010, S06-011, S06-014, S06-035, A08-001 to `RefusalPackages.Checks.cs` (each invalid package one `.Edit` from its valid one); add the A08 table to the conformance README; export, check, push, pin.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): checks/ holds computed checks and the loops over them`; push.
 
 ### Task 4: A deliverable's header and its folder at publish
 
@@ -151,12 +151,12 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: `DeliverableSentences`: `ReadsOwnCheck(id, check, path)` S06-018, `HasFormat(id, format, path)` S06-020, `HasWhenEmpty(id, value, path)` S06-025, `HasDeliveryKind(folderPath, kind)` S06-026, `HasBundle(folderPath, value)` A08-002; and, for Task 6, `ReadsFormat(id, format, path, readFormat, line, fix, file)` S06-021 (`fix` is `Convert it in a node` or `Use a renderer or a node`), `WritesMarkdown(id, line, text, file)` S06-022, `IsObject(id, format, file)` S06-023.
 - Produces: `SourceDeliverables.Check(SourcePackage package, FormatSet formats, ScopeTree? tree)`.
 
-- [ ] **Step 1: Write the failing tests:** `ADeliverable_OfMarkdownInline_IsRefused` and `…_OfAList_IsRefused` (S06-020; `markdown_block`, `plaintext` and a named object format publish), `WhenEmpty_Otherwise_IsRefused` (S06-025: `"skip"`), `ADeliveryKind_Unknown_IsRefused` (S06-026: `"fax"`, naming `deliverables/patient`), `ABundle_Otherwise_IsRefused` (A08-002: `"tar"`), `ADeliverable_ReadingItsOwnCheck_IsRefused` (S06-018, in its body; also through a placed snippet), `ADeliverable_ReadingAnotherCheck_Publishes`.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.** The format is judged by `FormatTypes.Shape` of the named format (an object shape, or the two text names); the own-check read is found in the body's typed reads (`PackageTemplates`), so it runs after the dialect step.
-- [ ] **Step 4: Refusal cases** S06-018, S06-020, S06-025, S06-026, A08-002; export, check, push, pin.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): a deliverable's format, whenEmpty, delivery kinds and its own check`; push.
+- [x] **Step 1: Write the failing tests:** `ADeliverable_OfMarkdownInline_IsRefused` and `…_OfAList_IsRefused` (S06-020; `markdown_block`, `plaintext` and a named object format publish), `WhenEmpty_Otherwise_IsRefused` (S06-025: `"skip"`), `ADeliveryKind_Unknown_IsRefused` (S06-026: `"fax"`, naming `deliverables/patient`), `ABundle_Otherwise_IsRefused` (A08-002: `"tar"`), `ADeliverable_ReadingItsOwnCheck_IsRefused` (S06-018, in its body; also through a placed snippet), `ADeliverable_ReadingAnotherCheck_Publishes`.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.** The format is judged by `FormatTypes.Shape` of the named format (an object shape, or the two text names); the own-check read is found in the body's typed reads (`PackageTemplates`), so it runs after the dialect step.
+- [x] **Step 4: Refusal cases** S06-018, S06-020, S06-025, S06-026, A08-002; export, check, push, pin.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): a deliverable's format, whenEmpty, delivery kinds and its own check`; push.
 
 ### Task 5: Checks read deliverables (D1, D2, D3)
 
@@ -169,18 +169,18 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces (publish): `CheckSentences.ReadsStateItDecides(check, deliverable, gate, path)` A08-003; circles through checks and deliverables are found with the wait edge of D3 and said with A05-003 (ids as written, `check '<id>'` and `deliverable '<id>'` where `node '<id>'` stands today only if the row's words allow; else the bare ids, as 05-D34).
 - Produces (run): `PlanEntry.Gates` (`IReadOnlyList<string>`: the deliverables this check gates, empty otherwise), `PlanEntry.Check` (a deliverable's gate key, or null) and `PlanEntry.ReadsComposed` (`IReadOnlySet<string>`: the deliverable keys this entry reads as composed: it is in their gate set). `RunPlan.Build` refuses (S07-006) a deliverable read by an entry outside `checks`, and a gate set that reads the deliverable's `.state`.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `ACheck_ReadsADeliverablesContent`: `check.proofread` with `{ "!": [ { "blank": [ { "var": "deliverable.emr.consult.content" } ] } ] }`-style expression publishes; its entry's `reads` holds `deliverable.emr.consult.content`; `graph.edges` holds `{ from: "deliverable.emr.consult", to: "check.proofread", kind: "reads" }` beside the `gates` edge back.
   - `ACheck_OfAModelDerivedDeliverable_IsModelDerived`: declaring `false` is S03-036.
   - `AComputedNode_ReadingADeliverable_IsStillRefused` (S03-019) and `ACheck_ReadingAMemberADeliverableLacks_IsRefused` (S03-014: `.items`).
   - `AGate_ReadingItsDeliverablesState_IsRefused` (A08-003), `ACheckOutsideTheGateSet_MayReadState`.
   - `TwoGates_ReadingEachOthersDeliverable_AreACircle`: A's gate reads B's `.content` and B's gate reads A's; neither is in the other's gate set, so each waits for the other (D3): A05-003. `AGate_ReadingAnotherDeliverable_Publishes` when only one of them does.
   - `RunPlan_SaysWhoReadsComposed`: for the first package, `Entries["check.proofread"].ReadsComposed` is `{ deliverable.emr.consult }` and `Gates` the same; an aggregate the gate reads, which reads the deliverable, is in the set too.
-- [ ] **Step 2: Run.** Expected: FAIL (S03-019 on the first).
-- [ ] **Step 3: Implement** publish, then `RunPlan`. The gate set is the transitive closure of `Depends` from the deliverable's `check`, over `checks` entries.
-- [ ] **Step 4: Refusal case** A08-003; a new compiled golden case `checked-note` (`CompiledGoldenTests.Cases()`, `ResolveFixture.CheckedNote()`): part 06 § 3.4's package cut down, with a `markdown_block` deliverable gated by a check that reads its `.content`, a second deliverable in `patient/` (`["email", "pdf"]`, `bundle: null`, `whenEmpty: "hold"`) and an aggregate over a check loop. Export, check, push, pin.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): a check reads a deliverable, and the gate set reads it composed`; push.
+- [x] **Step 2: Run.** Expected: FAIL (S03-019 on the first).
+- [x] **Step 3: Implement** publish, then `RunPlan`. The gate set is the transitive closure of `Depends` from the deliverable's `check`, over `checks` entries.
+- [x] **Step 4: Refusal case** A08-003; a new compiled golden case `checked-note` (`CompiledGoldenTests.Cases()`, `ResolveFixture.CheckedNote()`): part 06 § 3.4's package cut down, with a `markdown_block` deliverable gated by a check that reads its `.content`, a second deliverable in `patient/` (`["email", "pdf"]`, `bundle: null`, `whenEmpty: "hold"`) and an aggregate over a check loop. Export, check, push, pin.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): a check reads a deliverable, and the gate set reads it composed`; push.
 
 ### Task 6: Strict formats at publish (D7, D8, D9)
 
@@ -193,18 +193,18 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Consumes: `DeliverableSentences.ReadsFormat`, `WritesMarkdown`, `IsObject` (Task 4); `TypedRead.Format` of each output (`SiteReads`).
 - Produces: `PackageTemplates.Escapes(string deliverableKey)` → `IReadOnlyList<(string? Unit, string At)>`; `resolve.json` deliverable entries gain `escapes` (D7).
 
-- [ ] **Step 1: Write the failing tests** (part 06 § 6.4's table, row by row):
+- [x] **Step 1: Write the failing tests** (part 06 § 6.4's table, row by row):
   - `AMarkdownDeliverable_ReadsMarkdownAndPlainText` publishes, and `escapes` lists exactly the outputs of `plaintext`, `string`, number and boolean, with their `at`; an output piped into a renderer is not listed; a `for` variable's `{{ s.title }}` (a `string`) is.
   - `AMarkdownDeliverable_WritingAnObject_IsRefused` (S06-021 with `Use a renderer or a node`; a list too).
   - `APlaintextDeliverable_ReadingMarkdown_IsRefused` (S06-021 with `Convert it in a node`: a `markdown_block` node, a `markdown_inline` one, and a placed `markdown_block` snippet).
   - `APlaintextDeliverable_WritingAHeading_IsRefused` (S06-022: line 4, `'## Plan'`), and `- item`, `> quote`, `a **b** c`; `2 - 1 = 1` mid-line and `*` inside a tag publish.
   - `AnObjectDeliverable_IsOneValue`: `{{ node.summary.value }}` and `{{~ node.summary.value ~}}\n` publish with `escapes: []`; text beside it, a second tag, `.content`, another node's format and a pipe are S06-023.
   - `ProfileText_InAMarkdownDeliverable_IsEscaped`: `{{ profile.signature }}` is in `escapes`.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Refusal cases** S06-021, S06-022, S06-023; regenerate the compiled goldens (`escapes` on every deliverable; read each); extend `resolve.schema.json`'s deliverable entry with `escapes`; export, check, push, pin.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): a deliverable's reads fit its format, and resolve.json says which are escaped`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Refusal cases** S06-021, S06-022, S06-023; regenerate the compiled goldens (`escapes` on every deliverable; read each); extend `resolve.schema.json`'s deliverable entry with `escapes`; export, check, push, pin.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): a deliverable's reads fit its format, and resolve.json says which are escaped`; push.
 
 ### Task 7: Composing a deliverable
 
@@ -216,16 +216,16 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Consumes: the entry's `escapes` (Task 6), `MarkdownEscape.Escape` (07-D7).
 - Produces: `BodyComposer.Compose` escapes each listed output where it is written (a `null` writes nothing; a run spot's recorded output is the escaped text); for D8's object deliverable `RenderTurn.Render` gives the value's canonical JSON. `RenderOutcome.Detail` is unchanged in shape.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `PlainText_IsEscaped_PerItem` (Review Focus 3): items `# 1`, `*bold*`, `a\nb` and `null` in a `for` compose `\# 1`, `\*bold\*`, `a\nb` (the line end kept) and nothing; `CanonicalJson.HashText` of the text is what the outcome's hash is.
   - `MarkdownReads_AreWrittenAsTheyAre`; `APlacedPlainTextSnippet_IsEscapedOnce`; `ARenderersOutput_IsNotEscaped`.
   - `AnObjectDeliverable_ComposesCanonicalJson`: `{"b":1,"a":"x"}` composes `{"a":"x","b":1}`; a `null` value composes `null`.
   - `ADocumentWithoutEscapes_ComposesAsBefore`: the four run goldens' deliverable texts are unchanged.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Dialect goldens:** add cases `deliverable-escaped`, `deliverable-plaintext` and `deliverable-object` to the `dialect-goldens` family (each a `package/` and `entry.txt`); the export **merges**: every case area 07 exported is still there, byte for byte (assert it in `DialectGoldenTests`). Export, check, push, pin.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): a deliverable composes with its plain reads escaped, an object one as canonical JSON`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Dialect goldens:** add cases `deliverable-escaped`, `deliverable-plaintext` and `deliverable-object` to the `dialect-goldens` family (each a `package/` and `entry.txt`); the export **merges**: every case area 07 exported is still there, byte for byte (assert it in `DialectGoldenTests`). Export, check, push, pin.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): a deliverable composes with its plain reads escaped, an object one as canonical JSON`; push.
 
 ### Task 8: Outcomes: skipped, failed, held, blocked, released (R1, R2, R3, D3 to D6)
 
@@ -452,15 +452,15 @@ Runs before Task 8.
 - Content repo: `v31/conformance/markdown-escape-vectors/`, `v31/conformance/renderer-goldens/`, `index.json`, `README.md`
 - Test: beside the existing `MarkdownEscape` tests; `tests/V31Run/DeliverableComposeTests.cs`
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `ALineStartingWithFourSpaces_IsNotACodeBlock`, `ALineStartingWithATab_IsNotACodeBlock`: the first leading space or tab of each line is written as its entity (`&#32;` for a space, `&#9;` for a tab); the rest of the line is escaped as today; a line with no leading space or tab is as today; every line of a multi-line text is treated on its own; line breaks stay hard breaks as today.
   - `ADeliverable_EscapesLeadingIndentation`: a `markdown_block` deliverable reading a plain-text value `"    indented\n\tx"` composes with the entities.
   - `TheSharedFamilies_KeepEveryCase`: pins the names of every case of `renderer-goldens` and every vector of `markdown-escape-vectors` as they are at the pin before this task (an in-repo list, as `DialectGoldenTests` pins the 40 area-07 dialect cases); it fails when one disappears. A vector's expected bytes may change (ruling 1); a name may not vanish.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement** the escape. Make the exports of `renderer-goldens` and `markdown-escape-vectors` **merge**: a case already in the content repo that the export does not produce is kept, and nothing is deleted silently.
-- [ ] **Step 4: Regenerate and read** every golden the escape changes (escape vectors; the `deliverable-escaped` dialect golden; run goldens if any); add vectors for a leading space, a leading tab, and a mid-line run of spaces (unchanged). Export one filter at a time, `python3 scripts/check-v31.py`, push the content repo, move the pin. Update the prose that describes the escape (spec part and content-repo chapter).
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1505): markdown_escape protects a line's leading indentation`, `Tests (#1505): shared conformance families are merged, and a vanished case fails`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement** the escape. Make the exports of `renderer-goldens` and `markdown-escape-vectors` **merge**: a case already in the content repo that the export does not produce is kept, and nothing is deleted silently.
+- [x] **Step 4: Regenerate and read** every golden the escape changes (escape vectors; the `deliverable-escaped` dialect golden; run goldens if any); add vectors for a leading space, a leading tab, and a mid-line run of spaces (unchanged). Export one filter at a time, `python3 scripts/check-v31.py`, push the content repo, move the pin. Update the prose that describes the escape (spec part and content-repo chapter).
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1505): markdown_escape protects a line's leading indentation`, `Tests (#1505): shared conformance families are merged, and a vanished case fails`; push.
 
 ### Task 16: Folder items are `markdown_block`; A07-013 at every depth; a parser fault is the engine's (#1505 comment 4, rulings 2, 5, 6)
 
