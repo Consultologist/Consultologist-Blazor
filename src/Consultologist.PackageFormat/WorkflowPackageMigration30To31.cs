@@ -11,7 +11,8 @@ namespace Consultologist.PackageFormat;
 /// 24 → 25 rung's, for a package older than 25 (<see cref="WorkflowPackageMigrationChain"/>). <paramref name="Renames"/>
 /// (D6, § 1.9) maps a reserved 30 id to its hand-chosen 31 id; an id with no entry takes its kind as a suffix.
 /// <paramref name="WhenEmpty"/> (D7, § 1.10) maps a deliverable id to its <c>whenEmpty</c>; the default is
-/// <c>"release"</c>.
+/// <c>"release"</c>. <paramref name="FolderFormats"/> (part 01 § 3, part 05 § 6.2) maps a snippet folder's id to the
+/// package format its items' headers are values of; a folder with no entry takes <c>&lt;folder&gt;_item</c>.
 /// </summary>
 public sealed record Migration31Options(
     V31.TypeRegistry Registry,
@@ -19,7 +20,8 @@ public sealed record Migration31Options(
     WorkflowFormatCatalog Formats30,
     Func<JsonNode, string?>? ResolveContract = null,
     IReadOnlyDictionary<string, string>? Renames = null,
-    IReadOnlyDictionary<string, string>? WhenEmpty = null);
+    IReadOnlyDictionary<string, string>? WhenEmpty = null,
+    IReadOnlyDictionary<string, string>? FolderFormats = null);
 
 /// <summary>
 /// #1507 (part 10 § 1.1, D1): what the 30 → 31 migration produced, in the earlier rewriters' shape so that every caller
@@ -51,7 +53,7 @@ public sealed record Migration31Result(
 /// <summary>
 /// #1507 (part 10 § 3.2, D1, D9): the notices that need no edit, as the migration report lists them: the renames
 /// (A10-006, S10-006), the macro choices now inputs with a <c>_macro</c> suffix, the <c>!x</c> converted to
-/// <c>blank(x)</c> (A10-008), the suggested text formats (A10-009), and the <c>reproducible</c> claims that differed
+/// <c>blank(x)</c> (A10-008), the suggested text formats (A10-021), and the <c>reproducible</c> claims that differed
 /// (A10-010).
 /// </summary>
 public sealed record MigrationNotes(
@@ -81,8 +83,11 @@ public static class WorkflowPackageMigration30To31
 
     /// <summary>
     /// <paramref name="manifestJson"/> and <paramref name="files"/> (without <c>manifest.json</c>) migrated to 31 with
-    /// <paramref name="options"/>. The rewrite itself is built pass by pass (Tasks 6 to 12); until then a 30 package's
-    /// manifest has its <c>specVersion</c> moved and its files are kept.
+    /// <paramref name="options"/>. The 30 package (raised by the chain when older) is read and checked at 30
+    /// (<see cref="Migrated.Read"/>: a file that is not strict JSON, A10-019; a package 30 refuses, A10-017; a reader that
+    /// fails on it, A10-020), then rewritten pass by pass on one working set (<see cref="Migrated"/>): the layout, the
+    /// manifest and the formats (<see cref="V31.Migration.Migrate.Layout"/>), the inputs
+    /// (<see cref="V31.Migration.Migrate.Inputs"/>). The files are serialised once, at the end.
     /// </summary>
     public static Migration31Result Migrate(string manifestJson, IReadOnlyDictionary<string, string> files, Migration31Options options)
     {
@@ -90,7 +95,12 @@ public static class WorkflowPackageMigration30To31
         ArgumentNullException.ThrowIfNull(files);
         ArgumentNullException.ThrowIfNull(options);
 
-        if (!WorkflowPackageMigrationChain.TryReadVersion(manifestJson, out _, out var from))
+        // Part 01 § 2.4: line endings and a byte-order mark are normalised first, as import does, so the gates and every
+        // rung read the text a checkout's settings cannot change.
+        var json = Migrated.Normalise(manifestJson);
+        var normalised = files.ToDictionary(f => f.Key, f => Migrated.Normalise(f.Value), StringComparer.Ordinal);
+
+        if (!WorkflowPackageMigrationChain.TryReadVersion(json, out _, out var from))
         {
             return Refused(manifestJson, files, [MigrationSentences.ManifestDoesNotRead]);
         }
@@ -100,19 +110,21 @@ public static class WorkflowPackageMigration30To31
             return Refused(manifestJson, files, [MigrationSentences.AlreadyAt(from)]);
         }
 
-        var at30 = WorkflowPackageMigrationChain.To30(manifestJson, files, options.ResolveContract, options.Formats30);
+        var at30 = WorkflowPackageMigrationChain.To30(json, normalised, options.ResolveContract, options.Formats30);
         if (!at30.Succeeded)
         {
             return Refused(manifestJson, files, at30.Refusals);
         }
 
-        var root = JsonNode.Parse(at30.ManifestJson)!.AsObject();
-        root["specVersion"] = Target;
-        return new Migration31Result(
-            root.ToJsonString(WorkflowPackageManifestJson.WriteOptions),
-            new Dictionary<string, string>(at30.Files, StringComparer.Ordinal),
-            at30.Notices.ToList(),
-            []);
+        var (migrated, refusals) = Migrated.Read(at30.ManifestJson, at30.Files, options);
+        if (migrated is null)
+        {
+            return Refused(manifestJson, files, refusals);
+        }
+
+        V31.Migration.Migrate.Layout(migrated);
+        V31.Migration.Migrate.Inputs(migrated);
+        return migrated.Result(at30.Notices);
     }
 
     private static Migration31Result Refused(string manifestJson, IReadOnlyDictionary<string, string> files, IReadOnlyList<string> refusals) =>

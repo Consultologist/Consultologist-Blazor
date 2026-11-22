@@ -64,4 +64,50 @@ internal static class MigrationSentences
     /// </summary>
     public static string RungFailed(int rung) =>
         string.Create(CultureInfo.InvariantCulture, $"At specVersion {rung}: the rung could not read this package; fix the manifest, then migrate.");
+
+    /// <summary>
+    /// S10-002 (part 10 § 1.4): what the rewrite could not decide in <paramref name="file"/>'s <paramref name="member"/>,
+    /// written in a form the 31 checker refuses, with its <paramref name="reason"/> (an A10 reason; its final full stop is
+    /// the sentence's own).
+    /// </summary>
+    public static string HandEdit(string file, string member, string reason) =>
+        $"Hand edit needed in {file}, {member}: {reason.TrimEnd('.')}.";
+
+    /// <summary>
+    /// A10-019 (part 10 § 1.4; part 01 § 4): <paramref name="file"/> (or, when <paramref name="header"/>, its header) is
+    /// not strict JSON (RFC 8259, no member written twice, at most 32 levels deep), so the migration cannot read it. The
+    /// fault names a member, never a value.
+    /// </summary>
+    public static string FileDoesNotRead(string file, bool header, StrictJsonFault fault, string? member)
+    {
+        var what = header ? "its header" : "it";
+        var says = fault switch
+        {
+            StrictJsonFault.DuplicateMember => $"{what} names the member '{member}' twice",
+            StrictJsonFault.TooDeep => string.Create(CultureInfo.InvariantCulture, $"{what} nests deeper than {SourceBounds.JsonDepth} levels"),
+            _ => $"{what} is not JSON",
+        };
+        return $"The file '{file}' does not read: {says}; fix it, then migrate.";
+    }
+
+    /// <summary>
+    /// A10-020 (part 10 § 1.4): the 30 reader (the manifest's read, its texts' headers, the validator or the walk) failed
+    /// on the package's content (its code threw), so the run is refused rather than the migration throwing.
+    /// </summary>
+    public const string PackageDoesNotRead = "The package does not read at specVersion 30; fix it, then migrate.";
+
+    /// <summary>
+    /// A10-021 (part 02 § 11; part 10 § 1.2): a package format's <c>string</c> field <paramref name="field"/> (its path
+    /// of property names, joined with <c>.</c>) holds free text; it stays data, and a text format is only suggested.
+    /// </summary>
+    public static string FreeTextField(string format, string field) =>
+        $"Format '{format}', field '{field}' holds free text; consider a text format.";
+
+    /// <summary>A10-022 (part 01 § 5.3, part 05 § 6.2): a reason: a 30 snippet folder item's <c>if</c> has no 31 place.</summary>
+    public const string FolderItemIf =
+        "a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.";
+
+    /// <summary>A10-023 (part 02 § 8.1, § 11): a reason: a 30 union input with no array arm, which no 31 input format is.</summary>
+    public const string UnionInput =
+        "the input takes one of several types, which a 31 input cannot; choose one format.";
 }
