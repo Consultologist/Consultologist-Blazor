@@ -122,7 +122,8 @@ What changes at 31:
 - **The order comes from `resolve.json`** (`graph.order` and the edges), not from walking the
   manifest.
 - **`computed` nodes, conditions and checks** run in the orchestrator through the JSON Logic
-  evaluator (part 03), with no activity and no model call. They are evaluated inline
+  evaluator (part 03), with no model call, and (but for a rule that holds a pattern, below) no
+  activity. They are evaluated inline
   in the orchestrator ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6984396609)), as a deterministic function of recorded values, so replay reproduces them;
   `rendered` nodes and deliverables render in an activity, as templates do today.
 - **A `call`'s function body runs inline** in the job's orchestration ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), never as a
@@ -131,9 +132,13 @@ What changes at 31:
   Its rows are keyed under the call (part 08). **The dev dry run measures the orchestration
   history's size and replay time** for the largest example package ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6993822677); part 10 § 1.7); if the
   history passes 10 MB or a step's replay takes over 2 seconds, if it's exceeded, the bump waits and #1493 (sub-orchestrations with a shared ceiling, Milestone 40) is pulled forward.
-- **`matches` reads no clock** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)): there is no wall-clock time-out; the bounds that keep it
-  linear are part 03 § 5.3's. Every time the orchestrator records (a decision's `decidedAtUtc`)
-  comes from the orchestration's replay-safe clock.
+- **A pattern's decision is stored** ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1505#issuecomment-7064144103), ruling 3): each evaluation of `matches` and
+  `has_word` has the engine's time limit (#1503; part 03 § 5.3's bounds still apply), so its result
+  can differ between a run and its replay. A rule that holds either, at any depth, is evaluated in
+  an activity (`evaluate-rule-v31`), and its outcome is stored in the orchestration's history: a
+  replay reads the decision and never times the pattern again. Every other rule is evaluated
+  inline. Every time the orchestrator records (a decision's `decidedAtUtc`) comes from the
+  orchestration's replay-safe clock.
 - **Check loops** are scheduled per item, as soon as their production item settles (#1396), not
   after the whole production loop.
 
