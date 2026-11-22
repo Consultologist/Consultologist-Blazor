@@ -666,7 +666,7 @@ members, each optional:
 | `values` | object, row key → JSON value | `computed` values, compared as canonical JSON |
 | `prompts` | object, row key → `{ "text": string }` or `{ "hash": string }` | the sent text of an agent node's prompt, exactly or by its sent-text hash |
 | `checks` | object, check row key → `{ "pass": boolean }` | check results, named as `check_result`'s `pass` |
-| `deliverables` | object, deliverable key → `{ "state": string, "text": string }` or `{ "state": string, "hash": string }` | each deliverable's state (`released`, `held`, `failed`, `skipped`, `blocked`, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) and its composed text or hash |
+| `deliverables` | object, deliverable key → `{ "state": string, "text": string }`, `{ "state": string, "hash": string }`, or **`{ "state": "skipped" }` alone** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055597366): a deliverable skipped by its `if` has no composed text) | each deliverable's state (`released`, `held`, `failed`, `skipped`, `blocked`, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) and its composed text or hash; a skipped deliverable has neither |
 
 **A test passes** when the run completes (or fails exactly where `expect` says, through a
 deliverable's `fail`) and every listed expectation holds. Only the **first mismatch** is reported:

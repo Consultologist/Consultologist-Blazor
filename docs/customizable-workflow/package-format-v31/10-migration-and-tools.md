@@ -70,6 +70,9 @@ Every rewrite decided in parts 01 to 07 is listed here, with the part that defin
 | built-in renderers in C# (`concept_bullets`, `concept_context`) | **built-in Scriban renderers in the registry**, versioned and locked, their ids reserved; piped as `\| renderer.concept_bullets` | [05](05-templates-and-macros.md) |
 | whitespace forms #1412 refuses, `-` on a tag | rewritten to the accepted forms | [05](05-templates-and-macros.md) |
 | simple `{{ if }}…{{ end }}` blocks in prompts | lifted into parts | [05](05-templates-and-macros.md) |
+| a `{{ for m in macro.<folder> }}… {{ m.prompt }}` loop over a macro folder | **unrolled into one placement per macro in the folder**, in the folder's order: a placement inside a `for` is refused (A07-009), so each macro is placed at the top level of its template, and its own `if` decides it. `example-macros`' `prompts/summary.md` is the fixture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647)) | [05](05-templates-and-macros.md) |
+| a body `if` around a macro placement (`{{ if input.include_counselling == true }}{{ macro.x }}{{ end }}`) | **hoisted into the placement's header `if`**, joined with the macro's own `if` by `and`: a placement inside an `if` is refused (A07-009). `example-macros`' `standing_draft.md` is the fixture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647)) | [05](05-templates-and-macros.md) |
+| a bare read of a node or an input in a template (`{{ input.consult_draft }}`) | **its `.content` form for text, its `.value` form otherwise**: a bare read of an object or a list is refused (A07-007, A07-008). `example-macros` is the fixture ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647)) | [05](05-templates-and-macros.md) |
 | `failIfEmpty` on agent nodes | the failure sentence, or null (part 05 § 1.2); 30's true, false or absent is what the migration converts from | [05](05-templates-and-macros.md) |
 | optional macros: per-run choices with a `default` | **boolean inputs** (§ 1.3) | [02](02-types-and-inputs.md), [05](05-templates-and-macros.md) |
 | no tests | one snapshot test (§ 4) | [07](07-compiled-documents.md) |
@@ -105,6 +108,14 @@ new input is written:
 ```
 
 Re-evaluating a `default` member is #1456 (Milestone 40).
+
+**A `MacroChoices` entry keyed by a macro's id sets the one boolean input that macro's `if` reads, and is refused
+otherwise** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647)). At 30 a choice is keyed by the macro's id; at 31 the input may have another id, so
+the entry is mapped through the macro's `if`, not through the id. For `letrozole`, renamed `letrozole_macro` because an input
+`letrozole` exists (§ 1.9), a rerun's `{ "letrozole": true }` sets `letrozole_macro`, the input the macro's `if` reads, and
+leaves the input `letrozole` alone. When the macro's `if` reads no single boolean input (or the id names no macro), the entry is
+refused with A07-015, and an input also given in `Inputs` with another value is refused with A07-016. A migrated package with a
+colliding choice is tested for this.
 
 ### 1.4 Hand edits, with notices
 
@@ -376,14 +387,35 @@ conversion**.
   blocks publish**, for public or account packages
   ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1447)).
 - **What it also lists:** every renamed id (§ 1.9), every `_macro` suffix (§ 1.3), every `!x`
-  converted to `blank(x)` (§ 2.3), and every suggestion made.
+  converted to `blank(x)` (§ 2.3), every suggestion made, and every node whose `reproducible` claim at 30 differed. Each is a string of `notices` in the report (below), so a notice that needs no edit is listed, never lost between the hand edits and the compared texts.
+- **Expected differences.** A difference is marked **expected** only when the rewrite declares it and
+  a rule explains the bytes exactly, naming its ruling or section. The rulings so far, each listed in
+  the report with its reason:
+  - **`!x` on text → `blank(x)`:** the two differ for **empty and whitespace-only text** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7042190908); § 2.3).
+  - **Two captures refused at 30 complete at 31:** `example-prior-letters` / `no-prior-letters` and
+    `example-structured-intake` / `all-optional-inputs-unset`, because an empty list settles at 0 items and the job runs
+    ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7042190603); part 04 § 2.4). `example-conditional-documents` / `encounter-kind-unset` is still refused: no deliverable's
+    `if` holds.
+  - **Reading `.content` of a skipped deliverable** reads `null` and no longer fails the job (ruling 1, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)).
+  - **A refused deliverable is withheld, not erased** (ruling 3, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)): the rest of the job reads it as `null`,
+    its state and check result stay readable, it is never delivered, and it is kept in the record under the usual retention.
+  - **A required text input supplied blank** is refused at the start, as a missing one is (ruling 6, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)).
+  - **Every deliverable refused by its check:** the job is **Completed**, each deliverable refused with its sentence, not
+    Failed (ruling 7, [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)).
+  - **A macro body's trailing whitespace:** 31 drops exactly one final line ending (part 05 § 8.6), 30 trims all trailing
+    whitespace (`TrimEnd()`); each body whose text differs is listed, naming this ruling ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647), 1).
+  - **Plain text escaped into a Markdown deliverable** (part 06 § 6.4): unescaping the 31 text gives 30's bytes.
+
+  Rulings 2, 4 and 5 of the same list ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7055767482)) are not differences of the comparison: a failed loop item still
+  fails the job (2, 31 keeps 30), a `while` with `checkFirst` reading its own body is refused at publish (4), and a numeric
+  `enum` is supported (5).
 - **It notes a package whose estimated worst case passes the job limit** (30 minutes, or a
   total-work limit, part 09 § 3.4) ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)), with the estimate. The dry run on dev measures real
   durations (§ 1.6).
 - **Where it goes:** attached to the publish record of each migrated account version, and shown by
   the Editor and History; for the public packages, attached to the migration PR.
 - **Its shape** ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)). One JSON document (`migration-report.json`) beside the publish
-  report in the version's folder: the old and new versions, the hand edits made, and one entry per
+  report in the version's folder: the old and new versions, the hand edits made, the **`notices`** (an array of strings, `[]` for none), and one entry per
   compared text with `{ "site", "oldHash", "newHash", "equal", "expected", "explanation" }`, with
   `explanation` `null` unless `expected` is true. Like the other derived files, it never lives in
   source.

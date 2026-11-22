@@ -215,6 +215,7 @@ author's: no rule on how it starts or ends
 | `-` on a placement (`{{- x }}`, `{{ x -}}`) | refused: it removes blank lines between paragraphs |
 | `{{~ x }}` inside a line | refused: it removes the space the author wrote before it |
 | `{{~ x }}` with text after it on its line | refused: a block placement stands alone on its line |
+| `{{ x }}` inside an `if` or a `for` | refused (A07-009): a placement's decision is recorded once, so it is made by the unit's own `if`, not by a tag around it; the migration unrolls or hoists what 30 wrote ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1507#issuecomment-7073314647); part 10 § 1.2) |
 
 Scriban's markers, as tested on 7.2.5: `~` removes spaces and tabs on its side, and on the right
 also the one newline ending the line; `-` removes all whitespace on its side, blank lines
