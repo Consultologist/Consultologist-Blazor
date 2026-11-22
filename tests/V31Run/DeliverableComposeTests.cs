@@ -116,6 +116,28 @@ public class DeliverableComposeTests
     }
 
     [Fact]
+    public void ANestedUnit_IsRecordedAsSpliced_ALineStartOnlyWhereItStartsALine()
+    {
+        // R9 (Task 15's review): a unit placed inside a plain-text snippet escaped whole is recorded by the hash of its text
+        // as it stands in the escaped snippet. Placed mid-line, its leading space continues the line and stays; placed at a
+        // line start, its leading space is the entity.
+        var plan = RunFixture.Plan(WithNote("markdown_block", "## Plan\n{{~ snippet.sign_off.content }}\n")
+            .WithSnippet("sign_off", "Seen by{{ snippet.doctor.content }}\n{{ snippet.clinic.content }}")
+            .WithSnippet("doctor", " Dr A. Sample")
+            .WithSnippet("clinic", " Sample Oncology Clinic"));
+
+        var outcome = Render(plan, BodyComposerTests.Scope(), BodyComposerTests.Placed("snippet.sign_off", "snippet.doctor", "snippet.clinic"));
+
+        Assert.Equal("## Plan\nSeen by Dr A\\. Sample\n&#32;Sample Oncology Clinic\n", Composed(outcome));
+        Assert.Equal(
+            CanonicalJson.Write(new JsonArray(
+                new JsonObject { ["site"] = "snippet.sign_off", ["hash"] = CanonicalJson.HashText("Seen by Dr A\\. Sample\n&#32;Sample Oncology Clinic") },
+                new JsonObject { ["site"] = "snippet.doctor", ["hash"] = CanonicalJson.HashText(" Dr A\\. Sample") },
+                new JsonObject { ["site"] = "snippet.clinic", ["hash"] = CanonicalJson.HashText("&#32;Sample Oncology Clinic") })),
+            CanonicalJson.Write(outcome.Detail!["units"]));
+    }
+
+    [Fact]
     public void APlainRead_InAPlacedInlineSnippet_IsEscaped()
     {
         var plan = RunFixture.Plan(WithNote("markdown_block", "Next: {{ snippet.next.content }}.\n")

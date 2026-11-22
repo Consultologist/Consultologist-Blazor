@@ -116,6 +116,16 @@ public static partial class BodyComposer
         private readonly Dictionary<string, (Template Template, TemplateSyntax Syntax)?> parsed = new(StringComparer.Ordinal);
         private readonly List<ComposedUnit?> units = [];
         private readonly List<string?> unitTexts = [];
+
+        /// <summary>
+        /// By unit, where it was spliced: the unit whose text it stands in (<c>-1</c> for the body or any other text) and its
+        /// offset there; <c>(-1, -1)</c> until spliced. R9: a unit escaped as part of the unit around it starts a line only
+        /// where it starts a line of that text.
+        /// </summary>
+        private readonly List<(int Owner, int Start)> unitSplices = [];
+
+        /// <summary>The unit each text being rendered is the text of, innermost last (<c>-1</c> for a text that is not a unit's).</summary>
+        private readonly Stack<int> rendering = new();
         private readonly ScriptObject builtins = TemplateValues.BuiltIns();
         private int planned;
         private ScriptObject? data;
@@ -250,12 +260,25 @@ public static partial class BodyComposer
         /// Renders <paramref name="text"/> as <see cref="Render(TextPlan, ScriptObject)"/> does, giving the run spots written
         /// in it, at their places in the text it gives (<paramref name="spots"/>, in the order of the text).
         /// </summary>
-        public string Render(TextPlan text, ScriptObject globals, out IReadOnlyList<FilledSpot> spots)
+        public string Render(TextPlan text, ScriptObject globals, out IReadOnlyList<FilledSpot> spots) =>
+            Render(text, globals, -1, out spots);
+
+        /// <summary>Renders <paramref name="text"/>, the text of the unit at <paramref name="unit"/> (<c>-1</c> for none).</summary>
+        private string Render(TextPlan text, ScriptObject globals, int unit, out IReadOnlyList<FilledSpot> spots)
         {
             var output = new LimitedOutput(this);
             var context = new ComposeContext(this, text, builtins, output);
             context.PushGlobal(globals);
-            text.Template.Render(context);
+            rendering.Push(unit);
+            try
+            {
+                text.Template.Render(context);
+            }
+            finally
+            {
+                rendering.Pop();
+            }
+
             spots = context.Spots;
             return output.ToString();
         }
@@ -274,23 +297,57 @@ public static partial class BodyComposer
             var index = units.Count;
             units.Add(null);
             unitTexts.Add(null);
-            var rendered = Render(placement.Text, Globals(), out var spots);
+            unitSplices.Add((-1, -1));
+            var rendered = Render(placement.Text, Globals(), index, out var spots);
             units[index] = new ComposedUnit(placement.Site, CanonicalJson.HashText(rendered));
             unitTexts[index] = rendered;
             return new PlacedText(rendered, spots, index);
         }
 
+        /// <summary>Records that the unit at <paramref name="unit"/> was spliced at <paramref name="start"/> of the text being rendered.</summary>
+        public void Spliced(int unit, int start)
+        {
+            if (unit >= 0 && unit < unitSplices.Count)
+                unitSplices[unit] = (rendering.Count > 0 ? rendering.Peek() : -1, start);
+        }
+
         /// <summary>
         /// #1505 (area 08; part 06 § 9; D7): the unit at <paramref name="index"/>, escaped whole where it is spliced, and the
         /// units placed inside it (recorded after it, as it rendered) are recorded by the hash of their text as spliced: escaped.
+        /// R9: a unit inside it is escaped as a line start only where it starts a line of the unit's text (Task 15's review).
         /// </summary>
         public void EscapedUnits(int index)
         {
-            for (var i = Math.Max(index, 0); i < units.Count; i++)
+            if (index < 0 || unitTexts[index] is not { } outer)
+                return;
+            for (var i = index; i < units.Count; i++)
             {
                 if (units[i] is { } unit && unitTexts[i] is { } text)
-                    units[i] = unit with { TextHash = CanonicalJson.HashText(MarkdownEscape.Escape(text)) };
+                {
+                    var startsLine = i == index || OffsetIn(index, i) is not { } at || MarkdownEscape.StartsLine(outer, at);
+                    units[i] = unit with { TextHash = CanonicalJson.HashText(MarkdownEscape.Escape(text, startsLine)) };
+                }
             }
+        }
+
+        /// <summary>
+        /// Where the unit at <paramref name="inner"/> stands in the text of the unit at <paramref name="outer"/>, through the
+        /// units between; <c>null</c> when it was not spliced into a unit's text along the way (a folder item's body
+        /// between, say), so it is taken as starting a line, as a whole value is.
+        /// </summary>
+        private int? OffsetIn(int outer, int inner)
+        {
+            var at = 0;
+            for (var i = inner; i != outer; )
+            {
+                var (owner, start) = unitSplices[i];
+                if (owner < outer || start < 0)
+                    return null;
+                at += start;
+                i = owner;
+            }
+
+            return at;
         }
     }
 
@@ -425,6 +482,7 @@ internal sealed class ComposeContext : TemplateContext
                 placed = BodyComposer.Escaped(placed);
             }
             var start = Written.Length;
+            Composing.Spliced(placed.Unit, start);
             if (placed.Text.Length > 0)
                 Write(placed.Text);
             Spots.AddRange(placed.Spots.Select(s => s with { Start = s.Start + start }));
