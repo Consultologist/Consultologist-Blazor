@@ -32,7 +32,8 @@ public sealed class StoredRunRecorder(TaskOrchestrationContext context, ConsultG
     public Task RowAsync(RunRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        var state = StateName(row.State);
+        // #1506 (final review M6): the runner's own word for the state, so the entity counts what the row says
+        var state = PlanRunner.StateWord(row.State);
         _logger.LogInformation(
             "V31 row. JobId={JobId}, Key={Key}, Kind={Kind}, State={State}, ValueHash={ValueHash}, InputHash={InputHash}, RunNeutralHash={RunNeutralHash}",
             input.JobId,
@@ -162,18 +163,4 @@ public sealed class StoredRunRecorder(TaskOrchestrationContext context, ConsultG
 
     /// <summary>A delivery row's result as the entity counts it: <c>delivery:sent</c>, <c>delivery:not sent</c>, <c>delivery:failed</c>.</summary>
     internal static string DeliveryStateName(string result) => $"delivery:{result}";
-
-    /// <summary>Part 08's word for a row's state.</summary>
-    internal static string StateName(RowState state) => state switch
-    {
-        RowState.Completed => "completed",
-        RowState.Skipped => "skipped",
-        RowState.NotRun => "not_run",
-        RowState.Failed => "failed",
-        RowState.Cancelled => "cancelled",
-        RowState.Released => "released",
-        RowState.Held => "held",
-        RowState.Blocked => "blocked",
-        _ => state.ToString(),
-    };
 }

@@ -25,7 +25,8 @@ public class OrchestratorV31Tests
     [InlineData(RowState.Held, "held")]
     [InlineData(RowState.Blocked, "blocked")]
     public void ADeliverablesRowState_IsNamedForTheEntity(RowState state, string name) =>
-        Assert.Equal(name, StoredRunRecorder.StateName(state));
+        // #1506 (final review M6): the recorder counts by the runner's own word (PlanRunner.StateWord), not a copy of it
+        Assert.Equal(name, PlanRunner.StateWord(state));
 
     [Fact]
     public async Task AJob_RunsToCompleted()
