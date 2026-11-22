@@ -141,6 +141,110 @@ public class DialectGoldenTests
         }
     }
 
+    /// <summary>
+    /// #1505 comment 4, ruling 3 (R11): the 26 renderer goldens at the pin before area 08's Task 15 (bdc1ee6), by name. The
+    /// export adds to the family and never drops one of these; their bytes are pinned by <see cref="ThePinnedFamilies_AreTheGoldens"/>.
+    /// </summary>
+    private static readonly string[] RendererCasesAtThePin =
+    [
+        .. new[] { "concept_bullets", "concept_context" }.SelectMany(r => new[]
+        {
+            "different-source", "empty", "empty-source", "empty-support", "markdown-characters", "one-active-snomed",
+            "one-inactive", "one-not-snomed", "tab-and-newline-only-support", "three-mixed", "whitespace-support",
+            "with-support", "without-support",
+        }.Select(c => $"{r}/{c}")),
+    ];
+
+    /// <summary>
+    /// R11: the 42 escape vectors at the pin before Task 15 (bdc1ee6), by their <c>plain</c> (a vector's name): each of the
+    /// 32 ASCII punctuation characters, then the ten sentences. A vector's <c>escaped</c> may change (R9); a vector may not vanish.
+    /// </summary>
+    private static readonly string[] EscapeVectorsAtThePin =
+    [
+        .. "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~".Select(c => c.ToString()),
+        "Margaret Okafor, 58, seen by Dr A. Sample on 20/11/2026.",
+        "BP 128/82 mmHg; HR 88 bpm (regular); SpO2 98% on air.",
+        "Plan: FBC + ferritin -> review in 2 weeks [if Hb < 110 g/L].",
+        "* Not a bullet: she said \"I'm tired all the time\" & wants answers!",
+        "# Not a heading; _not emphasis_ and `not code` either.",
+        "Metformin 500 mg BD ~ 1 g/day; aim HbA1c <= 53 mmol/mol.",
+        "1. Not a list item: Dr A. Sample's {follow-up} at 09:30 = done?",
+        "Allergies: penicillin (rash) | none known @ home; see note #4.",
+        "    Seen with her daughter; the four spaces before this line stay as written.",
+        "Fatigue – two weeks, worse ≥ 3 pm; café visit with her daughter, née Adeyemi.\nSecond line: \\ back-slashed.",
+    ];
+
+    [Fact]
+    public void TheSharedFamilies_KeepEveryCase()
+    {
+        Assert.Equal(26, RendererCasesAtThePin.Length);
+        var renderers = DialectGoldensExport.Cases(DialectGoldensExport.RendererGoldens);
+        foreach (var name in RendererCasesAtThePin)
+            Assert.True(renderers.Contains(name, StringComparer.Ordinal), $"renderer-goldens/{name} is no longer exported.");
+
+        Assert.Equal(42, EscapeVectorsAtThePin.Length);
+        var plains = JsonNode.Parse(DialectGoldensExport.Files(DialectGoldensExport.EscapeVectors)["vectors.json"])!.AsArray()
+            .Select(v => (string)v!["plain"]!).ToList();
+        foreach (var plain in EscapeVectorsAtThePin)
+            Assert.True(plains.Contains(plain, StringComparer.Ordinal), $"The escape vector of {JsonValue.Create(plain).ToJsonString()} is no longer exported.");
+    }
+
+    [Fact]
+    public void TheExport_KeepsTheCasesItDoesNotProduce()
+    {
+        // R11: a case already in the content repository that the export does not produce (another area's) is kept, files
+        // and index entry, in each of the three shared families; a case it produces is written afresh.
+        var root = Path.Combine(Path.GetTempPath(), "v31-merge-" + Guid.NewGuid().ToString("N"));
+        var conformance = Path.Combine(root, "v31", "conformance");
+        try
+        {
+            Directory.CreateDirectory(conformance);
+            File.Copy(Path.Combine(V31Contract.ConformanceFolder(DialectGoldensExport.DialectGoldens), "..", "index.json"), Path.Combine(conformance, "index.json"));
+            var index = File.ReadAllText(Path.Combine(conformance, "index.json"), Utf8NoBom);
+            foreach (var (family, kept) in new[] { (DialectGoldensExport.DialectGoldens, "kept-case"), (DialectGoldensExport.RendererGoldens, "concept_kept/empty") })
+            {
+                DialectGoldensExport.Write(Path.Combine(conformance, family), new Dictionary<string, byte[]>(StringComparer.Ordinal)
+                {
+                    [$"{kept}/about.txt"] = Utf8NoBom.GetBytes("Another area's case.\n"),
+                    [$"{DialectGoldensExport.Cases(family)[0]}/stale.txt"] = Utf8NoBom.GetBytes("A file the export no longer writes.\n"),
+                });
+                index = RefusalPackagesExport.WithCases(index, family, [kept, .. DialectGoldensExport.Cases(family)]);
+            }
+
+            var keptVector = new JsonObject { ["plain"] = "Kept by another area.", ["escaped"] = "Kept by another area\\." };
+            DialectGoldensExport.Write(Path.Combine(conformance, DialectGoldensExport.EscapeVectors), new Dictionary<string, byte[]>(StringComparer.Ordinal)
+            {
+                ["vectors.json"] = Utf8NoBom.GetBytes(new JsonArray(keptVector, new JsonObject { ["plain"] = "!", ["escaped"] = "stale" }).ToJsonString()),
+            });
+            File.WriteAllText(Path.Combine(conformance, "index.json"), index, Utf8NoBom);
+
+            DialectGoldensExport.ExportTo(root);
+
+            var after = JsonNode.Parse(File.ReadAllText(Path.Combine(conformance, "index.json"), Utf8NoBom))!["families"]!.AsArray();
+            foreach (var (family, kept) in new[] { (DialectGoldensExport.DialectGoldens, "kept-case"), (DialectGoldensExport.RendererGoldens, "concept_kept/empty") })
+            {
+                var files = FilesUnder(Path.Combine(conformance, family));
+                Assert.True(files.ContainsKey($"{kept}/about.txt"), $"{family}/{kept} was dropped.");
+                Assert.False(files.ContainsKey($"{DialectGoldensExport.Cases(family)[0]}/stale.txt"), $"{family}: a produced case keeps a stale file.");
+                foreach (var (path, bytes) in DialectGoldensExport.Files(family))
+                    Assert.True(files[path].AsSpan().SequenceEqual(bytes), $"{family}/{path} is not what the code gives.");
+                var cases = after.Single(f => (string?)f!["id"] == family)!["cases"]!.AsArray().Select(c => (string)c!).ToList();
+                Assert.Equal([.. DialectGoldensExport.Cases(family).Append(kept).Order(StringComparer.Ordinal)], cases);
+            }
+
+            var vectors = JsonNode.Parse(File.ReadAllBytes(Path.Combine(conformance, DialectGoldensExport.EscapeVectors, "vectors.json")))!.AsArray();
+            var produced = JsonNode.Parse(DialectGoldensExport.Files(DialectGoldensExport.EscapeVectors)["vectors.json"])!.AsArray();
+            Assert.Equal(produced.Count + 1, vectors.Count);
+            Assert.Equal(produced.ToJsonString(), new JsonArray(vectors.Take(produced.Count).Select(v => v!.DeepClone()).ToArray()).ToJsonString());
+            Assert.Equal(keptVector.ToJsonString(), vectors[^1]!.ToJsonString());
+        }
+        finally
+        {
+            if (Directory.Exists(root))
+                Directory.Delete(root, recursive: true);
+        }
+    }
+
     [Fact]
     public void EveryDialectCase_HoldsItsFiles()
     {
@@ -216,6 +320,7 @@ public class DialectGoldenTests
         Assert.Equal(punctuation, plains.Take(32));
         Assert.Equal(punctuation.Select(c => "\\" + c), vectors.Take(32).Select(v => (string)v!["escaped"]!));
         Assert.Equal(45, vectors.Count);
+        Assert.Equal(EscapeVectorsAtThePin, plains.Take(42));
         Assert.All(vectors, v =>
         {
             Assert.Equal(["plain", "escaped"], v!.AsObject().Select(m => m.Key));

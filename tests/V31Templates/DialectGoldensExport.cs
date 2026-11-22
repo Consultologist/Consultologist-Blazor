@@ -14,10 +14,10 @@ namespace Consultologist.Api.Tests.V31Templates;
 
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 10 § 5): the three families of the dialect, generated from the code, and their
-/// export into the content repository named by <c>CONFORMANCE_EXPORT_V31</c> (its root): it deletes and rewrites
-/// <c>v31/conformance/dialect-goldens/</c>, <c>renderer-goldens/</c> and <c>markdown-escape-vectors/</c> with
-/// <see cref="Files"/>, then sets each family's <c>cases</c> in <c>v31/conformance/index.json</c> to <see cref="Cases"/>,
-/// leaving every other byte of that file as it was. A no-op without the variable, as <see cref="RefusalPackagesExport"/>
+/// export into the content repository named by <c>CONFORMANCE_EXPORT_V31</c> (its root): it merges <see cref="Files"/>
+/// into <c>v31/conformance/dialect-goldens/</c>, <c>renderer-goldens/</c> and <c>markdown-escape-vectors/</c>, keeping a
+/// case it does not produce (#1505, R11: <see cref="ExportTo"/>), then sets each family's <c>cases</c> in
+/// <c>v31/conformance/index.json</c> to <see cref="Cases"/> and the kept ones, leaving every other byte of that file as it was. A no-op without the variable, as <see cref="RefusalPackagesExport"/>
 /// is: it is a generator, not a check. <see cref="DialectGoldenTests"/> holds the in-repo goldens and the pin to it.
 /// </summary>
 [Collection("V31 conformance export")] // #1505: the exporters each rewrite v31/conformance/index.json, so they run one at a time.
@@ -62,16 +62,61 @@ public class DialectGoldensExport
         if (string.IsNullOrWhiteSpace(root))
             return;
 
+        ExportTo(root);
+    }
+
+    /// <summary>
+    /// #1505 comment 4, ruling 3 (R11): the three families are shared by areas 07 and 08, so the export merges into the
+    /// content repository at <paramref name="root"/>: each case it produces is written afresh (its folder deleted first, so
+    /// no stale file stays), each case already there that it does not produce is kept, files and index entry, and the
+    /// family's <c>cases</c> are the two together, sorted. <c>vectors.json</c> is merged by vector: the produced vectors,
+    /// then each vector already there whose <c>plain</c> none of them has, in its order. Nothing is deleted but a produced case's old files.
+    /// </summary>
+    internal static void ExportTo(string root)
+    {
         var conformance = Path.Combine(root, "v31", "conformance");
         var indexPath = Path.Combine(conformance, "index.json");
         var index = File.ReadAllText(indexPath, Utf8NoBom);
+        var listed = JsonNode.Parse(index)!["families"]!.AsArray();
         foreach (var family in Families)
         {
-            Write(Path.Combine(conformance, family), Files(family));
-            index = RefusalPackagesExport.WithCases(index, family, Cases(family));
+            var folder = Path.Combine(conformance, family);
+            var files = Files(family);
+            if (family == EscapeVectors)
+            {
+                var path = Path.Combine(folder, "vectors.json");
+                files["vectors.json"] = Text(JsonText(MergedVectors(
+                    JsonNode.Parse(files["vectors.json"])!.AsArray(), File.Exists(path) ? JsonNode.Parse(File.ReadAllBytes(path)) as JsonArray : null)));
+            }
+
+            var produced = Cases(family);
+            foreach (var name in produced)
+            {
+                var caseFolder = Path.Combine([folder, .. name.Split('/')]);
+                if (family != EscapeVectors && Directory.Exists(caseFolder))
+                    Directory.Delete(caseFolder, recursive: true);
+            }
+
+            foreach (var (path, bytes) in files)
+            {
+                var file = Path.Combine([folder, .. path.Split('/')]);
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllBytes(file, bytes);
+            }
+
+            var already = (listed.SingleOrDefault(f => (string?)f!["id"] == family)?["cases"] as JsonArray ?? []).Select(c => (string)c!);
+            index = RefusalPackagesExport.WithCases(index, family, produced.Union(already, StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList());
         }
 
         File.WriteAllText(indexPath, index, Utf8NoBom);
+    }
+
+    /// <summary>R11: <paramref name="produced"/>, then each vector of <paramref name="existing"/> whose <c>plain</c> none of them has, in its order.</summary>
+    private static JsonArray MergedVectors(JsonArray produced, JsonArray? existing)
+    {
+        var plains = produced.Select(v => (string?)v!["plain"]).ToHashSet(StringComparer.Ordinal);
+        var kept = (existing ?? []).Where(v => v is JsonObject o && o["plain"] is JsonValue p && p.TryGetValue<string>(out var plain) && !plains.Contains(plain));
+        return new JsonArray([.. produced.Select(v => v!.DeepClone()), .. kept.Select(v => v!.DeepClone())]);
     }
 
     /// <summary>Deletes <paramref name="folder"/> and writes <paramref name="files"/> under it.</summary>
