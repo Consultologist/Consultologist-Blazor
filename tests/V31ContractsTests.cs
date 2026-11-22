@@ -322,10 +322,11 @@ public class V31ContractsTests
             StartedAtUtc = DateTimeOffset.UnixEpoch,
             CompletedAtUtc = DateTimeOffset.UnixEpoch,
             EffectiveInputHashVersion = 7,
+            V31Progress = new Consultologist.Api.Jobs.ConsultV31ProgressState { Tokens = new(120, 30, 150) },
             InputHashes = new Dictionary<string, string>(StringComparer.Ordinal) { ["referral"] = "sha256:0", ["history"] = "sha256:1" },
             InputDocumentOrigins = new Dictionary<string, List<Consultologist.Api.Models.ConsultInputOrigin>>(StringComparer.Ordinal)
             {
-                ["referral"] = [new("document", PageCount: 2, FileSha256: "sha256:2", TextSha256: "sha256:3", Converter: step, Parser: step, Ocr: new("ocr-service", "model-1"))],
+                ["referral"] = [new("document", Extractor: "pdfpig/0.1.15", PageCount: 2, FileSha256: "sha256:2", TextSha256: "sha256:3", Converter: step, Parser: step, Ocr: new("ocr-service", "model-1"))],
                 ["history"] = [new("document", FileSha256: "sha256:2", TextSha256: "sha256:3"), new("typed")],
             },
             Limits = new Consultologist.PackageFormat.V31.Run.RunLimits().ToJson().ToDictionary(m => m.Key, m => (int)m.Value!, StringComparer.Ordinal),

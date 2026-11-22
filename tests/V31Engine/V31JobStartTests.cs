@@ -779,6 +779,11 @@ public class V31JobStartTests
         Assert.Equal("consult_draft", (string?)input["id"]);
         Assert.Equal("document", (string?)input["origin"]);
         Assert.Equal("document", (string?)input["kind"]);
+        // #1506 (final review F4): part 08 § 3.1's extractor, as the extraction named it
+        Assert.Equal(origin.Extractor, (string?)input["extractor"]);
+        Assert.Equal(
+            ["id", "origin", "hash", "kind", "extractor", "pageCount", "fileSha256", "textSha256", "converter", "parser", "ocr"],
+            input.Select(m => m.Key));
         Assert.Equal(1, (int?)input["pageCount"]);
         Assert.Equal(origin.FileSha256, (string?)input["fileSha256"]);
         Assert.Equal(origin.TextSha256, (string?)input["textSha256"]);
@@ -851,7 +856,7 @@ public class V31JobStartTests
         Assert.Equal(
             [
                 "schemaVersion", "packageSpecVersion", "workflowPackage", "packageFormatRef", "provenanceRef", "formatsRef", "catalogRef",
-                "engineCommit", "engineRelease", "apiHost", "jobId", "status", "error", "createdAtUtc", "startedAtUtc", "completedAtUtc",
+                "engineCommit", "engineRelease", "apiHost", "terminology", "jobId", "status", "error", "createdAtUtc", "startedAtUtc", "completedAtUtc",
                 "resolveHash", "lockHash", "versionsRan", "runFacts", "limits", "signatureBlockId", "signatureChosen",
                 "effectiveInputHash", "effectiveInputHashVersion", "inputs", "tokens",
             ],
@@ -862,7 +867,9 @@ public class V31JobStartTests
         Assert.Equal("2026-11-17T14:00:00.0000000+00:00", (string?)header["startedAtUtc"]);
         Assert.Null(header["completedAtUtc"]);
         Assert.Null(header["error"]);
-        Assert.Null(header["tokens"]);
+        Assert.Null(header["tokens"]); // no model call yet
+        // #1506 (final review M3): a 31 job's start reads no terminology server, so its snapshot is null, never absent
+        Assert.True(header.ContainsKey("terminology") && header["terminology"] is null);
         Assert.Equal(10, header["limits"]!.AsObject().Count);
         Assert.Equal("invariant", (string?)header["versionsRan"]!["culture"]);
         Assert.Equal(("sig-1", "default"), ((string?)header["signatureBlockId"], (string?)header["signatureChosen"]));
@@ -871,6 +878,11 @@ public class V31JobStartTests
         var text = header.ToJsonString();
         foreach (var absent in new[] { "\"history\"", "\"recordHash\"", "\"textDroppedAtUtc\"", "Okafor", "Sample Oncology Clinic" })
             Assert.DoesNotContain(absent, text, StringComparison.Ordinal);
+
+        // #1506 (final review M2): the job's token sums, once its rows had some: { input, output, total }
+        entity.RecordV31Rows(new ConsultGenerationV31Rows([], new ConsultGenerationV31Tokens(120, 30, 150)));
+        entity.RecordV31Rows(new ConsultGenerationV31Rows([], new ConsultGenerationV31Tokens(10, 5, 15)));
+        Assert.Equal("""{"input":130,"output":35,"total":165}""", StateOf(entity).ToRecordHeader()["tokens"]!.ToJsonString());
     }
 
     private static ConsultGenerationJobState StateOf(ConsultGenerationJobEntity entity) => (ConsultGenerationJobState)StateProperty.GetValue(entity)!;

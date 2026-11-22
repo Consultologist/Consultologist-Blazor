@@ -2641,7 +2641,8 @@ public sealed class ConsultGenerationJobState
     /// #1506 (specVersion 31, area 09; part 08 §§ 1.1, 3, 3.1; D13): the job header of the canonical record document, in its
     /// JSON names: the package and the builds it ran under, the job's id, state and clocks (round-trip UTC text), the
     /// hashes and versions that ran, the run facts and limits, the signature block by id, the effective-input hash, each
-    /// input by id in id order (<c>{ id, origin, hash }</c>, with a document's extraction members), and the job's tokens.
+    /// input by id in id order (<c>{ id, origin, hash }</c>, with a document's extraction members), the job's tokens, and
+    /// storage 11's terminology snapshot (null at 31).
     /// A member with no value is <c>null</c>, never absent. It holds no input value and no text, and nothing that changes
     /// after the end (<c>recordHash</c>, <c>textDroppedAtUtc</c>, the History event log).
     /// </summary>
@@ -2657,6 +2658,9 @@ public sealed class ConsultGenerationJobState
         ["engineCommit"] = EngineCommit,
         ["engineRelease"] = EngineRelease,
         ["apiHost"] = ApiHost,
+        // #1506 (final review M3): storage 11's terminology snapshot, still recorded at 12; a 31 job's start reads no
+        // terminology server (its packages hold no terminology step), so it is null, never absent.
+        ["terminology"] = null,
         ["jobId"] = JobId,
         ["status"] = Status,
         ["error"] = FailureError ?? StartFailure,
@@ -2674,8 +2678,12 @@ public sealed class ConsultGenerationJobState
         ["effectiveInputHash"] = EffectiveInputHash,
         ["effectiveInputHashVersion"] = EffectiveInputHashVersion,
         ["inputs"] = RecordInputs(),
-        // A later task sums an agent row's tokens into the progress; until then the header has none.
-        ["tokens"] = null,
+        // #1506 (R14; final review M2): the job's token sums over its stored rows (RecordV31Rows), { input, output, total };
+        // null when no row had any (no model call). Frozen with the job once it is terminal (Frozen), so the sealed
+        // header's sums never change.
+        ["tokens"] = V31Progress?.Tokens is { } tokens
+            ? new System.Text.Json.Nodes.JsonObject { ["input"] = tokens.Input, ["output"] = tokens.Output, ["total"] = tokens.Total }
+            : null,
     };
 
     /// <summary>A clock as the record writes it: round-trip text, in UTC.</summary>
@@ -2684,7 +2692,7 @@ public sealed class ConsultGenerationJobState
     /// <summary>
     /// #1506 (part 08 § 3.1; D15): each input, by id in ordinal order: its <c>origin</c> (<c>typed</c>, <c>document</c> or
     /// <c>transcript</c>; <c>previous-run</c> waits for area 12), its <c>hash</c>, and for an input one document filled the
-    /// document's members (<c>kind</c>, <c>pageCount</c>, <c>fileSha256</c>, <c>textSha256</c>, <c>converter</c>,
+    /// document's members (<c>kind</c>, <c>extractor</c>, <c>pageCount</c>, <c>fileSha256</c>, <c>textSha256</c>, <c>converter</c>,
     /// <c>parser</c>, <c>ocr</c>); an input of several elements lists them, positionally, as <c>elements</c>.
     /// </summary>
     private System.Text.Json.Nodes.JsonArray RecordInputs()
@@ -2746,6 +2754,8 @@ public sealed class ConsultGenerationJobState
         if (string.Equals(origin.Kind, ConsultInputOriginKinds.Typed, StringComparison.Ordinal))
             yield break;
         yield return ("kind", origin.Kind);
+        // #1506 (final review F4): part 08 § 3.1's extractor, kept for older records' readers
+        yield return ("extractor", origin.Extractor);
         yield return ("pageCount", origin.PageCount);
         yield return ("fileSha256", origin.FileSha256);
         yield return ("textSha256", origin.TextSha256);
