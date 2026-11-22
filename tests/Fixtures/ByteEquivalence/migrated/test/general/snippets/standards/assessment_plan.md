@@ -5,6 +5,5 @@ Open with a single synthesizing paragraph: who the patient is, the working or co
 
 End with documented follow-up arrangements and any items explicitly deferred.
 
-{{ if input.note_type.value == "consult" }}
+
 {{ macro.letrozole_prescription_text }}
-{{ end }}

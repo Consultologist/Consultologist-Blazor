@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Closing summary","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
+{"kind":"agent","producer":"generated","label":"Closing summary","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":true,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":null,"ordered":false}
 ---
 You are writing the closing summary of a consultation note.
 

@@ -1,6 +1,7 @@
 {
   "reasons": {
-    "blank": "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given."
+    "blank": "R1 (#1507, 2026-11-20); part 10 § 2.3: '!x' on text is blank(x), which also holds for empty and white-space-only text and for an input not given.",
+    "trim-blank": "Part 05 § 7 (the migrated test/general's part if uses blank); #1507, Task 12 fix round 1's ruling: '(x | string.strip) == \"\"' on text is blank(x) (and '!=' is !blank(x)), which also holds for a text that is null at 31 (a node that did not run), where 30 compared it as not empty (A10-050)."
   },
   "equivalence": [
     {
@@ -741,24 +742,31 @@
     {
       "id": "row.strip.input",
       "kind": "condition",
-      "converted": false,
-      "noticeIds": [
-        "S03-002"
-      ],
+      "converted": true,
+      "noticeIds": [],
       "cases": 4,
-      "agreed": null,
+      "agreed": 4,
       "listed": []
     },
     {
       "id": "row.strip.node",
       "kind": "condition",
-      "converted": false,
-      "noticeIds": [
-        "S03-002"
-      ],
+      "converted": true,
+      "noticeIds": [],
       "cases": 4,
-      "agreed": null,
-      "listed": []
+      "agreed": 3,
+      "listed": [
+        {
+          "case": 0,
+          "scope": {
+            "node.summary": "<absent>"
+          },
+          "at30": false,
+          "error30": null,
+          "at31": "true",
+          "reason": "trim-blank"
+        }
+      ]
     },
     {
       "id": "row.starts-with",

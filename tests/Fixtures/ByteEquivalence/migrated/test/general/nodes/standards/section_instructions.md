@@ -1,5 +1,5 @@
 ---
-{"kind":"agent","producer":"generated","label":"Applying section instructions","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":"(item.content | string.strip) == \"\"","text":["No changes. Preserve the patient-updated draft's clinical content and produce polished final prose for this section."]},"when_2":{"if":"!((item.content | string.strip) == \"\")","text":["{{ item.content }}"]}},"ordered":false}
+{"kind":"agent","producer":"generated","label":"Applying section instructions","description":null,"format":"plaintext","reproducible":false,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"onInvalid":"fail","failIfEmpty":null,"parts":{"when_1":{"if":{"blank":[{"var":"item.content"}]},"text":["No changes. Preserve the patient-updated draft's clinical content and produce polished final prose for this section."]},"when_2":{"if":{"!":[{"blank":[{"var":"item.content"}]}]},"text":["{{ item.content }}"]}},"ordered":false}
 ---
 You are applying section-specific writing standards and user instructions to one {{ input.consult_specialty.value }} {{ input.note_type.value }} note section.
 
