@@ -15,6 +15,12 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// </summary>
 internal static partial class Migrate
 {
+    /// <summary>
+    /// The one 30 check operation: <c>terms_subset</c> is the catalogue's only format of the <c>computed</c> producer
+    /// (<see cref="IsCheck"/>), which <c>MigrateChecksTests.TermsSubset_IsTheOnlyComputedFormat</c> holds.
+    /// </summary>
+    private const string TermsSubset = "terms_subset";
+
     private static readonly Regex BareNodeRead = new(@"^node\.[A-Za-z0-9_]+$", RegexOptions.CultureInvariant);
 
     /// <summary>The checks pass, after the nodes pass (it reads the checks' 31 reads), before the deliverables pass.</summary>
@@ -22,14 +28,12 @@ internal static partial class Migrate
     {
         ArgumentNullException.ThrowIfNull(m);
         var tree = new NodeTree(m.Manifest30.Nodes ?? []);
-        foreach (var id in tree.Top)
+        foreach (var (id, node) in tree.ById)
         {
-            var node = tree.ById[id];
             if (!IsCheck(m, node))
                 continue;
 
             var file = $"checks/{id}.md";
-            var operation = node.Format == "terms_subset" ? "terms_subset" : node.Format!;
             m.Put(file, new JsonObject
             {
                 ["kind"] = "computed",
@@ -44,13 +48,23 @@ internal static partial class Migrate
                 ["if"] = null,
                 ["expression"] = new JsonObject
                 {
-                    [operation] = new JsonArray(
+                    [TermsSubset] = new JsonArray(
                         Operand(m, file, "of", node.With?.GetValueOrDefault("of"), node.Of),
                         Operand(m, file, "in", node.With?.GetValueOrDefault("in"), node.In),
                         FailWith(node)),
                 },
             }, string.Empty);
             m.Items("checks").Add(id);
+
+            // Part 06 §§ 1, 3: a 31 check lives in checks/, never inside a node flow. One 30 ran inside a flow (decided with
+            // its branch, or once per item) has no faithful 31 form, so the flow's list keeps its id, which names no file
+            // there (S01-009), with one hand edit naming the list.
+            if (tree.Owner.TryGetValue(id, out var owner))
+            {
+                var flow = tree.ById[owner];
+                var kind = flow switch { { For: not null } => "for", { While: not null } => "while", { If: not null } => "if", _ => "case" };
+                m.HandEdit(FlowFile(tree, owner), BodyMember(flow, id), MigrationSentences.CheckInsideAFlow(id, kind, owner));
+            }
 
             // D16: a check is computed at 31, with no reply to judge; 30's onInvalid and failIfEmpty have no member there.
             if (node.OnInvalid is not null)
@@ -79,4 +93,15 @@ internal static partial class Migrate
     /// <summary>The 30 check's <c>failWith</c> (part 06 § 2.2: a literal string), as 30 wrote it.</summary>
     private static JsonNode? FailWith(WorkflowNodeSpec node) =>
         node.With?.GetValueOrDefault("failWith")?.DeepClone() ?? (node.FailWith is { } sentence ? JsonValue.Create(sentence) : null);
+
+    /// <summary>The member of 30 flow <paramref name="flow"/> whose list holds <paramref name="child"/>: <c>nodes</c>, <c>then.nodes</c>, <c>else.nodes</c> or <c>branches.&lt;n&gt;.nodes</c> (from 0).</summary>
+    private static string BodyMember(WorkflowNodeSpec flow, string child)
+    {
+        if (flow.For is not null || flow.While is not null)
+            return "nodes";
+        if (flow.Then?.Nodes?.Contains(child) == true)
+            return "then.nodes";
+        var branch = (flow.Branches ?? []).FindIndex(b => b.Nodes?.Contains(child) == true);
+        return branch >= 0 ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"branches.{branch}.nodes") : "else.nodes";
+    }
 }

@@ -147,8 +147,9 @@ internal static class V31Contract
     /// ruling on size, part 04 § 5.2, part 02 § 3.3; A10-006, A10-033 and A10-034: the renames pass, part 10 § 1.9, part 01 §§ 6 and 7, D6;
     /// A10-001, A10-005 and A10-035 to A10-039: the templates pass's reasons, part 10 § 1.2, § 1.4, part 05 §§ 2, 3.1, 7, R6;
     /// A10-003, A10-004, A10-007, A10-040 to A10-042 and A10-045: the macros pass, part 10 §§ 1.3, 1.4, part 05 § 8, D3 to D5;
-    /// A10-043 and A10-044: a MacroChoices entry the 31 start refuses, part 10 § 1.3, R7; A10-002: a deliverable macro with a
-    /// condition, the deliverables pass, part 10 § 1.4, D3, D4).
+    /// A10-043 and A10-044: a MacroChoices entry the 31 start refuses, part 10 § 1.3, R7; A10-002, A10-047 and A10-048: a deliverable
+    /// macro with a condition, one naming no single macro, a snippet copy's id, the deliverables pass, part 10 § 1.4, D3, D4;
+    /// A10-046: a check inside a node flow, the checks pass, part 06 §§ 1, 3).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -192,6 +193,9 @@ internal static class V31Contract
         ["A10-042"] = "the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.",
         ["A10-043"] = "MacroChoices names '<id>', which is not a macro of the package.",
         ["A10-045"] = "macro '<id>' is read as fixed text at line <n>, but a macro folder's item is never fixed text at 31; place its text as a snippet.",
+        ["A10-046"] = "check '<id>' ran inside the <for | while | if | case> node '<flow>' at 30, but a 31 check is never inside a node flow; take it out of this list and gate checks/<id>.md with an if, or make it a check loop over the loop's .items.",
+        ["A10-047"] = "'<id>' is placed on this deliverable but is not a single macro of the package; place a snippet here instead.",
+        ["A10-048"] = "Macro '<id>' is read on deliverables as the snippet '<new id>': a snippet '<id>' already exists.",
         ["A10-044"] = "MacroChoices names macro '<id>', whose if does not read exactly one boolean input; send the input in Inputs instead.",
     };
 

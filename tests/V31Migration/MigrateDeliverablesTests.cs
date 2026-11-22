@@ -86,6 +86,14 @@ public class MigrateDeliverablesTests
         Assert.Equal("(input.consult_draft | string.strip) == \"\"", (string?)MigrateNodesTests.Md(refused, "deliverables/patient_copy.md").Header["if"]);
         var edit = Assert.Single(refused.HandEdits, e => e.StartsWith("Hand edit needed in deliverables/patient_copy.md, if: ", StringComparison.Ordinal));
         V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "deliverables/patient_copy.md"));
+
+        // Written so, the 31 checker refuses the if until the edit is made: a JSON string is no condition.
+        var refusal = Assert.Single(TemplateFixture.RefusalsOf(TemplateFixture.Package().With("deliverables/note.md", SourceFixture.Md(
+            "{ \"label\": \"Consultation note\", \"kind\": \"rendered\", \"description\": null, \"format\": \"markdown_block\", \"if\": "
+            + MigrateNodesTests.Md(refused, "deliverables/patient_copy.md").Header["if"]!.ToJsonString() + ", \"check\": null, \"whenEmpty\": \"release\" }",
+            "{{ input.consult_draft.content }}"))));
+        Assert.Equal(("S03-025", "deliverables/note.md"), (refusal.Id, refusal.Path));
+        V31Contract.AssertSentence(refusal);
     }
 
     [Theory]
@@ -231,6 +239,48 @@ public class MigrateDeliverablesTests
             .WithMacro("review_note", MigrateNodesTests.Md(result, "macros/quoted_review.md").Body.Replace("review_summary", "note", StringComparison.Ordinal))
             .WithAgent("draft", "Draft the plan for Margaret Okafor.\n{{ macro.review_note }}\n")));
         Assert.Equal(("S05-020", "macros/review_note.md"), (inMacro.Id, inMacro.Path));
+    }
+
+    [Fact]
+    public void ADeliverableMacroThatIsNoSingleMacro_Is30sToRefuse()
+    {
+        // A placement naming no single macro (a folder's item, a folder) would be A10-047 at 31; 30 refuses it first, so no
+        // package reaches that path. This pins 30's refusal.
+        foreach (var id in new[] { "notes/red_flags", "notes" })
+        {
+            var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-macros");
+            var root = JsonNode.Parse(json)!.AsObject();
+            root["deliverables"]![0]!["macros"]!.AsArray().Add(new JsonObject { ["id"] = id, ["at"] = "append" });
+            var result = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("example-macros"));
+            Assert.False(result.Succeeded);
+            Assert.Contains(result.Refusals, r => r.StartsWith("At specVersion 30: Deliverable 'consult_note' macro '" + id + "'", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void ASnippetCopy_TakesAFreeId_AndCarriesTheMacroBodysHandEdits()
+    {
+        // example-macros-warnings' kept_note has a body if (A10-035); placed by a prompt too, it stays a macro, and its
+        // deliverable reads a copy of its body, which holds the same text: the edit is said on each file.
+        var warned = MigrateNodesTests.Migrated("example-macros-warnings", _ => { }, files => files["prompts/summary.md"] += "{{ macro.kept_note.prompt }}\n");
+        var onMacro = Assert.Single(warned.HandEdits, e => e.StartsWith("Hand edit needed in macros/kept_note.md, body: ", StringComparison.Ordinal));
+        Assert.Single(warned.HandEdits, e => e == onMacro.Replace("macros/kept_note.md", "snippets/kept_note.md", StringComparison.Ordinal));
+        Assert.Equal(MigrateNodesTests.Md(warned, "macros/kept_note.md").Body, MigrateNodesTests.Md(warned, "snippets/kept_note.md").Body);
+
+        // A snippet that already has the macro's id keeps it; the copy takes <id>_snippet, said with A10-048.
+        var taken = MigrateNodesTests.Migrated("example-macros",
+            root => root["snippets"]!.AsArray().Add((JsonNode)"kept_note"),
+            files =>
+            {
+                files["prompts/summary.md"] += "{{ macro.kept_note.prompt }}\n{{ snippet.kept_note.content }}\n";
+                files["snippets/kept_note.md"] = "{\n  \"label\": \"Kept snippet\"\n}\nA snippet of Dr A. Sample's own.\n";
+            });
+        Assert.Contains("\n\n{{ snippet.kept_note_snippet.content }}\n\n", Template(taken, "consult_note"), StringComparison.Ordinal);
+        Assert.Equal("A snippet of Dr A. Sample's own.\n", MigrateNodesTests.Md(taken, "snippets/kept_note.md").Body);
+        Assert.Equal(MigrateNodesTests.Md(taken, "macros/kept_note.md").Body, MigrateNodesTests.Md(taken, "snippets/kept_note_snippet.md").Body);
+        var notice = "Macro 'kept_note' is read on deliverables as the snippet 'kept_note_snippet': a snippet 'kept_note' already exists.";
+        Assert.Contains(notice, taken.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-048", notice, ""));
     }
 
     [Theory]

@@ -72,6 +72,62 @@ public class MigrateChecksTests
     }
 
     [Fact]
+    public void TermsSubset_IsTheOnlyComputedFormat() =>
+        // The checks pass writes terms_subset for every check: it is the catalogue's one format of the computed producer.
+        Assert.Equal(["terms_subset"], TestFormats.Catalog.Formats.Values
+            .Where(f => f.Spec.Producer == WorkflowFormatProducers.Computed).Select(f => f.Id).Order(StringComparer.Ordinal));
+
+    /// <summary>composer-gates with copy_coverage moved into a new if node cov_flow (then: copy_coverage, cov_line).</summary>
+    private static Migration31Result WithCheckInAnIf() => MigrateNodesTests.Migrated("composer-gates",
+        root =>
+        {
+            var nodes = root["nodes"]!.AsArray();
+            nodes.Add(new JsonObject
+            {
+                ["id"] = "cov_flow",
+                ["label"] = "For a clinician",
+                ["if"] = "input.audience == \"clinician\"",
+                ["then"] = new JsonObject { ["nodes"] = new JsonArray("copy_coverage", "cov_line"), ["ret"] = "node.cov_line" },
+            });
+            nodes.Add(new JsonObject { ["id"] = "cov_line", ["label"] = "Writing the coverage line", ["format"] = "prose" });
+            root["deliverables"]!.AsArray().OfType<JsonObject>().Single(d => (string?)d["id"] == "cover_letter")["sources"]!.AsArray().Add((JsonNode)"node.cov_flow");
+        },
+        files => files["prompts/cov_line.md"] = "Write one line on the record copy's coverage.\n{{ node.copy_coverage.value.pass }}\n");
+
+    [Fact]
+    public void ACheckInsideAFlow_IsAHandEdit()
+    {
+        var result = WithCheckInAnIf();
+
+        // The check is written in checks/ in 30's order, and nothing reads a node that has no file.
+        Assert.Equal("""{"description":null,"items":["note_coverage","copy_coverage"]}""", MigrateNodesTests.Json(result, "checks/index.json").ToJsonString());
+        Assert.Equal("Record copy coverage check", (string?)MigrateNodesTests.Md(result, "checks/copy_coverage.md").Header["label"]);
+        Assert.Equal("check.copy_coverage", (string?)MigrateNodesTests.Md(result, "deliverables/record_copy.md").Header["check"]);
+
+        // Part 06 §§ 1, 3: a 31 check is never inside a node flow; the flow's list keeps the id, with one hand edit naming it.
+        Assert.Equal("""["copy_coverage","cov_line"]""", MigrateNodesTests.Json(result, "nodes/cov_flow/index.json")["then"]!["nodes"]!.ToJsonString());
+        var reason = "check 'copy_coverage' ran inside the if node 'cov_flow' at 30, but a 31 check is never inside a node flow; take it out of this list and gate checks/copy_coverage.md with an if, or make it a check loop over the loop's .items.";
+        var edit = $"Hand edit needed in nodes/cov_flow/index.json, then.nodes: {reason}";
+        Assert.Single(result.HandEdits, e => e == edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "nodes/cov_flow/index.json"));
+        V31Contract.AssertSentence(new SourceRefusal("A10-046", reason, ""));
+
+        // The 31 checker refuses the list until the edit is made: it names no file in the flow's folder (S01-009).
+        var upload = result.Files.ToDictionary(f => f.Key, f => System.Text.Encoding.UTF8.GetBytes(f.Value), StringComparer.Ordinal);
+        upload["manifest.json"] = System.Text.Encoding.UTF8.GetBytes(result.ManifestJson);
+        var refusals = SourceCheck.Run(upload, V31Contract.PublishedTypes()).Refusals;
+        Assert.Contains(refusals, r => r.Id == "S01-009" && r.Path == "nodes/cov_flow/index.json" && r.Sentence.Contains("'copy_coverage'", StringComparison.Ordinal));
+
+        // A check inside a loop (once per item at 30) would be the same hand edit on the loop's nodes; 30 refuses it first.
+        var (json, files) = Consultologist.Api.Tests.ByteEquivalence.ByteEquivalenceFixtures.ReadPackage("composer-gates");
+        var root = JsonNode.Parse(json)!.AsObject();
+        MigrateNodesTests.Node(root, "problem_loop")["nodes"]!.AsArray().Add((JsonNode)"copy_coverage");
+        var inLoop = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("composer-gates"));
+        Assert.False(inLoop.Succeeded, string.Join("\n", inLoop.HandEdits));
+        Assert.Contains(inLoop.Refusals, r => r.StartsWith("At specVersion 30: ", StringComparison.Ordinal) && r.Contains("copy_coverage", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void EveryReaderOfTheNode_ReadsTheCheck()
     {
         var result = MigrateNodesTests.Migrated("composer-gates",

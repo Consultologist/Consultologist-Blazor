@@ -322,4 +322,22 @@ internal static class MigrationSentences
     /// </summary>
     public static string DeliverableMacroWithCondition(string macro) =>
         $"macro '{macro}' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.";
+
+    /// <summary>
+    /// A10-046 (part 06 §§ 1, 3): a reason: the 30 check <paramref name="check"/> ran inside the <paramref name="kind"/>
+    /// node <paramref name="flow"/> (decided with its branch, or once per item), and a 31 check is never inside a node flow.
+    /// </summary>
+    public static string CheckInsideAFlow(string check, string kind, string flow) =>
+        $"check '{check}' ran inside the {kind} node '{flow}' at 30, but a 31 check is never inside a node flow; take it out of this list and gate checks/{check}.md with an if, or make it a check loop over the loop's .items.";
+
+    /// <summary>A10-047 (part 06 § 6.3; D4): a reason: a deliverable places <paramref name="macro"/>, which is no single macro of the package (30 refuses it first).</summary>
+    public static string NotASingleMacro(string macro) =>
+        $"'{macro}' is placed on this deliverable but is not a single macro of the package; place a snippet here instead.";
+
+    /// <summary>
+    /// A10-048 (D4): a notice: the deliverable macro <paramref name="macro"/>, kept as a macro, is read on deliverables as the
+    /// snippet <paramref name="snippet"/>, since a snippet already has its id.
+    /// </summary>
+    public static string SnippetCopyRenamed(string macro, string snippet) =>
+        $"Macro '{macro}' is read on deliverables as the snippet '{snippet}': a snippet '{macro}' already exists.";
 }

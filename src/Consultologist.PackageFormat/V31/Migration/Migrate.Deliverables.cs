@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json.Nodes;
 
 namespace Consultologist.PackageFormat.V31.Migration;
@@ -26,6 +27,7 @@ internal static partial class Migrate
     public static void Deliverables(Migrated m)
     {
         ArgumentNullException.ThrowIfNull(m);
+        var copies = new Dictionary<string, string>(StringComparer.Ordinal);   // a macro kept as one → the snippet a deliverable reads it as
         foreach (var deliverable in m.Manifest30.EffectiveDeliverables)
         {
             var id = deliverable.Id;
@@ -40,7 +42,7 @@ internal static partial class Migrate
                 ["if"] = condition is null ? null : Condition(m, file, "if", condition, m.Scope((string?)null), ConversionKind.Condition),
                 ["check"] = Gate(m, deliverable.Check),
                 ["whenEmpty"] = m.Options.WhenEmpty?.GetValueOrDefault(id) ?? DefaultWhenEmpty,
-            }, Composition(m, deliverable, file));
+            }, Composition(m, deliverable, file, copies));
             m.Items("deliverables").Add(id);
             m.Keys[DeliverableKey(id)] = DeliverableKey(id);
         }
@@ -65,17 +67,17 @@ internal static partial class Migrate
     /// D8: the template, its pieces one blank line apart: each prepended macro (placement order), each source's
     /// <c>.content</c> (<c>sources</c> order), each appended macro, then <c>{{ profile.signature }}</c> when 30 signed it.
     /// </summary>
-    private static string Composition(Migrated m, WorkflowDeliverableSpec deliverable, string file)
+    private static string Composition(Migrated m, WorkflowDeliverableSpec deliverable, string file, Dictionary<string, string> copies)
     {
         var macros = deliverable.Macros ?? [];
         var pieces = new List<string>();
         var said = new HashSet<string>(StringComparer.Ordinal);
         foreach (var placement in macros.Where(x => x?.At == WorkflowDeliverableMacroSpec.Prepend))
-            pieces.Add(DeliverableMacro(m, placement, file, said));
+            pieces.Add(DeliverableMacro(m, placement, file, said, copies));
         foreach (var source in deliverable.Sources ?? [])
             pieces.Add($"{{{{ {SourceRead(m, source)}.content }}}}");
         foreach (var placement in macros.Where(x => x is not null && x.At != WorkflowDeliverableMacroSpec.Prepend))
-            pieces.Add(DeliverableMacro(m, placement, file, said));
+            pieces.Add(DeliverableMacro(m, placement, file, said, copies));
         if (deliverable.Signature == true)
             pieces.Add("{{ profile.signature }}");
         return string.Join("\n\n", pieces);
@@ -93,37 +95,57 @@ internal static partial class Migrate
     /// no condition anywhere it is a snippet read: the snippet the macros pass made of it, or, when the macro stays one
     /// because a prompt or a node also places it, a snippet written here from its body (<see cref="SnippetCopy"/>). With a
     /// condition (the placement's <c>if</c>, the macro's own, or optional) it is a hand edit (A10-002, said once per macro
-    /// on the deliverable), written <c>{{ macro.&lt;id&gt;.fixed_text }}</c>, which 31 refuses (S05-011) until it is made.
+    /// on the deliverable), written <c>{{ macro.&lt;id&gt;.fixed_text }}</c>, which 31 refuses (S05-047: a deliverable
+    /// places no macro) until it is made. One naming no single macro of the package (30 refuses it first) is A10-047,
+    /// written the same way.
     /// </summary>
-    private static string DeliverableMacro(Migrated m, WorkflowDeliverableMacroSpec placement, string file, HashSet<string> said)
+    private static string DeliverableMacro(Migrated m, WorkflowDeliverableMacroSpec placement, string file, HashSet<string> said, Dictionary<string, string> copies)
     {
         var id = placement.Id;
+        var written = $"{{{{ macro.{id.Replace('/', '.')}.{TemplateRewriter.FixedText} }}}}";
         var macro = m.Manifest30.Macros?.FirstOrDefault(x => x.Id == id && !x.File.EndsWith('/'));
-        var header = macro is null ? null : m.Resolved30.Headers.GetValueOrDefault(macro.File);
-        var conditional = macro is null || placement.If is not null || placement.When is not null || header?.If is not null
-            || macro.Optional == true || header?.Optional == true;
-        if (conditional)
+        if (macro is null)
+        {
+            if (said.Add(id))
+                m.HandEdit(file, "body", MigrationSentences.NotASingleMacro(id));
+            return written;
+        }
+
+        var header = m.Resolved30.Headers.GetValueOrDefault(macro.File);
+        if (placement.If is not null || placement.When is not null || header?.If is not null || macro.Optional == true || header?.Optional == true)
         {
             if (said.Add(id))
                 m.HandEdit(file, "body", MigrationSentences.DeliverableMacroWithCondition(id));
-            return $"{{{{ macro.{id.Replace('/', '.')}.{TemplateRewriter.FixedText} }}}}";
+            return written;
         }
 
-        if (!Renames.BecomesSnippet(m, id))
-            SnippetCopy(m, macro!, header);
-        return $"{{{{ snippet.{id}.content }}}}";
+        var snippet = Renames.BecomesSnippet(m, id) ? id : SnippetCopy(m, macro, header, copies);
+        return $"{{{{ snippet.{snippet}.content }}}}";
     }
 
     /// <summary>
-    /// D4: the single snippet <c>snippets/&lt;id&gt;.md</c> of a deliverable macro that stays a macro (a prompt or a node
-    /// places it too): its label, <c>description: null</c>, <c>if: null</c>, <c>format: "markdown_block"</c>, as the macros
-    /// pass writes a fixed-text macro, and the macro's body; written once, listed after the snippets already there.
+    /// D4: the single snippet of a deliverable macro that stays a macro (a prompt or a node places it too), written once:
+    /// its label, <c>description: null</c>, <c>if: null</c>, <c>format: "markdown_block"</c>, as the macros pass writes a
+    /// fixed-text macro, and the macro's body, listed after the snippets already there. Its id is the macro's, or, when a
+    /// snippet already has it, the first free <c>&lt;id&gt;_snippet</c>, <c>_snippet_2</c>, … (A10-048). Each hand edit
+    /// already said on the macro's body is said again on the copy, which holds the same text (one notice per file).
     /// </summary>
-    private static void SnippetCopy(Migrated m, WorkflowMacroSpec macro, WorkflowTextHeader? header)
+    private static string SnippetCopy(Migrated m, WorkflowMacroSpec macro, WorkflowTextHeader? header, Dictionary<string, string> copies)
     {
-        var path = $"snippets/{macro.Id}.md";
-        if (m.Sources.ContainsKey(path))
-            return;
+        if (copies.TryGetValue(macro.Id, out var copied))
+            return copied;
+
+        bool Taken(string id) => m.Sources.ContainsKey($"snippets/{id}.md") || m.Sources.ContainsKey($"snippets/{id}/{WorkflowDataResolver.IndexFileName}");
+        var chosen = macro.Id;
+        if (Taken(chosen))
+        {
+            chosen = Renames.Fit(macro.Id, "_snippet");
+            for (var n = 2; Taken(chosen); n++)
+                chosen = Renames.Fit(macro.Id, string.Create(CultureInfo.InvariantCulture, $"_snippet_{n}"));
+            m.Notice(MigrationSentences.SnippetCopyRenamed(macro.Id, chosen));
+        }
+
+        var path = $"snippets/{chosen}.md";
         m.Put(path, new JsonObject
         {
             ["label"] = macro.Label ?? header?.Label ?? macro.Id,
@@ -131,6 +153,12 @@ internal static partial class Migrate
             ["if"] = null,
             ["format"] = "markdown_block",
         }, MacroBody(m, macro.File));
-        m.Items("snippets").Add(macro.Id);
+        m.Items("snippets").Add(chosen);
+
+        var said = $"Hand edit needed in {macro.File}, body: ";
+        foreach (var edit in m.HandEditNotices.Where(e => e.StartsWith(said, StringComparison.Ordinal)).ToList())
+            m.HandEdit(path, "body", edit[said.Length..^1]);
+        copies[macro.Id] = chosen;
+        return chosen;
     }
 }
