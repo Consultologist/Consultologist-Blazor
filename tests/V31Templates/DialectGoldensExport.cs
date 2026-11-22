@@ -53,7 +53,7 @@ public class DialectGoldensExport
     /// </summary>
     internal sealed record DialectCase(
         string Name, string About, Dictionary<string, byte[]> Package, string? Template, string Entry,
-        JsonObject Scope, IReadOnlyList<(string Site, bool Placed)> Placed, string? Reply = null);
+        JsonObject Scope, IReadOnlyList<(string Site, bool Placed)> Placed, string? Reply = null, bool ObjectValue = false);
 
     [Fact]
     public void Export()
@@ -216,6 +216,14 @@ public class DialectGoldensExport
             ? " reply.txt is the model's reply, and expected.reply.txt that reply with each offered macro's marker replaced by "
               + "the macro's rendered body (chapter 5 § 5.8.6); the reply is never rendered."
             : "";
+        if (golden.ObjectValue)
+        {
+            // #1505 (area 08, D8): an object deliverable is not rendered; its text is its one value's canonical JSON.
+            return golden.About + "\n\n" + what + " Its format is an object format, so its text is the RFC 8785 JSON of the "
+                + "value scope.json holds at the one path its template reads, with no final line end: expected.txt byte for byte. "
+                + "placed.json is empty: an object deliverable places nothing.\n";
+        }
+
         return golden.About + "\n\n" + what + " Composing it over scope.json (the data, keys rooted as the run holds them), "
             + "with each placement decided as placed.json says (a site it does not name is not placed), gives expected.txt "
             + "byte for byte: Scriban 7.2.5, the invariant culture, strict variables."
@@ -508,13 +516,13 @@ public class DialectGoldensExport
         yield return new("deliverable-object",
             "An object deliverable (format section_plan) is its one value, {{ node.plan.value }}, written as RFC 8785 "
             + "canonical JSON (members sorted, no white space) with no final line end: the template's own final line end is "
-            + "not written (chapter 6 § 6.6.4). The value is written by the canonicalisation, not rendered by Scriban.",
+            + "not written (chapter 6 § 6.6.4).",
             DeliverablePackage("section_plan", "{{ node.plan.value }}\n"),
             null, "deliverable.note",
             Scope(("node.plan.value", JsonNode.Parse(
                 "{ \"sections\": [{ \"title\": \"History of present illness\", \"kind\": \"narrative\" }, "
                 + "{ \"kind\": \"table\", \"title\": \"Examination\" }] }"))),
-            []);
+            [], ObjectValue: true);
     }
 
     /// <summary>
