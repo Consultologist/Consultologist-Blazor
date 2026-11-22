@@ -4,6 +4,7 @@ using Consultologist.Api.Tests.V31Templates;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
+using Consultologist.PackageFormat.V31.Templates;
 using static Consultologist.Api.Tests.V31Source.SourceFixture;
 using static Consultologist.Api.Tests.V31Templates.TemplateFixture;
 
@@ -233,7 +234,9 @@ public class PlacementDecisionsTests
         {
             Assert.Equal(new Dictionary<string, bool> { ["snippet.s"] = answer }, host.Renders.Single(r => r.Key == key).Placed);
             Assert.Equal([("snippet.s", Printed(MacroIf), answer)], Placements(recorder, key));
-            Assert.Equal(answer, SourceLayout.Text(result.Values[key]!["content"])!.Contains(text, StringComparison.Ordinal));
+            // #1505 (area 08, D7): the Markdown deliverable escapes the plain-text snippet it places, whole.
+            var written = key == "deliverable.note" ? MarkdownEscape.Escape(text) : text;
+            Assert.Equal(answer, SourceLayout.Text(result.Values[key]!["content"])!.Contains(written, StringComparison.Ordinal));
         }
     }
 

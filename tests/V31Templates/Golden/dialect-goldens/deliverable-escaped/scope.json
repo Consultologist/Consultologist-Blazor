@@ -1,0 +1,21 @@
+{
+  "node": {
+    "assessment": {
+      "content": "**Fatigue** for two weeks; _no_ weight loss."
+    },
+    "summary": {
+      "content": "Fatigue (2 weeks) - check FBC & ferritin; see note #1.",
+      "value": "Fatigue (2 weeks) - check FBC & ferritin; see note #1."
+    }
+  },
+  "input": {
+    "lines": {
+      "value": [
+        "# 1",
+        "*bold*",
+        "a\nb",
+        null
+      ]
+    }
+  }
+}

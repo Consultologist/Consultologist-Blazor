@@ -61,7 +61,8 @@ public class RunGoldenTests
     /// plan); the run-dependent rendered node <c>stamp</c>, a run spot on <c>run.date</c>; and the agent <c>draft</c>,
     /// reading <c>stamp</c> (a <c>text</c> spot) and placing the part <c>close</c> (decided on the classifier's reason),
     /// whose text places the macro <c>hpi</c> of the folder <c>section_notes</c> (the folder decided on the reason's words,
-    /// the macro on the answer); the deliverable reads the draft. Fictional (Margaret Okafor, Dr A. Sample).
+    /// the macro on the answer); the deliverable, <c>plaintext</c> (#1505, area 08: it lists no <c>escapes</c>, so it
+    /// composes the draft as it is), reads the draft. Fictional (Margaret Okafor, Dr A. Sample).
     /// </summary>
     internal static Dictionary<string, byte[]> Macros() =>
         TemplateFixture.Package()
@@ -76,7 +77,8 @@ public class RunGoldenTests
             .WithAgent("draft", "Draft the history for Margaret Okafor.\n{{ node.stamp.content }}\n{{~ part.close }}\n").RunDependent("nodes/draft.md")
             .WithJson("nodes/draft.md", h => h["parts"] = JsonNode.Parse(
                 $"{{ \"close\": {{ \"if\": {PlacementDecisionsTests.PartIf}, \"text\": [\"Close the history.\", \"{{{{~ macro.section_notes.hpi }}}}\"] }} }}"))
-            .WithDeliverable("{{ node.draft.content }}\n");
+            .With("deliverables/note.md", SourceFixture.Md(
+                SourceFixture.Deliverable("Consultation note", TemplateFixture.Plain, "null", "hold"), "{{ node.draft.content }}\n"));
 
     [Fact]
     public async Task TheMacrosRun_IsWhatTheRunnerGives()

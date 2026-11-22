@@ -51,9 +51,13 @@ public static partial class BodyComposer
                     if (UnitText(unit.Kind, unit.Site) is not { } unitText || Plan(unitText, unit.Site, depth + 1) is not { } child)
                         return null;
                     plan.Placements[Offset(expression)] = new Placement(unit.Site, unit.Kind, child);
+                    if (IsEscaped(plan, statement))
+                        plan.Escapes.Add(Offset(statement));
                     continue;
                 }
 
+                if (IsEscaped(plan, statement))
+                    plan.Escapes.Add(Offset(statement));
                 var spot = SpotOf(plan, statement);
                 if (spot != null)
                     plan.Spots[Offset(statement)] = spot;
@@ -68,6 +72,23 @@ public static partial class BodyComposer
             }
 
             return plan;
+        }
+
+        /// <summary>
+        /// #1505 (area 08; part 06 § 6.4; D7): whether the output <paramref name="statement"/> of <paramref name="plan"/>'s
+        /// text is one of the entry's <c>escapes</c>: one whose <c>unit</c> is the text's site and whose <c>at</c> is the
+        /// tag's line and column, as <c>runSpots</c> are matched. A renderer's text is planned apart and is never listed.
+        /// </summary>
+        private bool IsEscaped(TextPlan plan, ScriptExpressionStatement statement)
+        {
+            if (Entry.Json["escapes"] is not JsonArray { Count: > 0 } escapes)
+                return false;
+            var offset = Offset(statement);
+            var tag = plan.Syntax.Tags.FirstOrDefault(t => t.Start <= offset && offset < t.End);
+            if (tag == null)
+                return false;
+            var at = string.Create(CultureInfo.InvariantCulture, $"{tag.Line}:{tag.Column}");
+            return escapes.OfType<JsonObject>().Any(e => SourceLayout.Text(e["at"]) == at && SourceLayout.Text(e["unit"]) == plan.Site);
         }
 
         /// <summary>

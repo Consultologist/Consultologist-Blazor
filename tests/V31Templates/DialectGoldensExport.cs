@@ -152,8 +152,20 @@ public class DialectGoldensExport
     {
         var plan = RunFixture.Plan(golden.Package);
         var placed = golden.Placed.ToDictionary(p => p.Site, p => p.Placed, StringComparer.Ordinal);
-        var composition = BodyComposer.Compose(plan, new ComposeRequest(golden.Entry, null, golden.Scope.DeepClone().AsObject(), placed, Steps));
-        Assert.True(composition.Failure == null && !composition.TooManySteps, $"{golden.Name}: {composition.Failure}");
+        string? text, neutral;
+        if (golden.Entry.StartsWith("deliverable.", StringComparison.Ordinal))
+        {
+            // #1505 (area 08): a deliverable is rendered as the run renders it, so an object one is its canonical JSON (D8).
+            var outcome = RenderTurn.Render(plan, new RenderCall(golden.Entry, golden.Entry, null, golden.Scope.DeepClone().AsObject(), Steps, placed));
+            Assert.True(outcome.Failure == null && !outcome.TooManySteps, $"{golden.Name}: {outcome.Failure}");
+            (text, neutral) = (outcome.Text, outcome.NeutralText);
+        }
+        else
+        {
+            var composition = BodyComposer.Compose(plan, new ComposeRequest(golden.Entry, null, golden.Scope.DeepClone().AsObject(), placed, Steps));
+            Assert.True(composition.Failure == null && !composition.TooManySteps, $"{golden.Name}: {composition.Failure}");
+            (text, neutral) = (composition.Text, composition.NeutralText);
+        }
 
         var placedJson = new JsonObject();
         foreach (var (site, decision) in golden.Placed)
@@ -173,14 +185,14 @@ public class DialectGoldensExport
 
         files["scope.json"] = Text(JsonText(golden.Scope));
         files["placed.json"] = Text(JsonText(placedJson));
-        files["expected.txt"] = Text(composition.Text!);
-        if (composition.NeutralText != null)
-            files["expected.neutral.txt"] = Text(composition.NeutralText);
+        files["expected.txt"] = Text(text!);
+        if (neutral != null)
+            files["expected.neutral.txt"] = Text(neutral);
         if (golden.Reply != null)
         {
             var call = new AgentCall(golden.Entry, golden.Entry, null, 1, false, golden.Scope.DeepClone().AsObject(), placed);
             var prepared = AgentTurn.Prepare(plan, call, Steps, []);
-            Assert.Equal(composition.Text, prepared.Text);
+            Assert.Equal(text, prepared.Text);
             var outcome = AgentTurn.Finish(prepared, golden.Reply);
             Assert.True(outcome.Invalid == null, $"{golden.Name}: " + string.Join(" | ", outcome.Invalid?.Select(f => f.Sentence) ?? []));
             files["reply.txt"] = Text(golden.Reply);
@@ -460,8 +472,64 @@ public class DialectGoldensExport
                 Scope(("run.date", "2026-11-21"), ("run.id", "job-0001"))),
         };
         cases.AddRange(NullCases());
+        cases.AddRange(DeliverableCases());
         return cases;
     }
+
+    /// <summary>
+    /// #1505 (area 08; part 06 § 6.4; D7, D8): a deliverable composed as the run composes it, of each kind of format: a
+    /// Markdown one escaping what its <c>escapes</c> lists, a plain-text one escaping nothing, an object one written as
+    /// canonical JSON.
+    /// </summary>
+    private static IEnumerable<DialectCase> DeliverableCases()
+    {
+        const string summary = "Fatigue (2 weeks) - check FBC & ferritin; see note #1.";
+        yield return new("deliverable-escaped",
+            "A markdown_block deliverable: each output resolve.json lists in its escapes is escaped where it is written "
+            + "(CommonMark's backslash escapes for ASCII punctuation, markdown-escape-vectors): the plain-text summary, each "
+            + "item of the list lines on its own (its line end kept, a null writing nothing), and the plain-text snippet "
+            + "sign_off, whole, once. The Markdown assessment and the renderer bullets' output are written as they are "
+            + "(chapter 6 § 6.6.4).",
+            DeliverablePackage("markdown_block",
+                    "## Assessment\n{{ node.assessment.content }}\n\n## Summary\n{{ node.summary.content }}\n"
+                    + "{{ node.summary.value | renderer.bullets }}\n## Lines\n{{ for t in input.lines.value }}- {{ t }}\n{{ end }}\n"
+                    + "{{~ snippet.sign_off.content }}\n")
+                .WithRenderer("bullets", "\"plaintext\"", "- {{ value }}\n")
+                .WithSnippet("sign_off", "Dr A. Sample (consultant), Sample Oncology Clinic."),
+            null, "deliverable.note",
+            Scope(("node.assessment.content", "**Fatigue** for two weeks; _no_ weight loss."), ("node.summary.content", summary),
+                ("node.summary.value", summary), ("input.lines.value", new JsonArray("# 1", "*bold*", "a\nb", null))),
+            [("snippet.sign_off", true)]);
+        yield return new("deliverable-plaintext",
+            "A plaintext deliverable escapes nothing: its escapes is [], and the plain-text summary is written as it is, "
+            + "punctuation and all (chapter 6 § 6.6.4).",
+            DeliverablePackage("plaintext", "Dear Margaret Okafor,\n\n{{ node.summary.content }}\n\nKind regards,\nDr A. Sample\n"),
+            null, "deliverable.note", Scope(("node.summary.content", summary)), []);
+        yield return new("deliverable-object",
+            "An object deliverable (format section_plan) is its one value, {{ node.plan.value }}, written as RFC 8785 "
+            + "canonical JSON (members sorted, no white space) with no final line end: the template's own final line end is "
+            + "not written (chapter 6 § 6.6.4). The value is written by the canonicalisation, not rendered by Scriban.",
+            DeliverablePackage("section_plan", "{{ node.plan.value }}\n"),
+            null, "deliverable.note",
+            Scope(("node.plan.value", JsonNode.Parse(
+                "{ \"sections\": [{ \"title\": \"History of present illness\", \"kind\": \"narrative\" }, "
+                + "{ \"kind\": \"table\", \"title\": \"Examination\" }] }"))),
+            []);
+    }
+
+    /// <summary>
+    /// <see cref="TemplateFixture.Package"/> with the list input <c>lines</c> (nullable strings), the plain-text agent
+    /// <c>summary</c>, the <c>markdown_block</c> agent <c>assessment</c>, and the deliverable <c>note</c> of
+    /// <paramref name="format"/> with <paramref name="body"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> DeliverablePackage(string format, string body) =>
+        Package()
+            .WithJson("manifest.json", m => m["inputs"]!["lines"] = JsonNode.Parse(
+                "{ \"label\": \"Lines\", \"description\": null, "
+                + "\"format\": { \"type\": \"array\", \"items\": { \"type\": [\"string\", \"null\"] } }, \"required\": true, \"channel\": null }"))
+            .WithAgent("summary", "Summarise the draft below for Dr A. Sample.\n\n{{ input.consult_draft.content }}\n")
+            .WithAgent("assessment", "Write the assessment for Dr A. Sample.\n\n{{ input.consult_draft.content }}\n", "\"markdown_block\"")
+            .With("deliverables/note.md", Md(Deliverable("Consultation note", $"\"{format}\"", "null", "hold"), body));
 
     private static DialectCase BuiltIn(string name, string about, string template, JsonNode value, string path = "node.summary.content") =>
         OfTemplate(name, $"{about} (chapter 5 § 5.2.2).", template + "\n", Scope((path, value)));

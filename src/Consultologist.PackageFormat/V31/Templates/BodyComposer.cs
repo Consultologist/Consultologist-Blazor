@@ -302,6 +302,12 @@ public static partial class BodyComposer
 
         /// <summary>In a macro's instruction, the output statement holding the macro's own marker, by its offset, with what it writes (D17).</summary>
         public Dictionary<int, string> Markers { get; } = [];
+
+        /// <summary>
+        /// #1505 (area 08; part 06 § 6.4; D7): each output statement whose value is escaped where it is written (one of the
+        /// entry's <c>escapes</c>), by the statement's offset: a placement among them is its unit's text escaped whole.
+        /// </summary>
+        public HashSet<int> Escapes { get; } = [];
     }
 
     /// <summary>A unit placed at one tag: its <paramref name="Site"/>, its kind (<c>snippet</c>, <c>part</c>, <c>macro</c>), and its text planned at that place (a macro's instruction).</summary>
@@ -352,41 +358,66 @@ internal sealed class ComposeContext : TemplateContext
 
     /// <summary>
     /// A run spot's output statement writes itself, recording where its output stands (part 05 § 4); a macro's own marker in
-    /// its instruction writes the marker as the model is to copy it, never evaluated (D17); any other node evaluates as
-    /// Scriban's.
+    /// its instruction writes the marker as the model is to copy it, never evaluated (D17); #1505 (area 08, D7): an output
+    /// the entry's <c>escapes</c> lists writes its value escaped (a run spot's recorded output too); any other node
+    /// evaluates as Scriban's.
     /// </summary>
     public override object? Evaluate(ScriptNode? scriptNode, bool aliasReturnedFunction)
     {
-        if (scriptNode is ScriptExpressionStatement marker && Text.Markers.TryGetValue(BodyComposer.Offset(marker), out var literal))
+        if (scriptNode is not ScriptExpressionStatement statement)
+            return base.Evaluate(scriptNode, aliasReturnedFunction);
+        var offset = BodyComposer.Offset(statement);
+        if (Text.Markers.TryGetValue(offset, out var literal))
         {
             Write(literal);
             return null;
         }
 
-        if (scriptNode is not ScriptExpressionStatement statement || !Text.Spots.TryGetValue(BodyComposer.Offset(statement), out var spot))
+        var escaped = Text.Escapes.Contains(offset);
+        if (Text.Spots.TryGetValue(offset, out var spot))
+        {
+            Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction), escaped);
+            return null;
+        }
+
+        if (!escaped)
             return base.Evaluate(scriptNode, aliasReturnedFunction);
-        Composing.WriteSpot(this, spot, () => base.Evaluate(statement, aliasReturnedFunction));
+        WriteValue(base.Evaluate(statement, aliasReturnedFunction), escape: true);
         return null;
     }
 
     /// <summary>D13's writing of a value; a placed unit's text is spliced, its run spots moved to where it stands.</summary>
     public override TemplateContext Write(SourceSpan span, object? textAsObject)
     {
-        if (textAsObject is BodyComposer.PlacedText placed)
+        WriteValue(textAsObject, escape: false);
+        return this;
+    }
+
+    /// <summary>
+    /// <paramref name="value"/> written by D13 (<c>null</c> writes nothing), a placed unit's text spliced with its run spots
+    /// moved to where it stands; with <paramref name="escape"/>, as plain text in Markdown (<see cref="MarkdownEscape"/>,
+    /// a placed unit's text whole, its spots' outputs with it).
+    /// </summary>
+    private void WriteValue(object? value, bool escape)
+    {
+        if (value is BodyComposer.PlacedText placed)
         {
+            if (escape)
+                placed = BodyComposer.Escaped(placed);
             var start = Written.Length;
             if (placed.Text.Length > 0)
                 Write(placed.Text);
             Spots.AddRange(placed.Spots.Select(s => s with { Start = s.Start + start }));
-            return this;
+            return;
         }
 
-        if (textAsObject is null)
-            return this;
-        var text = TemplateValues.Written(textAsObject) ?? throw Stopped(null);
+        if (value is null)
+            return;
+        var text = TemplateValues.Written(value) ?? throw Stopped(null);
+        if (escape)
+            text = MarkdownEscape.Escape(text);
         if (text.Length > 0)
             Write(text);
-        return this;
     }
 
     public override bool ToBool(SourceSpan span, object? value) =>

@@ -6,7 +6,8 @@ namespace Consultologist.PackageFormat.V31.Templates;
 /// <summary>
 /// #1504 (specVersion 31, area 07; part 05 §§ 4, 9; part 08 §§ 4, 4.2, 8.2, 10): one render of a rendered node or a
 /// deliverable, with no Azure in between: its body composed over the call's scope with the call's placements decided, as
-/// the run reads it back. Never puts a value in the detail: only ids, keys, hashes and lengths. Never throws on the plan or
+/// the run reads it back. #1505 (area 08; part 06 § 6.4; D8): a deliverable of an object format is its one value's
+/// canonical JSON instead. Never puts a value in the detail: only ids, keys, hashes and lengths. Never throws on the plan or
 /// the data.
 /// </summary>
 public static class RenderTurn
@@ -19,14 +20,25 @@ public static class RenderTurn
     /// run-neutral text, and the row's detail in part 08's names: <c>inputHash</c> (of the text), <c>runNeutralHash</c>
     /// (<c>null</c> with no run spot), <c>runSpots</c>, <c>renders</c> and <c>units</c>, sub-rows named by the row's key
     /// (<see cref="RenderCall.Key"/>). A render past its budget is <see cref="RenderOutcome.TooManySteps"/>; one that
-    /// failed otherwise carries the composer's sentence.
+    /// failed otherwise carries the composer's sentence. A deliverable whose format is an object format is
+    /// <see cref="ObjectText"/>'s.
     /// </summary>
     public static RenderOutcome Render(RunPlan plan, RenderCall call)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(call);
 
-        var composition = BodyComposer.Compose(plan, new ComposeRequest(call.EntryKey, call.Function, call.Scope, call.Placed ?? NothingPlaced, call.StepLimit));
+        Composition composition;
+        if (call.Function == null && plan.Entries.GetValueOrDefault(call.EntryKey) is { Kind: PlanKind.Deliverable } deliverable
+            && IsObjectFormat(plan.Formats.Expand(deliverable.Format), 0))
+        {
+            composition = ObjectText(plan, deliverable, call.Scope);
+        }
+        else
+        {
+            composition = BodyComposer.Compose(plan, new ComposeRequest(call.EntryKey, call.Function, call.Scope, call.Placed ?? NothingPlaced, call.StepLimit));
+        }
+
         if (composition.TooManySteps)
             return new RenderOutcome(null, true, null);
         if (composition.Text is not { } text)
@@ -41,5 +53,55 @@ public static class RenderTurn
             ["units"] = AgentTurn.UnitRows(composition),
         };
         return new RenderOutcome(text, false, null, composition.NeutralText, detail);
+    }
+
+    /// <summary>
+    /// D8: the object deliverable <paramref name="entry"/>'s text: the RFC 8785 JSON of the value its one output tag reads
+    /// (<c>node.&lt;x&gt;.value</c>, its head rooted through <c>names</c>, D1) in <paramref name="scope"/>, with no final line
+    /// end; <c>null</c> writes <c>null</c>. No run spot, renderer or unit. A body that is not that one tag is not what publish
+    /// wrote (S07-006); a read the scope lacks fails as an absent member does in any body (A06-008).
+    /// </summary>
+    private static Composition ObjectText(RunPlan plan, PlanEntry entry, JsonObject scope)
+    {
+        var syntax = SourceLayout.Text(entry.Json["body"]) is { } body ? TemplateSyntax.Parse(body) : null;
+        if (syntax is not { Faults.Count: 0, Outputs: [{ Pipes.Count: 0, Paths.Count: 1, Path: { } path }] } || path.Split('.') is not ["node", _, _, ..] segments
+            || segments[^1] != "value")
+        {
+            return Failed(ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence);
+        }
+
+        var head = string.Join('.', segments[..2]);
+        var rooted = SourceLayout.Text((entry.Json["names"] as JsonObject)?[head]) ?? head;
+        JsonNode? at = scope;
+        foreach (var segment in rooted.Split('.').Concat(segments[2..]))
+        {
+            if (at is not JsonObject holder || !holder.TryGetPropertyValue(segment, out at))
+                return Failed(RunSentences.CouldNotRender(RunSentences.Subject(entry, null)));
+        }
+
+        return new Composition(CanonicalJson.Write(at), null, null, false, [], [], [], []);
+    }
+
+    private static Composition Failed(string sentence) => new(null, null, sentence, false, [], [], [], []);
+
+    /// <summary>
+    /// Whether the expanded format <paramref name="schema"/> is an object format: <c>type</c> <c>object</c> (alone or with
+    /// <c>null</c>), or an <c>anyOf</c> of one such member and <c>null</c>, as publish's shape reads it. A text format is not.
+    /// </summary>
+    private static bool IsObjectFormat(JsonNode? schema, int depth)
+    {
+        if (depth > PlanFormats.MaxDepth || schema is not JsonObject obj)
+            return false;
+        if (obj["anyOf"] is JsonArray members)
+        {
+            var others = members.Where(m => !(m is JsonObject member && SourceLayout.Text(member["type"]) == "null")).ToList();
+            return others.Count == 1 && others.Count < members.Count && IsObjectFormat(others[0], depth + 1);
+        }
+
+        return obj["type"] switch
+        {
+            JsonArray types => types.Select(SourceLayout.Text).Where(t => t != "null").ToList() is ["object"],
+            var type => SourceLayout.Text(type) == "object",
+        };
     }
 }
