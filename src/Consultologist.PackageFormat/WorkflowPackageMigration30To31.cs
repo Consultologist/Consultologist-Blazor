@@ -29,7 +29,7 @@ public sealed record Migration31Options(
 /// refusals that stopped it (a refusal writes nothing: the result holds the input's manifest and files).
 /// <see cref="HandEdits"/> are the S10-002 notices, a subset of <see cref="Migration31Result.Notices"/>;
 /// <see cref="Report"/> is what the migration report lists of the rest; <see cref="Keys"/> maps each 30 node id to its
-/// 31 rooted key and each deliverable id to <c>deliverable.&lt;id&gt;</c>.
+/// 31 rooted key and each deliverable's 30 key <c>deliverable.&lt;id&gt;</c> to its 31 key.
 /// </summary>
 public sealed record Migration31Result(
     string ManifestJson,
@@ -46,7 +46,11 @@ public sealed record Migration31Result(
     /// <summary>The notices that need no edit, by what the migration report lists them as (D9).</summary>
     public MigrationNotes Report { get; init; } = MigrationNotes.None;
 
-    /// <summary>Each 30 node id to its 31 rooted key, each deliverable id to <c>deliverable.&lt;id&gt;</c>.</summary>
+    /// <summary>
+    /// Each 30 node id to its 31 rooted key; each deliverable's 30 key <c>deliverable.&lt;id&gt;</c> to its 31 key (the
+    /// root is kept in the deliverable's entry, so a node and a deliverable of one id, as <c>composer-sources</c>' <c>plan</c>,
+    /// keep an entry each).
+    /// </summary>
     public IReadOnlyDictionary<string, string> Keys { get; init; } = new Dictionary<string, string>(StringComparer.Ordinal);
 }
 
@@ -90,7 +94,8 @@ public static class WorkflowPackageMigration30To31
     /// manifest and the formats (<see cref="V31.Migration.Migrate.Layout"/>), the inputs
     /// (<see cref="V31.Migration.Migrate.Inputs"/>), the nodes, the flows and their conditions
     /// (<see cref="V31.Migration.Migrate.Nodes"/>), the template bodies (<see cref="V31.Migration.Migrate.Templates"/>), the
-    /// macros and their choices (<see cref="V31.Migration.Migrate.Macros"/>). The
+    /// macros and their choices (<see cref="V31.Migration.Migrate.Macros"/>), the checks
+    /// (<see cref="V31.Migration.Migrate.Checks"/>) and the deliverables (<see cref="V31.Migration.Migrate.Deliverables"/>). The
     /// files are serialised once, at the end.
     /// </summary>
     public static Migration31Result Migrate(string manifestJson, IReadOnlyDictionary<string, string> files, Migration31Options options)
@@ -149,6 +154,8 @@ public static class WorkflowPackageMigration30To31
         V31.Migration.Migrate.Nodes(migrated);
         V31.Migration.Migrate.Templates(migrated);
         V31.Migration.Migrate.Macros(migrated);
+        V31.Migration.Migrate.Checks(migrated);
+        V31.Migration.Migrate.Deliverables(migrated);
         return migrated.Result(at30.Notices);
     }
 

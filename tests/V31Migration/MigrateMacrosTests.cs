@@ -288,10 +288,11 @@ public class MigrateMacrosTests
             "Disclaimer to keep in mind (do not copy it into the summary):\n{{ snippet.boilerplate.content }}\n",
             MigrateNodesTests.Md(result, "nodes/summary.md").Body, StringComparison.Ordinal);
 
-        // One a prompt also places (its .prompt read) stays a macro: kept_note, placed bare on the deliverable.
+        // One a prompt also places (its .prompt read) stays a macro: kept_note, placed bare on the deliverable. D4 keeps the
+        // macro file, and the deliverables pass (Task 11) writes the snippet its deliverable reads beside it.
         var placed = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["prompts/summary.md"] += "{{ macro.kept_note.prompt }}\n");
         Assert.True(placed.Files.ContainsKey("macros/kept_note.md"));
-        Assert.False(placed.Files.ContainsKey("snippets/kept_note.md"));
+        Assert.Equal(MigrateNodesTests.Md(placed, "macros/kept_note.md").Body, MigrateNodesTests.Md(placed, "snippets/kept_note.md").Body);
 
         // A macro body's fixed-text read of a macro that becomes a snippet reads the snippet.
         var echo = MigrateNodesTests.Migrated("example-macros", _ => { }, files => files["macros/followup_only.md"] += "{{ macro.closing.content }}\n");

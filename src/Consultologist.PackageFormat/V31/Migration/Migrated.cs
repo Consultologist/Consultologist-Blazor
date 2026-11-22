@@ -115,7 +115,10 @@ internal sealed class Migrated
     /// <summary>The 31 files, path to model, in ordinal path order (the manifest apart).</summary>
     public SortedDictionary<string, MigratedFile> Sources { get; } = new(StringComparer.Ordinal);
 
-    /// <summary>Each 30 node id to its 31 rooted key, each deliverable id to <c>deliverable.&lt;id&gt;</c> (Tasks 7, 11).</summary>
+    /// <summary>
+    /// Each 30 node id to its 31 rooted key (Task 7); each deliverable's 30 key <c>deliverable.&lt;id&gt;</c> to its 31 key
+    /// (Task 11), keyed with its root so that a deliverable and a node of one id keep an entry each.
+    /// </summary>
     public Dictionary<string, string> Keys { get; } = new(StringComparer.Ordinal);
 
     /// <summary>
@@ -362,16 +365,23 @@ internal sealed class Migrated
 
     /// <summary>
     /// The run's result: the 31 manifest and files, <paramref name="chainNotices"/> then this run's notices, and the report.
-    /// <see cref="Migration31Result.Keys"/> is keyed by each node's and deliverable's id in the package as given
-    /// (<see cref="NodeIds30"/>, <see cref="DeliverableIds30"/>); its values are the 31 keys, new ids in them.
+    /// <see cref="Migration31Result.Keys"/> is keyed by each node's id and each deliverable's <c>deliverable.&lt;id&gt;</c> in
+    /// the package as given (<see cref="NodeIds30"/>, <see cref="DeliverableIds30"/>); its values are the 31 keys, new ids in them.
     /// </summary>
     public Migration31Result Result(IReadOnlyList<string> chainNotices)
     {
+        const string Deliverable = "deliverable.";
         var keys = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var (id, key) in Keys)
         {
-            var given = key.StartsWith("deliverable.", StringComparison.Ordinal) ? DeliverableIds30 : NodeIds30;
-            keys[given.GetValueOrDefault(id, id)] = key;
+            if (id.StartsWith(Deliverable, StringComparison.Ordinal))
+            {
+                var deliverable = id[Deliverable.Length..];
+                keys[Deliverable + DeliverableIds30.GetValueOrDefault(deliverable, deliverable)] = key;
+                continue;
+            }
+
+            keys[NodeIds30.GetValueOrDefault(id, id)] = key;
         }
 
         return new(Json(Manifest), Files(), [.. chainNotices, .. _notices], [])

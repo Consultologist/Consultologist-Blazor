@@ -262,9 +262,9 @@ internal static class MigrationSentences
         string.Create(CultureInfo.InvariantCulture, $"the template can't be read at line {line}; close every tag, if and for.");
 
     /// <summary>
-    /// A10-039 (part 05 § 3.1): a reason: the body reads <paramref name="path"/> at <paramref name="line"/>, a root its
-    /// <paramref name="site"/> (<c>prompt</c>, <c>rendered node</c>) never reads at 31 (<c>deliverable.*</c>, a
-    /// <c>rendered</c> node's <c>profile.*</c>).
+    /// A10-039 (part 05 § 3.1, part 06 § 6.3): a reason: the body reads <paramref name="path"/> at <paramref name="line"/>, a
+    /// root its <paramref name="site"/> (<c>prompt</c>, <c>rendered node</c>, <c>macro body</c>, <c>deliverable</c> for a
+    /// snippet a deliverable places) never reads at 31 (<c>deliverable.*</c>, a <c>rendered</c> node's <c>profile.*</c>).
     /// </summary>
     public static string ReadNotAllowed(string path, int line, string site) =>
         string.Create(CultureInfo.InvariantCulture, $"the template reads {path} at line {line}, which a 31 {site} doesn't read; rewrite it.");
@@ -314,4 +314,12 @@ internal static class MigrationSentences
     /// </summary>
     public const string InstructionIsATemplate =
         "the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.";
+
+    /// <summary>
+    /// A10-002 (part 10 § 1.4, D3, D4; part 06 § 6.3): a reason: macro <paramref name="macro"/> is placed on the deliverable
+    /// with a condition (the placement's <c>if</c>, its own, or as an optional macro); a 31 deliverable places no macro, and
+    /// only fixed text becomes a snippet read.
+    /// </summary>
+    public static string DeliverableMacroWithCondition(string macro) =>
+        $"macro '{macro}' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.";
 }

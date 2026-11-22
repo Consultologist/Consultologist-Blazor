@@ -789,7 +789,7 @@ internal static class TemplateRewriter
         /// <summary>
         /// One read, rewritten as part 10 § 1.2 and part 05 say (see the class), or said as a hand edit when 31 has no form
         /// for it (<c>item.label</c> with no <c>itemLabel</c>, a 30 run fact 31 lacks: A10-005; a prompt's
-        /// <c>profile.*</c>: S10-004; a <c>deliverable.*</c> or a <c>rendered</c> node's <c>profile.*</c>: A10-039).
+        /// <c>profile.*</c>: S10-004; a prompt's, a <c>rendered</c> node's or a macro body's <c>deliverable.*</c>, or a <c>rendered</c> node's <c>profile.*</c>: A10-039).
         /// </summary>
         private Written Read(Chain chain, ScriptExpression whole, ImmutableDictionary<string, Variable> vars, Sink sink, bool wrap)
         {
@@ -859,9 +859,17 @@ internal static class TemplateRewriter
                     var field30 = names.Count > 0 ? names[0] ?? string.Empty : string.Empty;
                     sink.Say(Start(whole), _ => MigrationSentences.ProfileInPrompt(field30));
                     return Nothing;
-                case "profile" or "deliverable" when site.Site is TemplateSite.Prompt or TemplateSite.Rendered:
+                case "profile" or "deliverable" when site.Site is TemplateSite.Prompt or TemplateSite.Rendered
+                    || (chain.Name == "deliverable" && site.Site == TemplateSite.MacroBody):
+                    // Part 06 § 6.3: a macro body never reads a deliverable, nor does a deliverable read another, so a 30
+                    // deliverable macro's read (written as a snippet when D4 makes it one) stays, said where it is.
                     var path = string.Join('.', [chain.Name, .. names.Select(n => n ?? "[]")]);
-                    var words = site.Site == TemplateSite.Prompt ? "prompt" : "rendered node";
+                    var words = site.Site switch
+                    {
+                        TemplateSite.Prompt => "prompt",
+                        TemplateSite.Rendered => "rendered node",
+                        _ => site.File.StartsWith("snippets/", StringComparison.Ordinal) ? "deliverable" : "macro body",
+                    };
                     sink.Say(Start(whole), line => MigrationSentences.ReadNotAllowed(path, line, words));
                     return Nothing;
                 case "run" when names is [{ } fact, ..] && fact is "job" or "host":

@@ -147,11 +147,13 @@ internal static class V31Contract
     /// ruling on size, part 04 § 5.2, part 02 § 3.3; A10-006, A10-033 and A10-034: the renames pass, part 10 § 1.9, part 01 §§ 6 and 7, D6;
     /// A10-001, A10-005 and A10-035 to A10-039: the templates pass's reasons, part 10 § 1.2, § 1.4, part 05 §§ 2, 3.1, 7, R6;
     /// A10-003, A10-004, A10-007, A10-040 to A10-042 and A10-045: the macros pass, part 10 §§ 1.3, 1.4, part 05 § 8, D3 to D5;
-    /// A10-043 and A10-044: a MacroChoices entry the 31 start refuses, part 10 § 1.3, R7).
+    /// A10-043 and A10-044: a MacroChoices entry the 31 start refuses, part 10 § 1.3, R7; A10-002: a deliverable macro with a
+    /// condition, the deliverables pass, part 10 § 1.4, D3, D4).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
         ["A10-001"] = "the body's if at line <n> does more than choose text to show; write it as parts with their own if.",
+        ["A10-002"] = "macro '<id>' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.",
         ["A10-003"] = "macro '<id>' was placed <before | after | before and after> the reply by the engine; say in its instruction where the model writes its marker.",
         ["A10-004"] = "macro '<id>' is read both as fixed text and as an instruction; split it into a snippet and a macro.",
         ["A10-005"] = "the template uses <construct> at line <n>, which the 31 dialect doesn't have; rewrite it.",
@@ -184,7 +186,7 @@ internal static class V31Contract
         ["A10-036"] = "macro '<id>' is placed under different conditions in <files>; a macro has one if, so place it under one condition, or split it into one macro per condition.",
         ["A10-037"] = "the template writes <path> at line <n>, which is <an object | a list> at 31; read a member, loop over it or pipe it into a renderer.",
         ["A10-038"] = "the template can't be read at line <n>; close every tag, if and for.",
-        ["A10-039"] = "the template reads <path> at line <n>, which a 31 <prompt | rendered node> doesn't read; rewrite it.",
+        ["A10-039"] = "the template reads <path> at line <n>, which a 31 <prompt | rendered node | macro body | deliverable> doesn't read; rewrite it.",
         ["A10-040"] = "macro '<id>' is read as fixed text at line <n>, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.",
         ["A10-041"] = "the body places macro '<id>', which a 31 macro body cannot; place it in the prompt instead.",
         ["A10-042"] = "the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.",

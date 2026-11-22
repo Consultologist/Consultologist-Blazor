@@ -59,7 +59,11 @@ public class MigrateLayoutTests
             Assert.IsType<JsonArray>(index["items"]);
         }
 
-        Assert.Equal(Compact("""{ "description": null, "items": [], "delivery": [], "bundle": null }"""),
+        // The root delivery folder, as area 08's fixtures write a package with no destination folder; its items are the
+        // deliverables pass's (Task 11), 30's deliverables in order.
+        var (json30, _) = ByteEquivalenceFixtures.ReadPackage(package);
+        var ids = new JsonArray([.. JsonNode.Parse(json30)!["deliverables"]!.AsArray().Select(d => (JsonNode?)JsonValue.Create((string)d!["id"]!))]);
+        Assert.Equal(new JsonObject { ["description"] = null, ["items"] = ids, ["delivery"] = new JsonArray(), ["bundle"] = null }.ToJsonString(),
             JsonOf(result, "deliverables/index.json").ToJsonString());
         Assert.DoesNotContain("manifest.json", result.Files.Keys);
     }
