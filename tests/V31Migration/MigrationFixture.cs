@@ -25,14 +25,42 @@ internal static class MigrationFixture
     public static JsonObject Expression(string id) =>
         Expressions().Single(e => (string?)e["id"] == id);
 
-    /// <summary>The published formats (<see cref="LogicFixture.Formats"/>), with no package formats.</summary>
+    /// <summary>
+    /// The published formats (<see cref="LogicFixture.Formats"/>), and the two package formats the § 2.2 <c>let</c>s
+    /// declare (their <c>letType</c>), written strict as part 02 § 3.3 has them: <c>triage_summary</c>, the
+    /// <c>priority</c> and <c>age</c> that <c>row.let-object</c> builds, and <c>reasons</c>, the list of plain text
+    /// <c>row.let-array</c> builds.
+    /// </summary>
     public static FormatSet Formats() => PublishedFormats.Value;
+
+    /// <summary>How an entry is converted: a <c>condition</c> as a condition, a <c>case</c> subject and a <c>let</c> as a value.</summary>
+    public static ConversionKind KindOf(JsonObject entry) =>
+        (string?)entry["kind"] == "condition" ? ConversionKind.Condition : ConversionKind.Value;
+
+    /// <summary>
+    /// A <c>let</c>'s declared format at 31 (part 02 § 11: <c>text</c> is <c>markdown_block</c>, <c>number</c> and
+    /// <c>boolean</c> are themselves, a format id is that format); <c>null</c> for a condition and a <c>case</c>.
+    /// </summary>
+    public static JsonNode? DeclaredOf(JsonObject entry) => (string?)entry["letType"] switch
+    {
+        null => null,
+        "text" => JsonValue.Create("markdown_block"),
+        var type => JsonValue.Create(type),
+    };
 
     private static readonly Lazy<IReadOnlyList<JsonObject>> ExpressionsFile = new(() =>
         JsonNode.Parse(ByteEquivalenceFixtures.ReadText(Path.Combine(ByteEquivalenceFixtures.Root, "conditions", "expressions.json")))!
             ["expressions"]!.AsArray().Select(e => e!.AsObject()).ToList());
 
-    private static readonly Lazy<FormatSet> PublishedFormats = new(() => LogicFixture.Formats());
+    private static readonly Lazy<FormatSet> PublishedFormats = new(() => LogicFixture.Formats(
+        ("triage_summary", """
+            {"type":"object","additionalProperties":false,"required":["priority","age"],
+             "properties":{"priority":{"type":["string","null"],"enum":["low","high",null]},"age":{"type":"number"}}}
+            """),
+        ("reasons", """
+            {"type":"object","additionalProperties":false,"required":["reasons"],
+             "properties":{"reasons":{"type":"array","items":{"$ref":"plaintext"}}}}
+            """)));
 
     /// <summary>The 31 scope an entry's <c>reads</c> describe (see the class).</summary>
     public static ConversionScope ScopeOf(JsonObject reads)

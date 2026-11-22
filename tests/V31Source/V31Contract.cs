@@ -137,6 +137,15 @@ internal static class V31Contract
         ["A09-002"] = "The job's record of '<row key>' is larger than this engine stores. Tell the operator.",
     };
 
+    /// <summary>
+    /// #1507: area 10's own sentences (<c>A10-NNN</c>), as plan area-10-migration lists them, each added by the task that
+    /// first says it (A10-008: a <c>!x</c> on text that became <c>blank(x)</c>, part 10 § 2.3, R1).
+    /// </summary>
+    private static readonly Dictionary<string, string> MigrationAreaSentences = new()
+    {
+        ["A10-008"] = "<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -275,6 +284,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A09-", StringComparison.Ordinal))
         {
             Assert.True(RecordAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A10-", StringComparison.Ordinal))
+        {
+            Assert.True(MigrationAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

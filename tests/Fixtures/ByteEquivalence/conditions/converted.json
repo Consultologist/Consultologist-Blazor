@@ -10,27 +10,22 @@
           "patient"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.audience.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
       "id": "composer-macros.section_draft.section_close.if",
-      "logic": {
-        "!==": [
-          {
-            "var": "item.value.title"
-          },
-          "Plan"
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "item.value.title"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition 'item.value.title != \"Plan\"' compares item.value.title (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
     },
     {
       "id": "composer-macros.gated.review_note.if",
@@ -42,10 +37,11 @@
           "review"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.visit.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -58,10 +54,11 @@
           "review"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.visit.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -74,10 +71,11 @@
           "new"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.visit.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -90,10 +88,11 @@
           "drafted"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "item.value.kind"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -106,10 +105,11 @@
           true
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.redraft.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -122,10 +122,11 @@
           "good"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.judge.value.verdict"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -138,10 +139,11 @@
           true
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.include_plan.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -149,10 +151,11 @@
       "logic": {
         "var": "input.tone.value"
       },
-      "resultFormat": null,
+      "resultFormat": "string {formal, plain, none}",
       "reads": [
         "input.tone.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -160,8 +163,10 @@
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
-        "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand."
+        "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand.",
+        "The condition '\"Topic section length: \" | string.append (node.topic_loop.content | string.size)' uses string.size, which has no JSON Logic form at 31: rewrite it by hand."
       ]
     },
     {
@@ -174,10 +179,11 @@
           "in_scope"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.scope.value.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -190,10 +196,11 @@
           "out_of_scope"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.scope.value.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -206,10 +213,11 @@
           "needs_information"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.scope.value.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -222,10 +230,11 @@
           "new_patient"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.encounter_kind.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -238,10 +247,11 @@
           "follow_up"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.encounter_kind.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -249,10 +259,11 @@
       "logic": {
         "var": "item.value.kind"
       },
-      "resultFormat": null,
+      "resultFormat": "string {narrative, table, omit}",
       "reads": [
         "item.value.kind"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -265,10 +276,11 @@
           "narrative"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "item.value.kind"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -293,11 +305,12 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "item.id",
         "input.include_billing.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -310,10 +323,11 @@
           "assessment_plan"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "item.id"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -321,10 +335,11 @@
       "logic": {
         "var": "item.value.kind"
       },
-      "resultFormat": null,
+      "resultFormat": "string {narrative, table, omit}",
       "reads": [
         "item.value.kind"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -337,10 +352,11 @@
           "consult"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -353,10 +369,11 @@
           "discharge_summary"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -369,10 +386,11 @@
           "follow_up"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -409,11 +427,12 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value",
         "input.include_counselling.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -426,10 +445,11 @@
           "consult"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -442,10 +462,11 @@
           "consult"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -458,10 +479,11 @@
           "assessment_plan"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "item.id"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -469,10 +491,11 @@
       "logic": {
         "var": "item.value.kind"
       },
-      "resultFormat": null,
+      "resultFormat": "string {narrative, table, omit}",
       "reads": [
         "item.value.kind"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -485,10 +508,11 @@
           "consult"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -501,10 +525,11 @@
           "discharge_summary"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -517,10 +542,11 @@
           "follow_up"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -557,11 +583,12 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value",
         "input.include_counselling.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -574,10 +601,11 @@
           "consult"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -590,10 +618,11 @@
           "consult"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.note_type.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -605,10 +634,11 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "integer",
       "reads": [
         "node.plan.value.sections"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -621,10 +651,11 @@
           "good"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.judge.value.verdict"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -637,10 +668,11 @@
           true
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.read_letter.value.answers_question"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -653,10 +685,11 @@
           "yes"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.follow_up.value.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -669,10 +702,11 @@
           65
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.patient.value.age"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -685,10 +719,11 @@
           7
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.length_of_stay.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -705,10 +740,11 @@
           2
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.prior_notes.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -721,10 +757,11 @@
           "formal"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.tone.value.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -737,10 +774,11 @@
           "friendly"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.tone.value.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -753,27 +791,22 @@
           "high"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "node.triage.value.priority"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
       "id": "row.read.node-content",
-      "logic": {
-        "===": [
-          {
-            "var": "node.summary.content"
-          },
-          "Reviewed in clinic."
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "node.summary.content"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition 'node.summary.content == \"Reviewed in clinic.\"' compares node.summary.content (plaintext) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
     },
     {
       "id": "row.read.item-id",
@@ -785,10 +818,11 @@
           "plan"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "item.id"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -801,10 +835,11 @@
           "table"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "item.value.kind"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -817,10 +852,11 @@
           2
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "pass.number"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -833,43 +869,32 @@
           "2026-11-10"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "run.date"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
       "id": "row.input.x",
-      "logic": {
-        "===": [
-          {
-            "var": "input.reason.content"
-          },
-          "Breathlessness"
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "input.reason.content"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition 'input.reason == \"Breathlessness\"' compares input.reason.content (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
     },
     {
       "id": "row.input.x-y",
-      "logic": {
-        "===": [
-          {
-            "var": "input.patient.value.name"
-          },
-          "Margaret Okafor"
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "input.patient.value.name"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition 'input.patient.name == \"Margaret Okafor\"' compares input.patient.value.name (markdown_block | null) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
     },
     {
       "id": "row.eq",
@@ -881,10 +906,11 @@
           "new"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.kind.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -897,10 +923,11 @@
           "new"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.kind.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -913,10 +940,11 @@
           18
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -929,10 +957,11 @@
           18
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -945,10 +974,11 @@
           65
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -961,10 +991,11 @@
           65
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -992,12 +1023,13 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.urgent.value",
         "input.kind.value",
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1025,12 +1057,13 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.urgent.value",
         "input.kind.value",
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1042,23 +1075,27 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.urgent.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
       "id": "row.not-text.node",
       "logic": {
-        "!": [
+        "blank": [
           {
             "var": "node.summary.content"
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
+        "node.summary.content"
+      ],
+      "blankConversions": [
         "node.summary.content"
       ],
       "notices": []
@@ -1066,14 +1103,17 @@
     {
       "id": "row.not-text.input",
       "logic": {
-        "!": [
+        "blank": [
           {
             "var": "input.reason.content"
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
+        "input.reason.content"
+      ],
+      "blankConversions": [
         "input.reason.content"
       ],
       "notices": []
@@ -1093,10 +1133,11 @@
           65
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1114,10 +1155,11 @@
           18
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1135,10 +1177,11 @@
           100
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1156,10 +1199,11 @@
           30
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1177,10 +1221,11 @@
           1.5
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1198,10 +1243,11 @@
           0
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1218,10 +1264,11 @@
           1
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.problems.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1238,71 +1285,42 @@
           0
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.problems.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
       "id": "row.downcase",
-      "logic": {
-        "===": [
-          {
-            "lower": [
-              {
-                "var": "input.reason.content"
-              }
-            ]
-          },
-          "breathlessness"
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "input.reason.content"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition '(string.downcase input.reason) == \"breathlessness\"' compares lower(input.reason.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
     },
     {
       "id": "row.strip.input",
-      "logic": {
-        "===": [
-          {
-            "trim": [
-              {
-                "var": "input.reason.content"
-              }
-            ]
-          },
-          ""
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "input.reason.content"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition '(string.strip input.reason) == \"\"' compares trim(input.reason.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
     },
     {
       "id": "row.strip.node",
-      "logic": {
-        "===": [
-          {
-            "trim": [
-              {
-                "var": "node.summary.content"
-              }
-            ]
-          },
-          ""
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "node.summary.content"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition '(node.summary.content | string.strip) == \"\"' compares trim(node.summary.content) (plaintext) with a literal; text is tested by whether it is blank, its size, or in."
+      ]
     },
     {
       "id": "row.starts-with",
@@ -1314,10 +1332,11 @@
           "Breath"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.reason.content"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1330,10 +1349,11 @@
           "ness"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.reason.content"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1346,10 +1366,11 @@
           }
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.reason.content"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1362,10 +1383,11 @@
           "2026-11-10"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.seen_on.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1378,10 +1400,11 @@
           "2026-11-10"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.seen_on.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1394,10 +1417,11 @@
           65
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.age.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1410,10 +1434,11 @@
           true
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.urgent.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1426,10 +1451,11 @@
           false
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.urgent.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1442,10 +1468,11 @@
           "review"
         ]
       },
-      "resultFormat": null,
+      "resultFormat": "boolean",
       "reads": [
         "input.kind.value"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
@@ -1460,39 +1487,30 @@
           }
         }
       },
-      "resultFormat": null,
+      "resultFormat": "triage_summary",
       "reads": [
         "input.age.value",
         "node.triage.value.priority"
       ],
+      "blankConversions": [],
       "notices": []
     },
     {
       "id": "row.let-array",
-      "logic": {
-        "object": {
-          "reasons": [
-            {
-              "var": "input.reason.content"
-            },
-            {
-              "var": "node.summary.content"
-            }
-          ]
-        }
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "input.reason.content",
-        "node.summary.content"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition '{ reasons: [input.reason, node.summary.content] }' mixes markdown_block and plaintext in a list; they have one type."
+      ]
     },
     {
       "id": "refuse.builtin.upcase",
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
         "The condition '(string.upcase input.reason) == \"BREATHLESSNESS\"' uses string.upcase, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1502,6 +1520,7 @@
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
         "The condition '(math.round input.age) == 65' uses math.round, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1511,33 +1530,29 @@
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
         "The condition '(input.problems | array.first) == \"\"' uses array.first, which has no JSON Logic form at 31: rewrite it by hand."
       ]
     },
     {
       "id": "refuse.text-less-than",
-      "logic": {
-        "<": [
-          {
-            "var": "input.reason.content"
-          },
-          "m"
-        ]
-      },
+      "logic": null,
       "resultFormat": null,
-      "reads": [
-        "input.reason.content"
-      ],
-      "notices": []
+      "reads": [],
+      "blankConversions": [],
+      "notices": [
+        "The condition 'input.reason < \"m\"' orders input.reason.content (markdown_block); <, >, ≤ and ≥ compare numbers or dates."
+      ]
     },
     {
       "id": "refuse.profile",
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
-        "The condition 'profile.name == \"Dr A. Sample\"' uses the read profile.name, which has no JSON Logic form at 31: rewrite it by hand."
+        "The condition 'profile.name == \"Dr A. Sample\"' reads profile.name; profile fields are read only in deliverable templates and macro bodies, never in conditions or computed expressions."
       ]
     },
     {
@@ -1545,6 +1560,7 @@
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
         "The condition 'x = 1' uses an assignment, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1554,6 +1570,7 @@
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
         "The condition '{{ input.kind }}' uses a template, which has no JSON Logic form at 31: rewrite it by hand."
       ]
@@ -1563,6 +1580,7 @@
       "logic": null,
       "resultFormat": null,
       "reads": [],
+      "blankConversions": [],
       "notices": [
         "The condition 'input.urgent; input.kind == \"new\"' uses more than one statement, which has no JSON Logic form at 31: rewrite it by hand."
       ]
