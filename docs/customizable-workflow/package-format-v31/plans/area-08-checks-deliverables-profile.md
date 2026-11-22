@@ -350,16 +350,16 @@ public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? F
 
   and `IRunHost.EvaluateAsync(RuleCall call)` → `Task<RuleOutcome>`. The runner calls it for a rule whose `ReadsPattern` is true, awaited where the rule is decided (it takes no slot), and evaluates every other rule inline as today. The activity is `evaluate-rule-v31` (`ConsultGenerationActivityNames.EvaluateRuleV31`), with no retry policy; it loads the plan as `RenderNodeV31Activity` does and evaluates the entry's compiled rule over the call's scope.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `ARuleWithAPattern_IsDecidedByTheHost`: a leaf whose `if` is `matches` makes one `EvaluateAsync` call (key, member `if`, a scope of exactly its reads) and none for a rule without one; the same for a computed `expression`, a `while`, an `until` and a placement's `if`.
   - `TheHostsAnswer_IsWhatTheRunUses`: the fake answers `false` where an inline evaluation would say `true`; the node is skipped. A `RuleOutcome` with `FailureKind` `MatchTooSlow` fails the node with A06-001.
   - `AReplay_ReadsTheStoredDecision` (`OrchestratorV31Tests`): the orchestration run twice over one history calls the evaluator once, and the second run's dispatch is the first's though the activity would now answer differently.
   - `TheActivity_EvaluatesTheCompiledRule`, `…_OfAPlanThatIsNotTheJobs_Fails`.
-- [ ] **Step 2: Run.** Expected: FAIL.
-- [ ] **Step 3: Implement.** `FakeRunHost` and `ComposingRunHost` answer by evaluating the plan's rule, so existing tests keep their results.
-- [ ] **Step 4: Amend part 09 § 3.1:** the bullet "`matches` reads no clock" becomes: each evaluation of `matches` and `has_word` has the engine's time limit (#1503); a rule that holds one is evaluated in an activity and its outcome stored in the orchestration's history, so a replay reads the decision and never times it again; every other rule is evaluated inline.
-- [ ] **Step 5: Run** the V31 filter and the run goldens (unchanged). Expected: PASS.
-- [ ] **Step 6: Commit** `Api (#1505): a rule that holds a pattern is decided in an activity, and a replay reads its outcome`; push.
+- [x] **Step 2: Run.** Expected: FAIL.
+- [x] **Step 3: Implement.** `FakeRunHost` and `ComposingRunHost` answer by evaluating the plan's rule, so existing tests keep their results.
+- [x] **Step 4: Amend part 09 § 3.1:** the bullet "`matches` reads no clock" becomes: each evaluation of `matches` and `has_word` has the engine's time limit (#1503); a rule that holds one is evaluated in an activity and its outcome stored in the orchestration's history, so a replay reads the decision and never times it again; every other rule is evaluated inline.
+- [x] **Step 5: Run** the V31 filter and the run goldens (unchanged). Expected: PASS.
+- [x] **Step 6: Commit** `Api (#1505): a rule that holds a pattern is decided in an activity, and a replay reads its outcome`; push.
 
 ### Task 11: The engine delivers
 
