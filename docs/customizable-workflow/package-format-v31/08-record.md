@@ -172,7 +172,7 @@ version, and shown in History's job header:
 | `versionsRan` | object | null below 31 | **the exact versions that actually ran,** which under option c can differ from the lock within its range ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1390#issuecomment-6904042632)). It is `lock.json`'s **nested shape minus `documentVersion`, `package` and `resolve`** (the record already holds their hashes) ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 3), so the two compare member by member: `{ resolver: { packageFormat, dialect }, libraries, evaluator, operations, builtins, culture, runtime: { dotnet, unicode }, catalogues: { agents, formats, outputContracts } }`. `libraries` holds `Scriban`, `Markdig`, `Corvus.Text.Json.JsonLogic` and `Corvus.JsonSchema`; `operations` those the package uses; `culture` is `"invariant"`; `runtime` the .NET runtime and its Unicode version; `catalogues` the three catalogue versions the job ran, `outputContracts` `null` when the package uses none ([part 07](07-compiled-documents.md); [decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
 | `recordHash` | string (`sha256:…`) | allowed | the hash of the canonical record document, sealed when delivery ends (§ 1.1); `null` until then, and below 31 ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `runFacts` | object | null below 31 | the raw value of each run fact the package reads, once per run (§ 8.1); `{}` when it reads none |
-| `limits` | object `{ maxAgentCalls, capacityWaitMinutes, serviceAttempts, jobMinutes, deliveryMinutes, deliveryAttempts, loopItems, jobAgentCalls, jobInstances, renderSteps }`, each an integer | null below 31 | every engine limit in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): the per-job ceiling on agent calls in flight, the minutes a node may wait on 429s in all, the attempts allowed for another service failure, the minutes a job may run from orchestration start, the minutes delivery may take and the attempts each destination gets, and the total-work limits: items per loop instance, agent calls per job, **the instances one job may open** (`jobInstances`, a tenth limit: ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 1); a node, check or deliverable instance, a loop item, a pass or a call, [part 09](09-engine-and-pages.md) § 3.4), and steps per render ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); [part 09](09-engine-and-pages.md) § 3) |
+| `limits` | object `{ maxAgentCalls, capacityWaitMinutes, serviceAttempts, jobMinutes, deliveryMinutes, deliveryAttempts, loopItems, jobAgentCalls, jobInstances, renderSteps }`, each an integer | null below 31 | every engine limit in force at job start, recorded once ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1393#issuecomment-6980307806), [shape](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6984743967)): the per-job ceiling on agent calls in flight, the minutes a node may wait on 429s in all, the attempts allowed for another service failure, the minutes a job may run from orchestration start, the minutes delivery may take and the attempts each destination gets, and the total-work limits: items per loop instance, agent calls per job, **the instances one job may open** (`jobInstances`, a tenth limit, [ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 1: a node, check or deliverable instance, a loop item, a pass or a call; [part 09](09-engine-and-pages.md) § 3.4), and steps per render ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660); [part 09](09-engine-and-pages.md) § 3) |
 | `startedAtUtc` | string | never | when the job's orchestration started; the job limit is timed from here, not from creation or scheduling, so time queued or waiting behind a drain doesn't count ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1388#issuecomment-6992455660)) |
 | `signatureBlockId` | string | allowed | the profile signature block the job used, by **id**, never its text; `null` when the package doesn't read `profile.signature` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1408#issuecomment-6904843222)) |
 | `signatureChosen` | `"default"` or `"job"` | allowed | whether the block was the account's chosen block (`ChosenId`) or picked on the Create page for this job; `null` with `signatureBlockId` ([decided](https://github.com/Consultologist/Consultologist-Blazor/issues/1389#issuecomment-6979794633)) |
@@ -607,16 +607,18 @@ one renderer use:
       "condition": "node.standards.prescribes_letrozole.value.answer = true", "expressionHash": "sha256:…",
       "result": true,
       "reads": [ { "path": "node.standards.prescribes_letrozole.value.answer", "hash": "sha256:…" } ],
-      "runDependent": false, "decidedAtUtc": "2026-11-16T14:02:11Z" } ],
+      "runDependent": false, "modelDerived": true, "decidedAtUtc": "2026-11-16T14:02:11Z" } ],
   "nodeOutputs": {
     "node.standards.assessment:7": {
       "nodeId": "node.standards.assessment", "itemId": "7", "kind": "agent", "producer": "generated",
-      "itemName": "Assessment and plan",
+      "itemName": "Assessment and plan", "itemNameHash": null,
       "status": "Completed", "stateReason": null,
       "inputHash": "sha256:…", "outputHash": "sha256:…", "hashVersion": 7,
       "formatHash": "sha256:…", "typeHash": "sha256:…", "sentFormatHash": "sha256:…", "notSent": [],
       "agent": { "name": "consult-prose", "version": 4,
                  "binding": { "format": "markdown_block", "producer": "generated", "via": "format" } },
+      "units": [ { "site": "snippet.clinic_header", "hash": "sha256:…", "sent": true } ],
+      "tokens": { "input": 1840, "output": 412, "total": 2252 },
       "runDependent": false, "profileCarrying": false, "modelDerived": true, "runNeutralHash": null, "runSpots": [],
       "renders": [ { "id": "node.standards.assessment:7/render:1", "renderer": "renderer.concept_bullets",
                      "templateHash": "sha256:b81…", "source": "node.extract.value",
@@ -626,7 +628,7 @@ one renderer use:
                     "macro": "macro.letrozole_prescription_text", "offered": true,
                     "decisions": ["node.standards.assessment:7/if:macro.letrozole_prescription_text"],
                     "classifier": "node.standards.prescribes_letrozole:7", "placed": true, "form": "block",
-                    "contentHash": "sha256:…" } ],
+                    "contentHash": "sha256:…", "runNeutralHash": null, "runSpots": [] } ],
       "invalid": null, "retries": [], "profileReads": []
     }
   },

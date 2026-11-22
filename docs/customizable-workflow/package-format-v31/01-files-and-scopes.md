@@ -696,11 +696,11 @@ function's name
 | a deliverable in the `emr` folder | `deliverable.emr.note` |
 
 - **`.` separates scopes;** `:` separates the key from the instance's item path; `/` separates the
-  path's item ids, as at 30. No id or item id contains any of them.
+  path's item ids, as at 30; `#<n>` marks a pass of a `while` ([ruled by the owner](https://github.com/Consultologist/Consultologist-Blazor/issues/1506#issuecomment-7064144456), ruling 2). No id or item id contains any of them.
 - **Sub-rows** extend an instance's key with `/`: `…/render:<n>`, `…/macro:<id>`, `…/spot:<n>` and
   `…/if:<site>`, for example
   `node.standards.assessment:7/if:macro.letrozole_prescription_text`
-  ([part 08](08-record.md)). Item paths never contain `:`.
+  ([part 08](08-record.md)). Item paths never contain `:` or `#`.
 - **Mermaid ids replace `.` with `__`:** `node__sections__paragraphs__draft_paragraph`
   ([part 09](09-engine-and-pages.md)).
 - **Keys are used everywhere at 31,** never only where an id repeats: one key form, no
