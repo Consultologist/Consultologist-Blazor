@@ -1397,7 +1397,7 @@ package's level. `Scope` is `RunScope.Data` over exactly the entry's compiled `r
 | `IRunHost` | `UtcNow`, `CallAgentAsync(AgentCall)`, `RenderAsync(RenderCall)`, `DelayAsync(TimeSpan, CancellationToken)` | the engine's `DurableRunHost` (activities, durable timers, the replay-safe clock); area 10's byte-equivalence run and area 11's in-package tests bring their own |
 | `IRunRecorder` | `RowAsync(RunRow)`, `DecisionAsync(RunDecision)`, awaited inline, so a task must complete synchronously or be a replay-safe one the orchestration gave | area 09 (the record's storage), replacing the engine's `EntityRunRecorder` (D12: counts on the job's entity, telemetry by key, state and hash) |
 | `AgentTurn`, `RenderTurn` (in the library, since area 07) | `AgentTurn.Prepare(plan, call, stepLimit, strictRejects)`, `AgentTurn.Finish(prepared, reply)`, `RenderTurn.Render(plan, call)` | the engine's two activities call them; area 07 removed the Api's `IBodyComposer` and `ScribanBodyComposer` (see "templates" below) |
-| A rendered deliverable's outcome (area 08: `RunResult.Deliverables`) | the runner stops there | area 08 (delivery) |
+| A deliverable's outcome (area 08: `RunResult.Deliverables`) | `DeliveryRunner` takes the list | the engine's `DurableDeliveryHost` ("checks, deliverables and delivery" below) |
 | `V31StartChecks` (in the Api) | `Account`, `Inputs`, `RunFacts` | area 12's Create page, which calls the same checks |
 | `SpecVersionAdmission` (in the Api) | `Admits`, `Runs31`, `NotSupported` | area 11 (publish, import, `WorkflowPackages/Current`) |
 
@@ -1456,7 +1456,7 @@ function they are said in.
 - **Area 07: now built** ("templates" below): the body composer, and with it `parts`, `macro-markers` and
   `run-spots`, which the engine runs. A body reading a local name (`node.draft_summary` inside `refine`) reads its
   rooted key through the entry's `names`.
-- **Area 08:** everything after `Composed`.
+- **Area 08: now built** ("checks, deliverables and delivery" below): everything after `Composed`.
 - **Area 09:** the record. It maps `RunRow.Detail` and the decisions to storage rows, and gives the final form of
   keys. Area 09 also records the tokens, which the agent activity only logs today.
 - **Areas 11 and 12:** they call `SpecVersionAdmission` and `V31StartChecks`.
@@ -1471,7 +1471,8 @@ The library's tests are in `tests/V31Run/`:
 - `FakeRunHost` is scripted by key, holds answers until released, and runs on a manual clock.
 - `ListRecorder` collects the rows and decisions.
 - `DispatchOracle` checks the fixed order independently of the runner's rank.
-- `RunGoldenTests` pins three whole runs, `tests/V31Run/Golden/{nested-note,conditional,functions}.run.txt`, from
+- `RunGoldenTests` pins whole runs, `tests/V31Run/Golden/{nested-note,conditional,functions}.run.txt` (area 06's
+  three; area 07 and area 08 added `macros`, `checked-note` and `checked-note-outcomes`), from
   replies seeded by the row key (`WorkflowStubOutputs`). Each holds the dispatch sequence, every row, every
   decision and the result. `GOLDEN_UPDATE_V31=1` rewrites them, and `Golden/.gitattributes` keeps them LF.
 - `PlanRunnerNestingTests` holds the ceiling and the loop caps under three nested parallel loops of 10.
@@ -1931,8 +1932,9 @@ rulings on #1504:
 
 ### What it leaves to areas 08 to 12
 
-- **Area 08:** a deliverable's strict formats, its escaped reads, its `templateHash`, `sites` and `substitutions`,
-  gating and delivery. This area checks a deliverable's body as a dialect template and composes it.
+- **Area 08: now built** ("checks, deliverables and delivery" below): a deliverable's strict formats, its escaped
+  reads, gating and delivery. Its `templateHash`, `sites` and `substitutions` are area 09's. This area checks a
+  deliverable's body as a dialect template and composes it.
 - **Area 09:** storing rows, sub-rows and decisions. This area puts them in `RunRow.Detail` and `RunDecision` under
   part 08's names. The engine's `EntityRunRecorder` passes only the hashes on to telemetry.
 - **Area 10:** converting a 30 package (part 05 § 10).
@@ -1978,3 +1980,290 @@ CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.
 31 stays outside `AcceptedSpecVersions`. The engine runs templates only where
 `WorkflowPackages__PreviewSpecVersions` lists 31: its two activities call `AgentTurn` and `RenderTurn` (see
 [the engine at specVersion 31](engine-v31.md)).
+
+## specVersion 31: checks, deliverables and delivery (preview)
+
+*Area 08 of the Milestone 39 build (#1505). Built from
+[checks, deliverables and the profile](package-format-v31/06-checks-deliverables-profile.md) (part 06) and
+[the engine and the pages](package-format-v31/09-engine-and-pages.md) §§ 3.1, 3.8 and 3.9, with
+[the plan](package-format-v31/plans/area-08-checks-deliverables-profile.md) for the decisions (the owner's rulings
+R1 to R16 and the decisions D1 to D19). How the engine delivers, alerts and logs is in
+[the engine at specVersion 31](engine-v31.md), "Delivery", "Alerts and the weekly summary" and "The engine-fault
+log".*
+
+This area holds `checks/` and `deliverables/` to part 06's rules at publish, decides what each deliverable comes out
+as, and delivers what is released. The profile's checks and limits are at a job's start (the engine guide). The
+record's rows, sites and substitutions are area 09's, and History's pages area 12's.
+
+### Publish: checks
+
+`SourceChecks.Check(package, tree)` holds what `checks/` may hold. It runs at the start of the type step and returns
+alone, so a node of another kind is not also held to that kind's type rules (D17):
+
+- a leaf under `checks/` is `kind: computed` with `format: check_result` (S06-010, S06-009), and a flow node is a
+  `for`, `if` or `case`: a `while`, a `call` or anything else is S06-011;
+- a `for` in `checks/` runs over a production loop's `.items`, `node.<loop>.items`, or a check loop's,
+  `check.<loop>.items` (S06-014);
+- a deliverable's `check` names a check at the top of `checks/`: a production node, nothing, a check inside a check
+  loop or a check loop itself is **A08-001**, and so is a `check.<id>.<more>` path;
+- a **gate check**, one a deliverable's `check` names, has an `if` that reads nothing that can be `null` (S06-035,
+  D18). "Can be `null`" is the resolver's `Nullable` on a read, the one it uses for a `case` subject. It is said
+  once per check, for the first deliverable in folder order that it gates, and judges only a check a deliverable
+  names, not the checks it depends on.
+
+### Checks read deliverables (D1, D2, D3)
+
+Part 03 lists `deliverable.*` as never readable by JSON Logic, and part 06 says three times that checks read a
+deliverable. It is built as part 06 says, the part that owns checks: a rule under `checks/` reads
+`deliverable.<id>.content`, `.value` and `.state`, and everywhere else (a node, a function, a deliverable's `if`) the
+read is still S03-019, in a template S05-020. The chapter 6 twin in the content repo says so. The id is the longest
+key path that names a deliverable (`deliverable.emr.note`).
+
+| Member | Type | Is |
+|---|---|---|
+| `.content` | `string`, nullable | the composed text |
+| `.value` | `string`, nullable; the deliverable's own format for an object format | the object for an object format, else the text |
+| `.state` | `string`, never null | `released`, `held`, `skipped` or `blocked` |
+
+A `failed` deliverable fails the job, so it is never read.
+
+**Who reads the composed text (D3).** A deliverable's *gate set* is its `check` and every check that check depends
+on, transitively, through checks only: their reads and conditions, a check loop's source and its `ret`, and the
+body of a flow node, since a flow node waits for its body. A check reached only through a production node, or
+through another deliverable, is outside the set.
+
+- A reader **in** the gate set reads the composed deliverable (`.content`, `.value`) as soon as it is composed, and
+  may not read its `.state`, which the gate decides (**A08-003**).
+- Every other reader **waits for the outcome** and reads its form (below).
+
+Publish adds the wait as an edge from the gate check to each such reader, for circles; a circle through it is
+A05-003, and the chain passes through the deliverable (named by its key without the root). `RunPlan` derives the same
+sets from the compiled document, so `resolve.json` has no member for it, and a hand-written document with a circle the
+wait makes is S07-006 at the plan. A reading check takes the deliverable's flags as it takes any value's, but its
+`reproducible` is `true` whatever it reads (part 02 § 1.1).
+
+**D19, the order.** A gate may read the deliverable it gates, so `graph.order` is a topological order of every edge
+except `gates`: a gate that reads its deliverable comes after it by the reads edge, and one that reads only nodes
+keeps its source place. Part 07 § 2.7 says so. `CompiledGoldenTests.GraphOrder_IsTopological_OverEveryEdgeButGates`
+holds it over the goldens.
+
+### Publish: deliverables
+
+`SourceDeliverables.Check(package, formats, templates)` takes the dialect's typed reads, not a `ScopeTree`. Its header
+and folder rules run right after `SourceTypes.Check`, as part of the type step, and return alone, since S06-020 needs
+the package's formats:
+
+- `format` is `markdown_block`, `plaintext` or a format whose shape is an object (`markdown_inline`, a list or any
+  other scalar is S06-020; a name that is no format stays S02-017);
+- `whenEmpty` is `release`, `hold` or `fail` (S06-025);
+- each delivery folder's `delivery` lists only `email`, `pdf`, `emr` and `zip` (S06-026, once per unknown kind per
+  folder, the root's included), and its `bundle` is `"zip"` or `null` (**A08-002**);
+- after the dialect step, a deliverable reads no `check.<id>` its own `check` names (S06-018), in its body, a
+  placed snippet or a folder item read as `item.content`; once per deliverable.
+
+The strict formats (part 06 § 6.4) are judged in the dialect step (`SourceTemplates`), where A07-007 stands for every
+other template:
+
+- a `markdown_block` deliverable writes no object or list (S06-021, *Use a renderer or a node*);
+- a `plaintext` one writes no Markdown, read (S06-021, *Convert it in a node*) or in its own text (S06-022: a line
+  whose first non-space character outside a tag is `#`, `-`, `*` or `>`, or a line with two `**`, said once per
+  line with the line trimmed and cut to 40 characters), and no object or list;
+- an object one is exactly one output tag reading `node.<x>.value` of its format by `FormatTypes.Same`, nothing before
+  it and at most a final line end after it (S06-023, D8). An untyped read passes the form only when the body was
+  already refused.
+
+A union is escaped as data in a Markdown deliverable and never S06-021; an enum or a date is escaped as a string;
+an output of several paths or an unknown snippet is neither judged nor escaped; `null` is never escaped. A
+`markdown_inline` output inside a line is not enforced: it is taken anywhere in a Markdown deliverable.
+
+### The escape (D7, R9)
+
+`MarkdownEscape.Escape` writes a backslash before each of the 32 ASCII punctuation characters, and, since the owner's
+ruling R9, the first space or tab leading each line (at the text's start and after each `\n` or `\r`) as its
+character reference, `&#32;` or `&#9;`, so a line led by four spaces or a tab is not a code block. A line of white
+space only is no exception: `"  "` becomes `"&#32; "`. Nothing else changes: letters, digits, other white space,
+line breaks (hard breaks in the pipeline) and everything outside ASCII stay. `Escape(text, startsLine)` with
+`false` is for a piece that continues a line (the text after a run spot). The version stays 1.0.0.
+
+**`MarkdownEscape.IsBlank(text)`** is true when `text` holds only white space and the exact references `&#32;` and
+`&#9;`. Anything else is content: `&#32` with no semicolon, `&#x20;`, `&nbsp;` and `&#33;`. It exists so that an
+escaped blank value is still empty. The engine uses it wherever it judges Markdown empty: `failIfEmpty` of a
+`markdown_block` or `markdown_inline` node, and `whenEmpty` of a `markdown_block` deliverable. In a plain-text
+node or deliverable a reference is text, so `string.IsNullOrWhiteSpace` stays. The JSON Logic `blank` operation
+stays on `Rune.IsWhiteSpace`.
+
+**`escapes`.** Each `deliverables` entry of `resolve.json` lists `{ "unit": <site or null>, "at": "<line>:<column>" }`
+for every output tag whose value composition escapes, in order of appearance with placed snippets expanded, as
+`runSpots` give `unit` and `at`. A value is escaped where plain text enters Markdown: in a `markdown_block`
+deliverable, an output of a plain-text format, a `string`, an enum, a date, a number or a boolean, written in the
+body or in a placed `markdown_block` or `markdown_inline` snippet; and a placed plain-text snippet is escaped once,
+whole, at its placement. A renderer's output is never escaped. `[]` for a `plaintext` or an object deliverable. The
+composer matches an escape by `unit` and `at`, as it matches a run spot, so each pass of a `for` escapes its own
+item, a `null` still writes nothing, and a line end inside a value stays a line end. The composed hash and each
+substitution's are of the escaped text; the 1 MiB output limit is held after escaping; a run spot it escapes is
+recorded escaped, in the sent text and in the run-neutral text (whose `{{run:<n>}}` markers stay as written, so the
+two differ only at the markers). A unit escaped whole is recorded by the hash of its text as spliced; a unit
+nested in it by the hash of its own text escaped where it stands in the outer one. A folder item's body, read as
+`item.content` in a loop, is `markdown_block` whatever the folder's `format` (R10), which types its header only:
+it is written as it is and never in `escapes`.
+
+**An object deliverable's text** (D8) is the RFC 8785 JSON of its one value, with no final line end (the
+template's own is not written), held to the same 1 MiB limit; a `null` value composes `null`, and the deliverable
+is never empty. `RenderTurn.Render` decides this, by publish's own definitions: the run's "is an object format" is
+`FormatTypes.ExpandedShape(PlanFormats.Expand(format)) == Object`, and the one-value form is
+`SourceTemplates.OneValueRead`, so there is one reading of each. A body that is not in the form (a forged
+document) is S07-006.
+
+### A deliverable's outcome (D4, D5, R1 to R3)
+
+`RunResult.Deliverables` lists a `DeliverableOutcome` for each deliverable decided, in `graph.order`:
+`Key`, `Label`, `Format` (`plaintext`, `markdown_block`, or an object format's bundle key), `Folder` (`""` for the
+root), `State`, `Reason`, `Check` (the gate's row key), `Text` and `ContentHash` (null for a skipped deliverable or a
+failed render, kept for a blocked or held one), and the entry's `Delivery` and `Bundle`.
+
+**Outcomes** are decided in part 06 § 7's order, and a deliverable that needs no gate is final when composed:
+
+| State | When | Reason | The job |
+|---|---|---|---|
+| `Skipped` | its `if` did not hold | `skipped: <printed if> is false`, as every skipped row | goes on |
+| `Failed` | its render failed, or it composed empty under `whenEmpty: fail` | A06-008, or A08-005 *"Deliverable '<id>' was empty, and the workflow fails an empty <label>."* (`<id>` the entry's id, `<label>` as written) | fails |
+| `Held` | composed empty under `hold` | S08-003, `held: empty` | goes on |
+| `Blocked` | composed, and its gate check did not pass | S08-007, `blocked: check '<id>' failed (<detail>)`; or, when the gate could not run, S08-008, `blocked: check '<id>' could not run (<error>)` | goes on |
+| `Released` | composed, and its check passed, was skipped by its own `if`, or it has none | `null`, or S06-006, `released: check '<id>' didn't apply (its if was false)` | goes on |
+
+A skipped, failed or held deliverable does not wait for its gate (a held one is still read composed by its gate
+set). **Empty** is judged after the escape and the render: white space only (`" \n\n"`) is empty, with
+`MarkdownEscape.IsBlank` for a `markdown_block`; a fixed heading is content; an object deliverable never is.
+
+**`<detail>`** is built from the `check_result` alone, never its `message` (an `object` can compute one): with
+`passed` and `total` set, `<passed> of <total> passed`; else with `uncovered` set, `<n> terms missing` (`1 term
+missing`); else `it did not pass`. S08-008's `<error>` is the check's run-time sentence without its final full stop.
+
+**Read forms.** A deliverable's read is `{ value, content, state }`:
+
+| Reader | Released or held | Skipped (R1) | Blocked (R2) |
+|---|---|---|---|
+| in the gate set | `{ value, content, state: "composed" }`, from the moment it is composed | never composed: `null`, `null`, `skipped` | `{ value, content, state: "composed" }` |
+| anyone else | its value, its text, and `released` or `held` | `null`, `null`, `skipped` | `null`, `null`, `blocked`: withheld, not erased |
+
+Reading a skipped or blocked deliverable does not fail the job (R1). A blocked deliverable keeps its composed text
+and hash for the record, is never delivered, and its check's result stays readable. A job whose every deliverable
+is blocked is Completed (R3). **A gate check that fails at run time** (D4) is the one failure that does not fail
+the job: its own `if` or `expression` failing, or its value not being a `check_result` (a gate computing `null` is
+that, with A06-003's wording), settles `Failed` with its sentence, and each deliverable it gates is blocked with
+S08-008; the check reads `null` with `.state` `failed`. Any other check failing at run time fails the job, as
+before. A row's `ValueHash` is the composed hash for a released, held, blocked or empty-failed deliverable, and
+`null` for a skipped one or a failed render.
+
+### Pattern rules are decided by the host (R6)
+
+A rule that holds `matches` or `has_word` (`IJsonLogicRule.ReadsPattern`) is evaluated through
+`IRunHost.EvaluateAsync(RuleCall)`, so a replay reads the stored outcome and never times the pattern again. This
+amends part 09 § 3.1's "`matches` reads no clock" bullet, which now says so. A `RuleCall` is the entry's key, its
+function, the member (`if`, `expression`, `while`, `until`, or a placement's site) and the scope the runner would have
+evaluated the rule over (`RunScope.Data` of the entry's reads, not cut down to the rule's own `var`s, so the host's
+evaluation is the inline one). `RuleOutcome` is the value, or the failure's kind, limit and `FailureDetail`
+(`matches` or `has_word`, which never holds data), or `RuleTurn.PlanFailure`, when the plan is not the job's or lacks
+the entry or its rule: the runner says S07-006, and for a gate check (D4) the gate settles failed and its deliverable
+is blocked. `RuleTurn.Evaluate(plan, call)` is the one definition that the engine's activity and the tests' hosts
+share. A rule that holds neither operation is decided inline as before. The tests' `FakeRunHost` answers a rule at
+once, even when it holds its other answers.
+
+### Delivery
+
+`DeliveryRunner(RunLimits, IDeliveryHost, IRunRecorder).RunAsync(outcomes)` delivers what a completed job released.
+It is a deterministic runner like `PlanRunner`: it awaits no task but the host's and the recorder's, reads no clock
+but `IDeliveryHost.UtcNow`, iterates in a fixed order, and cancels every timer it made when it ends. It never throws
+on a deliverable's text. A null argument is `ArgumentNullException`.
+
+**What is sent where.** `DeliveryPlan.Sends` gives the first attempt of every send, in plan order and then
+`DeliveryPlan.Kinds` order (`email`, `pdf`, `emr`, `zip`), not the order the folder wrote them in (D11). A released
+deliverable has one send per kind of its `delivery`; a folder with `bundle: "zip"` has one send per kind for all its
+released deliverables, at the place of its first, and each deliverable still gets its own row. A deliverable that is
+not released, one with `delivery: []`, and a bundle folder with nothing released have none. A job that failed
+delivers nothing: `DeliveryPlan.NotSentJobFailed` gives each destination of each released deliverable a row `not sent`
+with S06-038, `not sent: the job failed`.
+
+**The rules (D12).** The runner makes the first attempt of every send at once, then waits (`Task.WhenAny` over what is
+in flight and the window's timer) for one to finish.
+
+- A send that is `Sent` is final. A kind the account has not set up (`NotSetUp`) is final at once, `not sent` with
+  S08-006, `not sent: <Kind> isn't set up for this account` (`<Kind>` is `Email`, `PDF`, `EMR` or `Zip`), and never
+  retried. Its row has no attempts and no time.
+- A send that failed is retried after 2 minutes, doubling after, each wait cut to the time the window has left, until
+  it has made `RunLimits.DeliveryAttempts` attempts. No attempt starts at or after `DeliveryMinutes` from the start of
+  delivering, and a destination unsent then is `failed`, its reason `failed: <kind>`. Destinations are sent side by
+  side.
+- **A finished send is always landed.** The window closes only when its own timer ends (or when a retry's wait ends at
+  or after the close). A send's result is read even when the host's clock is already past the close, as under a
+  replay step that starts after it: an email that went out is `sent`, and a failure keeps its real error kind and
+  starts no attempt. Only a send still in flight when the window's timer ends is `failed`, and its attempt is
+  recorded `failed: window`.
+- A row is `delivery:<deliverable key>/<kind>` (D13); `Result` is `sent`, `not sent` or `failed`; `Reason` is
+  S08-006's sentence, `not sent: the job failed`, `failed: <kind>` or `null` when sent; `AtUtc` is the start of
+  the attempt that sent it (null otherwise); `Attempts` each attempt with its start and `sent` or `failed: <error
+  kind>`. `DeliveryResult.Failed` counts failed rows, so a failed bundle counts once per deliverable.
+- Every row is recorded (`IRunRecorder.DeliveryAsync`), in the fixed order, once every result is final or the
+  window has closed. No timer is left outstanding.
+
+`IDeliveryHost.SendAsync` says that a send's failure comes back as an outcome (`DeliverySendOutcome`: `Sent`,
+`NotSetUp` or `Failed` with an error kind) and never as a fault; a fault is the host's own and passes through. The
+engine's host is `DurableDeliveryHost`. The recorder also has `NoticeAsync(RunNotice)` for the operator's alerts
+(D14): `PlanRunner` tells it once of the job's 429 waits passing `CapacityAlertMinutes` (5) in all and once of the
+job reaching `SlowJobPercent` (80) of `jobMinutes`, on a host timer cancelled with the others.
+
+### The sentences
+
+Area 08 says these, besides the rows of `sentences.json` the earlier sections name:
+
+- at publish: S06-009, S06-010, S06-011, S06-014, S06-018, S06-020, S06-021, S06-022, S06-023, S06-025, S06-026,
+  S06-035, A08-001, A08-002 and A08-003 (`CheckSentences`, `DeliverableSentences`), and A08-006 (the engine's fault
+  reading a template);
+- at job start: A08-004, and the refusal of a start no deliverable can come out of (R8);
+- at run time: S08-001, S08-003, S08-006, S08-007, S08-008, S06-006, S06-038 and A08-005 (`RunSentences`).
+
+A sentence with a row in `sentences.json` is that row with its `<…>` filled. A08-001 to A08-006 have no row: they are
+`V31Contract.ChecksAreaSentences`, and the content repo's conformance README lists each with where it is said. The
+rules that part 06 states and another part already says (R-C5, R-C6, R-C8, R-C9, R-D1, R-D3, R-D8, R-D9, R-D12,
+R-D13, R-F1 to R-F5) keep that part's id: one rule, one sentence. A08-006 is the engine's, not the author's: a
+template the reader fails on with an exception other than Scriban's own for unreadable text
+(`ScriptRuntimeException`, `InsufficientExecutionStackException`, which stay A07-005). The publish refusal carries the
+exception's type on `SourceRefusal.EngineFault` (not serialised), `Composition` and `RenderOutcome` carry it too, and
+the engine logs it (engine guide). A07-013 holds at every depth: in a loop over a loop's `.items`, the `item` and every
+read along the chain to the folder item (`item.item` one loop down, `item.item.value.item` two) carries its body.
+
+### The conformance cases
+
+`tests/V31Source/RefusalPackages.Checks.cs` adds a case for each publish sentence above that a source reaches: 15
+cases, all built on the resolver's `example-functions` package. `RefusalPackagesTests.ChecksNotShipped` lists
+the one that has none, A08-006, since no package produces it. A08-004 and A08-005 are said at start and at run
+time, so they are not in that list: it holds only sentences the checker can say. Three area 05 and 06 cases changed
+(`S03-030`, `S05-024`, `S05-025`). `compiled-documents` gains `checked-note`, with every deliverable entry carrying
+`delivery`, `bundle` and `escapes`; `dialect-goldens` gains `deliverable-escaped`, `deliverable-plaintext` and
+`deliverable-object`; `markdown-escape-vectors` gains five (47 in all). The families shared with area 07 are added to,
+never rewritten (R11): `DialectGoldensExport.ExportTo` keeps what it does not produce, and
+`TheCasesAreaSevenExported_AreUnchanged` pins area 07's 40 dialect cases by name and hash.
+
+**Run the exports one filter at a time**, `RefusalPackagesExport`, then `CompiledDocumentsExport`, then
+`DialectGoldensExport`, and read `git status` in the content repo after each. The three share a collection so that
+xUnit runs them one at a time, but a run of all three has once dropped a family's cases from `index.json`:
+
+```
+CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~RefusalPackagesExport"
+CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~CompiledDocumentsExport"
+CONFORMANCE_EXPORT_V31=<content repo root> dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~DialectGoldensExport"
+```
+
+The earlier sections' one-line export commands list all three exporters in one filter; run them as above.
+
+**The one golden switch is `GOLDEN_UPDATE_V31=1`** (R16), everywhere a golden is rewritten: the compiled documents,
+the run goldens (`tests/V31Run/Golden/*.run.txt`, six of them since `checked-note` and `checked-note-outcomes`),
+the dialect and renderer goldens, the escape vectors, and `tests/V31Types/Golden/format-hashes.json`
+(`FormatHashGoldenTests`, which read `UPDATE_V31_GOLDENS` until Task 17). Read each golden after regenerating it.
+
+### Not wired in
+
+31 stays outside `AcceptedSpecVersions`. The engine runs delivery, the alerts and the engine-fault log only where
+`WorkflowPackages__PreviewSpecVersions` lists 31, and the alert and summary timers run only when their settings are
+set (see [the engine at specVersion 31](engine-v31.md)). The 5–30 path, `SendEmailIntakeReplyActivity`,
+`ConsultGenerationOrchestrator` and `RecordDelivery` are read and reused, not changed in behaviour.
