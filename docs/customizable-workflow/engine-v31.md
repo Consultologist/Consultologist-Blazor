@@ -97,7 +97,9 @@ version against git: the bundled manifest `agents/<name>.yaml` must exist and de
 - `Holds(name, version)`.
 
 `ApiServices.ResolveAtStartup` resolves it, with `SpecVersionAdmission` and `EngineLimitSettings`, before the host
-runs. So a missing file, a file not of the published shape, or a manifest at another version stops the host
+runs, but only when `WorkflowPackages__PreviewSpecVersions` admits 31: a 5–30 host never touches `agents/v31`
+(#1505, R15). Every defect in the two files, a version that is not an integer or a missing member included, is the
+catalogue's own `InvalidOperationException` naming the file and the member. So a missing file, a file not of the published shape, or a manifest at another version stops the host
 (`InvalidOperationException`) rather than failing job starts. It is attested against git only, not against Foundry:
 `judgement` 1 exists in Foundry only once the contracts are released, and `AgentAttestationService` does not compare
 the 31 agents.

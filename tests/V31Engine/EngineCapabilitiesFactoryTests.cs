@@ -128,6 +128,50 @@ public class EngineCapabilitiesFactoryTests
     }
 
     [Fact]
+    public void ACatalogueWithANonIntegerVersion_FailsWithAClearMessage()
+    {
+        // #1505 ruling 7: the failure is the catalogue's wrapped startup error naming the file and the member
+        var message = LoadAltered("agents.json", text => text.Replace("\"1\": {", "\"one\": {", StringComparison.Ordinal));
+        Assert.Contains("not the published shape", message, StringComparison.Ordinal);
+        Assert.Contains("agents.json", message, StringComparison.Ordinal);
+        Assert.Contains("agents.judgement.one", message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ACatalogueWithAMissingMember_FailsWithAClearMessage()
+    {
+        var message = LoadAltered("agents.json", text => text.Replace("\"strictRejects\"", "\"strictRejectz\"", StringComparison.Ordinal));
+        Assert.Contains("not the published shape", message, StringComparison.Ordinal);
+        Assert.Contains("agents.json", message, StringComparison.Ordinal);
+        Assert.Contains("strictRejects", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>The message of the <see cref="InvalidOperationException"/> loading a copy of the bundled catalogue whose <paramref name="file"/> is changed by <paramref name="change"/>; any other exception fails the test.</summary>
+    private static string LoadAltered(string file, Func<string, string> change)
+    {
+        var folder = Directory.CreateTempSubdirectory("v31-agents-").FullName;
+        try
+        {
+            var bundled = OutputContractCatalog.ResolveDirectory();
+            Directory.CreateDirectory(Path.Combine(folder, "v31"));
+            foreach (var name in new[] { "bindings.json", "agents.json" })
+                File.Copy(Path.Combine(bundled, "v31", name), Path.Combine(folder, "v31", name));
+            foreach (var yaml in Directory.GetFiles(bundled, "*.yaml"))
+                File.Copy(yaml, Path.Combine(folder, Path.GetFileName(yaml)));
+            var path = Path.Combine(folder, "v31", file);
+            var original = File.ReadAllText(path);
+            var changed = change(original);
+            Assert.NotEqual(original, changed);
+            File.WriteAllText(path, changed);
+            return Assert.Throws<InvalidOperationException>(() => V31AgentsCatalogue.Load(folder)).Message;
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void ACatalogueWhoseAgentHasNoManifestAtItsVersion_StopsTheLoad()
     {
         // attested: each agent version of agents.json is its bundled manifest's (agents/<name>.yaml); else the engine

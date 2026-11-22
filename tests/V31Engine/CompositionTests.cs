@@ -1,6 +1,7 @@
 using System.Reflection;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.V31;
+using Consultologist.Api.Workflow;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -44,25 +45,47 @@ public class CompositionTests
     {
         // #1504 (D9): what Program.cs resolves before the host runs (ApiServices.ResolveAtStartup) includes the 31 agents
         // catalogue; resolved lazily, a missing or incoherent agents/v31 would instead fail every job start, 5-30 included.
-        using (var provider = HostServices())
+        using (var provider = HostServices(preview: "31"))
         {
             ApiServices.ResolveAtStartup(provider);
             Assert.Contains(("judgement", 1), provider.GetRequiredService<V31AgentsCatalogue>().Agents);
         }
 
         using var broken = HostServices(services => services.AddSingleton<V31AgentsCatalogue>(
-            _ => throw new InvalidOperationException("The 31 agents catalogue file 'agents/v31/agents.json' was not found.")));
+            _ => throw new InvalidOperationException("The 31 agents catalogue file 'agents/v31/agents.json' was not found.")), preview: "31");
+        Assert.Contains("agents/v31", Assert.Throws<InvalidOperationException>(() => ApiServices.ResolveAtStartup(broken)).Message);
+    }
+
+    [Fact]
+    public void WithPreviewUnset_StartupNeverReadsTheV31Catalogue()
+    {
+        // #1505 ruling 7 (R15): a 5-30 host does not touch agents/v31; a catalogue that throws when touched is never touched
+        using var provider = HostServices(services => services.AddSingleton<V31AgentsCatalogue>(
+            _ => throw new InvalidOperationException("The 31 agents catalogue was read.")));
+        ApiServices.ResolveAtStartup(provider);
+    }
+
+    [Fact]
+    public void WithPreviewAdmitting31_StartupResolvesIt()
+    {
+        using var provider = HostServices(preview: "31");
+        ApiServices.ResolveAtStartup(provider);
+        Assert.Contains(("judgement", 1), provider.GetRequiredService<V31AgentsCatalogue>().Agents);
+
+        using var broken = HostServices(services => services.AddSingleton<V31AgentsCatalogue>(
+            _ => throw new InvalidOperationException("The 31 agents catalogue file 'agents/v31/agents.json' was not found.")), preview: "31");
         Assert.Contains("agents/v31", Assert.Throws<InvalidOperationException>(() => ApiServices.ResolveAtStartup(broken)).Message);
     }
 
     /// <summary>The host's registrations over a configuration a test can give: a local storage connection string; then <paramref name="change"/>.</summary>
-    private static ServiceProvider HostServices(Action<IServiceCollection>? change = null)
+    private static ServiceProvider HostServices(Action<IServiceCollection>? change = null, string? preview = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["AzureWebJobsStorage"] = "UseDevelopmentStorage=true",
                 ["Auth:Authority"] = "https://login.example.test/",
+                [SpecVersionAdmission.PreviewSetting] = preview,
             })
             .Build();
         var services = new ServiceCollection();

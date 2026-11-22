@@ -29,14 +29,19 @@ public static class ApiServices
     /// What <c>Program.cs</c> resolves after the host is built and before it runs, so a bad setting or catalogue fails at
     /// startup, not at the first job: #1503's <see cref="SpecVersionAdmission"/> and
     /// <see cref="Consultologist.Api.V31.EngineLimitSettings"/>, and #1504's <see cref="Consultologist.Api.V31.V31AgentsCatalogue"/>
-    /// (resolved lazily, a defect in it would fail every job start, 5–30 included, through the 31 starter's store).
+    /// when <see cref="SpecVersionAdmission.Runs31"/> (resolved lazily, a defect in it would fail every 31 job start through the 31 starter's store;
+    /// with the preview setting unset it is not read at all, #1505 R15).
     /// </summary>
     public static void ResolveAtStartup(IServiceProvider services)
     {
         ArgumentNullException.ThrowIfNull(services);
-        services.GetRequiredService<SpecVersionAdmission>();
+        var admission = services.GetRequiredService<SpecVersionAdmission>();
         services.GetRequiredService<Consultologist.Api.V31.EngineLimitSettings>();
-        services.GetRequiredService<Consultologist.Api.V31.V31AgentsCatalogue>();
+        // #1505 (R15): only a host that admits 31 resolves the 31 catalogue; a 5–30 host never touches agents/v31.
+        if (admission.Runs31)
+        {
+            services.GetRequiredService<Consultologist.Api.V31.V31AgentsCatalogue>();
+        }
     }
 
     public static IServiceCollection AddApiServices(this IServiceCollection services)
