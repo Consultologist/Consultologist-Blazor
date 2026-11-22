@@ -116,8 +116,8 @@ internal static partial class Migrate
     /// <summary>
     /// The 31 format of node <paramref name="id"/>, memoised in <paramref name="formats"/>: a leaf's (<see cref="LeafFormat"/>);
     /// a <c>for</c>'s is the list of its <c>ret</c>'s, a <c>while</c>'s its <c>ret</c>'s, an <c>if</c>'s or a
-    /// <c>case</c>'s the union of its bodies' <c>ret</c>s (part 02 § 2.2). What Task 12 derives and checks; written here
-    /// as the flow's placeholder.
+    /// <c>case</c>'s the union of its bodies' <c>ret</c>s (part 02 § 2.2). The flow's format is this
+    /// derived one, which the 31 checker holds it to; the derived-flags pass leaves it as written here.
     /// </summary>
     private static JsonNode FormatOfNode(Migrated m, NodeTree tree, string id, Dictionary<string, JsonNode> formats, int depth)
     {
@@ -328,7 +328,7 @@ internal static partial class Migrate
     /// <summary>
     /// A flow node's <c>index.json</c> (part 04 § 1 and its kind's section): § 1's members in <see cref="SourceShapes"/>'
     /// order, <c>producer</c> <c>"computed"</c>, the description as its lines, the format and the flags as placeholders
-    /// (Task 12 derives and rewrites them; <c>reproducible</c> is <c>true</c> only when every body node's is), then the
+    /// (<see cref="Derived"/> derives and rewrites them; <c>reproducible</c> is <c>true</c> only when every body node's is), then the
     /// kind's members; each condition converted (<see cref="Condition"/>). Its children are written inside its folder.
     /// </summary>
     private static void WriteFlow(Migrated m, NodeTree tree, string id, Dictionary<string, CaseShape> cases)
@@ -433,16 +433,17 @@ internal static partial class Migrate
     };
 
     /// <summary>
-    /// The placeholder <c>reproducible</c> (Task 12 derives it): a leaf's 30 claim or its kind's default (part 02 § 1.1:
-    /// <c>agent</c> <c>false</c>, <c>rendered</c> and <c>computed</c> <c>true</c>); a flow node's, <c>true</c> only when
-    /// every node of its body is.
+    /// The placeholder <c>reproducible</c> (<see cref="Derived"/> derives it): a leaf's kind's value (part 02 § 1.1:
+    /// <c>agent</c> <c>false</c>, <c>rendered</c> and <c>computed</c> <c>true</c>, whatever 30 claimed, since the 31 type
+    /// rules refuse any other and the derivation would not run; a 30 claim that differs is listed by <see cref="Derived"/>);
+    /// a flow node's, <c>true</c> only when every node of its body is.
     /// </summary>
     private static bool Reproducible(Migrated m, NodeTree tree, string id, int depth)
     {
         if (depth > SourceBounds.JsonDepth || !tree.ById.TryGetValue(id, out var node))
             return false;
         if (!WorkflowImpliedPaths.IsFlow(node))
-            return node.Reproducible ?? LeafKind(m, node) is "rendered" or "computed";
+            return LeafKind(m, node) is "rendered" or "computed";
         return NodeTree.Children(node).All(child => Reproducible(m, tree, child, depth + 1));
     }
 }

@@ -24,11 +24,12 @@ public class MigrateChecksTests
     {
         var result = MigrateNodesTests.Migrated("composer-gates");
 
-        // Part 06 § 1.1's members in the Check shape's order; the expression as part 03 § 7's migrated example writes it.
+        // Part 06 § 1.1's members in the Check shape's order; the expression as part 03 § 7's migrated example writes it;
+        // the flags derived (Task 12): it reads agents' concept lists.
         var (header, body) = MigrateNodesTests.Md(result, "checks/note_coverage.md");
         Assert.Equal(
             """
-            {"kind":"computed","producer":"computed","label":"Note coverage check","description":null,"format":"check_result","reproducible":true,"modelDerived":false,"runDependent":false,"profileCarrying":false,"if":null,"expression":{"terms_subset":[{"var":"node.extract_input_terms.value"},{"var":"node.extract_note_terms.value"},"The note does not cover every clinical term in the draft."]}}
+            {"kind":"computed","producer":"computed","label":"Note coverage check","description":null,"format":"check_result","reproducible":true,"modelDerived":true,"runDependent":false,"profileCarrying":false,"if":null,"expression":{"terms_subset":[{"var":"node.extract_input_terms.value"},{"var":"node.extract_note_terms.value"},"The note does not cover every clinical term in the draft."]}}
             """,
             header.ToJsonString(Unescaped));
         Assert.Equal(string.Empty, body);
@@ -78,7 +79,7 @@ public class MigrateChecksTests
             .Where(f => f.Spec.Producer == WorkflowFormatProducers.Computed).Select(f => f.Id).Order(StringComparer.Ordinal));
 
     /// <summary>composer-gates with copy_coverage moved into a new if node cov_flow (then: copy_coverage, cov_line).</summary>
-    private static Migration31Result WithCheckInAnIf() => MigrateNodesTests.Migrated("composer-gates",
+    internal static Migration31Result WithCheckInAnIf() => MigrateNodesTests.Migrated("composer-gates",
         root =>
         {
             var nodes = root["nodes"]!.AsArray();

@@ -9,7 +9,7 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// of the <c>rendered</c> producer a <c>rendered</c> node; an attested or custom one an <c>agent</c> node. A
 /// <c>terms_subset</c> node (the <c>computed</c> producer) gets no file: it is read at <c>check.&lt;id&gt;</c> and Task 11
 /// writes the check. Every condition is converted (<see cref="Condition"/>), a single snippet's <c>if</c> among them. The
-/// flags are placeholders, for Task 12; an agent's <c>parts</c> is Task 9's and its macros Task 10's.
+/// flags are placeholders, which <see cref="Derived"/> rewrites; an agent's <c>parts</c> is Task 9's and its macros Task 10's.
 /// </summary>
 internal static partial class Migrate
 {

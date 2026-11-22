@@ -160,6 +160,15 @@ internal static class MigrationSentences
         $"{subject} can be null, which a 31 case sends to its else; add an else body.";
 
     /// <summary>
+    /// A10-010 (part 02 § 11's last bullet): node <paramref name="id"/> declared <c>reproducible</c>
+    /// <paramref name="claimed"/> at 30, and the derived <paramref name="written"/> (part 02 § 1.1) is what 31 holds.
+    /// </summary>
+    public static string ReproducibleDiffered(string id, bool claimed, bool written) =>
+        $"Node '{id}' declared reproducible {Word(claimed)} at 30; {Word(written)} is written, as its reads give it.";
+
+    private static string Word(bool value) => value ? "true" : "false";
+
+    /// <summary>
     /// A10-030 (D16): node <paramref name="id"/> declared <paramref name="member"/> at 30, which 31 has no member for (a
     /// classifier's <c>with</c> values); it is not written.
     /// </summary>

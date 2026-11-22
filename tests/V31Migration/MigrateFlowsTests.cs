@@ -10,15 +10,13 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// <summary>
 /// #1507 (specVersion 31, area 10; part 10 § 1.2 the flow rows; part 04 §§ 1 to 5): the flow nodes. Each becomes its folder
 /// whose <c>index.json</c> is its header, its body inside it; the loop headers of § 2.8, the while of § 3.5 and the branches
-/// of § 5.4 are the spec's examples, member for member, but for the flags (Task 12); <c>in</c> is a reference string;
+/// of § 5.4 are the spec's examples, member for member, the derived flags among them (<c>Migrate.Derived</c>); <c>in</c> is a reference string;
 /// <c>labelField</c> is <c>itemLabel</c> on each loop over it; a loop with <c>until</c> is sequential; a <c>case</c> with no
 /// <c>else</c> gains an empty branch for the values its branches miss; every <c>ret</c> is the child's full name.
 /// </summary>
 public class MigrateFlowsTests
 {
-    private static readonly string[] Flags = ["reproducible", "modelDerived", "runDependent", "profileCarrying"];
-
-    /// <summary>Asserts <paramref name="actual"/> is <paramref name="expected"/> member for member but for the flags, and that its members are in <paramref name="shape"/>'s order.</summary>
+    /// <summary>Asserts <paramref name="actual"/> is <paramref name="expected"/> member for member, the flags included, and that its members are in <paramref name="shape"/>'s order.</summary>
     private static void AssertExample(string expected, JsonObject actual, DeclarationShape shape)
     {
         var example = JsonNode.Parse(expected)!.AsObject();
@@ -26,8 +24,6 @@ public class MigrateFlowsTests
         Assert.Equal(example.Select(m => m.Key).Order(StringComparer.Ordinal), actual.Select(m => m.Key).Order(StringComparer.Ordinal));
         foreach (var (member, value) in example)
         {
-            if (Flags.Contains(member))
-                continue;
             Assert.True(JsonNode.DeepEquals(value, actual[member]), $"{member}: expected {value?.ToJsonString()}, was {actual[member]?.ToJsonString()}");
         }
     }

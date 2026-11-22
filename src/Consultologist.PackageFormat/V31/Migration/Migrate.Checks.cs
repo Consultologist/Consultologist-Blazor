@@ -8,7 +8,7 @@ namespace Consultologist.PackageFormat.V31.Migration;
 /// migrated check): the checks pass. Each 30 <c>terms_subset</c> node (a format of the <c>computed</c> producer, which the
 /// nodes pass wrote no file for) becomes <c>checks/&lt;id&gt;.md</c>, listed in <c>checks/index.json</c> in 30's order:
 /// <c>kind: computed</c>, <c>producer: computed</c>, its label, <c>description: null</c>, <c>format: check_result</c>,
-/// the flags (placeholders until Task 12), <c>if: null</c> (30 checks are not gated), and <c>expression</c> the operation
+/// the flags (placeholders, which <see cref="Derived"/> rewrites), <c>if: null</c> (30 checks are not gated), and <c>expression</c> the operation
 /// over its two operands, each read at its <c>.value</c>, with <c>failWith</c> the 30 sentence as a literal. Its body is
 /// empty. Every reader of <c>node.&lt;id&gt;</c> already reads <c>check.&lt;id&gt;</c>: the nodes pass registered the read
 /// (<see cref="Migrated.NodeReads"/>, <see cref="Migrated.Keys"/>), which the converter and the template rewriter follow.

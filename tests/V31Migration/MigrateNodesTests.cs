@@ -96,7 +96,7 @@ public class MigrateNodesTests
 
         Assert.Equal(Compact("""
             { "kind": "computed", "producer": "computed", "label": "Counting the sections", "description": null, "format": "number",
-              "reproducible": true, "modelDerived": false, "runDependent": false, "profileCarrying": false, "if": null,
+              "reproducible": true, "modelDerived": true, "runDependent": false, "profileCarrying": false, "if": null,
               "expression": { "size": [ { "var": "node.plan.value.sections" } ] } }
             """), header.ToJsonString());
         Assert.Equal("", body);
@@ -182,19 +182,6 @@ public class MigrateNodesTests
         Assert.True(header.ContainsKey("parts"));
         Assert.Null(header["parts"]);
         Assert.False(header["ordered"]!.GetValue<bool>());
-    }
-
-    [Fact]
-    public void TheFlags_ArePlaceholders_ReproducibleAs30ClaimedIt()
-    {
-        var result = Migrated("example-nested-note", root => Node(root, "plan")["reproducible"] = true);
-
-        var (claimed, _) = Md(result, "nodes/plan.md");
-        Assert.True(claimed["reproducible"]!.GetValue<bool>());   // Task 12 derives false and lists the claim (A10-010)
-        var (agent, _) = Md(result, "nodes/refine/judge.md");
-        Assert.False(agent["reproducible"]!.GetValue<bool>());
-        foreach (var flag in new[] { "modelDerived", "runDependent", "profileCarrying" })
-            Assert.False(agent[flag]!.GetValue<bool>());
     }
 
     [Fact]

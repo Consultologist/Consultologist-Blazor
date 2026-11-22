@@ -95,8 +95,9 @@ public static class WorkflowPackageMigration30To31
     /// (<see cref="V31.Migration.Migrate.Inputs"/>), the nodes, the flows and their conditions
     /// (<see cref="V31.Migration.Migrate.Nodes"/>), the template bodies (<see cref="V31.Migration.Migrate.Templates"/>), the
     /// macros and their choices (<see cref="V31.Migration.Migrate.Macros"/>), the checks
-    /// (<see cref="V31.Migration.Migrate.Checks"/>) and the deliverables (<see cref="V31.Migration.Migrate.Deliverables"/>). The
-    /// files are serialised once, at the end.
+    /// (<see cref="V31.Migration.Migrate.Checks"/>), the deliverables (<see cref="V31.Migration.Migrate.Deliverables"/>) and,
+    /// last, every header's derived flags (<see cref="V31.Migration.Migrate.Derived"/>, D15). The files are serialised once,
+    /// at the end.
     /// </summary>
     public static Migration31Result Migrate(string manifestJson, IReadOnlyDictionary<string, string> files, Migration31Options options)
     {
@@ -156,6 +157,7 @@ public static class WorkflowPackageMigration30To31
         V31.Migration.Migrate.Macros(migrated);
         V31.Migration.Migrate.Checks(migrated);
         V31.Migration.Migrate.Deliverables(migrated);
+        V31.Migration.Migrate.Derived(migrated);
         return migrated.Result(at30.Notices);
     }
 

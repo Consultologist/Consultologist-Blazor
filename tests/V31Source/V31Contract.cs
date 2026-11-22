@@ -149,7 +149,8 @@ internal static class V31Contract
     /// A10-003, A10-004, A10-007, A10-040 to A10-042 and A10-045: the macros pass, part 10 §§ 1.3, 1.4, part 05 § 8, D3 to D5;
     /// A10-043 and A10-044: a MacroChoices entry the 31 start refuses, part 10 § 1.3, R7; A10-002, A10-047 and A10-048: a deliverable
     /// macro with a condition, one naming no single macro, a snippet copy's id, the deliverables pass, part 10 § 1.4, D3, D4;
-    /// A10-046: a check inside a node flow, the checks pass, part 06 §§ 1, 3).
+    /// A10-046: a check inside a node flow, the checks pass, part 06 §§ 1, 3; A10-010: a 30 reproducible claim the derived-flags
+    /// pass did not write, part 02 § 11).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -161,6 +162,7 @@ internal static class V31Contract
         ["A10-006"] = "Renamed <kind> '<id>' to '<new id>': '<id>' is reserved at 31.",
         ["A10-007"] = "Macro '<id>' is now offered by the input '<input id>'.",
         ["A10-008"] = "<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.",
+        ["A10-010"] = "Node '<id>' declared reproducible <true | false> at 30; <true | false> is written, as its reads give it.",
         ["A10-012"] = "The package is at specVersion <n>; migration starts at 5.",
         ["A10-013"] = "Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.",
         ["A10-015"] = "The package is already at specVersion <n>.",
