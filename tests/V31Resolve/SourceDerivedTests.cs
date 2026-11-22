@@ -88,7 +88,7 @@ public class SourceDerivedTests
     // ---- The flags -----------------------------------------------------------------------------
 
     [Fact]
-    public void Flags_SpreadAlongContent_NeverThroughAConditionOrAnEarlierPass()
+    public void Flags_SpreadAlongContentAndEarlierPasses_NeverThroughACondition()
     {
         var derived = Accepted(WithGate(ResolveFixture.NestedNote(), PlanHasText), NestedTemplates());
         Assert.True(derived.Complete);
@@ -110,15 +110,19 @@ public class SourceDerivedTests
         Assert.True(derived.Entries["node.gate"].FlagsKnown);
         Assert.True(derived.Entries["deliverable.note"].ModelDerived);
 
-        // A judge that reads run.date makes the while's decision run-dependent, but neither the summary that reads its
-        // earlier pass nor the while that returns the summary.
+        // A judge that reads run.date makes the while's decision run-dependent, and (#1505, R5) the summary that reads
+        // its earlier pass and the while that returns the summary.
         var reads = NestedReads();
         reads["node.refine.judge"] = ["node.draft_summary.content", "run.date"];
         var files = ResolveFixture.NestedNote().WithJson("nodes/refine/judge.md", h => h["runDependent"] = true);
+        Assert.Equal(["S03-036 nodes/refine/draft_summary.md", "S04-016 nodes/refine/index.json"],
+            Run(files, new StubTemplates(reads, everyBody: false)).Refusals.Select(r => $"{r.Id} {r.Path}"));
+        files.WithJson("nodes/refine/draft_summary.md", h => h["runDependent"] = true)
+            .WithJson("nodes/refine/index.json", h => h["runDependent"] = true);
         derived = Accepted(files, new StubTemplates(reads, everyBody: false));
         Assert.True(derived.Entries["node.refine.judge"].RunDependent);
-        Assert.False(derived.Entries["node.refine.draft_summary"].RunDependent);
-        Assert.False(derived.Entries["node.refine"].RunDependent);
+        Assert.True(derived.Entries["node.refine.draft_summary"].RunDependent);
+        Assert.True(derived.Entries["node.refine"].RunDependent);
         Assert.Contains(derived.Warnings, w => w.Id == "S03-037"
             && w.Sentence == "While 'refine' while reads run.date; its decision can differ between runs with the same inputs.");
         Assert.Equal(["run.date"], derived.RunFacts);
@@ -396,14 +400,10 @@ public class SourceDerivedTests
     public void AnEarlierPass_CountsTowardReproducible()
     {
         // The while returns a computed node that reads only the judge's earlier pass: an agent's output, so the
-        // while is not reproducible, and, an earlier pass being no content, not model-derived either.
+        // while is not reproducible, and (#1505, R5) model-derived.
         var files = ResolveFixture.NestedNote()
-            .WithJson("nodes/refine/index.json", h =>
-            {
-                h["format"] = "boolean";
-                h["modelDerived"] = false;
-            })
-            .With("nodes/refine/draft_summary.md", Md(SourceFixture.Node("computed", "Checking the last judgement", "\"boolean\"", true, false,
+            .WithJson("nodes/refine/index.json", h => h["format"] = "boolean")
+            .With("nodes/refine/draft_summary.md", Md(SourceFixture.Node("computed", "Checking the last judgement", "\"boolean\"", true, true,
                 "\"if\": null, \"expression\": { \"blank\": [{ \"var\": \"pass.previous.node.judge.content\" }] }"), ""))
             .With("nodes/refine/judge.md", Agent("Judging the summary", "\"verdict\"",
                 "Say whether the summary is good or needs another pass.\n\n{{ node.draft_summary.value }}\n"))
@@ -412,6 +412,116 @@ public class SourceDerivedTests
         Assert.False(Accepted(files).Entries["node.refine"].Reproducible);
         AssertRefusal(files.WithJson("nodes/refine/index.json", h => h["reproducible"] = true), null, "S04-015",
             "While 'refine' declares reproducible true; its body makes it false.", "nodes/refine/index.json");
+    }
+
+    // ---- An earlier pass passes the flags on (#1505, R5) ---------------------------------------
+
+    private const string Twice = "{ \"<\": [{ \"var\": \"pass.number\" }, 2] }";
+
+    private const string LastDraft = "pass.previous.node.draft.content";
+
+    /// <summary>
+    /// <paramref name="files"/> with the while <c>redraft</c> (its <c>while</c> rule <paramref name="condition"/>) of
+    /// <c>draft</c>, written <paramref name="draft"/>, and the computed <c>probe</c>, its <c>ret</c>, which reads only
+    /// <c>pass.previous.node.draft.content</c>. Each declares every flag false but <paramref name="flag"/>: the while
+    /// declares it true, the probe <paramref name="declared"/>; the while declares <c>reproducible</c> <paramref name="reproducible"/>.
+    /// </summary>
+    private static Dictionary<string, byte[]> Redrafting(Dictionary<string, byte[]> files, string draft, string flag, bool declared,
+        bool reproducible, string condition = Twice, string read = LastDraft) =>
+        Listing(files, "redraft")
+            .With("nodes/redraft/index.json", Json(SourceFixture.Node("while", "Redrafting the note", Yes, reproducible, false,
+                $"\"while\": {condition}, \"max\": 3, \"until\": null, \"checkFirst\": false, "
+                + "\"nodes\": [\"draft\", \"probe\"], \"ret\": \"node.redraft.probe\"")))
+            .WithJson("nodes/redraft/index.json", h => h[flag] = true)
+            .With("nodes/redraft/draft.md", draft)
+            .With("nodes/redraft/probe.md", Computed("Probing the last draft", Yes, $"{{ \"blank\": [{{ \"var\": \"{read}\" }}] }}", false))
+            .WithJson("nodes/redraft/probe.md", h => h[flag] = declared);
+
+    /// <summary>
+    /// The draft and what the probe reads of it: an agent (<c>.content</c>), a computed node reading <c>run.id</c>
+    /// (<c>.value</c>), or a call of <see cref="Signed"/>'s <c>sign</c> passing <c>profile.signature</c> (<c>.content</c>).
+    /// </summary>
+    private static (Func<Dictionary<string, byte[]>> Files, string Draft, bool Reproducible, string Read) Drafted(string flag) => flag switch
+    {
+        "modelDerived" => (Minimal, Agent("Drafting the note", Plain, "Draft the note for Margaret Okafor.\n\n{{ input.consult_draft.content }}\n"),
+            false, LastDraft),
+        "runDependent" => (Minimal, Computed("Naming the run", Text, "{ \"var\": \"run.id\" }", true), true, "pass.previous.node.draft.value"),
+        _ => (() => Signed(DraftHasText), Md(SourceFixture.Node("call", "Signing the draft", Plain, true, false,
+            "\"if\": null, \"function\": \"sign\", \"with\": { \"sig\": \"profile.signature\" }").Replace(
+            "\"profileCarrying\": false", "\"profileCarrying\": true", StringComparison.Ordinal), ""), true, LastDraft),
+    };
+
+    /// <summary>
+    /// The probe reading only the draft's earlier pass, declaring <paramref name="flag"/> false: S03-036, naming the read;
+    /// declaring it true: published, the probe and the while carrying it and no other flag.
+    /// </summary>
+    private static void AnEarlierPassRead_Carries(string flag)
+    {
+        var (files, draft, reproducible, read) = Drafted(flag);
+        AssertRefusal(Redrafting(files(), draft, flag, false, reproducible, read: read), null, "S03-036",
+            $"Node 'probe' declares {flag} false, but its reads make it true: {read}.", "nodes/redraft/probe.md");
+
+        var derived = Accepted(Redrafting(files(), draft, flag, true, reproducible, read: read));
+        var flags = new Dictionary<string, Func<DerivedEntry, bool>>
+        {
+            ["modelDerived"] = e => e.ModelDerived,
+            ["runDependent"] = e => e.RunDependent,
+            ["profileCarrying"] = e => e.ProfileCarrying,
+        };
+        foreach (var (name, of) in flags)
+        {
+            Assert.Equal(name == flag, of(derived.Entries["node.redraft.probe"]));
+            Assert.Equal(name == flag, of(derived.Entries["node.redraft"]));
+        }
+    }
+
+    [Fact]
+    public void AnEarlierPassRead_OfAnAgent_IsModelDerived() => AnEarlierPassRead_Carries("modelDerived");
+
+    [Fact]
+    public void AnEarlierPassRead_OfARunFact_IsRunDependent()
+    {
+        AnEarlierPassRead_Carries("runDependent");
+
+        // The probe is a computed node: its run-dependence is warned of, naming the earlier pass's read.
+        var (files, draft, reproducible, read) = Drafted("runDependent");
+        Assert.Contains(Accepted(Redrafting(files(), draft, "runDependent", true, reproducible, read: read)).Warnings,
+            w => (w.Id, w.Path) == ("S03-038", "nodes/redraft/probe.md") && w.Sentence.Contains(read, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void AnEarlierPassRead_OfProfileText_IsProfileCarrying() => AnEarlierPassRead_Carries("profileCarrying");
+
+    [Fact]
+    public void ACondition_ReadingProfileTextOfAnEarlierPass_IsRefused()
+    {
+        var (files, draft, reproducible, _) = Drafted("profileCarrying");
+        AssertRefusal(Redrafting(files(), draft, "profileCarrying", true, reproducible,
+                $"{{ \"!\": [{{ \"blank\": [{{ \"var\": \"{LastDraft}\" }}] }}] }}"), null, "S03-044",
+            $"While 'redraft' reads {LastDraft}, which carries profile text; prompts, parts and conditions don't read profile text.",
+            "nodes/redraft/index.json");
+    }
+
+    [Fact]
+    public void EarlierPasses_StayOutOfTheOrderAndTheCircles()
+    {
+        // The summary and its judge each read the other's earlier pass: no circle, and the order is the golden's.
+        var golden = CompiledGoldenTests.Cases().Single(c => c.Name == "nested-note");
+        var reading = golden with
+        {
+            Source = () => golden.Source()
+                .With("nodes/refine/draft_summary.md", Agent("Drafting the summary", Plain,
+                    "Summarise the note in two sentences for Dr A. Sample.\n\n{{ pass.previous.node.judge.content }}\n"))
+                .With("nodes/refine/judge.md", Agent("Judging the summary", "\"verdict\"",
+                    "Say whether the summary is good or needs another pass.\n\n{{ pass.previous.node.draft_summary.content }}\n")),
+        };
+        var compiled = CompiledGoldenTests.Published(reading);
+        var order = JsonNode.Parse(compiled.Resolve)!["graph"]!["order"]!.ToJsonString();
+        var expected = JsonNode.Parse(File.ReadAllText(Path.Combine(CompiledGoldenTests.GoldenFolder(), "nested-note.resolve.json")))!
+            ["graph"]!["order"]!.ToJsonString();
+        Assert.Equal(expected, order);
+        Assert.Contains("pass.previous.node.judge.content", JsonNode.Parse(compiled.Resolve)!["nodes"]!["node.refine.draft_summary"]!["reads"]!.ToJsonString(),
+            StringComparison.Ordinal);
     }
 
     // ---- A condition passes no flag on (part 07 § 2.5) -----------------------------------------

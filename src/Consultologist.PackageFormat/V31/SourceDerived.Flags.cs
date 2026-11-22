@@ -4,10 +4,10 @@ namespace Consultologist.PackageFormat.V31;
 
 /// <summary>
 /// #1502 (specVersion 31, area 05): the flags of every vertex of a <see cref="DerivedGraph"/>, by
-/// <see cref="LineageFlags.Derive"/> over its content reads (an agent starts model-derived, a body placing a
-/// profile-reading macro and a profile field start profile-carrying, a <c>run.*</c> read is run-dependent); whether what
-/// each is made from reaches a body that is not known (the same spread, started at each unknown body); and each node's
-/// derived <c>reproducible</c> (part 02 § 1.1).
+/// <see cref="LineageFlags.Derive"/> over its content reads and its reads of an earlier pass (<see cref="Lineage"/>: an
+/// agent starts model-derived, a body placing a profile-reading macro and a profile field start profile-carrying, a
+/// <c>run.*</c> read is run-dependent); whether what each is made from reaches a body that is not known (the same
+/// spread, started at each unknown body); and each node's derived <c>reproducible</c> (part 02 § 1.1).
 /// </summary>
 internal sealed class Derivation
 {
@@ -22,10 +22,17 @@ internal sealed class Derivation
         Resolution = resolution;
         Package = package;
         Flags = LineageFlags.Derive(graph.Vertices
-            .Select(v => new LineageNode(v.Id, v.StartsModel, v.StartsProfile, Reads(v.Content))).ToList());
+            .Select(v => new LineageNode(v.Id, v.StartsModel, v.StartsProfile, Reads(Lineage(v)))).ToList());
         unknown = LineageFlags.Derive(graph.Vertices
-            .Select(v => new LineageNode(v.Id, !v.BodyKnown, false, Reads(v.Content))).ToList());
+            .Select(v => new LineageNode(v.Id, !v.BodyKnown, false, Reads(Lineage(v)))).ToList());
     }
+
+    /// <summary>
+    /// #1505 (area 08; R5, ruled by the owner, 05-D31): what <paramref name="vertex"/>'s flags follow: its content reads
+    /// and its reads of an earlier pass (<c>pass.previous…node.&lt;id&gt;</c>, <c>pass.history</c>), the content first (a
+    /// flag's cause is the first read that makes it true). An earlier pass stays no edge of the graph's order or of a circle.
+    /// </summary>
+    public static IEnumerable<GraphRead> Lineage(Vertex vertex) => vertex.Content.Concat(vertex.Other.Where(r => r.Earlier));
 
     public DerivedGraph Graph { get; }
 
@@ -312,7 +319,7 @@ public static partial class SourceDerived
             if (read == null || !seen.Add(read.Id!) || !derived.Graph.ById.TryGetValue(read.Id!, out var vertex))
                 return null;
             because = derived.Value(vertex, LineageFlag.RunDependent).Because;
-            reads = vertex.Content;
+            reads = Derivation.Lineage(vertex).ToList();
         }
 
         return null;

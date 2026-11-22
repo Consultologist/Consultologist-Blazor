@@ -20,7 +20,8 @@ public sealed record LineageRead(string Path, string? Key);
 
 /// <summary>
 /// #1501 (specVersion 31, area 04): one node of the graph. <paramref name="ContentReads"/> are what its value is
-/// made from (§ 4.4 "How far it spreads"): never a condition's reads, never a read of an earlier pass.
+/// made from (§ 4.4 "How far it spreads"): never a condition's reads. #1505 (area 08; R5, ruled by the owner): the
+/// resolver includes a read of an earlier pass, which the flags follow.
 /// </summary>
 public sealed record LineageNode(string Key, bool StartsModelDerived, bool StartsProfileCarrying, IReadOnlyList<LineageRead> ContentReads);
 

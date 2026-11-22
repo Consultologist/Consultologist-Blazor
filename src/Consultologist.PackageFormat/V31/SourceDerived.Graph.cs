@@ -10,8 +10,8 @@ namespace Consultologist.PackageFormat.V31;
 /// earlier pass); <paramref name="Canonical"/> its D4 form, empty for what is no read of the entry's (a <c>ret</c>, a
 /// call's function, a folder's items, a renderer piped into, a macro placed); <paramref name="Pass"/> whether it reads through <c>pass</c>
 /// (no circle), <paramref name="Earlier"/> whether it reads an earlier pass (<c>pass.previous…</c>, <c>pass.history</c>:
-/// never content). <paramref name="Carries"/> is false for a read of what is no value's content (a node's
-/// <c>.state</c>, <c>.stopped</c>, <c>.passes</c>, named as <c>node.&lt;id&gt;</c>, through <c>pass</c> or through
+/// never content, no edge of the order or a circle; #1505, R5: the flags follow it). <paramref name="Carries"/> is false
+/// for a read of what is no value's content (a node's <c>.state</c>, <c>.stopped</c>, <c>.passes</c>, named as <c>node.&lt;id&gt;</c>, through <c>pass</c> or through
 /// <c>item.nodes</c>; an item's <c>.id</c> or <c>.state</c>): it carries no flag. #1504 (area 07): <paramref name="Sent"/>
 /// is false for a body's read that only a placed macro's body makes (<see cref="TemplateReads.Substituted"/>): it is
 /// substituted into the reply, never sent to a model.
@@ -43,7 +43,10 @@ internal sealed class Vertex(string id, string key, SourceFunction? function, bo
 
     public List<GraphRead> Conditions { get; } = [];
 
-    /// <summary>Reads that count among <c>reads</c> but are neither content nor a condition (an earlier pass's read in a body).</summary>
+    /// <summary>
+    /// Reads that count among <c>reads</c> but are neither content nor a condition (an earlier pass's read in a body;
+    /// #1505, R5: the flags follow it).
+    /// </summary>
     public List<GraphRead> Other { get; } = [];
 
     /// <summary>The body nodes of a flow node (for circles: a flow node waits for its body).</summary>
@@ -538,7 +541,7 @@ internal sealed class DerivedGraph
         if (at + 1 < s.Count && s[at] == "node" && frame.While(up) is { } loop
             && ScopeTree.Walk(loop.Body.Nodes).FirstOrDefault(n => n.Id == s[at + 1]) is { } node)
         {
-            // An earlier pass's node is named (reproducible and the decisions follow it), but is never content.
+            // An earlier pass's node is named (reproducible, the flags and the decisions follow it), but is never content.
             var member = at + 2 < s.Count ? s[at + 2] : null;
             return plain with { Id = prefix + node.Key, Key = earlier ? null : node.Key, Earlier = earlier, Carries = !RunFact(member) };
         }
