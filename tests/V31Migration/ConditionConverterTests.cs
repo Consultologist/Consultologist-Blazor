@@ -429,6 +429,8 @@ public class ConditionConverterTests
     [Theory]
     [InlineData("{ a: input.age, a: input.notes }", null, "S10-003")]
     [InlineData("{ \"a\": input.age }", null, "A04-008")]
+    // A computed field name: Scriban's parser takes only an identifier or a string there, so the text does not parse.
+    [InlineData("{ (input.notes): input.age }", null, "S10-003")]
     [InlineData("[input.age, -1]", """[{"var":"input.age.value"},-1]""", "")]
     [InlineData("null", null, "S10-003")]
     public void AValueNearTheTable_ConvertsOrRefuses_NeverThrows(string expression, string? logic, string ids)
