@@ -78,6 +78,9 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-012 | refusal | `The package is at specVersion <n>; migration starts at 5.` |
 | A10-013 | notice | `Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.` |
 | A10-014 | notice | `<package> could run for about <n> minutes in the worst case; this engine stops a job after <limit> minutes.` (part 10's own words; used only if `sentences.json` has no row for it) |
+| A10-015 | refusal | `The package is already at specVersion <n>.` (the earlier rungs' sentence; Task 5) |
+| A10-016 | refusal | `The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.` (Task 5) |
+| A10-017 | refusal | `At specVersion <n>: <refusal>` (an earlier rung's own refusal, unchanged, naming the rung as the Editor does; D2, Task 5) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 
@@ -238,11 +241,11 @@ consultologist-package-format (m39-build)   package-format-v31.md ch. 10, v31/sc
   ```
 - `tests/V31Migration/MigrationFixture.cs`: `Options(string package)` (the published registry as `V31Contract.PublishedTypes()`, `CompiledGoldenTests.Fixed`, `TestFormats.Catalog`, `ExampleChoices` for the package), `Migrate(string package)` over `ByteEquivalenceFixtures.ReadPackage`.
 
-- [ ] **Step 1: Write the failing tests.** `APackageBelow5_IsRefused` (A10-012; `Files` and `ManifestJson` are the input's). `AManifestThatDoesNotRead_IsRefused`. `A31Package_IsRefused` (*"The package is already at specVersion 31."*). `AnOlderPackage_IsRaisedThroughEveryRung` (a 24 fixture and a 27 fixture from the existing migration tests reach 30 by `To30`, equal to running the rungs by hand as `tests/WorkflowPackageMigration27To28Tests.cs` does). `TheStageTo24_IsTheScripts` (the moved code gives what the script's gave on the script's existing fixture, if one exists; otherwise on `EditorFixtures`' pre-23 package). `Migrate` on a 30 package returns `Succeeded` with a manifest whose `specVersion` is 31 (nothing else asserted yet).
-- [ ] **Step 2: Run; they fail.**
-- [ ] **Step 3: Implement** the move, the chain and the entry point's gates.
-- [ ] **Step 4: Run** the area's tests and `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`: green.
-- [ ] **Step 5: Commit and push.**
+- [x] **Step 1: Write the failing tests.** `APackageBelow5_IsRefused` (A10-012; `Files` and `ManifestJson` are the input's). `AManifestThatDoesNotRead_IsRefused`. `A31Package_IsRefused` (*"The package is already at specVersion 31."*). `AnOlderPackage_IsRaisedThroughEveryRung` (a 24 fixture and a 27 fixture from the existing migration tests reach 30 by `To30`, equal to running the rungs by hand as `tests/WorkflowPackageMigration27To28Tests.cs` does). `TheStageTo24_IsTheScripts` (the moved code gives what the script's gave on the script's existing fixture, if one exists; otherwise on `EditorFixtures`' pre-23 package). `Migrate` on a 30 package returns `Succeeded` with a manifest whose `specVersion` is 31 (nothing else asserted yet).
+- [x] **Step 2: Run; they fail.**
+- [x] **Step 3: Implement** the move, the chain and the entry point's gates.
+- [x] **Step 4: Run** the area's tests and `dotnet test Consultologist.sln --filter "FullyQualifiedName!~Consultologist.Web.E2E.Tests"`: green.
+- [x] **Step 5: Commit and push.**
 
 ### Task 6: The layout, the manifest, inputs and formats
 

@@ -139,11 +139,16 @@ internal static class V31Contract
 
     /// <summary>
     /// #1507: area 10's own sentences (<c>A10-NNN</c>), as plan area-10-migration lists them, each added by the task that
-    /// first says it (A10-008: a <c>!x</c> on text that became <c>blank(x)</c>, part 10 § 2.3, R1).
+    /// first says it (A10-008: a <c>!x</c> on text that became <c>blank(x)</c>, part 10 § 2.3, R1; A10-012, A10-015,
+    /// A10-016 and A10-017: the migration's gates and the chain's rung refusal, part 10 § 1.1, § 1.4, D2).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
         ["A10-008"] = "<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.",
+        ["A10-012"] = "The package is at specVersion <n>; migration starts at 5.",
+        ["A10-015"] = "The package is already at specVersion <n>.",
+        ["A10-016"] = "The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.",
+        ["A10-017"] = "At specVersion <n>: <refusal>",
     };
 
     private static string RepoRoot()

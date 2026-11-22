@@ -1,6 +1,8 @@
 using System.Text.Json.Nodes;
 using Consultologist.Api.Tests.ByteEquivalence;
 using Consultologist.Api.Tests.V31Logic;
+using Consultologist.Api.Tests.V31Resolve;
+using Consultologist.Api.Tests.V31Source;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 
@@ -108,6 +110,26 @@ internal static class MigrationFixture
         }
 
         return new ConversionScope(inputs, nodes, item, folderItem, inWhile, Formats()) { RequiredInputs = required };
+    }
+
+    /// <summary>
+    /// The migration's options for <paramref name="package"/> (a folder of <c>vendored/</c> or <c>fixture-packages/</c>):
+    /// the published registry (<see cref="V31Contract.PublishedTypes"/>), the goldens' toolchain
+    /// (<see cref="CompiledGoldenTests.Fixed"/>), 30's formats catalogue (<see cref="TestFormats.Catalog"/>), no contract
+    /// resolver (every fixture is at 30), and the package's hand choices (<see cref="ExampleChoices"/>).
+    /// </summary>
+    public static Migration31Options Options(string package) => new(
+        V31Contract.PublishedTypes(),
+        CompiledGoldenTests.Fixed,
+        TestFormats.Catalog,
+        Renames: ExampleChoices.Renames(package),
+        WhenEmpty: ExampleChoices.WhenEmpty(package));
+
+    /// <summary><paramref name="package"/> read from the fixtures (<see cref="ByteEquivalenceFixtures.ReadPackage"/>) and migrated with its <see cref="Options"/>.</summary>
+    public static Migration31Result Migrate(string package)
+    {
+        var (manifestJson, files) = ByteEquivalenceFixtures.ReadPackage(package);
+        return WorkflowPackageMigration30To31.Migrate(manifestJson, files, Options(package));
     }
 
     /// <summary>The value <c>vectors.json</c> writes for a read that has none: an absent input, a node with no output.</summary>
