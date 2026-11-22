@@ -238,6 +238,7 @@ public static class ApiServices
         services.AddSingleton<JobInputsBlobStore>();
         services.AddSingleton<IJobInputsBlobStore>(sp => sp.GetRequiredService<JobInputsBlobStore>());
         // #368: the retention sweep — the text is deleted N days after completion.
+        services.AddSingleton<Consultologist.Api.V31.IRecordTextDrop, Consultologist.Api.V31.RecordTextDrop>();
         services.AddSingleton<IJobTextPurger, JobTextPurger>();
         // #557: the events-move transition's old-table delete; removed by #558.
         services.AddSingleton<ILegacyJobEventDelete, LegacyJobEventDelete>();

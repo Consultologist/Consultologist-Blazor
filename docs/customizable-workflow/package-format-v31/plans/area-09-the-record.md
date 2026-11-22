@@ -465,16 +465,16 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Consumes: `IRecordSealer.EnsureSealedAsync`, `IRecordBlobStore.DeleteTextAsync`, `IRecordRowStore.DeleteJobAsync`.
 - Produces: for a terminal storage-12 job the purge seals first, then deletes the job's `text/` blobs, then stamps `TextDroppedAtUtc` as today; rows and `record.json` stay. Closing an account deletes each job's row partition (the blobs go with the account's prefix, as today).
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `TheSweep_DeletesA31JobsText_AndKeepsItsRecord`: after it `ReadTextAsync` is null for every row, every row reads as before, `record.json` hashes to `RecordHash`, and `TextDroppedAtUtc` is set.
   - `TheSweep_SealsAJobNobodyRead`: an unsealed cancelled job is sealed by the sweep before its text goes.
   - `TheSweep_LeavesA30JobAsToday` (its existing assertions, unchanged).
   - `TheSweep_IsSafeToRunTwice`.
   - `ClosingAnAccount_RemovesItsRecordRows`: `DeleteJobAsync` for each of its jobs; a failure for one job does not stop the rest (as the events' deletion behaves).
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** the whole suite. Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1506): the text drop and account closure know a 31 job's record`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** the whole suite. Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1506): the text drop and account closure know a 31 job's record`; push.
 
 ### Task 14: The contract and the guides
 

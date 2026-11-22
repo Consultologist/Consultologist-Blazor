@@ -32,6 +32,7 @@ public sealed class AccountClosure
     private readonly IConsultGenerationJobIndexStore _index;
     private readonly IConsultGenerationJobEventStore _events;
     private readonly ILegacyJobEventDelete _legacyEvents;
+    private readonly V31.IRecordRowStore _recordRows;
     private readonly IConsultGenerationLinkStore _links;
     private readonly IFormResponseStore _formResponses;
     private readonly IJobOutputsBlobStore _outputsBlobs;
@@ -48,6 +49,7 @@ public sealed class AccountClosure
         IConsultGenerationJobIndexStore index,
         IConsultGenerationJobEventStore events,
         ILegacyJobEventDelete legacyEvents,
+        V31.IRecordRowStore recordRows,
         IConsultGenerationLinkStore links,
         IFormResponseStore formResponses,
         IJobOutputsBlobStore outputsBlobs,
@@ -63,6 +65,7 @@ public sealed class AccountClosure
         _index = index;
         _events = events;
         _legacyEvents = legacyEvents;
+        _recordRows = recordRows;
         _links = links;
         _formResponses = formResponses;
         _outputsBlobs = outputsBlobs;
@@ -124,6 +127,10 @@ public sealed class AccountClosure
 
             await _events.DeleteJobAsync(job.JobId, cancellationToken);
             await _legacyEvents.DeleteJobAsync(job.JobId, cancellationToken);
+            // #1506: a 31 job's record rows (one partition per job; an empty one for a job below storage 12). A failure
+            // stops the closure as the events' does; the closure row is the claim, so a re-run resumes. The record's
+            // blobs (text/ and record.json) are under {appUserId}/ and go with the prefix delete below.
+            await _recordRows.DeleteJobAsync(job.JobId, cancellationToken);
         }
 
         var blobs = await _outputsBlobs.DeleteAccountAsync(appUserId, cancellationToken)

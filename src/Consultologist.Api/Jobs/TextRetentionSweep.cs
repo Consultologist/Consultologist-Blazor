@@ -79,11 +79,13 @@ public sealed class JobTextPurger : IJobTextPurger
 {
     private readonly IConsultGenerationJobEventStore _events;
     private readonly ILegacyJobEventDelete _legacyEvents;
+    private readonly V31.IRecordTextDrop _record;
 
-    public JobTextPurger(IConsultGenerationJobEventStore events, ILegacyJobEventDelete legacyEvents)
+    public JobTextPurger(IConsultGenerationJobEventStore events, ILegacyJobEventDelete legacyEvents, V31.IRecordTextDrop record)
     {
         _events = events;
         _legacyEvents = legacyEvents;
+        _record = record;
     }
 
     /// <summary>The orchestration instance is the job id; the entity is its own instance and stays.</summary>
@@ -91,6 +93,12 @@ public sealed class JobTextPurger : IJobTextPurger
 
     public async Task PurgeAsync(DurableTaskClient client, string jobId, DateTimeOffset now, CancellationToken cancellationToken)
     {
+        // #1506: a 31 job's record is sealed and its text/ blobs deleted FIRST (D13): a record must exist before its text
+        // goes, and a failed seal fails this purge with the text kept, for the next pass. The purger, not the entity,
+        // because sealing needs the Durable client and the entity cannot signal itself; the delete is idempotent, so a
+        // signal that then fails leaves a retry nothing to undo. A job below storage 12 does nothing here.
+        await _record.DropAsync(client, jobId, cancellationToken);
+
         var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId);
         await client.Entities.SignalEntityAsync(entityId, nameof(ConsultGenerationJobEntity.DropText), new ConsultGenerationTextDrop(now), cancellation: cancellationToken);
         await client.PurgeInstanceAsync(OrchestrationInstanceId(jobId), cancellationToken);
@@ -260,6 +268,11 @@ public sealed class TextRetentionSweep
                 {
                     await _purger.PurgeAsync(client, job.JobId, now, cancellationToken);
                     dropped++;
+                }
+                catch (V31.RecordNotSealedException ex)
+                {
+                    // #1506: a record must exist before its text goes: the text stays, the next pass retries.
+                    _logger.LogWarning("Text retention: job {JobId} kept its text, its record could not be sealed. ExceptionType={ExceptionType}", job.JobId, ex.ExceptionType);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

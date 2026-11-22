@@ -25,6 +25,7 @@ public class AccountClosureTests
     private readonly IConsultGenerationJobIndexStore _index = Substitute.For<IConsultGenerationJobIndexStore>();
     private readonly IConsultGenerationJobEventStore _events = Substitute.For<IConsultGenerationJobEventStore>();
     private readonly ILegacyJobEventDelete _legacyEvents = Substitute.For<ILegacyJobEventDelete>();
+    private readonly Consultologist.Api.V31.IRecordRowStore _recordRows = Substitute.For<Consultologist.Api.V31.IRecordRowStore>();
     private readonly IConsultGenerationLinkStore _links = Substitute.For<IConsultGenerationLinkStore>();
     private readonly IFormResponseStore _formResponses = Substitute.For<IFormResponseStore>();
     private readonly IJobOutputsBlobStore _outputsBlobs = Substitute.For<IJobOutputsBlobStore>();
@@ -40,7 +41,7 @@ public class AccountClosureTests
     {
         _client.Entities.Returns(_entities);
         return new AccountClosure(
-            _accounts, _settings, _index, _events, _legacyEvents, _links, _formResponses,
+            _accounts, _settings, _index, _events, _legacyEvents, _recordRows, _links, _formResponses,
             _outputsBlobs, _inputsBlobs, _formResponseBlobs, _ownership, _packageRegistry,
             _closed, NullLogger<AccountClosure>.Instance);
     }
@@ -114,6 +115,48 @@ public class AccountClosureTests
             _accounts.DeleteAccountAsync(User, Arg.Any<CancellationToken>());
             _closed.RecordAsync(Arg.Any<ClosedAccountRecord>(), Arg.Any<CancellationToken>());
         });
+    }
+
+    [Fact]
+    public async Task ClosingAnAccount_RemovesItsRecordRows()
+    {
+        WithDisabledAccount(Job("job-1", "Completed"), Job("job-live", "Running"), Job("job-3", "Failed"));
+
+        await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
+
+        // each job's row partition, beside its events, before the account's blobs
+        foreach (var id in new[] { "job-1", "job-live", "job-3" })
+            await _recordRows.Received(1).DeleteJobAsync(id, Arg.Any<CancellationToken>());
+        Received.InOrder(() =>
+        {
+            _events.DeleteJobAsync("job-1", Arg.Any<CancellationToken>());
+            _recordRows.DeleteJobAsync("job-1", Arg.Any<CancellationToken>());
+            _outputsBlobs.DeleteAccountAsync(User, Arg.Any<CancellationToken>());
+        });
+    }
+
+    [Fact]
+    public async Task AFailureDeletingARecordsRows_StopsTheClosure_AsTheEventsDoes_AndARerunFinishesIt()
+    {
+        // the events' deletion is not caught: its failure stops the closure before anything of the account's is removed,
+        // and the closure row (the claim) is not written, so a re-run starts again. The record rows match it.
+        WithDisabledAccount(Job("job-1", "Completed"), Job("job-2", "Completed"));
+        var failing = true;
+        _recordRows.DeleteJobAsync("job-1", Arg.Any<CancellationToken>())
+            .Returns(_ => failing ? Task.FromException(new InvalidOperationException("storage")) : Task.CompletedTask);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None));
+
+        await _closed.DidNotReceiveWithAnyArgs().RecordAsync(default!, default);
+        await _accounts.DidNotReceiveWithAnyArgs().DeleteAccountAsync(default!, default);
+        await _index.DidNotReceiveWithAnyArgs().DeleteAllAsync(default!, default);
+
+        failing = false;
+        var outcome = await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
+
+        Assert.NotNull(outcome.Closed);
+        await _recordRows.Received(1).DeleteJobAsync("job-2", Arg.Any<CancellationToken>());
+        await _closed.Received(1).RecordAsync(Arg.Any<ClosedAccountRecord>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]
