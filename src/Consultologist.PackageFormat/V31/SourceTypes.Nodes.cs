@@ -8,8 +8,8 @@ namespace Consultologist.PackageFormat.V31;
 /// binding (S02-012, D21) and one version of each agent across the package (A07-014; #1504 ruling 4), its union root (S02-027) and the strict-mode limits of what it is sent
 /// (S02-055, S02-056, D3); a rendered node's text (S02-013, D15); a leaf's <c>reproducible</c>
 /// (S01-027, D5); a flow node's declared format against what its <c>ret</c> gives (S02-015,
-/// S02-016, D4, D24, D25). A <c>call</c>'s format, a computed node's expression, a check's
-/// <c>check_result</c> and a loop's <c>in</c> are later areas'.
+/// S02-016, D4, D24, D25). A <c>call</c>'s format, a computed node's expression and a loop's <c>in</c> are later
+/// areas'; a check's kind and <c>check_result</c> are <see cref="SourceChecks"/>' (#1505, area 08), judged before these.
 /// </summary>
 public static partial class SourceTypes
 {
@@ -81,6 +81,7 @@ public static partial class SourceTypes
                 case "agent":
                     Agent(set, leaf, format);
                     break;
+                // #1505 (area 08): no rendered leaf reaches here from checks/ (S06-010 is said first, SourceChecks).
                 case "rendered" when !isCheck && FormatTypes.TextKind(format, set) == null:
                     refusals.Add(FormatSentences.RenderedNotText(leaf.Id, TypeStrings.Print(format, set), leaf.Path));
                     break;

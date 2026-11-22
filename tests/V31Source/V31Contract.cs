@@ -111,6 +111,15 @@ internal static class V31Contract
         ["A07-016"] = "Input '<id>' is given one value in Inputs and another in MacroChoices; send it once.",
     };
 
+    /// <summary>
+    /// #1505: area 08's own sentences (<c>A08-NNN</c>), as plan area-08-checks-deliverables-profile lists them, each as a
+    /// task adds it (A08-001, Task 3).
+    /// </summary>
+    private static readonly Dictionary<string, string> ChecksAreaSentences = new()
+    {
+        ["A08-001"] = "Deliverable '<id>' is checked by <reference>; a deliverable's check names a check.*.",
+    };
+
     private static string RepoRoot()
     {
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
@@ -239,6 +248,11 @@ internal static class V31Contract
         else if (refusal.Id.StartsWith("A07-", StringComparison.Ordinal))
         {
             Assert.True(TemplateAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
+            row = area!;
+        }
+        else if (refusal.Id.StartsWith("A08-", StringComparison.Ordinal))
+        {
+            Assert.True(ChecksAreaSentences.TryGetValue(refusal.Id, out var area), $"{refusal.Id} is not an area sentence.");
             row = area!;
         }
         else

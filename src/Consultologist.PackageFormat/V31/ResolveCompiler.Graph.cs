@@ -54,6 +54,7 @@ public static partial class ResolveCompiler
         foreach (var deliverable in Folders(context.Package.Deliverables).SelectMany(f => f.Deliverables))
         {
             EdgesOf(context, deliverable.Key, null, Add);
+            // #1505 (area 08): publish refuses a check that names no check at the top of checks/ (A08-001), so none is passed over here.
             if (SourceLayout.Text(deliverable.Header["check"]) is { } gate && ReferenceString.Parse(gate) is { Segments: ["check", var id] }
                 && tree.ChecksRoot.Visible("check", id) is { } check)
             {

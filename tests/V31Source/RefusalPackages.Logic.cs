@@ -426,17 +426,25 @@ internal static partial class RefusalPackages
                 "\"if\": null, \"expression\": " + CheckResult($$"""{ "!": [{ "blank": [{{Draft}}] }] }""")), ""));
 
     /// <summary>
-    /// <see cref="WithPriorNotes"/> with the check loop <c>notes_checked</c>, a check for each prior note that passes when
-    /// it is not blank, and the check <c>enough_notes</c>, which counts those that pass (at least 1).
+    /// <see cref="WithPriorNotes"/> with the loop <c>notes</c>, which takes each prior note as it is, the check loop
+    /// <c>notes_checked</c> over its <c>.items</c> (#1505: a check loop runs over a production loop's <c>.items</c>, S06-014),
+    /// a check for each prior note that passes when it is not blank, and the check <c>enough_notes</c>, which counts those
+    /// that pass (at least 1).
     /// </summary>
     private static Dictionary<string, byte[]> WithCheckLoop() =>
         WithPriorNotes()
+            .Edit("nodes/index.json", "\"items\": [\"plan\"]", "\"items\": [\"plan\", \"notes\"]")
+            .With("nodes/notes/index.json", Json(Node("for", "Prior notes", ArrayOf("plaintext"), true, false,
+                "\"in\": \"input.prior_notes.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                + "\"itemLabel\": null, \"nodes\": [\"note\"], \"ret\": \"node.notes.note\"")))
+            .With("nodes/notes/note.md", Md(Node("computed", "A prior note", "\"plaintext\"", true, false,
+                "\"if\": null, \"expression\": { \"var\": \"item.value\" }"), ""))
             .Edit("checks/index.json", "\"items\": []", "\"items\": [\"notes_checked\", \"enough_notes\"]")
             .With("checks/notes_checked/index.json", Json(Node("for", "Prior notes checked", ArrayOf("check_result"), true, false,
-                "\"in\": \"input.prior_notes.value\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
+                "\"in\": \"node.notes.items\", \"parallel\": true, \"maxParallel\": null, \"until\": null, \"max\": null, "
                 + "\"itemLabel\": null, \"nodes\": [\"note_written\"], \"ret\": \"check.notes_checked.note_written\"")))
             .With("checks/notes_checked/note_written.md", Md(Node("computed", "The note has text", "\"check_result\"", true, false,
-                "\"if\": null, \"expression\": " + CheckResult("""{ "!": [{ "blank": [{ "var": "item.value" }] }] }""")), ""))
+                "\"if\": null, \"expression\": " + CheckResult("""{ "!": [{ "blank": [{ "var": "item.item.value" }] }] }""")), ""))
             .With("checks/enough_notes.md", Md(Node("computed", "Enough prior notes", "\"check_result\"", true, false,
                 "\"if\": null, \"expression\": { \"count_pass\": [{ \"var\": \"check.notes_checked.items\" }, 1, "
                 + "\"No prior note has any text.\"] }"), ""));

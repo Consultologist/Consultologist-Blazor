@@ -121,11 +121,11 @@ public class RefusalPackagesTests
     [Fact]
     public void EverySentence_TheCheckerCanSay_HasACase()
     {
-        // Each method of SourceSentences, FormatSentences, ExpressionSentences and ResolveSentences that returns a refusal makes one sentence
+        // Each method of SourceSentences, FormatSentences, ExpressionSentences, ResolveSentences, DialectSentences and CheckSentences that returns a refusal makes one sentence
         // with a fixed id; calling it with any arguments gives that id (FormatSentences.Subject, which
         // returns text, is not one; nor is ExpressionSentences.Shape, which gives the sentence of a fault of the
         // written form by calling the others).
-        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences), typeof(DialectSentences))
+        var said = SaidBy(typeof(SourceSentences), typeof(FormatSentences), typeof(ExpressionSentences), typeof(ResolveSentences), typeof(DialectSentences), typeof(CheckSentences))
             .Except(NotShipped)
             .Except(TypesNotShipped)
             .Except(LogicNotShipped)

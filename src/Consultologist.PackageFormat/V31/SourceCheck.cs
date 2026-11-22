@@ -28,8 +28,9 @@ public sealed record SourceCheckResult(
 /// <summary>
 /// #1500 (specVersion 31, area 03): a package source held to every rule areas 02 to 04 know:
 /// <see cref="SourceParser.Parse"/> against the registry's names, then, when it parsed,
-/// <see cref="SourceTypes.Check"/>, then, when the type rules gave no refusal (#1502, area 05),
-/// <see cref="SourceResolve.Check"/>, then, when it gave none (#1501, area 04), <see cref="SourceExpressions.Check"/>,
+/// <see cref="SourceTypes.Check"/> (#1505, area 08: after <see cref="SourceChecks"/>' shape rules), then, when the type
+/// rules gave no refusal (#1502, area 05), <see cref="SourceResolve.Check"/> (#1505: and the checks' rules that read its
+/// tree), then, when it gave none (#1501, area 04), <see cref="SourceExpressions.Check"/>,
 /// each site read in the scope the resolution gives, then, when they gave none (#1504, area 07; D18), every body held to
 /// the dialect (<see cref="SourceTemplates.Check"/>), then, when it gave none (#1502, area 05), <see cref="SourceDerived.Check"/>
 /// with what the seam says each body reads: the dialect's <see cref="PackageTemplates"/>, unless the caller passes its
@@ -52,6 +53,12 @@ public static class SourceCheck
         if (parse.Package == null)
             return new SourceCheckResult(parse, parse.Refusals, null, null);
 
+        // #1505 (area 08, D17): what checks/ may hold is judged with the type rules, first: a check of another kind would
+        // otherwise be held to that kind's rules as well.
+        var shapes = SourceChecks.Check(parse.Package, null);
+        if (shapes.Count > 0)
+            return new SourceCheckResult(parse, shapes, null, null);
+
         var types = SourceTypes.Check(parse.Package, registry);
         if (types.Types == null)
             return new SourceCheckResult(parse, types.Refusals, null, null);
@@ -59,6 +66,12 @@ public static class SourceCheck
         var (refusals, resolution) = SourceResolve.Check(parse.Package, types.Types);
         if (resolution == null)
             return new SourceCheckResult(parse, refusals, types.Types, null);
+
+        // #1505 (area 08): with the resolver's tree, a check loop's source, a deliverable's check and its if (S06-014,
+        // A08-001, S06-035), part of the resolve step.
+        var gates = SourceChecks.Check(parse.Package, resolution.Tree);
+        if (gates.Count > 0)
+            return new SourceCheckResult(parse, gates, types.Types, null);
 
         var expressions = SourceExpressions.Check(parse.Package, types.Types, resolution.Scopes);
         if (expressions.Expressions == null)
