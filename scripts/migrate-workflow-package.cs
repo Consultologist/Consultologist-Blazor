@@ -21,7 +21,8 @@
 // additive), then hands the 24 package to the library's 24 → 25 rewriter
 // (WorkflowPackageMigration24To25). The public packages repository has no
 // browser in its loop, so this script does the same two steps on a folder:
-// StageTo24 is a port of the editor's MigratePreludes + ComposeManifest bump
+// the stage to 24 (WorkflowPackageMigrationTo24.StageTo24, in the library since
+// #1507) is a port of the editor's MigratePreludes + ComposeManifest bump
 // (src/Consultologist.Web/Pages/Templates.razor), and the rewriter is the
 // library's own call with the editor's contract resolver. Nothing here decides
 // a format question; the library does.
@@ -379,7 +380,7 @@ if (!WorkflowPackageValidator.AcceptedSpecVersions.Contains(from))
 
 // Stage to 24: the editor's prelude migration and additive bump, on a copy of the files.
 var stagedFiles = new Dictionary<string, string>(before, StringComparer.Ordinal);
-var (stageNotices, stageRefusals) = MigrationRunner.StageTo24(staged, stagedFiles, from);
+var (stageNotices, stageRefusals) = WorkflowPackageMigrationTo24.StageTo24(staged, stagedFiles, from);
 
 foreach (var refusal in stageRefusals)
 {
@@ -485,145 +486,6 @@ static class MigrationRunner
         return (File.ReadAllText(Path.Combine(root, "manifest.json")), files);
     }
 
-    /// <summary>
-    /// The editor's stage to 24 (Templates.razor MigratePreludes + ComposeManifest):
-    /// every prelude becomes a library macro composed before the prompts that
-    /// named it (a bare node macro at index 0), and the number moves to 24 with
-    /// tags present. Two deliberate differences from the editor: a hyphenated
-    /// prelude id is snake_cased here (the 24 → 25 rewriter renames node, prompt,
-    /// data and schema ids but not macro ids, and a macro id must be snake_case
-    /// at 24), and a dropped prelude's readers lose their `prelude` too, so no
-    /// prompt references a prelude that no longer exists.
-    /// </summary>
-    public static (List<string> Notices, List<string> Refusals) StageTo24(JsonObject root, Dictionary<string, string> files, int from)
-    {
-        var notices = new List<string>();
-        var refusals = new List<string>();
-
-        if (Get(root, "preludes") is JsonObject preludes && preludes.Count > 0)
-        {
-            var prompts = Array(root, "prompts").OfType<JsonObject>().ToList();
-            var nodes = Array(root, "nodes").OfType<JsonObject>().ToList();
-            var macroIds = Array(root, "macros").OfType<JsonObject>().Select(m => Str(m, "id")).Where(id => id != null).ToHashSet(StringComparer.Ordinal)!;
-            var renames = new Dictionary<string, string>(StringComparer.Ordinal);
-
-            foreach (var (id, _) in preludes.ToList())
-            {
-                var macroId = WorkflowDeclaredIds.IsValid(id) ? id : id.Replace('-', '_');
-                if (!WorkflowDeclaredIds.IsValid(macroId))
-                {
-                    refusals.Add($"Prelude '{id}' needs a snake_case id to become a macro; rename it, then upgrade.");
-                }
-                else if (macroIds.Contains(macroId) || renames.ContainsValue(macroId))
-                {
-                    refusals.Add($"Prelude '{id}' has the id of a declared macro; rename one, then upgrade.");
-                }
-                else if (files.ContainsKey($"macros/{macroId}.md"))
-                {
-                    refusals.Add($"The package already has a file at 'macros/{macroId}.md'; move it, then upgrade.");
-                }
-
-                renames[id] = macroId;
-            }
-
-            if (refusals.Count > 0)
-            {
-                return (notices, refusals);
-            }
-
-            foreach (var (id, fileNode) in preludes.ToList())
-            {
-                var macroId = renames[id];
-                var file = fileNode is JsonValue fv && fv.TryGetValue<string>(out var f) ? f : string.Empty;
-                var readers = prompts.Where(p => string.Equals(Str(p, "prelude"), id, StringComparison.Ordinal)).ToList();
-                var text = file.Length > 0 ? files.GetValueOrDefault(file) : null;
-
-                if (readers.Count == 0)
-                {
-                    notices.Add($"Prelude '{id}' is used by no prompt and was dropped.");
-                }
-                else if (string.IsNullOrWhiteSpace(text))
-                {
-                    notices.Add($"Prelude '{id}' is empty and was dropped.");
-                }
-                else
-                {
-                    if (Get(root, "macros") is not JsonArray macros)
-                    {
-                        macros = new JsonArray();
-                        Set(root, "macros", macros);
-                    }
-
-                    macros.Add(new JsonObject { ["id"] = macroId, ["label"] = macroId, ["file"] = $"macros/{macroId}.md" });
-                    files[$"macros/{macroId}.md"] = text;
-
-                    var homes = new List<string>();
-                    foreach (var prompt in readers)
-                    {
-                        var promptId = Str(prompt, "id");
-                        foreach (var node in nodes.Where(n => string.Equals(Str(n, "prompt"), promptId, StringComparison.Ordinal)))
-                        {
-                            if (Get(node, "macros") is not JsonArray list)
-                            {
-                                list = new JsonArray();
-                                Set(node, "macros", list);
-                            }
-
-                            var present = list.Any(entry => entry switch
-                            {
-                                JsonValue value when value.TryGetValue<string>(out var s) => s == macroId,
-                                JsonObject o => Str(o, "id") == macroId,
-                                _ => false,
-                            });
-                            if (!present)
-                            {
-                                list.Insert(0, JsonValue.Create(macroId));
-                            }
-
-                            homes.Add(Str(node, "id") ?? "?");
-                        }
-                    }
-
-                    notices.Add($"'{id}' → macro '{macroId}' before {(homes.Count == 0 ? "no node (its prompt is unused)" : string.Join(", ", homes.Select(h => $"'{h}'")))}.");
-                    if (macroId != id)
-                    {
-                        notices.Add($"Prelude '{id}' became macro '{macroId}': a macro id is snake_case.");
-                    }
-                }
-
-                foreach (var prompt in readers)
-                {
-                    Remove(prompt, "prelude");
-                }
-
-                if (file.Length > 0)
-                {
-                    files.Remove(file);
-                }
-
-                preludes.Remove(id);
-            }
-
-            if (preludes.Count == 0)
-            {
-                Remove(root, "preludes");
-            }
-        }
-
-        if (from < 24)
-        {
-            Set(root, "specVersion", 24);
-            if (Get(root, "tags") is null)
-            {
-                Set(root, "tags", new JsonArray());
-            }
-
-            notices.Add($"Staged specVersion {from} → 24 (the additive bumps: the number, and tags when absent).");
-        }
-
-        return (notices, refusals);
-    }
-
     /// <summary>Applies the plan: removed files deleted, new and changed files written, manifest.json and dag.mmd replaced, empty folders pruned.</summary>
     public static void Write(string root, string manifestJson, IReadOnlyDictionary<string, string> before, IReadOnlyDictionary<string, string> after, string dag)
     {
@@ -662,18 +524,4 @@ static class MigrationRunner
     public static JsonNode? Get(JsonObject o, string key) => o.TryGetPropertyValue(key, out var v) ? v : o.TryGetPropertyValue(Pascal(key), out var p) ? p : null;
 
     public static string? Str(JsonObject o, string key) => Get(o, key) is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
-
-    public static IEnumerable<JsonNode?> Array(JsonObject o, string key) => Get(o, key) is JsonArray a ? a : Enumerable.Empty<JsonNode?>();
-
-    public static void Set(JsonObject o, string key, JsonNode? value)
-    {
-        var target = o.ContainsKey(key) ? key : o.ContainsKey(Pascal(key)) ? Pascal(key) : key;
-        o[target] = value;
-    }
-
-    public static void Remove(JsonObject o, string key)
-    {
-        o.Remove(key);
-        o.Remove(Pascal(key));
-    }
 }
