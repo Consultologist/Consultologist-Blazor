@@ -503,6 +503,23 @@ public class SourceDerivedTests
     }
 
     [Fact]
+    public void APrompt_ReadingProfileTextOfAnEarlierPass_IsRefused()
+    {
+        // The probe is an agent whose prompt reads the signed draft of the pass before (through the seam): profile text
+        // sent to a model.
+        var (files, draft, _, _) = Drafted("profileCarrying");
+        var prompting = Redrafting(files(), draft, "profileCarrying", true, false)
+            .WithJson("nodes/redraft/index.json", h => h["format"] = "plaintext")
+            .WithJson("nodes/redraft/index.json", h => h["modelDerived"] = true)
+            .With("nodes/redraft/probe.md", Agent("Probing the last draft", Plain,
+                $"Say in one line whether the last draft reads well.\n\n{{{{ {LastDraft} }}}}\n"))
+            .WithJson("nodes/redraft/probe.md", h => h["profileCarrying"] = true);
+        AssertRefusal(prompting, new StubTemplates(new Dictionary<string, string[]> { ["node.redraft.probe"] = [LastDraft] }), "S03-044",
+            $"Node 'probe' reads {LastDraft}, which carries profile text; prompts, parts and conditions don't read profile text.",
+            "nodes/redraft/probe.md");
+    }
+
+    [Fact]
     public void EarlierPasses_StayOutOfTheOrderAndTheCircles()
     {
         // The summary and its judge each read the other's earlier pass: no circle, and the order is the golden's.
