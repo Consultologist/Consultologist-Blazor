@@ -441,6 +441,14 @@ Said at run time when the job would open more instances than `jobInstances` allo
 |---|---|---|---|---|
 | A09-001 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job reached \<n\> steps, the most this engine runs for one job."* | clinician | |
 
+### A record row too large to store
+
+Said at run time when one of a job's record rows is larger than the record's row store holds (1 MiB, [part 08 § 1.1](08-record.md#11-where-the-record-is-stored)): the row is not written, the other rows of its round are, and the job fails naming the row by its key (package ids and item ids, never a value). Decided in the build ([#1506](https://github.com/Consultologist/Consultologist-Blazor/issues/1506)); the build's area sentence, not a row of `sentences.json`, and not counted above.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A09-002 | [9. Refusals and notes](09-engine-and-pages.md#9-refusals-and-notes) | *"The job's record of '\<row key\>' is larger than this engine stores. Tell the operator."* | clinician | |
+
 ## 10 Migration and tools
 
 | Id | Section | Sentence | Audience | Review |

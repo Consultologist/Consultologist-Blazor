@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Consultologist.Api.V31;
 
-/// <summary>#1506 (D11): what one row's write came to. A write never throws on <see cref="Conflict"/>.</summary>
+/// <summary>#1506 (D11): what one row's write came to. A write never throws on <see cref="Conflict"/> or <see cref="TooLarge"/>.</summary>
 public enum RecordWrite
 {
     /// <summary>The row was stored by this write.</summary>
@@ -22,13 +22,22 @@ public enum RecordWrite
 
     /// <summary>A row with this key and another hash is stored; it was left as it is.</summary>
     Conflict,
+
+    /// <summary>
+    /// #1506 (final review F7): the row is larger than a table row holds (1 MiB); it was not written. The other rows of the
+    /// write are written as usual; the orchestration fails the job with A09-002 (<see cref="RecordRowTooLargeException"/>).
+    /// </summary>
+    TooLarge,
 }
 
 /// <summary>#1506 (D10): a 31 job's record rows, each written once, in a table.</summary>
 public interface IRecordRowStore
 {
-    /// <summary>Inserts each row alone; one result per row, in the order given. The partition key is <paramref name="jobId"/> as given (ids are GUIDs; nothing is escaped).</summary>
-    /// <exception cref="InvalidOperationException">A row is too large to store (an engine fault); nothing is written.</exception>
+    /// <summary>
+    /// Inserts each row alone; one result per row, in the order given. The partition key is <paramref name="jobId"/> as
+    /// given (ids are GUIDs; nothing is escaped). A row too large to store is <see cref="RecordWrite.TooLarge"/>, not
+    /// written; the others are.
+    /// </summary>
     Task<IReadOnlyList<(string Key, RecordWrite Result)>> WriteAsync(string jobId, IReadOnlyList<RecordRow> rows, CancellationToken ct);
 
     Task<RecordRow?> ReadAsync(string jobId, string key, CancellationToken ct);
@@ -148,10 +157,10 @@ public sealed class TableRecordRowStore : IRecordRowStore
     /// <summary>One property holds at most 32K characters; a row's text is cut at this many.</summary>
     internal const int ChunkLength = 30_000;
 
-    /// <summary>An entity is at most 1 MiB; what the store counts is the properties' names and values, as Azure does, in UTF-16.</summary>
     /// <summary>A table transaction holds at most 100 actions.</summary>
     internal const int MaxBatch = 100;
 
+    /// <summary>An entity is at most 1 MiB; what the store counts is the properties' names and values, as Azure does, in UTF-16.</summary>
     internal const int MaxEntityBytes = 1024 * 1024;
 
     private const int EntityOverheadBytes = 4096;
@@ -185,7 +194,7 @@ public sealed class TableRecordRowStore : IRecordRowStore
 
         var results = new List<(string, RecordWrite)>(rows.Count);
         for (var i = 0; i < rows.Count; i++)
-            results.Add((rows[i].Key, await WriteOneAsync(jobId, rows[i], entities[i], ct)));
+            results.Add((rows[i].Key, entities[i] is { } entity ? await WriteOneAsync(jobId, rows[i], entity, ct) : RecordWrite.TooLarge));
 
         return results;
     }
@@ -262,7 +271,8 @@ public sealed class TableRecordRowStore : IRecordRowStore
         }
     }
 
-    private static TableEntity ToEntity(string jobId, RecordRow row)
+    /// <summary>The row's table entity; null when it is larger than an entity holds (<see cref="RecordWrite.TooLarge"/>).</summary>
+    private static TableEntity? ToEntity(string jobId, RecordRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
         var rowKey = RecordKeys.Escape(row.Key);
@@ -296,13 +306,7 @@ public sealed class TableRecordRowStore : IRecordRowStore
                 bytes += 2L * (name.Length + text.Length);
         }
 
-        if (bytes > MaxEntityBytes)
-        {
-            throw new InvalidOperationException(
-                $"A record row is too large to store. Key={row.Key}, Characters={json.Length.ToString(CultureInfo.InvariantCulture)}");
-        }
-
-        return entity;
+        return bytes > MaxEntityBytes ? null : entity;
     }
 
     private static RecordRow FromEntity(TableEntity entity)

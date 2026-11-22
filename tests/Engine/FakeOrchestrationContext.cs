@@ -176,7 +176,24 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
 
     public override TaskOrchestrationEntityFeature Entities => _entities;
 
-    protected override ILoggerFactory LoggerFactory => NullLoggerFactory.Instance;
+    protected override ILoggerFactory LoggerFactory => new CapturingFactory(Log);
+
+    /// <summary>#1506: what the orchestration's replay-safe loggers wrote, every category together.</summary>
+    public CapturingLogger<FakeOrchestrationContext> Log { get; } = new();
+
+    /// <summary>A factory whose every logger writes to <see cref="Log"/>.</summary>
+    private sealed class CapturingFactory(ILogger logger) : ILoggerFactory
+    {
+        public ILogger CreateLogger(string categoryName) => logger;
+
+        public void AddProvider(ILoggerProvider provider)
+        {
+        }
+
+        public void Dispose()
+        {
+        }
+    }
 
     public override T GetInput<T>() => (T)_input!;
 

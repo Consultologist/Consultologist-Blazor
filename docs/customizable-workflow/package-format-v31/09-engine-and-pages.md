@@ -701,6 +701,10 @@ The wording below is the starting text. It follows the style rules in [index § 
   *"The job reached <n> steps, the most this engine runs for one job."* (A09-001; `<n>` is written
   as the other limits are, `10,000`, and the job fails when the runner would open one more instance)
   and *"<Subject> stopped rendering: it took more than <limit> steps."*
+- A record row larger than the record's row store holds (1 MiB; [part 08](08-record.md) § 1.1), recorded as
+  the job's error and shown in History; that row is not written, the other rows of its round are:
+  *"The job's record of '<row key>' is larger than this engine stores. Tell the operator."* (A09-002;
+  `<row key>` is the row's key, package ids and item ids, never a value)
 - A destination whose delivery failed after its retries (§ 3.8), shown in History; the job stays completed:
   *"Couldn't send to <destination>. Copy the note instead."*
 - The publish note, never a refusal (#1393):

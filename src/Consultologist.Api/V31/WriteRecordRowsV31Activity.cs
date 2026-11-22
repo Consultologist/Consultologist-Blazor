@@ -18,8 +18,15 @@ public sealed record WriteRecordRowsV31Input(
     IReadOnlyList<RecordRow> Rows,
     IReadOnlyDictionary<string, JsonObject> Settled);
 
-/// <summary>#1506 (area 09; D11): the keys of the rows a stored row differed from (left as they were); empty when none did.</summary>
-public sealed record WriteRecordRowsV31Result(IReadOnlyList<string> Conflicts);
+/// <summary>
+/// #1506 (area 09; D11): the keys of the rows a stored row differed from (left as they were); empty when none did.
+/// #1506 (final review F7): <paramref name="TooLarge"/> the keys of the rows too large to store (not written), in the order
+/// given; trailing, optional and not written when null, so a result with none is the bytes it was.
+/// </summary>
+public sealed record WriteRecordRowsV31Result(
+    IReadOnlyList<string> Conflicts,
+    [property: System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    IReadOnlyList<string>? TooLarge = null);
 
 /// <summary>
 /// #1506 (specVersion 31, area 09; part 08 § 1.1; D2, D10, D11, D12): writes a round of rows. Each row's settled text first
@@ -42,8 +49,15 @@ public sealed class WriteRecordRowsV31Activity(IRecordRowStore rows, IRecordBlob
 
         var results = await rows.WriteAsync(input.JobId, input.Rows ?? [], ct);
         var conflicts = new List<string>();
+        var tooLarge = new List<string>();
         foreach (var (key, result) in results)
         {
+            if (result == RecordWrite.TooLarge)
+            {
+                tooLarge.Add(key);
+                continue;
+            }
+
             if (result != RecordWrite.Conflict)
                 continue;
             logger.LogError("V31 record conflict. JobId={JobId}, Key={Key}", input.JobId, key);
@@ -51,15 +65,55 @@ public sealed class WriteRecordRowsV31Activity(IRecordRowStore rows, IRecordBlob
         }
 
         logger.LogInformation(
-            "V31 record rows. JobId={JobId}, Rows={Rows}, Written={Written}, AlreadyThere={AlreadyThere}, Conflicts={Conflicts}, Texts={Texts}",
+            "V31 record rows. JobId={JobId}, Rows={Rows}, Written={Written}, AlreadyThere={AlreadyThere}, Conflicts={Conflicts}, TooLarge={TooLarge}, Texts={Texts}",
             input.JobId,
             results.Count,
             results.Count(r => r.Result == RecordWrite.Written),
             results.Count(r => r.Result == RecordWrite.AlreadyThere),
             conflicts.Count,
+            tooLarge.Count,
             settled.Count);
-        return new WriteRecordRowsV31Result(conflicts);
+        return new WriteRecordRowsV31Result(conflicts, tooLarge.Count > 0 ? tooLarge : null);
     }
+}
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; final review F7): a record row was larger than the row store holds, so it was not
+/// written. Thrown in the orchestration by <see cref="StoredRunRecorder.FlushAsync"/> once the other rows of its round are
+/// stored and counted; the orchestration fails the job with A09-002 (<see cref="Sentence"/>). It holds the row's key (package
+/// ids and item ids, never a value) and its length in characters, never the row.
+/// </summary>
+public sealed class RecordRowTooLargeException : Exception
+{
+    public RecordRowTooLargeException(string key, int chars)
+        : base($"A record row is too large to store. Key={key}, Chars={chars.ToString(System.Globalization.CultureInfo.InvariantCulture)}")
+    {
+        Key = key;
+        Chars = chars;
+    }
+
+    public RecordRowTooLargeException()
+        : this("", 0)
+    {
+    }
+
+    public RecordRowTooLargeException(string message)
+        : base(message) =>
+        Key = "";
+
+    public RecordRowTooLargeException(string message, Exception innerException)
+        : base(message, innerException) =>
+        Key = "";
+
+    /// <summary>The row's key.</summary>
+    public string Key { get; }
+
+    /// <summary>The row's JSON length, in UTF-16 characters.</summary>
+    public int Chars { get; }
+
+    /// <summary>A09-002: the job's sentence for a row too large to store, naming its key.</summary>
+    public static string Sentence(string key) =>
+        $"The job's record of '{key}' is larger than this engine stores. Tell the operator.";
 }
 
 /// <summary>

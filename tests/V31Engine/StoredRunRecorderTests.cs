@@ -225,6 +225,44 @@ public class StoredRunRecorderTests
         Assert.Equal(ConsultGenerationOrchestratorV31.EngineFault, job.State.FailureError);
     }
 
+    // ---- #1506 (final review F7): a row larger than the store holds ---------------------------------------------------
+
+    [Fact]
+    public async Task ARowTooLargeToStore_FailsTheJob_NamingItsKey()
+    {
+        // the plan's agent turn says it left 40,000 keywords out of its format: its row is past what a table row holds
+        var job = V31Job.Of("nested-note");
+        var stub = job.Agent;
+        job.Agent = call => call.Key == "node.plan"
+            ? stub(call) with { Detail = new JsonObject { ["notSent"] = new JsonArray(Enumerable.Range(0, 40_000).Select(i => (JsonNode?)JsonValue.Create($"/properties/okafor_{i}")).ToArray()) } }
+            : stub(call);
+        var context = job.Context();
+
+        await Assert.ThrowsAsync<RecordRowTooLargeException>(() => V31Job.RunAsync(context));
+
+        const string sentence = "The job's record of 'node.plan' is larger than this engine stores. Tell the operator.";
+        Assert.Equal(ConsultGenerationJobStatuses.Failed, job.State.Status);
+        Assert.Equal(sentence, job.State.FailureError);
+        V31Contract.AssertSentence(new SourceRefusal("A09-002", sentence, ""));
+        // the row is not stored; the others of its round are
+        var batch = JsonSerializer.Deserialize<WriteRecordRowsV31Input>(context.Calls.First(c =>
+            c.Name == ConsultGenerationActivityNames.WriteRecordRowsV31 && c.InputJson.Contains("\"node.plan\"", StringComparison.Ordinal)).InputJson)!;
+        var plan = batch.Rows.Single(r => r.Key == "node.plan");
+        Assert.Null(await job.Rows.ReadAsync(V31Job.JobId, "node.plan", CancellationToken.None));
+        foreach (var other in batch.Rows.Where(r => r.Key != "node.plan"))
+            Assert.NotNull(await job.Rows.ReadAsync(V31Job.JobId, other.Key, CancellationToken.None));
+        // one line, the job, the key and the length; never the row
+        var line = Assert.Single(context.Log.Entries, e => e.Message.StartsWith("V31 record row too large.", StringComparison.Ordinal));
+        Assert.Equal($"V31 record row too large. JobId={V31Job.JobId}, Key=node.plan, Chars={plan.Json.Length}", line.Message);
+        Assert.DoesNotContain("okafor_", context.Log.Everything, StringComparison.Ordinal);
+        Assert.DoesNotContain("okafor_", job.RecordLog.Everything, StringComparison.Ordinal);
+        // the record is sealed with the job's end, and the entity counted only what was stored
+        var document = await job.Blobs.ReadRecordAsync(V31Job.AccountKind, "user-1", V31Job.JobId, CancellationToken.None);
+        Assert.Equal(sentence, (string?)JsonNode.Parse(document!)!["error"]);
+        var rows = await job.Rows.ListAsync(V31Job.JobId, CancellationToken.None);
+        Assert.Equal(rows.Count, job.State.V31Progress!.Rows + job.State.V31Progress.Decisions);
+    }
+
     [Theory]
     [InlineData("nested-note")]
     [InlineData("conditional")]

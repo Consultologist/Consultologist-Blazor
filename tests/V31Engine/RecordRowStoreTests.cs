@@ -76,17 +76,20 @@ public abstract class RecordRowStoreContract
     }
 
     [Fact]
-    public async Task ARowOver1MiB_IsAnEngineFault_NamingTheKeyAndSizeButNotTheContent()
+    public async Task ARowOver1MiB_IsNotWritten_AndTheOthersOfItsBatchAre()
     {
+        // #1506 (final review F7): a row too large is a result, never an exception: it is not written; the rest are
         var store = Create();
         var json = "{\"secret\":\"" + new string('z', 600_000) + "\"}";
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => store.WriteAsync(Job, [Row("node.ok"), Row("node.huge", json)], Ct));
+        var results = await store.WriteAsync(Job, [Row("node.ok"), Row("node.huge", json), Row("node.after")], Ct);
 
-        Assert.Contains("node.huge", ex.Message);
-        Assert.Contains(json.Length.ToString(System.Globalization.CultureInfo.InvariantCulture), ex.Message);
-        Assert.DoesNotContain("zzzz", ex.Message);
-        Assert.Null(await store.ReadAsync(Job, "node.ok", Ct)); // nothing was written
+        Assert.Equal([("node.ok", RecordWrite.Written), ("node.huge", RecordWrite.TooLarge), ("node.after", RecordWrite.Written)], results);
+        Assert.NotNull(await store.ReadAsync(Job, "node.ok", Ct));
+        Assert.Null(await store.ReadAsync(Job, "node.huge", Ct));
+        Assert.NotNull(await store.ReadAsync(Job, "node.after", Ct));
+        // and again: still too large, never half-written
+        Assert.Equal(RecordWrite.TooLarge, Assert.Single(await store.WriteAsync(Job, [Row("node.huge", json)], Ct)).Result);
     }
 
     [Fact]

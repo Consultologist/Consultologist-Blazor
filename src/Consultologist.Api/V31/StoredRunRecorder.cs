@@ -93,6 +93,9 @@ public sealed class StoredRunRecorder(TaskOrchestrationContext context, ConsultG
     /// <summary>
     /// #1506 (D12): writes what was recorded since the last flush, then counts it on the entity; nothing when nothing was.
     /// Throws <see cref="RecordConflictException"/> when a row differs from the stored one (the entity is not told of the round).
+    /// #1506 (final review F7): throws <see cref="RecordRowTooLargeException"/> (the first such row's key and length) when a
+    /// row was too large to store, once the round's other rows are counted. The buffer is cleared before the write, so a
+    /// flush that throws leaves nothing to write twice.
     /// </summary>
     public async Task FlushAsync()
     {
@@ -114,8 +117,32 @@ public sealed class StoredRunRecorder(TaskOrchestrationContext context, ConsultG
         if (written?.Conflicts is { Count: > 0 } conflicts)
             throw new RecordConflictException(conflicts);
 
+        // #1506 (final review F7): a row too large to store was not written; the round's others were, and are counted
+        var tooLarge = written?.TooLarge is { Count: > 0 } keys ? new HashSet<string>(keys, StringComparer.Ordinal) : null;
         await context.Entities.SignalEntityAsync(_entity, nameof(ConsultGenerationJobEntity.RecordV31Rows),
-            new ConsultGenerationV31Rows(progress, tokens));
+            new ConsultGenerationV31Rows(tooLarge == null ? progress : StoredOnly(rows, progress, tooLarge), tokens));
+        if (tooLarge != null)
+        {
+            var first = rows.First(row => tooLarge.Contains(row.Key));
+            throw new RecordRowTooLargeException(first.Key, first.Json.Length);
+        }
+    }
+
+    /// <summary>
+    /// The round's progress without the rows that were not stored (<paramref name="tooLarge"/>): <paramref name="rows"/> and
+    /// <paramref name="progress"/> are in the same order, one entry per row recorded.
+    /// </summary>
+    private static List<ConsultGenerationV31Progress> StoredOnly(
+        IReadOnlyList<RecordRow> rows, IReadOnlyList<ConsultGenerationV31Progress> progress, HashSet<string> tooLarge)
+    {
+        var stored = new List<ConsultGenerationV31Progress>(progress.Count);
+        for (var i = 0; i < progress.Count; i++)
+        {
+            if (i >= rows.Count || !tooLarge.Contains(rows[i].Key))
+                stored.Add(progress[i]);
+        }
+
+        return stored;
     }
 
     /// <summary>Adds an agent row's <c>tokens { input, output, total }</c> (R14) to the round's.</summary>

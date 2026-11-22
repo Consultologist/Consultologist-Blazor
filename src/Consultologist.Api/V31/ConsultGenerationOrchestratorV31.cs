@@ -172,6 +172,16 @@ public sealed class ConsultGenerationOrchestratorV31
                 input.JobId,
                 FaultType(ex));
 
+            // #1506 (final review F7): a record row too large to store fails the job with A09-002, naming the row by its key
+            // (package ids and item ids, never a value); the line holds the job, the key and the row's length only.
+            var sentence = EngineFault;
+            if (ex is RecordRowTooLargeException tooLarge)
+            {
+                logger.LogError(
+                    "V31 record row too large. JobId={JobId}, Key={Key}, Chars={Chars}", input.JobId, tooLarge.Key, tooLarge.Chars);
+                sentence = RecordRowTooLargeException.Sentence(tooLarge.Key);
+            }
+
             // #1506 (final review F2): the rows recorded since the last flush (the runner recorded its held gates before the
             // fault left it) are stored before the job is final, best-effort: a flush that failed or met a conflict cleared its
             // buffer, so nothing is written twice, and a failure here never replaces the fault.
@@ -195,7 +205,7 @@ public sealed class ConsultGenerationOrchestratorV31
                 await context.Entities.CallEntityAsync(
                     entityId,
                     nameof(ConsultGenerationJobEntity.FinalizeJob),
-                    new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, EngineFault, input.AccountKind));
+                    new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, sentence, input.AccountKind));
             }
             catch (Exception cleanup)
             {
