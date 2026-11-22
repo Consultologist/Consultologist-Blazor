@@ -27,7 +27,7 @@ public class PlanRunnerLoopsTests
     [Fact]
     public void AnItemsStateWord_NamesEachState_AndNoOtherReadsAsBlocked()
     {
-        // #1505 (the final review): one arm per state, as EntityRunRecorder.StateName; a state added later is not "blocked"
+        // #1505 (the final review): one arm per state, as StoredRunRecorder.StateName; a state added later is not "blocked"
         Assert.Equal(
             ["completed", "skipped", "not_run", "failed", "cancelled", "released", "held", "blocked"],
             Enum.GetValues<RowState>().Select(PlanRunner.StateWord));

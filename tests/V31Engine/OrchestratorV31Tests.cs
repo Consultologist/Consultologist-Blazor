@@ -25,7 +25,7 @@ public class OrchestratorV31Tests
     [InlineData(RowState.Held, "held")]
     [InlineData(RowState.Blocked, "blocked")]
     public void ADeliverablesRowState_IsNamedForTheEntity(RowState state, string name) =>
-        Assert.Equal(name, EntityRunRecorder.StateName(state));
+        Assert.Equal(name, StoredRunRecorder.StateName(state));
 
     [Fact]
     public async Task AJob_RunsToCompleted()
@@ -465,7 +465,9 @@ public class OrchestratorV31Tests
         var sends = Sends(context);
         Assert.True(delivering >= 0);
         Assert.All(sends, s => Assert.InRange(s.At, delivering + 1, finalize - 1));
-        Assert.Equal(context.Calls.FindLastIndex(c => c.Kind == "activity"), sends[^1].At);
+        // #1506 (D12): the last send is the last activity but the delivery row's write
+        Assert.Equal(context.Calls.FindLastIndex(c => c.Kind == "activity" && c.Name != ConsultGenerationActivityNames.WriteRecordRowsV31), sends[^1].At);
+        Assert.Contains(context.Calls.Skip(sends[^1].At + 1), c => c.Name == ConsultGenerationActivityNames.WriteRecordRowsV31);
         Assert.Equal([("email", 1), ("pdf", 1)], sends.Select(s => (s.Input.Send.Kind, s.Input.Send.Attempt)));
         Assert.All(sends, s =>
         {
@@ -668,7 +670,7 @@ public class OrchestratorV31Tests
     [Fact]
     public async Task ALongCapacityWait_AlertsTheOperatorOnce_ThroughTheActivity()
     {
-        // the run's notice (EntityRunRecorder.NoticeAsync) is the activity: node.plan waits 3 minutes twice, 6 in all
+        // the run's notice (StoredRunRecorder.NoticeAsync) is the activity: node.plan waits 3 minutes twice, 6 in all
         var job = V31Job.Of("nested-note");
         var stub = job.Agent;
         job.Agent = call => call.Key == "node.plan" && call.Attempt <= 2 ? new AgentOutcome(AgentOutcomeKind.Throttled, null, 180_000, null) : stub(call);

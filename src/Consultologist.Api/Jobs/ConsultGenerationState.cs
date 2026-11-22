@@ -434,10 +434,41 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// #1503 (specVersion 31, area 06; D12): a 31 job's progress: one finished row (its key and state) or, with no state, one
     /// decision. Counts and the current key only; the rows themselves are area 09's.
     /// </summary>
+    /// <remarks>
+    /// #1506 (area 09; D12): the stored recorder counts a round's rows at once (<see cref="RecordV31Rows"/>); this operation
+    /// stays for the histories in flight that signal it.
+    /// </remarks>
     public void RecordV31Progress(ConsultGenerationV31Progress input)
     {
         var state = EnsureState();
+        Count(state.V31Progress ??= new ConsultV31ProgressState(), input);
+        State = state;
+    }
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; D12; R14): a round of a 31 job's rows, once they are stored: each counted as
+    /// <see cref="RecordV31Progress"/> counts one, in order, and the round's tokens added to the job's
+    /// (<see cref="ConsultV31ProgressState.Tokens"/>), from which <see cref="FinalizeJob"/> writes the usage row. Keys,
+    /// states and counts only.
+    /// </summary>
+    public void RecordV31Rows(ConsultGenerationV31Rows input)
+    {
+        var state = EnsureState();
         var progress = state.V31Progress ??= new ConsultV31ProgressState();
+        foreach (var row in input.Rows ?? [])
+            Count(progress, row);
+        if (input.Tokens is { } tokens)
+        {
+            progress.Tokens = progress.Tokens is { } sum
+                ? new ConsultGenerationV31Tokens(sum.Input + tokens.Input, sum.Output + tokens.Output, sum.Total + tokens.Total)
+                : tokens;
+        }
+
+        State = state;
+    }
+
+    private static void Count(ConsultV31ProgressState progress, ConsultGenerationV31Progress input)
+    {
         if (input.State is { } rowState)
         {
             progress.Rows++;
@@ -448,8 +479,6 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         {
             progress.Decisions++;
         }
-
-        State = state;
     }
 
     public async Task CompleteBlock(BlockGenerationResult result)
@@ -1350,7 +1379,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         // recorded usage (roll-ups and aggregates carry none, so no double
         // count), on Completed and Failed alike: a failed run spent tokens
         // too. Nothing recorded stamps nothing, never zero.
-        state.Tokens ??= TokensOf(state.NodeOutputs);
+        // #1506 (area 09; R14): a 31 job has no node outputs; its rows' tokens were summed as they were stored.
+        state.Tokens ??= state.V31Progress?.Tokens is { } v31Tokens
+            ? new ConsultTokenUsage(v31Tokens.Input, v31Tokens.Output)
+            : TokensOf(state.NodeOutputs);
 
         // #552: the derived usage row — the account's day takes this job's
         // numbers exactly once (FinalizeJob can run twice: a reply-leg
@@ -1852,6 +1884,16 @@ public sealed record ConsultGenerationV31Header(
 /// <summary>#1503 (specVersion 31, area 06; D12): a finished row (its key and part 08's state), or a decision (its site's key, no state).</summary>
 public sealed record ConsultGenerationV31Progress(string Key, string? State);
 
+/// <summary>
+/// #1506 (specVersion 31, area 09; D12): a round of stored rows for <see cref="ConsultGenerationJobEntity.RecordV31Rows"/>: each
+/// row's key and state as <see cref="ConsultGenerationV31Progress"/> (a decision's state null, a delivery's
+/// <c>delivery:&lt;result&gt;</c>), in the order recorded, and the round's token sums (R14), null when no row had any.
+/// </summary>
+public sealed record ConsultGenerationV31Rows(IReadOnlyList<ConsultGenerationV31Progress> Rows, ConsultGenerationV31Tokens? Tokens);
+
+/// <summary>#1506 (specVersion 31, area 09; part 08 § 4; R14): token sums, as an agent row's <c>tokens { input, output, total }</c>.</summary>
+public sealed record ConsultGenerationV31Tokens(int Input, int Output, int Total);
+
 /// <summary>#1503 (specVersion 31, area 06; D12): a 31 job's progress: rows settled, by state, decisions made, and the last row's key.</summary>
 public sealed class ConsultV31ProgressState
 {
@@ -1859,6 +1901,10 @@ public sealed class ConsultV31ProgressState
     public Dictionary<string, int> States { get; set; } = new(StringComparer.Ordinal);
     public int Decisions { get; set; }
     public string? CurrentKey { get; set; }
+
+    /// <summary>#1506 (area 09; R14): the tokens of the rows stored so far; null, and not written, until a row has some.</summary>
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public ConsultGenerationV31Tokens? Tokens { get; set; }
 }
 
 public sealed record ConsultGenerationJobFinalize(
@@ -3019,6 +3065,12 @@ public static class ConsultGenerationActivityNames
 
     /// <summary>#1503 (part 09 § 3.6; D9): whether the engine is draining, read by a drain-aware orchestration after its schedule wait.</summary>
     public const string CheckDrain = "check-drain";
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; part 08 § 1.1; D10, D11, D12): a round of a 31 job's record rows: each row's settled
+    /// text, then the rows, each written once. A row that differs from the one stored is named in the result, never thrown.
+    /// </summary>
+    public const string WriteRecordRowsV31 = "write-record-rows-v31";
 }
 
 public static class ConsultGenerationItemSteps

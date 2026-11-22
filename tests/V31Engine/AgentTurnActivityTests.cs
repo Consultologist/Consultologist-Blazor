@@ -314,6 +314,72 @@ public class AgentTurnActivityTests
     }
 
     [Fact]
+    public async Task TheAgentActivity_WritesWhatItSent()
+    {
+        // #1506 (D2, D10, D17): the prompt as sent, each renderer step's texts and each macro's body go to the row key's
+        // produced text, never into the history; the run spots whose row output is null are cut from the prompt there
+        var inputs = RunFixture.GoldenInputs() with { RunFacts = new JsonObject { ["date"] = "2026-11-21" } };
+        var run = new ActivityRun(MacrosGolden) { Stored = true };
+        var inProcess = new ActivityRun(MacrosGolden);
+
+        var result = await run.RunAsync(inputs);
+        await inProcess.RunAsync(inputs);
+
+        Assert.True(result.State == RunState.Completed, $"{result.State}: {result.FailedKey} {result.Sentence}");
+        Assert.NotEmpty(run.Agent.Sent);
+        foreach (var (stage, message, _, _) in run.Agent.Sent)
+        {
+            var produced = (await run.Blobs.ReadTextAsync(V31Job.AccountKind, "user-1", V31Job.JobId, stage, CancellationToken.None))!;
+            Assert.Equal(["sent", "neutral", "renders", "macros", "spots"], produced.Select(m => m.Key));
+            Assert.Equal(message, (string?)produced["sent"]);
+            var row = run.Recorder.Rows.Single(r => r.Key == stage);
+            Assert.Equal(CanonicalJson.HashText(message), (string?)row.ToJson()["inputHash"]);
+
+            // the activity's answer holds no produced text, and no prompt
+            var outcome = run.Outcomes[stage];
+            Assert.Null(outcome.Produced);
+            Assert.DoesNotContain(JsonSerializer.Serialize(message), Json(outcome), StringComparison.Ordinal);
+
+            // the spot texts are the ones a run in process derives from its Produced, and the row no longer carries them
+            var derived = inProcess.Recorder.Rows.Single(r => r.Key == stage).Text?["spots"];
+            Assert.Equal(CanonicalJson.Write(derived ?? new JsonObject()), CanonicalJson.Write(produced["spots"]));
+            Assert.Null(row.Text?["spots"]);
+        }
+
+        // node.draft's spot reads node.stamp's content: its output is null on the row, its text in the produced blob
+        var draft = (await run.Blobs.ReadTextAsync(V31Job.AccountKind, "user-1", V31Job.JobId, "node.draft", CancellationToken.None))!;
+        Assert.NotEmpty(draft["spots"]!.AsObject());
+        Assert.NotEmpty(draft["macros"]!.AsObject());
+    }
+
+    [Fact]
+    public async Task TheRenderActivity_WritesItsSubstitutions()
+    {
+        var run = new ActivityRun(MacrosGolden) { Stored = true };
+
+        var result = await run.RunAsync(RunFixture.GoldenInputs() with { RunFacts = new JsonObject { ["date"] = "2026-11-21" } });
+
+        Assert.True(result.State == RunState.Completed, $"{result.State}: {result.FailedKey} {result.Sentence}");
+        var (call, outcome) = run.Renders.Single(r => r.Call.Key.StartsWith("deliverable.", StringComparison.Ordinal));
+        Assert.Null(outcome.Produced);
+        var substitutions = outcome.Detail!["substitutions"]!.AsArray();
+        Assert.NotEmpty(substitutions);
+        var produced = (await run.Blobs.ReadTextAsync(V31Job.AccountKind, "user-1", V31Job.JobId, call.Key, CancellationToken.None))!;
+        Assert.Equal(["neutral", "renders", "substitutions", "spots"], produced.Select(m => m.Key));
+        var values = produced["substitutions"]!.AsArray();
+        Assert.Equal(substitutions.Count, values.Count);
+        for (var i = 0; i < values.Count; i++)
+            Assert.Equal((string?)substitutions[i]!["hash"], CanonicalJson.HashText((string)values[i]!));
+
+        // a rendered node's produced text has no substitutions; its content is settled text, written with its row
+        foreach (var (rendered, _) in run.Renders.Where(r => r.Call.Key.StartsWith("node.", StringComparison.Ordinal)))
+        {
+            var text = (await run.Blobs.ReadTextAsync(V31Job.AccountKind, "user-1", V31Job.JobId, rendered.Key, CancellationToken.None))!;
+            Assert.Equal(["neutral", "renders", "spots"], text.Select(m => m.Key));
+        }
+    }
+
+    [Fact]
     public void TheActivitiesInputsAndOutcomes_RoundTripAsDurableFunctionsSerialisesThem()
     {
         var placed = new Dictionary<string, bool>(StringComparer.Ordinal) { ["part.close"] = true, ["macro.section_notes.hpi"] = false };
@@ -383,8 +449,8 @@ public class AgentTurnActivityTests
             Assert.True(load.Plan != null, $"{load.RefusalId} {load.OperatorDetail}");
             Plan = load.Plan!;
             Agent = new FakeAttempts(this);
-            _agent = new RunAgentNodeV31Activity(store, Agent, new Lazy<V31AgentsCatalogue>(() => Catalogue), AgentLog, new Random(1));
-            _render = new RenderNodeV31Activity(store, RenderLog);
+            _agent = new RunAgentNodeV31Activity(store, Agent, new Lazy<V31AgentsCatalogue>(() => Catalogue), Blobs, AgentLog, new Random(1));
+            _render = new RenderNodeV31Activity(store, Blobs, RenderLog);
             _rule = new EvaluateRuleV31Activity(store, NullLogger<EvaluateRuleV31Activity>.Instance);
         }
 
@@ -395,6 +461,15 @@ public class AgentTurnActivityTests
         public FakeAttempts Agent { get; }
 
         public ListRecorder Recorder { get; } = new();
+
+        /// <summary>#1506 (Task 10): where the activities write the text they produced.</summary>
+        public FakeRecordBlobStore Blobs { get; } = new();
+
+        /// <summary>#1506 (Task 10): whether the calls name the job (<see cref="V31Job.JobId"/>), so the activities store their text; else they keep it in the outcome, as in a run in process.</summary>
+        public bool Stored { get; init; }
+
+        /// <summary>#1506 (Task 10): the last outcome of each agent call, as the activity returned it.</summary>
+        public ConcurrentDictionary<string, AgentOutcome> Outcomes { get; } = new(StringComparer.Ordinal);
 
         public CapturingLogger<RunAgentNodeV31Activity> AgentLog { get; } = new();
 
@@ -431,16 +506,24 @@ public class AgentTurnActivityTests
 
         public async Task<AgentOutcome> AgentAsync(AgentCall call, int? renderSteps = null)
         {
-            var input = RoundTrip(new RunAgentNodeV31Input(_ref.Name, _ref.Version, _pair.ResolveHash, renderSteps ?? new RunLimits().RenderSteps, call));
+            var input = new RunAgentNodeV31Input(_ref.Name, _ref.Version, _pair.ResolveHash, renderSteps ?? new RunLimits().RenderSteps, call);
+            if (Stored)
+                input = input with { JobId = V31Job.JobId, AppUserId = "user-1", AccountKind = V31Job.AccountKind };
+            input = RoundTrip(input);
             Calls[call.Key] = input.Call;
-            return RoundTrip(await _agent.RunAsync(input, CancellationToken.None));
+            var outcome = RoundTrip(await _agent.RunAsync(input, CancellationToken.None));
+            Outcomes[call.Key] = outcome;
+            return outcome;
         }
 
         public Task<AgentOutcome> CallAgentAsync(AgentCall call) => AgentAsync(call);
 
         public async Task<RenderOutcome> RenderAsync(RenderCall call)
         {
-            var input = RoundTrip(new RenderNodeV31Input(_ref.Name, _ref.Version, _pair.ResolveHash, call));
+            var input = new RenderNodeV31Input(_ref.Name, _ref.Version, _pair.ResolveHash, call);
+            if (Stored)
+                input = input with { JobId = V31Job.JobId, AppUserId = "user-1", AccountKind = V31Job.AccountKind };
+            input = RoundTrip(input);
             var outcome = RoundTrip(await _render.RunAsync(input, CancellationToken.None));
             lock (Renders)
                 Renders.Add((input.Call, outcome));

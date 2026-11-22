@@ -24,7 +24,8 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// the real <see cref="ConsultGenerationOrchestratorV31"/> runs on a <see cref="FakeOrchestrationContext"/> whose
 /// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c>, <c>render-node-v31</c> and (#1505) <c>evaluate-rule-v31</c> are the real activities (the inputs from a
 /// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/> at the job's held-inputs pointer), and whose <c>run-agent-node-v31</c> is
-/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key), (#1505) <c>deliver-v31</c> by <see cref="Deliver"/> and <c>alert-operator-v31</c> by <see cref="Alert"/>. Timers longer than five minutes (the job's)
+/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key), (#1505) <c>deliver-v31</c> by <see cref="Deliver"/> and <c>alert-operator-v31</c> by <see cref="Alert"/>;
+/// (#1506) <c>write-record-rows-v31</c> is the real activity over <see cref="Rows"/> and <see cref="Blobs"/>. Timers longer than five minutes (the job's)
 /// wait, as durable timers do, until cancelled; shorter ones (a retry's) end at once.
 /// </summary>
 internal sealed class V31Job
@@ -77,7 +78,7 @@ internal sealed class V31Job
         Alert = Alerts.Add;
         Entity = new ConsultGenerationJobEntity(
             Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(),
-            HeldInputs, Substitute.For<IAccountUsageStore>());
+            HeldInputs, Usage);
         var state = ConsultGenerationJobState.Create(JobId, "user-1", Array.Empty<IReadOnlyDictionary<string, string>>());
         state.PackageSpecVersion = 31;
         // as Task 13's start leaves it: the run-inputs document is the job's held inputs
@@ -98,6 +99,18 @@ internal sealed class V31Job
     public ConsultGenerationJobEntity Entity { get; }
 
     public FakeInputs Inputs { get; } = new();
+
+    /// <summary>#1506: the account usage store the entity writes the job's usage row to.</summary>
+    public IAccountUsageStore Usage { get; } = Substitute.For<IAccountUsageStore>();
+
+    /// <summary>#1506 (Task 10): the record's rows, as <c>write-record-rows-v31</c> stores them (shared by two jobs to replay one).</summary>
+    public FakeRecordRowStore Rows { get; set; } = new();
+
+    /// <summary>#1506 (Task 10): the record's text, as the activities write it.</summary>
+    public FakeRecordBlobStore Blobs { get; set; } = new();
+
+    /// <summary>#1506 (Task 10): what <c>write-record-rows-v31</c> logged.</summary>
+    public CapturingLogger<WriteRecordRowsV31Activity> RecordLog { get; } = new();
 
     /// <summary>The job inputs' store the entity drops the held inputs through.</summary>
     public IJobInputsBlobStore HeldInputs { get; } = Substitute.For<IJobInputsBlobStore>();
@@ -165,8 +178,12 @@ internal sealed class V31Job
                 return null;
             })
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
-                new RenderNodeV31Activity(Store, NullLogger<RenderNodeV31Activity>.Instance)
+                new RenderNodeV31Activity(Store, Blobs, NullLogger<RenderNodeV31Activity>.Instance)
                     .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            // #1506 (Task 10): the round's rows, stored by the real activity over the fake stores
+            .On(ConsultGenerationActivityNames.WriteRecordRowsV31, payload =>
+                new WriteRecordRowsV31Activity(Rows, Blobs, RecordLog)
+                    .RunAsync((WriteRecordRowsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             // #1503 (D9): the input is DrainAware; the drain is off here and check-drain is left out of the calls the
             // tests read (the drain's own tests answer it recorded: DrainDoorsTests).
             .Unrecorded(ConsultGenerationActivityNames.CheckDrain, _ => false);

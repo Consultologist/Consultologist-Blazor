@@ -35,13 +35,13 @@ public class PlanRefusalLogTests
         AssertLogged(planLog, load);
 
         var renderLog = new CapturingLogger<RenderNodeV31Activity>();
-        var rendered = await new RenderNodeV31Activity(store, renderLog)
+        var rendered = await new RenderNodeV31Activity(store, new FakeRecordBlobStore(), renderLog)
             .RunAsync(new RenderNodeV31Input(packageRef.Name, packageRef.Version, "sha256:r", new RenderCall("node.a", "node.a", null, new JsonObject(), 100)), CancellationToken.None);
         Assert.Equal(load.Refusal, rendered.Failure);
         AssertLogged(renderLog, load);
 
         var agentLog = new CapturingLogger<RunAgentNodeV31Activity>();
-        await new RunAgentNodeV31Activity(store, Substitute.For<IAgentAttempts>(), new Lazy<V31AgentsCatalogue>(() => V31AgentsCatalogue.Load()), agentLog)
+        await new RunAgentNodeV31Activity(store, Substitute.For<IAgentAttempts>(), new Lazy<V31AgentsCatalogue>(() => V31AgentsCatalogue.Load()), new FakeRecordBlobStore(), agentLog)
             .RunAsync(new RunAgentNodeV31Input(packageRef.Name, packageRef.Version, "sha256:r", 100, new AgentCall("node.a", "node.a", null, 1, false, new JsonObject())), CancellationToken.None);
         AssertLogged(agentLog, load);
 

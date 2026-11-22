@@ -12,9 +12,12 @@ namespace Consultologist.Api.V31;
 
 /// <summary>
 /// #1503 (specVersion 31, area 06): an activity's input: the job's package version, its <c>resolveHash</c>, and the call
-/// (#1504: with the runner's placement decisions, <see cref="RenderCall.Placed"/>).
+/// (#1504: with the runner's placement decisions, <see cref="RenderCall.Placed"/>). #1506 (area 09; D10): where the text the
+/// render produced is written, as <see cref="RunAgentNodeV31Input"/>'s.
 /// </summary>
-public sealed record RenderNodeV31Input(string PackageName, string PackageVersion, string ResolveHash, RenderCall Call);
+public sealed record RenderNodeV31Input(
+    string PackageName, string PackageVersion, string ResolveHash, RenderCall Call,
+    string? JobId = null, string? AppUserId = null, string? AccountKind = null);
 
 /// <summary>
 /// #1503 (specVersion 31, area 06; part 09 § 3.1): a rendered node's or a deliverable's render, in an activity: the plan
@@ -22,9 +25,13 @@ public sealed record RenderNodeV31Input(string PackageName, string PackageVersio
 /// 10): the render is <see cref="RenderTurn.Render"/>'s (the entry's body composed over the call's scope with its
 /// placements decided, within its step budget): its text, its run-neutral text and the row's detail. A plan that is not
 /// the job's, or an entry it lacks, is the render's failure. Telemetry: the key, the lengths and hashes of what was
-/// rendered, never the text.
+/// rendered, never the text. #1506 (area 09; D2, D10): the text only the render holds (<see cref="RenderOutcome.Produced"/>:
+/// <c>{ neutral, renders, substitutions }</c>), with its run spots' texts whose row <c>output</c> is <c>null</c>
+/// (<c>spots</c>), is written to the row key's <c>produced</c> text, overwriting an earlier render's, and left out of the
+/// outcome; the rendered text itself is the row's settled <c>content</c>, written with the row. A write that fails fails
+/// the activity.
 /// </summary>
-public sealed class RenderNodeV31Activity(ICompiledPackageStore store, ILogger<RenderNodeV31Activity> logger)
+public sealed class RenderNodeV31Activity(ICompiledPackageStore store, IRecordBlobStore blobs, ILogger<RenderNodeV31Activity> logger)
 {
     [Function(ConsultGenerationActivityNames.RenderNodeV31)]
     public async Task<RenderOutcome> RunAsync([ActivityTrigger] RenderNodeV31Input input, CancellationToken cancellationToken)
@@ -46,6 +53,12 @@ public sealed class RenderNodeV31Activity(ICompiledPackageStore store, ILogger<R
             rendered.Text == null ? null : CanonicalJson.HashText(rendered.Text),
             rendered.NeutralText?.Length,
             rendered.NeutralText == null ? null : CanonicalJson.HashText(rendered.NeutralText));
+        if (await V31ProducedText.WriteAsync(blobs, input.JobId, input.AppUserId, input.AccountKind, call.Key, rendered.Produced,
+                rendered.Detail?["runSpots"], rendered.Text, cancellationToken))
+        {
+            rendered = rendered with { Produced = null };
+        }
+
         return rendered;
     }
 }
@@ -64,6 +77,31 @@ internal static class V31EngineFaults
         logger.LogError(
             "V31 engine fault reading a template. SentenceId={SentenceId}, Key={Key}, EntryKey={EntryKey}, Function={Function}, ExceptionType={ExceptionType}",
             "A08-006", key, entryKey, function, exceptionType);
+    }
+}
+
+/// <summary>
+/// #1506 (specVersion 31, area 09; D2, D10; the controller's ruling 1): the text an activity produced, written to the row
+/// key's <c>produced</c> text blob.
+/// </summary>
+internal static class V31ProducedText
+{
+    /// <summary>
+    /// Writes <paramref name="produced"/> with <c>spots</c>: the texts of <paramref name="runSpots"/> whose row
+    /// <c>output</c> is <c>null</c>, cut from <paramref name="spotsIn"/> at their <c>start</c> and <c>length</c> in runes
+    /// (<see cref="RecordRows.SpotTexts"/>), by spot id. False, and nothing written, when nothing was produced or the call
+    /// names no job; a write that fails throws.
+    /// </summary>
+    public static async Task<bool> WriteAsync(
+        IRecordBlobStore blobs, string? jobId, string? appUserId, string? accountKind, string key, JsonObject? produced,
+        JsonNode? runSpots, string? spotsIn, CancellationToken cancellationToken)
+    {
+        if (produced == null || jobId == null || appUserId == null)
+            return false;
+        var text = produced.DeepClone().AsObject();
+        text["spots"] = RecordRows.SpotTexts(runSpots, spotsIn) ?? new JsonObject();
+        await blobs.WriteTextAsync(accountKind, appUserId, jobId, key, "produced", text, cancellationToken);
+        return true;
     }
 }
 

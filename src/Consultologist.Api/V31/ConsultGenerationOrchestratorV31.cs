@@ -44,12 +44,13 @@ public sealed record ConsultGenerationOrchestrationInputV31(
 /// is the process cache's (<see cref="V31PlanCache"/>), or built from that text, with no I/O of its own) and the inputs and
 /// run facts by reference (<see cref="ConsultGenerationActivityNames.LoadRunInputsV31"/>, so the time zone is read in the
 /// activity, never here); runs <see cref="PlanRunner"/> inline, its calls activities and its waits durable timers
-/// (<see cref="DurableRunHost"/>), its rows on the entity (<see cref="EntityRunRecorder"/>); #1505 (area 08) delivers a
+/// (<see cref="DurableRunHost"/>), #1506 (area 09) its rows stored as each round ends and counted on the entity
+/// (<see cref="StoredRunRecorder"/>); #1505 (area 08) delivers a
 /// job that succeeded (<see cref="DeliverAsync"/>), or records a failed job's released deliverables not sent; and
 /// finalises the job: <c>Completed</c>, or <c>Failed</c> with the run's sentence (a timed-out run is a failed job with
 /// S09-012's). #1505 (part 09 § 3.9; D14): a failed job (an engine fault included) and a failed delivery alert the
 /// operator through <see cref="ConsultGenerationActivityNames.AlertOperatorV31"/>, as do the run's notices
-/// (<see cref="EntityRunRecorder.NoticeAsync"/>); an alert's failure never fails the job. A fault fails the job with
+/// (<see cref="StoredRunRecorder.NoticeAsync"/>); an alert's failure never fails the job. A fault fails the job with
 /// A06-010, never the exception's message, which can carry a service's response. Telemetry at the end: the run's state,
 /// its agent calls and the peak in flight, never text.
 /// </summary>
@@ -136,7 +137,7 @@ public sealed class ConsultGenerationOrchestratorV31
                     held.RecordedRunFacts));
 
             var inputs = InputsOf(document, held.RunFacts ?? new JsonObject());
-            var recorder = new EntityRunRecorder(context, input);
+            var recorder = new StoredRunRecorder(context, input);
             var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input, limits), recorder)
                 .RunAsync(inputs, startedAtUtc);
 
@@ -155,6 +156,8 @@ public sealed class ConsultGenerationOrchestratorV31
                 // not sent (S06-038).
                 foreach (var row in DeliveryPlan.NotSentJobFailed(result.Deliverables))
                     await recorder.DeliveryAsync(row);
+                // #1506 (D12): recorded directly, so stored here, before the job is final
+                await recorder.FlushAsync();
                 await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed, result.Sentence, logger, result.FailedKey);
             }
         }
@@ -202,7 +205,7 @@ public sealed class ConsultGenerationOrchestratorV31
     /// </summary>
     private static async Task DeliverAsync(
         TaskOrchestrationContext context, EntityInstanceId entityId, ConsultGenerationOrchestrationInputV31 input, RunLimits limits,
-        EntityRunRecorder recorder, IReadOnlyList<DeliverableOutcome> outcomes, ILogger logger)
+        StoredRunRecorder recorder, IReadOnlyList<DeliverableOutcome> outcomes, ILogger logger)
     {
         if (DeliveryPlan.Sends(outcomes).Count == 0)
             return;
