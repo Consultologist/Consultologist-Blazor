@@ -70,7 +70,8 @@ public sealed record MigrationNotes(
 /// the 24 → 25, 25 → 26 and 27 → 28 rewriters. It reads specVersion 30; an older package is first raised through the
 /// existing chain in the same run (<see cref="WorkflowPackageMigrationChain.To30"/>). Its gates (§ 1.4, D2): a manifest
 /// that does not read (A10-016), a version below 5 (A10-012) and a package already at 31 or past it (A10-015) are
-/// refused, as is a rung's own refusal (A10-017); a refusal writes nothing. It never throws on package content and is
+/// refused, as is a rung's own refusal or validation error (A10-017) and a rung's failure on the package (A10-018);
+/// a refusal writes nothing. It never throws on package content and is
 /// deterministic.
 /// </summary>
 public static class WorkflowPackageMigration30To31
@@ -99,7 +100,7 @@ public static class WorkflowPackageMigration30To31
             return Refused(manifestJson, files, [MigrationSentences.AlreadyAt(from)]);
         }
 
-        var at30 = WorkflowPackageMigrationChain.To30(manifestJson, files, options.ResolveContract);
+        var at30 = WorkflowPackageMigrationChain.To30(manifestJson, files, options.ResolveContract, options.Formats30);
         if (!at30.Succeeded)
         {
             return Refused(manifestJson, files, at30.Refusals);

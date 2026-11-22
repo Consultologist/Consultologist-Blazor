@@ -57,4 +57,11 @@ internal static class MigrationSentences
     /// </summary>
     public static string AtRung(int rung, string refusal) =>
         string.Create(CultureInfo.InvariantCulture, $"At specVersion {rung}: {refusal}");
+
+    /// <summary>
+    /// A10-018 (D2): the earlier rung <paramref name="rung"/> failed on the package's content (its code threw), so the
+    /// run is refused rather than the migration throwing. No part of the failure is quoted.
+    /// </summary>
+    public static string RungFailed(int rung) =>
+        string.Create(CultureInfo.InvariantCulture, $"At specVersion {rung}: the rung could not read this package; fix the manifest, then migrate.");
 }
