@@ -143,12 +143,14 @@ internal static class V31Contract
     /// A10-016, A10-017 and A10-018: the migration's gates and the chain's rung refusals, part 10 § 1.1, § 1.4, D2; A10-019 and
     /// A10-020: a 30 file or package that does not read; A10-021: a package format's free-text field, part 02 § 11; A10-022
     /// to A10-025: the reasons of the first pass's hand edits, part 10 § 1.4; A10-026: a lone carriage return made a line end,
-    /// part 01 § 2.4; A10-031: a package format whose root is null alone or a scalar, part 02 § 3.3).
+    /// part 01 § 2.4; A10-013 and A10-027 to A10-031: the nodes pass's notices and reasons, part 10 § 1.2, D16, the Task 4
+    /// ruling on size, part 04 § 5.2, part 02 § 3.3).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
         ["A10-008"] = "<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.",
         ["A10-012"] = "The package is at specVersion <n>; migration starts at 5.",
+        ["A10-013"] = "Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.",
         ["A10-015"] = "The package is already at specVersion <n>.",
         ["A10-016"] = "The manifest does not read as a package: it is not a JSON object with a whole-number specVersion.",
         ["A10-017"] = "At specVersion <n>: <refusal>",
@@ -161,6 +163,10 @@ internal static class V31Contract
         ["A10-024"] = "the field takes one of several types, which 31 writes as an anyOf; choose one.",
         ["A10-025"] = "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.",
         ["A10-026"] = "<file>: a carriage return that didn't end a line became a line end.",
+        ["A10-027"] = "<file>, <member>: size(<list>) is null when <list> is null, where 30 counted 0.",
+        ["A10-028"] = "the case switches on <subject>, whose values 31 cannot list; switch on an enumerated string, or add an else.",
+        ["A10-029"] = "<subject> can be null, which a 31 case sends to its else; add an else body.",
+        ["A10-030"] = "Node '<id>' declared <member> at 30, which 31 has no member for; it was dropped.",
         ["A10-031"] = "a package format's root is an object or a list at 31; make it one, or use a registry format.",
     };
 

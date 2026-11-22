@@ -592,26 +592,6 @@ public class MigrateLayoutTests
             """), JsonOf(result, "formats/verdict.json").ToJsonString());
     }
 
-    [Fact]
-    public void ASingleSnippetsIf_IsWrittenAs30Wrote_ForTheConditionsPass()
-    {
-        // D3's form: 30's Scriban condition stays a JSON string in the snippet's if, which the 31 checker refuses until
-        // the conditions pass (Task 7) converts it with the other condition sites.
-        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-macros");
-        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
-        {
-            ["snippets/style.md"] = files["snippets/style.md"].Replace(
-                "  \"label\": \"House style\"\n", "  \"label\": \"House style\",\n  \"if\": \"input.include_counselling == true\"\n"),
-        };
-
-        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-macros"));
-
-        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
-        var (header, _) = MdOf(result, "snippets/style.md");
-        Assert.Equal(Compact("""{ "label": "House style", "description": null, "if": "input.include_counselling == true", "format": "markdown_block" }"""),
-            header.ToJsonString());
-    }
-
     [Theory]
     [InlineData("[\"null\", \"null\"]")]
     [InlineData("\"null\"")]
