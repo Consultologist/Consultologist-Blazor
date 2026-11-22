@@ -48,7 +48,7 @@ public class PlanRefusalLogTests
         var inputs = new V31Job.FakeInputs();
         var pointer = await inputs.WriteAsync(null, "user-1", "job-1", new JsonObject { ["inputs"] = new JsonObject() }, CancellationToken.None);
         var inputsLog = new CapturingLogger<LoadRunInputsV31Activity>();
-        var held = await new LoadRunInputsV31Activity(inputs, store, inputsLog).RunAsync(
+        var held = await new LoadRunInputsV31Activity(inputs, store, V31Job.Toolchain.Value, inputsLog).RunAsync(
             new LoadRunInputsV31Input(pointer, packageRef.Name, packageRef.Version, "sha256:r",
                 new DateTimeOffset(2026, 11, 17, 3, 30, 0, TimeSpan.Zero), "America/Toronto", new JsonObject { ["id"] = "job-1" }),
             CancellationToken.None);

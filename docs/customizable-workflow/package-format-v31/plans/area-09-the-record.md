@@ -309,7 +309,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: `ConsultGenerationV31Header` gains `JsonObject? VersionsRan, JsonObject? RunFacts` (trailing, optional, so a history written before stays readable); the orchestration records them once, before any node runs.
 - Produces: `JsonObject ConsultGenerationJobState.ToRecordHeader()`: the canonical document's header: `schemaVersion`, `packageSpecVersion`, `workflowPackage`, `packageFormatRef`, `provenanceRef`, `formatsRef`, `catalogRef`, `engineCommit`, `engineRelease`, `apiHost`, `jobId`, `status`, `error`, `createdAtUtc`, `startedAtUtc`, `completedAtUtc`, `resolveHash`, `lockHash`, `versionsRan`, `runFacts`, `limits`, `signatureBlockId`, `signatureChosen`, `effectiveInputHash`, `effectiveInputHashVersion`, `inputs` (each `{ id, origin, hash, … }`), `tokens`; a member with no value is `null`, never absent.
 
-- [ ] **Step 1: Write the failing tests:**
+- [x] **Step 1: Write the failing tests:**
   - `A31Job_IsStorage12_FromItsCreation` (the start, a start failure, a decision failure) and `A30Job_IsStill11`.
   - `TheRecordStorageVersions_AreThePublishedOnes` now includes 12; `TheEngineAt30_StillSeesItsOwnSets` becomes `The31Sets_HaveJoinedTheLadders` (12, 7, 7 and 4 in the ladders; `preview` holds none of them).
   - `TheHeader_RecordsWhatRan`: after the orchestration's header step the entity holds `VersionsRan` in R4's shape, `RunFacts` with exactly the facts the package reads (`date` as `{ value, timeZone }`), and ten `Limits`; a second header call changes nothing.
@@ -317,10 +317,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `ADocumentInput_RecordsItsExtraction`: a PDF input's origin has `Parser.name` and a version, `Converter`, and `Ocr` null without OCR; a typed input has origin `typed` and none of the three.
   - `A31Job_WritesNothingRetiredAt12` (part 08 § 3): the state of a 31 job has no `MacroChoices`, `ExcludedMacros`, `Classifications` or signature snapshot.
   - `ToRecordHeader_HasEveryMember_AndNoText`: the names above, exactly; no `history`, `recordHash` or `textDroppedAtUtc`.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement**; edit `provenance-versions.json` on the content repo's `m39-build`, run its check, push, move the pin.
-- [ ] **Step 4: Run** the whole suite (shared code). Expected: PASS.
-- [ ] **Step 5: Commit** `Api (#1506): a 31 job is storage 12 and its header records what ran`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement**; edit `provenance-versions.json` on the content repo's `m39-build`, run its check, push, move the pin.
+- [x] **Step 4: Run** the whole suite (shared code). Expected: PASS.
+- [x] **Step 5: Commit** `Api (#1506): a 31 job is storage 12 and its header records what ran`; push.
 
 ### Task 9: The stores
 

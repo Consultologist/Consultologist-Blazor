@@ -17,6 +17,9 @@ public class ProvenanceMirrorTests
 
     [Theory]
     [InlineData(typeof(ApiModels.ConsultInputOrigin), typeof(WebAI.ConsultInputOrigin))]
+    // #1506 (part 08 § 3.1): a 31 origin's extraction steps.
+    [InlineData(typeof(ApiModels.ConsultExtractionStep), typeof(WebAI.ConsultExtractionStep))]
+    [InlineData(typeof(ApiModels.ConsultOcrStep), typeof(WebAI.ConsultOcrStep))]
     [InlineData(typeof(ApiModels.InputFilePayload), typeof(WebAI.InputFilePayload))]
     [InlineData(typeof(ApiModels.ConsultGenerationNodeStatusResponse), typeof(WebAI.ConsultGenerationNodeStatus))]
     [InlineData(typeof(Consultologist.Api.Workflow.TerminologySnapshot), typeof(WebAI.TerminologySnapshot))]

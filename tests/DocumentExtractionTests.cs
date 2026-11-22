@@ -1257,7 +1257,7 @@ public class DocumentExtractionTests
 
     // ---- fixtures ------------------------------------------------------
 
-    private static byte[] TextPdf(string text, string? ownerPassword = null)
+    internal static byte[] TextPdf(string text, string? ownerPassword = null)
     {
         var document = new PdfDocument();
         var page = document.AddPage();

@@ -551,7 +551,17 @@ public sealed record ConsultInputOrigin(
     string? SourceResultId = null,
     // #540: mirrors the Api's SourceFormId / SourceResponseId — a form-response element's source.
     string? SourceFormId = null,
-    string? SourceResponseId = null);
+    string? SourceResponseId = null,
+    // #1506 (part 08 § 3.1): mirrors the Api's Converter / Parser / Ocr — what a 31 job's extraction used; absent on 5–30 records.
+    ConsultExtractionStep? Converter = null,
+    ConsultExtractionStep? Parser = null,
+    ConsultOcrStep? Ocr = null);
+
+/// <summary>#1506: mirrors Consultologist.Api.Models.ConsultExtractionStep.</summary>
+public sealed record ConsultExtractionStep(string Name, string Version);
+
+/// <summary>#1506: mirrors Consultologist.Api.Models.ConsultOcrStep.</summary>
+public sealed record ConsultOcrStep(string Service, string Model);
 public record ConsultGenerationJobStartResponse(string JobId, string StatusUrl);
 
 /// <summary>#390: the new job a reschedule created, and the one it replaced.</summary>

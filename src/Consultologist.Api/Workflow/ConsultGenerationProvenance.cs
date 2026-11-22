@@ -113,6 +113,13 @@ public static class ConsultGenerationProvenance
     /// </summary>
     public const int NestedInputsHashVersion = 6;
 
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; hash-definitions.md § 7.2; D14): definition 7, the inputs a 31 job's start hashes:
+    /// one canonical (RFC 8785) JSON object keyed by input id, each the value of the input's read form, written
+    /// <c>sha256:&lt;hex&gt;</c> (<c>V31JobStarter.EffectiveInputHash</c>). Only a 31 job stamps it; 5–30 jobs stamp what they did.
+    /// </summary>
+    public const int EffectiveInputHashVersionAt31 = 7;
+
     public static string ComputeNestedInputsHash(IReadOnlyDictionary<string, ConsultInputValue> suppliedInputs)
         => ComputeStructuredInputsHash(suppliedInputs);
 
@@ -239,6 +246,12 @@ public static class ConsultGenerationProvenance
     /// </summary>
     public const int ResultSetHashVersion = 3;
 
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; hash-definitions.md § 7.3; D14): definition 4, a 31 deliverable's
+    /// <c>composedHash</c>, as its record row stamps it (<c>RecordRows.DeliverableHashVersion</c>).
+    /// </summary>
+    public const int WorkflowOutputHashVersionAt31 = Consultologist.PackageFormat.V31.Run.RecordRows.DeliverableHashVersion;
+
     public static string ComputeResultSetHash(IReadOnlyDictionary<string, string> documents)
         => ComputeWorkflowOutputHash(documents);
 
@@ -279,6 +292,13 @@ public static class ConsultGenerationProvenance
     /// the node. The registry's ladder carries both; the newest is this one.
     /// </summary>
     public const int NodeHashVersionAt25 = 6;
+
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; hash-definitions.md § 7.1; D14): definition 7, the pair a 31 node row stamps (the
+    /// sent text with its run spots and macro markers filled, and the run-neutral hash beside it;
+    /// <c>RecordRows.NodeHashVersion</c>). The registry's ladder carries it; nodes below 31 stamp what they stamped.
+    /// </summary>
+    public const int NodeHashVersionAt31 = Consultologist.PackageFormat.V31.Run.RecordRows.NodeHashVersion;
 
     /// <summary>
     /// Lowercase-hex SHA-256 of the UTF-8 text — the per-node provenance hash: a node's

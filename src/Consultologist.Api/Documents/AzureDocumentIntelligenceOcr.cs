@@ -26,6 +26,12 @@ internal sealed class AzureDocumentIntelligenceOcr : IDocumentOcr
 {
     internal const string EndpointSetting = "DocumentExtraction__OcrEndpoint";
 
+    /// <summary>#1506 (part 08 § 3.1; D15): the service a 31 job's record names as its OCR.</summary>
+    internal const string Service = "Azure AI Document Intelligence";
+
+    /// <summary>The model every read is analysed with (and, #1506, the one a 31 job's record names).</summary>
+    internal const string Model = "prebuilt-read";
+
     // Provenance: pinned by the SDK assembly version, computed once — the same
     // shape as pdfpig/… and html/… (docs/DOCUMENT_INPUT.md § 7).
     private static readonly string ExtractorId =
@@ -77,7 +83,7 @@ internal sealed class AzureDocumentIntelligenceOcr : IDocumentOcr
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(TimeSpan.FromSeconds(_timeoutSeconds));
 
-            var options = new AnalyzeDocumentOptions("prebuilt-read", BinaryData.FromBytes(pdfBytes));
+            var options = new AnalyzeDocumentOptions(Model, BinaryData.FromBytes(pdfBytes));
             Operation<AnalyzeResult> operation =
                 await client.AnalyzeDocumentAsync(WaitUntil.Completed, options, cancellationToken: timeout.Token);
 

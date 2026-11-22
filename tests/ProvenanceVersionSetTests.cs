@@ -43,6 +43,9 @@ public class ProvenanceVersionSetTests
     public void TheRecordStorageVersions_AreThePublishedOnes()
     {
         Assert.Equal(Ladder("recordStorageVersions"), ConsultGenerationJobState.StorageVersions);
+        // #1506 (part 08 §§ 1, 13; D14): a 31 job is record storage 12, now in the ladder.
+        Assert.Contains(12, ConsultGenerationJobState.StorageVersions);
+        Assert.Equal(12, Ladder("recordStorageVersions").Max());
     }
 
     [Fact]
@@ -54,17 +57,27 @@ public class ProvenanceVersionSetTests
             new[]
             {
                 1, 2, ConsultGenerationProvenance.DeclaredInputsHashVersion, ConsultGenerationProvenance.TypedInputsHashVersion,
-                ConsultGenerationProvenance.StructuredInputsHashVersion, ConsultGenerationProvenance.NestedInputsHashVersion
+                ConsultGenerationProvenance.StructuredInputsHashVersion, ConsultGenerationProvenance.NestedInputsHashVersion,
+                // #1506 (D14): 7, the inputs keyed by id as a 31 job's start hashes them (hash-definitions.md § 7.2).
+                ConsultGenerationProvenance.EffectiveInputHashVersionAt31
             },
             Ladder("effectiveInputHashVersions"));
+        Assert.Equal(6, ConsultGenerationProvenance.NestedInputsHashVersion);
+        Assert.Equal(7, ConsultGenerationProvenance.EffectiveInputHashVersionAt31);
     }
 
     [Fact]
     public void TheWorkflowOutputLadder_IsThePublishedOne()
     {
         Assert.Equal(
-            new[] { ConsultGenerationProvenance.WorkflowOutputHashVersion, ConsultGenerationProvenance.AssembledDocumentHashVersion, ConsultGenerationProvenance.ResultSetHashVersion },
+            new[]
+            {
+                ConsultGenerationProvenance.WorkflowOutputHashVersion, ConsultGenerationProvenance.AssembledDocumentHashVersion, ConsultGenerationProvenance.ResultSetHashVersion,
+                // #1506 (D14): 4, a 31 deliverable's composedHash (hash-definitions.md § 7.3).
+                ConsultGenerationProvenance.WorkflowOutputHashVersionAt31
+            },
             Ladder("workflowOutputHashVersions"));
+        Assert.Equal(4, ConsultGenerationProvenance.WorkflowOutputHashVersionAt31);
     }
 
     [Fact]
@@ -77,10 +90,13 @@ public class ProvenanceVersionSetTests
         // while a node of a package below 25 keeps stamping 5 (NodeHashVersion):
         // its output never composes at the node. A change to either side moves
         // its number and the index together, or fails here.
-        Assert.Equal(Enumerable.Range(1, ConsultGenerationProvenance.NodeHashVersionAt25), Ladder("nodeHashVersions"));
-        Assert.Equal(Ladder("nodeHashVersions").Max(), ConsultGenerationProvenance.NodeHashVersionAt25);
+        // #1506 (D14): the ladder reaches 7, the specVersion 31 definition (hash-definitions.md § 7.1), which a 31 node
+        // row stamps (NodeHashVersionAt31); 5–30 nodes stamp what they stamped.
+        Assert.Equal(Enumerable.Range(1, ConsultGenerationProvenance.NodeHashVersionAt31), Ladder("nodeHashVersions"));
+        Assert.Equal(Ladder("nodeHashVersions").Max(), ConsultGenerationProvenance.NodeHashVersionAt31);
         Assert.Equal(5, ConsultGenerationProvenance.NodeHashVersion);
         Assert.Equal(6, ConsultGenerationProvenance.NodeHashVersionAt25);
+        Assert.Equal(7, ConsultGenerationProvenance.NodeHashVersionAt31);
     }
 
     [Fact]

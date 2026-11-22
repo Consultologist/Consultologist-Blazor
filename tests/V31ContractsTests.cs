@@ -69,7 +69,7 @@ public class V31ContractsTests
     private static int[] Ints(JsonNode? array) => array!.AsArray().Select(v => (int)v!).ToArray();
 
     [Fact]
-    public void TheEngineAt30_StillSeesItsOwnSets()
+    public void The31Sets_HaveJoinedTheLadders()
     {
         var specVersions = Json(PackageFormat("spec-versions.json"));
         Assert.DoesNotContain(31, Ints(specVersions["supported"]));
@@ -79,14 +79,19 @@ public class V31ContractsTests
         Assert.Equal("package-format-v31.md", document);
         Assert.Contains("specVersion 31", File.ReadAllText(Existing(PackageFormat(document))));
 
+        // #1506 (part 08 § 13; D14): the engine writes them, so storage 12 and definitions 7, 7 and 4 are in the ladders
+        // and the preview holds none of them; the package format's 31 stays a preview (31 is off in production).
         var provenance = Json(Provenance("provenance-versions.json"));
-        Assert.DoesNotContain(12, Ints(provenance["recordStorageVersions"]));
+        Assert.Equal(12, Ints(provenance["recordStorageVersions"])[^1]);
+        Assert.Equal(7, Ints(provenance["nodeHashVersions"])[^1]);
+        Assert.Equal(7, Ints(provenance["effectiveInputHashVersions"])[^1]);
+        Assert.Equal(4, Ints(provenance["workflowOutputHashVersions"])[^1]);
 
-        var preview = provenance["preview"]!;
-        Assert.Equal([12], Ints(preview["recordStorageVersions"]));
-        Assert.Equal([7], Ints(preview["nodeHashVersions"]));
-        Assert.Equal([7], Ints(preview["effectiveInputHashVersions"]));
-        Assert.Equal([4], Ints(preview["workflowOutputHashVersions"]));
+        if (provenance["preview"] is JsonObject preview)
+        {
+            foreach (var (_, numbers) in preview)
+                Assert.Empty(Ints(numbers));
+        }
 
         Assert.DoesNotContain(31, WorkflowPackageStore.SupportedSpecVersions);
         Assert.DoesNotContain(31, WorkflowPackageValidator.AcceptedSpecVersions);

@@ -44,10 +44,33 @@ internal sealed class V31Job
 
     public const string JobId = "job-31-0001";
 
-    private V31Job(CompiledGoldenTests.GoldenCase golden)
+    /// <summary>#1506: this engine's toolchain over the bundled catalogues, as the host builds it (<c>load-run-inputs-v31</c>'s).</summary>
+    public static readonly Lazy<EngineToolchain> Toolchain = new(() => new EngineToolchain(
+        EngineAttestation.Current(OutputContractCatalog.Load()), OutputContractCatalog.Load(), FormatCatalogLoader.Load(),
+        new Lazy<V31AgentsCatalogue>(() => V31AgentsCatalogue.Load())));
+
+    private V31Job(CompiledGoldenTests.GoldenCase golden, Action<JsonObject>? resolve = null)
     {
         Registry = new FakeRegistry();
-        (Ref, Pair) = Registry.Put(golden);
+        if (resolve == null)
+        {
+            (Ref, Pair) = Registry.Put(golden);
+        }
+        else
+        {
+            // #1506: the golden with its resolve.json changed, the pair made to agree
+            Ref = Registry.PutChanged(golden, resolve);
+            var resolveText = System.Text.Encoding.UTF8.GetString(Registry.Blobs[FakeRegistry.PathOf(Ref, CompiledPackage.ResolveFile)]);
+            var lockText = System.Text.Encoding.UTF8.GetString(Registry.Blobs[FakeRegistry.PathOf(Ref, ResolveCompiler.LockFile)]);
+            Pair = CompiledGoldenTests.Published(golden) with
+            {
+                Resolve = resolveText,
+                ResolveHash = CanonicalJson.HashText(resolveText),
+                Lock = lockText,
+                LockHash = CanonicalJson.HashText(lockText),
+            };
+        }
+
         Store = StoreOver(Registry);
         Plan = Store.TryLoadAsync(Ref, CancellationToken.None).GetAwaiter().GetResult()!.Plan!;
         Agent = call => new AgentOutcome(AgentOutcomeKind.Completed, RunFixture.StubReply(Plan, call), 0, null);
@@ -107,6 +130,9 @@ internal sealed class V31Job
 
     public static V31Job Of(string golden) => new(CompiledGoldenTests.Cases().Single(c => c.Name == golden));
 
+    /// <summary>#1506: a job of <paramref name="golden"/> with <paramref name="resolve"/> applied to its <c>resolve.json</c>.</summary>
+    public static V31Job Of(string golden, Action<JsonObject> resolve) => new(CompiledGoldenTests.Cases().Single(c => c.Name == golden), resolve);
+
     /// <summary>#1505: a job of <paramref name="golden"/>, a package of the test's own.</summary>
     public static V31Job Of(CompiledGoldenTests.GoldenCase golden) => new(golden);
 
@@ -127,7 +153,7 @@ internal sealed class V31Job
             .On(ConsultGenerationActivityNames.LoadPlanV31, payload =>
                 new LoadPlanV31Activity(Store).RunAsync((LoadPlanV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.LoadRunInputsV31, payload =>
-                new LoadRunInputsV31Activity(Inputs, Store).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+                new LoadRunInputsV31Activity(Inputs, Store, Toolchain.Value).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.RunAgentNodeV31, payload => Agent(((RunAgentNodeV31Input)payload!).Call))
             .On(ConsultGenerationActivityNames.EvaluateRuleV31, payload =>
                 new EvaluateRuleV31Activity(Store, NullLogger<EvaluateRuleV31Activity>.Instance)

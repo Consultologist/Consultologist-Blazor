@@ -171,7 +171,26 @@ public sealed record ConsultInputOrigin(
     // TextSha256 is over the value as it entered the effective-input map.
     // Null on every other kind. Appended last: replay reads this record.
     string? SourceFormId = null,
-    string? SourceResponseId = null);
+    string? SourceResponseId = null,
+    // #1506 (specVersion 31, area 09; part 08 § 3.1; D15): what the extraction
+    // of a document-filled input of a 31 job used, beside Extractor (which
+    // stays for older records): the document-to-Markdown converter, the parsing
+    // library, each { name, version }, and the OCR service and model when OCR
+    // ran; each null where the step was not used. Only a 31 start writes them;
+    // not written when null, so every 5–30 origin writes the bytes it always
+    // wrote. Appended last: replay reads this record.
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ConsultExtractionStep? Converter = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ConsultExtractionStep? Parser = null,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    ConsultOcrStep? Ocr = null);
+
+/// <summary>#1506 (part 08 § 3.1; D15): a step of a document's extraction: the library (or the engine's own reader) and its version.</summary>
+public sealed record ConsultExtractionStep(string Name, string Version);
+
+/// <summary>#1506 (part 08 § 3.1; D15): the OCR that read a document: the service and its model.</summary>
+public sealed record ConsultOcrStep(string Service, string Model);
 
 public static class ConsultInputOriginKinds
 {

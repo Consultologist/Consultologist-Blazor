@@ -122,6 +122,19 @@ public sealed class ConsultGenerationOrchestratorV31
                 return;
             }
 
+            // #1506 (area 09; part 08 §§ 3, 8.1; R4): the header's second call, write-once, before any node runs: the versions
+            // that ran (the activity's: assembly versions can differ between workers) and the run facts the package reads.
+            await context.Entities.CallEntityAsync(
+                entityId,
+                nameof(ConsultGenerationJobEntity.RecordV31Header),
+                new ConsultGenerationV31Header(
+                    input.ResolveHash,
+                    input.LockHash,
+                    limits.ToJson().ToDictionary(member => member.Key, member => (int)member.Value!, StringComparer.Ordinal),
+                    startedAt,
+                    held.VersionsRan,
+                    held.RecordedRunFacts));
+
             var inputs = InputsOf(document, held.RunFacts ?? new JsonObject());
             var recorder = new EntityRunRecorder(context, input);
             var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input, limits), recorder)

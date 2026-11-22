@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Consultologist.Api.Jobs;
 using Consultologist.Api.Workflow;
 using Consultologist.PackageFormat;
@@ -78,9 +79,20 @@ internal static class V31Plans
     public static async Task<(RunPlan? Plan, string? Refusal)> LoadAsync(
         ICompiledPackageStore store, string name, string version, string resolveHash, ILogger logger, CancellationToken cancellationToken)
     {
+        var (plan, _, refusal) = await LoadWithLockAsync(store, name, version, resolveHash, logger, cancellationToken);
+        return (plan, refusal);
+    }
+
+    /// <summary>
+    /// #1506 (area 09; R4): <see cref="LoadAsync"/>, with the version's verified <c>lock.json</c> beside the plan (null with
+    /// a refusal).
+    /// </summary>
+    public static async Task<(RunPlan? Plan, JsonObject? Lock, string? Refusal)> LoadWithLockAsync(
+        ICompiledPackageStore store, string name, string version, string resolveHash, ILogger logger, CancellationToken cancellationToken)
+    {
         var load = await store.TryLoadAsync(new WorkflowPackageRef(name, version), cancellationToken);
         if (load == null)
-            return (null, CompiledPackageStore.NotPublished(name, version));
+            return (null, null, CompiledPackageStore.NotPublished(name, version));
         // A registry that could not be read is the engine's fault, not the package's: the activity fails, as it did when
         // the read threw, and the job with it (A06-010).
         if (load.Unreadable)
@@ -91,11 +103,11 @@ internal static class V31Plans
             logger.LogWarning(
                 "V31 plan refused at run. Package={Package}@{Version}, RefusalId={RefusalId}, Detail={Detail}",
                 name, version, load.RefusalId, load.OperatorDetail ?? load.Refusal);
-            return (null, load.Refusal ?? HashMismatch(name, version));
+            return (null, null, load.Refusal ?? HashMismatch(name, version));
         }
         if (!string.Equals(load.Plan.ResolveHash, resolveHash, StringComparison.Ordinal))
-            return (null, HashMismatch(name, version));
-        return (load.Plan, null);
+            return (null, null, HashMismatch(name, version));
+        return (load.Plan, load.Lock == null ? null : JsonNode.Parse(load.Lock) as JsonObject, null);
     }
 
     /// <summary>S09-009 for <paramref name="name"/>@<paramref name="version"/>.</summary>

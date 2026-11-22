@@ -678,6 +678,203 @@ public class V31JobStartTests
         Assert.Equal(nameof(ConsultGenerationOrchestratorV31), Assert.Single(start.Scheduled).Name);
     }
 
+    // ---- the header of a 31 job (#1506, area 09; part 08 §§ 1, 3, 3.1, 13; D14, D15) ----------------------------
+
+    [Fact]
+    public async Task A31Job_IsStorage12_FromItsCreation()
+    {
+        // the start
+        var started = Entity();
+        await started.Initialize(new ConsultGenerationJobInitialize("job-31", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>(), PackageSpecVersion: 31));
+        Assert.Equal(12, StateOf(started).SchemaVersion);
+
+        // a start failure
+        var refused = Entity();
+        await refused.RecordStartFailure(new ConsultGenerationJobStartFailure(
+            new ConsultGenerationJobInitialize("job-31", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>(), PackageSpecVersion: 31), V31StartChecks.NoTimeZone));
+        Assert.Equal(12, StateOf(refused).SchemaVersion);
+
+        // a decision failure
+        var undecided = Entity();
+        await undecided.Initialize(new ConsultGenerationJobInitialize("job-31", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>(), PackageSpecVersion: 31));
+        await undecided.RecordDecisionFailure(new ConsultGenerationDecisionFailure(ConsultGenerationDecisionFailureKinds.NothingApplied, "Nothing applied.", null));
+        Assert.Equal(12, StateOf(undecided).SchemaVersion);
+
+        Assert.Equal(12, ConsultGenerationJobState.StorageVersions[^1]);
+    }
+
+    [Fact]
+    public async Task A30Job_IsStill11()
+    {
+        var started = Entity();
+        await started.Initialize(new ConsultGenerationJobInitialize("job-30", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>(), PackageSpecVersion: 30));
+        Assert.Equal(11, StateOf(started).SchemaVersion);
+
+        var refused = Entity();
+        await refused.RecordStartFailure(new ConsultGenerationJobStartFailure(
+            new ConsultGenerationJobInitialize("job-30", "user-1", Array.Empty<IReadOnlyDictionary<string, string>>(), PackageSpecVersion: 30), "No document applies."));
+        Assert.Equal(11, StateOf(refused).SchemaVersion);
+    }
+
+    [Fact]
+    public async Task TheStart_HashesItsInputs()
+    {
+        async Task<ConsultGenerationJobInitialize> StartWith(string draft)
+        {
+            var start = new Start(preview: "31");
+            var outcome = await start.RunAsync(start.Put("nested-note"), Text(draft));
+            Assert.Null(outcome.Error);
+            return Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        }
+
+        var first = await StartWith(Draft);
+        var again = await StartWith(Draft);
+        var other = await StartWith(Draft + " Seen with her daughter.");
+
+        // hash-definitions.md § 7.2: the canonical JSON object keyed by input id, each the value of its read form
+        Assert.Equal(7, first.EffectiveInputHashVersion);
+        Assert.Equal(CanonicalJson.Hash(new JsonObject { ["consult_draft"] = Draft }), first.EffectiveInputHash);
+        Assert.StartsWith("sha256:", first.EffectiveInputHash, StringComparison.Ordinal);
+        Assert.Equal(first.EffectiveInputHash, again.EffectiveInputHash);
+        Assert.NotEqual(first.EffectiveInputHash, other.EffectiveInputHash);
+
+        // and each input's own hash, for the header's inputs
+        Assert.Equal(CanonicalJson.Hash(JsonValue.Create(Draft)), first.InputHashes!["consult_draft"]);
+        Assert.DoesNotContain("Okafor", JsonSerializer.Serialize(first), StringComparison.Ordinal);
+
+        // on the entity, write-once
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(first));
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(other));
+        Assert.Equal((first.EffectiveInputHash, (int?)7), (StateOf(entity).EffectiveInputHash, StateOf(entity).EffectiveInputHashVersion));
+    }
+
+    [Fact]
+    public async Task ADocumentInput_RecordsItsExtraction()
+    {
+        var start = new Start(preview: "31");
+        var packageRef = start.Put("nested-note");
+        var request = new ConsultGenerationRequest(
+            null,
+            RefText(packageRef),
+            InputFiles: new Dictionary<string, List<InputFilePayload>>
+            {
+                ["consult_draft"] = [new InputFilePayload("application/pdf", DocumentExtractionTests.TextPdf(Draft))],
+            });
+
+        var outcome = await start.RunAsync(request);
+
+        Assert.Null(outcome.Error);
+        var initialize = Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload);
+        var origin = Assert.Single(initialize.InputDocumentOrigins!["consult_draft"]);
+        Assert.StartsWith("pdfpig/", origin.Extractor, StringComparison.Ordinal);
+        Assert.Equal("PdfPig", origin.Parser!.Name);
+        Assert.Matches(@"^[0-9]+\.[0-9]+\.[0-9]+$", origin.Parser.Version);
+        Assert.Null(origin.Converter);
+        Assert.Null(origin.Ocr);
+
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(initialize));
+        var input = Assert.Single(StateOf(entity).ToRecordHeader()["inputs"]!.AsArray())!.AsObject();
+        Assert.Equal("consult_draft", (string?)input["id"]);
+        Assert.Equal("document", (string?)input["origin"]);
+        Assert.Equal("document", (string?)input["kind"]);
+        Assert.Equal(1, (int?)input["pageCount"]);
+        Assert.Equal(origin.FileSha256, (string?)input["fileSha256"]);
+        Assert.Equal(origin.TextSha256, (string?)input["textSha256"]);
+        Assert.Equal("PdfPig", (string?)input["parser"]!["name"]);
+        Assert.Equal(origin.Parser.Version, (string?)input["parser"]!["version"]);
+        Assert.True(input.ContainsKey("converter") && input["converter"] is null);
+        Assert.True(input.ContainsKey("ocr") && input["ocr"] is null);
+
+        // a typed input: origin typed, and none of the three
+        var typed = new Start(preview: "31");
+        Assert.Null((await typed.RunAsync(typed.Put("nested-note"), Text(Draft))).Error);
+        var typedEntity = Entity();
+        await typedEntity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(
+            Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(typed.Signals).Payload)));
+        var typedInput = Assert.Single(StateOf(typedEntity).ToRecordHeader()["inputs"]!.AsArray())!.AsObject();
+        Assert.Equal(["id", "origin", "hash"], typedInput.Select(m => m.Key));
+        Assert.Equal("typed", (string?)typedInput["origin"]);
+        Assert.Equal(CanonicalJson.Hash(JsonValue.Create(Draft)), (string?)typedInput["hash"]);
+    }
+
+    [Fact]
+    public void ADocumentInput_At30_RecordsItsOriginAsBefore()
+    {
+        // the 5–30 path's origin is written as it was: none of the 31 members
+        var origin = new ConsultInputOrigin(ConsultInputOriginKinds.Document, "pdfpig/0.1.15", 1, false, FileSha256: "aa", TextSha256: "bb");
+        Assert.Equal(
+            """{"Kind":"document","Extractor":"pdfpig/0.1.15","PageCount":1,"TrackedChangesResolved":false,"FileSha256":"aa","TextSha256":"bb","SourceJobId":null,"SourceResultId":null,"SourceFormId":null,"SourceResponseId":null}""",
+            JsonSerializer.Serialize(origin));
+    }
+
+    [Fact]
+    public async Task A31Job_WritesNothingRetiredAt12()
+    {
+        // part 08 § 3: macroChoices, excludedMacros and classifications are retired at 12, as is the signature snapshot
+        var start = new Start(preview: "31", signatures: Blocks());
+        var packageRef = start.PutChoices();
+
+        var outcome = await start.RunAsync(WithChoices(packageRef, Text(Draft), ("letrozole", true)));
+
+        Assert.Null(outcome.Error);
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(
+            Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload)));
+        var state = JsonNode.Parse(JsonSerializer.Serialize(StateOf(entity)))!.AsObject();
+        Assert.Equal(12, (int?)state["SchemaVersion"]);
+        foreach (var retired in new[] { "MacroChoices", "ExcludedMacros", "Classifications", "Signature" })
+            Assert.Null(state[retired]);
+        Assert.DoesNotContain("AsOf", state.ToJsonString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("Sample Oncology Clinic", state.ToJsonString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ToRecordHeader_HasEveryMember_AndNoText()
+    {
+        var start = new Start(preview: "31", signatures: Blocks());
+        var outcome = await start.RunAsync(start.PutSigned(), Text(Draft));
+        Assert.Null(outcome.Error);
+
+        var entity = Entity();
+        await entity.Initialize(FakeOrchestrationContext.RoundTrip<ConsultGenerationJobInitialize>(
+            Assert.IsType<ConsultGenerationJobInitialize>(Assert.Single(start.Signals).Payload)));
+        var state = StateOf(entity);
+        var limits = new RunLimits().ToJson().ToDictionary(m => m.Key, m => (int)m.Value!, StringComparer.Ordinal);
+        entity.RecordV31Header(new ConsultGenerationV31Header(state.ResolveHash!, state.LockHash!, limits, new DateTimeOffset(2026, 11, 17, 14, 0, 0, TimeSpan.Zero)));
+        entity.RecordV31Header(new ConsultGenerationV31Header(state.ResolveHash!, state.LockHash!, limits, new DateTimeOffset(2026, 11, 17, 14, 0, 0, TimeSpan.Zero),
+            new JsonObject { ["culture"] = "invariant" }, new JsonObject()));
+
+        var header = state.ToRecordHeader();
+
+        Assert.Equal(
+            [
+                "schemaVersion", "packageSpecVersion", "workflowPackage", "packageFormatRef", "provenanceRef", "formatsRef", "catalogRef",
+                "engineCommit", "engineRelease", "apiHost", "jobId", "status", "error", "createdAtUtc", "startedAtUtc", "completedAtUtc",
+                "resolveHash", "lockHash", "versionsRan", "runFacts", "limits", "signatureBlockId", "signatureChosen",
+                "effectiveInputHash", "effectiveInputHashVersion", "inputs", "tokens",
+            ],
+            header.Select(m => m.Key));
+        Assert.Equal(12, (int?)header["schemaVersion"]);
+        Assert.Equal(31, (int?)header["packageSpecVersion"]);
+        Assert.Equal(outcome.JobId, (string?)header["jobId"]);
+        Assert.Equal("2026-11-17T14:00:00.0000000+00:00", (string?)header["startedAtUtc"]);
+        Assert.Null(header["completedAtUtc"]);
+        Assert.Null(header["error"]);
+        Assert.Null(header["tokens"]);
+        Assert.Equal(10, header["limits"]!.AsObject().Count);
+        Assert.Equal("invariant", (string?)header["versionsRan"]!["culture"]);
+        Assert.Equal(("sig-1", "default"), ((string?)header["signatureBlockId"], (string?)header["signatureChosen"]));
+        Assert.Equal(7, (int?)header["effectiveInputHashVersion"]);
+
+        var text = header.ToJsonString();
+        foreach (var absent in new[] { "\"history\"", "\"recordHash\"", "\"textDroppedAtUtc\"", "Okafor", "Sample Oncology Clinic" })
+            Assert.DoesNotContain(absent, text, StringComparison.Ordinal);
+    }
+
+    private static ConsultGenerationJobState StateOf(ConsultGenerationJobEntity entity) => (ConsultGenerationJobState)StateProperty.GetValue(entity)!;
+
     private const string Billed = "{ \"===\": [{ \"var\": \"input.include_billing.value\" }, true] }";
 
     private const string ClinicBlock = "Dr A. Sample\nSample Oncology Clinic";

@@ -191,6 +191,9 @@ public static class ApiServices
         // inputs held by reference as the job's held inputs (JobInputsBlobStore's containers and names).
         services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
         services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
+        // #1506 (area 09; R4): the toolchain a 31 job runs with, for its versionsRan (load-run-inputs-v31's); the 31 agents
+        // catalogue is read only when a 31 job asks.
+        services.AddSingleton<Consultologist.Api.V31.EngineToolchain>();
         services.AddSingleton<Consultologist.Api.V31.V31JobStarter>();
         // #1505 (part 06 § 8; D10): a 31 job's delivery channels, email and pdf, over the mailbox and the account's
         // delivery settings, as the 5–30 reply reads them (deliver-v31's).
