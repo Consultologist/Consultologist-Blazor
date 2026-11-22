@@ -115,6 +115,7 @@ public static partial class BodyComposer
     {
         private readonly Dictionary<string, (Template Template, TemplateSyntax Syntax)?> parsed = new(StringComparer.Ordinal);
         private readonly List<ComposedUnit?> units = [];
+        private readonly List<string?> unitTexts = [];
         private readonly ScriptObject builtins = TemplateValues.BuiltIns();
         private int planned;
         private ScriptObject? data;
@@ -272,9 +273,24 @@ public static partial class BodyComposer
                 return null;
             var index = units.Count;
             units.Add(null);
+            unitTexts.Add(null);
             var rendered = Render(placement.Text, Globals(), out var spots);
             units[index] = new ComposedUnit(placement.Site, CanonicalJson.HashText(rendered));
-            return new PlacedText(rendered, spots);
+            unitTexts[index] = rendered;
+            return new PlacedText(rendered, spots, index);
+        }
+
+        /// <summary>
+        /// #1505 (area 08; part 06 § 9; D7): the unit at <paramref name="index"/>, escaped whole where it is spliced, and the
+        /// units placed inside it (recorded after it, as it rendered) are recorded by the hash of their text as spliced: escaped.
+        /// </summary>
+        public void EscapedUnits(int index)
+        {
+            for (var i = Math.Max(index, 0); i < units.Count; i++)
+            {
+                if (units[i] is { } unit && unitTexts[i] is { } text)
+                    units[i] = unit with { TextHash = CanonicalJson.HashText(MarkdownEscape.Escape(text)) };
+            }
         }
     }
 
@@ -403,7 +419,11 @@ internal sealed class ComposeContext : TemplateContext
         if (value is BodyComposer.PlacedText placed)
         {
             if (escape)
+            {
+                if (placed.Unit >= 0)
+                    Composing.EscapedUnits(placed.Unit);
                 placed = BodyComposer.Escaped(placed);
+            }
             var start = Written.Length;
             if (placed.Text.Length > 0)
                 Write(placed.Text);

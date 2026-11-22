@@ -138,8 +138,11 @@ public static partial class BodyComposer
             Spot.Reads.StartsWith("run.", StringComparison.Ordinal) ? Output : null, ValueHash);
     }
 
-    /// <summary>A placed unit's rendered text and the run spots written in it (at places in that text), as its placement writes it.</summary>
-    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots);
+    /// <summary>
+    /// A placed unit's rendered text and the run spots written in it (at places in that text), as its placement writes it,
+    /// and the index of its <see cref="ComposedUnit"/> among the composition's (<c>-1</c> for a macro's instruction).
+    /// </summary>
+    internal sealed record PlacedText(string Text, IReadOnlyList<FilledSpot> Spots, int Unit = -1);
 
     /// <summary>
     /// #1505 (area 08, D7): <paramref name="placed"/> escaped whole as plain text in Markdown, each run spot in it with its
@@ -160,13 +163,16 @@ public static partial class BodyComposer
             at = spot.Start + spot.Length;
         }
 
-        return new PlacedText(escaped.Append(MarkdownEscape.Escape(text[at..])).ToString(), spots);
+        return new PlacedText(escaped.Append(MarkdownEscape.Escape(text[at..])).ToString(), spots, placed.Unit);
     }
 
     /// <summary>
     /// #1505 (area 08, D7): a run-neutral output <paramref name="neutral"/> escaped as its sent output is, each run marker
     /// in it (<c>{{run:&lt;n&gt;}}</c>, standing for a run-dependent value) kept as it is, so the two texts still differ
-    /// only at the markers.
+    /// only at the markers. A read value that itself holds the literal text <c>{{run:&lt;n&gt;}}</c> cannot be told from a
+    /// marker here: it is kept unescaped in the run-neutral text (its sent text is escaped), so that one text's neutral hash
+    /// differs from a byte-exact escape. The run-neutral text is never sent, and the read node's own neutral text is just as
+    /// ambiguous, so nothing better can be known from it.
     /// </summary>
     internal static string EscapedNeutral(string neutral)
     {
