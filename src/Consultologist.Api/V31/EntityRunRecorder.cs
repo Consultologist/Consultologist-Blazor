@@ -44,12 +44,27 @@ public sealed class EntityRunRecorder(TaskOrchestrationContext context, ConsultG
             new ConsultGenerationV31Progress(decision.Site, null));
     }
 
-    /// <summary>#1505 (area 08): a delivery row; its logging and its signal come with delivery's hosting (Task 11).</summary>
+    /// <summary>
+    /// #1505 (area 08; part 08 § 10; D13): a delivery row goes to telemetry as its key, kind, result and attempt count (its
+    /// reason is a fixed sentence, its attempts' outcomes error kinds: neither carries a value), and is counted on the entity
+    /// as <c>delivery:&lt;result&gt;</c>, apart from the run's row states.
+    /// </summary>
     public Task DeliveryAsync(DeliveryRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        return Task.CompletedTask;
+        _logger.LogInformation(
+            "V31 delivery. JobId={JobId}, Key={Key}, Kind={Kind}, Result={Result}, Attempts={Attempts}",
+            input.JobId,
+            row.Key,
+            row.Kind,
+            row.Result,
+            row.Attempts.Count);
+        return context.Entities.SignalEntityAsync(_entity, nameof(ConsultGenerationJobEntity.RecordV31Progress),
+            new ConsultGenerationV31Progress(row.Key, DeliveryStateName(row.Result)));
     }
+
+    /// <summary>A delivery row's result as the entity counts it: <c>delivery:sent</c>, <c>delivery:not sent</c>, <c>delivery:failed</c>.</summary>
+    internal static string DeliveryStateName(string result) => $"delivery:{result}";
 
     /// <summary>Part 08's word for a row's state.</summary>
     internal static string StateName(RowState state) => state switch

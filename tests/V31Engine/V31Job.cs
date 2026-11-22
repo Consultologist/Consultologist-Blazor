@@ -24,7 +24,7 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// the real <see cref="ConsultGenerationOrchestratorV31"/> runs on a <see cref="FakeOrchestrationContext"/> whose
 /// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c>, <c>render-node-v31</c> and (#1505) <c>evaluate-rule-v31</c> are the real activities (the inputs from a
 /// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/> at the job's held-inputs pointer), and whose <c>run-agent-node-v31</c> is
-/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key). Timers longer than five minutes (the job's)
+/// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key) and (#1505) <c>deliver-v31</c> by <see cref="Deliver"/>. Timers longer than five minutes (the job's)
 /// wait, as durable timers do, until cancelled; shorter ones (a retry's) end at once.
 /// </summary>
 internal sealed class V31Job
@@ -84,6 +84,9 @@ internal sealed class V31Job
     /// <summary>Answers each attempt of an agent call.</summary>
     public Func<AgentCall, AgentOutcome> Agent { get; set; }
 
+    /// <summary>#1505: answers each attempt of a delivery send (by default, sent).</summary>
+    public Func<DeliverV31Input, DeliverySendOutcome> Deliver { get; set; } = _ => new DeliverySendOutcome(DeliverySendResult.Sent, null);
+
     /// <summary>The limits the job's input records.</summary>
     public RunLimits Limits { get; set; } = new();
 
@@ -122,6 +125,7 @@ internal sealed class V31Job
             .On(ConsultGenerationActivityNames.EvaluateRuleV31, payload =>
                 new EvaluateRuleV31Activity(Store, NullLogger<EvaluateRuleV31Activity>.Instance)
                     .RunAsync((EvaluateRuleV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
+            .On(ConsultGenerationActivityNames.DeliverV31, payload => Deliver((DeliverV31Input)payload!))
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
                 new RenderNodeV31Activity(Store, NullLogger<RenderNodeV31Activity>.Instance)
                     .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())

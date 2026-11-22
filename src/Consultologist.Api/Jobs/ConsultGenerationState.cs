@@ -378,6 +378,25 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     }
 
     /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8): a 31 job that succeeded enters delivering, from running
+    /// only (a replay's second call, or a job already finalised, changes nothing). Not terminal: <see cref="FinalizeJob"/>
+    /// completes it when delivery ends.
+    /// </summary>
+    public async Task MarkDelivering()
+    {
+        var state = EnsureState();
+        if (state.Status != ConsultGenerationJobStatuses.Running)
+        {
+            return;
+        }
+
+        state.Status = ConsultGenerationJobStatuses.Delivering;
+        State = state;
+
+        await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
+    }
+
+    /// <summary>
     /// #1503 (specVersion 31, area 06; part 08 § 3; part 09 § 1.2 step 6): a 31 job's header, recorded by its orchestration
     /// once, before any node runs: the <c>resolveHash</c> and <c>lockHash</c> it runs, the limits in force, and when its
     /// orchestration started (the job limit is timed from it). The start's <c>Initialize</c> records the same hashes and
@@ -2740,6 +2759,13 @@ public static class ConsultGenerationJobStatuses
     /// a scheduled one whose timer ended during one. Not terminal; it starts after <c>Admin/Resume</c>.
     /// </summary>
     public const string WaitingForUpdate = "Waiting for an update to finish";
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8): a 31 job that succeeded, delivering its released
+    /// deliverables; set by <see cref="ConsultGenerationJobEntity.MarkDelivering"/>, from running only. Not terminal; the job
+    /// is then Completed, however its delivery went. A 5–30 job never has it.
+    /// </summary>
+    public const string Delivering = "delivering";
 }
 
 public static class ConsultGenerationActivityNames
@@ -2763,6 +2789,12 @@ public static class ConsultGenerationActivityNames
 
     /// <summary>#1503 (specVersion 31, area 06): a 31 rendered node's or deliverable's render.</summary>
     public const string RenderNodeV31 = "render-node-v31";
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 8; D10, D11): one attempt of one 31 delivery send. No Durable retry policy:
+    /// the delivery runner retries inside its window. It never throws for a send's failure.
+    /// </summary>
+    public const string DeliverV31 = "deliver-v31";
 
     /// <summary>
     /// #1505 (specVersion 31, area 08; R6): a 31 rule that holds <c>matches</c> or <c>has_word</c>, evaluated so a replay

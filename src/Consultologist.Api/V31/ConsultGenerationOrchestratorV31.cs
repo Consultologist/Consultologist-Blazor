@@ -44,9 +44,10 @@ public sealed record ConsultGenerationOrchestrationInputV31(
 /// is the process cache's (<see cref="V31PlanCache"/>), or built from that text, with no I/O of its own) and the inputs and
 /// run facts by reference (<see cref="ConsultGenerationActivityNames.LoadRunInputsV31"/>, so the time zone is read in the
 /// activity, never here); runs <see cref="PlanRunner"/> inline, its calls activities and its waits durable timers
-/// (<see cref="DurableRunHost"/>), its rows on the entity (<see cref="EntityRunRecorder"/>); and finalises the job:
-/// <c>Completed</c>, or <c>Failed</c> with the run's sentence (a timed-out run is a failed job with S09-012's). A fault fails
-/// the job with A06-010, never the exception's message, which can carry a service's response. Telemetry at the end: the
+/// (<see cref="DurableRunHost"/>), its rows on the entity (<see cref="EntityRunRecorder"/>); #1505 (area 08) delivers a
+/// job that succeeded (<see cref="DeliverAsync"/>), or records a failed job's released deliverables not sent; and
+/// finalises the job: <c>Completed</c>, or <c>Failed</c> with the run's sentence (a timed-out run is a failed job with
+/// S09-012's). A fault fails the job with A06-010, never the exception's message, which can carry a service's response. Telemetry at the end: the
 /// run's state, its agent calls and the peak in flight, never text.
 /// </summary>
 public sealed class ConsultGenerationOrchestratorV31
@@ -119,7 +120,8 @@ public sealed class ConsultGenerationOrchestratorV31
             }
 
             var inputs = InputsOf(document, held.RunFacts ?? new JsonObject());
-            var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input, limits), new EntityRunRecorder(context, input))
+            var recorder = new EntityRunRecorder(context, input);
+            var result = await new PlanRunner(plan, limits, new DurableRunHost(context, input, limits), recorder)
                 .RunAsync(inputs, startedAtUtc);
 
             logger.LogInformation(
@@ -127,9 +129,18 @@ public sealed class ConsultGenerationOrchestratorV31
                 input.JobId, result.State, result.FailedKey, result.AgentCalls, result.PeakInFlight);
 
             if (result.State == RunState.Completed)
+            {
+                await DeliverAsync(context, entityId, input, limits, recorder, result.Deliverables, logger);
                 await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Completed, null);
+            }
             else
+            {
+                // Part 06 § 8: a job that fails delivers nothing; each destination of each released deliverable is recorded
+                // not sent (S06-038).
+                foreach (var row in DeliveryPlan.NotSentJobFailed(result.Deliverables))
+                    await recorder.DeliveryAsync(row);
                 await FinalizeAsync(context, entityId, input, ConsultGenerationJobStatuses.Failed, result.Sentence);
+            }
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -162,6 +173,29 @@ public sealed class ConsultGenerationOrchestratorV31
     /// <summary>The fault's type: an activity's own (as Durable records it), else the exception's.</summary>
     internal static string? FaultType(Exception ex) =>
         ex is TaskFailedException { FailureDetails: { } details } ? details.ErrorType : ex.GetType().FullName;
+
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; part 06 § 8; part 09 § 3.8; R2, R3): a job that succeeded with something to send
+    /// enters <see cref="ConsultGenerationJobStatuses.Delivering"/> and delivers its released deliverables
+    /// (<see cref="DeliveryRunner"/> inline, its sends <see cref="ConsultGenerationActivityNames.DeliverV31"/> and its waits
+    /// durable timers, <see cref="DurableDeliveryHost"/>; its rows on the entity). A job with nothing to send (every
+    /// deliverable held, skipped, blocked, or delivered nowhere) never enters it. However delivery goes, the job is then
+    /// Completed: a destination that failed is a row, not the job's failure.
+    /// </summary>
+    private static async Task DeliverAsync(
+        TaskOrchestrationContext context, EntityInstanceId entityId, ConsultGenerationOrchestrationInputV31 input, RunLimits limits,
+        EntityRunRecorder recorder, IReadOnlyList<DeliverableOutcome> outcomes, ILogger logger)
+    {
+        if (DeliveryPlan.Sends(outcomes).Count == 0)
+            return;
+
+        await context.Entities.CallEntityAsync(entityId, nameof(ConsultGenerationJobEntity.MarkDelivering));
+        context.SetCustomStatus(new { status = ConsultGenerationJobStatuses.Delivering });
+        var delivered = await new DeliveryRunner(limits, new DurableDeliveryHost(context, input), recorder).RunAsync(outcomes);
+        logger.LogInformation(
+            "ConsultGenerationOrchestratorV31 delivered. JobId={JobId}, Rows={Rows}, Failed={Failed}",
+            input.JobId, delivered.Rows.Count, delivered.Failed);
+    }
 
     /// <summary>Finalises the job on its entity and publishes its status.</summary>
     private static async Task FinalizeAsync(

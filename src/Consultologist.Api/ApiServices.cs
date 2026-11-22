@@ -185,6 +185,9 @@ public static class ApiServices
         services.AddScoped<IAgentAttempts>(sp => sp.GetRequiredService<AgentSectionGenerator>());
         services.AddSingleton<Consultologist.Api.V31.IRunInputsStore, Consultologist.Api.V31.RunInputsBlobStore>();
         services.AddSingleton<Consultologist.Api.V31.V31JobStarter>();
+        // #1505 (part 06 § 8; D10): a 31 job's delivery channels, email and pdf, over the mailbox and the account's
+        // delivery settings, as the 5–30 reply reads them (deliver-v31's).
+        services.AddSingleton<Consultologist.Api.V31.DeliveryChannels>();
         // #1503 (part 09 § 3.6; D9): the drain before a deploy — its state on the text account (drain/ in the job outputs'
         // container), read on every call; both starters park behind it; Admin/Drain, Admin/Resume and GET Admin/Drain drive it.
         services.AddSingleton<IDrainBlobs, TextDrainBlobs>();

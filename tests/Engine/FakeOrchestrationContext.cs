@@ -30,7 +30,7 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     private readonly HashSet<string> _unrecorded = new(StringComparer.Ordinal);
     private readonly List<(string Name, TaskCompletionSource<object?> Event)> _awaitedEvents = new();
     private readonly FakeEntities _entities;
-    private readonly List<(string Name, Action Answer)> _heldActivities = new();
+    private readonly List<(string Name, string InputJson, Action Answer)> _heldActivities = new();
     private readonly List<TaskCompletionSource> _heldTimers = new();
     private readonly Dictionary<string, int> _peakHeld = new(StringComparer.Ordinal);
     private bool _holdActivities;
@@ -141,9 +141,27 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
     /// <summary>#1503: gives the oldest held answer.</summary>
     public void ReleaseOldest()
     {
-        var (_, answer) = _heldActivities[0];
+        var (_, _, answer) = _heldActivities[0];
         _heldActivities.RemoveAt(0);
         answer();
+    }
+
+    /// <summary>
+    /// #1505: gives the oldest held answer whose activity name and input JSON <paramref name="which"/> holds; false when none
+    /// does (the others stay held).
+    /// </summary>
+    public bool ReleaseOldest(Func<string, string, bool> which)
+    {
+        var at = _heldActivities.FindIndex(held => which(held.Name, held.InputJson));
+        if (at < 0)
+        {
+            return false;
+        }
+
+        var (_, _, answer) = _heldActivities[at];
+        _heldActivities.RemoveAt(at);
+        answer();
+        return true;
     }
 
     public override TaskName Name => new("ConsultGenerationOrchestrator");
@@ -189,7 +207,7 @@ internal sealed class FakeOrchestrationContext : TaskOrchestrationContext
         }
 
         var answer = new TaskCompletionSource<TResult>();
-        _heldActivities.Add((name.Name, () =>
+        _heldActivities.Add((name.Name, json, () =>
         {
             try
             {
