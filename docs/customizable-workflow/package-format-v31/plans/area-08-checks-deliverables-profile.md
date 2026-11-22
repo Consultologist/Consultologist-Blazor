@@ -435,6 +435,76 @@ public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? F
 - [ ] **Step 3: Run** `dotnet test tests/Consultologist.Api.Tests.csproj --filter "FullyQualifiedName~RefusalPackages|FullyQualifiedName~CompiledGolden|FullyQualifiedName~DialectGolden|FullyQualifiedName~V31Contract"`. Expected: PASS, the pinned suite equal to what the code gives.
 - [ ] **Step 4: Commit** `Docs (#1505): the guides say how a 31 job checks, composes and delivers`; push.
 
+## Addendum: the owner's rulings of 2026-11-22 (#1505, comment 4)
+
+Posted after this plan was written and after Tasks 1 to 7 were built. Tasks 15 to 17 apply them and run before Task 8. Ruling 4 (placements are decided at the gate; deliverables reuse `PlanRunner`'s placement decisions) binds Task 8. Ruling 9 (the two guard traps are build-server matters) needs no work. The comment also voids the carry-over (R7 already says so). Each is recorded in the PR as "ruled by the owner on #1505".
+
+### Task 15: The escape protects leading indentation; shared conformance families are merged (#1505 comment 4, rulings 1 and 3)
+
+Runs before Task 8.
+
+**Rulings (the owner, 2026-11-22, verbatim):**
+1. **`markdown_escape` protects leading indentation** (area 07's D7). Today a plaintext line starting with four spaces or a tab becomes a Markdown code block, which breaks part 06 § 6.4 ("the displayed text is exactly the plain text"). Entity-encode the first leading space or tab of each line. Keep line breaks as hard breaks. Update the vectors before 1.0.0 is frozen; deliverables use the fixed escape.
+3. **Shared conformance families.** This area adds its cases to `renderer-goldens` and `markdown-escape-vectors` rather than rewriting them (the export currently rewrites them whole: PR #1529 group 4, item 11). Add a test that fails when a case disappears.
+
+**Files:**
+- Modify: `src/Consultologist.PackageFormat/V31/Templates/MarkdownEscape.cs`; the in-repo escape vectors and their exporter; the renderer-goldens exporter (find them under `tests/V31Templates/` and its neighbours); the spec prose that describes the escape (part 05 or part 06 § 6.4, and the content repo's twin chapter)
+- Content repo: `v31/conformance/markdown-escape-vectors/`, `v31/conformance/renderer-goldens/`, `index.json`, `README.md`
+- Test: beside the existing `MarkdownEscape` tests; `tests/V31Run/DeliverableComposeTests.cs`
+
+- [ ] **Step 1: Write the failing tests:**
+  - `ALineStartingWithFourSpaces_IsNotACodeBlock`, `ALineStartingWithATab_IsNotACodeBlock`: the first leading space or tab of each line is written as its entity (`&#32;` for a space, `&#9;` for a tab); the rest of the line is escaped as today; a line with no leading space or tab is as today; every line of a multi-line text is treated on its own; line breaks stay hard breaks as today.
+  - `ADeliverable_EscapesLeadingIndentation`: a `markdown_block` deliverable reading a plain-text value `"    indented\n\tx"` composes with the entities.
+  - `TheSharedFamilies_KeepEveryCase`: pins the names of every case of `renderer-goldens` and every vector of `markdown-escape-vectors` as they are at the pin before this task (an in-repo list, as `DialectGoldenTests` pins the 40 area-07 dialect cases); it fails when one disappears. A vector's expected bytes may change (ruling 1); a name may not vanish.
+- [ ] **Step 2: Run.** Expected: FAIL.
+- [ ] **Step 3: Implement** the escape. Make the exports of `renderer-goldens` and `markdown-escape-vectors` **merge**: a case already in the content repo that the export does not produce is kept, and nothing is deleted silently.
+- [ ] **Step 4: Regenerate and read** every golden the escape changes (escape vectors; the `deliverable-escaped` dialect golden; run goldens if any); add vectors for a leading space, a leading tab, and a mid-line run of spaces (unchanged). Export one filter at a time, `python3 scripts/check-v31.py`, push the content repo, move the pin. Update the prose that describes the escape (spec part and content-repo chapter).
+- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
+- [ ] **Step 6: Commit** `PackageFormat (#1505): markdown_escape protects a line's leading indentation`, `Tests (#1505): shared conformance families are merged, and a vanished case fails`; push.
+
+### Task 16: Folder items are `markdown_block`; A07-013 at every depth; a parser fault is the engine's (#1505 comment 4, rulings 2, 5, 6)
+
+Runs before Task 8.
+
+**Rulings (verbatim):**
+2. **A folder item's `.content` is `markdown_block`** at 31 (PR #1529 group 4, item 12). Write it into part 05 § 6.2: the folder's `format` types the header; the body is `markdown_block`, as 30's standards bodies are.
+5. **A07-013 at every depth.** Keep A07-013. Close its depth hole: today only `item.item` is checked, and `item.item.item` and deeper must be refused too. Write the rule into part 05 § 6.2: a body passed out of its loop is its raw text, and must be plain.
+6. **`TemplateSyntax.Parse` no longer catches everything.** An unexpected exception is logged and reported with an engine-fault sentence of its own, distinct from A07-005, so an engine bug never reads as the author's fault. Add it to `refusal-sentences.md`.
+
+**Files:**
+- Modify: `docs/customizable-workflow/package-format-v31/05-templates-and-macros.md` § 6.2 (and the content repo's twin chapter), `docs/customizable-workflow/package-format-v31/refusal-sentences.md`, `src/Consultologist.PackageFormat/V31/Templates/SourceTemplates.FolderItems.cs` and `SourceTemplates.FolderRoutes.cs` (A07-013), `Templates/TemplateSyntax.cs` (the `catch (Exception …)` near line 104), `Templates/DialectSentences.cs`, `tests/V31Source/V31Contract.cs` (`ChecksAreaSentences`: A08-006)
+- Test: `tests/V31Templates/FolderItemTests.cs`, `TemplateSyntaxTests.cs`, `DeliverableFormatsTests.cs`, `tests/V31Source/RefusalPackages.Checks.cs`
+
+**Area sentence:** A08-006 `<Subject> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it.` No package content produces it, so it has no refusal package: list it in `ChecksNotShipped` with that reason.
+
+- [ ] **Step 1: Write the failing tests:**
+  - `AFolderItemsContent_IsMarkdownBlock`: in a `markdown_block` deliverable `{{ item.content }}` over a snippet folder is written as it is and is not in `escapes`, whatever the folder's `format`; in a `plaintext` deliverable it is S06-021. (Where the code already does so, the test pins it.)
+  - `AFolderItemCarried_ThreeLoopsDeep_IsRefused` and a four-deep one (A07-013): a body with a tag passed out of its loop through `item.item.item…`, to a function parameter and to an expression.
+  - `AnUnexpectedParserException_IsAnEngineFault`: through the smallest internal test seam that makes the parser throw an unexpected exception, `Parse` gives one A08-006 fault, not A07-005; what is logged or carried is the exception's type only, never the body's text; `OutOfMemoryException` still propagates; Scriban's expected parse errors and the depth limit are still A07-005.
+- [ ] **Step 2: Run.** Expected: FAIL.
+- [ ] **Step 3: Implement.** Only what Scriban throws for unreadable text is A07-005; anything else is A08-006. If the library has no logger, carry the exception's type on the fault for the caller to log, and record the choice under Decisions.
+- [ ] **Step 4: Write the spec:** part 05 § 6.2 gains ruling 2's and ruling 5's sentences; `refusal-sentences.md` gains A08-006; the content repo's chapter 5 twin and the conformance README's A08 table. Add a refusal case for the deeper A07-013; export one filter at a time, check, push, pin.
+- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
+- [ ] **Step 6: Commit** `PackageFormat (#1505): a folder item's body is markdown_block, A07-013 holds at every depth, and a parser fault is the engine's`; push.
+
+### Task 17: The 31 catalogue is resolved only under preview; one golden switch (#1505 comment 4, rulings 7 and 8)
+
+Runs before Task 8.
+
+**Rulings (verbatim):**
+7. **The 31 agents catalogue is resolved at startup only when `PreviewSpecVersions` admits 31** (D9; `ApiServices.ResolveAtStartup`). A 5–30 host does not touch `agents/v31`. Make the `int.Parse` and `!` there fail inside the `FormatException` wrap, with a clear message. The release conditions are on #1508.
+8. **One golden switch.** `FormatHashGoldenTests` reads `UPDATE_V31_GOLDENS`, while every other golden test reads `GOLDEN_UPDATE_V31`. Rename it to `GOLDEN_UPDATE_V31` (group 6, trap 3; fixed rather than documented).
+
+**Files:**
+- Modify: `src/Consultologist.Api/ApiServices.cs` (`ResolveAtStartup`, near line 34), `src/Consultologist.Api/V31/V31AgentsCatalogue.cs`, `tests/V31Types/FormatHashGoldenTests.cs`, `docs/customizable-workflow/package-format-library.md` and `engine-v31.md` where they name the switch or the startup resolve
+- Test: `tests/V31Engine/`, beside the existing catalogue tests
+
+- [ ] **Step 1: Write the failing tests:** `WithPreviewUnset_StartupNeverReadsTheV31Catalogue` (a catalogue source that throws when touched; startup succeeds); `WithPreviewAdmitting31_StartupResolvesIt` (an incoherent catalogue still stops startup); `ACatalogueWithANonIntegerVersion_FailsWithAClearMessage` and `ACatalogueWithAMissingMember_FailsWithAClearMessage` (the failure is the catalogue's wrapped startup error naming the file and the member, never a bare `FormatException` or `NullReferenceException`).
+- [ ] **Step 2: Run.** Expected: FAIL.
+- [ ] **Step 3: Implement**; rename the switch in `FormatHashGoldenTests` and in the current guides (not in earlier areas' plans).
+- [ ] **Step 4: Run** the solution's tests (shared code). Expected: PASS.
+- [ ] **Step 5: Commit** `Api (#1505): the 31 agents catalogue is resolved at startup only under preview`, `Tests (#1505): FormatHashGoldenTests reads GOLDEN_UPDATE_V31`; push.
+
 ## Spec coverage
 
 | Spec | Task |
@@ -457,3 +527,4 @@ public sealed record RuleOutcome(JsonNode? Value, string? FailureKind, double? F
 | Part 09 § 3.9 monitoring and alerts | 12 |
 | #1505 rulings | 1 (R5, R7), 2 (R4), 10 (R6) |
 | #1507 items 1, 3, 7 | 8 (R1 to R3); the start refusal 13 (R8) |
+| #1505 comment 4, rulings 1 to 8 | 15 (1, 3), 16 (2, 5, 6), 17 (7, 8), 8 (4) |
