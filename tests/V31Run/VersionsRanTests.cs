@@ -30,7 +30,7 @@ public class VersionsRanTests
         Assert.All(ran["operations"]!.AsObject(), p => Assert.Equal(JsonLogicOperations.OperationVersion, (string?)p.Value));
         Assert.Equal(toolchain.Evaluator, (string?)ran["evaluator"]);
         Assert.Equal(toolchain.Scriban, (string?)ran["libraries"]!["Scriban"]);
-        Assert.Equal("10.0.3", (string?)ran["runtime"]!["dotnet"]);
+        Assert.Equal(toolchain.DotNet, (string?)ran["runtime"]!["dotnet"]);
         Assert.Equal("invariant", (string?)ran["culture"]);
     }
 }

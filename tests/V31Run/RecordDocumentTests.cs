@@ -77,6 +77,12 @@ public class RecordDocumentTests
     }
 
     [Fact]
+    public void Assemble_RefusesAnUnknownSection()
+    {
+        Assert.Throws<InvalidOperationException>(() => RecordDocument.Assemble(RecordRuns.Header(), [new RecordRow("other", "x", "{}")]));
+    }
+
+    [Fact]
     public void Assemble_RefusesADeliveryWithNoDeliverable()
     {
         Assert.Throws<InvalidOperationException>(() => RecordDocument.Assemble(RecordRuns.Header(), [Delivery("deliverable.gone", "pdf")]));

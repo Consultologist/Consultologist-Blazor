@@ -40,6 +40,16 @@ public class RecordKeysTests
         Assert.Equal(RecordKeys.MaxRowKey, RecordKeys.Escape(new string('k', RecordKeys.MaxRowKey)).Length);
     }
 
+    [Fact]
+    public void Escape_NeverGivesAHashedFormToAnotherKey()
+    {
+        var long_ = new string('k', 600);
+        var hashed = RecordKeys.Escape(long_);
+        Assert.NotEqual(hashed, RecordKeys.Escape(hashed));
+        Assert.DoesNotContain('~', RecordKeys.Escape("a~b"));
+        Assert.Equal("a!7Eb", RecordKeys.Escape("a~b"));
+    }
+
     private static string Unescape(string escaped)
     {
         var text = new System.Text.StringBuilder();

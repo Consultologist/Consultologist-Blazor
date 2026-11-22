@@ -14,9 +14,9 @@ public static class RecordKeys
     public const int MaxRowKey = 512;
 
     /// <summary>
-    /// <paramref name="key"/> with <c>!</c>, <c>/</c>, <c>\</c>, <c>#</c>, <c>?</c>, <c>%</c> and each character below U+0020 or
+    /// <paramref name="key"/> with <c>!</c>, <c>/</c>, <c>\</c>, <c>#</c>, <c>?</c>, <c>%</c>, <c>~</c> and each character below U+0020 or
     /// from U+007F to U+009F written as <c>!</c> and two hex digits; a result longer than <see cref="MaxRowKey"/> is <c>~</c>
-    /// and the SHA-256 hex (lowercase) of the key's UTF-8. Two different keys never give the same result.
+    /// and the SHA-256 hex (lowercase) of the key's UTF-8. Two different keys never give the same result: no escaped key begins with a bare <c>~</c>, so none equals a hashed one.
     /// </summary>
     public static string Escape(string key)
     {
@@ -24,7 +24,7 @@ public static class RecordKeys
         var text = new StringBuilder(key.Length);
         foreach (var c in key)
         {
-            if (c is '!' or '/' or '\\' or '#' or '?' or '%' or < ' ' or (>= '\u007F' and <= '\u009F'))
+            if (c is '!' or '/' or '\\' or '#' or '?' or '%' or '~' or < ' ' or (>= '\u007F' and <= '\u009F'))
                 text.Append('!').Append(((int)c).ToString("X2", CultureInfo.InvariantCulture));
             else
                 text.Append(c);

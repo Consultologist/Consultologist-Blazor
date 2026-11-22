@@ -60,6 +60,12 @@ public static class RecordDocument
                 throw new ArgumentException($"The record's header may not hold '{name}'.", nameof(header));
         }
 
+        foreach (var row in rows.ToList())
+        {
+            if (row.Section is not ("node" or "check" or "deliverable" or "delivery" or "decision"))
+                throw new InvalidOperationException($"The record has no section '{row.Section}' (row '{row.Key}').");
+        }
+
         var kept = new Dictionary<(string Section, string Key), string>();
         foreach (var row in rows)
         {

@@ -156,6 +156,7 @@ public interface IRunRecorder
     /// <summary>
     /// #1506 (area 09; D12): everything recorded so far is to be written. The runner awaits it once at the end of each round
     /// that recorded a row or a decision and once before it returns; the delivery runner after each delivery row.
+    /// A run that throws (an engine fault) does not flush what it recorded since the last flush.
     /// </summary>
     Task FlushAsync();
 }
