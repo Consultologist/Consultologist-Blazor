@@ -502,6 +502,7 @@ public sealed partial class PlanRunner
 
             item.Frame = frame.Open(instance, frame.Map, frame.Function, [.. frame.ItemPath, item.Id], [.. frame.ItemPositions, item.Position],
                 frame.Passes, binding, null, null);
+            item.Frame.OpenedAtUtc = host.UtcNow;
             loop.Open.Add(item);
             itemFrames[item.Frame] = item;
             foreach (var key in instance.Entry.Body)
@@ -534,6 +535,7 @@ public sealed partial class PlanRunner
 
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
             EntryDetail(instance.Entry, detail);
+            ClockDetail(detail, state, item.Frame?.OpenedAtUtc);
             var name = NameDetail(item, detail);
             var settled = new JsonObject { ["value"] = completed ? ret?["value"]?.DeepClone() : null, ["content"] = content };
             var key = RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), [.. instance.Frame.ItemPath, item.Id], instance.Frame.Passes);

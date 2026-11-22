@@ -21,7 +21,7 @@ public class DeliverableRowTests
     [
         "key", "label", "templateHash", "format", "state", "stateReason", "composedHash", "hashVersion", "delivery", "check",
         "sites", "substitutions", "renders", "runNeutralHash", "runSpots", "units", "profileReads", "modelDerived", "runDependent",
-        "profileCarrying",
+        "profileCarrying", "startedAtUtc", "completedAtUtc", "durationMs",
     ];
 
     [Fact]

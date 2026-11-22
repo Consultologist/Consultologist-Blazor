@@ -158,6 +158,7 @@ public sealed partial class PlanRunner
             }
 
             loop.Running = frame;
+            frame.OpenedAtUtc = host.UtcNow;
             foreach (var key in entry.Body)
             {
                 if (outer.Map.TryGetValue(key, out var body))
@@ -226,6 +227,7 @@ public sealed partial class PlanRunner
             EntryDetail(instance.Entry, detail);
             var name = ItemNameDetail(instance.Frame, detail);
             detail["pass"] = number;
+            ClockDetail(detail, state, frame.OpenedAtUtc);
             var settled = new JsonObject { ["value"] = state == RowState.Completed ? ret.Read?["value"]?.DeepClone() : null, ["content"] = content };
             return recorder.RowAsync(new RunRow(RunKeys.Of(instance.Frame.Rooted(instance.Entry.Key), frame.ItemPath, frame.Passes), instance.Entry.Key,
                 PlanKind.While, state, state == RowState.Completed ? null : ret.Reason, content == null ? null : CanonicalJson.HashText(content), detail,

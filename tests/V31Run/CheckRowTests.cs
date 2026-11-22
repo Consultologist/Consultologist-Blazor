@@ -25,7 +25,7 @@ public class CheckRowTests
     [
         "key", "kind", "label", "status", "itemName", "itemNameHash", "alignedWith", "checked", "reads", "inputHash", "outputHash",
         "runNeutralHash", "producer", "modelDerived", "runDependent", "profileCarrying", "pass", "failWith", "passed", "total",
-        "uncoveredHash", "uncoveredSize", "untestedHash", "untestedSize", "effect", "count", "stateReason",
+        "uncoveredHash", "uncoveredSize", "untestedHash", "untestedSize", "effect", "count", "startedAtUtc", "completedAtUtc", "durationMs", "stateReason",
     ];
 
     // ---- the members ----------------------------------------------------------------------------
@@ -259,6 +259,51 @@ public class CheckRowTests
         Assert.True((bool)json["pass"]!);
         Assert.Null(json["effect"]);
         Assert.Equal("check.gate", recorder.Rows[^1].Key); // recorded when the run ended
+    }
+
+    // ---- the clock (#1506, final review F3) ----------------------------------------------------------
+
+    [Fact]
+    public async Task ARowsClock_IsTheHostsWhenItStartedAndSettled()
+    {
+        // the plan dispatched at the start and answered 1.5 s later; the gate evaluated at once; the letter's render sent
+        // when the plan settled and answered 250 ms later
+        var plan = RunFixture.Plan(Gated(["a"], "true"));
+        var host = new FakeRunHost(auto: false, plan);
+        var recorder = new ListRecorder();
+
+        var result = await FakeRunHost.Drive(() =>
+        {
+            var run = new PlanRunner(plan, new RunLimits(), host, recorder).RunAsync(PlanRunnerLeavesTests.Inputs(), FakeRunHost.Start);
+            host.Advance(TimeSpan.FromMilliseconds(1500));
+            host.Release("node.plan");
+            host.Advance(TimeSpan.FromMilliseconds(250));
+            host.Release("deliverable.a");
+            return run;
+        });
+
+        Assert.Equal(RunState.Completed, result.State);
+        static string At(double ms) => FakeRunHost.Start.AddMilliseconds(ms).ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+        static (string?, string?, long?) Clock(JsonObject row) => ((string?)row["startedAtUtc"], (string?)row["completedAtUtc"], (long?)row["durationMs"]);
+        Assert.Equal((At(0), At(1500), 1500L), Clock(recorder.Row("node.plan").ToJson()));
+        Assert.Equal((At(0), At(0), 0L), Clock(recorder.Row("check.gate").ToJson()));
+        Assert.Equal((At(1500), At(1750), 250L), Clock(recorder.Row("deliverable.a").ToJson()));
+    }
+
+    [Fact]
+    public async Task ARowThatNeverStarted_HasNoClock()
+    {
+        // the gate's if is false: skipped, never started
+        var plan = RunFixture.Plan(Gated(["a"], "true").WithJson("checks/gate.md", h => h["if"] = JsonNode.Parse("false")));
+        var (result, recorder) = await RunAsync(plan, new FakeRunHost(auto: true, plan));
+
+        var gate = recorder.Row("check.gate").ToJson();
+        Assert.Equal("Skipped", (string?)gate["status"]);
+        Assert.Null(gate["startedAtUtc"]);
+        Assert.Null(gate["completedAtUtc"]);
+        Assert.Null(gate["durationMs"]);
+        Assert.True(gate.ContainsKey("durationMs"));
+        _ = result;
     }
 
     [Fact]

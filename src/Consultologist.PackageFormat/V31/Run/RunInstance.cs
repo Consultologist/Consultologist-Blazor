@@ -76,6 +76,12 @@ internal sealed class RunInstance
     public bool IsSettled => Phase == InstancePhase.Settled;
 
     /// <summary>
+    /// #1506 (area 09; part 08 § 4; final review F3): the host's clock when it started (an agent or a render dispatched, a
+    /// computed node evaluated, a flow node first stepped); null while it has not, and for one that never did.
+    /// </summary>
+    public DateTime? StartedAtUtc { get; set; }
+
+    /// <summary>
     /// #1504 (area 07; D3): for an agent, a rendered node or a deliverable whose gate held, each placement of its entry the
     /// run decided, to its result (a placement with no rule, true); null before.
     /// </summary>
@@ -220,6 +226,9 @@ internal sealed class RankComparer : IComparer<IReadOnlyList<int>>
 /// </summary>
 internal sealed class RunFrame
 {
+    /// <summary>#1506 (area 09; part 08 § 4.4; final review F3): the host's clock when a loop item's or a pass's frame was opened; null for the others.</summary>
+    public DateTime? OpenedAtUtc { get; set; }
+
     private readonly Dictionary<string, RunInstance> instances = new(StringComparer.Ordinal);
     private readonly List<RunInstance> inOrder = [];
 

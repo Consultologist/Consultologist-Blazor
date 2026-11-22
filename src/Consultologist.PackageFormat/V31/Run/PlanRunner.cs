@@ -344,15 +344,23 @@ public sealed partial class PlanRunner
                     return true;
                 case PlanKind.Computed:
                     if (await GateAsync(instance))
+                    {
+                        instance.StartedAtUtc ??= host.UtcNow;
                         await ComputeAsync(instance);
+                    }
+
                     return true;
                 case PlanKind.For:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await LoopAsync(instance);
                 case PlanKind.While:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await WhileAsync(instance);
                 case PlanKind.If or PlanKind.Case:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await BranchAsync(instance);
                 case PlanKind.Call:
+                    instance.StartedAtUtc ??= host.UtcNow;
                     return await CallAsync(instance);
                 default:
                     return false;
@@ -478,6 +486,7 @@ public sealed partial class PlanRunner
                 {
                     // A render takes no slot.
                     instance.Phase = InstancePhase.Running;
+                    instance.StartedAtUtc ??= host.UtcNow;
                     var render = new RenderCall(instance.Key, entry.Key, instance.Frame.Function,
                         scope.Data(entry, instance.Frame, CallReads(entry)), limits.RenderSteps, instance.Placed);
                     flights.Add(new Flight(instance, host.RenderAsync(render), FlightKind.Render));
@@ -496,6 +505,7 @@ public sealed partial class PlanRunner
                 agentsInFlight++;
                 peakInFlight = Math.Max(peakInFlight, agentsInFlight);
                 instance.Phase = InstancePhase.Running;
+                instance.StartedAtUtc ??= host.UtcNow;
                 var call = new AgentCall(instance.Key, entry.Key, instance.Frame.Function, 1, false,
                     scope.Data(entry, instance.Frame, CallReads(entry)), instance.Placed);
                 StartAgent(instance, call);
@@ -609,6 +619,7 @@ public sealed partial class PlanRunner
             pending.Remove(instance);
             var detail = new JsonObject { ["function"] = instance.Frame.Function, ["depth"] = instance.Frame.Depth };
             EntryDetail(instance.Entry, detail);
+            ClockDetail(detail, state, instance.StartedAtUtc);
             var itemName = ItemNameDetail(instance.Frame, detail);
             string? spotsIn = null;
             if (instance.Entry.Kind == PlanKind.Agent)
@@ -664,6 +675,28 @@ public sealed partial class PlanRunner
             await recorder.RowAsync(row);
             if (instance.Entry.Kind == PlanKind.Deliverable && instance.Entry.Check is { } check && instance.Frame.Find(check) is { } gate)
                 await ReleaseGateAsync(gate);
+        }
+
+        /// <summary>
+        /// #1506 (area 09; part 08 § 4; final review F3): a row's clock members, storage 11's: <c>startedAtUtc</c> (the host's
+        /// clock when it started, <paramref name="startedAtUtc"/>), <c>completedAtUtc</c> (the host's clock now, as it settles)
+        /// and <c>durationMs</c> (their difference in whole milliseconds), as round-trip UTC text. All three <c>null</c> for a
+        /// row that never started: skipped, not run, or failed before it started (a limit refused it).
+        /// </summary>
+        private void ClockDetail(JsonObject detail, RowState state, DateTime? startedAtUtc)
+        {
+            if (state is RowState.Skipped or RowState.NotRun || startedAtUtc is not { } started)
+            {
+                detail["startedAtUtc"] = null;
+                detail["completedAtUtc"] = null;
+                detail["durationMs"] = null;
+                return;
+            }
+
+            var completed = host.UtcNow;
+            detail["startedAtUtc"] = RecordRows.Clock(started);
+            detail["completedAtUtc"] = RecordRows.Clock(completed);
+            detail["durationMs"] = RecordRows.DurationMs(started, completed);
         }
 
         /// <summary>

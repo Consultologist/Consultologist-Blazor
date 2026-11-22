@@ -188,8 +188,12 @@ public class PlanRunnerCallsTests
         var arguments = detail["arguments"]!.AsArray();
         Assert.Equal("draft", (string?)arguments[1]!["param"]);
         Assert.Equal(CanonicalJson.Hash(bound), (string?)arguments[1]!["hash"]);
+        // (the row's clocks are the host's, which shares the run date's day here: they are left out of the search)
+        var searched = (JsonObject)detail.DeepClone();
+        foreach (var clock in new[] { "startedAtUtc", "completedAtUtc" })
+            searched.Remove(clock);
         if (value != "null")
-            Assert.DoesNotContain(JsonNode.Parse(content)!.GetValue<string>().Trim(), detail.ToJsonString());
+            Assert.DoesNotContain(JsonNode.Parse(content)!.GetValue<string>().Trim(), searched.ToJsonString());
     }
 
     [Fact]

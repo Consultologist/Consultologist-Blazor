@@ -28,6 +28,7 @@ public class NodeRowTests
         "runDependent", "modelDerived", "profileCarrying", "runNeutralHash", "runSpots", "renders", "macros", "units", "invalid",
         "retries", "profileReads",
         "function", "depth",
+        "startedAtUtc", "completedAtUtc", "durationMs",
     ];
 
     private static readonly JsonObject RunDate = new() { ["date"] = "2026-11-21" };

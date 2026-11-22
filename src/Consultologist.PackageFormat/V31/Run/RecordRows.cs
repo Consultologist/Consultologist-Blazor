@@ -50,6 +50,9 @@ internal static class RecordRows
         ("profileReads", () => new JsonArray()),
         ("function", () => null),
         ("depth", () => 0),
+        ("startedAtUtc", () => null),
+        ("completedAtUtc", () => null),
+        ("durationMs", () => null),
     ];
 
     /// <summary>The names <see cref="Node"/> writes before the detail's own members.</summary>
@@ -117,6 +120,9 @@ internal static class RecordRows
         ("untestedSize", () => null),
         ("effect", () => null),
         ("count", () => null),
+        ("startedAtUtc", () => null),
+        ("completedAtUtc", () => null),
+        ("durationMs", () => null),
     ];
 
     /// <summary>
@@ -211,6 +217,9 @@ internal static class RecordRows
         ("modelDerived", () => false),
         ("runDependent", () => false),
         ("profileCarrying", () => false),
+        ("startedAtUtc", () => null),
+        ("completedAtUtc", () => null),
+        ("durationMs", () => null),
     ];
 
     /// <summary>
@@ -240,6 +249,22 @@ internal static class RecordRows
 
         return json;
     }
+
+    /// <summary>#1506 (area 09; part 08 § 4; final review F3): a clock as a row writes it: round-trip text, in UTC.</summary>
+    public static string Clock(DateTime at)
+    {
+        var utc = at.Kind switch
+        {
+            DateTimeKind.Utc => at,
+            DateTimeKind.Local => at.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(at, DateTimeKind.Utc),
+        };
+        return utc.ToString("O", System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>#1506 (final review F3): the whole milliseconds from <paramref name="started"/> to <paramref name="completed"/> (never negative).</summary>
+    public static long DurationMs(DateTime started, DateTime completed) =>
+        Math.Max(0, (completed - started).Ticks / TimeSpan.TicksPerMillisecond);
 
     /// <summary>A <c>check_result</c>'s count as a whole number, or <c>null</c> when it is not one.</summary>
     private static int? Count(JsonNode? node) =>
