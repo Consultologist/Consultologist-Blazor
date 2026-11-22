@@ -73,7 +73,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-007 | notice | `Macro '<id>' is now offered by the input '<input id>'.` (with S10-006's form when `_macro` was needed) |
 | A10-008 | notice | `<file>, <member>: '!<path>' became blank(<path>); it now also holds for empty and white-space-only text.` |
 | A10-009 | notice | ~~`Input '<id>', field '<field>' holds free text; consider a text format.`~~ Unused: 30's inputs have no data `string` (every text becomes `markdown_block`); a package format's free-text field is A10-021 (Task 6). |
-| A10-010 | notice | `Node '<id>' declared reproducible <true \| false> at 30; <true \| false> is written, as its reads give it.` |
+| A10-010 | notice | `Node '<id>' declared reproducible <true \| false> at 30; <true \| false> is written, as its reads give it.` (part 02 § 11's last bullet: only an agent node declares it at 30; Task 12) |
 | A10-011 | notice | `No snapshot test was written: hand edits remain.` |
 | A10-012 | refusal | `The package is at specVersion <n>; migration starts at 5.` |
 | A10-013 | notice | `Node '<id>' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.` |
@@ -398,11 +398,13 @@ consultologist-package-format (m39-build)   package-format-v31.md ch. 10, v31/sc
 **Interfaces:**
 - Produces (internal): `SourceDerived.Values(SourcePackage, PackageTypes, Resolution, PackageExpressions, ITemplateReads) : IReadOnlyDictionary<string, DerivedFlags>` (path of the header's file → `Reproducible`, `ModelDerived`, `RunDependent`, `ProfileCarrying`), with no header check; `MigratedPackagesTests.Migrated(package)` for later tasks.
 
-- [ ] **Step 1: Write the failing tests.** `TheFlags_AreTheDerivedOnes` (after `Migrate`, `SourceCheck.Run` on a package with no hand edits says no S03-036, S04-015 or S04-016). `A30ClaimThatDiffers_IsListed` (a 30 node with `reproducible: true` that reads a model's output: `false` written, A10-010 in `Report.Reproducible`). `AFlowsFormat_ComesFromItsRet` (the loop formats of part 04 § 2.8, now exactly the spec's JSON, flags included). **The invariant**, a theory over the 16 packages: `NoHandEdit_MeansPublishRefusesNothing` and `AHandEdit_MeansPublishRefuses` (`CompiledPackage.Publish(files, registry, toolchain)`; on failure the message lists the refusals and the hand edits). `TheMigratedSource_IsTheGolden`, per package: every file under `migrated/<package>/` equals `Migrate`'s output byte for byte, with `notices.json` (`{ "notices", "handEdits", "refusals" }`); no file on disk the result lacks. `MigratingTwice_GivesTheSameBytes`. `NothingUnknownIsWritten` (no S01-023 from any migrated package, hand edits or not).
-- [ ] **Step 2: Run; they fail.** Expect the invariant to fail for several packages: each failure is a gap in Tasks 6 to 11 or a construct with no rule.
-- [ ] **Step 3: Close the gaps.** For each refusal `Publish` gives on a package with no hand edit: fix the rewrite if the spec gives the 31 form (add the unit test beside its task's tests first); otherwise make it a hand edit with an A10 reason, numbered on. Do not weaken the invariant. If the 31 checker refuses a form the spec says the migration writes (a contradiction between part 10 and what areas 02 to 08 built), stop and record a block on #1507.
-- [ ] **Step 4: Run; green. Read every golden under `migrated/`** against the spec's examples (part 01's `test/general` and `example-nested-note` layouts; part 04's loops and `route`; part 06's deliverables). List the packages that have hand edits, with their notices, in this plan under *Results* for Task 16.
-- [ ] **Step 5: Commit** (the goldens in their own commit, `Tests (#1507): the sixteen packages, migrated`) and push.
+- [x] **Step 1: Write the failing tests.** `TheFlags_AreTheDerivedOnes` (after `Migrate`, `SourceCheck.Run` on a package with no hand edits says no S03-036, S04-015 or S04-016). `A30ClaimThatDiffers_IsListed` (a 30 node with `reproducible: true` that reads a model's output: `false` written, A10-010 in `Report.Reproducible`). `AFlowsFormat_ComesFromItsRet` (the loop formats of part 04 § 2.8, now exactly the spec's JSON, flags included). **The invariant**, a theory over the 16 packages: `NoHandEdit_MeansPublishRefusesNothing` and `AHandEdit_MeansPublishRefuses` (`CompiledPackage.Publish(files, registry, toolchain)`; on failure the message lists the refusals and the hand edits). `TheMigratedSource_IsTheGolden`, per package: every file under `migrated/<package>/` equals `Migrate`'s output byte for byte, with `notices.json` (`{ "notices", "handEdits", "refusals" }`); no file on disk the result lacks. `MigratingTwice_GivesTheSameBytes`. `NothingUnknownIsWritten` (no S01-023 from any migrated package, hand edits or not).
+- [x] **Step 2: Run; they fail.** Expect the invariant to fail for several packages: each failure is a gap in Tasks 6 to 11 or a construct with no rule.
+- [x] **Step 3: Close the gaps.** For each refusal `Publish` gives on a package with no hand edit: fix the rewrite if the spec gives the 31 form (add the unit test beside its task's tests first); otherwise make it a hand edit with an A10 reason, numbered on. Do not weaken the invariant. If the 31 checker refuses a form the spec says the migration writes (a contradiction between part 10 and what areas 02 to 08 built), stop and record a block on #1507.
+- [x] **Step 4: Run; green. Read every golden under `migrated/`** against the spec's examples (part 01's `test/general` and `example-nested-note` layouts; part 04's loops and `route`; part 06's deliverables). List the packages that have hand edits, with their notices, in this plan under *Results* for Task 16.
+- [x] **Step 5: Commit** (the goldens in their own commit, `Tests (#1507): the sixteen packages, migrated`) and push.
+
+  *Recorded in the build:* the pass (`Migrate.Derived`, last) reads the 31 set as an upload and runs the checker's steps up to the derivation's inputs (the reader, the shapes of `checks/`, the type rules, the resolver), then the dialect, then `SourceDerived.Values(SourcePackage, Resolution, ITemplateReads?, PackageTemplates?)` (`V31/SourceDerived.Values.cs`, internal; `DerivedFlags(Reproducible, ModelDerived, RunDependent, ProfileCarrying, Known)` by header file), the derivation `Check` runs with no header held to it; it takes no `PackageExpressions` (the flags follow content, never a condition, part 02 § 1.2) and is empty when nodes read each other in a circle. A hand edit the reader, the shapes, the types or the resolver refuse leaves every placeholder (S01-009 for A10-046's list, a union format); one the expressions refuse (S03-025: a condition left as 30's text) or the dialect refuses (a body reading `deliverable.*`, `macro.<id>.fixed_text`) still lets the flags be derived, a refused body counting as unknown, so a flag that is then `false` is the placeholder's `false`. A `reproducible` with no rule keeps its placeholder. Task 7's placeholder `reproducible` for a leaf is now its kind's value, not 30's claim: a leaf declaring another is refused by the type rules, before the derivation could run. A 30 claim that differs from the value written is A10-010, in `Report.Reproducible` (30 lets only an agent node declare it). A flow's format stays Task 7's (the list of its `ret`'s, its `ret`'s, or the union), which the checker holds it to. The invariant held with no further gap: every package with no hand edit publishes with no refusal once the flags are derived, and every package with one is refused. `MigratedPackagesTests.Migrated(package)` migrates once per run; `Upload(result)` is the checker's upload. The goldens are `tests/Fixtures/ByteEquivalence/migrated/<package>/**` with `notices.json`, rewritten with `GOLDEN_UPDATE_V31=1`.
 
 ### Task 13: The offline run
 
@@ -540,6 +542,85 @@ consultologist-package-format (m39-build)   package-format-v31.md ch. 10, v31/sc
 ## Results
 
 *(Filled during the build: Task 12's packages with hand edits; Task 4's `unruled` differences; Task 15's and Task 16's unexpected differences; A10 sentences added.)*
+
+### Task 12: the packages with hand edits (for Task 16)
+
+Migrated by `Migrate` (goldens `tests/Fixtures/ByteEquivalence/migrated/<package>/`, each with `notices.json`). 5 packages have none and publish with no refusal: `example-classifier-scope`, `example-conditional-documents`, `example-conditional-sections`, `example-nested-note`, `example-prior-letters`. 11 have hand edits, each refused by `CompiledPackage.Publish` until edited; their hand-edit notices, in the order said:
+
+- **`example-macros`** (13):
+  - Hand edit needed in macros/header_line.md, body: the template uses case at line 1, which the 31 dialect doesn't have; rewrite it.
+  - Hand edit needed in macros/counselling.md, if: macro 'counselling' is placed under different conditions in nodes/standing_sections/standing_draft.md and nodes/patient_line.md; a macro has one if, so place it under one condition, or split it into one macro per condition.
+  - Hand edit needed in macros/counselling.md, instruction: macro 'counselling' was placed after the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/section_caveat.md, instruction: macro 'section_caveat' was placed after the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/table_note.md, instruction: macro 'table_note' was placed before the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/preamble.md, instruction: macro 'preamble' was placed before the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/sign_off.md, instruction: macro 'sign_off' was placed after the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/silent_reminder.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.
+  - Hand edit needed in macros/wrap_up.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'header_line' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'followup_only' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'brief_plan' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'follow_up_reminder' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+- **`example-macros-warnings`** (15):
+  - Hand edit needed in macros/header_line.md, body: the template uses case at line 1, which the 31 dialect doesn't have; rewrite it.
+  - Hand edit needed in snippets/kept_note.md, body: the body's if at line 1 decides what a macro body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.
+  - Hand edit needed in macros/counselling.md, if: macro 'counselling' is placed under different conditions in nodes/standing_sections/standing_draft.md and nodes/patient_line.md; a macro has one if, so place it under one condition, or split it into one macro per condition.
+  - Hand edit needed in macros/counselling.md, instruction: macro 'counselling' was placed after the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/section_caveat.md, instruction: macro 'section_caveat' was placed after the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/table_note.md, instruction: macro 'table_note' was placed before the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/preamble.md, instruction: macro 'preamble' was placed before the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/sign_off.md, instruction: macro 'sign_off' was placed after the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/silent_reminder.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.
+  - Hand edit needed in macros/wrap_up.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.
+  - Hand edit needed in macros/self_read.md, instruction: the instruction is a template at 30, which a 31 instruction cannot be; write it as lines that say where the model writes the marker.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'header_line' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'followup_only' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'brief_plan' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult_note.md, body: macro 'follow_up_reminder' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+- **`example-problem-list`** (1):
+  - Hand edit needed in snippets/sections/follow_up_plan.md, if: a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.
+- **`example-structured-intake`** (1):
+  - Hand edit needed in nodes/sections_senior_review_section/senior_review_section.md, body: the body's if at line 1 does more than choose text to show; write it as parts with their own if.
+- **`example-two-documents`** (4):
+  - Hand edit needed in nodes/standards/section_instructions.md, parts.when_1.if: The condition '(item.content | string.strip) == ""' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+  - Hand edit needed in nodes/standards/section_instructions.md, parts.when_2.if: The condition '!((item.content | string.strip) == "")' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+  - Hand edit needed in nodes/draft_patient_letter.md, parts.when_1.if: The condition '(input.prior_notes | string.strip) == ""' compares trim(input.prior_notes.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+  - Hand edit needed in nodes/draft_patient_letter.md, parts.when_2.if: The condition '!((input.prior_notes | string.strip) == "")' compares trim(input.prior_notes.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+- **`example-v12-constructs`** (5):
+  - Hand edit needed in nodes/extract_note_terms.md, body: the template reads deliverable.consult.content at line 1, which a 31 prompt doesn't read; rewrite it.
+  - Hand edit needed in nodes/extract_letter_terms.md, body: the template reads deliverable.ack_letter.content at line 1, which a 31 prompt doesn't read; rewrite it.
+  - Hand edit needed in deliverables/consult.md, body: macro 'formal_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult.md, body: macro 'friendly_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/consult.md, body: macro 'followup' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+- **`general`** (2):
+  - Hand edit needed in nodes/standards/section_instructions.md, parts.when_1.if: The condition '(item.content | string.strip) == ""' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+  - Hand edit needed in nodes/standards/section_instructions.md, parts.when_2.if: The condition '!((item.content | string.strip) == "")' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+- **`test/general`** (3):
+  - Hand edit needed in nodes/standards/section_instructions.md, parts.when_1.if: The condition '(item.content | string.strip) == ""' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+  - Hand edit needed in nodes/standards/section_instructions.md, parts.when_2.if: The condition '!((item.content | string.strip) == "")' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+  - Hand edit needed in snippets/standards/assessment_plan.md, body: the body's if at line 5 decides what a snippet body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.
+- **`composer-gates`** (4):
+  - Hand edit needed in nodes/extract_note_terms.md, body: the template reads deliverable.note.content at line 1, which a 31 prompt doesn't read; rewrite it.
+  - Hand edit needed in nodes/extract_copy_terms.md, body: the template reads deliverable.record_copy.content at line 1, which a 31 prompt doesn't read; rewrite it.
+  - Hand edit needed in nodes/cover_note.md, parts.when_1.text: the template reads deliverable.patient_copy.content at line 1, which a 31 prompt doesn't read; rewrite it.
+  - Hand edit needed in nodes/cover_note.md, body: the template reads deliverable.note.content at line 2, which a 31 prompt doesn't read; rewrite it.
+- **`composer-macros`** (11):
+  - Hand edit needed in snippets/review_leaflet.md, body: the body's if at line 1 decides what a macro body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.
+  - Hand edit needed in snippets/visit_echo.md, body: macro 'new_visit_note' is read as fixed text at line 1, but it is offered under a condition or placed by the engine; place its text as a snippet with an if.
+  - Hand edit needed in macros/quoted_review.md, body: the template reads deliverable.review_summary.content at line 1, which a 31 macro body doesn't read; rewrite it.
+  - Hand edit needed in macros/section_close.md, if: The condition 'item.value.title != "Plan"' compares item.value.title (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.
+  - Hand edit needed in macros/section_intro.md, instruction: macro 'section_intro' was placed before the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in macros/section_close.md, instruction: macro 'section_close' was placed after the reply by the engine; say in its instruction where the model writes its marker.
+  - Hand edit needed in deliverables/gated.md, body: macro 'new_visit_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/gated.md, body: macro 'review_note' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/optional.md, body: macro 'followup_offer' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/optional.md, body: macro 'leaflet_offer' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+  - Hand edit needed in deliverables/echoes.md, body: macro 'quoted_review' is placed on this deliverable with a condition; place its text as a snippet with an if, or write the condition in the template.
+- **`composer-sources`** (2):
+  - Hand edit needed in nodes/topic_tally.md, expression: The condition '"Topic section length: " | string.append (node.topic_loop.content | string.size)' uses string.append, which has no JSON Logic form at 31: rewrite it by hand. The condition '"Topic section length: " | string.append (node.topic_loop.content | string.size)' uses string.size, which has no JSON Logic form at 31: rewrite it by hand.
+  - Hand edit needed in nodes/refine/draft_summary.md, body: the body's if at line 1 does more than choose text to show; write it as parts with their own if.
+
+The flags of a package with hand edits are derived as far as the checker reads it (Task 12, *Recorded in the build*); an edit that changes what a value is made of (a rewritten expression, a prompt that no longer reads a deliverable, a body the dialect now reads) can change a header's derived flags, which the checker then names (S03-036, S04-015, S04-016).
 
 ## Spec coverage
 
