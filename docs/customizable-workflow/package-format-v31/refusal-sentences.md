@@ -324,6 +324,15 @@ Every sentence follows the seven style rules in [index § 7](index.md#7-refusal-
 | S05-062 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> stopped rendering: it took more than \<limit\> steps."* | author | |
 | S05-063 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\>[\<n\>] at line \<n\>, a position in a list; lists are read whole, with a for, or by identity through .items."* | author | |
 | S05-064 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> reads \<path\> at line \<n\>, which carries profile text through macro '\<id\>'; a prompt or a part doesn't read profile text. Read it in a deliverable."* | author | |
+
+### An engine fault in reading a template
+
+Said in a refusal's place when the engine fails reading a template in a way no text explains, so that an engine bug never reads as the author's fault (A07-005, *"… can't be read as a template …"*); ruled by the owner on [#1505](https://github.com/Consultologist/Consultologist-Blazor/issues/1505). It is the build's area sentence, not a row of `sentences.json`, and is not counted above.
+
+| Id | Section | Sentence | Audience | Review |
+|---|---|---|---|---|
+| A08-006 | [Refusals](05-templates-and-macros.md#refusals) | *"\<Subject\> couldn't be checked: the engine failed reading its template. This is a fault in the engine, not in the package; report it."* | author | |
+
 ## 06 Checks, deliverables and the profile
 
 | Id | Section | Sentence | Audience | Review |
