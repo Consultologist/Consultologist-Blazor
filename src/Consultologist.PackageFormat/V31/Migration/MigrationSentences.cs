@@ -107,7 +107,10 @@ internal static class MigrationSentences
     public const string FolderItemIf =
         "a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.";
 
-    /// <summary>A10-023 (part 02 § 8.1, § 11): a reason: a 30 union input with no array arm, which no 31 input format is.</summary>
+    /// <summary>
+    /// A10-023 (part 02 § 8.1, § 11): a reason: a 30 union input that has no 31 input format: one with no array arm, with
+    /// more than one other arm, or whose array holds another type than its other arm.
+    /// </summary>
     public const string UnionInput =
         "the input takes one of several types, which a 31 input cannot; choose one format.";
 
@@ -118,6 +121,13 @@ internal static class MigrationSentences
     /// <summary>A10-025 (part 02 § 3.2, § 3.3): a reason: a package format 30 made nullable at its root, which 31 writes as an anyOf a model's format may not have there.</summary>
     public const string NullableRoot =
         "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.";
+
+    /// <summary>
+    /// A10-031 (part 02 § 3.3): a reason: a package format whose root is a scalar or <c>null</c>, where a 31 package format
+    /// is an object or a list.
+    /// </summary>
+    public const string PackageFormatRoot =
+        "a package format's root is an object or a list at 31; make it one, or use a registry format.";
 
     /// <summary>
     /// A10-026 (part 01 § 2.4): <paramref name="file"/> held a carriage return that did not end a line, which 31 refuses;

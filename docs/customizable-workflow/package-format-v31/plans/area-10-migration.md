@@ -90,6 +90,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-024 | reason | `the field takes one of several types, which 31 writes as an anyOf; choose one.` (a 30 type union of several types in a package format, `<member>` its JSON pointer; Task 6) |
 | A10-025 | reason | `the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.` (Task 6) |
 | A10-026 | notice | `<file>: a carriage return that didn't end a line became a line end.` (part 01 § 2.4; Task 6) |
+| A10-031 | reason | `a package format's root is an object or a list at 31; make it one, or use a registry format.` (part 02 § 3.3: a package format whose root is `null` alone or a scalar; Task 7, fixing Task 6) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
 

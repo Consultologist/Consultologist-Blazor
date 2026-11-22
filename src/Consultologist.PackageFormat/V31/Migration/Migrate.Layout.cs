@@ -79,12 +79,20 @@ internal static partial class Migrate
             }
 
             var path = $"formats/{reference.Id}.json";
-            if (HasNullType(written) && TypesOf(written) is { Count: 2 } && !IsUnion(written))
+            var types = TypesOf(written);
+            var others = types.Where(t => t != "null").Distinct(StringComparer.Ordinal).ToList();
+            if (HasNullType(written) && others.Count == 1)
             {
                 // 30's nullable root (["object", "null"]): 31 writes it as an anyOf, which the root of a format a model
                 // writes may not be (part 02 § 3.3). Written in that form, the checker refuses it: a hand edit.
-                written = NullableRoot(written);
+                written = NullableRoot(written, others[0]);
                 m.HandEdit(path, "type", MigrationSentences.NullableRoot);
+            }
+            else if ((types.Count > 0 && others.Count == 0) || (others.Count == 1 && others[0] is not ("object" or "array")))
+            {
+                // A root of null alone (["null", "null"] too) or of a scalar: a 31 package format is an object or a list
+                // (part 02 § 3.3), so the checker refuses it as written: a hand edit.
+                m.HandEdit(path, "type", MigrationSentences.PackageFormatRoot);
             }
 
             Strict(written, (pointer, _) => m.HandEdit(path, pointer, MigrationSentences.UnionField));
@@ -164,9 +172,10 @@ internal static partial class Migrate
 
     /// <summary>
     /// A format whose root 30 wrote nullable (<c>["object", "null"]</c>) in 31's form (part 02 § 3.2): <c>$schema</c> and
-    /// the <c>description</c> stay at the root, beside an <c>anyOf</c> of the schema with its one type and <c>null</c>.
+    /// the <c>description</c> stay at the root, beside an <c>anyOf</c> of the schema with its one <paramref name="type"/>
+    /// and <c>null</c>.
     /// </summary>
-    private static JsonObject NullableRoot(JsonObject written)
+    private static JsonObject NullableRoot(JsonObject written, string type)
     {
         var root = new JsonObject { ["$schema"] = written["$schema"]!.DeepClone() };
         if (written["description"] is { } description)
@@ -178,7 +187,7 @@ internal static partial class Migrate
                 arm[member] = value?.DeepClone();
         }
 
-        arm["type"] = TypesOf(written).Single(t => t != "null");
+        arm["type"] = type;
         root["anyOf"] = new JsonArray(arm, new JsonObject { ["type"] = "null" });
         return root;
     }
