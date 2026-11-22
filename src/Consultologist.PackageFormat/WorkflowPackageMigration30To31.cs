@@ -87,7 +87,8 @@ public static class WorkflowPackageMigration30To31
     /// (<see cref="Migrated.Read"/>: a file that is not strict JSON, A10-019; a package 30 refuses, A10-017; a reader that
     /// fails on it, A10-020), then rewritten pass by pass on one working set (<see cref="Migrated"/>): the layout, the
     /// manifest and the formats (<see cref="V31.Migration.Migrate.Layout"/>), the inputs
-    /// (<see cref="V31.Migration.Migrate.Inputs"/>). The files are serialised once, at the end.
+    /// (<see cref="V31.Migration.Migrate.Inputs"/>), the nodes, the flows and their conditions
+    /// (<see cref="V31.Migration.Migrate.Nodes"/>). The files are serialised once, at the end.
     /// </summary>
     public static Migration31Result Migrate(string manifestJson, IReadOnlyDictionary<string, string> files, Migration31Options options)
     {
@@ -135,6 +136,7 @@ public static class WorkflowPackageMigration30To31
 
         V31.Migration.Migrate.Layout(migrated);
         V31.Migration.Migrate.Inputs(migrated);
+        V31.Migration.Migrate.Nodes(migrated);
         return migrated.Result(at30.Notices);
     }
 

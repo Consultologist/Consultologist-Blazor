@@ -239,6 +239,13 @@ internal sealed class Migrated
         Suggestions.Add(suggestion);
     }
 
+    /// <summary>A <c>!x</c> on text written <c>blank(x)</c> (A10-008, § 2.3): a notice, listed in the report's blank conversions.</summary>
+    public void Blank(string notice)
+    {
+        _notices.Add(notice);
+        BlankConversions.Add(notice);
+    }
+
     /// <summary>
     /// A hand edit (S10-002, part 10 § 1.4): what could not be decided in <paramref name="file"/>'s
     /// <paramref name="member"/>, which the pass has written in a form the 31 checker refuses. Exactly one notice per edit.
@@ -267,6 +274,15 @@ internal sealed class Migrated
     public ConversionScope Scope(WorkflowDerivedEdges.WalkedCondition site)
     {
         ArgumentNullException.ThrowIfNull(site);
+        return Scope(site.OwnerId);
+    }
+
+    /// <summary>
+    /// <see cref="Scope(WorkflowDerivedEdges.WalkedCondition)"/> at the place of <paramref name="ownerId"/> (a node, a
+    /// snippet; none is the package's top level): what a condition owned by it reads.
+    /// </summary>
+    public ConversionScope Scope(string? ownerId)
+    {
         var inputs = new Dictionary<string, JsonNode>(StringComparer.Ordinal);
         var required = new HashSet<string>(StringComparer.Ordinal);
         if (Manifest["inputs"] is JsonObject declared)
@@ -280,7 +296,7 @@ internal sealed class Migrated
             }
         }
 
-        var place = Places.GetValueOrDefault(site.OwnerId);
+        var place = ownerId is null ? null : Places.GetValueOrDefault(ownerId);
         return new ConversionScope(
             inputs,
             new Dictionary<string, ConversionRead>(NodeReads, StringComparer.Ordinal),

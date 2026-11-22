@@ -123,6 +123,42 @@ internal static class MigrationSentences
         "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.";
 
     /// <summary>
+    /// A10-013 (part 05 § 1.2, D16): node <paramref name="id"/> declared <c>onInvalid: flag</c>, which kept a reply that did
+    /// not fit its format; 31 has <c>fail</c> and <c>retry</c> only, and <c>fail</c> is written.
+    /// </summary>
+    public static string FlagBecomesFail(string id) =>
+        $"Node '{id}' kept a reply that did not fit its format (onInvalid: flag); 31 fails it instead.";
+
+    /// <summary>
+    /// A10-027 (part 10 § 2.2, Review Focus 1, the Task 4 ruling): in <paramref name="file"/>'s <paramref name="member"/>,
+    /// <c>size</c> of <paramref name="list"/> (printed), a list that can be null: 31's <c>size(null)</c> is null, where 30
+    /// read an absent list as <c>[]</c> and counted 0, so the rule may answer differently when the list is absent.
+    /// </summary>
+    public static string SizeOfNullable(string file, string member, string list) =>
+        $"{file}, {member}: size({list}) is null when {list} is null, where 30 counted 0.";
+
+    /// <summary>
+    /// A10-028 (part 04 § 5.2, part 10 § 1.2's <c>case</c> row): a reason: the <c>case</c> switches on
+    /// <paramref name="subject"/>, which is no enumerated string, so 31 cannot list the values its branches miss.
+    /// </summary>
+    public static string CaseNotEnumerated(string subject) =>
+        $"the case switches on {subject}, whose values 31 cannot list; switch on an enumerated string, or add an else.";
+
+    /// <summary>
+    /// A10-029 (part 04 § 5.2): a reason: the <c>case</c>'s subject <paramref name="subject"/> can be <c>null</c>, which 31
+    /// sends to an <c>else</c>, and the 30 case had none.
+    /// </summary>
+    public static string CaseSubjectNullable(string subject) =>
+        $"{subject} can be null, which a 31 case sends to its else; add an else body.";
+
+    /// <summary>
+    /// A10-030 (D16): node <paramref name="id"/> declared <paramref name="member"/> at 30, which 31 has no member for (a
+    /// classifier's <c>with</c> values); it is not written.
+    /// </summary>
+    public static string MemberDropped(string id, string member) =>
+        $"Node '{id}' declared {member} at 30, which 31 has no member for; it was dropped.";
+
+    /// <summary>
     /// A10-031 (part 02 § 3.3): a reason: a package format whose root is a scalar or <c>null</c>, where a 31 package format
     /// is an object or a list.
     /// </summary>

@@ -47,6 +47,62 @@ internal static class ConditionTyping
         return new Typed(logic, ExpressionChecker.Check(logic, site, scope, conversion.Formats), blanks);
     }
 
+    /// <summary>
+    /// The type of <paramref name="logic"/> (a converted rule, or a part of one) at an expression site over
+    /// <paramref name="conversion"/>, as the checker gives it: null when it does not type. What the migration asks of a
+    /// <c>case</c>'s subject (its enum's values, whether it can be null: part 04 § 5.2) and of a <c>size</c>'s operand
+    /// (whether the list can be null).
+    /// </summary>
+    public static ExpressionType? TypeOf(JsonNode? logic, ConversionScope conversion)
+    {
+        ArgumentNullException.ThrowIfNull(conversion);
+        var site = new ExpressionSite(ExpressionSiteKind.Expression, "The read", "expression", "", null, null);
+        var check = ExpressionChecker.Check(logic, site, new Scope(conversion), conversion.Formats);
+        return check.Refusals.Count == 0 ? check.Type : null;
+    }
+
+    /// <summary>
+    /// Each operand of a <c>size</c> in <paramref name="logic"/>, printed, whose list can be <c>null</c> over
+    /// <paramref name="conversion"/> (a nullable format, an optional input, a node not always valued): there 31's
+    /// <c>size</c> is <c>null</c> where 30 counted 0 (the Task 4 ruling), in written order, each once.
+    /// </summary>
+    public static IReadOnlyList<string> NullableSizes(JsonNode? logic, ConversionScope conversion)
+    {
+        ArgumentNullException.ThrowIfNull(conversion);
+        var found = new List<string>();
+        Walk(logic, 0);
+        return found;
+
+        void Walk(JsonNode? node, int depth)
+        {
+            if (depth > SourceBounds.JsonDepth)
+                return;
+            switch (node)
+            {
+                case JsonArray array:
+                    foreach (var element in array)
+                        Walk(element, depth + 1);
+                    break;
+                case JsonObject obj:
+                    foreach (var (name, operands) in obj)
+                    {
+                        if (name == "size" && operands is JsonArray { Count: 1 } sized
+                            && TypeOf(sized[0], conversion) is { } type
+                            && (type.Nullable || FormatTypes.IsNullable(type.Format, conversion.Formats)))
+                        {
+                            var printed = JsonLogicPrinter.Print(sized[0]);
+                            if (!found.Contains(printed, StringComparer.Ordinal))
+                                found.Add(printed);
+                        }
+
+                        Walk(operands, depth + 1);
+                    }
+
+                    break;
+            }
+        }
+    }
+
     /// <summary>The type as <see cref="TypeStrings"/> prints a format, with <c> | null</c> when it is nullable and its format is not; null when not known.</summary>
     public static string? Print(ExpressionType? type, FormatSet formats)
     {

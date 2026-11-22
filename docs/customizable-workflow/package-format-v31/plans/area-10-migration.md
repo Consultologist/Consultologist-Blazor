@@ -90,6 +90,10 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 | A10-024 | reason | `the field takes one of several types, which 31 writes as an anyOf; choose one.` (a 30 type union of several types in a package format, `<member>` its JSON pointer; Task 6) |
 | A10-025 | reason | `the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.` (Task 6) |
 | A10-026 | notice | `<file>: a carriage return that didn't end a line became a line end.` (part 01 § 2.4; Task 6) |
+| A10-027 | notice | `<file>, <member>: size(<list>) is null when <list> is null, where 30 counted 0.` (a converted `size` over a list that can be null, the Task 4 ruling; Task 7) |
+| A10-028 | reason | `the case switches on <subject>, whose values 31 cannot list; switch on an enumerated string, or add an else.` (a `case` whose subject is neither an enum nor a classifier; 30 refuses one, so it is held by its sentence only; Task 7) |
+| A10-029 | reason | `<subject> can be null, which a 31 case sends to its else; add an else body.` (part 04 § 5.2: a `case` with no `else` over an optional input or a node not always valued; Task 7) |
+| A10-030 | notice | `Node '<id>' declared <member> at 30, which 31 has no member for; it was dropped.` (D16: a classifier's `with`; Task 7) |
 | A10-031 | reason | `a package format's root is an object or a list at 31; make it one, or use a registry format.` (part 02 § 3.3: a package format whose root is `null` alone or a scalar; Task 7, fixing Task 6) |
 
 Before using an A10 sentence, search `sentences.json` for a row that says the rule. Add an A10 sentence only when no row does; number on from A10-014 and add it to this table in the task's commit.
