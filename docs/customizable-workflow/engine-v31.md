@@ -161,11 +161,15 @@ the failure exactly as it does with the preview off, for a 5–30 package too. T
 
 A 31 start failure's History line is "Not started".
 
-**Macro choices.** A per-run choice is an optional boolean input that takes the macro's id (part 05 § 8.2), so a
-31 start reads each `MacroChoices` entry `<id>: <bool>` as the value of the package's boolean input `<id>`, exactly
-as if the request had sent that input (#1504, ruled by the owner). An id that is no boolean input of the package is
-refused, *"MacroChoices names '<id>', which is not a boolean input of the package."* (A07-015). A07-015 quotes the
-caller's id, so the email sender is not told it, as with A06-013. An input sent both ways with different values is
+**Macro choices.** A per-run choice is an optional boolean input that the macro's `if` reads (part 05 § 8.2), so a
+31 start reads each `MacroChoices` entry `<id>: <bool>`, keyed by a macro's id as at 30, as the value of the one boolean
+input that macro's `if` reads, exactly as if the request had sent that input (#1507, ruled by the owner 2026-11-22; part
+10 § 1.3). The input may have another id: a migrated `letrozole` whose id an input already had reads
+`letrozole_macro`, which the entry sets, leaving the input `letrozole` alone. An id that names no macro of the package is
+refused, *"MacroChoices names '<id>', which is not a macro of the package."* (A10-043), which quotes the caller's id, so
+the email sender is not told it, as with A06-013. A macro whose `if` reads no boolean input, or more than one, is
+refused, *"MacroChoices names macro '<id>', whose if does not read exactly one boolean input; send the input in Inputs
+instead."* (A10-044). An input sent both ways with different values is
 refused, *"Input '<id>' is given one value in Inputs and another in MacroChoices; send it once."* (A07-016); the same
 value sent both ways is accepted, and an input sent as `null` counts as not sent. `V31StartChecks.Choices` does this; its
 refusals come after `Account`'s and before `Inputs`'. Each is one of the start's refusals, recorded with the others.
