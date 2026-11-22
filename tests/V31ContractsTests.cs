@@ -278,4 +278,75 @@ public class V31ContractsTests
             ["classification", "concept_list", "prose", "rendered", "terms_subset"],
             formats.Select(f => f.Key).Order(StringComparer.Ordinal).ToArray());
     }
+    // #1506 (part 08; Task 14): the contract names what the engine writes. Every member name the record's goldens and a 31
+    // job's header hold is written in backticks in provenance-record.md § 6. The keys that are data (a row's key, a
+    // library's or operation's name) are not member names and are skipped.
+    private static readonly string[] KeyedByData = ["nodeOutputs", "checks", "libraries", "operations", "builtins"];
+
+    private static void CollectMembers(JsonNode? node, ISet<string> names, bool keysAreData = false)
+    {
+        switch (node)
+        {
+            case JsonObject obj:
+                foreach (var (name, value) in obj)
+                {
+                    if (!keysAreData)
+                        names.Add(name);
+                    CollectMembers(value, names, KeyedByData.Contains(name, StringComparer.Ordinal));
+                }
+
+                break;
+            case JsonArray array:
+                foreach (var element in array)
+                    CollectMembers(element, names);
+                break;
+        }
+    }
+
+    [Fact]
+    public void TheRecordContract_NamesEveryMemberTheEngineWrites()
+    {
+        var names = new SortedSet<string>(StringComparer.Ordinal);
+        var goldens = Directory.GetFiles(Path.Combine(RepoRoot(), "tests", "V31Run", "Golden"), "*.record.json");
+        Assert.NotEmpty(goldens);
+        foreach (var golden in goldens)
+            CollectMembers(JsonNode.Parse(File.ReadAllText(golden)), names);
+
+        var step = new Consultologist.Api.Models.ConsultExtractionStep("Markitdown", "1.0.0");
+        var state = new Consultologist.Api.Jobs.ConsultGenerationJobState
+        {
+            PackageSpecVersion = 31,
+            SchemaVersion = 12,
+            JobId = "job-1",
+            CreatedAtUtc = DateTimeOffset.UnixEpoch,
+            StartedAtUtc = DateTimeOffset.UnixEpoch,
+            CompletedAtUtc = DateTimeOffset.UnixEpoch,
+            EffectiveInputHashVersion = 7,
+            InputHashes = new Dictionary<string, string>(StringComparer.Ordinal) { ["referral"] = "sha256:0", ["history"] = "sha256:1" },
+            InputDocumentOrigins = new Dictionary<string, List<Consultologist.Api.Models.ConsultInputOrigin>>(StringComparer.Ordinal)
+            {
+                ["referral"] = [new("document", PageCount: 2, FileSha256: "sha256:2", TextSha256: "sha256:3", Converter: step, Parser: step, Ocr: new("ocr-service", "model-1"))],
+                ["history"] = [new("document", FileSha256: "sha256:2", TextSha256: "sha256:3"), new("typed")],
+            },
+            Limits = new Consultologist.PackageFormat.V31.Run.RunLimits().ToJson().ToDictionary(m => m.Key, m => (int)m.Value!, StringComparer.Ordinal),
+            VersionsRan = JsonNode.Parse("""
+                { "resolver": { "packageFormat": "p", "dialect": "d" }, "libraries": { "Scriban": "1" }, "evaluator": "1",
+                  "operations": { "o": "1" }, "builtins": { "b": "1" }, "culture": "invariant",
+                  "runtime": { "dotnet": "10", "unicode": "16" },
+                  "catalogues": { "agents": "a", "formats": "f", "outputContracts": null } }
+                """)!.AsObject(),
+            RunFacts = JsonNode.Parse("""
+                { "date": { "value": "2026-11-16", "timeZone": "America/Toronto" }, "id": "j", "package": "p@1", "engine": "1" }
+                """)!.AsObject(),
+        };
+        CollectMembers(state.ToRecordHeader(), names);
+
+        var contract = File.ReadAllText(Existing(Provenance("provenance-record.md")));
+        var start = contract.IndexOf("## 6. Storage 12", StringComparison.Ordinal);
+        Assert.True(start >= 0, "provenance-record.md has no section 6.");
+        var section = contract[start..];
+
+        var missing = names.Where(name => !section.Contains($"`{name}`", StringComparison.Ordinal)).ToArray();
+        Assert.True(missing.Length == 0, "Section 6 does not name: " + string.Join(", ", missing));
+    }
 }
