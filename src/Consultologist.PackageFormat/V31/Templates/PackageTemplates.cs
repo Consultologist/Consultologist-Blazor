@@ -95,6 +95,14 @@ public sealed class PackageTemplates : ITemplateReads
         return names;
     }
 
+    /// <summary>
+    /// #1505 (area 08; part 06 § 6.3): every read of the template of <paramref name="declaration"/>, typed, in the order
+    /// <see cref="Of"/> takes them: its own text's, then each unit's it places (their reads are the placer's); <c>[]</c>
+    /// for anything else.
+    /// </summary>
+    internal IEnumerable<TypedRead> TypedReads(object declaration) =>
+        tops.TryGetValue(declaration, out var body) ? Placed(body).SelectMany(b => b.Body.Reads) : [];
+
     // ---- a template ------------------------------------------------------------------------------
 
     private static TemplateReads Template(CheckedBody body)

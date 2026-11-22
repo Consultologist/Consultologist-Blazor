@@ -113,11 +113,12 @@ internal static class V31Contract
 
     /// <summary>
     /// #1505: area 08's own sentences (<c>A08-NNN</c>), as plan area-08-checks-deliverables-profile lists them, each as a
-    /// task adds it (A08-001, Task 3).
+    /// task adds it (A08-001, Task 3; A08-002, Task 4).
     /// </summary>
     private static readonly Dictionary<string, string> ChecksAreaSentences = new()
     {
         ["A08-001"] = "Deliverable '<id>' is checked by <reference>; a deliverable's check names a check.*.",
+        ["A08-002"] = "Deliverables folder '<path>' has bundle <value>; write \"zip\" or null.",
     };
 
     private static string RepoRoot()

@@ -28,11 +28,13 @@ public sealed record SourceCheckResult(
 /// <summary>
 /// #1500 (specVersion 31, area 03): a package source held to every rule areas 02 to 04 know:
 /// <see cref="SourceParser.Parse"/> against the registry's names, then, when it parsed,
-/// <see cref="SourceTypes.Check"/> (#1505, area 08: after <see cref="SourceChecks"/>' shape rules), then, when the type
+/// <see cref="SourceTypes.Check"/> (#1505, area 08: after <see cref="SourceChecks"/>' shape rules, and with
+/// <see cref="SourceDeliverables"/>' header rules), then, when the type
 /// rules gave no refusal (#1502, area 05), <see cref="SourceResolve.Check"/> (#1505: and the checks' rules that read its
 /// tree), then, when it gave none (#1501, area 04), <see cref="SourceExpressions.Check"/>,
 /// each site read in the scope the resolution gives, then, when they gave none (#1504, area 07; D18), every body held to
-/// the dialect (<see cref="SourceTemplates.Check"/>), then, when it gave none (#1502, area 05), <see cref="SourceDerived.Check"/>
+/// the dialect (<see cref="SourceTemplates.Check"/>; #1505: and a deliverable's reads of its own check), then, when it
+/// gave none (#1502, area 05), <see cref="SourceDerived.Check"/>
 /// with what the seam says each body reads: the dialect's <see cref="PackageTemplates"/>, unless the caller passes its
 /// own. <see cref="SourceCheckResult.Refusals"/> is the first refusing step's. Never throws on an upload; a null argument
 /// other than the seam is the caller's error (<see cref="ArgumentNullException"/>).
@@ -63,6 +65,12 @@ public static class SourceCheck
         if (types.Types == null)
             return new SourceCheckResult(parse, types.Refusals, null, null);
 
+        // #1505 (area 08): a deliverable's format and whenEmpty, and its folder's delivery and bundle (S06-020, S06-025,
+        // S06-026, A08-002), part of the type step: the format is judged by the package's formats.
+        var headers = SourceDeliverables.Check(parse.Package, types.Types.Formats, null);
+        if (headers.Count > 0)
+            return new SourceCheckResult(parse, headers, null, null);
+
         var (refusals, resolution) = SourceResolve.Check(parse.Package, types.Types);
         if (resolution == null)
             return new SourceCheckResult(parse, refusals, types.Types, null);
@@ -80,6 +88,12 @@ public static class SourceCheck
         var dialect = SourceTemplates.Check(parse.Package, types.Types, resolution, registry);
         if (dialect.Templates is not { } bodies)
             return new SourceCheckResult(parse, dialect.Refusals, types.Types, expressions.Expressions, resolution);
+
+        // #1505 (area 08): with the bodies' typed reads, a deliverable reading its own check (S06-018), part of the
+        // dialect step.
+        var ownChecks = SourceDeliverables.Check(parse.Package, types.Types.Formats, bodies);
+        if (ownChecks.Count > 0)
+            return new SourceCheckResult(parse, ownChecks, types.Types, expressions.Expressions, resolution);
 
         var (derivedRefusals, derived) = SourceDerived.Check(parse.Package, types.Types, resolution, expressions.Expressions, templates ?? bodies, bodies);
         return new SourceCheckResult(parse, derivedRefusals, types.Types, expressions.Expressions, resolution, derived, bodies);

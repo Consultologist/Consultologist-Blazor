@@ -5,8 +5,9 @@ namespace Consultologist.Api.Tests.V31Source;
 
 /// <summary>
 /// #1505 (specVersion 31, area 08): the <c>refusal-packages</c> cases of <c>checks/</c> and of what gates a deliverable
-/// (chapter 6 §§ 6.1, 6.3, 6.4): one for every publish sentence of
-/// <see cref="Consultologist.PackageFormat.V31.CheckSentences"/>. Each side is <see cref="ResolveFixture.Functions"/>
+/// (chapter 6 §§ 6.1, 6.3, 6.4), and of a deliverable's header and its delivery folder (§§ 6.6.1, 6.6.3, 6.8): one for
+/// every publish sentence of <see cref="Consultologist.PackageFormat.V31.CheckSentences"/> and
+/// <see cref="Consultologist.PackageFormat.V31.DeliverableSentences"/>. Each side is <see cref="ResolveFixture.Functions"/>
 /// (its production loop <c>standards</c>, the check loop <c>section_coverage</c> over its <c>.items</c>, the check
 /// <c>all_sections</c> and the deliverable <c>consult</c> it gates) plus only what its rule needs. Each invalid side is
 /// its valid side with one change: one text replacement, or, where a check's kind changes and the kind's members with
@@ -19,6 +20,8 @@ internal static partial class RefusalPackages
     private const string CoverageIndex = "checks/section_coverage/index.json";
 
     private const string ConsultFile = "deliverables/emr/consult.md";
+
+    private const string EmrIndex = "deliverables/emr/index.json";
 
     private const string TermsCovered =
         "\"expression\": { \"terms_subset\": [{ \"var\": \"node.extract_input_terms.value\" }, "
@@ -68,7 +71,46 @@ internal static partial class RefusalPackages
             + "Invalid: its check names the production node extract_note_terms. Valid: the check all_sections.",
             ResolveFixture.Functions(),
             ResolveFixture.Functions().Edit(ConsultFile, "\"check\": \"check.all_sections\"", "\"check\": \"node.extract_note_terms\""));
+
+        yield return new RefusalCase("S06-018",
+            "A deliverable can't read its own check (chapter 6 § 6.6.3). The consult note is gated by the check all_sections, and "
+            + "the package has a second check, notes_covered, gating nothing. Invalid: the note writes all_sections' message. "
+            + "Valid: notes_covered's.",
+            WithCheckRead(),
+            WithCheckRead().Edit(ConsultFile, "check.notes_covered.value.message", "check.all_sections.value.message"));
+
+        yield return new RefusalCase("S06-020",
+            "A deliverable is markdown_block, plaintext or an object format (chapter 6 § 6.6.1). Invalid: the consult note is "
+            + "markdown_inline. Valid: markdown_block.",
+            ResolveFixture.Functions(),
+            ResolveFixture.Functions().Edit(ConsultFile, "\"format\": \"markdown_block\"", "\"format\": \"markdown_inline\""));
+
+        yield return new RefusalCase("S06-025",
+            "A deliverable's whenEmpty is release, hold or fail (chapter 6 § 6.6.1). Invalid: the consult note's is skip. "
+            + "Valid: hold.",
+            ResolveFixture.Functions(),
+            ResolveFixture.Functions().Edit(ConsultFile, "\"whenEmpty\": \"hold\"", "\"whenEmpty\": \"skip\""));
+
+        yield return new RefusalCase("S06-026",
+            "A delivery folder's kinds are email, pdf, emr and zip (chapter 6 § 6.8). Invalid: the folder emr is delivered by "
+            + "emr and fax. Valid: emr and email.",
+            ResolveFixture.Functions(),
+            ResolveFixture.Functions().Edit(EmrIndex, "\"delivery\": [\"emr\", \"email\"]", "\"delivery\": [\"emr\", \"fax\"]"));
+
+        yield return new RefusalCase("A08-002",
+            "A delivery folder's bundle is \"zip\" or null (chapter 6 § 6.8; this implementation's sentence). Invalid: the folder "
+            + "emr's bundle is tar. Valid: zip.",
+            ResolveFixture.Functions(),
+            ResolveFixture.Functions().Edit(EmrIndex, "\"bundle\": \"zip\"", "\"bundle\": \"tar\""));
     }
+
+    /// <summary>
+    /// <see cref="WithSecondCheck"/>'s <c>notes_covered</c>, whose message the consult note (gated by <c>all_sections</c>)
+    /// writes after its sections.
+    /// </summary>
+    private static Dictionary<string, byte[]> WithCheckRead() =>
+        WithSecondCheck("notes_covered").Edit(ConsultFile, "{{ node.standards.content }}\n",
+            "{{ node.standards.content }}\n\n{{ check.notes_covered.value.message }}\n");
 
     /// <summary><see cref="ResolveFixture.Functions"/> with a second check, <paramref name="id"/>, of the same terms, gating nothing.</summary>
     private static Dictionary<string, byte[]> WithSecondCheck(string id) =>
