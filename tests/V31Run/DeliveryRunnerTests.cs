@@ -169,6 +169,57 @@ public class DeliveryRunnerTests
         Assert.Equal(0, host.OutstandingDelays);
     }
 
+    [Theory]
+    [InlineData(5)]
+    [InlineData(6)]
+    public async Task ASend_ThatLandsAtOrAfterTheClose_IsSent(int minutes)
+    {
+        // Under Durable Functions the clock is the replay step's: a send that finished before the close can be read by a step
+        // that starts at or after it. A send that went out is sent, whatever the clock says when it is read.
+        IReadOnlyList<DeliverableOutcome> outcomes = [Outcome("deliverable.note", ["email"])];
+        var host = new FakeDeliveryHost().Hold("delivery:deliverable.note/email");
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 5), host, new ListRecorder());
+
+        var result = await FakeDeliveryHost.Drive(() =>
+        {
+            var run = runner.RunAsync(outcomes);
+            host.MoveClock(TimeSpan.FromMinutes(minutes));
+            host.Answer("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.Sent, null));
+            return run;
+        });
+
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(("sent", null, FakeDeliveryHost.Start), (row.Result, row.Reason, row.AtUtc));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "sent")], row.Attempts);
+        Assert.Equal(0, result.Failed);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
+    [Theory]
+    [InlineData(5)]
+    [InlineData(6)]
+    public async Task AFailure_ThatLandsAtOrAfterTheClose_KeepsItsErrorKind_AndIsNotRetried(int minutes)
+    {
+        IReadOnlyList<DeliverableOutcome> outcomes = [Outcome("deliverable.note", ["email"])];
+        var host = new FakeDeliveryHost().Hold("delivery:deliverable.note/email");
+        var runner = new DeliveryRunner(new RunLimits(DeliveryMinutes: 5), host, new ListRecorder());
+
+        var result = await FakeDeliveryHost.Drive(() =>
+        {
+            var run = runner.RunAsync(outcomes);
+            host.MoveClock(TimeSpan.FromMinutes(minutes));
+            host.Answer("delivery:deliverable.note/email", new DeliverySendOutcome(DeliverySendResult.Failed, "unreachable"));
+            return run;
+        });
+
+        Assert.Single(host.Sends);
+        var row = Assert.Single(result.Rows);
+        Assert.Equal(("failed", "failed: email"), (row.Result, row.Reason));
+        Assert.Equal([new DeliveryAttempt(FakeDeliveryHost.Start, "failed: unreachable")], row.Attempts);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, host.OutstandingDelays);
+    }
+
     [Fact]
     public async Task ASecondAttempt_ThatSends_IsSent()
     {

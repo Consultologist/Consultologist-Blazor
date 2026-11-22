@@ -14,8 +14,10 @@ public sealed record DeliveryResult(IReadOnlyList<DeliveryRow> Rows, int Failed)
 /// never retried; one that failed is retried after 2 minutes, doubling after, each wait cut to the time the window has left,
 /// until it has made <see cref="RunLimits.DeliveryAttempts"/> attempts. No attempt starts once
 /// <see cref="RunLimits.DeliveryMinutes"/> have passed from the start of delivering; what is unsent then (its send in
-/// flight, or waiting to retry) is <c>failed</c>. Every row is recorded, in the fixed order, once every result is final or the
-/// window has closed.
+/// flight when the window's timer ends, or waiting to retry) is <c>failed</c>. A send's result is always read, even when the
+/// host's clock is already past the close (a Durable replay step that started after it): an email that went out is
+/// <c>sent</c>, and a failure keeps its error kind and starts no attempt. Every row is recorded, in the fixed order, once every
+/// result is final or the window has closed.
 /// </summary>
 /// <remarks>
 /// Durable Functions drives it: it awaits no task but <see cref="IDeliveryHost"/>'s (and the recorder's), reads no clock but
@@ -98,19 +100,31 @@ public sealed class DeliveryRunner
                 {
                     window ??= host.DelayAsync(TimeLeft(), timers.Token);
                     var finished = await Task.WhenAny(flights.Select(f => f.Task).Append(window));
-                    if (ReferenceEquals(finished, window) || Closed())
+                    if (ReferenceEquals(finished, window))
                     {
-                        // Nothing that finished at or after the close is read: what is unsent is failed.
+                        // The window closed: what is unsent is failed.
                         Close();
                         break;
                     }
 
                     var flight = flights.First(f => ReferenceEquals(f.Task, finished));
                     flights.Remove(flight);
-                    if (flight.Wait)
-                        Attempt(flight.To);
-                    else
+                    if (!flight.Wait)
+                    {
+                        // A send's result is a fact outside the run (an email that went out), so it is always read, even
+                        // when the host's clock (a replay step's) is already past the close; a failure then starts no attempt.
                         Land(flight, await (Task<DeliverySendOutcome>)flight.Task);
+                        continue;
+                    }
+
+                    if (Closed())
+                    {
+                        // A wait that ended at or after the close: no attempt starts, and what is unsent is failed.
+                        Close();
+                        break;
+                    }
+
+                    Attempt(flight.To);
                 }
             }
             finally
@@ -195,7 +209,10 @@ public sealed class DeliveryRunner
             flights.Add(new Flight(destination, host.DelayAsync(wait, timers.Token), true, host.UtcNow));
         }
 
-        /// <summary>The window closed: each destination still in flight, in the fixed order, is failed, an attempt in flight recorded <c>failed: window</c>.</summary>
+        /// <summary>
+        /// The window closed: each destination not final, in the fixed order, is failed, a send still in flight recorded as the
+        /// attempt <c>failed: window</c> (its result is never read).
+        /// </summary>
         private void Close()
         {
             foreach (var destination in destinations.Where(d => d.Result == null))

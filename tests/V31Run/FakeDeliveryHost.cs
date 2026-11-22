@@ -6,8 +6,8 @@ namespace Consultologist.Api.Tests.V31Run;
 /// #1505 (specVersion 31, area 08; D10 to D12): a scripted <see cref="IDeliveryHost"/>. A send is named by its first
 /// document's deliverable and its kind (<see cref="DeliveryPlan.Key"/>), and its outcomes are scripted by that name as a
 /// sequence (each attempt takes the next, the last repeating); an unscripted send is sent. Each answer is given at once,
-/// unless the name is held (<see cref="Hold"/>): its sends are then never answered. The clock is manual
-/// (<see cref="Advance"/>), and a delay ends when the clock passes it, or ends cancelled when its token is cancelled first
+/// unless the name is held (<see cref="Hold"/>): its sends are then answered only by <see cref="Answer"/>. The clock is
+/// manual (<see cref="Advance"/>; <see cref="MoveClock"/> moves it without ending delays), and a delay ends when the clock passes it, or ends cancelled when its token is cancelled first
 /// (<see cref="OutstandingDelays"/> counts those still waiting), as <see cref="FakeRunHost"/>'s do.
 /// </summary>
 internal sealed class FakeDeliveryHost : IDeliveryHost
@@ -15,6 +15,7 @@ internal sealed class FakeDeliveryHost : IDeliveryHost
     private readonly Dictionary<string, DeliverySendOutcome[]> script = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> served = new(StringComparer.Ordinal);
     private readonly HashSet<string> held = new(StringComparer.Ordinal);
+    private readonly List<(string Name, TaskCompletionSource<DeliverySendOutcome> Answer)> waiting = [];
     private readonly List<(DateTime Due, TaskCompletionSource Done)> timers = [];
 
     /// <summary>The time the clock starts at.</summary>
@@ -40,7 +41,7 @@ internal sealed class FakeDeliveryHost : IDeliveryHost
         return this;
     }
 
-    /// <summary>Holds every send named <paramref name="name"/>: it is never answered.</summary>
+    /// <summary>Holds every send named <paramref name="name"/>: it is answered only by <see cref="Answer"/>.</summary>
     public FakeDeliveryHost Hold(string name)
     {
         held.Add(name);
@@ -53,7 +54,11 @@ internal sealed class FakeDeliveryHost : IDeliveryHost
         Sends.Add((send, UtcNow));
         var name = NameOf(send);
         if (held.Contains(name))
-            return new TaskCompletionSource<DeliverySendOutcome>().Task;
+        {
+            var answer = new TaskCompletionSource<DeliverySendOutcome>();
+            waiting.Add((name, answer));
+            return answer.Task;
+        }
 
         if (!script.TryGetValue(name, out var outcomes))
             return Task.FromResult(new DeliverySendOutcome(DeliverySendResult.Sent, null));
@@ -88,6 +93,22 @@ internal sealed class FakeDeliveryHost : IDeliveryHost
             timers.Remove(timer);
             timer.Done.TrySetResult();
         }
+    }
+
+    /// <summary>
+    /// Moves the clock on by <paramref name="by"/> without ending any delay: a Durable replay step that starts after the
+    /// close, its clock past a timer whose event it has not read yet.
+    /// </summary>
+    public void MoveClock(TimeSpan by) => UtcNow += by;
+
+    /// <summary>Answers the oldest held send named <paramref name="name"/> with <paramref name="outcome"/>, inline.</summary>
+    public void Answer(string name, DeliverySendOutcome outcome)
+    {
+        var at = waiting.FindIndex(w => w.Name == name);
+        Assert.True(at >= 0, $"No send named {name} is held.");
+        var (_, answer) = waiting[at];
+        waiting.RemoveAt(at);
+        answer.SetResult(outcome);
     }
 
     /// <summary>

@@ -42,7 +42,11 @@ public interface IDeliveryHost
     /// <summary>The time now, from the host's replay-safe clock.</summary>
     DateTime UtcNow { get; }
 
-    /// <summary>Makes one attempt of a send.</summary>
+    /// <summary>
+    /// Makes one attempt of a send. A send's failure comes back as an outcome (<see cref="DeliverySendResult.Failed"/> with
+    /// its error kind), and the task never faults: the host wraps its transport's failures. A fault is the host's own and
+    /// passes through the runner.
+    /// </summary>
     Task<DeliverySendOutcome> SendAsync(DeliverySend send);
 
     /// <summary>
