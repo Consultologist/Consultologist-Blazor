@@ -88,6 +88,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
 
     public async Task Initialize(ConsultGenerationJobInitialize input)
     {
+        // #1506 (final review F1): a sealed-shape job is frozen; a late seed changes nothing.
+        if (Frozen(State))
+            return;
+
         Seed(input);
 
         await _indexStore.UpsertAsync(State.ToIndexEntry(), CancellationToken.None);
@@ -261,6 +265,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     /// </summary>
     public async Task RecordStartFailure(ConsultGenerationJobStartFailure input)
     {
+        // #1506 (final review F1): a terminal job at storage 12 is frozen.
+        if (Frozen(State))
+            return;
+
         Seed(input.Initialize);
 
         var state = State;
@@ -453,6 +461,9 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public void RecordV31Header(ConsultGenerationV31Header input)
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen.
+        if (Frozen(state))
+            return;
         state.ResolveHash ??= input.ResolveHash;
         state.LockHash ??= input.LockHash;
         if (input.Limits != null)
@@ -490,7 +501,8 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         var progress = state.V31Progress ??= new ConsultV31ProgressState();
         foreach (var row in input.Rows ?? [])
             Count(progress, row);
-        if (input.Tokens is { } tokens)
+        // #1506 (final review F1, M2): the header's tokens are frozen with the job; counts are not header members.
+        if (input.Tokens is { } tokens && !Frozen(state))
         {
             progress.Tokens = progress.Tokens is { } sum
                 ? new ConsultGenerationV31Tokens(sum.Input + tokens.Input, sum.Output + tokens.Output, sum.Total + tokens.Total)
@@ -999,6 +1011,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task MarkNodeFailed(ConsultGenerationNodeFailure input)
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen (a 5–30 job is as it was).
+        if (Frozen(state))
+            return;
+
         Stamp(state, 6);
 
         var node = state.GetOrAddNodeOutput(input.NodeId, input.Label);
@@ -1084,6 +1100,10 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task Cancel()
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen (a 5–30 job is as it was).
+        if (Frozen(state))
+            return;
+
         state.Status = ConsultGenerationJobStatuses.Cancelled;
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.History.Add(new JobHistoryEvent(
@@ -1216,6 +1236,17 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
         await _indexStore.UpsertAsync(state.ToIndexEntry(), CancellationToken.None);
     }
 
+    /// <summary>
+    /// #1506 (specVersion 31, area 09; final review F1): a job whose record header may no longer change: terminal at record
+    /// storage 12 or above. <see cref="ConsultGenerationJobState.ToRecordHeader"/> is the sealed document's header, and a
+    /// missing <c>record.json</c> is rebuilt from it, so from the terminal state on no operation writes a header member
+    /// (the seal itself is a signal sent after the document is written, so it cannot be the guard). A 5–30 job is never
+    /// frozen.
+    /// </summary>
+    internal static bool Frozen(ConsultGenerationJobState? state) =>
+        state is { } job && !string.IsNullOrWhiteSpace(job.JobId)
+            && job.SchemaVersion >= V31.RecordSealer.SealedFrom && IsTerminal(job.Status);
+
     /// <summary>The states nothing may move a job out of.</summary>
     internal static bool IsTerminal(string status) =>
         status is ConsultGenerationJobStatuses.Completed
@@ -1307,6 +1338,11 @@ public sealed class ConsultGenerationJobEntity : TaskEntity<ConsultGenerationJob
     public async Task FinalizeJob(ConsultGenerationJobFinalize input)
     {
         var state = EnsureState();
+        // #1506 (final review F1): a terminal job at storage 12 is frozen: a second finalize (the orchestration's catch
+        // after its own finalize) changes nothing. A 5–30 job re-finalizes as it always did.
+        if (Frozen(state))
+            return;
+
         state.Status = input.Status;
         state.CompletedAtUtc = DateTimeOffset.UtcNow;
         state.FailureStack ??= input.FailureStack;

@@ -520,6 +520,93 @@ public class RecordSealerTests
         Assert.Single(job.RecordJobs.Stamps);
     }
 
+    // ---- #1506 (final review F1): a terminal job at storage 12 is frozen -------------------------------------------------
+
+    [Theory]
+    [InlineData(ConsultGenerationJobStatuses.Completed)]
+    [InlineData(ConsultGenerationJobStatuses.Failed)]
+    public async Task ASealedJobsHeader_NeverChanges_AndARestoreStillHashesToTheStamp(string status)
+    {
+        var job = V31Job.Of("checked-note");
+        if (status == ConsultGenerationJobStatuses.Failed)
+        {
+            var stub = job.Agent;
+            job.Agent = call => call.Key == "node.plan" ? new AgentOutcome(AgentOutcomeKind.ServiceFailure, null, 5000, "error") : stub(call);
+        }
+
+        await V31Job.RunAsync(job.Context());
+        Assert.Equal(status, job.State.Status);
+        var header = job.State.ToRecordHeader().ToJsonString();
+        var stamp = job.State.RecordHash;
+        Assert.NotNull(stamp);
+
+        // every operation that writes a header member, called on the sealed job with other values
+        await job.Entity.Cancel();
+        await job.Entity.FinalizeJob(new ConsultGenerationJobFinalize(
+            status == ConsultGenerationJobStatuses.Failed ? ConsultGenerationJobStatuses.Completed : ConsultGenerationJobStatuses.Failed,
+            "Another error.", V31Job.AccountKind));
+        job.Entity.RecordV31Header(new ConsultGenerationV31Header(
+            "sha256:other", "sha256:other", new Dictionary<string, int> { ["maxAgentCalls"] = 1 }, DateTimeOffset.UnixEpoch,
+            new JsonObject { ["other"] = true }, new JsonObject { ["other"] = true }));
+        job.Entity.RecordV31Rows(new ConsultGenerationV31Rows([], new ConsultGenerationV31Tokens(1000, 1000, 2000)));
+        var other = new ConsultGenerationJobInitialize(
+            V31Job.JobId, UserId, Array.Empty<IReadOnlyDictionary<string, string>>(), "other@9.9.9", PackageSpecVersion: 31,
+            StartedAtUtc: DateTimeOffset.UnixEpoch);
+        await job.Entity.Initialize(other);
+        await job.Entity.RecordStartFailure(new ConsultGenerationJobStartFailure(other, "The package could not be loaded."));
+        await job.Entity.MarkNodeFailed(new ConsultGenerationNodeFailure("node.plan", "Plan", "failed", "boom", []));
+
+        Assert.Equal(header, job.State.ToRecordHeader().ToJsonString());
+        Assert.Equal(status, job.State.Status);
+
+        // the document gone: restored from the rows under the header as it is, it hashes to the stamp
+        Assert.True(job.Blobs.RemoveRecord(V31Job.AccountKind, UserId, V31Job.JobId));
+        var restored = await job.Sealer.ReadSealedAsync(V31Job.JobId, CancellationToken.None);
+        Assert.Equal(stamp, RecordDocument.Hash(restored!));
+    }
+
+    [Fact]
+    public async Task ATerminalJobAtStorage12_IsFrozen_BeforeItsSealLands()
+    {
+        // the stamp is a signal sent after the document is written: the freeze is on the state, not on the stamp
+        var job = V31Job.Of("nested-note");
+        job.Seal = _ => null;
+        await V31Job.RunAsync(job.Context());
+        Assert.Null(job.State.RecordHash);
+        var header = job.State.ToRecordHeader().ToJsonString();
+
+        await job.Entity.Cancel();
+        await job.Entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, "Another error.", V31Job.AccountKind));
+
+        Assert.Equal(header, job.State.ToRecordHeader().ToJsonString());
+    }
+
+    [Theory]
+    [InlineData(30)]
+    [InlineData(26)]
+    public async Task A30TerminalJob_CancelAndFinalize_BehaveAsBefore(int specVersion)
+    {
+        var entity = new ConsultGenerationJobEntity(
+            Substitute.For<IConsultGenerationJobIndexStore>(), Substitute.For<IJobOutputsBlobStore>(), Substitute.For<IJobInputsBlobStore>(),
+            Substitute.For<IAccountUsageStore>());
+        await entity.Initialize(Initialize(specVersion));
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Completed));
+        var jobs = new EntityRecordJobs(entity, V31Job.AccountKind);
+        var state = (await jobs.ReadAsync(V31Job.JobId, CancellationToken.None))!;
+        Assert.True(state.SchemaVersion < 12);
+
+        // a reply-leg failure re-finalizes a 5–30 job as Failed, as it always did
+        await entity.FinalizeJob(new ConsultGenerationJobFinalize(ConsultGenerationJobStatuses.Failed, "The reply could not be sent."));
+        state = (await jobs.ReadAsync(V31Job.JobId, CancellationToken.None))!;
+        Assert.Equal((ConsultGenerationJobStatuses.Failed, "The reply could not be sent."), (state.Status, state.FailureError));
+
+        // and Cancel still writes the cancel
+        await entity.Cancel();
+        state = (await jobs.ReadAsync(V31Job.JobId, CancellationToken.None))!;
+        Assert.Equal(ConsultGenerationJobStatuses.Cancelled, state.Status);
+        Assert.Contains(state.History, e => e.Label == "Cancelled before the scheduled run.");
+    }
+
     /// <summary>Asserts <paramref name="job"/>'s record is sealed (the document is its header and rows; its hash and length on the entity) and gives the document.</summary>
     private static async Task<JsonNode> AssertSealedAsync(V31Job job)
     {
