@@ -58,4 +58,7 @@ public interface IRunRecorder
 
     /// <summary>Records a decision.</summary>
     Task DecisionAsync(RunDecision decision);
+
+    /// <summary>#1505 (area 08; part 08 § 10): records a destination's delivery row, once its result is final (<see cref="DeliveryRunner"/>).</summary>
+    Task DeliveryAsync(DeliveryRow row);
 }

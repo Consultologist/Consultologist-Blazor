@@ -1,0 +1,104 @@
+using Consultologist.PackageFormat.V31.Run;
+
+namespace Consultologist.Api.Tests.V31Run;
+
+/// <summary>
+/// #1505 (specVersion 31, area 08; D10 to D12): a scripted <see cref="IDeliveryHost"/>. A send is named by its first
+/// document's deliverable and its kind (<see cref="DeliveryPlan.Key"/>), and its outcomes are scripted by that name as a
+/// sequence (each attempt takes the next, the last repeating); an unscripted send is sent. Each answer is given at once,
+/// unless the name is held (<see cref="Hold"/>): its sends are then never answered. The clock is manual
+/// (<see cref="Advance"/>), and a delay ends when the clock passes it, or ends cancelled when its token is cancelled first
+/// (<see cref="OutstandingDelays"/> counts those still waiting), as <see cref="FakeRunHost"/>'s do.
+/// </summary>
+internal sealed class FakeDeliveryHost : IDeliveryHost
+{
+    private readonly Dictionary<string, DeliverySendOutcome[]> script = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> served = new(StringComparer.Ordinal);
+    private readonly HashSet<string> held = new(StringComparer.Ordinal);
+    private readonly List<(DateTime Due, TaskCompletionSource Done)> timers = [];
+
+    /// <summary>The time the clock starts at.</summary>
+    public static readonly DateTime Start = new(2026, 11, 16, 15, 0, 0, DateTimeKind.Utc);
+
+    /// <inheritdoc/>
+    public DateTime UtcNow { get; private set; } = Start;
+
+    /// <summary>The sends asked for, in order, each with the host's time it was asked at.</summary>
+    public List<(DeliverySend Send, DateTime AtUtc)> Sends { get; } = [];
+
+    /// <summary>The delays neither ended nor cancelled.</summary>
+    public int OutstandingDelays => timers.Count;
+
+    /// <summary>The name of <paramref name="send"/>: its first document's deliverable and its kind.</summary>
+    public static string NameOf(DeliverySend send) => DeliveryPlan.Key(send.Documents[0].Deliverable, send.Kind);
+
+    /// <summary>Scripts the outcomes of the send named <paramref name="name"/>: each attempt the next, the last repeating.</summary>
+    public FakeDeliveryHost Script(string name, params DeliverySendOutcome[] outcomes)
+    {
+        Assert.NotEmpty(outcomes);
+        script[name] = outcomes;
+        return this;
+    }
+
+    /// <summary>Holds every send named <paramref name="name"/>: it is never answered.</summary>
+    public FakeDeliveryHost Hold(string name)
+    {
+        held.Add(name);
+        return this;
+    }
+
+    /// <inheritdoc/>
+    public Task<DeliverySendOutcome> SendAsync(DeliverySend send)
+    {
+        Sends.Add((send, UtcNow));
+        var name = NameOf(send);
+        if (held.Contains(name))
+            return new TaskCompletionSource<DeliverySendOutcome>().Task;
+
+        if (!script.TryGetValue(name, out var outcomes))
+            return Task.FromResult(new DeliverySendOutcome(DeliverySendResult.Sent, null));
+        var count = served.GetValueOrDefault(name);
+        served[name] = count + 1;
+        return Task.FromResult(outcomes[Math.Min(count, outcomes.Length - 1)]);
+    }
+
+    /// <inheritdoc/>
+    public Task DelayAsync(TimeSpan wait, CancellationToken cancel)
+    {
+        if (cancel.IsCancellationRequested)
+            return Task.FromCanceled(cancel);
+
+        var done = new TaskCompletionSource();
+        var timer = (UtcNow + wait, done);
+        timers.Add(timer);
+        cancel.Register(() =>
+        {
+            timers.Remove(timer);
+            done.TrySetCanceled(cancel);
+        });
+        return done.Task;
+    }
+
+    /// <summary>Moves the clock on by <paramref name="by"/>, ending every delay it passes.</summary>
+    public void Advance(TimeSpan by)
+    {
+        UtcNow += by;
+        foreach (var timer in timers.Where(t => t.Due <= UtcNow).ToList())
+        {
+            timers.Remove(timer);
+            timer.Done.TrySetResult();
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="body"/> on a thread with no synchronization context, so each delay this host ends resumes the
+    /// runner inline, before <see cref="Advance"/> returns. <paramref name="body"/> starts the run, moves the clock as it
+    /// will, and returns the run, which must have ended by then.
+    /// </summary>
+    public static Task<DeliveryResult> Drive(Func<Task<DeliveryResult>> body) => Task.Run(() =>
+    {
+        var run = body();
+        Assert.True(run.IsCompleted, "The delivery has not ended: something it waits on never ended.");
+        return run;
+    });
+}

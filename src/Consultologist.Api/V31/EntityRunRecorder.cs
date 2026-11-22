@@ -44,6 +44,13 @@ public sealed class EntityRunRecorder(TaskOrchestrationContext context, ConsultG
             new ConsultGenerationV31Progress(decision.Site, null));
     }
 
+    /// <summary>#1505 (area 08): a delivery row; its logging and its signal come with delivery's hosting (Task 11).</summary>
+    public Task DeliveryAsync(DeliveryRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return Task.CompletedTask;
+    }
+
     /// <summary>Part 08's word for a row's state.</summary>
     internal static string StateName(RowState state) => state switch
     {
