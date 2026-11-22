@@ -9,7 +9,8 @@ namespace Consultologist.Api.Tests.V31Run;
 /// Azure. An agent call is prepared with <see cref="AgentTurn.Prepare"/> (its step budget <see cref="StepLimit"/>, strict
 /// mode rejecting <c>format</c>), given the reply <paramref name="reply"/> writes for it, and finished with
 /// <see cref="AgentTurn.Finish"/>; a prompt that could not be prepared is <see cref="AgentOutcomeKind.Failed"/> and gets
-/// no reply. A render is <see cref="RenderTurn.Render"/> (<see cref="BodyComposer.Compose"/>). Every answer is given at
+/// no reply. A render is <see cref="RenderTurn.Render"/> (<see cref="BodyComposer.Compose"/>); #1505 (R6) a rule's
+/// evaluation is <see cref="RuleTurn.Evaluate"/>. Every answer is given at
 /// once; the clock does not move.
 /// </summary>
 internal sealed class ComposingRunHost(RunPlan plan, Func<AgentCall, PreparedPrompt, string> reply) : IRunHost
@@ -73,6 +74,16 @@ internal sealed class ComposingRunHost(RunPlan plan, Func<AgentCall, PreparedPro
     {
         Renders.Add(call);
         return Task.FromResult(RenderTurn.Render(plan, call));
+    }
+
+    /// <summary>#1505 (R6): the rule evaluations asked for, in order.</summary>
+    public List<RuleCall> Rules { get; } = [];
+
+    /// <inheritdoc/>
+    public Task<RuleOutcome> EvaluateAsync(RuleCall call)
+    {
+        Rules.Add(call);
+        return Task.FromResult(RuleTurn.Evaluate(plan, call));
     }
 
     /// <summary>

@@ -279,10 +279,10 @@ public sealed partial class PlanRunner
             if (entry.If is not { } rule)
                 return true;
 
-            var decision = rule.Decide(scope.Data(entry, instance.Frame, entry.Reads));
+            var decision = await DecideRuleAsync(instance, rule, "if", scope.Data(entry, instance.Frame, entry.Reads));
             if (decision.Failure is { } failed)
             {
-                await FailLeafAsync(instance, ExpressionSentences.RunTime(Subject(instance), "if", failed));
+                await FailLeafAsync(instance, RuleFailed(Subject(instance), "if", failed));
                 return false;
             }
 
@@ -307,10 +307,10 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            var value = expression.Evaluate(scope.Data(entry, instance.Frame, entry.Reads));
+            var value = await EvaluateRuleAsync(instance, expression, "expression", scope.Data(entry, instance.Frame, entry.Reads));
             if (value.Failure is { } failed)
             {
-                await FailLeafAsync(instance, ExpressionSentences.RunTime(ComputedSubject(instance), "expression", failed));
+                await FailLeafAsync(instance, RuleFailed(ComputedSubject(instance), "expression", failed));
                 return;
             }
 
@@ -322,6 +322,34 @@ public sealed partial class PlanRunner
 
             await CompleteAsync(instance, value.Value);
         }
+
+        // ---- rules (#1505, R6) --------------------------------------------------------------
+
+        /// <summary>
+        /// The one seam every rule the runner decides goes through: <paramref name="rule"/> (the instance's
+        /// <paramref name="member"/>: <c>if</c>, <c>while</c>, <c>until</c> or a placement's site) as a condition over
+        /// <paramref name="data"/>. A rule that holds <c>matches</c> or <c>has_word</c> is decided by the host
+        /// (<see cref="IRunHost.EvaluateAsync"/>, awaited here; it takes no slot), so a replay reads the stored outcome rather
+        /// than timing the pattern again; every other rule inline.
+        /// </summary>
+        private async Task<JsonLogicDecision> DecideRuleAsync(RunInstance instance, IJsonLogicRule rule, string member, JsonObject data) =>
+            rule.ReadsPattern ? RuleTurn.DecisionOf(await host.EvaluateAsync(RuleCallOf(instance, member, data))) : rule.Decide(data);
+
+        /// <summary>As <see cref="DecideRuleAsync"/>, for a computed node's <c>expression</c>: its value.</summary>
+        private async Task<JsonLogicValue> EvaluateRuleAsync(RunInstance instance, IJsonLogicRule rule, string member, JsonObject data) =>
+            rule.ReadsPattern ? RuleTurn.ValueOf(await host.EvaluateAsync(RuleCallOf(instance, member, data))) : rule.Evaluate(data);
+
+        private static RuleCall RuleCallOf(RunInstance instance, string member, JsonObject data) =>
+            new(instance.Key, instance.Entry.Key, instance.Frame.Function, member, data);
+
+        /// <summary>
+        /// Part 03 § 11.3's sentence for a rule that failed at run time; a host that answered from a plan not the job's
+        /// (<see cref="RuleTurn.PlanFailure"/>) is S07-006, as an agent call's is.
+        /// </summary>
+        private string RuleFailed(string subject, string member, JsonLogicFailure failed) =>
+            ReferenceEquals(failed, RuleTurn.NotTheJobsPlan)
+                ? ResolveSentences.ResolveDoesNotMatch(plan.Package, plan.Version).Sentence
+                : ExpressionSentences.RunTime(subject, member, failed);
 
         /// <summary>Dispatches the waiting calls in the fixed order: an agent call while a slot is free and the job's calls allow.</summary>
         private async Task DispatchAsync()

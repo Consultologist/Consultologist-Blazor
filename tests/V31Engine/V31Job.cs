@@ -22,7 +22,7 @@ namespace Consultologist.Api.Tests.V31Engine;
 /// #1503 (specVersion 31, area 06): a 31 job, end to end in a test. A golden is published into a <see cref="FakeRegistry"/>
 /// and loaded by the real <see cref="CompiledPackageStore"/>; a real entity holds the job as Task 13's start would leave it;
 /// the real <see cref="ConsultGenerationOrchestratorV31"/> runs on a <see cref="FakeOrchestrationContext"/> whose
-/// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c> and <c>render-node-v31</c> are the real activities (the inputs from a
+/// <c>load-plan-v31</c>, <c>load-run-inputs-v31</c>, <c>render-node-v31</c> and (#1505) <c>evaluate-rule-v31</c> are the real activities (the inputs from a
 /// fake <see cref="IRunInputsStore"/> holding <see cref="RunFixture.GoldenInputs"/> at the job's held-inputs pointer), and whose <c>run-agent-node-v31</c> is
 /// answered by <see cref="Agent"/> (by default part 10 § 3.1's stub, by key). Timers longer than five minutes (the job's)
 /// wait, as durable timers do, until cancelled; shorter ones (a retry's) end at once.
@@ -44,10 +44,10 @@ internal sealed class V31Job
 
     public const string JobId = "job-31-0001";
 
-    private V31Job(string golden)
+    private V31Job(CompiledGoldenTests.GoldenCase golden)
     {
         Registry = new FakeRegistry();
-        (Ref, Pair) = Registry.Put(CompiledGoldenTests.Cases().Single(c => c.Name == golden));
+        (Ref, Pair) = Registry.Put(golden);
         Store = StoreOver(Registry);
         Plan = Store.TryLoadAsync(Ref, CancellationToken.None).GetAwaiter().GetResult()!.Plan!;
         Agent = call => new AgentOutcome(AgentOutcomeKind.Completed, RunFixture.StubReply(Plan, call), 0, null);
@@ -95,7 +95,10 @@ internal sealed class V31Job
 
     public ConsultGenerationJobState State => (ConsultGenerationJobState)StateProperty.GetValue(Entity)!;
 
-    public static V31Job Of(string golden) => new(golden);
+    public static V31Job Of(string golden) => new(CompiledGoldenTests.Cases().Single(c => c.Name == golden));
+
+    /// <summary>#1505: a job of <paramref name="golden"/>, a package of the test's own.</summary>
+    public static V31Job Of(CompiledGoldenTests.GoldenCase golden) => new(golden);
 
     /// <summary>The engine's store over <paramref name="registry"/>, 31 admitted.</summary>
     public static CompiledPackageStore StoreOver(FakeRegistry registry) =>
@@ -116,6 +119,9 @@ internal sealed class V31Job
             .On(ConsultGenerationActivityNames.LoadRunInputsV31, payload =>
                 new LoadRunInputsV31Activity(Inputs, Store).RunAsync((LoadRunInputsV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.RunAgentNodeV31, payload => Agent(((RunAgentNodeV31Input)payload!).Call))
+            .On(ConsultGenerationActivityNames.EvaluateRuleV31, payload =>
+                new EvaluateRuleV31Activity(Store, NullLogger<EvaluateRuleV31Activity>.Instance)
+                    .RunAsync((EvaluateRuleV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())
             .On(ConsultGenerationActivityNames.RenderNodeV31, payload =>
                 new RenderNodeV31Activity(Store, NullLogger<RenderNodeV31Activity>.Instance)
                     .RunAsync((RenderNodeV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult())

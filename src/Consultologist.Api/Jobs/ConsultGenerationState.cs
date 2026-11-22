@@ -2764,6 +2764,12 @@ public static class ConsultGenerationActivityNames
     /// <summary>#1503 (specVersion 31, area 06): a 31 rendered node's or deliverable's render.</summary>
     public const string RenderNodeV31 = "render-node-v31";
 
+    /// <summary>
+    /// #1505 (specVersion 31, area 08; R6): a 31 rule that holds <c>matches</c> or <c>has_word</c>, evaluated so a replay
+    /// reads its stored outcome. No Durable retry policy.
+    /// </summary>
+    public const string EvaluateRuleV31 = "evaluate-rule-v31";
+
     /// <summary>#1503 (specVersion 31, area 06): a 31 job's verified <c>resolve.json</c>, for its orchestration's plan.</summary>
     public const string LoadPlanV31 = "load-plan-v31";
 

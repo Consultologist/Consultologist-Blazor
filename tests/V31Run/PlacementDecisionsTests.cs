@@ -50,7 +50,7 @@ public class PlacementDecisionsTests
 
     /// <summary>A host answering the plan with <see cref="Sections"/>, each classifier with <paramref name="judgement"/> and every other agent with its stub.</summary>
     internal static FakeRunHost Host(RunPlan plan, Func<AgentCall, string> judgement) =>
-        new FakeRunHost(auto: true).Stub(call =>
+        new FakeRunHost(auto: true, plan).Stub(call =>
             call.EntryKey == "node.plan" ? Sections
             : call.EntryKey.EndsWith(".classify", StringComparison.Ordinal) ? judgement(call)
             : RunFixture.StubReply(plan, call));

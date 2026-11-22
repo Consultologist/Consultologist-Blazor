@@ -65,7 +65,7 @@ internal static class RunFixture
     /// answered at once when <paramref name="auto"/>, else held until released.
     /// </summary>
     public static FakeRunHost Stubbed(RunPlan plan, bool auto = true) =>
-        new FakeRunHost(auto).Stub(call => StubReply(plan, call));
+        new FakeRunHost(auto, plan).Stub(call => StubReply(plan, call));
 
     /// <summary>
     /// Part 10 § 3.1's deterministic stub for <paramref name="call"/> (<see cref="WorkflowStubOutputs"/>), seeded by the

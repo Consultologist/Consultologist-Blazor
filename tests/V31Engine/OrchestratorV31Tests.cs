@@ -297,6 +297,51 @@ public class OrchestratorV31Tests
     }
 
     [Fact]
+    public async Task AReplay_ReadsTheStoredDecision()
+    {
+        // #1505 (R6): the note's if holds a pattern, so it is decided in evaluate-rule-v31. The first run's outcome is in the
+        // history; the replay reads it, though the activity would now answer differently (the pattern timed out, say), and
+        // dispatches what the first run did.
+        var golden = new CompiledGoldenTests.GoldenCase("pattern-note",
+            () => CompiledGoldenTests.Cases().Single(c => c.Name == "nested-note").Source()
+                .WithJson("deliverables/note.md", h => h["if"] = JsonNode.Parse("{ \"matches\": [{ \"var\": \"input.consult_draft.content\" }, \"Okafor\"] }")),
+            "nested-note, its note's if a pattern on the draft");
+        var history = new Queue<RuleOutcome>();
+        var evaluations = 0;
+
+        var first = V31Job.Of(golden);
+        var firstContext = first.Context();
+        var activity = new EvaluateRuleV31Activity(first.Store, Microsoft.Extensions.Logging.Abstractions.NullLogger<EvaluateRuleV31Activity>.Instance);
+        firstContext.On(ConsultGenerationActivityNames.EvaluateRuleV31, payload =>
+        {
+            evaluations++;
+            var outcome = activity.RunAsync((EvaluateRuleV31Input)payload!, CancellationToken.None).GetAwaiter().GetResult();
+            history.Enqueue(outcome);
+            return outcome;
+        });
+        await V31Job.RunAsync(firstContext);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, first.State.Status);
+        Assert.Equal(1, evaluations);
+        Assert.Equal(true, (bool?)history.Single().Value);
+        Assert.Contains(firstContext.Calls, c => c.Name == ConsultGenerationActivityNames.RenderNodeV31 && c.InputJson.Contains("\"deliverable.note\"", StringComparison.Ordinal));
+
+        var replay = V31Job.Of(golden);
+        var replayContext = replay.Context().On(ConsultGenerationActivityNames.EvaluateRuleV31, _ =>
+        {
+            if (history.TryDequeue(out var stored))
+                return stored;
+            evaluations++;
+            return new RuleOutcome(null, "MatchTooSlow", 2, "matches");
+        });
+        await V31Job.RunAsync(replayContext);
+
+        Assert.Equal(ConsultGenerationJobStatuses.Completed, replay.State.Status);
+        Assert.Equal(1, evaluations);
+        Assert.Equal(firstContext.Calls, replayContext.Calls);
+    }
+
+    [Fact]
     public void ThePlanCache_KeepsTheMostRecent_ByHashAndRegexLimit()
     {
         var job = V31Job.Of("nested-note");

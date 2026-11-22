@@ -379,10 +379,10 @@ public sealed partial class PlanRunner
 
                 if (loop.Parallel || entry.Until is not { } until || loop.StopAt != null)
                     continue;
-                var decision = until.Decide(scope.Data(entry, frame, entry.Reads));
+                var decision = await DecideRuleAsync(instance, until, "until", scope.Data(entry, frame, entry.Reads));
                 if (decision.Failure is { } failed)
                 {
-                    await FailAsync(instance, ExpressionSentences.RunTime(Subject(instance), "until", failed));
+                    await FailAsync(instance, RuleFailed(Subject(instance), "until", failed));
                     return true;
                 }
 

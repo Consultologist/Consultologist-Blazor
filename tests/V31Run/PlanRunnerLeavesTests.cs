@@ -213,7 +213,7 @@ public class PlanRunnerLeavesTests
         var files = Minimal()
             .With("nodes/plan.md", GatedAgent("{ \"matches\": [{ \"var\": \"input.consult_draft.content\" }, \"(.*a.{100}){3}b\"] }"));
         var plan = RunFixture.Plan(files, MinimalReads(), TimeSpan.FromTicks(1));
-        var host = new FakeRunHost(auto: true);
+        var host = new FakeRunHost(auto: true, plan);
         var recorder = new ListRecorder();
 
         var text = new string('a', 1 << 20);
