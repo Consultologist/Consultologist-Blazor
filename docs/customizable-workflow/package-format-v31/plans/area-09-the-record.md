@@ -484,9 +484,9 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Modify: `docs/customizable-workflow/package-format-v31/08-record.md` (any member the build named that Task 1 did not), `docs/customizable-workflow/engine-v31.md` (lines 156, 303, 308, 368, 396: the record as built, the new activities and entity operations in a 31 history, the settings `ConsultGeneration__JobInstances` and `ConsultGenerationRecordStorage`), `docs/STORAGE.md` (the table and the blobs), `docs/CONSULT_GENERATION_EVENTS.md` (`row-finished`), `docs/customizable-workflow/provenance.md`, `docs/customizable-workflow/storage-separation.md` § 2.2
 - Test: `tests/V31ContractsTests.cs`
 
-- [ ] **Step 1: Write the failing test** `TheRecordContract_NamesEveryMemberTheEngineWrites`: every member name in the record goldens (`tests/V31Run/Golden/*.record.json`) and in `ToRecordHeader()` appears in backticks in `external/consultologist-provenance/provenance-record.md` § 6.
-- [ ] **Step 2: Run** it. Expected: FAIL, listing the names not yet written.
-- [ ] **Step 3: Write the contract** in the provenance repo; mirror in the package-format repo and part 08; run both checks; push both; move the pins.
-- [ ] **Step 4: Write the guides.** `engine-v31.md` also says: drain 31 orchestrations before deploying this build (a 31 history gains `write-record-rows-v31` and `seal-record-v31`); the record's size per job is logged at sealing (`Rows`, `Bytes`) for index § 5's gate; D17's note on history size.
-- [ ] **Step 5: Run** the whole suite. Expected: PASS.
-- [ ] **Step 6: Commit** `Docs (#1506): the provenance contract and the guides describe storage 12 as built`; push.
+- [x] **Step 1: Write the failing test** `TheRecordContract_NamesEveryMemberTheEngineWrites`: every member name in the record goldens (`tests/V31Run/Golden/*.record.json`) and in `ToRecordHeader()` appears in backticks in `external/consultologist-provenance/provenance-record.md` § 6.
+- [x] **Step 2: Run** it. Expected: FAIL, listing the names not yet written.
+- [x] **Step 3: Write the contract** in the provenance repo; mirror in the package-format repo and part 08; run both checks; push both; move the pins.
+- [x] **Step 4: Write the guides.** `engine-v31.md` also says: drain 31 orchestrations before deploying this build (a 31 history gains `write-record-rows-v31` and `seal-record-v31`); the record's size per job is logged at sealing (`Rows`, `Bytes`) for index § 5's gate; D17's note on history size.
+- [x] **Step 5: Run** the whole suite. Expected: PASS.
+- [x] **Step 6: Commit** `Docs (#1506): the provenance contract and the guides describe storage 12 as built`; push.
