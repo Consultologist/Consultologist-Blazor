@@ -449,7 +449,7 @@ job that is not the caller's or is below storage 12):
 
 **Retention and closure.** The 7-day sweep calls `IRecordTextDrop` first: it seals the job if need be, deletes the
 job's `text/` blobs, and only then signals `DropText`. `record.json` is never deleted, and `recordHash` still holds
-afterwards. Account closure deletes every row of every job (`DeleteJobAsync`, after the events); a failure stops the
+afterwards. Account closure deletes the rows of each storage-12 job (`DeleteJobAsync`, after the events); a failure stops the
 closure, which a rerun resumes. The blobs go with the account's prefix.
 
 **Deploying: drain 31 orchestrations first.** A 31 history now holds `write-record-rows-v31` and `seal-record-v31`

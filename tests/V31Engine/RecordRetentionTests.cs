@@ -120,6 +120,27 @@ public class RecordRetentionTests
     }
 
     [Fact]
+    public async Task TheSweep_LeavesA30JobAsToday()
+    {
+        // through the sweep and the real purger and record drop: the 30 job's text goes by the entity alone
+        var job = V31Job.Of("nested-note");
+        await V31Job.RunAsync(job.Context());
+        job.State.SchemaVersion = 11;
+        var sealer = Substitute.For<IRecordSealer>();
+        var blobs = Substitute.For<IRecordBlobStore>();
+        var rowCalls = job.Rows.Table.Calls;
+        var harness = new Harness(job, sealer, blobs);
+
+        Assert.Equal(1, await harness.SweepAsync());
+
+        await sealer.DidNotReceiveWithAnyArgs().EnsureSealedAsync(default!, default);
+        Assert.Empty(blobs.ReceivedCalls());
+        Assert.Equal(rowCalls, job.Rows.Table.Calls);
+        Assert.NotNull(job.State.TextDroppedAtUtc);
+        await harness.Client.Received(1).PurgeInstanceAsync(V31Job.JobId, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
     public async Task AJobBelowStorage12_ReachesNoRecordStore()
     {
         var job = V31Job.Of("nested-note");
@@ -163,7 +184,7 @@ public class RecordRetentionTests
     /// <summary>The sweep over one job of the real entity, the real purger and the real record drop, on the fakes.</summary>
     private sealed class Harness
     {
-        public Harness(V31Job job, IRecordSealer? sealer = null)
+        public Harness(V31Job job, IRecordSealer? sealer = null, IRecordBlobStore? blobs = null)
         {
             Events = Substitute.For<IConsultGenerationJobEventStore>();
             Client = Substitute.For<DurableTaskClient>("test");
@@ -172,7 +193,7 @@ public class RecordRetentionTests
             entities.SignalEntityAsync(default!, default!, default, default, default)
                 .ReturnsForAnyArgs(call => job.Entity.DropText((ConsultGenerationTextDrop)call.ArgAt<object?>(2)!));
 
-            var drop = new Drop(sealer ?? job.Sealer, job);
+            var drop = new Drop(sealer ?? job.Sealer, job, blobs ?? job.Blobs);
             var purger = new JobTextPurger(Events, Substitute.For<ILegacyJobEventDelete>(), drop);
 
             var accounts = Substitute.For<IAccountStore>();
@@ -203,9 +224,9 @@ public class RecordRetentionTests
     }
 
     /// <summary>The host's <see cref="RecordTextDrop"/> over the fakes: the same steps, the job's entity read as the client would.</summary>
-    private sealed class Drop(IRecordSealer sealer, V31Job job) : IRecordTextDrop
+    private sealed class Drop(IRecordSealer sealer, V31Job job, IRecordBlobStore blobs) : IRecordTextDrop
     {
         public Task DropAsync(DurableTaskClient client, string jobId, CancellationToken ct) =>
-            RecordTextDrop.DropAsync(sealer, job.RecordJobs, job.Blobs, jobId, ct);
+            RecordTextDrop.DropAsync(sealer, job.RecordJobs, blobs, jobId, ct);
     }
 }

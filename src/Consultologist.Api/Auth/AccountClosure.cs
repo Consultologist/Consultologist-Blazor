@@ -108,8 +108,15 @@ public sealed class AccountClosure
         // way (entity Cancel, then terminate — terminate must precede purge),
         // and the streamed events go from both tables. Then the account's
         // whole prefix in every text container, kind-blind.
+        var recordJobs = new V31.DurableRecordJobs(client, _accounts);
         foreach (var job in jobs)
         {
+            // #1506: the job's storage version, read before anything is signalled to its entity. Record rows exist only for a
+            // storage-12 job; a job below it (or with no entity) never reaches the record table, which a host with 31 off
+            // has never created.
+            var holdsRecordRows = await recordJobs.ReadAsync(job.JobId, cancellationToken) is { } entityState
+                && entityState.SchemaVersion >= V31.RecordSealer.SealedFrom;
+
             if (!ConsultGenerationJobEntity.IsTerminal(job.Status))
             {
                 var entityId = new EntityInstanceId(nameof(ConsultGenerationJobEntity), job.JobId);
@@ -127,10 +134,13 @@ public sealed class AccountClosure
 
             await _events.DeleteJobAsync(job.JobId, cancellationToken);
             await _legacyEvents.DeleteJobAsync(job.JobId, cancellationToken);
-            // #1506: a 31 job's record rows (one partition per job; an empty one for a job below storage 12). A failure
-            // stops the closure as the events' does; the closure row is the claim, so a re-run resumes. The record's
-            // blobs (text/ and record.json) are under {appUserId}/ and go with the prefix delete below.
-            await _recordRows.DeleteJobAsync(job.JobId, cancellationToken);
+            // #1506: a storage-12 job's record rows (one partition per job). A failure stops the closure as the events'
+            // does; the closure row is the claim, so a re-run resumes. The record's blobs (text/ and record.json) are
+            // under {appUserId}/ and go with the prefix delete below.
+            if (holdsRecordRows)
+            {
+                await _recordRows.DeleteJobAsync(job.JobId, cancellationToken);
+            }
         }
 
         var blobs = await _outputsBlobs.DeleteAccountAsync(appUserId, cancellationToken)

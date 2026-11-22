@@ -117,21 +117,44 @@ public class AccountClosureTests
         });
     }
 
-    [Fact]
-    public async Task ClosingAnAccount_RemovesItsRecordRows()
+    /// <summary>The job's entity as the closure reads it: at <paramref name="schemaVersion"/>, or none when null.</summary>
+    private void WithEntity(string jobId, int? schemaVersion)
     {
-        WithDisabledAccount(Job("job-1", "Completed"), Job("job-live", "Running"), Job("job-3", "Failed"));
+        _client.Entities.Returns(_entities);
+        _entities.GetEntityAsync<ConsultGenerationJobState>(
+                Arg.Is<EntityInstanceId>(id => id.Key == jobId), Arg.Any<CancellationToken>())
+            .Returns(schemaVersion is not { } version
+                ? null
+                : new EntityMetadata<ConsultGenerationJobState>(
+                    new EntityInstanceId(nameof(ConsultGenerationJobEntity), jobId),
+                    new ConsultGenerationJobState { JobId = jobId, SchemaVersion = version }));
+    }
 
-        await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
+    [Fact]
+    public async Task ClosingAnAccount_RemovesItsRecordRows_OnlyForStorage12Jobs()
+    {
+        WithDisabledAccount(Job("job-12", "Completed"), Job("job-live", "Running"), Job("job-11", "Completed"), Job("job-none", "Completed"));
+        var closure = CreateClosure();
+        WithEntity("job-12", 12);
+        WithEntity("job-live", 12);
+        WithEntity("job-11", 11);
+        WithEntity("job-none", null);
 
-        // each job's row partition, beside its events, before the account's blobs
-        foreach (var id in new[] { "job-1", "job-live", "job-3" })
+        await closure.CloseAsync(_client, User, Operator, CancellationToken.None);
+
+        foreach (var id in new[] { "job-12", "job-live" })
             await _recordRows.Received(1).DeleteJobAsync(id, Arg.Any<CancellationToken>());
+        // a job below 12, and a job with no entity, never reach the record table
+        await _recordRows.DidNotReceive().DeleteJobAsync("job-11", Arg.Any<CancellationToken>());
+        await _recordRows.DidNotReceive().DeleteJobAsync("job-none", Arg.Any<CancellationToken>());
+        // beside the events, before the account's blobs; and the entity is read before it is signalled "delete"
         Received.InOrder(() =>
         {
-            _events.DeleteJobAsync("job-1", Arg.Any<CancellationToken>());
-            _recordRows.DeleteJobAsync("job-1", Arg.Any<CancellationToken>());
+            _entities.GetEntityAsync<ConsultGenerationJobState>(Arg.Is<EntityInstanceId>(id => id.Key == "job-12"), Arg.Any<CancellationToken>());
+            _events.DeleteJobAsync("job-12", Arg.Any<CancellationToken>());
+            _recordRows.DeleteJobAsync("job-12", Arg.Any<CancellationToken>());
             _outputsBlobs.DeleteAccountAsync(User, Arg.Any<CancellationToken>());
+            _entities.SignalEntityAsync(Arg.Is<EntityInstanceId>(id => id.Key == "job-12"), "delete", cancellation: Arg.Any<CancellationToken>());
         });
     }
 
@@ -141,18 +164,21 @@ public class AccountClosureTests
         // the events' deletion is not caught: its failure stops the closure before anything of the account's is removed,
         // and the closure row (the claim) is not written, so a re-run starts again. The record rows match it.
         WithDisabledAccount(Job("job-1", "Completed"), Job("job-2", "Completed"));
+        var closure = CreateClosure();
+        WithEntity("job-1", 12);
+        WithEntity("job-2", 12);
         var failing = true;
         _recordRows.DeleteJobAsync("job-1", Arg.Any<CancellationToken>())
             .Returns(_ => failing ? Task.FromException(new InvalidOperationException("storage")) : Task.CompletedTask);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => closure.CloseAsync(_client, User, Operator, CancellationToken.None));
 
         await _closed.DidNotReceiveWithAnyArgs().RecordAsync(default!, default);
         await _accounts.DidNotReceiveWithAnyArgs().DeleteAccountAsync(default!, default);
         await _index.DidNotReceiveWithAnyArgs().DeleteAllAsync(default!, default);
 
         failing = false;
-        var outcome = await CreateClosure().CloseAsync(_client, User, Operator, CancellationToken.None);
+        var outcome = await closure.CloseAsync(_client, User, Operator, CancellationToken.None);
 
         Assert.NotNull(outcome.Closed);
         await _recordRows.Received(1).DeleteJobAsync("job-2", Arg.Any<CancellationToken>());
