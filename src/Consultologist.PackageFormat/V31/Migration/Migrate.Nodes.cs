@@ -80,9 +80,14 @@ internal static partial class Migrate
                 break;
         }
 
-        // D16: a member 31 has no counterpart for is dropped with a notice (a classifier's values, a node's with).
+        // D16: a member 31 has no counterpart for is dropped with a notice: a node's with (a classifier's values); a
+        // computed or rendered node's onInvalid and failIfEmpty (only an agent node has them at 31).
         if (node.With is { Count: > 0 })
             m.Notice(MigrationSentences.MemberDropped(id, "with"));
+        if (kind != "agent" && node.OnInvalid is not null)
+            m.Notice(MigrationSentences.MemberDropped(id, "onInvalid"));
+        if (kind != "agent" && node.FailIfEmpty is not null)
+            m.Notice(MigrationSentences.MemberDropped(id, "failIfEmpty"));
 
         m.Put(file, header, kind == "computed" ? "" : PromptOf(m, node));
     }

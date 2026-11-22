@@ -209,6 +209,29 @@ public class MigrateNodesTests
     }
 
     [Fact]
+    public void AMemberANonAgentNodeHasNoPlaceFor_IsDroppedWithANotice()
+    {
+        // D16: a let's onInvalid (a computed node has none) and a rendered node's failIfEmpty are dropped, each said.
+        var let = Migrated("example-nested-note");
+        Assert.False(Md(let, "nodes/section_count.md").Header.ContainsKey("onInvalid"));
+        const string notice = "Node 'section_count' declared onInvalid at 30, which 31 has no member for; it was dropped.";
+        Assert.Contains(notice, let.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-030", notice, ""));
+
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-v12-constructs");
+        var root = JsonNode.Parse(json)!.AsObject();
+        Node(root, "patient_header")["failIfEmpty"] = "The header came back empty.";
+        var rendered = WorkflowPackageMigration30To31.Migrate(root.ToJsonString(), files, MigrationFixture.Options("example-v12-constructs"));
+        // 30 refuses failIfEmpty on a rendered node (no reply to judge), and on a let, so no failIfEmpty reaches 31 to drop;
+        // the pass still drops one and says so (A10-030) should a package carry it.
+        Assert.False(rendered.Succeeded);
+        Assert.Contains(rendered.Refusals, r => r.Contains("patient_header", StringComparison.Ordinal) && r.Contains("failIfEmpty", StringComparison.Ordinal));
+
+        // An agent's onInvalid and failIfEmpty are kept, and not said.
+        Assert.DoesNotContain(Migrated("example-two-documents").Notices, n => n.Contains("declared onInvalid", StringComparison.Ordinal) || n.Contains("declared failIfEmpty", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void ATermsSubsetNode_GetsNoFile_AndIsReadAtCheck()
     {
         var result = Migrated("example-v12-constructs");

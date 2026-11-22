@@ -180,7 +180,7 @@ public sealed record ConversionScope(
 }
 
 /// <summary>
-/// #1507 (part 10 § 2.1): where 31 reads a 30 node (its rooted key: <c>node.sections.outline</c>, <c>check.coverage</c>)
+/// #1507 (part 10 § 2.1): where 31 reads a 30 node (a reference resolving outward by bare id: <c>node.outline</c>, <c>check.coverage</c>)
 /// and its 31 format. <see cref="AlwaysValued"/> is set when the node has a value wherever the expression is judged
 /// (it always completes before it: area 05's <c>AlwaysValued</c>); otherwise its reads are nullable (a node that did not
 /// complete reads <c>null</c>, part 03 § 6.1).

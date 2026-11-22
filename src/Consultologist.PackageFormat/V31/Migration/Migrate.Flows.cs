@@ -243,7 +243,8 @@ internal static partial class Migrate
     /// becomes <c>input.&lt;id&gt;.value</c>; a classifier's <c>node.&lt;id&gt;.value</c> its <c>.value.value</c>), and the
     /// values of its subject's enum (a classifier's, the values its <c>with</c> gave) that no branch lists. A subject the
     /// converter refuses, or that is no single read (S04-017), is a hand edit, written as 30 wrote it; so is one whose
-    /// values 31 cannot list (A10-028) and one that can be <c>null</c> where the case has no <c>else</c> (A10-029).
+    /// values 31 cannot list (A10-028), a classifier's (whose answers 31 does not type, A10-032; its branches are still
+    /// written from 30's values), and one that can be <c>null</c> where the case has no <c>else</c> (A10-029).
     /// </summary>
     private static Dictionary<string, CaseShape> CaseBranches(Migrated m, NodeTree tree)
     {
@@ -254,12 +255,11 @@ internal static partial class Migrate
             var text = node.Case!;
             var scope = m.Scope(id);
             var result = WorkflowConditionConverter.FromScriban(text, scope, ConversionKind.Value);
-            if (result.Logic is not JsonObject { Count: 1 } read || read["var"] is not JsonValue path || !path.TryGetValue<string>(out var reference))
+            var refusal = CaseSubjectRefusal(id, file, result);
+            if (refusal is not null
+                || result.Logic is not JsonObject { Count: 1 } read || read["var"] is not JsonValue path || !path.TryGetValue<string>(out var reference))
             {
-                var reason = result.Logic is null
-                    ? string.Join(" ", result.Notices)
-                    : $"Case '{id}' case is an expression; it names one readable thing: compute the value in a computed node and name that.";
-                m.HandEdit(file, "case", reason);
+                m.HandEdit(file, "case", refusal ?? "");
                 cases[id] = new CaseShape(JsonValue.Create(text), [], true);
                 continue;
             }
@@ -267,10 +267,15 @@ internal static partial class Migrate
             var type = ConditionTyping.TypeOf(read, scope);
             var listed = (node.Branches ?? []).SelectMany(b => b.When ?? []).ToHashSet(StringComparer.Ordinal);
             IReadOnlyList<string>? values = null;
+            var edited = false;
             if (WorkflowFlowNodes.CaseNodeSubjectOf(text) is { } subjectNode && tree.ById.TryGetValue(subjectNode, out var classifier)
                 && classifier.With?.GetValueOrDefault("values") is JsonArray given)
             {
+                // 30's answers give the branches, but 31's classification types value as a plain string (its with is
+                // dropped, A10-030), so the checker refuses the subject (S04-044): a hand edit (A10-032).
                 values = [.. given.Select(v => v is JsonValue s && s.TryGetValue<string>(out var value) ? value : null).OfType<string>()];
+                m.HandEdit(file, "case", MigrationSentences.CaseOnClassifier(subjectNode));
+                edited = true;
             }
             else if (type?.Format is { } format && FormatTypes.Shape(format, scope.Formats) == FormatShape.Enum)
             {
@@ -285,7 +290,6 @@ internal static partial class Migrate
             }
 
             var nullable = type is null || type.Nullable || FormatTypes.IsNullable(type.Format, scope.Formats);
-            var edited = false;
             if (nullable && node.Else is null)
             {
                 m.HandEdit(file, "else", MigrationSentences.CaseSubjectNullable(reference));
@@ -297,6 +301,21 @@ internal static partial class Migrate
         }
 
         return cases;
+    }
+
+    /// <summary>
+    /// Why a <c>case</c>'s converted subject <paramref name="result"/> is a hand edit, or null when it is a single read: the
+    /// converter's notices when it refused, or the checker's S04-017 when the logic is no single read (part 04 § 5.2: a
+    /// subject is a reference string).
+    /// </summary>
+    internal static string? CaseSubjectRefusal(string id, string file, ConversionResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        if (result.Logic is null)
+            return string.Join(" ", result.Notices);
+        return result.Logic is JsonObject { Count: 1 } read && read["var"] is JsonValue path && path.TryGetValue<string>(out _)
+            ? null
+            : ResolveSentences.IsAnExpression("Case", id, "case", file).Sentence;
     }
 
     /// <summary>The 31 folder of a node's file: <c>nodes</c>, then its chain of flow ids.</summary>

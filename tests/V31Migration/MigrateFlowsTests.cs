@@ -247,7 +247,13 @@ public class MigrateFlowsTests
         var line = Json(result, "nodes/tone_line/index.json");
         Assert.Equal("node.tone.value.value", (string?)line["case"]);
         Assert.Equal(Compact("""{ "when": ["friendly", "neutral"], "nodes": [], "ret": null }"""), line["branches"]![1]!.ToJsonString());
-        Assert.DoesNotContain(result.HandEdits, e => e.Contains("tone_line", StringComparison.Ordinal));
+        // But a classifier's answers are not typed at 31 (classification's value is a plain string; its with is dropped),
+        // so the 31 checker refuses the subject (S04-044): a hand edit on the case.
+        var edit = Assert.Single(result.HandEdits, e => e.Contains("tone_line", StringComparison.Ordinal));
+        const string reason = "the case switches on classifier 'tone', whose answers are not typed at 31; give it a package format whose value is an enum of its answers.";
+        Assert.Equal($"Hand edit needed in nodes/tone_line/index.json, case: {reason}", edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "nodes/tone_line/index.json"));
+        V31Contract.AssertSentence(new SourceRefusal("A10-032", reason, ""));
 
         // A case that lists every value gains nothing.
         var complete = Json(Migrated("composer-sources", root =>
@@ -275,8 +281,25 @@ public class MigrateFlowsTests
     {
         // 30 switches only on an enum or a classifier, so no migrated package reaches A10-028; its sentence is held here.
         var reason = PackageFormat.V31.Migration.MigrationSentences.CaseNotEnumerated("input.notes.content");
-        Assert.Equal("the case switches on input.notes.content, whose values 31 cannot list; switch on an enumerated string, or add an else.", reason);
+        Assert.Equal("the case switches on input.notes.content, whose values 31 cannot list; switch on an enumerated string.", reason);
         V31Contract.AssertSentence(new SourceRefusal("A10-028", reason, ""));
+    }
+
+    [Fact]
+    public void ACaseSubjectThatIsNoSingleRead_IsAHandEdit_WithTheCheckersSentence()
+    {
+        // 30's subjects are all single reads, so this is held at the step that judges the converter's answer.
+        var file = "nodes/route/index.json";
+        var expression = new ConversionResult(JsonNode.Parse("""{ "size": [ { "var": "input.topics.value" } ] }"""), "integer", ["input.topics.value"], []);
+        var reason = PackageFormat.V31.Migration.Migrate.CaseSubjectRefusal("route", file, expression);
+        Assert.Equal("Case 'route' case is an expression; it names one readable thing: compute the value in a computed node and name that.", reason);
+        V31Contract.AssertSentence(new SourceRefusal("S04-017", reason!, file));
+
+        var refused = new ConversionResult(null, null, [], ["first.", "second."]);
+        Assert.Equal("first. second.", PackageFormat.V31.Migration.Migrate.CaseSubjectRefusal("route", file, refused));
+
+        var read = new ConversionResult(JsonNode.Parse("""{ "var": "item.value.kind" }"""), "string", ["item.value.kind"], []);
+        Assert.Null(PackageFormat.V31.Migration.Migrate.CaseSubjectRefusal("route", file, read));
     }
 
     [Theory]

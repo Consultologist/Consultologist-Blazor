@@ -595,31 +595,41 @@ public class MigrateLayoutTests
     [Theory]
     [InlineData("[\"null\", \"null\"]")]
     [InlineData("\"null\"")]
-    [InlineData("\"string\"")]
-    [InlineData("[\"string\"]")]
-    public void AFormatWhoseRootIsNullOrAScalar_IsOneHandEdit_NeverAThrow(string type)
+    public void AFormatWhoseRootIsNullAlone_IsOneHandEdit_NeverAThrow(string type)
     {
-        // A 31 package format is an object or a list (part 02 § 3.3); a root of null alone (["null", "null"] too) or of a
-        // scalar is written as 30 had it, which the checker refuses, with one hand edit.
-        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
-        var wrapper = JsonNode.Parse(files["formats/verdict.json"])!.AsObject();
-        wrapper["schema"]!["type"] = JsonNode.Parse(type);
-        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["formats/verdict.json"] = wrapper.ToJsonString() };
+        // A 31 package format is an object or a list (part 02 § 3.3); a root of null alone (["null", "null"] too) is
+        // written as 30 had it, which the dialect refuses, with one hand edit.
+        var result = WithVerdictType(type);
 
-        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-nested-note"));
-
-        if (!result.Succeeded)
-        {
-            // 30 may refuse the format itself; then nothing is written and nothing throws.
-            Assert.All(result.Refusals, r => Assert.StartsWith("At specVersion 30: ", r, StringComparison.Ordinal));
-            return;
-        }
-
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
         var edit = Assert.Single(result.HandEdits, e => e.Contains("formats/verdict.json", StringComparison.Ordinal));
         Assert.Equal("Hand edit needed in formats/verdict.json, type: a package format's root is an object or a list at 31; make it one, or use a registry format.", edit);
         V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "formats/verdict.json"));
         V31Contract.AssertSentence(new SourceRefusal("A10-031", "a package format's root is an object or a list at 31; make it one, or use a registry format.", ""));
         Assert.NotEmpty(FormatDialect.Check(JsonOf(result, "formats/verdict.json"), SchemaSite.PackageFormat, "Format 'verdict'", "verdict", "formats/verdict.json"));
+    }
+
+    [Theory]
+    [InlineData("\"string\"")]
+    [InlineData("[\"string\"]")]
+    public void AFormatWhoseRootIsAScalar_Is30sToRefuse(string type)
+    {
+        // 30 refuses a custom format whose root is a scalar, so the migration writes nothing (and never throws).
+        var result = WithVerdictType(type);
+
+        Assert.False(result.Succeeded);
+        Assert.All(result.Refusals, r => Assert.StartsWith("At specVersion 30: ", r, StringComparison.Ordinal));
+        Assert.Empty(result.HandEdits);
+    }
+
+    /// <summary>example-nested-note with its verdict format's schema type set to <paramref name="type"/>, migrated.</summary>
+    private static Migration31Result WithVerdictType(string type)
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
+        var wrapper = JsonNode.Parse(files["formats/verdict.json"])!.AsObject();
+        wrapper["schema"]!["type"] = JsonNode.Parse(type);
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["formats/verdict.json"] = wrapper.ToJsonString() };
+        return WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-nested-note"));
     }
 
     [Fact]
