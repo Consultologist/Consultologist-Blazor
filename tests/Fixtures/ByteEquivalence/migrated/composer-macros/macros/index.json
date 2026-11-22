@@ -1,0 +1,12 @@
+{
+  "description": null,
+  "items": [
+    "new_visit_note",
+    "review_note",
+    "followup_offer",
+    "leaflet_offer",
+    "section_intro",
+    "section_close",
+    "quoted_review"
+  ]
+}

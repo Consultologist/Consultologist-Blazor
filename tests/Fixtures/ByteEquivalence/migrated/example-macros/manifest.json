@@ -1,0 +1,80 @@
+{
+  "name": "example-macros",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": null,
+  "description": [
+    "Every state of the Editor's macro pane on one 27 package: a macro's own if (a clause; a grouped and/or), instances before and after a node and on loop body nodes with item gates (a snippet-folder loop; an array-input loop with a case), prepend and append on a deliverable with gates, inline reads through a prompt, a snippet and another macro's instruction, a .content read, a macro folder, an optional macro with a default, and the never-fires, unread and empty-prompt notes. Not clinical."
+  ],
+  "tags": [],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "note_type": {
+      "label": "Note type",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "consult",
+          "follow_up",
+          "discharge_summary"
+        ]
+      },
+      "required": true,
+      "channel": null
+    },
+    "include_counselling": {
+      "label": "Include side-effect counselling",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    },
+    "sections": {
+      "label": "Sections to produce",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "kind"
+          ],
+          "properties": {
+            "title": {
+              "$ref": "markdown_block",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "narrative",
+                "table",
+                "omit"
+              ],
+              "title": "Kind"
+            }
+          }
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "follow_up_reminder": {
+      "label": "Follow-up reminder",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    }
+  }
+}

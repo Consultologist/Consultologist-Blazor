@@ -1,0 +1,9 @@
+{
+  "description": null,
+  "items": [
+    "consult_note",
+    "patient_letter"
+  ],
+  "delivery": [],
+  "bundle": null
+}

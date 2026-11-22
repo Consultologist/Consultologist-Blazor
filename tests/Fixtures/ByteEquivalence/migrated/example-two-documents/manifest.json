@@ -1,0 +1,25 @@
+{
+  "name": "example-two-documents",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": "general@v2026.07.9",
+  "title": null,
+  "description": null,
+  "tags": [],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "prior_notes": {
+      "label": "Prior notes",
+      "description": null,
+      "format": "markdown_block",
+      "required": false,
+      "channel": null
+    }
+  }
+}

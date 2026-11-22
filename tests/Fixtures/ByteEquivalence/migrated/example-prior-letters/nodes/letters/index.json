@@ -1,0 +1,34 @@
+{
+  "kind": "for",
+  "label": "Prior letters",
+  "description": null,
+  "format": {
+    "type": "array",
+    "items": {
+      "$ref": "plaintext"
+    }
+  },
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "in": "input.prior_letters.value",
+  "parallel": false,
+  "maxParallel": null,
+  "until": {
+    "===": [
+      {
+        "var": "node.read_letter.value.answers_question"
+      },
+      true
+    ]
+  },
+  "max": null,
+  "itemLabel": null,
+  "nodes": [
+    "read_letter",
+    "letter_summary"
+  ],
+  "ret": "node.letters.letter_summary"
+}

@@ -1,0 +1,57 @@
+{
+  "name": "test/general",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": null,
+  "description": null,
+  "tags": [],
+  "inputs": {
+    "consult_specialty": {
+      "label": "Specialty",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "family_medicine",
+          "internal_medicine",
+          "medical_oncology",
+          "cardiology",
+          "infectious_diseases",
+          "endocrinology",
+          "pediatric_infectious_diseases",
+          "pediatric_cardiology"
+        ]
+      },
+      "required": true,
+      "channel": null
+    },
+    "note_type": {
+      "label": "Note Type",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "consult",
+          "follow_up",
+          "discharge_summary",
+          "consult_requisition"
+        ]
+      },
+      "required": true,
+      "channel": null
+    },
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": true,
+      "channel": null
+    }
+  }
+}

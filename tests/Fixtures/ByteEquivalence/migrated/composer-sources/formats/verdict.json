@@ -1,0 +1,22 @@
+{
+  "$schema": "urn:consultologist:spec:31:dialect",
+  "type": "object",
+  "description": "A judgement of a draft summary: good, or revise with what to change.",
+  "additionalProperties": false,
+  "required": [
+    "verdict",
+    "feedback"
+  ],
+  "properties": {
+    "verdict": {
+      "type": "string",
+      "enum": [
+        "good",
+        "revise"
+      ]
+    },
+    "feedback": {
+      "type": "string"
+    }
+  }
+}

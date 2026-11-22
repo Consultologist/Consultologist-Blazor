@@ -1,0 +1,144 @@
+{
+  "name": "example-v12-constructs",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "The v12 constructs demo",
+  "description": [
+    "A demonstration of everything specVersion 12 opened: an optional macro the run chooses (with a declared default), a macro placed against a section, a closing macro carrying the profile signature, conditional macros gated on a tone classifier, a template node whose render IS its output, and two checks — the note's passes, while the letter's fixed template text cannot cover the referral's clinical terms and records a deterministic failure. Not intended for clinical use."
+  ],
+  "tags": [],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "seen_on": {
+      "label": "Date seen",
+      "description": null,
+      "format": "date",
+      "required": true,
+      "channel": null
+    },
+    "encounter_kind": {
+      "label": "Encounter kind",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "new_patient",
+          "follow_up"
+        ]
+      },
+      "required": true,
+      "channel": null
+    },
+    "billable": {
+      "label": "Billable encounter",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    },
+    "length_of_stay": {
+      "label": "Length of stay (days)",
+      "description": null,
+      "format": "number",
+      "required": false,
+      "channel": null
+    },
+    "patient": {
+      "label": "Patient record",
+      "description": null,
+      "format": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "family_name",
+          "age",
+          "sex"
+        ],
+        "properties": {
+          "family_name": {
+            "$ref": "markdown_block",
+            "title": "Family name"
+          },
+          "age": {
+            "type": "number",
+            "title": "Age"
+          },
+          "sex": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "female",
+              "male",
+              null
+            ],
+            "title": "Sex"
+          }
+        }
+      },
+      "required": false,
+      "channel": null
+    },
+    "prior_notes": {
+      "label": "Prior notes",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "$ref": "markdown_block"
+        }
+      },
+      "required": false,
+      "channel": null
+    },
+    "medications": {
+      "label": "Medications",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "name",
+            "dose"
+          ],
+          "properties": {
+            "name": {
+              "$ref": "markdown_block",
+              "title": "Drug"
+            },
+            "dose": {
+              "anyOf": [
+                {
+                  "$ref": "markdown_block"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dose"
+            }
+          }
+        }
+      },
+      "required": false,
+      "channel": null
+    },
+    "followup": {
+      "label": "Follow-up offer",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    }
+  }
+}

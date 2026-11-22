@@ -1,0 +1,81 @@
+{
+  "name": "composer-sources",
+  "version": "v2026.11.1",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Composer sources fixture",
+  "description": [
+    "A byte-equivalence fixture (#1498): one deliverable per kind of source the deliverable composer reads — one prose node, two prose nodes, a for over an input with an if inside, a for over a node's list with a for inside, a while, an if, a case and a let of type text — and the while and the for each beside a prose node, where a source with no part and a source with an empty part differ. Fictional; not intended for clinical use."
+  ],
+  "tags": [
+    "fixture"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "topics": {
+      "label": "Requested topics",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "kind"
+          ],
+          "properties": {
+            "title": {
+              "$ref": "markdown_block",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "drafted",
+                "left_out"
+              ],
+              "title": "Kind"
+            }
+          }
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "include_plan": {
+      "label": "Include the plan",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    },
+    "tone": {
+      "label": "Tone",
+      "description": null,
+      "format": {
+        "type": "string",
+        "enum": [
+          "formal",
+          "plain",
+          "none"
+        ]
+      },
+      "required": true,
+      "channel": null
+    },
+    "redraft": {
+      "label": "Redraft the summary",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    }
+  }
+}

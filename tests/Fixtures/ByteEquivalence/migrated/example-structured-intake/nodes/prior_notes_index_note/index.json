@@ -1,0 +1,26 @@
+{
+  "kind": "for",
+  "label": "Prior notes — indexing a prior note",
+  "description": null,
+  "format": {
+    "type": "array",
+    "items": {
+      "$ref": "plaintext"
+    }
+  },
+  "reproducible": false,
+  "producer": "computed",
+  "modelDerived": true,
+  "runDependent": false,
+  "profileCarrying": false,
+  "in": "input.prior_notes.value",
+  "parallel": true,
+  "maxParallel": null,
+  "until": null,
+  "max": null,
+  "itemLabel": null,
+  "nodes": [
+    "index_note"
+  ],
+  "ret": "node.prior_notes_index_note.index_note"
+}

@@ -20,6 +20,8 @@ namespace Consultologist.Api.Tests.V31Migration;
 /// </summary>
 public class MigratedPackagesTests
 {
+    private const string GoldenFolder = "migrated";
+
     private static readonly ConcurrentDictionary<string, Migration31Result> Cache = new(StringComparer.Ordinal);
 
     /// <summary>The sixteen packages: the vendored ones in the index's order, then the fixture packages.</summary>
@@ -109,6 +111,44 @@ public class MigratedPackagesTests
         foreach (var (path, text) in first.Files)
             Assert.True(text == second.Files[path], path);
         Assert.Equal(NoticesJson(first), NoticesJson(second));
+    }
+
+    [Theory]
+    [MemberData(nameof(Packages))]
+    public void TheMigratedSource_IsTheGolden(string package)
+    {
+        var expected = Golden(Migrated(package));
+        var folder = Path.Combine([ByteEquivalenceFixtures.Root, GoldenFolder, .. package.Split('/')]);
+        if (Environment.GetEnvironmentVariable("GOLDEN_UPDATE_V31") == "1")
+        {
+            if (Directory.Exists(folder))
+                Directory.Delete(folder, recursive: true);
+            foreach (var (path, text) in expected)
+            {
+                var file = Path.Combine([folder, .. path.Split('/')]);
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllBytes(file, new UTF8Encoding(false).GetBytes(text));
+            }
+        }
+
+        Assert.True(Directory.Exists(folder), $"{GoldenFolder}/{package} is missing: run with GOLDEN_UPDATE_V31=1, then read it.");
+        var onDisk = Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories)
+            .Select(f => Path.GetRelativePath(folder, f).Replace(Path.DirectorySeparatorChar, '/'))
+            .Order(StringComparer.Ordinal).ToList();
+        Assert.Equal(expected.Keys.Order(StringComparer.Ordinal), onDisk);
+        foreach (var (path, text) in expected)
+            Assert.True(text == ByteEquivalenceFixtures.ReadText(Path.Combine([folder, .. path.Split('/')])), $"{GoldenFolder}/{package}/{path} differs");
+    }
+
+    /// <summary>What <c>migrated/&lt;package&gt;/</c> holds: the manifest, every file, and <c>notices.json</c>.</summary>
+    private static SortedDictionary<string, string> Golden(Migration31Result result)
+    {
+        var files = new SortedDictionary<string, string>(result.Files, StringComparer.Ordinal)
+        {
+            ["manifest.json"] = result.ManifestJson,
+            ["notices.json"] = NoticesJson(result),
+        };
+        return files;
     }
 
     /// <summary><c>notices.json</c>: every notice, the hand edits among them, and the refusals, each in the result's order.</summary>

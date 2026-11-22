@@ -1,0 +1,11 @@
+{
+  "notices": [
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_1.if: The condition '(item.content | string.strip) == \"\"' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.",
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_2.if: The condition '!((item.content | string.strip) == \"\")' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+  ],
+  "handEdits": [
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_1.if: The condition '(item.content | string.strip) == \"\"' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.",
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_2.if: The condition '!((item.content | string.strip) == \"\")' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in."
+  ],
+  "refusals": []
+}

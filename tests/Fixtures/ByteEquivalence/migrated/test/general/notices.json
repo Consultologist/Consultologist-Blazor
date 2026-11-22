@@ -1,0 +1,14 @@
+{
+  "notices": [
+    "Renamed macro 'test' to 'test_snippet': 'test' is reserved at 31.",
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_1.if: The condition '(item.content | string.strip) == \"\"' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.",
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_2.if: The condition '!((item.content | string.strip) == \"\")' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.",
+    "Hand edit needed in snippets/standards/assessment_plan.md, body: the body's if at line 5 decides what a snippet body shows, which has no parts; write each text as a snippet with its own if, placed where the text was."
+  ],
+  "handEdits": [
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_1.if: The condition '(item.content | string.strip) == \"\"' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.",
+    "Hand edit needed in nodes/standards/section_instructions.md, parts.when_2.if: The condition '!((item.content | string.strip) == \"\")' compares trim(item.content) (markdown_block) with a literal; text is tested by whether it is blank, its size, or in.",
+    "Hand edit needed in snippets/standards/assessment_plan.md, body: the body's if at line 5 decides what a snippet body shows, which has no parts; write each text as a snippet with its own if, placed where the text was."
+  ],
+  "refusals": []
+}

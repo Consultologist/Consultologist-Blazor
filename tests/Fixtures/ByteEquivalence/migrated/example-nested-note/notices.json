@@ -1,0 +1,13 @@
+{
+  "notices": [
+    "Renamed node 'parts' to 'sections': 'parts' is reserved at 31.",
+    "Format 'section_plan', field 'summary' holds free text; consider a text format.",
+    "Format 'section_plan', field 'sections.title' holds free text; consider a text format.",
+    "Format 'section_plan', field 'sections.purpose' holds free text; consider a text format.",
+    "Format 'outline', field 'points.point' holds free text; consider a text format.",
+    "Format 'verdict', field 'feedback' holds free text; consider a text format.",
+    "Node 'section_count' declared onInvalid at 30, which 31 has no member for; it was dropped."
+  ],
+  "handEdits": [],
+  "refusals": []
+}

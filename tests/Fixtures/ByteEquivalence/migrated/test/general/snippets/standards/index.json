@@ -1,0 +1,15 @@
+{
+  "description": null,
+  "items": [
+    "hpi",
+    "pmh",
+    "medications",
+    "allergies",
+    "social_history",
+    "family_history",
+    "exam",
+    "investigations",
+    "assessment_plan"
+  ],
+  "format": "standard_section"
+}

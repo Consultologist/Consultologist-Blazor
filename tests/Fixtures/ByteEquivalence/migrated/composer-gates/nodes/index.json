@@ -1,0 +1,12 @@
+{
+  "description": null,
+  "items": [
+    "problem_loop",
+    "note_body",
+    "patient_line",
+    "extract_input_terms",
+    "extract_note_terms",
+    "extract_copy_terms",
+    "cover_note"
+  ]
+}

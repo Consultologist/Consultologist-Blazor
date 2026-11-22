@@ -1,0 +1,71 @@
+{
+  "name": "example-conditional-sections",
+  "version": "v2026.11.3",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": null,
+  "description": [
+    "A demonstration of what specVersion 27 opened — a flow node inside a for: a case on each section's kind drafts narrative sections as prose and table sections as a table and skips the rest, an if with no else writes a patient-facing line for the narrative sections alone, and an if over a folder of standing sections holds the billing section back unless asked. At 30 a section is named by its title (labelField). Not intended for clinical use."
+  ],
+  "tags": [],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    },
+    "sections": {
+      "label": "Sections to produce",
+      "description": null,
+      "format": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "kind",
+            "notes"
+          ],
+          "properties": {
+            "title": {
+              "$ref": "markdown_block",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "narrative",
+                "table",
+                "omit"
+              ],
+              "title": "Kind"
+            },
+            "notes": {
+              "anyOf": [
+                {
+                  "$ref": "markdown_block"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Notes for this section"
+            }
+          }
+        }
+      },
+      "required": true,
+      "channel": null
+    },
+    "include_billing": {
+      "label": "Include the billing section",
+      "description": null,
+      "format": "boolean",
+      "required": false,
+      "channel": null
+    }
+  }
+}

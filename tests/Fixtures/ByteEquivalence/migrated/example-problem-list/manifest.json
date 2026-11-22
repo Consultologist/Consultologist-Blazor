@@ -1,0 +1,23 @@
+{
+  "name": "example-problem-list",
+  "version": "v2026.11.2",
+  "specVersion": 31,
+  "derivedFrom": null,
+  "title": "Problem list demo",
+  "description": [
+    "A demonstration of what specVersion 29 opened: a node finds the problems the consult draft names, and a loop over that node's list drafts one part per problem, so the loop's count is known only once the list is found; and a standing folder item, the follow-up plan, is drafted only when a classifier judges that the draft arranges a reassessment, and is otherwise skipped by condition. Not intended for clinical use."
+  ],
+  "tags": [
+    "demo",
+    "problem-list"
+  ],
+  "inputs": {
+    "consult_draft": {
+      "label": "Consult draft",
+      "description": null,
+      "format": "markdown_block",
+      "required": true,
+      "channel": null
+    }
+  }
+}
