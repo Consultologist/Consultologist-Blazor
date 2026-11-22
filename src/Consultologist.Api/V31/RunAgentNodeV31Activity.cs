@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
 using Consultologist.Api.Jobs;
+using Consultologist.Api.Models;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31;
 using Consultologist.PackageFormat.V31.Run;
@@ -71,6 +72,7 @@ public sealed class RunAgentNodeV31Activity(
         var outcome = attempt.Kind == AgentOutcomeKind.Completed
             ? AgentTurn.Finish(prepared, attempt.Text ?? "")
             : new AgentOutcome(attempt.Kind, null, attempt.RetryAfterMilliseconds ?? AgentBackoff.Wait(call.Attempt, _random.NextDouble()), attempt.ErrorKind);
+        outcome = WithTokens(outcome, attempt.Tokens);
 
         logger.LogInformation(
             "V31 agent attempt. Key={Key}, Attempt={Attempt}, Repair={Repair}, Faults={Faults}, AgentName={AgentName}, AgentVersion={AgentVersion}, Outcome={Outcome}, ErrorKind={ErrorKind}, WaitMs={WaitMs}, PromptLength={PromptLength}, PromptHash={PromptHash}, RunNeutralHash={RunNeutralHash}, ReplyLength={ReplyLength}, ReplyHash={ReplyHash}, Invalid={Invalid}, ValueLength={ValueLength}, ValueHash={ValueHash}, InputTokens={InputTokens}, OutputTokens={OutputTokens}, ElapsedMs={ElapsedMs}",
@@ -95,6 +97,19 @@ public sealed class RunAgentNodeV31Activity(
             attempt.Tokens?.Output,
             stopwatch.ElapsedMilliseconds);
         return outcome;
+    }
+
+    /// <summary>
+    /// #1506 (area 09; part 08 § 4; R14): <paramref name="outcome"/> with the attempt's <c>tokens { input, output, total }</c>
+    /// in its detail, which the runner sums over the call's attempts; as it is when the service said none.
+    /// </summary>
+    internal static AgentOutcome WithTokens(AgentOutcome outcome, ConsultTokenUsage? tokens)
+    {
+        if (tokens == null)
+            return outcome;
+        var detail = outcome.Detail?.DeepClone().AsObject() ?? [];
+        detail["tokens"] = new JsonObject { ["input"] = tokens.Input, ["output"] = tokens.Output, ["total"] = tokens.Input + tokens.Output };
+        return outcome with { Detail = detail };
     }
 
     /// <summary>A call that could not be made, of <paramref name="kind"/>; logged by key and kind only.</summary>

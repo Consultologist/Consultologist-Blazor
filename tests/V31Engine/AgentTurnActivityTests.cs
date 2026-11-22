@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Consultologist.Api.Agents;
+using Consultologist.Api.Models;
 using Consultologist.Api.Tests.V31Resolve;
 using Consultologist.Api.Tests.V31Run;
 using Consultologist.Api.Tests.V31Source;
@@ -83,6 +84,26 @@ public class AgentTurnActivityTests
         var macro = Assert.Single(row["macros"]!.AsArray())!.AsObject();
         Assert.True((bool)macro["offered"]! && (bool)macro["placed"]!);
         Assert.NotNull((string?)row["runNeutralHash"]);
+    }
+
+    [Fact]
+    public async Task TheAgentActivity_PutsTheAttemptsTokensOnItsDetail()
+    {
+        // #1506 (area 09; part 08 § 4; R14): the model's usage is on the attempt's outcome, and the row sums it
+        const string tokens = """{"input":120,"output":34,"total":154}""";
+        var run = new ActivityRun(MacrosGolden) { Tokens = stage => stage == "node.draft" ? new ConsultTokenUsage(120, 34) : null };
+
+        var result = await run.RunAsync(RunFixture.GoldenInputs() with { RunFacts = new JsonObject { ["date"] = "2026-11-21" } });
+
+        Assert.True(result.State == RunState.Completed, $"{result.State}: {result.FailedKey} {result.Sentence}");
+        Assert.Equal(tokens, CanonicalJson.Write(run.Recorder.Row("node.draft").ToJson()["tokens"]));
+        Assert.Null(run.Recorder.Row("node.plan").ToJson()["tokens"]); // the model said none
+        var outcome = await run.AgentAsync(run.Calls["node.draft"]);
+        Assert.Equal(tokens, CanonicalJson.Write(outcome.Detail!["tokens"]));
+
+        // the text it produced travels beside the detail, never in it
+        Assert.Equal(CanonicalJson.HashText(SourceLayout.Text(outcome.Produced!["sent"])!), (string?)outcome.Detail["inputHash"]);
+        Assert.DoesNotContain("Margaret Okafor", CanonicalJson.Write(outcome.Detail), StringComparison.Ordinal);
     }
 
     [Fact]
@@ -307,22 +328,25 @@ public class AgentTurnActivityTests
         Assert.Equal(["Macro 'm' is missing."], back.Call.Faults);
         Assert.Null(RoundTrip(agentInput with { Call = agentInput.Call with { Placed = null, Faults = null } }).Call.Faults);
 
+        var produced = new JsonObject { ["sent"] = "The prompt.", ["neutral"] = null, ["renders"] = new JsonObject(), ["macros"] = new JsonObject { ["m"] = "Body." } };
         var outcome = new AgentOutcome(AgentOutcomeKind.Completed, "The reply.", 0, null, detail,
-            [new ReplyFault("S05-053", "macro.m", "Macro 'm' is missing.", "macro m: missing")]);
+            [new ReplyFault("S05-053", "macro.m", "Macro 'm' is missing.", "macro m: missing")], produced);
         var outcomeBack = RoundTrip(outcome);
         Assert.Equal(Json(outcome), Json(outcomeBack));
         Assert.Equal(outcome.Invalid, outcomeBack.Invalid);
         Assert.Equal(CanonicalJson.Write(detail), CanonicalJson.Write(outcomeBack.Detail));
+        Assert.Equal(CanonicalJson.Write(produced), CanonicalJson.Write(outcomeBack.Produced)); // #1506 (D2)
 
         var renderInput = new RenderNodeV31Input("example", "1.0.0", "sha256:r", new RenderCall("node.stamp", "node.stamp", null, scope, 100, placed));
         var renderBack = RoundTrip(renderInput);
         Assert.Equal(Json(renderInput), Json(renderBack));
         Assert.Equal(placed, renderBack.Call.Placed);
 
-        var rendered = new RenderOutcome("Seen today", false, null, "Seen {{run:1}}", detail);
+        var rendered = new RenderOutcome("Seen today", false, null, "Seen {{run:1}}", detail, new JsonObject { ["neutral"] = "Seen {{run:1}}", ["renders"] = new JsonObject() });
         var renderedBack = RoundTrip(rendered);
         Assert.Equal(("Seen today", "Seen {{run:1}}"), (renderedBack.Text, renderedBack.NeutralText));
         Assert.Equal(CanonicalJson.Write(detail), CanonicalJson.Write(renderedBack.Detail));
+        Assert.Equal(CanonicalJson.Write(rendered.Produced), CanonicalJson.Write(renderedBack.Produced)); // #1506 (D2)
 
         // #1505 (R6): a rule's evaluation, its value a node and its failure the kind, the limit and the detail
         var ruleInput = new EvaluateRuleV31Input("example", "1.0.0", "sha256:r", 2000, new RuleCall("node.draft", "node.draft", null, "macro.m", scope));
@@ -387,6 +411,9 @@ public class AgentTurnActivityTests
 
         /// <summary>The model's reply to the call keyed by its stage, given the message sent.</summary>
         public Func<string, string, string> Reply { get; set; } = Default;
+
+        /// <summary>#1506 (R14): the tokens the model says an attempt spent, by its stage; none when null.</summary>
+        public Func<string, ConsultTokenUsage?>? Tokens { get; set; }
 
         public DateTime UtcNow => FakeRunHost.Start;
 
@@ -454,7 +481,7 @@ public class AgentTurnActivityTests
                 Sent.Add((stage, userMessage, agentName, agentVersion));
             var reply = run.Reply(stage, userMessage);
             run.Replied[stage] = reply;
-            return Task.FromResult(new AgentAttempt(AgentOutcomeKind.Completed, reply, null, null, null));
+            return Task.FromResult(new AgentAttempt(AgentOutcomeKind.Completed, reply, run.Tokens?.Invoke(stage), null, null));
         }
     }
 }

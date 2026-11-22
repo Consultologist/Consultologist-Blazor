@@ -182,7 +182,7 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
 - Produces: `Text` members (settled): `content` (the value's `.content`), `value` (a computed value's canonical JSON, when it is not text), `itemName` (when not from package text), `spots` (`{ "<spot id>": output }` for the spots whose row `output` is null). `AgentOutcome.Detail` and `RenderOutcome.Detail` carry no text.
 - Produces: a run spot `{ id, site, pass, reads, valueHash, output, outputHash, start, length }` and a renderer sub-row with `pass` (D5), positions in runes (R10); a macro row with `runNeutralHash` and `runSpots` (R7); `units` entries `{ site, hash, sent }` (R9); `tokens` on `AgentOutcome.Detail` per attempt and summed on the row (R14).
 
-- [ ] **Step 1: Write the failing tests** in `NodeRowTests` (through `ComposingRunHost` and the run fixtures):
+- [x] **Step 1: Write the failing tests** in `NodeRowTests` (through `ComposingRunHost` and the run fixtures):
   - `AnAgentRow_HasEveryMemberOfPart08`: the member-name set of `ToJson()` equals the list above; `producer` `generated`, `modelDerived` true, `agent` names the binding's `agentName` and `agentVersion` as `name` and `version` with `binding.format` the format key, `binding.producer` `generated`, `binding.via` the binding's.
   - `ARenderedRow_AndAComputedRow_AreComputed`: `producer` `computed`, `agent` null, `sentFormatHash` null, `notSent` `[]`, `macros` `[]`; the flags are the entry's.
   - `AFlowRow_HasNoFormat`: a `for`, `while`, `if`, `case` and `call` row have `formatHash` and `typeHash` null.
@@ -195,11 +195,11 @@ Each goes in the PR body under *Decisions made during build*. R = ruled by the o
   - `ARetriedCall_SumsItsTokens` (R14): two attempts of 10/5 and 20/7 tokens give `tokens` `{ input: 30, output: 12, total: 42 }`.
   - `ACallRow_HasItsFunctionArgumentsAndDepth` (part 08 § 7): `kind` `call`, `function`, `arguments` `[{ param, hash }]`, `depth` 0 outside a function and 1 inside one; its inner rows are keyed through the call node.
   - `NoDetail_CarriesText`: for every row of every golden run, neither `ToJson()` nor the outcomes' `Detail` holds the stub replies' text or the inputs' text.
-- [ ] **Step 2: Run** them. Expected: FAIL.
-- [ ] **Step 3: Implement.** Entry facts come from `PlanEntry.Json` (`label`, `producer`, the three flags, `formatHash`, `typeHash`) and `plan.Document["bindings"]`; an agent row that failed before a completed attempt still has every member.
-- [ ] **Step 4: Update `RunTrace`** (`# details` prints `ToJson()` for every row); regenerate and read the goldens.
-- [ ] **Step 5: Run** the V31 filter. Expected: PASS.
-- [ ] **Step 6: Commit** `PackageFormat (#1506): a node row is part 08's, with its sub-rows placed in runes`; push.
+- [x] **Step 2: Run** them. Expected: FAIL.
+- [x] **Step 3: Implement.** Entry facts come from `PlanEntry.Json` (`label`, `producer`, the three flags, `formatHash`, `typeHash`) and `plan.Document["bindings"]`; an agent row that failed before a completed attempt still has every member.
+- [x] **Step 4: Update `RunTrace`** (`# details` prints `ToJson()` for every row); regenerate and read the goldens.
+- [x] **Step 5: Run** the V31 filter. Expected: PASS.
+- [x] **Step 6: Commit** `PackageFormat (#1506): a node row is part 08's, with its sub-rows placed in runes`; push.
 
 ### Task 5: Check rows, and the hashes of a computed value
 
