@@ -142,7 +142,8 @@ internal static class V31Contract
     /// first says it (A10-008: a <c>!x</c> on text that became <c>blank(x)</c>, part 10 § 2.3, R1; A10-012, A10-015,
     /// A10-016, A10-017 and A10-018: the migration's gates and the chain's rung refusals, part 10 § 1.1, § 1.4, D2; A10-019 and
     /// A10-020: a 30 file or package that does not read; A10-021: a package format's free-text field, part 02 § 11; A10-022
-    /// and A10-023: the reasons of the first pass's hand edits, part 10 § 1.4).
+    /// to A10-025: the reasons of the first pass's hand edits, part 10 § 1.4; A10-026: a lone carriage return made a line end,
+    /// part 01 § 2.4).
     /// </summary>
     private static readonly Dictionary<string, string> MigrationAreaSentences = new()
     {
@@ -157,6 +158,9 @@ internal static class V31Contract
         ["A10-021"] = "Format '<id>', field '<field>' holds free text; consider a text format.",
         ["A10-022"] = "a snippet folder's item has no if at 31; gate the item with an if node in the loop over the folder.",
         ["A10-023"] = "the input takes one of several types, which a 31 input cannot; choose one format.",
+        ["A10-024"] = "the field takes one of several types, which 31 writes as an anyOf; choose one.",
+        ["A10-025"] = "the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.",
+        ["A10-026"] = "<file>: a carriage return that didn't end a line became a line end.",
     };
 
     private static string RepoRoot()

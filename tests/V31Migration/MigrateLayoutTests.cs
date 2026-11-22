@@ -192,22 +192,29 @@ public class MigrateLayoutTests
 
         // A BOM on every file, and a lone \r in a snippet body, too.
         var bom = files.ToDictionary(f => f.Key, f => "﻿" + f.Value, StringComparer.Ordinal);
-        var lone = WorkflowPackageMigration30To31.Migrate("﻿" + json, bom, options);
+        var bommed = WorkflowPackageMigration30To31.Migrate("﻿" + json, bom, options);
 
         Assert.True(plain.Succeeded, string.Join("\n", plain.Refusals));
         Assert.True(crlf.Succeeded, string.Join("\n", crlf.Refusals));
-        Assert.True(lone.Succeeded, string.Join("\n", lone.Refusals));
+        Assert.True(bommed.Succeeded, string.Join("\n", bommed.Refusals));
         Assert.Equal(plain.ManifestJson, crlf.ManifestJson);
         Assert.Equal(plain.Files.OrderBy(f => f.Key, StringComparer.Ordinal), crlf.Files.OrderBy(f => f.Key, StringComparer.Ordinal));
-        Assert.Equal(plain.Files.OrderBy(f => f.Key, StringComparer.Ordinal), lone.Files.OrderBy(f => f.Key, StringComparer.Ordinal));
+        Assert.Equal(plain.Files.OrderBy(f => f.Key, StringComparer.Ordinal), bommed.Files.OrderBy(f => f.Key, StringComparer.Ordinal));
         Assert.All(crlf.Files.Values.Append(crlf.ManifestJson), text => Assert.DoesNotContain('\r', text));
-        Assert.All(lone.Files.Values.Append(lone.ManifestJson), text => Assert.DoesNotContain('﻿', text));
+        Assert.All(bommed.Files.Values.Append(bommed.ManifestJson), text => Assert.DoesNotContain('﻿', text));
 
         var withCr = new Dictionary<string, string>(files, StringComparer.Ordinal);
         withCr["snippets/snomed_tool_guidance.md"] = withCr["snippets/snomed_tool_guidance.md"].Replace("\n", "\r");
-        var cr = WorkflowPackageMigration30To31.Migrate(json, withCr, options);
-        Assert.True(cr.Succeeded, string.Join("\n", cr.Refusals));
-        Assert.Equal(plain.Files["snippets/snomed_tool_guidance.md"], cr.Files["snippets/snomed_tool_guidance.md"]);
+        var loneCr = WorkflowPackageMigration30To31.Migrate(json, withCr, options);
+        Assert.True(loneCr.Succeeded, string.Join("\n", loneCr.Refusals));
+        Assert.Equal(plain.Files["snippets/snomed_tool_guidance.md"], loneCr.Files["snippets/snomed_tool_guidance.md"]);
+
+        // A lone \r changes the file's bytes, so it is said (A10-026); \r\n and a BOM are not.
+        var notice = "snippets/snomed_tool_guidance.md: a carriage return that didn't end a line became a line end.";
+        Assert.Equal(plain.Notices.Append(notice), loneCr.Notices);
+        V31Contract.AssertSentence(new SourceRefusal("A10-026", notice, ""));
+        Assert.Equal(plain.Notices, crlf.Notices);
+        Assert.Equal(plain.Notices, bommed.Notices);
     }
 
     [Fact]
@@ -515,6 +522,126 @@ public class MigrateLayoutTests
         Assert.Equal("sections_item_2", (string?)JsonOf(result, "snippets/sections/index.json")["format"]);
         Assert.Equal(Compact("""{ "description": null, "items": ["problem_list", "sections_item", "sections_item_2"] }"""),
             JsonOf(result, "formats/index.json").ToJsonString());
+    }
+
+    [Fact]
+    public void AUnionInsideAFormat_IsKeptAsWritten_AndIsOneHandEdit()
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["formats/verdict.json"] = files["formats/verdict.json"].Replace(
+                "\"feedback\": {\n        \"type\": \"string\"\n      }",
+                "\"feedback\": {\n        \"type\": [\"string\", \"number\", \"null\"]\n      }"),
+        };
+        Assert.Contains("\"number\"", files["formats/verdict.json"]);
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-nested-note"));
+
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+        var edit = Assert.Single(result.HandEdits);
+        Assert.Equal("Hand edit needed in formats/verdict.json, /properties/feedback/type: the field takes one of several types, which 31 writes as an anyOf; choose one.", edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "formats/verdict.json"));
+        Assert.Equal("""{"type":["string","number","null"]}""", JsonOf(result, "formats/verdict.json")["properties"]!["feedback"]!.ToJsonString());
+
+        // The form written is one the 31 checker refuses, so the hand edit is never silent.
+        var refusals = FormatDialect.Check(JsonOf(result, "formats/verdict.json"), SchemaSite.PackageFormat, "Format 'verdict'", "verdict", "formats/verdict.json");
+        Assert.NotEmpty(refusals);
+    }
+
+    [Fact]
+    public void AUnionAtDepth_IsOneHandEditEach_NamedByItsPointerInTheWrittenFile()
+    {
+        // An optional array (wrapped as anyOf with null) of a union, and a union in a required field: two pointers into
+        // the schema as 31 writes it, not as 30 wrote it.
+        var schema = JsonNode.Parse("""
+            { "type": "object", "additionalProperties": false, "required": ["b"],
+              "properties": {
+                "a": { "type": "array", "items": { "type": ["string", "integer"] } },
+                "b": { "type": ["string", "boolean"] } } }
+            """)!.AsObject();
+        var pointers = new List<string>();
+
+        PackageFormat.V31.Migration.Migrate.Strict(schema, (pointer, _) => pointers.Add(pointer));
+
+        Assert.Equal(["/properties/a/anyOf/0/items/type", "/properties/b/type"], pointers);
+        Assert.Equal("""{"type":["string","integer"]}""", schema["properties"]!["a"]!["anyOf"]![0]!["items"]!.ToJsonString());
+    }
+
+    [Fact]
+    public void AFormatNullableAtItsRoot_IsWrittenAs31Writes_AndIsOneHandEdit()
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
+        var wrapper = JsonNode.Parse(files["formats/verdict.json"])!.AsObject();
+        wrapper["schema"]!["type"] = new JsonArray("object", "null");
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal) { ["formats/verdict.json"] = wrapper.ToJsonString() };
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-nested-note"));
+
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+        var edit = Assert.Single(result.HandEdits);
+        Assert.Equal("Hand edit needed in formats/verdict.json, type: the format is nullable at its root, which a format a model writes cannot be at 31; make the root an object.", edit);
+        V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "formats/verdict.json"));
+        Assert.Equal(Compact("""
+            { "$schema": "urn:consultologist:spec:31:dialect",
+              "description": "A judgement of a draft summary: good, or revise with what to change.",
+              "anyOf": [
+                { "type": "object", "additionalProperties": false, "required": ["verdict", "feedback"],
+                  "properties": { "verdict": { "type": "string", "enum": ["good", "revise"] }, "feedback": { "type": "string" } } },
+                { "type": "null" } ] }
+            """), JsonOf(result, "formats/verdict.json").ToJsonString());
+    }
+
+    [Fact]
+    public void ASingleSnippetsIf_IsWrittenAs30Wrote_ForTheConditionsPass()
+    {
+        // D3's form: 30's Scriban condition stays a JSON string in the snippet's if, which the 31 checker refuses until
+        // the conditions pass (Task 7) converts it with the other condition sites.
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-macros");
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["snippets/style.md"] = files["snippets/style.md"].Replace(
+                "  \"label\": \"House style\"\n", "  \"label\": \"House style\",\n  \"if\": \"input.include_counselling == true\"\n"),
+        };
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-macros"));
+
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+        var (header, _) = MdOf(result, "snippets/style.md");
+        Assert.Equal(Compact("""{ "label": "House style", "description": null, "if": "input.include_counselling == true", "format": "markdown_block" }"""),
+            header.ToJsonString());
+    }
+
+    [Fact]
+    public void APromptThatOpensLikeAHeader_IsNotHeldToStrictJson_But30RefusesIt()
+    {
+        // A prompt has no header at 30, so its first line is never read as one here (no A10-019); 30's own rule refuses a
+        // prompt that opens with a header line.
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["prompts/plan.md"] = "{\n  \"a\": 1,\n  \"a\": 2\n}\n" + files["prompts/plan.md"],
+        };
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-nested-note"));
+
+        Assert.NotEmpty(result.Refusals);
+        Assert.All(result.Refusals, r => Assert.StartsWith("At specVersion 30: ", r, StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void ARootReadme_IsCopiedAsItWas()
+    {
+        var (json, files) = ByteEquivalenceFixtures.ReadPackage("example-nested-note");
+        files = new Dictionary<string, string>(files, StringComparer.Ordinal)
+        {
+            ["README.md"] = "# example-nested-note\r\n\r\nA fictional demo for Dr A. Sample.\r\n",
+        };
+
+        var result = WorkflowPackageMigration30To31.Migrate(json, files, MigrationFixture.Options("example-nested-note"));
+
+        Assert.True(result.Succeeded, string.Join("\n", result.Refusals));
+        Assert.Equal("# example-nested-note\n\nA fictional demo for Dr A. Sample.\n", result.Files["README.md"]);
     }
 
     /// <summary>Review Focus 3: a manifest a hand broke, each a refusal (nothing written) or a migrated package.</summary>

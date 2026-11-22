@@ -183,6 +183,18 @@ public class MigrateInputsTests
     }
 
     [Fact]
+    public void AUnionWhoseArrayHoldsAnotherType_IsAHandEdit()
+    {
+        // ["text", "array"] with items "number": an array of x would drop the text 30 accepted.
+        var result = MigrateWith("""{ "id": "mixed", "label": "Mixed", "required": false, "type": ["text", "array"], "items": "number" }""");
+
+        var edit = Assert.Single(result.HandEdits);
+        Assert.Equal("Hand edit needed in manifest.json, inputs.mixed.format: the input takes one of several types, which a 31 input cannot; choose one format.", edit);
+        AssertInput("""{ "anyOf": [{ "$ref": "markdown_block" }, { "type": "array", "items": { "type": "number" } }] }""",
+            JsonNode.Parse(result.ManifestJson)!["inputs"]!["mixed"]!["format"]);
+    }
+
+    [Fact]
     public void ExpectedContent_BecomesChannel()
     {
         var inputs = InputsWith(
