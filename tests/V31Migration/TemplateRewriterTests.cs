@@ -291,6 +291,41 @@ public class TemplateRewriterTests
         AssertHandEdit(edit, "macros/counselling.md", "A10-036", reason);
     }
 
+    [Fact]
+    public void AnIfAroundAPlacement_InASnippetBody_IsHoisted()
+    {
+        // R6's hoist row in a snippet body: a snippet placed in a prompt may place a macro (part 05 § 3.2), and a placement
+        // inside an if is refused there too (A07-009), so the if becomes the placement's rule as in a prompt.
+        var m = Working("example-macros");
+
+        var rewritten = TemplateRewriter.Rewrite(
+            "Style:\n{{ if input.include_counselling == true }}{{ macro.house_style.prompt }}{{ end }}\nEnd.\n",
+            new TemplateSite30(TemplateSite.SnippetBody, "snippets/style.md", null), m);
+
+        Assert.Equal("Style:\n{{ macro.house_style }}\nEnd.\n", rewritten.Text);
+        Assert.Empty(rewritten.HandEdits);
+        var placed = Assert.Single(rewritten.Macros);
+        Assert.Equal(("house_style", "snippets/style.md"), (placed.Macro, placed.File));
+        Assert.Equal("""{"===":[{"var":"input.include_counselling.value"},true]}""", placed.Rule!.Logic.ToJsonString());
+
+        // The vendored folder item (test/general's assessment_plan.md) is MigrateTemplatesTests.SnippetBodies_AndFolderItems_AreRewritten.
+        // A folder item's placement with no if around it is the same hand edit (A07-012 refuses it either way).
+        var item = TemplateRewriter.Rewrite(
+            "Medications.\n{{ macro.house_style.prompt }}\n",
+            new TemplateSite30(TemplateSite.SnippetBody, "snippets/sections/medications.md", null), m);
+        Assert.Equal("Medications.\n{{ macro.house_style }}\n", item.Text);
+        AssertHandEdit(Assert.Single(item.HandEdits), "snippets/sections/medications.md", "A10-051",
+            "macro 'house_style' is placed at line 2, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.");
+
+        // An if around text, not a placement (composer-macros' review_leaflet, a macro body that became a snippet, D4), has
+        // nothing to hoist: it stays a hand edit (A10-035).
+        var text = TemplateRewriter.Rewrite(
+            "{{ if input.include_counselling == true }}Counselling given.{{ end }}\n",
+            new TemplateSite30(TemplateSite.SnippetBody, "snippets/style.md", null), m);
+        Assert.Single(text.HandEdits);
+        Assert.Empty(text.Macros);
+    }
+
     [Theory]
     [InlineData("{{ if input.include_counselling == true }}{{ macro.preamble.prompt }}{{ end }}\n{{ macro.preamble.prompt }}\n", "nodes/summary.md")]
     [InlineData("{{ if input.include_counselling == true }}{{ macro.preamble.prompt }}{{ end }}\n{{ if input.note_type == \"consult\" }}{{ macro.preamble.prompt }}{{ end }}\n", "nodes/summary.md")]

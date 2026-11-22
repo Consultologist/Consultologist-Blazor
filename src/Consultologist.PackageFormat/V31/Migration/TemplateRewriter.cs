@@ -278,7 +278,8 @@ internal static class TemplateRewriter
 
         /// <summary>
         /// One output: its reads rewritten; a placement noted (its tag's marks, the macro it places), and said when it stands
-        /// inside an <c>if</c> or a <c>for</c> that stays (A07-009 refuses it there: A10-005); a value written whole said (A10-037).
+        /// inside an <c>if</c> or a <c>for</c> that stays (A07-009 refuses it there: A10-005) or in a snippet folder's item
+        /// (A07-012: A10-051); a value written whole said (A10-037).
         /// </summary>
         private void Output(ScriptExpressionStatement output, ImmutableDictionary<string, Variable> vars, Sink sink, int depth)
         {
@@ -295,7 +296,12 @@ internal static class TemplateRewriter
             if (written.Placement is not null && TagAt(output.Span.Start.Offset) is { } tag)
                 placements.Add(tag.Start);
             if (written.Macro is { } macro)
+            {
                 Macros.Add(new MacroPlacement(macro, site.OwnerId, site.File, hoisting));
+                // Part 05 § 6.2: a folder item's body is read in a loop, where it places no macro (A07-012).
+                if (site.Site == TemplateSite.SnippetBody && IsFolderItem(site.File) && said == 0)
+                    sink.Say(Start(head), line => MigrationSentences.FolderItemPlacesMacro(macro, line));
+            }
             if (written.Placement is not null && depth > 0 && said == 0)
                 sink.Say(Start(head), line => MigrationSentences.NotInDialect("a placement inside an if or a for", line));
             if (written.WholePath is { } path)
@@ -314,7 +320,8 @@ internal static class TemplateRewriter
         /// <summary>
         /// Part 05 § 2.5: an <c>if</c> chain that tests only recorded facts stays in the body, its reads rewritten. One that
         /// tests a value is, in a prompt, hoisted off the one macro it places or lifted into parts when it is simple (at the
-        /// top level, on its own lines, no <c>else if</c>, its branches only text and outputs); otherwise it stays as 30
+        /// top level, on its own lines, no <c>else if</c>, its branches only text and outputs), and, in a snippet body,
+        /// hoisted off the one macro it places when it is simple and has no <c>else</c> (R6); otherwise it stays as 30
         /// wrote it, a hand edit (A10-001; A10-035 in a body that has no parts).
         /// </summary>
         private void If(ScriptIfStatement node, ImmutableDictionary<string, Variable> vars, Sink sink, int depth)
@@ -356,8 +363,22 @@ internal static class TemplateRewriter
                 return;
             }
 
+            var elseTag = otherwise is null ? null : TagAt(Start(otherwise));
+            var simple = depth == 0 && conditions.Count == 1 && tests[0] == Test.Value && ifTag.Start != endTag.Start
+                && (otherwise is null || (elseTag is not null && elseTag.Start != ifTag.Start && elseTag.Start != endTag.Start))
+                && !ifTag.TextBefore && !endTag.TextAfter
+                && Plain(node.Then) && (otherwise is null || Plain(otherwise.Body));
+
             if (site.Site != TemplateSite.Prompt)
             {
+                // R6's hoist row holds in a snippet body too: it may place a macro (part 05 § 3.2, read where a prompt
+                // places it), and a placement inside an if is refused there as in a prompt (A07-009).
+                if (site.Site == TemplateSite.SnippetBody && simple && otherwise is null && Hoistable(node.Then, vars) is { } inSnippet)
+                {
+                    Hoist(node, inSnippet, Slice(conditions[0]!), ifTag, endTag, vars, sink, depth);
+                    return;
+                }
+
                 var words = site.Site switch
                 {
                     TemplateSite.SnippetBody => "snippet",
@@ -370,11 +391,6 @@ internal static class TemplateRewriter
                 return;
             }
 
-            var elseTag = otherwise is null ? null : TagAt(Start(otherwise));
-            var simple = depth == 0 && conditions.Count == 1 && tests[0] == Test.Value && ifTag.Start != endTag.Start
-                && (otherwise is null || (elseTag is not null && elseTag.Start != ifTag.Start && elseTag.Start != endTag.Start))
-                && !ifTag.TextBefore && !endTag.TextAfter
-                && Plain(node.Then) && (otherwise is null || Plain(otherwise.Body));
             if (!simple)
             {
                 sink.Say(ifTag.Start, MigrationSentences.IfTooComplex);
@@ -510,6 +526,10 @@ internal static class TemplateRewriter
 
             return macro;
         }
+
+        /// <summary>Whether <paramref name="file"/> is a snippet folder's item (<c>snippets/&lt;folder&gt;/&lt;id&gt;.md</c>).</summary>
+        private static bool IsFolderItem(string file) =>
+            file.StartsWith("snippets/", StringComparison.Ordinal) && file.IndexOf('/', "snippets/".Length) >= 0;
 
         /// <summary>Whether a branch holds only text and outputs (no statement to lift with it).</summary>
         private static bool Plain(ScriptBlockStatement? body) =>

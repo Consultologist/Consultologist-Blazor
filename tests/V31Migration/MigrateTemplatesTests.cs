@@ -49,12 +49,17 @@ public class MigrateTemplatesTests
             "Write in the first person plural, past tense, without abbreviations the patient would not know.\n{{ macro.house_style }}\n",
             m.Sources["snippets/style.md"].Body);
 
-        // test/general's assessment_plan item tests an input in a body if, which a snippet's body cannot lift (A10-035).
+        // test/general's assessment_plan item places a macro under a body if: the if is hoisted (R6), so the macro takes its
+        // condition, the line ends between the tags staying as in a prompt. A folder item's body read in a loop places no
+        // macro at 31 (part 05 § 6.2, A07-012), so the placement itself is the hand edit (A10-051): it moves to the prompt.
         var general = Templated("test/general");
-        Assert.EndsWith("{{ if input.note_type.value == \"consult\" }}\n{{ macro.letrozole_prescription_text }}\n{{ end }}", general.Sources["snippets/standards/assessment_plan.md"].Body, StringComparison.Ordinal);
+        Assert.EndsWith("deferred.\n\n\n{{ macro.letrozole_prescription_text }}\n", general.Sources["snippets/standards/assessment_plan.md"].Body, StringComparison.Ordinal);
+        Assert.Equal("""{"===":[{"var":"input.note_type.value"},"consult"]}""", general.PlacementRules["letrozole_prescription_text"].Logic.ToJsonString());
         var edit = Assert.Single(general.HandEditNotices, h => h.Contains("snippets/standards/assessment_plan.md", StringComparison.Ordinal));
         V31Contract.AssertSentence(new SourceRefusal("S10-002", edit, "snippets/standards/assessment_plan.md"));
-        Assert.EndsWith(": the body's if at line 5 decides what a snippet body shows, which has no parts; write each text as a snippet with its own if, placed where the text was.", edit, StringComparison.Ordinal);
+        const string reason = "macro 'letrozole_prescription_text' is placed at line 5, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.";
+        Assert.Equal("Hand edit needed in snippets/standards/assessment_plan.md, body: " + reason, edit);
+        V31Contract.AssertSentence(new SourceRefusal("A10-051", reason, ""));
     }
 
     [Theory]

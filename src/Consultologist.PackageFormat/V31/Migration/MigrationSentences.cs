@@ -341,6 +341,14 @@ internal static class MigrationSentences
     public static string FolderReadAsFixedText(string macro, int line) =>
         string.Create(CultureInfo.InvariantCulture, $"macro '{macro}' is read as fixed text at line {line}, but a macro folder's item is never fixed text at 31; place its text as a snippet.");
 
+    /// <summary>
+    /// A10-051 (part 05 § 6.2, A07-012; R6): a reason: a snippet folder's item body places macro <paramref name="macro"/>
+    /// at <paramref name="line"/> (its 30 <c>.prompt</c>, a hoisted body <c>if</c>'s condition already the macro's
+    /// <c>if</c>), which a folder item's body read in a loop does not do at 31.
+    /// </summary>
+    public static string FolderItemPlacesMacro(string macro, int line) =>
+        string.Create(CultureInfo.InvariantCulture, $"macro '{macro}' is placed at line {line}, but a snippet folder's item read in a loop places no macro at 31; place it in the prompt that loops over the folder.");
+
     /// <summary>A10-041 (part 05 § 8.3, § 8.7): a reason: a 30 macro's body places macro <paramref name="placed"/> (its <c>.prompt</c>), which no 31 macro body does.</summary>
     public static string BodyPlacesMacro(string placed) =>
         $"the body places macro '{placed}', which a 31 macro body cannot; place it in the prompt instead.";
