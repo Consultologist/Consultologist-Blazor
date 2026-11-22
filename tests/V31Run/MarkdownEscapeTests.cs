@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using Consultologist.PackageFormat;
 using Consultologist.PackageFormat.V31.Templates;
 using Markdig;
@@ -66,6 +67,31 @@ public class MarkdownEscapeTests
         var html = Markdown.ToHtml(MarkdownEscape.Escape("Plan:\n\tFBC and ferritin"), ConsultMarkdown.Pipeline);
         Assert.DoesNotContain("<code>", html, StringComparison.Ordinal);
         Assert.Equal("<p>Plan:<br />\n\tFBC and ferritin</p>\n", html);
+    }
+
+    [Fact]
+    public void AWhiteSpaceOnlyLine_IsEscapedAsAnyLine_AndStaysBlank()
+    {
+        // R9 as worded: a line of white space only is led by a space or tab too, so it gets its entity. The escaped text
+        // still displays blank, and IsBlank says so (Task 15's review): failIfEmpty and whenEmpty judge it as before.
+        Assert.Equal("&#32; ", MarkdownEscape.Escape("  "));
+        Assert.Equal("&#9;\n", MarkdownEscape.Escape("\t\n"));
+        Assert.Equal("Seen\n&#32; \nPlan", MarkdownEscape.Escape("Seen\n  \nPlan"));
+        foreach (var blank in new[] { "  ", "\t\n", " \t \r\n\t", "\n\n", "" })
+        {
+            Assert.True(MarkdownEscape.IsBlank(MarkdownEscape.Escape(blank)), JsonValue.Create(blank).ToJsonString());
+            Assert.True(MarkdownEscape.IsBlank(blank));
+        }
+
+        Assert.True(MarkdownEscape.IsBlank("&#32;&#9;&#32; \n"));
+        Assert.False(MarkdownEscape.IsBlank(MarkdownEscape.Escape(" .")));
+        Assert.False(MarkdownEscape.IsBlank("&#32;x"));
+        Assert.False(MarkdownEscape.IsBlank("&#33;"));
+        Assert.False(MarkdownEscape.IsBlank("&#32"));
+        Assert.False(MarkdownEscape.IsBlank("&#x20;"));
+        Assert.False(MarkdownEscape.IsBlank("&nbsp;"));
+
+        Assert.DoesNotContain("<code>", Markdown.ToHtml(MarkdownEscape.Escape("Seen\n    \n\tPlan"), ConsultMarkdown.Pipeline), StringComparison.Ordinal);
     }
 
     [Fact]

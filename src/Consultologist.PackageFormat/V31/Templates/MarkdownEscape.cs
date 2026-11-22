@@ -45,6 +45,31 @@ public static class MarkdownEscape
         return escaped.ToString();
     }
 
+    /// <summary>
+    /// Whether Markdown <paramref name="text"/> the escape may have written into is blank: only white space and the
+    /// escape's own references <c>&amp;#32;</c> and <c>&amp;#9;</c>, which display as a space and a tab (Task 15's review:
+    /// R9 writes a blank line's leading space or tab as its reference, and an empty value stays empty for
+    /// <c>failIfEmpty</c> and <c>whenEmpty</c>). For plain text, which the escape never writes, use
+    /// <see cref="string.IsNullOrWhiteSpace"/>: there a reference is the characters written.
+    /// </summary>
+    public static bool IsBlank(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        for (var i = 0; i < text.Length;)
+        {
+            if (char.IsWhiteSpace(text[i]))
+                i++;
+            else if (string.CompareOrdinal(text, i, "&#32;", 0, 5) == 0)
+                i += 5;
+            else if (string.CompareOrdinal(text, i, "&#9;", 0, 4) == 0)
+                i += 4;
+            else
+                return false;
+        }
+
+        return true;
+    }
+
     /// <summary>Whether position <paramref name="at"/> of <paramref name="text"/> starts a line: it is the text's start, or follows a <c>\n</c> or <c>\r</c>.</summary>
     public static bool StartsLine(string text, int at) => at == 0 || text[at - 1] is '\n' or '\r';
 

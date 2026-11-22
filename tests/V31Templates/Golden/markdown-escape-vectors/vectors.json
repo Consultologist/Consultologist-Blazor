@@ -178,5 +178,13 @@
   {
     "plain": "Hb 104 g/L    ferritin 9 ug/L: the four spaces mid-line stay.",
     "escaped": "Hb 104 g\\/L    ferritin 9 ug\\/L\\: the four spaces mid\\-line stay\\."
+  },
+  {
+    "plain": "Seen by Dr A. Sample.\n  \nPlan to follow.",
+    "escaped": "Seen by Dr A\\. Sample\\.\n&#32; \nPlan to follow\\."
+  },
+  {
+    "plain": " \t ",
+    "escaped": "&#32;\t "
   }
 ]

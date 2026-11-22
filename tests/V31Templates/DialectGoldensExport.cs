@@ -670,7 +670,8 @@ public class DialectGoldensExport
 
     /// <summary>
     /// The sentences of fictional clinical text the escape vectors hold beside the 32 characters: area 07's ten, then
-    /// #1505's three (R9): a line led by one space, lines led by a tab, and a run of spaces mid-line (unchanged).
+    /// #1505's five (R9): a line led by one space, lines led by a tab, a run of spaces mid-line (unchanged), a line of white
+    /// space only, and a text of white space only (each still led by its entity).
     /// </summary>
     private static readonly string[] Sentences =
     [
@@ -687,6 +688,8 @@ public class DialectGoldensExport
         " One space leads this line for Margaret Okafor.",
         "Plan for Dr A. Sample:\n\tFBC and ferritin\n\t\tthen review in clinic",
         "Hb 104 g/L    ferritin 9 ug/L: the four spaces mid-line stay.",
+        "Seen by Dr A. Sample.\n  \nPlan to follow.",
+        " \t ",
     ];
 
     private static JsonArray EscapeVectorsDocument()

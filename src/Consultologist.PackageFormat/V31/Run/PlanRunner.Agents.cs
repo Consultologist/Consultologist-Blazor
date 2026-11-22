@@ -155,7 +155,7 @@ public sealed partial class PlanRunner
                 return;
             }
 
-            if (SourceLayout.Text(entry.Json["failIfEmpty"]) is { } empty && IsEmpty(value))
+            if (SourceLayout.Text(entry.Json["failIfEmpty"]) is { } empty && IsEmpty(value, plan.Formats.TextFormat(entry.Format) is "markdown_block" or "markdown_inline"))
             {
                 await FailAsync(instance, empty);
                 return;
@@ -200,12 +200,16 @@ public sealed partial class PlanRunner
 
         /// <summary>
         /// Whether a valid value is empty for <c>failIfEmpty</c>, as at version 30: text that is blank (white space only),
-        /// or an empty list. An object, a number, a boolean and <c>null</c> are never empty.
+        /// or an empty list. An object, a number, a boolean and <c>null</c> are never empty. #1505 (Task 15's review): in a
+        /// Markdown node (<paramref name="markdown"/>), where a plain-text macro's body is escaped in, the escape's
+        /// <c>&amp;#32;</c> and <c>&amp;#9;</c> are white space too (<see cref="MarkdownEscape.IsBlank"/>), so a blank body
+        /// stays blank under R9; in plain text they are the characters written.
         /// </summary>
-        private static bool IsEmpty(JsonNode? value) => value switch
+        private static bool IsEmpty(JsonNode? value, bool markdown) => value switch
         {
             JsonArray list => list.Count == 0,
-            JsonValue text when text.GetValueKind() == JsonValueKind.String => string.IsNullOrWhiteSpace(text.GetValue<string>()),
+            JsonValue text when text.GetValueKind() == JsonValueKind.String =>
+                markdown ? MarkdownEscape.IsBlank(text.GetValue<string>()) : string.IsNullOrWhiteSpace(text.GetValue<string>()),
             _ => false,
         };
 
