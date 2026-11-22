@@ -161,10 +161,22 @@
   },
   {
     "plain": "    Seen with her daughter; the four spaces before this line stay as written.",
-    "escaped": "    Seen with her daughter\\; the four spaces before this line stay as written\\."
+    "escaped": "&#32;   Seen with her daughter\\; the four spaces before this line stay as written\\."
   },
   {
     "plain": "Fatigue – two weeks, worse ≥ 3 pm; café visit with her daughter, née Adeyemi.\nSecond line: \\ back-slashed.",
     "escaped": "Fatigue – two weeks\\, worse ≥ 3 pm\\; café visit with her daughter\\, née Adeyemi\\.\nSecond line\\: \\\\ back\\-slashed\\."
+  },
+  {
+    "plain": " One space leads this line for Margaret Okafor.",
+    "escaped": "&#32;One space leads this line for Margaret Okafor\\."
+  },
+  {
+    "plain": "Plan for Dr A. Sample:\n\tFBC and ferritin\n\t\tthen review in clinic",
+    "escaped": "Plan for Dr A\\. Sample\\:\n&#9;FBC and ferritin\n&#9;\tthen review in clinic"
+  },
+  {
+    "plain": "Hb 104 g/L    ferritin 9 ug/L: the four spaces mid-line stay.",
+    "escaped": "Hb 104 g\\/L    ferritin 9 ug\\/L\\: the four spaces mid\\-line stay\\."
   }
 ]

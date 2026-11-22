@@ -187,6 +187,90 @@ public class DeliverableComposeTests
     }
 
     [Fact]
+    public void ADeliverable_EscapesLeadingIndentation()
+    {
+        // #1505 comment 4, ruling 1 (R9): a plain line led by four spaces or a tab would be a code block; its first space
+        // or tab is written as its entity.
+        var plan = RunFixture.Plan(WithNote("markdown_block", "{{ node.summary.content }}\n"));
+
+        var text = Composed(Render(plan, BodyComposerTests.Scope(("node.summary.content", "    indented\n\tx"))));
+
+        Assert.Equal("&#32;   indented\n&#9;x\n", text);
+    }
+
+    [Fact]
+    public void APlacedPlainTextSnippet_WithARunSpot_EncodesOnlyTheLinesLeadingSpace()
+    {
+        // The snippet is escaped whole, piece by piece around its run spot, and the spot's run-neutral text around its
+        // marker: a piece that continues a line (" by", "\t(clinic)") is not a line start, so the sent and run-neutral texts
+        // still differ only at the marker; the snippet's own indented second line is a line start.
+        var plan = RunFixture.Plan(WithNote("markdown_block", "## Plan\n{{~ snippet.sign_off.content }}\n")
+            .WithRendered("stamp", "Seen {{ run.date }}\t(clinic).").RunDependent("nodes/stamp.md")
+            .WithSnippet("sign_off", "{{ node.stamp.content }} by Dr A. Sample\n    Sample Oncology Clinic"));
+        var scope = BodyComposerTests.Scope(("node.stamp.content", "Seen 2026-11-21\t(clinic)."), ("node.stamp.neutral", "Seen {{run:1}}\t(clinic)."));
+
+        var outcome = Render(plan, scope, BodyComposerTests.Placed("snippet.sign_off"));
+
+        var text = Composed(outcome);
+        Assert.Equal("## Plan\nSeen 2026\\-11\\-21\t\\(clinic\\)\\. by Dr A\\. Sample\n&#32;   Sample Oncology Clinic\n", text);
+        Assert.Equal("## Plan\nSeen {{run:1}}\t\\(clinic\\)\\. by Dr A\\. Sample\n&#32;   Sample Oncology Clinic\n", outcome.NeutralText);
+        Assert.Equal(text, outcome.NeutralText!.Replace("{{run:1}}", "2026\\-11\\-21", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("Seen by", " Dr A. Sample", " today.", "Seen by", " Dr A\\. Sample", " today\\.")]
+    [InlineData("Plan:\n", " FBC", "", "Plan\\:\n", "&#32;FBC", "")]
+    [InlineData("Plan:\n", "\tFBC\n", " review", "Plan\\:\n", "&#9;FBC\n", "&#32;review")]
+    [InlineData("", "  Margaret Okafor", "\tseen", "", "&#32; Margaret Okafor", "\tseen")]
+    public void APlacedTextEscapedPieceByPiece_IsTheEscapeOfTheWholeText(
+        string before, string output, string after, string escapedBefore, string escapedOutput, string escapedAfter)
+    {
+        // R9 against escaping by pieces (Task 7's finding): a spot's output, and the text after it, starts a line only where
+        // it starts a line of the whole placed text, so the pieces escaped are the whole text escaped.
+        var spot = new BodyComposer.FilledSpot(new BodyComposer.PlannedSpot(1, "node.stamp.content", false), before.Length, output.Length, output, "{{run:1}}", "hash");
+        var placed = new BodyComposer.PlacedText(before + output + after, [spot]);
+
+        var escaped = BodyComposer.Escaped(placed);
+
+        Assert.Equal(escapedBefore + escapedOutput + escapedAfter, escaped.Text);
+        Assert.Equal(MarkdownEscape.Escape(placed.Text), escaped.Text);
+        var moved = Assert.Single(escaped.Spots);
+        Assert.Equal(escapedOutput, moved.Output);
+        Assert.Equal(escapedOutput, escaped.Text.Substring(moved.Start, moved.Length));
+        Assert.Equal("{{run:1}}", moved.Neutral);
+    }
+
+    [Theory]
+    [InlineData("Seen {{run:1}} by Dr A. Sample", true, "Seen {{run:1}} by Dr A\\. Sample")]
+    [InlineData(" {{run:1}} (clinic)\n seen", true, "&#32;{{run:1}} \\(clinic\\)\n&#32;seen")]
+    [InlineData(" {{run:1}}\t(clinic)", false, " {{run:1}}\t\\(clinic\\)")]
+    [InlineData("{{run:1}}\n\t{{run:2}} x", true, "{{run:1}}\n&#9;{{run:2}} x")]
+    public void ARunNeutralText_IsEscapedLineByLine_AroundItsMarkers(string neutral, bool startsLine, string expected)
+    {
+        // The piece after a marker continues the marker's line: its leading space or tab stays, as in the sent text.
+        Assert.Equal(expected, BodyComposer.EscapedNeutral(neutral, startsLine));
+    }
+
+    [Fact]
+    public void ATextSpot_InAPlacedPlainTextSnippet_IsALineStartOnlyWhereItStartsALine()
+    {
+        // Mid-line, the spot's output (and its run-neutral text) keeps its leading space; at a line start, its tab is the entity.
+        var plan = RunFixture.Plan(WithNote("markdown_block", "{{~ snippet.sign_off.content }}\n")
+            .WithRendered("stamp", "Seen {{ run.date }}.").RunDependent("nodes/stamp.md")
+            .WithRendered("visit", "Seen {{ run.date }}.").RunDependent("nodes/visit.md")
+            .WithSnippet("sign_off", "Margaret Okafor{{ node.stamp.content }}\n{{ node.visit.content }} by Dr A. Sample"));
+        var scope = BodyComposerTests.Scope(
+            ("node.stamp.content", " seen 2026-11-21."), ("node.stamp.neutral", " seen {{run:1}}."),
+            ("node.visit.content", "\tSeen 2026-11-21."), ("node.visit.neutral", "\tSeen {{run:1}}."));
+
+        var outcome = Render(plan, scope, BodyComposerTests.Placed("snippet.sign_off"));
+
+        var text = Composed(outcome);
+        Assert.Equal("Margaret Okafor seen 2026\\-11\\-21\\.\n&#9;Seen 2026\\-11\\-21\\. by Dr A\\. Sample\n", text);
+        Assert.Equal("Margaret Okafor seen {{run:1}}\\.\n&#9;Seen {{run:1}}\\. by Dr A\\. Sample\n", outcome.NeutralText);
+    }
+
+    [Fact]
     public void AnObjectDeliverable_ComposesCanonicalJson()
     {
         var plan = RunFixture.Plan(WithNote("section_plan", "{{ node.plan.value }}\n"));

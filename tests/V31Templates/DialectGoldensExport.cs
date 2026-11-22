@@ -623,7 +623,10 @@ public class DialectGoldensExport
 
     // ---- markdown-escape-vectors --------------------------------------------------------------
 
-    /// <summary>The ten sentences of fictional clinical text the escape vectors hold beside the 32 characters.</summary>
+    /// <summary>
+    /// The sentences of fictional clinical text the escape vectors hold beside the 32 characters: area 07's ten, then
+    /// #1505's three (R9): a line led by one space, lines led by a tab, and a run of spaces mid-line (unchanged).
+    /// </summary>
     private static readonly string[] Sentences =
     [
         "Margaret Okafor, 58, seen by Dr A. Sample on 20/11/2026.",
@@ -636,6 +639,9 @@ public class DialectGoldensExport
         "Allergies: penicillin (rash) | none known @ home; see note #4.",
         "    Seen with her daughter; the four spaces before this line stay as written.",
         "Fatigue – two weeks, worse ≥ 3 pm; café visit with her daughter, née Adeyemi.\nSecond line: \\ back-slashed.",
+        " One space leads this line for Margaret Okafor.",
+        "Plan for Dr A. Sample:\n\tFBC and ferritin\n\t\tthen review in clinic",
+        "Hb 104 g/L    ferritin 9 ug/L: the four spaces mid-line stay.",
     ];
 
     private static JsonArray EscapeVectorsDocument()

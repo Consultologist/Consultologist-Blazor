@@ -206,7 +206,7 @@ public class DialectGoldenTests
     }
 
     [Fact]
-    public void TheEscapeVectors_HoldEachPunctuationCharacter_AndTenSentences()
+    public void TheEscapeVectors_HoldEachPunctuationCharacter_AndThirteenSentences()
     {
         var vectors = JsonNode.Parse(DialectGoldensExport.Files(DialectGoldensExport.EscapeVectors)["vectors.json"])!.AsArray();
         var plains = vectors.Select(v => (string)v!["plain"]!).ToList();
@@ -215,7 +215,7 @@ public class DialectGoldenTests
         Assert.Equal(32, punctuation.Count);
         Assert.Equal(punctuation, plains.Take(32));
         Assert.Equal(punctuation.Select(c => "\\" + c), vectors.Take(32).Select(v => (string)v!["escaped"]!));
-        Assert.Equal(42, vectors.Count);
+        Assert.Equal(45, vectors.Count);
         Assert.All(vectors, v =>
         {
             Assert.Equal(["plain", "escaped"], v!.AsObject().Select(m => m.Key));

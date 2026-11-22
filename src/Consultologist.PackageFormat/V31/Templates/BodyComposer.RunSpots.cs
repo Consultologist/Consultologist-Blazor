@@ -146,7 +146,9 @@ public static partial class BodyComposer
 
     /// <summary>
     /// #1505 (area 08, D7): <paramref name="placed"/> escaped whole as plain text in Markdown, each run spot in it with its
-    /// output (and a <c>text</c> spot's run-neutral output) escaped and its place moved to where it now stands.
+    /// output (and a <c>text</c> spot's run-neutral output) escaped and its place moved to where it now stands. R9: the
+    /// text is escaped piece by piece as one text, so a piece (a spot's output, or the text between spots) is a line start
+    /// only where it starts a line of <paramref name="placed"/>; one that continues a line keeps its leading space or tab.
     /// </summary>
     internal static PlacedText Escaped(PlacedText placed)
     {
@@ -156,14 +158,19 @@ public static partial class BodyComposer
         var at = 0;
         foreach (var spot in placed.Spots)
         {
-            escaped.Append(MarkdownEscape.Escape(text[at..spot.Start]));
-            var output = MarkdownEscape.Escape(spot.Output);
-            spots.Add(spot with { Start = escaped.Length, Length = output.Length, Output = output, Neutral = spot.Spot.Text ? EscapedNeutral(spot.Neutral) : spot.Neutral });
+            escaped.Append(MarkdownEscape.Escape(text[at..spot.Start], MarkdownEscape.StartsLine(text, at)));
+            var startsLine = MarkdownEscape.StartsLine(text, spot.Start);
+            var output = MarkdownEscape.Escape(spot.Output, startsLine);
+            spots.Add(spot with
+            {
+                Start = escaped.Length, Length = output.Length, Output = output,
+                Neutral = spot.Spot.Text ? EscapedNeutral(spot.Neutral, startsLine) : spot.Neutral,
+            });
             escaped.Append(output);
             at = spot.Start + spot.Length;
         }
 
-        return new PlacedText(escaped.Append(MarkdownEscape.Escape(text[at..])).ToString(), spots, placed.Unit);
+        return new PlacedText(escaped.Append(MarkdownEscape.Escape(text[at..], MarkdownEscape.StartsLine(text, at))).ToString(), spots, placed.Unit);
     }
 
     /// <summary>
@@ -172,9 +179,10 @@ public static partial class BodyComposer
     /// only at the markers. A read value that itself holds the literal text <c>{{run:&lt;n&gt;}}</c> cannot be told from a
     /// marker here: it is kept unescaped in the run-neutral text (its sent text is escaped), so that one text's neutral hash
     /// differs from a byte-exact escape. The run-neutral text is never sent, and the read node's own neutral text is just as
-    /// ambiguous, so nothing better can be known from it.
+    /// ambiguous, so nothing better can be known from it. R9: <paramref name="startsLine"/> says whether the output starts a
+    /// line where it is written, as its sent output was escaped; a piece after a marker continues the marker's line.
     /// </summary>
-    internal static string EscapedNeutral(string neutral)
+    internal static string EscapedNeutral(string neutral, bool startsLine = true)
     {
         const string open = "{{run:";
         var escaped = new StringBuilder(neutral.Length);
@@ -187,12 +195,13 @@ public static partial class BodyComposer
                 close++;
             if (close == digits || string.CompareOrdinal(neutral, close, "}}", 0, 2) != 0)
                 continue;
-            escaped.Append(MarkdownEscape.Escape(neutral[at..found])).Append(neutral, found, close + 2 - found);
+            escaped.Append(MarkdownEscape.Escape(neutral[at..found], at == 0 ? startsLine : MarkdownEscape.StartsLine(neutral, at)))
+                .Append(neutral, found, close + 2 - found);
             at = close + 2;
             found = close + 1;
         }
 
-        return escaped.Append(MarkdownEscape.Escape(neutral[at..])).ToString();
+        return escaped.Append(MarkdownEscape.Escape(neutral[at..], at == 0 ? startsLine : MarkdownEscape.StartsLine(neutral, at))).ToString();
     }
 
     /// <summary>
